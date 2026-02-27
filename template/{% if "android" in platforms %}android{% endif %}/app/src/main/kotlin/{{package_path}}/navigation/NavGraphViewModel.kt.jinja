@@ -1,0 +1,11 @@
+package {{ package_identifier }}.navigation
+
+import androidx.lifecycle.ViewModel
+import {{ package_identifier }}.data.local.TokenStorage
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+
+@HiltViewModel
+class NavGraphViewModel @Inject constructor(
+    val tokenStorage: TokenStorage
+) : ViewModel()

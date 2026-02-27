@@ -1,0 +1,44 @@
+---
+name: advisory-review
+description: Review a feature proposal with the virtual advisory board
+---
+
+# Advisory Board Review
+
+Review a feature or strategic decision from multiple stakeholder perspectives.
+
+## Instructions
+
+1. Read `docs/advisory-board.md` to load board member personas.
+
+2. For each member, evaluate the proposal:
+   - What they support
+   - Questions they'd raise
+   - Concerns or risks
+   - Recommendation: proceed / rework / defer
+
+3. Output format:
+
+```
+## Advisory Board Review: [Name]
+
+### [Member] — [Role]
+- Supports: ...
+- Questions: ...
+- Concerns: ...
+- Recommendation: ...
+
+### Board Summary
+- Consensus: ...
+- Key risks: ...
+- Next steps: ...
+```
+
+4. Include the review in `docs/features/{name}.md` under "Board Review" if the user proceeds.
+
+## Triggers
+
+- New feature proposals
+- Architectural decisions
+- Product strategy questions
+- User invokes `$advisory-review`

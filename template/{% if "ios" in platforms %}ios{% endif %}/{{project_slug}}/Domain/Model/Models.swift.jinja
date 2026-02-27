@@ -1,0 +1,73 @@
+import Foundation
+
+// MARK: - Auth
+
+struct OAuthCallbackRequest: Codable {
+    let provider: String
+    let code: String
+    let redirectUri: String
+}
+
+{% if "password" in auth_methods %}
+struct RegisterRequest: Codable {
+    let email: String
+    let password: String
+    let displayName: String
+}
+
+struct LoginRequest: Codable {
+    let email: String
+    let password: String
+}
+{% endif %}
+
+struct RefreshTokenRequest: Codable {
+    let refreshToken: String
+}
+
+struct AuthResponse: Codable {
+    let accessToken: String
+    let refreshToken: String
+    let expiresIn: Int
+    let user: UserResponse
+}
+
+struct UserResponse: Codable, Identifiable {
+    let id: String
+    let email: String
+    let displayName: String
+    let avatarUrl: String?
+    let authProvider: String
+    let role: String
+}
+
+// MARK: - Examples
+
+struct ExampleResponse: Codable, Identifiable {
+    let id: String
+    let title: String
+    let description: String?
+    let status: String
+    let createdBy: String
+    let createdAt: String
+    let updatedAt: String
+}
+
+struct ExampleListResponse: Codable {
+    let content: [ExampleResponse]
+    let page: Int
+    let size: Int
+    let totalElements: Int
+    let totalPages: Int
+}
+
+struct CreateExampleRequest: Codable {
+    let title: String
+    let description: String?
+}
+
+struct UpdateExampleRequest: Codable {
+    let title: String?
+    let description: String?
+    let status: String?
+}

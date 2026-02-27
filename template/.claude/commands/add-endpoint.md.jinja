@@ -1,0 +1,29 @@
+Add a new API endpoint to {{ project_name }}.
+
+Ask me for the endpoint details if I haven't provided them: HTTP method, path, description, request/response shape.
+
+## Steps
+
+1. **Update OpenAPI Spec** — Add the new path, parameters, request body, and response schemas to `shared/api-contracts/openapi.yml`. Follow conventions in `docs/api/conventions.md`:
+   - Use camelCase for JSON fields
+   - Use plural nouns for resource paths
+   - Include pagination for list endpoints (page, size, totalElements, totalPages)
+   - Use standard error format: `{ error: string, message: string, status: number }`
+
+2. **Regenerate Clients** — Run `task generate-clients`.
+
+{% if "backend" in platforms %}3. **Implement Backend** — Add the endpoint in `backend/`:
+   - Controller method with proper annotations
+   - Service method with business logic
+   - Repository method if data access is needed
+   - DTOs for request/response
+   - Add Flyway migration if schema changes are needed{% endif %}
+
+4. **Verify** — Run `task backend:test` to ensure nothing is broken.
+
+## Conventions
+
+- GET for reads, POST for creates, PUT for full updates, PATCH for partial, DELETE for removal
+- Return 201 for creates, 200 for updates/reads, 204 for deletes
+- All list endpoints support pagination
+- Auth endpoints are public; all others require Bearer token

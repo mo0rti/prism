@@ -1,0 +1,85 @@
+package {{ package_identifier }}.domain.model
+
+import kotlinx.serialization.Serializable
+
+// --- Auth ---
+
+@Serializable
+data class OAuthCallbackRequest(
+    val provider: String,
+    val code: String,
+    val redirectUri: String
+)
+
+{% if "password" in auth_methods %}
+@Serializable
+data class RegisterRequest(
+    val email: String,
+    val password: String,
+    val displayName: String
+)
+
+@Serializable
+data class LoginRequest(
+    val email: String,
+    val password: String
+)
+{% endif %}
+
+@Serializable
+data class RefreshTokenRequest(
+    val refreshToken: String
+)
+
+@Serializable
+data class AuthResponse(
+    val accessToken: String,
+    val refreshToken: String,
+    val expiresIn: Long,
+    val user: UserResponse
+)
+
+@Serializable
+data class UserResponse(
+    val id: String,
+    val email: String,
+    val displayName: String,
+    val avatarUrl: String? = null,
+    val authProvider: String,
+    val role: String
+)
+
+// --- Examples ---
+
+@Serializable
+data class ExampleResponse(
+    val id: String,
+    val title: String,
+    val description: String? = null,
+    val status: String,
+    val createdBy: String,
+    val createdAt: String,
+    val updatedAt: String
+)
+
+@Serializable
+data class ExampleListResponse(
+    val content: List<ExampleResponse>,
+    val page: Int,
+    val size: Int,
+    val totalElements: Long,
+    val totalPages: Int
+)
+
+@Serializable
+data class CreateExampleRequest(
+    val title: String,
+    val description: String? = null
+)
+
+@Serializable
+data class UpdateExampleRequest(
+    val title: String? = null,
+    val description: String? = null,
+    val status: String? = null
+)

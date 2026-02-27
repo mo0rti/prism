@@ -1,0 +1,35 @@
+---
+globs: "backend/**"
+---
+
+# Backend — Spring Boot 4 (Kotlin)
+
+## Stack
+- Spring Boot 4.0.x, Kotlin 2.2+, Java 21
+- Spring Security OAuth2 Client + JWT
+- Spring Data JPA + Flyway migrations
+- Jackson 3.x, JUnit Jupiter 6
+- Azure Container Apps deployment
+
+## Structure
+```
+src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
+  config/       → SecurityConfig, WebConfig, OAuth2Config
+  common/       → ApiException, GlobalExceptionHandler, PagedResponse
+  auth/         → AuthController, AuthService, JwtTokenProvider, User entity
+  features/     → Feature modules (controller/service/repository/entity/dto)
+```
+
+## Patterns
+- Controller → Service → Repository → Entity
+- DTOs separate from entities (Request/Response suffixed)
+- Global exception handler returns `ApiErrorResponse`
+- Pagination via `Pageable` → `PagedResponse<T>`
+- All endpoints require JWT except `/auth/**`
+- Flyway migrations in `src/main/resources/db/migration/`
+- Tests use `@SpringBootTest` + MockK
+
+## Commands
+- `./gradlew bootRun` or `task backend:run`
+- `./gradlew test` or `task backend:test`
+- `./gradlew assembleBootDist` or `task backend:build`

@@ -1,0 +1,71 @@
+import SwiftUI
+
+// Design tokens from shared/design-tokens/tokens.json
+extension Color {
+    // Primary
+    static let appPrimary = Color(hex: "#6366F1")
+    static let appPrimaryVariant = Color(hex: "#4F46E5")
+
+    // Secondary
+    static let appSecondary = Color(hex: "#10B981")
+    static let appSecondaryVariant = Color(hex: "#059669")
+
+    // Background & Surface
+    static let appBackground = Color(hex: "#FFFFFF")
+    static let appSurface = Color(hex: "#F9FAFB")
+    static let appSurfaceVariant = Color(hex: "#F3F4F6")
+
+    // Semantic
+    static let appError = Color(hex: "#EF4444")
+    static let appWarning = Color(hex: "#F59E0B")
+    static let appSuccess = Color(hex: "#10B981")
+    static let appInfo = Color(hex: "#3B82F6")
+
+    // On colors
+    static let appOnPrimary = Color(hex: "#FFFFFF")
+    static let appOnBackground = Color(hex: "#111827")
+    static let appOnSurface = Color(hex: "#374151")
+
+    // Border
+    static let appBorder = Color(hex: "#E5E7EB")
+
+    // Dark theme
+    static let appDarkBackground = Color(hex: "#111827")
+    static let appDarkSurface = Color(hex: "#1F2937")
+    static let appDarkOnBackground = Color(hex: "#F9FAFB")
+    static let appDarkOnSurface = Color(hex: "#E5E7EB")
+    static let appDarkBorder = Color(hex: "#374151")
+}
+
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        let scanner = Scanner(string: hex)
+        var rgbValue: UInt64 = 0
+        scanner.scanHexInt64(&rgbValue)
+
+        let r = Double((rgbValue & 0xFF0000) >> 16) / 255.0
+        let g = Double((rgbValue & 0x00FF00) >> 8) / 255.0
+        let b = Double(rgbValue & 0x0000FF) / 255.0
+
+        self.init(red: r, green: g, blue: b)
+    }
+}
+
+// Spacing constants from design tokens
+enum Spacing {
+    static let xs: CGFloat = 4
+    static let sm: CGFloat = 8
+    static let md: CGFloat = 16
+    static let lg: CGFloat = 24
+    static let xl: CGFloat = 32
+    static let xxl: CGFloat = 48
+    static let xxxl: CGFloat = 64
+}
+
+enum CornerRadius {
+    static let sm: CGFloat = 4
+    static let md: CGFloat = 8
+    static let lg: CGFloat = 16
+    static let xl: CGFloat = 24
+}

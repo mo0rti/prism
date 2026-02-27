@@ -1,0 +1,15 @@
+import SwiftUI
+import SwiftData
+
+@main
+struct {{ project_slug | capitalize }}App: App {
+    @State private var container = DependencyContainer()
+
+    var body: some Scene {
+        WindowGroup {
+            AppRouter()
+                .environment(container)
+        }
+        .modelContainer(for: [CachedExample.self])
+    }
+}

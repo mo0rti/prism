@@ -1,0 +1,93 @@
+package {{ package_identifier }}
+
+import {{ package_identifier }}.data.repository.AuthRepository
+import {{ package_identifier }}.data.repository.ExampleRepository
+import {{ package_identifier }}.domain.model.ExampleListResponse
+import {{ package_identifier }}.domain.model.ExampleResponse
+import {{ package_identifier }}.ui.examples.ExampleListUiState
+import {{ package_identifier }}.ui.examples.ExampleListViewModel
+import app.cash.turbine.test
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class ExampleListViewModelTest {
+
+    private val exampleRepository: ExampleRepository = mockk()
+    private val authRepository: AuthRepository = mockk(relaxed = true)
+    private val testDispatcher = StandardTestDispatcher()
+
+    private val fakeExamples = listOf(
+        ExampleResponse("1", "Example 1", "Desc 1", "PUBLISHED", "user-1", "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z"),
+        ExampleResponse("2", "Example 2", null, "DRAFT", "user-1", "2025-01-02T00:00:00Z", "2025-01-02T00:00:00Z")
+    )
+
+    private val fakeListResponse = ExampleListResponse(
+        content = fakeExamples,
+        page = 0,
+        size = 20,
+        totalElements = 2,
+        totalPages = 1
+    )
+
+    @Before
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `loads examples on init`() = runTest {
+        coEvery { exampleRepository.list(any(), any()) } returns fakeListResponse
+
+        val viewModel = ExampleListViewModel(exampleRepository, authRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value as ExampleListUiState.Success
+        assertEquals(2, state.examples.size)
+        assertEquals("Example 1", state.examples[0].title)
+    }
+
+    @Test
+    fun `shows error on failure`() = runTest {
+        coEvery { exampleRepository.list(any(), any()) } throws RuntimeException("Network error")
+
+        val viewModel = ExampleListViewModel(exampleRepository, authRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value as ExampleListUiState.Error
+        assertEquals("Network error", state.message)
+    }
+
+    @Test
+    fun `delete removes from list`() = runTest {
+        coEvery { exampleRepository.list(any(), any()) } returns fakeListResponse
+        coEvery { exampleRepository.delete(any()) } returns Unit
+
+        val viewModel = ExampleListViewModel(exampleRepository, authRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.deleteExample("1")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value as ExampleListUiState.Success
+        assertEquals(1, state.examples.size)
+        assertEquals("2", state.examples[0].id)
+        coVerify { exampleRepository.delete("1") }
+    }
+}

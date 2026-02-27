@@ -1,0 +1,108 @@
+import SwiftUI
+
+struct LoginView: View {
+    @Bindable var viewModel: LoginViewModel
+    let onLoginSuccess: () -> Void
+
+    var body: some View {
+        Group {
+            switch viewModel.viewState {
+            case .loading:
+                LoadingView()
+            case .success:
+                Color.clear.onAppear { onLoginSuccess() }
+            default:
+                loginContent
+            }
+        }
+    }
+
+    private var loginContent: some View {
+        ScrollView {
+            VStack(spacing: Spacing.lg) {
+                Spacer().frame(height: 60)
+
+                Text("Welcome")
+                    .font(.largeTitle.bold())
+
+                Text("Sign in to continue")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+
+                if case .error(let message) = viewModel.viewState {
+                    Text(message)
+                        .font(.callout)
+                        .foregroundColor(.appError)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.appError.opacity(0.1))
+                        .cornerRadius(CornerRadius.md)
+                }
+
+                // OAuth Buttons
+                VStack(spacing: Spacing.sm + 4) {
+{% if "google" in auth_methods %}
+                    oauthButton(title: "Continue with Google") {
+                        // TODO: Launch Google OAuth flow
+                    }
+{% endif %}
+{% if "apple" in auth_methods %}
+                    oauthButton(title: "Continue with Apple") {
+                        // TODO: Launch Apple Sign In
+                    }
+{% endif %}
+{% if "facebook" in auth_methods %}
+                    oauthButton(title: "Continue with Facebook") {
+                        // TODO: Launch Facebook OAuth flow
+                    }
+{% endif %}
+{% if "microsoft" in auth_methods %}
+                    oauthButton(title: "Continue with Microsoft") {
+                        // TODO: Launch Microsoft OAuth flow
+                    }
+{% endif %}
+                }
+
+{% if "password" in auth_methods %}
+                Divider()
+                    .padding(.vertical, Spacing.sm)
+
+                Text("Or sign in with email")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+
+                VStack(spacing: Spacing.sm + 4) {
+                    TextField("Email", text: $viewModel.email)
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                        .textFieldStyle(.roundedBorder)
+
+                    SecureField("Password", text: $viewModel.password)
+                        .textContentType(.password)
+                        .textFieldStyle(.roundedBorder)
+
+                    PrimaryButton(
+                        title: "Sign In",
+                        action: {
+                            Task { await viewModel.loginWithPassword() }
+                        },
+                        isEnabled: viewModel.isFormValid
+                    )
+                }
+{% endif %}
+            }
+            .padding(.horizontal, Spacing.lg)
+        }
+    }
+
+    private func oauthButton(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.body.weight(.medium))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Spacing.sm + 4)
+        }
+        .buttonStyle(.bordered)
+    }
+}

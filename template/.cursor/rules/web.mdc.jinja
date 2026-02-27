@@ -1,0 +1,39 @@
+---
+globs: "web/**,admin/**"
+---
+
+# Web & Admin — Next.js + TypeScript
+
+## Stack
+- Next.js (App Router), TypeScript, Tailwind CSS
+- Cloudflare Pages deployment
+- Axios with Bearer token interceptor
+
+## Structure (web/)
+```
+src/
+  app/          → Pages (App Router)
+  lib/api/      → API client, generated types
+  lib/auth/     → AuthContext, AuthProvider, ProtectedRoute
+  components/   → Reusable UI components
+  types/        → TypeScript types
+```
+
+## Admin Additions
+- Sidebar layout with navigation
+- Data tables with pagination
+- Admin role guard (wraps ProtectedRoute)
+- Stats/dashboard cards
+
+## Patterns
+- Server Components by default, `"use client"` only when needed
+- Auth: OAuth redirect flow + optional password login
+- Token stored in httpOnly cookie or localStorage
+- API calls via typed Axios client
+- Tailwind for styling, design tokens from `shared/design-tokens/`
+- Error boundaries for graceful error handling
+
+## Commands
+- `npm run dev` or `task web:dev`
+- `npm run build` or `task web:build`
+- `npx wrangler pages deploy` or `task web:deploy`

@@ -1,0 +1,35 @@
+version: "3"
+
+vars:
+  GRADLEW: '{{if eq OS "windows"}}gradlew.bat{{else}}./gradlew{{end}}'
+
+tasks:
+  build:
+    desc: Build debug APK
+    cmds:
+      - "{{.GRADLEW}} assembleDebug"
+
+  build-release:
+    desc: Build release APK
+    cmds:
+      - "{{.GRADLEW}} assembleRelease"
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - "{{.GRADLEW}} testDebugUnitTest"
+
+  lint:
+    desc: Run lint checks
+    cmds:
+      - "{{.GRADLEW}} lintDebug"
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - "{{.GRADLEW}} clean"
+
+  install:
+    desc: Install debug APK on connected device
+    cmds:
+      - "{{.GRADLEW}} installDebug"

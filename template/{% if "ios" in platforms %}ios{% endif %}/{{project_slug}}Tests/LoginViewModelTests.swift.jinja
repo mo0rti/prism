@@ -1,0 +1,117 @@
+import XCTest
+@testable import {{ project_slug }}
+
+final class LoginViewModelTests: XCTestCase {
+    private var viewModel: LoginViewModel!
+    private var mockAuthRepository: MockAuthRepository!
+
+    override func setUp() {
+        super.setUp()
+        mockAuthRepository = MockAuthRepository()
+        viewModel = LoginViewModel(authRepository: mockAuthRepository)
+    }
+
+    func testInitialStateIsIdle() {
+        XCTAssertEqual(viewModel.viewState, .idle)
+    }
+
+{% if "password" in auth_methods %}
+    func testLoginWithPasswordSuccess() async {
+        mockAuthRepository.loginResult = .success(MockData.authResponse)
+
+        await viewModel.loginWithPassword()
+
+        XCTAssertEqual(viewModel.viewState, .success)
+    }
+
+    func testLoginWithPasswordFailure() async {
+        mockAuthRepository.loginResult = .failure(APIError.unauthorized)
+
+        viewModel.email = "test@example.com"
+        viewModel.password = "wrong"
+        await viewModel.loginWithPassword()
+
+        if case .error(let message) = viewModel.viewState {
+            XCTAssertFalse(message.isEmpty)
+        } else {
+            XCTFail("Expected error state")
+        }
+    }
+
+    func testFormValidation() {
+        XCTAssertFalse(viewModel.isFormValid)
+
+        viewModel.email = "test@example.com"
+        XCTAssertFalse(viewModel.isFormValid)
+
+        viewModel.password = "password"
+        XCTAssertTrue(viewModel.isFormValid)
+    }
+{% endif %}
+
+    func testOAuthLoginSuccess() async {
+        mockAuthRepository.oauthResult = .success(MockData.authResponse)
+
+        await viewModel.loginWithOAuth(provider: "google", code: "auth-code", redirectUri: "redirect")
+
+        XCTAssertEqual(viewModel.viewState, .success)
+    }
+
+    func testClearError() {
+        viewModel.viewState = .error("some error")
+        viewModel.clearError()
+        XCTAssertEqual(viewModel.viewState, .idle)
+    }
+}
+
+// MARK: - Mocks
+
+private class MockAuthRepository: AuthRepository {
+    var oauthResult: Result<AuthResponse, Error> = .failure(APIError.unauthorized)
+{% if "password" in auth_methods %}
+    var loginResult: Result<AuthResponse, Error> = .failure(APIError.unauthorized)
+    var registerResult: Result<AuthResponse, Error> = .failure(APIError.unauthorized)
+{% endif %}
+
+    func oauthCallback(provider: String, code: String, redirectUri: String) async throws -> AuthResponse {
+        try oauthResult.get()
+    }
+
+{% if "password" in auth_methods %}
+    func register(email: String, password: String, displayName: String) async throws -> AuthResponse {
+        try registerResult.get()
+    }
+
+    func login(email: String, password: String) async throws -> AuthResponse {
+        try loginResult.get()
+    }
+{% endif %}
+
+    func refreshToken() async throws -> AuthResponse {
+        throw APIError.unauthorized
+    }
+
+    func getCurrentUser() async throws -> UserResponse {
+        MockData.userResponse
+    }
+
+    func logout() async {}
+}
+
+private enum MockData {
+    static let userResponse = UserResponse(
+        id: "user-id",
+        email: "test@example.com",
+        displayName: "Test User",
+        avatarUrl: nil,
+        authProvider: "LOCAL",
+        role: "USER"
+    )
+
+    static let authResponse = AuthResponse(
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+        expiresIn: 3600,
+        user: userResponse
+    )
+}

@@ -1,0 +1,30 @@
+import SwiftUI
+
+struct AppRouter: View {
+    @Environment(DependencyContainer.self) private var container
+    @State private var isAuthenticated = false
+
+    var body: some View {
+        Group {
+            if isAuthenticated {
+                NavigationStack {
+                    ExampleListView(
+                        viewModel: ExampleListViewModel(
+                            exampleRepository: container.exampleRepository,
+                            authRepository: container.authRepository
+                        ),
+                        onLogout: { isAuthenticated = false }
+                    )
+                }
+            } else {
+                LoginView(
+                    viewModel: LoginViewModel(authRepository: container.authRepository),
+                    onLoginSuccess: { isAuthenticated = true }
+                )
+            }
+        }
+        .task {
+            isAuthenticated = await container.tokenStorage.hasToken()
+        }
+    }
+}

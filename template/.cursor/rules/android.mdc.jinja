@@ -1,0 +1,40 @@
+---
+globs: "android/**"
+---
+
+# Android — Kotlin + Jetpack Compose
+
+## Stack
+- Kotlin, Jetpack Compose (BOM 2026.01.01), Hilt DI
+- Retrofit 3 + kotlinx.serialization, OkHttp 4.12
+- Room 2.8.4 (local DB), DataStore (token storage)
+- Navigation Compose with type-safe routes
+- Min SDK 29, Target SDK 35, Compile SDK 36
+
+## Structure
+```
+app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
+  di/            → Hilt modules (AppModule)
+  navigation/    → Screen routes, NavGraph
+  data/remote/   → ApiService, AuthInterceptor
+  data/local/    → TokenStorage (DataStore)
+  data/local/db/ → Room: AppDatabase, DAOs, entities
+  data/repository/ → Interface + Impl
+  domain/model/  → DTOs (kotlinx.serialization)
+  ui/theme/      → Material3 theme from design tokens
+  ui/auth/       → LoginScreen + LoginViewModel
+  ui/examples/   → ExampleListScreen + ExampleListViewModel
+  ui/common/     → LoadingIndicator, ErrorView
+```
+
+## MVVM Pattern
+- `@HiltViewModel` with `StateFlow<UiState>`
+- `sealed interface UiState`: Idle, Loading, Success(data), Error(message)
+- `@Composable` screens collect state via `collectAsState()`
+- One ViewModel per screen, injected via `hiltViewModel()`
+
+## Conventions
+- Repositories: interface + Impl, bound in Hilt AppModule
+- API base URL via `buildConfigField` in `build.gradle.kts`
+- Room for local caching, DataStore for preferences/tokens
+- Tests: MockK + Turbine for Flow testing

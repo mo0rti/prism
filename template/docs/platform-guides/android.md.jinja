@@ -1,0 +1,88 @@
+# Android Guide — {{ project_name }}
+
+## Tech Stack
+
+- **Kotlin 2.2+** with **Jetpack Compose** (BOM)
+- **Hilt** for dependency injection
+- **Retrofit** + **Kotlinx Serialization** for networking
+- **Jetpack Navigation Compose** for routing
+- **DataStore** for local preferences / token storage
+- **Material 3** for theming
+
+## Architecture: MVVM
+
+```
+UI Layer (Compose)  →  ViewModel (StateFlow)  →  Repository  →  Data Source
+```
+
+### View (UI)
+- `@Composable` functions in `ui/{feature}/` directories
+- Observe ViewModel's `StateFlow<UiState>` via `collectAsStateWithLifecycle()`
+- Never contain business logic
+
+### ViewModel
+- `@HiltViewModel` annotated, injected by Hilt
+- Exposes `StateFlow<UiState>` with sealed class states: `Idle`, `Loading`, `Success(data)`, `Error(message)`
+- Calls use cases or repositories, never API services directly
+- Example:
+
+```kotlin
+@HiltViewModel
+class ExampleListViewModel @Inject constructor(
+    private val repository: ExampleRepository
+) : ViewModel() {
+    private val _uiState = MutableStateFlow<UiState>(UiState.Idle)
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    sealed class UiState {
+        data object Idle : UiState()
+        data object Loading : UiState()
+        data class Success(val items: List<Example>) : UiState()
+        data class Error(val message: String) : UiState()
+    }
+}
+```
+
+### Repository
+- Interface + implementation
+- Injected via Hilt module
+- Bridges between API service and ViewModels
+
+## Project Structure
+
+```
+app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
+  App.kt                    # @HiltAndroidApp
+  MainActivity.kt           # Single activity with NavHost
+  di/                        # Hilt modules
+  navigation/                # NavGraph, Screen sealed class
+  data/
+    remote/                  # Retrofit ApiService, AuthInterceptor
+    local/                   # DataStore TokenStorage
+    repository/              # Repository implementations
+  domain/
+    model/                   # Domain models
+  ui/
+    theme/                   # Material3 theme, colors, typography
+    common/                  # Shared composables
+    auth/                    # Login/Register screens + ViewModels
+    examples/                # Example feature screens + ViewModels
+```
+
+## Conventions
+
+- One Screen + one ViewModel per feature screen
+- Use `sealed class UiState` for all screen states
+- Collect state with `collectAsStateWithLifecycle()`
+- Use `LaunchedEffect` for one-time events (navigation, snackbars)
+- Token stored in DataStore, attached via OkHttp Interceptor
+
+## Commands
+
+```bash
+task android:build          # gradlew assembleDebug
+task android:test           # gradlew test
+task android:lint           # gradlew ktlintCheck
+```
+
+**Note**: Builds on both Windows (`gradlew.bat`) and Mac (`./gradlew`).

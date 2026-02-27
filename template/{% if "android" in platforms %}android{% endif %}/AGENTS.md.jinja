@@ -1,0 +1,54 @@
+# Android — {{ project_name }}
+
+Kotlin + Jetpack Compose with MVVM architecture.
+
+## Quick Reference
+
+- **Build**: `./gradlew assembleDebug` (or `gradlew.bat` on Windows)
+- **Test**: `./gradlew testDebugUnitTest`
+- **Install**: `./gradlew installDebug`
+- **Min SDK**: 29 | **Target SDK**: 35 | **Compile SDK**: 36
+
+## Architecture (MVVM)
+
+```
+app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
+  di/            → Hilt modules
+  navigation/    → NavHost + type-safe routes
+  data/
+    remote/      → Retrofit 3 ApiService + AuthInterceptor
+    local/       → DataStore TokenStorage + Room database
+    local/db/    → Room entities, DAOs, AppDatabase
+    repository/  → Repository interfaces + implementations
+  domain/model/  → DTOs (kotlinx.serialization)
+  ui/
+    theme/       → Material3 theme (from design tokens)
+    auth/        → LoginScreen + LoginViewModel
+    examples/    → ExampleListScreen + ExampleListViewModel
+    common/      → LoadingIndicator, ErrorView
+```
+
+## MVVM Pattern
+
+- **ViewModel**: `@HiltViewModel` with `StateFlow<UiState>`
+- **UiState**: sealed interface — `Idle`, `Loading`, `Success(data)`, `Error(message)`
+- **View**: `@Composable` functions, collect state with `collectAsState()`
+- **DI**: Hilt (`@Inject`, `@Singleton`, `@HiltViewModel`)
+- **Navigation**: Type-safe routes via `@Serializable` data objects/classes
+
+## Conventions
+
+- One ViewModel per screen, injected via `hiltViewModel()`
+- Repositories are interfaces with `Impl` classes, Hilt-bound in `AppModule`
+- API base URL configured via `buildConfigField` in `build.gradle.kts`
+- Token stored in DataStore, injected into OkHttp interceptor
+- Local caching via Room (entities in `data/local/db/`)
+- Tests use MockK + Turbine for Flow testing
+
+## Key Files
+
+- `di/AppModule.kt` — all Hilt bindings (network, database, repositories)
+- `data/remote/ApiService.kt` — Retrofit 3 interface matching OpenAPI
+- `data/local/TokenStorage.kt` — DataStore token persistence
+- `data/local/db/AppDatabase.kt` — Room database
+- `ui/theme/Theme.kt` — Material3 theme from design tokens

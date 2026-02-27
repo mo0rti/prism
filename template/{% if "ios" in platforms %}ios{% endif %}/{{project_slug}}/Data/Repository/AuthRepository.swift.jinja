@@ -1,0 +1,63 @@
+import Foundation
+
+protocol AuthRepository {
+    func oauthCallback(provider: String, code: String, redirectUri: String) async throws -> AuthResponse
+{% if "password" in auth_methods %}
+    func register(email: String, password: String, displayName: String) async throws -> AuthResponse
+    func login(email: String, password: String) async throws -> AuthResponse
+{% endif %}
+    func refreshToken() async throws -> AuthResponse
+    func getCurrentUser() async throws -> UserResponse
+    func logout() async
+}
+
+final class AuthRepositoryImpl: AuthRepository {
+    private let apiClient: APIClient
+    private let tokenStorage: TokenStorage
+
+    init(apiClient: APIClient, tokenStorage: TokenStorage) {
+        self.apiClient = apiClient
+        self.tokenStorage = tokenStorage
+    }
+
+    func oauthCallback(provider: String, code: String, redirectUri: String) async throws -> AuthResponse {
+        let body = OAuthCallbackRequest(provider: provider, code: code, redirectUri: redirectUri)
+        let response: AuthResponse = try await apiClient.request(.oauthCallback(), body: body)
+        await tokenStorage.saveTokens(accessToken: response.accessToken, refreshToken: response.refreshToken)
+        return response
+    }
+
+{% if "password" in auth_methods %}
+    func register(email: String, password: String, displayName: String) async throws -> AuthResponse {
+        let body = RegisterRequest(email: email, password: password, displayName: displayName)
+        let response: AuthResponse = try await apiClient.request(.register(), body: body)
+        await tokenStorage.saveTokens(accessToken: response.accessToken, refreshToken: response.refreshToken)
+        return response
+    }
+
+    func login(email: String, password: String) async throws -> AuthResponse {
+        let body = LoginRequest(email: email, password: password)
+        let response: AuthResponse = try await apiClient.request(.login(), body: body)
+        await tokenStorage.saveTokens(accessToken: response.accessToken, refreshToken: response.refreshToken)
+        return response
+    }
+{% endif %}
+
+    func refreshToken() async throws -> AuthResponse {
+        guard let refreshToken = await tokenStorage.getRefreshToken() else {
+            throw APIError.unauthorized
+        }
+        let body = RefreshTokenRequest(refreshToken: refreshToken)
+        let response: AuthResponse = try await apiClient.request(.refreshToken(), body: body)
+        await tokenStorage.saveTokens(accessToken: response.accessToken, refreshToken: response.refreshToken)
+        return response
+    }
+
+    func getCurrentUser() async throws -> UserResponse {
+        try await apiClient.request(.me())
+    }
+
+    func logout() async {
+        await tokenStorage.clearTokens()
+    }
+}

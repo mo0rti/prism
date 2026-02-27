@@ -1,0 +1,36 @@
+name: {{ project_name }}
+options:
+  bundleIdPrefix: {{ package_identifier }}
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "26.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: 1
+
+targets:
+  {{ project_slug }}:
+    type: application
+    platform: iOS
+    sources:
+      - path: {{ project_slug }}
+    settings:
+      base:
+        INFOPLIST_FILE: {{ project_slug }}/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: {{ package_identifier }}
+        API_BASE_URL: http://localhost:8080/api/v1
+    scheme:
+      testTargets:
+        - {{ project_slug }}Tests
+
+  {{ project_slug }}Tests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: {{ project_slug }}Tests
+    dependencies:
+      - target: {{ project_slug }}

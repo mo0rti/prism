@@ -1,0 +1,50 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+
+  flyway:
+    enabled: false
+
+app:
+  jwt:
+    secret: test-secret-key-that-is-at-least-256-bits-long-for-testing-only!!
+    access-token-expiry: 3600
+    refresh-token-expiry: 604800
+
+  oauth:
+{% if "google" in auth_methods %}
+    google:
+      client-id: test-google-client-id
+      client-secret: test-google-client-secret
+{% endif %}
+{% if "apple" in auth_methods %}
+    apple:
+      client-id: test-apple-client-id
+      team-id: test-team-id
+      key-id: test-key-id
+      private-key: test-private-key
+{% endif %}
+{% if "facebook" in auth_methods %}
+    facebook:
+      client-id: test-facebook-client-id
+      client-secret: test-facebook-client-secret
+{% endif %}
+{% if "microsoft" in auth_methods %}
+    microsoft:
+      client-id: test-microsoft-client-id
+      client-secret: test-microsoft-client-secret
+      tenant-id: test-tenant-id
+{% endif %}
+
+logging:
+  level:
+    root: WARN
+    {{ package_identifier }}: DEBUG

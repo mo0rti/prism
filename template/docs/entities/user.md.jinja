@@ -1,0 +1,63 @@
+# Entity: User
+
+## Description
+Represents a registered user in the system. Users can authenticate via OAuth providers ({% for method in auth_methods %}{{ method }}{% if not loop.last %}, {% endif %}{% endfor %}) and access the application across all platforms.
+
+## Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| id | UUID | Yes | Primary key |
+| email | String | Yes | Email address (unique) |
+| displayName | String | Yes | User's display name |
+| avatarUrl | String | No | Profile picture URL |
+| authProvider | String | Yes | Authentication provider (google, apple, facebook, microsoft, password) |
+| authProviderId | String | No | ID from the OAuth provider |
+| passwordHash | String | No | BCrypt hash (only for password auth) |
+| role | Enum | Yes | User role: USER, ADMIN |
+| isActive | Boolean | Yes | Account active status |
+| lastLoginAt | DateTime | No | Last login timestamp |
+| createdAt | DateTime | Yes | Account creation timestamp |
+| updatedAt | DateTime | Yes | Last update timestamp |
+
+## Relationships
+
+- **has many** features-specific entities (defined per feature)
+
+## Validation Rules
+
+- `email`: must be valid email format, unique across all users
+- `displayName`: 1-100 characters
+- `authProvider`: must be one of the enabled providers
+- `passwordHash`: required only when `authProvider` is "password"
+- `role`: defaults to USER, can only be changed by admins
+
+## Business Logic
+
+- Users are created on first successful authentication
+- If a user logs in with a new OAuth provider but same email, accounts are linked
+- Admins can deactivate user accounts (sets `isActive` to false)
+- Deactivated users cannot authenticate
+
+## Database
+
+- **Table name**: `users`
+- **Indexes**: unique on `email`, index on `auth_provider`
+- **Migration**: `V1__init.sql`
+
+## API Representation
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "user@example.com",
+  "displayName": "John Doe",
+  "avatarUrl": "https://example.com/avatar.jpg",
+  "authProvider": "google",
+  "role": "USER",
+  "isActive": true,
+  "lastLoginAt": "2024-01-15T10:30:00Z",
+  "createdAt": "2024-01-01T00:00:00Z",
+  "updatedAt": "2024-01-15T10:30:00Z"
+}
+```

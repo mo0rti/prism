@@ -1,0 +1,52 @@
+# Azure Deployment — {{ project_name }}
+
+## Resources Required
+
+| Resource | Azure Service | Purpose |
+|----------|--------------|---------|
+| Backend API | Azure Container Apps | Hosts Spring Boot 4 application |
+| Database | Azure Database for PostgreSQL (Flexible Server) | Data persistence |
+| Container Registry | Azure Container Registry | Docker image storage |
+| Secrets | Azure Key Vault | Stores OAuth secrets, JWT keys |
+| AI Services | Azure AI Services | (Optional) AI/ML capabilities |
+
+## Initial Setup
+
+### 1. Create Resource Group
+
+```bash
+az group create --name {{ project_slug }}-rg --location eastus
+```
+
+### 2. Deploy Infrastructure
+
+```bash
+cd infra/azure
+az deployment group create \
+  --resource-group {{ project_slug }}-rg \
+  --template-file main.bicep \
+  --parameters projectName={{ project_slug }}
+```
+
+### 3. Configure Secrets in Key Vault
+
+```bash
+az keyvault secret set --vault-name {{ project_slug }}-kv --name jwt-secret --value "your-secret"
+az keyvault secret set --vault-name {{ project_slug }}-kv --name google-client-id --value "your-id"
+az keyvault secret set --vault-name {{ project_slug }}-kv --name google-client-secret --value "your-secret"
+```
+
+## CI/CD
+
+GitHub Actions handles deployment automatically:
+- **On push to `main`**: builds Docker image → pushes to ACR → deploys to Container Apps
+- See `.github/workflows/backend.yml` for details
+
+## Required GitHub Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `AZURE_CREDENTIALS` | Service principal JSON for Azure login |
+| `AZURE_CONTAINER_REGISTRY` | ACR login server URL |
+| `AZURE_CONTAINER_APP_NAME` | Container App resource name |
+| `AZURE_RESOURCE_GROUP` | Resource group name |

@@ -1,0 +1,38 @@
+version: "3"
+
+tasks:
+  generate-project:
+    desc: Generate Xcode project from project.yml
+    platforms: [darwin]
+    cmds:
+      - xcodegen generate
+
+  build:
+    desc: Build the iOS app
+    platforms: [darwin]
+    deps: [generate-project]
+    cmds:
+      - xcodebuild build -project "{{.PROJECT_NAME}}.xcodeproj" -scheme "{{.SCHEME}}" -destination "platform=iOS Simulator,name=iPhone 16" -configuration Debug
+    vars:
+      PROJECT_NAME: '{{.PROJECT_NAME | default "{{project_name}}"}}'
+      SCHEME: '{{.SCHEME | default "{{project_slug}}"}}'
+
+  test:
+    desc: Run unit tests
+    platforms: [darwin]
+    deps: [generate-project]
+    cmds:
+      - xcodebuild test -project "{{.PROJECT_NAME}}.xcodeproj" -scheme "{{.SCHEME}}" -destination "platform=iOS Simulator,name=iPhone 16"
+    vars:
+      PROJECT_NAME: '{{.PROJECT_NAME | default "{{project_name}}"}}'
+      SCHEME: '{{.SCHEME | default "{{project_slug}}"}}'
+
+  clean:
+    desc: Clean build artifacts
+    platforms: [darwin]
+    cmds:
+      - rm -rf build/
+      - xcodebuild clean -project "{{.PROJECT_NAME}}.xcodeproj" -scheme "{{.SCHEME}}" 2>/dev/null || true
+    vars:
+      PROJECT_NAME: '{{.PROJECT_NAME | default "{{project_name}}"}}'
+      SCHEME: '{{.SCHEME | default "{{project_slug}}"}}'

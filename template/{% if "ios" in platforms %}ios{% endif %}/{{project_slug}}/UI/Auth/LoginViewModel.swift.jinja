@@ -1,0 +1,64 @@
+import Foundation
+import Observation
+
+enum LoginViewState: Equatable {
+    case idle
+    case loading
+    case success
+    case error(String)
+}
+
+@Observable
+final class LoginViewModel {
+    var viewState: LoginViewState = .idle
+{% if "password" in auth_methods %}
+    var email: String = ""
+    var password: String = ""
+{% endif %}
+
+    private let authRepository: AuthRepository
+
+    init(authRepository: AuthRepository) {
+        self.authRepository = authRepository
+    }
+
+{% if "password" in auth_methods %}
+    var isFormValid: Bool {
+        !email.isEmpty && !password.isEmpty
+    }
+
+    func loginWithPassword() async {
+        viewState = .loading
+        do {
+            _ = try await authRepository.login(email: email, password: password)
+            viewState = .success
+        } catch {
+            viewState = .error(error.localizedDescription)
+        }
+    }
+
+    func register(displayName: String) async {
+        viewState = .loading
+        do {
+            _ = try await authRepository.register(email: email, password: password, displayName: displayName)
+            viewState = .success
+        } catch {
+            viewState = .error(error.localizedDescription)
+        }
+    }
+{% endif %}
+
+    func loginWithOAuth(provider: String, code: String, redirectUri: String) async {
+        viewState = .loading
+        do {
+            _ = try await authRepository.oauthCallback(provider: provider, code: code, redirectUri: redirectUri)
+            viewState = .success
+        } catch {
+            viewState = .error(error.localizedDescription)
+        }
+    }
+
+    func clearError() {
+        viewState = .idle
+    }
+}

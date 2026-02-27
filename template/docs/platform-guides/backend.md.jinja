@@ -1,0 +1,78 @@
+# Backend Guide — {{ project_name }}
+
+## Tech Stack
+
+- **Spring Boot 4.0.x** on **Kotlin 2.2+**, **Java 21**
+- **Jackson 3.x** for JSON serialization
+- **JUnit Jupiter 6** for testing
+- **Flyway** for database migrations
+- **SpringDoc** for OpenAPI documentation
+- **Spring Security** with OAuth2 Client + JWT
+
+## Project Structure
+
+```
+backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
+  Application.kt                  # @SpringBootApplication entry point
+  config/
+    SecurityConfig.kt             # Spring Security + JWT filter
+    WebConfig.kt                  # CORS configuration
+    AzureConfig.kt                # Azure-specific beans
+    OAuth2Config.kt               # OAuth2 provider registration
+  common/
+    exception/
+      ApiException.kt             # Custom exception with HTTP status + error code
+      GlobalExceptionHandler.kt   # @ControllerAdvice → ApiError JSON
+    model/
+      ApiError.kt                 # { code, message, details }
+      PagedResponse.kt            # Generic paginated response wrapper
+  auth/
+    controller/                   # Auth endpoints
+    service/                      # Auth + OAuth2 business logic
+    security/                     # JWT provider + filter
+  features/
+    example/                      # Example feature module
+      controller/
+      service/
+      repository/
+      model/                      # Entity + DTOs
+```
+
+## Conventions
+
+### Controllers
+- Return DTOs, never entities
+- Use `@Valid` for request body validation
+- Map exceptions in `GlobalExceptionHandler`
+
+### Services
+- Contain business logic and transaction boundaries (`@Transactional`)
+- Throw `ApiException` for business rule violations
+
+### Repositories
+- Extend `JpaRepository<Entity, UUID>`
+- Custom queries via `@Query` or Spring Data method naming
+
+### DTOs
+- Separate request and response DTOs
+- Use Kotlin data classes
+- Keep in `model/` package alongside entity
+
+### Migrations
+- Flyway SQL migrations in `resources/db/migration/`
+- Naming: `V{number}__{description}.sql`
+- Never modify existing migrations — create new ones
+
+### Testing
+- `@WebMvcTest` for controller tests
+- `@DataJpaTest` for repository tests
+- JUnit Jupiter 6 assertions
+
+## Commands
+
+```bash
+task backend:run        # ./gradlew bootRun
+task backend:build      # ./gradlew build
+task backend:test       # ./gradlew test
+task backend:lint       # ./gradlew ktlintCheck
+```

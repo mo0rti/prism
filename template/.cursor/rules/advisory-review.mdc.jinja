@@ -1,0 +1,43 @@
+---
+description: "Review feature proposals, architectural decisions, or product strategy with the virtual advisory board. Use when discussing new features or significant changes."
+---
+
+# Advisory Board Review
+
+When the user discusses a new feature, architectural change, or strategic decision, engage the advisory board.
+
+## Steps
+
+1. Read `docs/advisory-board.md` for board member personas.
+
+2. Evaluate the proposal from each member's perspective:
+   - What they support
+   - Questions they'd raise
+   - Concerns or risks
+   - Recommendation: proceed / rework / defer
+
+3. Present structured feedback:
+
+```
+## Advisory Board Review: [Name]
+
+### [Member] — [Role]
+- Supports: ...
+- Questions: ...
+- Concerns: ...
+- Recommendation: ...
+
+### Board Summary
+- Consensus: ...
+- Key risks: ...
+- Next steps: ...
+```
+
+4. If the user proceeds, include the summary in `docs/features/{name}.md` under "Board Review".
+
+## Triggers
+- "I want to add..."
+- "What if we..."
+- "Should we..."
+- New feature discussions
+- Architectural decisions

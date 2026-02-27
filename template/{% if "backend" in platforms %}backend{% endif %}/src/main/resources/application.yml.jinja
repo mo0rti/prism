@@ -1,0 +1,105 @@
+spring:
+  application:
+    name: {{ project_slug }}-backend
+
+  datasource:
+{% if database == "postgresql" %}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/{{ project_slug }}}
+    driver-class-name: org.postgresql.Driver
+{% elif database == "mysql" %}
+    url: ${DATABASE_URL:jdbc:mysql://localhost:3306/{{ project_slug }}}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+{% endif %}
+    username: ${DATABASE_USERNAME:{{ project_slug }}}
+    password: ${DATABASE_PASSWORD:{{ project_slug }}}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+{% if database == "postgresql" %}
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+{% elif database == "mysql" %}
+    database-platform: org.hibernate.dialect.MySQLDialect
+{% endif %}
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: ${PORT:8080}
+  servlet:
+    context-path: /
+
+# Application config
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
+
+  jwt:
+    secret: ${JWT_SECRET:change-me-in-production-this-must-be-at-least-256-bits-long!!}
+    access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY:3600}
+    refresh-token-expiry: ${JWT_REFRESH_TOKEN_EXPIRY:604800}
+
+  oauth:
+{% if "google" in auth_methods %}
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+      client-secret: ${GOOGLE_CLIENT_SECRET:}
+      token-uri: https://oauth2.googleapis.com/token
+      user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+{% endif %}
+{% if "apple" in auth_methods %}
+    apple:
+      client-id: ${APPLE_CLIENT_ID:}
+      team-id: ${APPLE_TEAM_ID:}
+      key-id: ${APPLE_KEY_ID:}
+      private-key: ${APPLE_PRIVATE_KEY:}
+      token-uri: https://appleid.apple.com/auth/token
+{% endif %}
+{% if "facebook" in auth_methods %}
+    facebook:
+      client-id: ${FACEBOOK_CLIENT_ID:}
+      client-secret: ${FACEBOOK_CLIENT_SECRET:}
+      token-uri: https://graph.facebook.com/v18.0/oauth/access_token
+      user-info-uri: https://graph.facebook.com/v18.0/me?fields=id,name,email,picture
+{% endif %}
+{% if "microsoft" in auth_methods %}
+    microsoft:
+      client-id: ${MICROSOFT_CLIENT_ID:}
+      client-secret: ${MICROSOFT_CLIENT_SECRET:}
+      tenant-id: ${MICROSOFT_TENANT_ID:common}
+      token-uri: https://login.microsoftonline.com/${MICROSOFT_TENANT_ID:common}/oauth2/v2.0/token
+      user-info-uri: https://graph.microsoft.com/v1.0/me
+{% endif %}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized
+
+# Logging
+logging:
+  level:
+    root: INFO
+    {{ package_identifier }}: DEBUG
+    org.springframework.security: INFO
+
+# SpringDoc
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method

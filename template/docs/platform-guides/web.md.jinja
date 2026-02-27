@@ -1,0 +1,63 @@
+# Web Guide — {{ project_name }}
+
+## Tech Stack
+
+- **Next.js** (App Router) with **TypeScript**
+- **Tailwind CSS** for styling
+- **Axios** for API calls
+- **React Context** for auth state
+- **Cloudflare Pages** for hosting
+
+## Project Structure
+
+```
+web/src/
+  app/
+    layout.tsx              # Root layout (ThemeProvider, fonts)
+    globals.css             # Tailwind base + design token CSS vars
+    error.tsx               # Root error boundary
+    (auth)/
+      login/page.tsx        # Login page (OAuth + optional password)
+      register/page.tsx     # Registration page
+      layout.tsx            # Centered auth layout
+    (main)/
+      layout.tsx            # Authenticated layout with navbar
+      dashboard/page.tsx    # Dashboard
+      examples/
+        page.tsx            # List view
+        [id]/page.tsx       # Detail view
+  lib/
+    api/
+      client.ts             # Axios instance with auth interceptor
+      auth.ts               # Auth API functions
+      examples.ts           # Example CRUD functions
+    auth/
+      context.tsx            # AuthContext + AuthProvider
+      guard.tsx              # ProtectedRoute component
+      hooks.ts               # useAuth, useUser hooks
+    hooks/
+      use-api.ts             # Generic data fetching hook
+  components/
+    ui/                      # Button, Input, Card, etc.
+    layout/                  # Navbar, Footer
+  types/
+    api.ts                   # TypeScript types matching OpenAPI
+```
+
+## Conventions
+
+- **App Router** route groups: `(auth)` for public, `(main)` for authenticated
+- Axios client auto-attaches Bearer token from localStorage
+- 401 responses redirect to `/login`
+- Design tokens from `shared/design-tokens/tokens.json` mapped to CSS custom properties
+- Server components by default, `'use client'` only when needed
+
+## Commands
+
+```bash
+task web:dev      # npm run dev (port 3000)
+task web:build    # npm run build
+task web:lint     # npm run lint
+task web:test     # npm run test
+task web:deploy   # npx wrangler pages deploy
+```

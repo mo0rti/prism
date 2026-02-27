@@ -1,0 +1,44 @@
+# Feature: Example CRUD
+
+## Board Review
+
+- **Product (Sarah)**: Approved — this is a template placeholder demonstrating the CRUD pattern
+- **Architecture (Marcus)**: Approved — clean separation of concerns across all layers
+- **Security (Aisha)**: Approved — creator-only access for mutations, JWT required
+- **Business (David)**: N/A — placeholder feature
+- **Decision**: Go (template default)
+
+## Business Logic
+
+- Authenticated users can create example items
+- Items have three states: DRAFT (only visible to creator), PUBLISHED (visible to all), ARCHIVED (soft-deleted)
+- Only the creator or admins can update/delete items
+- List endpoint supports pagination and sorting
+
+## Entities
+
+- [Example](../entities/example.md) — the main entity
+- [User](../entities/user.md) — the creator
+
+## API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /examples | Yes | List examples (paginated) |
+| POST | /examples | Yes | Create example |
+| GET | /examples/{id} | Yes | Get single example |
+| PUT | /examples/{id} | Yes | Update example (creator/admin only) |
+| DELETE | /examples/{id} | Yes | Delete example (creator/admin only) |
+
+## Implementation Status
+
+- [x] Feature doc created
+- [x] Entity docs created
+- [x] Board review completed
+- [x] API contract defined in OpenAPI
+- [x] API clients generated
+- [x] Backend implemented
+- [x] Web implemented
+- [x] Admin implemented
+- [x] Android implemented
+- [x] iOS implemented

@@ -1,0 +1,96 @@
+package {{ package_identifier }}.di
+
+import android.content.Context
+import androidx.room.Room
+import {{ package_identifier }}.BuildConfig
+import {{ package_identifier }}.data.local.TokenStorage
+import {{ package_identifier }}.data.local.db.AppDatabase
+import {{ package_identifier }}.data.local.db.ExampleDao
+import {{ package_identifier }}.data.remote.ApiService
+import {{ package_identifier }}.data.remote.AuthInterceptor
+import {{ package_identifier }}.data.repository.AuthRepository
+import {{ package_identifier }}.data.repository.AuthRepositoryImpl
+import {{ package_identifier }}.data.repository.ExampleRepository
+import {{ package_identifier }}.data.repository.ExampleRepositoryImpl
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.Retrofit
+import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+object AppModule {
+
+    @Provides
+    @Singleton
+    fun provideJson(): Json = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+        encodeDefaults = true
+    }
+
+    @Provides
+    @Singleton
+    fun provideTokenStorage(@ApplicationContext context: Context): TokenStorage =
+        TokenStorage(context)
+
+    // --- Network ---
+
+    @Provides
+    @Singleton
+    fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor(authInterceptor)
+            .addInterceptor(
+                HttpLoggingInterceptor().apply {
+                    level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY
+                    else HttpLoggingInterceptor.Level.NONE
+                }
+            )
+            .build()
+
+    @Provides
+    @Singleton
+    fun provideRetrofit(okHttpClient: OkHttpClient, json: Json): Retrofit =
+        Retrofit.Builder()
+            .baseUrl(BuildConfig.API_BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .build()
+
+    @Provides
+    @Singleton
+    fun provideApiService(retrofit: Retrofit): ApiService =
+        retrofit.create(ApiService::class.java)
+
+    // --- Local Database (Room) ---
+
+    @Provides
+    @Singleton
+    fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
+        Room.databaseBuilder(context, AppDatabase::class.java, "{{ project_slug }}-db")
+            .fallbackToDestructiveMigration()
+            .build()
+
+    @Provides
+    fun provideExampleDao(database: AppDatabase): ExampleDao =
+        database.exampleDao()
+
+    // --- Repositories ---
+
+    @Provides
+    @Singleton
+    fun provideAuthRepository(impl: AuthRepositoryImpl): AuthRepository = impl
+
+    @Provides
+    @Singleton
+    fun provideExampleRepository(impl: ExampleRepositoryImpl): ExampleRepository = impl
+}

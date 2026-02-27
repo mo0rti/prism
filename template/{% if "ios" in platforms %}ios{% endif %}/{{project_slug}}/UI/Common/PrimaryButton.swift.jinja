@@ -1,0 +1,20 @@
+import SwiftUI
+
+struct PrimaryButton: View {
+    let title: String
+    let action: () -> Void
+    var isEnabled: Bool = true
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.headline)
+                .foregroundColor(.appOnPrimary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Spacing.sm + 4)
+        }
+        .background(isEnabled ? Color.appPrimary : Color.gray)
+        .cornerRadius(CornerRadius.md)
+        .disabled(!isEnabled)
+    }
+}

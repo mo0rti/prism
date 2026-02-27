@@ -1,0 +1,61 @@
+# Architecture Overview — {{ project_name }}
+
+## System Description
+
+{{ description }}
+
+## Platform Map
+
+| Platform | Tech Stack | Hosting | Purpose |
+|----------|-----------|---------|---------|
+{% if "backend" in platforms %}| Backend | Spring Boot 4, Kotlin 2.2+, Java 21 | Azure Container Apps | REST API, business logic, auth |
+{% endif %}{% if "web" in platforms %}| Web | Next.js, TypeScript, Tailwind CSS | Cloudflare Pages | Customer-facing web app |
+{% endif %}{% if "admin" in platforms %}| Admin | Next.js, TypeScript, Tailwind CSS | Cloudflare Pages | Internal admin portal |
+{% endif %}{% if "android" in platforms %}| Android | Kotlin, Jetpack Compose, Hilt | Google Play | Native Android app |
+{% endif %}{% if "ios" in platforms %}| iOS | Swift, SwiftUI | App Store | Native iOS app |
+{% endif %}| Database | PostgreSQL 16 | Azure Database | Data persistence |
+
+## Architecture Pattern
+
+### Mobile: MVVM (Model-View-ViewModel)
+
+Both Android and iOS follow the same MVVM architecture:
+
+```
+View (UI)  →  ViewModel (State + Logic)  →  Repository  →  Data Source (API/Local)
+```
+
+| Layer | Android | iOS |
+|-------|---------|-----|
+| View | `@Composable` functions | SwiftUI `View` structs |
+| ViewModel | `@HiltViewModel` + `StateFlow<UiState>` | `@Observable` + `ViewState` enum |
+| Repository | Interface + Impl (Hilt-injected) | Protocol + Impl (container-injected) |
+| API Client | Retrofit + Kotlinx Serialization | URLSession + `async/await` |
+| Local Storage | DataStore | Keychain |
+| DI | Hilt | Protocol-based container |
+
+### API Contract
+
+Single source of truth: `shared/api-contracts/openapi.yml`
+
+All platform API clients are **generated** from this spec. Never manually edit generated client code. Run `task generate-clients` after any spec change.
+
+### Authentication
+
+Auth methods: {% for method in auth_methods %}{{ method }}{% if not loop.last %}, {% endif %}{% endfor %}
+
+Flow: Client → OAuth provider (or login form) → Backend validates → Issues JWT → Client stores token → Attaches to all API requests.
+
+### Design Tokens
+
+Shared visual language: `shared/design-tokens/tokens.json`
+
+Colors, spacing, typography, and border-radius values consumed by all platforms.
+
+## Key Conventions
+
+1. **API contract first** — define endpoints in OpenAPI before implementing
+2. **Documentation first** — create feature/entity docs before coding
+3. **Feature modules** — each feature is a self-contained module in every platform
+4. **Consistent naming** — same feature name across all platforms (e.g., `examples/` everywhere)
+5. **Never edit generated code** — modify the OpenAPI spec and regenerate

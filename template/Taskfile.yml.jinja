@@ -1,0 +1,153 @@
+version: '3'
+
+vars:
+  PROJECT_NAME: {{ project_name }}
+  OPENAPI_SPEC: ./shared/api-contracts/openapi.yml
+  OPENAPI_GENERATOR: openapi-generator-cli
+
+includes:
+{% if "backend" in platforms %}
+  backend:
+    taskfile: ./backend/Taskfile.yml
+    dir: ./backend
+{% endif %}
+{% if "web" in platforms %}
+  web:
+    taskfile: ./web/Taskfile.yml
+    dir: ./web
+{% endif %}
+{% if "admin" in platforms %}
+  admin:
+    taskfile: ./admin/Taskfile.yml
+    dir: ./admin
+{% endif %}
+{% if "android" in platforms %}
+  android:
+    taskfile: ./android/Taskfile.yml
+    dir: ./android
+{% endif %}
+{% if "ios" in platforms %}
+  ios:
+    taskfile: ./ios/Taskfile.yml
+    dir: ./ios
+{% endif %}
+
+tasks:
+  # ===========================================================================
+  # API Client Generation
+  # ===========================================================================
+  generate-clients:
+    desc: "Generate typed API clients from OpenAPI spec for all platforms"
+    cmds:
+      - cmd: "{{'{{'}} .OPENAPI_GENERATOR {{'}}'}} validate -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}"
+{% if "backend" in platforms %}
+      - task: generate-client-backend
+{% endif %}
+{% if "web" in platforms or "admin" in platforms %}
+      - task: generate-client-typescript
+{% endif %}
+{% if "android" in platforms %}
+      - task: generate-client-android
+{% endif %}
+{% if "ios" in platforms %}
+      - task: generate-client-ios
+{% endif %}
+    sources:
+      - "{{'{{'}} .OPENAPI_SPEC {{'}}'}}"
+
+{% if "backend" in platforms %}
+  generate-client-backend:
+    desc: "Generate Spring Boot server interfaces from OpenAPI"
+    internal: true
+    cmds:
+      - >
+        {{'{{'}} .OPENAPI_GENERATOR {{'}}'}} generate
+        -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
+        -g kotlin-spring
+        -o ./backend/src/generated
+        --additional-properties=interfaceOnly=true,useSpringBoot3=true,useTags=true
+        --package-name="{{ package_identifier }}.api"
+{% endif %}
+
+{% if "web" in platforms or "admin" in platforms %}
+  generate-client-typescript:
+    desc: "Generate TypeScript Axios client from OpenAPI"
+    internal: true
+    cmds:
+      - >
+        {{'{{'}} .OPENAPI_GENERATOR {{'}}'}} generate
+        -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
+        -g typescript-axios
+        -o ./shared/generated/typescript-client
+        --additional-properties=supportsES6=true,withSeparateModelsAndApi=true
+{% endif %}
+
+{% if "android" in platforms %}
+  generate-client-android:
+    desc: "Generate Kotlin Retrofit client from OpenAPI"
+    internal: true
+    cmds:
+      - >
+        {{'{{'}} .OPENAPI_GENERATOR {{'}}'}} generate
+        -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
+        -g kotlin
+        -o ./android/app/src/main/java/generated
+        --additional-properties=library=jvm-retrofit2,serializationLibrary=kotlinx_serialization
+        --package-name="{{ package_identifier }}.api"
+{% endif %}
+
+{% if "ios" in platforms %}
+  generate-client-ios:
+    desc: "Generate Swift URLSession client from OpenAPI"
+    internal: true
+    cmds:
+      - >
+        {{'{{'}} .OPENAPI_GENERATOR {{'}}'}} generate
+        -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
+        -g swift6
+        -o ./ios/Generated/APIClient
+        --additional-properties=library=urlsession,projectName={{ project_slug | replace('-','') }}API
+{% endif %}
+
+  # ===========================================================================
+  # Cross-Platform Commands
+  # ===========================================================================
+  lint:
+    desc: "Lint all platforms"
+    cmds:
+{% if "backend" in platforms %}
+      - task: backend:lint
+{% endif %}
+{% if "web" in platforms %}
+      - task: web:lint
+{% endif %}
+{% if "admin" in platforms %}
+      - task: admin:lint
+{% endif %}
+{% if "android" in platforms %}
+      - task: android:lint
+{% endif %}
+
+  test:
+    desc: "Run tests for all platforms"
+    cmds:
+{% if "backend" in platforms %}
+      - task: backend:test
+{% endif %}
+{% if "web" in platforms %}
+      - task: web:test
+{% endif %}
+{% if "admin" in platforms %}
+      - task: admin:test
+{% endif %}
+{% if "android" in platforms %}
+      - task: android:test
+{% endif %}
+
+  # ===========================================================================
+  # Utilities
+  # ===========================================================================
+  validate-api:
+    desc: "Validate OpenAPI spec"
+    cmds:
+      - "{{'{{'}} .OPENAPI_GENERATOR {{'}}'}} validate -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}"

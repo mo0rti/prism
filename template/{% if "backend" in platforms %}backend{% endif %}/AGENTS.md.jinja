@@ -1,0 +1,42 @@
+# Backend — {{ project_name }}
+
+Spring Boot 4 (Kotlin 2.2+, Java 21) backend service.
+
+## Quick Reference
+
+- **Build**: `./gradlew build` (or `gradlew.bat build` on Windows)
+- **Run**: `./gradlew bootRun`
+- **Test**: `./gradlew test`
+- **Port**: 8080 (configurable via `PORT` env var)
+
+## Architecture
+
+```
+src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
+  config/          → Security, CORS, OAuth2
+  common/          → Shared models, exceptions, error handler
+  auth/            → Authentication (OAuth + {% if "password" in auth_methods %}password + {% endif %}JWT)
+  features/        → Feature modules (controller → service → repository)
+```
+
+## Conventions
+
+- **Package per feature**: each feature in `features/{name}/` with controller, service, repository, model subpackages
+- **DTOs**: separate request/response data classes, never expose entities
+- **Exceptions**: throw `ApiException` subclasses — `GlobalExceptionHandler` maps to JSON
+- **Auth**: JWT Bearer token; `@AuthenticationPrincipal user: User` in controllers
+- **Migrations**: Flyway in `resources/db/migration/V{N}__{description}.sql`
+- **Tests**: `@SpringBootTest` + `@ActiveProfiles("test")` with H2 in-memory DB
+
+## Key Files
+
+- `config/SecurityConfig.kt` — endpoint security rules, JWT filter
+- `config/OAuth2Config.kt` — OAuth provider credentials
+- `auth/security/JwtTokenProvider.kt` — token generation/validation
+- `application.yml` — all configuration (DB, JWT, OAuth, CORS)
+- `resources/db/migration/V1__init.sql` — initial schema
+
+## API
+
+See `docs/api/conventions.md` for REST conventions.
+See `shared/api-contracts/openapi.yml` for the full API spec.

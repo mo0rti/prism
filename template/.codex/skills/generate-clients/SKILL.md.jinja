@@ -1,0 +1,24 @@
+---
+name: generate-clients
+description: Generate typed API clients from the OpenAPI specification
+---
+
+# Generate API Clients
+
+Generate typed client code from `shared/api-contracts/openapi.yml`.
+
+## Instructions
+
+1. Validate the OpenAPI spec: `task validate-api`
+2. Run generation: `task generate-clients`
+3. Verify generated code compiles:
+{% if "backend" in platforms %}   - `task backend:build`{% endif %}
+{% if "web" in platforms %}   - `task web:build`{% endif %}
+{% if "android" in platforms %}   - `task android:build`{% endif %}
+{% if "ios" in platforms %}   - `task ios:build` (Mac only){% endif %}
+
+## When to Use
+
+- After modifying `shared/api-contracts/openapi.yml`
+- After running `$scaffold-feature` or adding endpoints
+- User invokes `$generate-clients`

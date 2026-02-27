@@ -1,0 +1,104 @@
+import SwiftUI
+
+struct ExampleListView: View {
+    @Bindable var viewModel: ExampleListViewModel
+    let onLogout: () -> Void
+
+    var body: some View {
+        Group {
+            switch viewModel.viewState {
+            case .idle, .loading:
+                LoadingView()
+            case .error(let message):
+                ErrorView(message: message) {
+                    Task { await viewModel.loadExamples() }
+                }
+            case .success:
+                listContent
+            }
+        }
+        .navigationTitle("Examples")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task {
+                        await viewModel.logout()
+                        onLogout()
+                    }
+                } label: {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                }
+            }
+        }
+        .task {
+            if viewModel.viewState == .idle {
+                await viewModel.loadExamples()
+            }
+        }
+    }
+
+    private var listContent: some View {
+        Group {
+            if viewModel.examples.isEmpty {
+                VStack {
+                    Spacer()
+                    Text("No examples yet")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            } else {
+                List {
+                    ForEach(viewModel.examples) { example in
+                        ExampleRow(example: example)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    Task { await viewModel.deleteExample(example.id) }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                            .onAppear {
+                                if example.id == viewModel.examples.last?.id {
+                                    Task { await viewModel.loadMore() }
+                                }
+                            }
+                    }
+
+                    if viewModel.isLoadingMore {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                    }
+                }
+                .listStyle(.plain)
+            }
+        }
+    }
+}
+
+private struct ExampleRow: View {
+    let example: ExampleResponse
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text(example.title)
+                .font(.headline)
+            if let description = example.description {
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+            }
+            Text(example.status)
+                .font(.caption)
+                .padding(.horizontal, Spacing.sm)
+                .padding(.vertical, Spacing.xs)
+                .background(Color.appSurfaceVariant)
+                .cornerRadius(CornerRadius.sm)
+        }
+        .padding(.vertical, Spacing.xs)
+    }
+}

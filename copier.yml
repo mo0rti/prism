@@ -1,0 +1,110 @@
+_subdirectory: template
+_templates_suffix: .jinja
+_jinja_extensions:
+  - jinja2_time.TimeExtension
+
+# =============================================================================
+# Project Identity
+# =============================================================================
+
+project_name:
+  type: str
+  help: "Human-readable project name (e.g., My Awesome App)"
+  validator: "{% if not project_name %}Project name is required{% endif %}"
+
+project_slug:
+  type: str
+  help: "Lowercase slug for directories and packages (e.g., my-awesome-app)"
+  default: "{{ project_name | lower | replace(' ', '-') | replace('_', '-') }}"
+
+package_identifier:
+  type: str
+  help: "Reverse-domain package identifier (e.g., com.example.myapp)"
+  default: "com.example.{{ project_slug | replace('-', '') }}"
+
+description:
+  type: str
+  help: "One-line project description"
+  default: "A multi-platform application"
+
+# =============================================================================
+# Platform Selection
+# =============================================================================
+
+platforms:
+  type: yaml
+  multiselect: true
+  help: "Which platforms do you want to include?"
+  choices:
+    Spring Boot Backend: backend
+    Next.js Web Client: web
+    Admin Portal: admin
+    Android (Kotlin/Compose): android
+    iOS (Swift/SwiftUI): ios
+  default: "[backend, web, admin, android, ios]"
+
+# =============================================================================
+# Authentication
+# =============================================================================
+
+auth_methods:
+  type: yaml
+  multiselect: true
+  help: "Which authentication methods do you want to support?"
+  choices:
+    Google OAuth: google
+    Apple Sign-In: apple
+    Facebook Login: facebook
+    Microsoft Account: microsoft
+    Username + Password: password
+  default: "[google, apple, password]"
+
+# =============================================================================
+# Infrastructure
+# =============================================================================
+
+database:
+  type: str
+  help: "Database for backend"
+  choices:
+    PostgreSQL: postgres
+    MySQL: mysql
+  when: "{{ 'backend' in platforms }}"
+  default: postgres
+
+use_docker:
+  type: bool
+  help: "Include Docker Compose for local development?"
+  default: true
+
+# =============================================================================
+# Hosting & Cloud
+# =============================================================================
+
+cloud_provider:
+  type: str
+  help: "Cloud provider for backend and services"
+  choices:
+    Azure: azure
+    AWS: aws
+    GCP: gcp
+  default: azure
+
+web_hosting:
+  type: str
+  help: "Hosting provider for web applications"
+  choices:
+    Cloudflare Pages: cloudflare
+    Vercel: vercel
+    Netlify: netlify
+  when: "{{ 'web' in platforms or 'admin' in platforms }}"
+  default: cloudflare
+
+# =============================================================================
+# Repository
+# =============================================================================
+
+github_org:
+  type: str
+  help: "GitHub organization or username (leave empty to skip)"
+  default: ""

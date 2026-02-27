@@ -1,0 +1,14 @@
+package {{ package_identifier }}.navigation
+
+import kotlinx.serialization.Serializable
+
+sealed interface Screen {
+    @Serializable
+    data object Login : Screen
+
+    @Serializable
+    data object ExampleList : Screen
+
+    @Serializable
+    data class ExampleDetail(val id: String) : Screen
+}

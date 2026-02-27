@@ -1,0 +1,49 @@
+---
+globs: "shared/api-contracts/**"
+---
+
+# API Conventions
+
+## OpenAPI Spec
+- Location: `shared/api-contracts/openapi.yml`
+- Version: OpenAPI 3.1
+- Generate clients: `task generate-clients`
+
+## Naming
+- Paths: plural nouns, kebab-case (`/auth/oauth-callback`, `/examples`)
+- JSON fields: camelCase (`createdAt`, `totalElements`)
+- Path params: camelCase (`{exampleId}`)
+
+## Pagination
+All list endpoints use query params `page` (0-based) and `size` (default 20).
+Response wraps items in:
+```json
+{
+  "content": [...],
+  "page": 0,
+  "size": 20,
+  "totalElements": 100,
+  "totalPages": 5
+}
+```
+
+## Error Format
+```json
+{
+  "error": "NOT_FOUND",
+  "message": "Example not found",
+  "status": 404
+}
+```
+
+## Auth
+- Public endpoints: `/auth/**`
+- All other endpoints require `Authorization: Bearer {token}`
+- 401 for missing/invalid token, 403 for insufficient permissions
+
+## HTTP Methods
+- GET: read (200)
+- POST: create (201)
+- PUT: full update (200)
+- PATCH: partial update (200)
+- DELETE: remove (204)

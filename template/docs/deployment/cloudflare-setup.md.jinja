@@ -1,0 +1,46 @@
+# Cloudflare Deployment — {{ project_name }}
+
+## Projects
+
+{% if "web" in platforms %}| Web Client | `{{ project_slug }}-web` | Cloudflare Pages |
+{% endif %}{% if "admin" in platforms %}| Admin Portal | `{{ project_slug }}-admin` | Cloudflare Pages |
+{% endif %}
+
+## Initial Setup
+
+### 1. Create Cloudflare Pages Projects
+
+{% if "web" in platforms %}
+```bash
+cd web
+npx wrangler pages project create {{ project_slug }}-web
+```
+{% endif %}
+
+{% if "admin" in platforms %}
+```bash
+cd admin
+npx wrangler pages project create {{ project_slug }}-admin
+```
+{% endif %}
+
+### 2. Set Environment Variables
+
+In Cloudflare dashboard → Pages → Settings → Environment Variables:
+
+| Variable | Value |
+|----------|-------|
+| `NEXT_PUBLIC_API_URL` | `https://api.{{ project_slug }}.com/api/v1` |
+
+## CI/CD
+
+GitHub Actions deploys on push to `main`:
+- Builds Next.js (`npm run build`)
+- Deploys to Cloudflare Pages via Wrangler
+
+## Required GitHub Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
+| `CLOUDFLARE_API_TOKEN` | API token with Pages edit permissions |

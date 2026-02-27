@@ -1,0 +1,42 @@
+package {{ package_identifier }}.navigation
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
+import {{ package_identifier }}.data.local.TokenStorage
+import {{ package_identifier }}.ui.auth.LoginScreen
+import {{ package_identifier }}.ui.examples.ExampleListScreen
+
+@Composable
+fun NavGraph(tokenStorage: TokenStorage = hiltViewModel<NavGraphViewModel>().tokenStorage) {
+    val navController = rememberNavController()
+    val hasToken by tokenStorage.hasToken.collectAsState(initial = false)
+
+    val startDestination: Screen = if (hasToken) Screen.ExampleList else Screen.Login
+
+    NavHost(navController = navController, startDestination = startDestination) {
+        composable<Screen.Login> {
+            LoginScreen(
+                onLoginSuccess = {
+                    navController.navigate(Screen.ExampleList) {
+                        popUpTo<Screen.Login> { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable<Screen.ExampleList> {
+            ExampleListScreen(
+                onLogout = {
+                    navController.navigate(Screen.Login) {
+                        popUpTo<Screen.ExampleList> { inclusive = true }
+                    }
+                }
+            )
+        }
+    }
+}

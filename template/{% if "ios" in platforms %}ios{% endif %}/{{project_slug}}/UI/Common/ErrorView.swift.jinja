@@ -1,0 +1,26 @@
+import SwiftUI
+
+struct ErrorView: View {
+    let message: String
+    var onRetry: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: Spacing.md) {
+            Spacer()
+            Image(systemName: "exclamationmark.triangle")
+                .font(.largeTitle)
+                .foregroundColor(.appError)
+            Text(message)
+                .font(.body)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+            if let onRetry {
+                Button("Retry", action: onRetry)
+                    .buttonStyle(.borderedProminent)
+            }
+            Spacer()
+        }
+        .padding(Spacing.lg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}

@@ -1,0 +1,50 @@
+import Foundation
+
+enum HTTPMethod: String {
+    case get = "GET"
+    case post = "POST"
+    case put = "PUT"
+    case delete = "DELETE"
+}
+
+struct APIEndpoint {
+    let path: String
+    let method: HTTPMethod
+    let requiresAuth: Bool
+
+    // Auth
+    static func oauthCallback() -> APIEndpoint {
+        APIEndpoint(path: "/auth/oauth/callback", method: .post, requiresAuth: false)
+    }
+{% if "password" in auth_methods %}
+    static func register() -> APIEndpoint {
+        APIEndpoint(path: "/auth/register", method: .post, requiresAuth: false)
+    }
+    static func login() -> APIEndpoint {
+        APIEndpoint(path: "/auth/login", method: .post, requiresAuth: false)
+    }
+{% endif %}
+    static func refreshToken() -> APIEndpoint {
+        APIEndpoint(path: "/auth/refresh", method: .post, requiresAuth: false)
+    }
+    static func me() -> APIEndpoint {
+        APIEndpoint(path: "/auth/me", method: .get, requiresAuth: true)
+    }
+
+    // Examples
+    static func listExamples(page: Int = 0, size: Int = 20) -> APIEndpoint {
+        APIEndpoint(path: "/examples?page=\(page)&size=\(size)&sort=createdAt,desc", method: .get, requiresAuth: true)
+    }
+    static func createExample() -> APIEndpoint {
+        APIEndpoint(path: "/examples", method: .post, requiresAuth: true)
+    }
+    static func getExample(id: String) -> APIEndpoint {
+        APIEndpoint(path: "/examples/\(id)", method: .get, requiresAuth: true)
+    }
+    static func updateExample(id: String) -> APIEndpoint {
+        APIEndpoint(path: "/examples/\(id)", method: .put, requiresAuth: true)
+    }
+    static func deleteExample(id: String) -> APIEndpoint {
+        APIEndpoint(path: "/examples/\(id)", method: .delete, requiresAuth: true)
+    }
+}

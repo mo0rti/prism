@@ -1,0 +1,59 @@
+package {{ package_identifier }}.data.repository
+
+import {{ package_identifier }}.data.local.TokenStorage
+import {{ package_identifier }}.data.remote.ApiService
+import {{ package_identifier }}.domain.model.*
+import javax.inject.Inject
+import javax.inject.Singleton
+
+interface AuthRepository {
+    suspend fun oauthCallback(provider: String, code: String, redirectUri: String): AuthResponse
+{% if "password" in auth_methods %}
+    suspend fun register(email: String, password: String, displayName: String): AuthResponse
+    suspend fun login(email: String, password: String): AuthResponse
+{% endif %}
+    suspend fun refreshToken(): AuthResponse
+    suspend fun getCurrentUser(): UserResponse
+    suspend fun logout()
+}
+
+@Singleton
+class AuthRepositoryImpl @Inject constructor(
+    private val apiService: ApiService,
+    private val tokenStorage: TokenStorage
+) : AuthRepository {
+
+    override suspend fun oauthCallback(provider: String, code: String, redirectUri: String): AuthResponse {
+        val response = apiService.oauthCallback(OAuthCallbackRequest(provider, code, redirectUri))
+        tokenStorage.saveTokens(response.accessToken, response.refreshToken)
+        return response
+    }
+
+{% if "password" in auth_methods %}
+    override suspend fun register(email: String, password: String, displayName: String): AuthResponse {
+        val response = apiService.register(RegisterRequest(email, password, displayName))
+        tokenStorage.saveTokens(response.accessToken, response.refreshToken)
+        return response
+    }
+
+    override suspend fun login(email: String, password: String): AuthResponse {
+        val response = apiService.login(LoginRequest(email, password))
+        tokenStorage.saveTokens(response.accessToken, response.refreshToken)
+        return response
+    }
+{% endif %}
+
+    override suspend fun refreshToken(): AuthResponse {
+        val refreshToken = kotlinx.coroutines.flow.firstOrNull(tokenStorage.refreshToken)
+            ?: throw IllegalStateException("No refresh token available")
+        val response = apiService.refreshToken(RefreshTokenRequest(refreshToken))
+        tokenStorage.saveTokens(response.accessToken, response.refreshToken)
+        return response
+    }
+
+    override suspend fun getCurrentUser(): UserResponse = apiService.getCurrentUser()
+
+    override suspend fun logout() {
+        tokenStorage.clearTokens()
+    }
+}

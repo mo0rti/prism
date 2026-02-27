@@ -1,0 +1,57 @@
+# {{ project_name }}
+
+{{ description }}
+
+## Architecture
+
+This is a multi-platform monorepo containing:
+
+{% if "backend" in platforms %}- **backend/** — Spring Boot 4 (Kotlin) REST API → Azure Container Apps
+{% endif %}{% if "web" in platforms %}- **web/** — Next.js web client (TypeScript) → Cloudflare Pages
+{% endif %}{% if "admin" in platforms %}- **admin/** — Next.js admin portal (TypeScript) → Cloudflare Pages
+{% endif %}{% if "android" in platforms %}- **android/** — Android app (Kotlin/Jetpack Compose, MVVM)
+{% endif %}{% if "ios" in platforms %}- **ios/** — iOS app (Swift/SwiftUI, MVVM)
+{% endif %}
+## Quick Start
+
+```bash
+# 1. Set up environment
+cp .env.example .env
+# Edit .env with your Azure, OAuth, and Cloudflare credentials
+
+# 2. Generate API clients from OpenAPI spec
+task generate-clients
+{% if use_docker %}
+# 3. Start local services
+docker compose up -d
+{% endif %}{% if "backend" in platforms %}
+# 4. Start backend
+task backend:run
+{% endif %}{% if "web" in platforms %}
+# 5. Start web client
+task web:dev
+{% endif %}
+```
+
+## Documentation
+
+- [Architecture Overview](docs/architecture.md)
+- [API Conventions](docs/api/conventions.md)
+{% if "backend" in platforms %}- [Backend Guide](docs/platform-guides/backend.md)
+{% endif %}{% if "web" in platforms %}- [Web Guide](docs/platform-guides/web.md)
+{% endif %}{% if "android" in platforms %}- [Android Guide](docs/platform-guides/android.md)
+{% endif %}{% if "ios" in platforms %}- [iOS Guide](docs/platform-guides/ios.md)
+{% endif %}- [Azure Deployment](docs/deployment/azure-setup.md)
+{% if "web" in platforms or "admin" in platforms %}- [Cloudflare Deployment](docs/deployment/cloudflare-setup.md)
+{% endif %}- [CI/CD](docs/deployment/ci-cd.md)
+
+## Common Tasks
+
+| Action | Command |
+|--------|---------|
+| Generate API clients | `task generate-clients` |
+{% if "backend" in platforms %}| Start backend | `task backend:run` |
+{% endif %}{% if "web" in platforms %}| Start web dev | `task web:dev` |
+{% endif %}{% if "admin" in platforms %}| Start admin dev | `task admin:dev` |
+{% endif %}| Run all tests | `task test` |
+| Lint all platforms | `task lint` |

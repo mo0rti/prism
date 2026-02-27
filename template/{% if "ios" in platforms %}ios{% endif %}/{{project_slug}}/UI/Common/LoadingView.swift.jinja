@@ -1,0 +1,13 @@
+import SwiftUI
+
+struct LoadingView: View {
+    var body: some View {
+        VStack {
+            Spacer()
+            ProgressView()
+                .controlSize(.large)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}

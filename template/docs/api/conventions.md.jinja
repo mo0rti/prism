@@ -1,0 +1,74 @@
+# API Conventions — {{ project_name }}
+
+## Base URL
+
+- **Local**: `http://localhost:8080/api/v1`
+- **Production**: `https://api.{{ project_slug }}.com/api/v1` (Azure Container Apps)
+
+## General Rules
+
+1. **REST** with JSON request/response bodies
+2. **camelCase** for JSON field names
+3. **kebab-case** for URL paths (e.g., `/user-profiles`)
+4. **Plural nouns** for resource names (e.g., `/examples`, not `/example`)
+5. **UUID** for all entity IDs
+6. **ISO 8601** for dates (`2024-01-15T10:30:00Z`)
+
+## Authentication
+
+All endpoints except auth routes require a JWT Bearer token:
+
+```
+Authorization: Bearer <access-token>
+```
+
+## Pagination
+
+List endpoints return paginated responses:
+
+```json
+{
+  "content": [...],
+  "page": 0,
+  "size": 20,
+  "totalElements": 150,
+  "totalPages": 8
+}
+```
+
+Query parameters:
+- `page` (int, default: 0) — zero-based page number
+- `size` (int, default: 20, max: 100) — items per page
+- `sort` (string) — sort field and direction, e.g., `createdAt,desc`
+
+## Error Responses
+
+All errors follow this format:
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Human-readable error message",
+  "details": {
+    "field": "email",
+    "reason": "must be a valid email address"
+  }
+}
+```
+
+### Error Codes
+
+| HTTP Status | Code | When |
+|-------------|------|------|
+| 400 | VALIDATION_ERROR | Request body fails validation |
+| 401 | UNAUTHORIZED | Missing or invalid token |
+| 403 | FORBIDDEN | Valid token but insufficient permissions |
+| 404 | NOT_FOUND | Resource does not exist |
+| 409 | CONFLICT | Duplicate resource (e.g., email already registered) |
+| 500 | INTERNAL_ERROR | Unexpected server error |
+
+## Versioning
+
+API version is in the URL path: `/api/v1/...`
+
+New breaking changes increment the version. Non-breaking additions do not.

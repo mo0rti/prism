@@ -1,0 +1,51 @@
+# CI/CD — {{ project_name }}
+
+## Overview
+
+All CI/CD runs on **GitHub Actions** with **path-based triggers** — each platform's workflow only runs when its files change.
+
+## Workflows
+
+| Workflow | Trigger Paths | What It Does |
+|----------|--------------|--------------|
+{% if "backend" in platforms %}| `backend.yml` | `backend/**`, `shared/**` | Gradle test + build, Docker push to Azure ACR, deploy to Container Apps |
+{% endif %}{% if "web" in platforms %}| `web.yml` | `web/**`, `shared/**` | npm lint + build, deploy to Cloudflare Pages |
+{% endif %}{% if "admin" in platforms %}| `admin.yml` | `admin/**`, `shared/**` | npm lint + build, deploy to Cloudflare Pages |
+{% endif %}{% if "android" in platforms %}| `android.yml` | `android/**`, `shared/**` | Gradle test + assembleDebug, Fastlane deploy on tags |
+{% endif %}{% if "ios" in platforms %}| `ios.yml` | `ios/**`, `shared/**` | xcodebuild test (macOS runner), Fastlane deploy on tags |
+{% endif %}| `api-contracts.yml` | `shared/api-contracts/**` | Validate OpenAPI spec |
+
+## Required GitHub Secrets
+
+### Azure
+| Secret | Description |
+|--------|-------------|
+| `AZURE_CREDENTIALS` | Service principal JSON |
+| `AZURE_CONTAINER_REGISTRY` | ACR login server |
+| `AZURE_CONTAINER_APP_NAME` | Container App name |
+| `AZURE_RESOURCE_GROUP` | Resource group |
+
+### Cloudflare
+| Secret | Description |
+|--------|-------------|
+| `CLOUDFLARE_ACCOUNT_ID` | Account ID |
+| `CLOUDFLARE_API_TOKEN` | API token |
+
+{% if "android" in platforms %}
+### Android
+| Secret | Description |
+|--------|-------------|
+| `ANDROID_KEYSTORE_BASE64` | Signing keystore (base64) |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | Key alias |
+| `ANDROID_KEY_PASSWORD` | Key password |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Play Console service account |
+{% endif %}
+
+{% if "ios" in platforms %}
+### iOS
+| Secret | Description |
+|--------|-------------|
+| `MATCH_PASSWORD` | Fastlane match encryption password |
+| `APP_STORE_CONNECT_API_KEY` | App Store Connect API key JSON |
+{% endif %}
