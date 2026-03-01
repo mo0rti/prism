@@ -1,0 +1,47 @@
+---
+to: "<%= entity ? 'backend/src/main/kotlin/{{ package_identifier | replace(\".\", \"/\") }}/features/' + h.changeCase.camel(name) + '/controller/' + h.changeCase.pascal(entity) + 'Controller.kt' : null %>"
+---
+package {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.controller
+
+import {{ package_identifier }}.common.model.PagedResponse
+import {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.model.<%= h.changeCase.pascal(entity) %>
+import {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.service.<%= h.changeCase.pascal(entity) %>Service
+import org.springframework.data.domain.PageRequest
+import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.*
+
+@RestController
+@RequestMapping("/api/v1/<%= h.changeCase.param(h.inflection.pluralize(entity)) %>")
+class <%= h.changeCase.pascal(entity) %>Controller(
+    private val service: <%= h.changeCase.pascal(entity) %>Service,
+) {
+
+    @GetMapping
+    fun list(
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "20") size: Int,
+    ): PagedResponse<<%= h.changeCase.pascal(entity) %>> {
+        val result = service.findAll(PageRequest.of(page, size))
+        return PagedResponse(
+            content = result.content,
+            page = result.number,
+            size = result.size,
+            totalElements = result.totalElements,
+            totalPages = result.totalPages,
+        )
+    }
+
+    @GetMapping("/{id}")
+    fun getById(@PathVariable id: Long): <%= h.changeCase.pascal(entity) %> =
+        service.findById(id)
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    fun create(@RequestBody entity: <%= h.changeCase.pascal(entity) %>): <%= h.changeCase.pascal(entity) %> =
+        service.create(entity)
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun delete(@PathVariable id: Long) =
+        service.delete(id)
+}

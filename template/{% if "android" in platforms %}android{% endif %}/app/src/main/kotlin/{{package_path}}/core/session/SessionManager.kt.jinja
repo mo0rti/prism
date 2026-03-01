@@ -1,0 +1,10 @@
+package {{ package_identifier }}.core.session
+
+import {{ package_identifier }}.core.model.AuthState
+import kotlinx.coroutines.flow.StateFlow
+
+interface SessionManager {
+    val authState: StateFlow<AuthState>
+    suspend fun onTokensUpdated()
+    suspend fun onLogout()
+}

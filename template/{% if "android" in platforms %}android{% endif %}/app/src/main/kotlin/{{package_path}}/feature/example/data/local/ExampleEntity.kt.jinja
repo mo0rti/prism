@@ -1,0 +1,16 @@
+package {{ package_identifier }}.feature.example.data.local
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "examples")
+data class ExampleEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val description: String?,
+    val status: String,
+    val createdBy: String,
+    val createdAt: String,
+    val updatedAt: String,
+    val cachedAt: Long = System.currentTimeMillis(),
+)

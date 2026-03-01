@@ -1,0 +1,43 @@
+---
+to: "<%= entity ? 'android/app/src/main/kotlin/{{ package_identifier | replace(\".\", \"/\") }}/feature/' + h.changeCase.camel(name) + '/ui/' + h.changeCase.pascal(entity) + 'ListViewModel.kt' : null %>"
+---
+package {{ package_identifier }}.feature.<%= h.changeCase.camel(name) %>.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+sealed interface <%= h.changeCase.pascal(entity) %>ListUiState {
+    data object Idle : <%= h.changeCase.pascal(entity) %>ListUiState
+    data object Loading : <%= h.changeCase.pascal(entity) %>ListUiState
+    data class Success(val items: List<Any> = emptyList()) : <%= h.changeCase.pascal(entity) %>ListUiState
+    data class Error(val message: String) : <%= h.changeCase.pascal(entity) %>ListUiState
+}
+
+@HiltViewModel
+class <%= h.changeCase.pascal(entity) %>ListViewModel @Inject constructor(
+    // TODO: Inject repository
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow<<%= h.changeCase.pascal(entity) %>ListUiState>(<%= h.changeCase.pascal(entity) %>ListUiState.Idle)
+    val uiState: StateFlow<<%= h.changeCase.pascal(entity) %>ListUiState> = _uiState.asStateFlow()
+
+    fun loadItems() {
+        viewModelScope.launch {
+            _uiState.value = <%= h.changeCase.pascal(entity) %>ListUiState.Loading
+            try {
+                // TODO: Call repository
+                _uiState.value = <%= h.changeCase.pascal(entity) %>ListUiState.Success()
+            } catch (e: Exception) {
+                _uiState.value = <%= h.changeCase.pascal(entity) %>ListUiState.Error(
+                    e.message ?: "Failed to load items",
+                )
+            }
+        }
+    }
+}

@@ -1,0 +1,93 @@
+{% if "web" in platforms %}
+name: Web Client CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'shared/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'shared/**'
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Lint
+        working-directory: web
+        run: npm run lint
+
+      - name: Build
+        working-directory: web
+        run: npm run build
+
+{% if web_hosting == "cloudflare" %}
+  deploy:
+    name: Deploy to Cloudflare Pages
+    needs: lint-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build
+        working-directory: web
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: {% raw %}${{ secrets.CLOUDFLARE_API_TOKEN }}{% endraw %}
+          accountId: {% raw %}${{ secrets.CLOUDFLARE_ACCOUNT_ID }}{% endraw %}
+          command: pages deploy out --project-name={{ project_slug }}-web
+          workingDirectory: web
+{% elif web_hosting == "vercel" %}
+  deploy:
+    name: Deploy to Vercel
+    needs: lint-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: {% raw %}${{ secrets.VERCEL_TOKEN }}{% endraw %}
+          vercel-org-id: {% raw %}${{ secrets.VERCEL_ORG_ID }}{% endraw %}
+          vercel-project-id: {% raw %}${{ secrets.VERCEL_PROJECT_ID }}{% endraw %}
+          vercel-args: '--prod'
+          working-directory: web
+{% endif %}
+{% endif %}

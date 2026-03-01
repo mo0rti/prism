@@ -1,0 +1,30 @@
+---
+to: "<%= entity ? 'ios/{{ project_slug }}/UI/' + h.changeCase.pascal(name) + '/' + h.changeCase.pascal(entity) + 'ListViewModel.swift' : null %>"
+---
+import Foundation
+
+@Observable
+final class <%= h.changeCase.pascal(entity) %>ListViewModel {
+
+    enum ViewState: Equatable {
+        case idle
+        case loading
+        case success
+        case error(String)
+    }
+
+    var viewState: ViewState = .idle
+    var items: [Any] = []  // TODO: Replace with typed model
+
+    // TODO: Inject repository via init
+
+    func loadItems() async {
+        viewState = .loading
+        do {
+            // TODO: Call repository
+            viewState = .success
+        } catch {
+            viewState = .error(error.localizedDescription)
+        }
+    }
+}

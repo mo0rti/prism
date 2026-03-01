@@ -1,0 +1,39 @@
+package {{ package_identifier }}.feature.example.data.repository
+
+import {{ package_identifier }}.core.model.PagedData
+import {{ package_identifier }}.core.network.ApiService
+import {{ package_identifier }}.feature.example.data.remote.dto.CreateExampleRequest
+import {{ package_identifier }}.feature.example.data.remote.dto.UpdateExampleRequest
+import {{ package_identifier }}.feature.example.domain.model.Example
+import {{ package_identifier }}.feature.example.domain.repository.ExampleRepository
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class ExampleRepositoryImpl @Inject constructor(
+    private val apiService: ApiService,
+) : ExampleRepository {
+
+    override suspend fun list(page: Int, size: Int): PagedData<Example> {
+        val response = apiService.listExamples(page = page, size = size)
+        return PagedData(
+            content = response.content.map { it.toDomain() },
+            page = response.page,
+            size = response.size,
+            totalElements = response.totalElements,
+            totalPages = response.totalPages,
+        )
+    }
+
+    override suspend fun getById(id: String): Example =
+        apiService.getExample(id).toDomain()
+
+    override suspend fun create(title: String, description: String?): Example =
+        apiService.createExample(CreateExampleRequest(title, description)).toDomain()
+
+    override suspend fun update(id: String, title: String?, description: String?, status: String?): Example =
+        apiService.updateExample(id, UpdateExampleRequest(title, description, status)).toDomain()
+
+    override suspend fun delete(id: String) =
+        apiService.deleteExample(id)
+}

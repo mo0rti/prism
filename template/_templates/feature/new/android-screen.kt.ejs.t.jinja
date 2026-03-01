@@ -1,0 +1,66 @@
+---
+to: "<%= entity ? 'android/app/src/main/kotlin/{{ package_identifier | replace(\".\", \"/\") }}/feature/' + h.changeCase.camel(name) + '/ui/' + h.changeCase.pascal(entity) + 'ListScreen.kt' : null %>"
+---
+package {{ package_identifier }}.feature.<%= h.changeCase.camel(name) %>.ui
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import {{ package_identifier }}.designsystem.components.ErrorView
+import {{ package_identifier }}.designsystem.components.LoadingIndicator
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun <%= h.changeCase.pascal(entity) %>ListScreen(
+    uiState: <%= h.changeCase.pascal(entity) %>ListUiState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Scaffold(
+        modifier = modifier,
+        topBar = {
+            TopAppBar(
+                title = { Text("<%= h.changeCase.title(h.inflection.pluralize(entity)) %>") },
+            )
+        },
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            when (uiState) {
+                is <%= h.changeCase.pascal(entity) %>ListUiState.Idle,
+                is <%= h.changeCase.pascal(entity) %>ListUiState.Loading -> {
+                    LoadingIndicator()
+                }
+                is <%= h.changeCase.pascal(entity) %>ListUiState.Success -> {
+                    if (uiState.items.isEmpty()) {
+                        Text(
+                            text = "No <%= h.changeCase.lower(h.inflection.pluralize(entity)) %> found",
+                            modifier = Modifier.align(Alignment.Center),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    } else {
+                        LazyColumn(
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            // TODO: Render items
+                        }
+                    }
+                }
+                is <%= h.changeCase.pascal(entity) %>ListUiState.Error -> {
+                    ErrorView(
+                        message = uiState.message,
+                        onRetry = onRetry,
+                    )
+                }
+            }
+        }
+    }
+}

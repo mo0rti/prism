@@ -1,0 +1,29 @@
+---
+to: "<%= platform === 'ios' ? 'ios/{{ project_slug }}/UI/' + h.changeCase.pascal(feature) + '/' + h.changeCase.pascal(name) + 'ViewModel.swift' : null %>"
+---
+import Foundation
+
+@Observable
+final class <%= h.changeCase.pascal(name) %>ViewModel {
+
+    enum ViewState: Equatable {
+        case idle
+        case loading
+        case success
+        case error(String)
+    }
+
+    var viewState: ViewState = .idle
+
+    // TODO: Inject dependencies via init
+
+    func load() async {
+        viewState = .loading
+        do {
+            // TODO: Load data
+            viewState = .success
+        } catch {
+            viewState = .error(error.localizedDescription)
+        }
+    }
+}

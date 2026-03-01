@@ -1,46 +1,124 @@
 # Azure Deployment — {{ project_name }}
 
-## Resources Required
+## Resources Created
 
-| Resource | Azure Service | Purpose |
-|----------|--------------|---------|
-| Backend API | Azure Container Apps | Hosts Spring Boot 4 application |
-| Database | Azure Database for PostgreSQL (Flexible Server) | Data persistence |
-| Container Registry | Azure Container Registry | Docker image storage |
-| Secrets | Azure Key Vault | Stores OAuth secrets, JWT keys |
-| AI Services | Azure AI Services | (Optional) AI/ML capabilities |
+| Resource | Azure Service | Script | Purpose |
+|----------|--------------|--------|---------|
+| Resource Group | Resource Group | `00-setup-resource-group.sh` | Container for all resources |
+| Container Registry | Azure Container Registry | `01-setup-foundation.sh` | Docker image storage |
+| Log Analytics | Log Analytics Workspace | `01-setup-foundation.sh` | Container monitoring |
+| Database | PostgreSQL Flexible Server | `02-setup-database.sh` | Data persistence |
+| Cache | Azure Cache for Redis | `02-setup-database.sh` | Session/cache storage |
+| Container Environment | Container Apps Environment | `03-setup-container-apps-env.sh` | Networking for containers |
+| File Storage | Azure Blob Storage | `04-setup-storage.sh` | File uploads |
+| Backend API | Azure Container Apps | `06-deploy-backend.sh` | Hosts Spring Boot 4 application |
 
-## Initial Setup
+## First-Time Setup
 
-### 1. Create Resource Group
+### Prerequisites
 
-```bash
-az group create --name {{ project_slug }}-rg --location eastus
-```
+- Azure CLI installed (`az login` completed)
+- Docker running locally
+- Azure subscription with appropriate permissions
 
-### 2. Deploy Infrastructure
+### Step 1: Configure
 
 ```bash
 cd infra/azure
-az deployment group create \
-  --resource-group {{ project_slug }}-rg \
-  --template-file main.bicep \
-  --parameters projectName={{ project_slug }}
+
+# Copy and fill in infrastructure config
+cp azure-config.env.example azure-config.env
+# Edit azure-config.env: subscription ID, resource names, SKUs
+
+# Copy and fill in application secrets
+cp app-secrets.env.example app-secrets.env
+# Edit app-secrets.env: JWT secret, OAuth credentials, API keys
 ```
 
-### 3. Configure Secrets in Key Vault
+### Step 2: Deploy Everything
 
 ```bash
-az keyvault secret set --vault-name {{ project_slug }}-kv --name jwt-secret --value "your-secret"
-az keyvault secret set --vault-name {{ project_slug }}-kv --name google-client-id --value "your-id"
-az keyvault secret set --vault-name {{ project_slug }}-kv --name google-client-secret --value "your-secret"
+# Run all setup scripts sequentially (~20-25 minutes)
+task infra:setup
+
+# Or run manually step by step:
+bash 00-setup-resource-group.sh
+bash 01-setup-foundation.sh
+bash 02-setup-database.sh          # PostgreSQL + Redis
+bash 03-setup-container-apps-env.sh
+bash 04-setup-storage.sh
+bash 05-build-and-push-images.sh   # Requires Docker
+bash 06-deploy-backend.sh
+bash 07-show-deployment-info.sh
 ```
 
-## CI/CD
+### Step 3: Verify
 
-GitHub Actions handles deployment automatically:
-- **On push to `main`**: builds Docker image → pushes to ACR → deploys to Container Apps
-- See `.github/workflows/backend.yml` for details
+```bash
+# Show deployment info
+task infra:info
+
+# Test database connectivity
+bash infra/azure/test-database-connection.sh
+
+# Check backend health
+curl https://<your-backend-url>/actuator/health
+```
+
+## Updating the Backend
+
+After code changes, redeploy with zero downtime:
+
+```bash
+task infra:update-backend
+
+# Or directly:
+bash infra/azure/update-backend.sh
+```
+
+This rebuilds the Docker image, pushes to ACR, and creates a new Container App revision. Traffic automatically shifts to the new revision when healthy.
+
+## Multi-Environment
+
+All scripts accept an environment parameter:
+
+```bash
+# Production (default)
+bash 00-setup-resource-group.sh prod
+
+# Acceptance
+bash 00-setup-resource-group.sh acc
+
+# Development
+bash 00-setup-resource-group.sh dev
+```
+
+Each environment gets its own resource group and credential files.
+
+## Adding Additional Services
+
+The numbered script system is designed for extensibility:
+
+1. Create `07-deploy-my-service.sh` (or `06b-deploy-my-service.sh` to insert before backend)
+2. Create `update-my-service.sh` for recurring deployments
+3. Follow the same pattern: source config → create container app → save URL
+
+## Custom Domain
+
+```bash
+bash infra/azure/add-custom-domain.sh prod api.yourdomain.com
+```
+
+This adds DNS verification and provisions a managed SSL certificate.
+
+## CI/CD Integration
+
+On push to `main`, GitHub Actions automatically:
+1. Runs tests
+2. Builds Docker image and pushes to ACR
+3. Deploys new revision to Container Apps
+
+See `.github/workflows/backend.yml` and `docs/deployment/ci-cd.md`.
 
 ## Required GitHub Secrets
 
@@ -48,5 +126,25 @@ GitHub Actions handles deployment automatically:
 |--------|-------------|
 | `AZURE_CREDENTIALS` | Service principal JSON for Azure login |
 | `AZURE_CONTAINER_REGISTRY` | ACR login server URL |
-| `AZURE_CONTAINER_APP_NAME` | Container App resource name |
+| `ACR_USERNAME` | ACR admin username |
+| `ACR_PASSWORD` | ACR admin password |
 | `AZURE_RESOURCE_GROUP` | Resource group name |
+| `AZURE_CONTAINER_APP_NAME` | Container App name |
+
+## Cleanup
+
+```bash
+# DANGER: Deletes ALL resources in the resource group
+bash infra/azure/cleanup.sh
+```
+
+## Useful Commands
+
+| Command | Description |
+|---------|-------------|
+| `task infra:setup` | First-time full setup |
+| `task infra:update-backend` | Redeploy backend |
+| `task infra:info` | Show deployment status |
+| `task infra:check-secrets` | Validate secrets |
+| `bash infra/azure/show-database-credentials.sh` | Show DB/Redis credentials |
+| `bash infra/azure/test-database-connection.sh` | Test DB connectivity |

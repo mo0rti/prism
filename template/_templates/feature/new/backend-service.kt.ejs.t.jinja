@@ -1,0 +1,39 @@
+---
+to: "<%= entity ? 'backend/src/main/kotlin/{{ package_identifier | replace(\".\", \"/\") }}/features/' + h.changeCase.camel(name) + '/service/' + h.changeCase.pascal(entity) + 'Service.kt' : null %>"
+---
+package {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.service
+
+import {{ package_identifier }}.common.exception.ApiException
+import {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.model.<%= h.changeCase.pascal(entity) %>
+import {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.repository.<%= h.changeCase.pascal(entity) %>Repository
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
+import org.springframework.http.HttpStatus
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+
+@Service
+class <%= h.changeCase.pascal(entity) %>Service(
+    private val repository: <%= h.changeCase.pascal(entity) %>Repository,
+) {
+
+    fun findAll(pageable: Pageable): Page<<%= h.changeCase.pascal(entity) %>> =
+        repository.findAllByOrderByCreatedAtDesc(pageable)
+
+    fun findById(id: Long): <%= h.changeCase.pascal(entity) %> =
+        repository.findById(id).orElseThrow {
+            ApiException("<%= h.changeCase.pascal(entity) %> not found", HttpStatus.NOT_FOUND)
+        }
+
+    @Transactional
+    fun create(entity: <%= h.changeCase.pascal(entity) %>): <%= h.changeCase.pascal(entity) %> =
+        repository.save(entity)
+
+    @Transactional
+    fun delete(id: Long) {
+        if (!repository.existsById(id)) {
+            throw ApiException("<%= h.changeCase.pascal(entity) %> not found", HttpStatus.NOT_FOUND)
+        }
+        repository.deleteById(id)
+    }
+}

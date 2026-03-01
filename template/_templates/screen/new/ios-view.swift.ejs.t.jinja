@@ -1,0 +1,30 @@
+---
+to: "<%= platform === 'ios' ? 'ios/{{ project_slug }}/UI/' + h.changeCase.pascal(feature) + '/' + h.changeCase.pascal(name) + 'View.swift' : null %>"
+---
+import SwiftUI
+
+struct <%= h.changeCase.pascal(name) %>View: View {
+    @Bindable var viewModel: <%= h.changeCase.pascal(name) %>ViewModel
+
+    var body: some View {
+        Group {
+            switch viewModel.viewState {
+            case .idle, .loading:
+                ProgressView("Loading...")
+            case .success:
+                // TODO: Screen content
+                Text("TODO: Implement <%= h.changeCase.title(name) %> view")
+            case .error(let message):
+                ContentUnavailableView(
+                    "Error",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(message)
+                )
+            }
+        }
+        .navigationTitle("<%= h.changeCase.title(name) %>")
+        .task {
+            await viewModel.load()
+        }
+    }
+}

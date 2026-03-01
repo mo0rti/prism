@@ -1,0 +1,94 @@
+package {{ package_identifier }}.core.network
+
+import {{ package_identifier }}.core.datastore.TokenStorage
+import {{ package_identifier }}.core.session.SessionManager
+import {{ package_identifier }}.feature.auth.data.remote.dto.RefreshTokenRequest
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import okhttp3.Authenticator
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okhttp3.Route
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Handles 401 responses by attempting a token refresh.
+ * If the refresh succeeds, the original request is retried with the new token.
+ * If the refresh fails, the user is logged out.
+ */
+@Singleton
+class TokenAuthenticator @Inject constructor(
+    private val tokenStorage: TokenStorage,
+    private val sessionManager: SessionManager,
+    private val json: Json,
+) : Authenticator {
+
+    override fun authenticate(route: Route?, response: Response): Request? {
+        // Prevent infinite refresh loops
+        if (response.request.header("X-Retry-Auth") != null) {
+            runBlocking { sessionManager.onLogout() }
+            return null
+        }
+
+        val refreshToken = runBlocking { tokenStorage.refreshToken.firstOrNull() }
+            ?: run {
+                runBlocking { sessionManager.onLogout() }
+                return null
+            }
+
+        return try {
+            val refreshResponse = executeRefresh(response.request, refreshToken)
+            if (refreshResponse != null) {
+                response.request.newBuilder()
+                    .header("Authorization", "Bearer ${refreshResponse.first}")
+                    .header("X-Retry-Auth", "true")
+                    .build()
+            } else {
+                runBlocking { sessionManager.onLogout() }
+                null
+            }
+        } catch (_: Exception) {
+            runBlocking { sessionManager.onLogout() }
+            null
+        }
+    }
+
+    @Synchronized
+    private fun executeRefresh(originalRequest: Request, refreshToken: String): Pair<String, String>? {
+        val body = json.encodeToString(
+            RefreshTokenRequest.serializer(),
+            RefreshTokenRequest(refreshToken),
+        )
+
+        val baseUrl = originalRequest.url.newBuilder()
+            .encodedPath("/api/v1/auth/refresh")
+            .build()
+
+        val request = Request.Builder()
+            .url(baseUrl)
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        val client = OkHttpClient.Builder().build()
+        val response = client.newCall(request).execute()
+
+        if (!response.isSuccessful) return null
+
+        val responseBody = response.body?.string() ?: return null
+        val authResponse = json.decodeFromString(
+            {{ package_identifier }}.feature.auth.data.remote.dto.AuthResponse.serializer(),
+            responseBody,
+        )
+
+        runBlocking {
+            tokenStorage.saveTokens(authResponse.accessToken, authResponse.refreshToken)
+        }
+
+        return authResponse.accessToken to authResponse.refreshToken
+    }
+}

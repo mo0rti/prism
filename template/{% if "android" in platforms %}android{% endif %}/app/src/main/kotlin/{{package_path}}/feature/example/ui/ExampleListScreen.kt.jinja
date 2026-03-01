@@ -1,0 +1,101 @@
+package {{ package_identifier }}.feature.example.ui
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import {{ package_identifier }}.designsystem.components.ErrorView
+import {{ package_identifier }}.designsystem.components.LoadingIndicator
+import {{ package_identifier }}.feature.example.domain.model.Example
+import {{ package_identifier }}.feature.example.ui.components.EmptyExamplesView
+import {{ package_identifier }}.feature.example.ui.components.ExampleCard
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExampleListScreen(
+    uiState: ExampleListUiState,
+    onLoadMore: () -> Unit,
+    onDelete: (String) -> Unit,
+    onLogout: () -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Scaffold(
+        modifier = modifier,
+        topBar = {
+            TopAppBar(
+                title = { Text("Examples") },
+                actions = {
+                    IconButton(onClick = onLogout) {
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            when (uiState) {
+                is ExampleListUiState.Idle,
+                is ExampleListUiState.Loading -> {
+                    LoadingIndicator()
+                }
+                is ExampleListUiState.Success -> {
+                    if (uiState.examples.isEmpty()) {
+                        EmptyExamplesView(modifier = Modifier.align(Alignment.Center))
+                    } else {
+                        val listState = rememberLazyListState()
+
+                        LaunchedEffect(listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index) {
+                            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            if (lastVisible >= uiState.examples.size - 3) {
+                                onLoadMore()
+                            }
+                        }
+
+                        LazyColumn(
+                            state = listState,
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(uiState.examples, key = { it.id }) { example ->
+                                ExampleCard(
+                                    example = example,
+                                    onDelete = { onDelete(example.id) },
+                                )
+                            }
+                            if (uiState.isLoadingMore) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                is ExampleListUiState.Error -> {
+                    ErrorView(
+                        message = uiState.message,
+                        onRetry = onRetry,
+                    )
+                }
+            }
+        }
+    }
+}

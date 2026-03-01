@@ -1,0 +1,130 @@
+package {{ package_identifier }}.feature.auth.ui
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import {{ package_identifier }}.designsystem.components.LoadingIndicator
+
+@Composable
+fun SignInScreen(
+    uiState: SignInUiState,
+{% if "password" in auth_methods %}
+    email: String,
+    password: String,
+    onEmailChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onSignInWithPassword: () -> Unit,
+{% endif %}
+    onSignInWithOAuth: (provider: String) -> Unit,
+    onDismissError: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        when (uiState) {
+            is SignInUiState.Loading -> {
+                LoadingIndicator()
+            }
+            else -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text(
+                        text = "Welcome",
+                        style = MaterialTheme.typography.headlineLarge,
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (uiState is SignInUiState.Error) {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = uiState.message,
+                                modifier = Modifier.padding(16.dp),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                    }
+
+{% if "password" in auth_methods %}
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = onEmailChange,
+                        label = { Text("Email") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = onPasswordChange,
+                        label = { Text("Password") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                    )
+
+                    Button(
+                        onClick = onSignInWithPassword,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = email.isNotBlank() && password.isNotBlank(),
+                    ) {
+                        Text("Sign In")
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+{% endif %}
+
+{% if "google" in auth_methods %}
+                    OAuthButton(text = "Continue with Google") {
+                        onSignInWithOAuth("google")
+                    }
+{% endif %}
+{% if "apple" in auth_methods %}
+                    OAuthButton(text = "Continue with Apple") {
+                        onSignInWithOAuth("apple")
+                    }
+{% endif %}
+{% if "facebook" in auth_methods %}
+                    OAuthButton(text = "Continue with Facebook") {
+                        onSignInWithOAuth("facebook")
+                    }
+{% endif %}
+{% if "microsoft" in auth_methods %}
+                    OAuthButton(text = "Continue with Microsoft") {
+                        onSignInWithOAuth("microsoft")
+                    }
+{% endif %}
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OAuthButton(
+    text: String,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(text)
+    }
+}

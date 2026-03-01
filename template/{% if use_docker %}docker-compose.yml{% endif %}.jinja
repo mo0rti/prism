@@ -8,21 +8,18 @@ services:
       - "8080:8080"
     environment:
       SPRING_PROFILES_ACTIVE: dev
-{% if database == "postgres" %}
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/{{ project_slug | replace('-', '_') }}
       SPRING_DATASOURCE_USERNAME: {{ project_slug | replace('-', '_') }}
       SPRING_DATASOURCE_PASSWORD: localdev
-{% elif database == "mysql" %}
-      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/{{ project_slug | replace('-', '_') }}
-      SPRING_DATASOURCE_USERNAME: {{ project_slug | replace('-', '_') }}
-      SPRING_DATASOURCE_PASSWORD: localdev
-{% endif %}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
       JWT_SECRET: dev-jwt-secret-do-not-use-in-production
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
-{% if database == "postgres" %}
   db:
     image: postgres:16-alpine
     environment:
@@ -38,30 +35,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-{% elif database == "mysql" %}
-  db:
-    image: mysql:8.0
-    environment:
-      MYSQL_DATABASE: {{ project_slug | replace('-', '_') }}
-      MYSQL_USER: {{ project_slug | replace('-', '_') }}
-      MYSQL_PASSWORD: localdev
-      MYSQL_ROOT_PASSWORD: localdev
+
+  redis:
+    image: redis:7-alpine
     ports:
-      - "3306:3306"
+      - "6379:6379"
     volumes:
-      - mysqldata:/var/lib/mysql
+      - redisdata:/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 5s
+      timeout: 3s
       retries: 5
 {% endif %}
-{% endif %}
 
-{% if database == "postgres" %}
 volumes:
+{% if "backend" in platforms %}
   pgdata:
-{% elif database == "mysql" %}
-volumes:
-  mysqldata:
+  redisdata:
 {% endif %}

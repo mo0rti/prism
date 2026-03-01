@@ -1,0 +1,39 @@
+---
+to: "<%= entity ? 'ios/{{ project_slug }}/UI/' + h.changeCase.pascal(name) + '/' + h.changeCase.pascal(entity) + 'ListView.swift' : null %>"
+---
+import SwiftUI
+
+struct <%= h.changeCase.pascal(entity) %>ListView: View {
+    @Bindable var viewModel: <%= h.changeCase.pascal(entity) %>ListViewModel
+
+    var body: some View {
+        Group {
+            switch viewModel.viewState {
+            case .idle, .loading:
+                ProgressView("Loading...")
+            case .success:
+                if viewModel.items.isEmpty {
+                    ContentUnavailableView(
+                        "No <%= h.changeCase.title(h.inflection.pluralize(entity)) %>",
+                        systemImage: "tray",
+                        description: Text("No <%= h.changeCase.lower(h.inflection.pluralize(entity)) %> found.")
+                    )
+                } else {
+                    List {
+                        // TODO: Render items
+                    }
+                }
+            case .error(let message):
+                ContentUnavailableView(
+                    "Error",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(message)
+                )
+            }
+        }
+        .navigationTitle("<%= h.changeCase.title(h.inflection.pluralize(entity)) %>")
+        .task {
+            await viewModel.loadItems()
+        }
+    }
+}

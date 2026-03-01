@@ -1,0 +1,43 @@
+---
+to: "<%= platform === 'android' ? 'android/app/src/main/kotlin/{{ package_identifier | replace(\".\", \"/\") }}/feature/' + h.changeCase.camel(feature) + '/ui/' + h.changeCase.pascal(name) + 'ViewModel.kt' : null %>"
+---
+package {{ package_identifier }}.feature.<%= h.changeCase.camel(feature) %>.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+sealed interface <%= h.changeCase.pascal(name) %>UiState {
+    data object Idle : <%= h.changeCase.pascal(name) %>UiState
+    data object Loading : <%= h.changeCase.pascal(name) %>UiState
+    data object Success : <%= h.changeCase.pascal(name) %>UiState
+    data class Error(val message: String) : <%= h.changeCase.pascal(name) %>UiState
+}
+
+@HiltViewModel
+class <%= h.changeCase.pascal(name) %>ViewModel @Inject constructor(
+    // TODO: Inject dependencies
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow<<%= h.changeCase.pascal(name) %>UiState>(<%= h.changeCase.pascal(name) %>UiState.Idle)
+    val uiState: StateFlow<<%= h.changeCase.pascal(name) %>UiState> = _uiState.asStateFlow()
+
+    fun load() {
+        viewModelScope.launch {
+            _uiState.value = <%= h.changeCase.pascal(name) %>UiState.Loading
+            try {
+                // TODO: Load data
+                _uiState.value = <%= h.changeCase.pascal(name) %>UiState.Success
+            } catch (e: Exception) {
+                _uiState.value = <%= h.changeCase.pascal(name) %>UiState.Error(
+                    e.message ?: "An error occurred",
+                )
+            }
+        }
+    }
+}

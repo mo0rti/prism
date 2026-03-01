@@ -151,3 +151,39 @@ tasks:
     desc: "Validate OpenAPI spec"
     cmds:
       - "{{'{{'}} .OPENAPI_GENERATOR {{'}}'}} validate -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}"
+
+{% if cloud_provider == "azure" and "backend" in platforms %}
+  # ===========================================================================
+  # Infrastructure (Azure)
+  # ===========================================================================
+  infra:setup:
+    desc: "Run all Azure infrastructure setup scripts (first-time only)"
+    dir: ./infra/azure
+    cmds:
+      - bash 00-setup-resource-group.sh {{'{{'}} .CLI_ARGS {{'}}'}}
+      - bash 01-setup-foundation.sh {{'{{'}} .CLI_ARGS {{'}}'}}
+      - bash 02-setup-database.sh {{'{{'}} .CLI_ARGS {{'}}'}}
+      - bash 03-setup-container-apps-env.sh {{'{{'}} .CLI_ARGS {{'}}'}}
+      - bash 04-setup-storage.sh {{'{{'}} .CLI_ARGS {{'}}'}}
+      - bash 05-build-and-push-images.sh {{'{{'}} .CLI_ARGS {{'}}'}}
+      - bash 06-deploy-backend.sh {{'{{'}} .CLI_ARGS {{'}}'}}
+      - bash 07-show-deployment-info.sh {{'{{'}} .CLI_ARGS {{'}}'}}
+
+  infra:update-backend:
+    desc: "Rebuild and redeploy backend (zero-downtime)"
+    dir: ./infra/azure
+    cmds:
+      - bash update-backend.sh {{'{{'}} .CLI_ARGS {{'}}'}}
+
+  infra:info:
+    desc: "Show deployment information"
+    dir: ./infra/azure
+    cmds:
+      - bash 07-show-deployment-info.sh {{'{{'}} .CLI_ARGS {{'}}'}}
+
+  infra:check-secrets:
+    desc: "Validate all required secrets are configured"
+    dir: ./infra/azure
+    cmds:
+      - bash check-secrets.sh
+{% endif %}

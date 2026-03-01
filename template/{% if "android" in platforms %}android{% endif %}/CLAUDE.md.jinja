@@ -1,6 +1,6 @@
 # Android — {{ project_name }}
 
-Kotlin + Jetpack Compose with MVVM architecture.
+Kotlin + Jetpack Compose with Clean Architecture (MVVM).
 
 ## Quick Reference
 
@@ -9,46 +9,50 @@ Kotlin + Jetpack Compose with MVVM architecture.
 - **Install**: `./gradlew installDebug`
 - **Min SDK**: 29 | **Target SDK**: 35 | **Compile SDK**: 36
 
-## Architecture (MVVM)
+## Architecture
 
 ```
 app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  di/            → Hilt modules
-  navigation/    → NavHost + type-safe routes
-  data/
-    remote/      → Retrofit 3 ApiService + AuthInterceptor
-    local/       → DataStore TokenStorage + Room database
-    local/db/    → Room entities, DAOs, AppDatabase
-    repository/  → Repository interfaces + implementations
-  domain/model/  → DTOs (kotlinx.serialization)
-  ui/
-    theme/       → Material3 theme (from design tokens)
-    auth/        → LoginScreen + LoginViewModel
-    examples/    → ExampleListScreen + ExampleListViewModel
-    common/      → LoadingIndicator, ErrorView
+  app/             → Application + MainActivity
+  core/
+    common/        → AppResult, AppDispatchers
+    session/       → SessionManager (interface + impl)
+    network/       → ApiService, AuthInterceptor, TokenAuthenticator
+    datastore/     → TokenStorage (DataStore)
+    database/      → AppDatabase, Converters (shared only)
+    di/            → NetworkModule, DatabaseModule, RepositoryModule, AppModule
+    model/         → Cross-feature models: User, Session (AuthState), Paging
+  navigation/      → Screen routes, NavGraph
+  feature/
+    auth/
+      domain/      → AuthRepository interface, AuthCredentials model
+      data/        → AuthDtos, AuthRepositoryImpl
+      ui/          → SignInRoute, SignInScreen, SignInViewModel
+    example/
+      domain/      → ExampleRepository interface, Example model
+      data/        → ExampleDtos, ExampleEntity, ExampleDao, Mappers, ExampleRepositoryImpl
+      ui/          → ExampleListRoute, ExampleListScreen, ExampleListViewModel, components/
+  designsystem/
+    theme/         → Color, Type, Shape, Dimensions, Theme
+    text/          → UiText (framework-light string wrapper)
+    components/    → LoadingIndicator, ErrorView
 ```
 
-## MVVM Pattern
+## Patterns
 
-- **ViewModel**: `@HiltViewModel` with `StateFlow<UiState>`
-- **UiState**: sealed interface — `Idle`, `Loading`, `Success(data)`, `Error(message)`
-- **View**: `@Composable` functions, collect state with `collectAsState()`
-- **DI**: Hilt (`@Inject`, `@Singleton`, `@HiltViewModel`)
-- **Navigation**: Type-safe routes via `@Serializable` data objects/classes
+- **ViewModel**: `@HiltViewModel` with `StateFlow<UiState>` (sealed interface co-located in ViewModel file)
+- **Route/Screen split**: Route handles navigation wiring + ViewModel; Screen is a pure composable
+- **Repository boundary**: Interface in `feature/*/domain/repository/`, impl in `feature/*/data/repository/`
+- **DI**: Hilt — split modules: NetworkModule, DatabaseModule, RepositoryModule, AppModule
+- **Session**: `SessionManager` exposes `StateFlow<AuthState>`, consumed by NavGraph
+- **Token refresh**: `TokenAuthenticator` (OkHttp Authenticator) handles 401 → refresh → retry
+- **Navigation**: Type-safe routes via `@Serializable` sealed interface
 
 ## Conventions
 
-- One ViewModel per screen, injected via `hiltViewModel()`
-- Repositories are interfaces with `Impl` classes, Hilt-bound in `AppModule`
-- API base URL configured via `buildConfigField` in `build.gradle.kts`
-- Token stored in DataStore, injected into OkHttp interceptor
-- Local caching via Room (entities in `data/local/db/`)
-- Tests use MockK + Turbine for Flow testing
-
-## Key Files
-
-- `di/AppModule.kt` — all Hilt bindings (network, database, repositories)
-- `data/remote/ApiService.kt` — Retrofit 3 interface matching OpenAPI
-- `data/local/TokenStorage.kt` — DataStore token persistence
-- `data/local/db/AppDatabase.kt` — Room database
-- `ui/theme/Theme.kt` — Material3 theme from design tokens
+- Feature-specific persistence (Entity, DAO, Mappers) lives in `feature/*/data/local/`
+- Shared database infrastructure (AppDatabase, Converters) lives in `core/database/`
+- DTOs (`@Serializable`) in `feature/*/data/remote/dto/` — domain models are framework-light
+- No use cases by default — add `usecase/` only when orchestration logic is needed
+- `AppResult<T>` instead of `kotlin.Result` to avoid naming collision
+- Tests: MockK + Turbine, test structure mirrors source

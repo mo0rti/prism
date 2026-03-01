@@ -1,0 +1,102 @@
+package {{ package_identifier }}.feature.example.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import {{ package_identifier }}.feature.auth.domain.repository.AuthRepository
+import {{ package_identifier }}.feature.example.domain.model.Example
+import {{ package_identifier }}.feature.example.domain.repository.ExampleRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+sealed interface ExampleListUiState {
+    data object Idle : ExampleListUiState
+    data object Loading : ExampleListUiState
+    data class Success(
+        val examples: List<Example>,
+        val page: Int,
+        val totalPages: Int,
+        val isLoadingMore: Boolean = false,
+    ) : ExampleListUiState
+    data class Error(val message: String) : ExampleListUiState
+}
+
+@HiltViewModel
+class ExampleListViewModel @Inject constructor(
+    private val exampleRepository: ExampleRepository,
+    private val authRepository: AuthRepository,
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow<ExampleListUiState>(ExampleListUiState.Idle)
+    val uiState: StateFlow<ExampleListUiState> = _uiState.asStateFlow()
+
+    init {
+        loadExamples()
+    }
+
+    fun loadExamples() {
+        viewModelScope.launch {
+            _uiState.value = ExampleListUiState.Loading
+            try {
+                val result = exampleRepository.list(page = 0)
+                _uiState.value = ExampleListUiState.Success(
+                    examples = result.content,
+                    page = result.page,
+                    totalPages = result.totalPages,
+                )
+            } catch (e: Exception) {
+                _uiState.value = ExampleListUiState.Error(
+                    e.message ?: "Failed to load examples",
+                )
+            }
+        }
+    }
+
+    fun loadMore() {
+        val current = _uiState.value as? ExampleListUiState.Success ?: return
+        if (current.isLoadingMore || !current.hasNextPage) return
+
+        _uiState.value = current.copy(isLoadingMore = true)
+
+        viewModelScope.launch {
+            try {
+                val nextPage = current.page + 1
+                val result = exampleRepository.list(page = nextPage)
+                _uiState.value = ExampleListUiState.Success(
+                    examples = current.examples + result.content,
+                    page = result.page,
+                    totalPages = result.totalPages,
+                )
+            } catch (e: Exception) {
+                _uiState.value = current.copy(isLoadingMore = false)
+            }
+        }
+    }
+
+    fun deleteExample(id: String) {
+        val current = _uiState.value as? ExampleListUiState.Success ?: return
+        _uiState.value = current.copy(
+            examples = current.examples.filter { it.id != id },
+        )
+        viewModelScope.launch {
+            try {
+                exampleRepository.delete(id)
+            } catch (_: Exception) {
+                // Revert on failure
+                loadExamples()
+            }
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            authRepository.logout()
+        }
+    }
+
+    private val ExampleListUiState.Success.hasNextPage: Boolean
+        get() = page < totalPages - 1
+}

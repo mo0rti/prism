@@ -1,0 +1,49 @@
+---
+to: _manual
+message: |
+  Add this method to the controller at:
+  backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/features/<%= h.changeCase.camel(feature) %>/controller/<%= h.changeCase.pascal(entity) %>Controller.kt
+
+  <% if (method === 'GET') { %>
+      @GetMapping("<%= path %>")
+      fun <%= h.changeCase.camel(description.split(' ').slice(0, 3).join('')) %>(
+          @RequestParam(defaultValue = "0") page: Int,
+          @RequestParam(defaultValue = "20") size: Int,
+      ): PagedResponse<<%= h.changeCase.pascal(entity) %>> {
+          val result = service.findAll(PageRequest.of(page, size))  // TODO: customize query
+          return PagedResponse(
+              content = result.content,
+              page = result.number,
+              size = result.size,
+              totalElements = result.totalElements,
+              totalPages = result.totalPages,
+          )
+      }
+  <% } else if (method === 'POST') { %>
+      @PostMapping("<%= path %>")
+      @ResponseStatus(HttpStatus.CREATED)
+      fun <%= h.changeCase.camel(description.split(' ').slice(0, 3).join('')) %>(
+          @RequestBody request: Any,  // TODO: Create DTO
+      ): <%= h.changeCase.pascal(entity) %> {
+          // TODO: Implement
+          throw UnsupportedOperationException("Not yet implemented")
+      }
+  <% } else if (method === 'PUT' || method === 'PATCH') { %>
+      @<%= method === 'PUT' ? 'PutMapping' : 'PatchMapping' %>("<%= path %>")
+      fun <%= h.changeCase.camel(description.split(' ').slice(0, 3).join('')) %>(
+          @RequestBody request: Any,  // TODO: Create DTO
+      ): <%= h.changeCase.pascal(entity) %> {
+          // TODO: Implement
+          throw UnsupportedOperationException("Not yet implemented")
+      }
+  <% } else if (method === 'DELETE') { %>
+      @DeleteMapping("<%= path %>")
+      @ResponseStatus(HttpStatus.NO_CONTENT)
+      fun <%= h.changeCase.camel(description.split(' ').slice(0, 3).join('')) %>() {
+          // TODO: Implement
+          throw UnsupportedOperationException("Not yet implemented")
+      }
+  <% } %>
+
+  And add a corresponding method to the service class.
+---

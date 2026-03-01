@@ -1,0 +1,34 @@
+package {{ package_identifier }}.feature.example.data.local
+
+import {{ package_identifier }}.feature.example.data.remote.dto.ExampleResponse
+import {{ package_identifier }}.feature.example.domain.model.Example
+
+fun ExampleEntity.toDomain(): Example = Example(
+    id = id,
+    title = title,
+    description = description,
+    status = status,
+    createdBy = createdBy,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+fun Example.toEntity(): ExampleEntity = ExampleEntity(
+    id = id,
+    title = title,
+    description = description,
+    status = status,
+    createdBy = createdBy,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+fun ExampleResponse.toEntity(): ExampleEntity = ExampleEntity(
+    id = id,
+    title = title,
+    description = description,
+    status = status,
+    createdBy = createdBy,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)

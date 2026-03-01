@@ -2,7 +2,7 @@
 globs: "android/**"
 ---
 
-# Android — Kotlin + Jetpack Compose
+# Android — Kotlin + Jetpack Compose (Clean Architecture)
 
 ## Stack
 - Kotlin, Jetpack Compose (BOM 2026.01.01), Hilt DI
@@ -14,27 +14,41 @@ globs: "android/**"
 ## Structure
 ```
 app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  di/            → Hilt modules (AppModule)
-  navigation/    → Screen routes, NavGraph
-  data/remote/   → ApiService, AuthInterceptor
-  data/local/    → TokenStorage (DataStore)
-  data/local/db/ → Room: AppDatabase, DAOs, entities
-  data/repository/ → Interface + Impl
-  domain/model/  → DTOs (kotlinx.serialization)
-  ui/theme/      → Material3 theme from design tokens
-  ui/auth/       → LoginScreen + LoginViewModel
-  ui/examples/   → ExampleListScreen + ExampleListViewModel
-  ui/common/     → LoadingIndicator, ErrorView
+  app/             → Application + MainActivity
+  core/
+    common/        → AppResult, AppDispatchers
+    session/       → SessionManager (auth state source)
+    network/       → ApiService, AuthInterceptor, TokenAuthenticator
+    datastore/     → TokenStorage (DataStore)
+    database/      → AppDatabase, Converters (shared only)
+    di/            → NetworkModule, DatabaseModule, RepositoryModule, AppModule
+    model/         → User, Session (AuthState), Paging
+  navigation/      → Screen routes, NavGraph
+  feature/*/
+    domain/model/      → Feature-specific domain models
+    domain/repository/ → Repository interfaces
+    data/remote/dto/   → @Serializable DTOs
+    data/local/        → Room Entity, DAO, Mappers (if feature needs persistence)
+    data/repository/   → Repository implementations
+    ui/                → Route, Screen, ViewModel, components/
+  designsystem/
+    theme/         → Color, Type, Shape, Dimensions, Theme
+    text/          → UiText
+    components/    → LoadingIndicator, ErrorView
 ```
 
-## MVVM Pattern
-- `@HiltViewModel` with `StateFlow<UiState>`
-- `sealed interface UiState`: Idle, Loading, Success(data), Error(message)
-- `@Composable` screens collect state via `collectAsState()`
-- One ViewModel per screen, injected via `hiltViewModel()`
+## Patterns
+- `@HiltViewModel` with `StateFlow<UiState>` (UiState sealed interface co-located in ViewModel file)
+- Route/Screen split: Route = nav wiring + ViewModel; Screen = pure composable
+- Repository: interface in `domain/repository/`, impl in `data/repository/`
+- Split DI: NetworkModule, DatabaseModule, RepositoryModule, AppModule
+- SessionManager exposes `StateFlow<AuthState>` for auth gating
+- TokenAuthenticator handles 401 → refresh → retry automatically
+- Type-safe navigation via `@Serializable` sealed interface
 
 ## Conventions
-- Repositories: interface + Impl, bound in Hilt AppModule
-- API base URL via `buildConfigField` in `build.gradle.kts`
-- Room for local caching, DataStore for preferences/tokens
-- Tests: MockK + Turbine for Flow testing
+- Feature-specific persistence in `feature/*/data/local/`, not `core/database/`
+- DTOs in `data/remote/dto/`, domain models are framework-light (no @Serializable)
+- No use cases by default — add `usecase/` only for non-trivial orchestration
+- `AppResult<T>` avoids collision with `kotlin.Result`
+- Tests: MockK + Turbine, mirror source structure

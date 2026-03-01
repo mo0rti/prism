@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Step 7: Show Deployment Information
+# =============================================================================
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/load-env-config.sh" "${1:-prod}"
+
+echo "============================================"
+echo "  {{ project_name }} — Deployment Summary"
+echo "  Environment: $ENVIRONMENT"
+echo "============================================"
+
+echo ""
+echo "--- Resource Group ---"
+az group show --name "$RESOURCE_GROUP" --query "{name:name, location:location, status:properties.provisioningState}" -o table 2>/dev/null || echo "  Not found"
+
+echo ""
+echo "--- Container Apps ---"
+az containerapp list --resource-group "$RESOURCE_GROUP" --query "[].{name:name, fqdn:properties.configuration.ingress.fqdn, status:properties.provisioningState}" -o table 2>/dev/null || echo "  None found"
+
+echo ""
+echo "--- PostgreSQL ---"
+az postgres flexible-server show --resource-group "$RESOURCE_GROUP" --name "$POSTGRES_SERVER_NAME" --query "{name:name, host:fullyQualifiedDomainName, state:state, sku:sku.name}" -o table 2>/dev/null || echo "  Not found"
+
+echo ""
+echo "--- Redis ---"
+az redis show --resource-group "$RESOURCE_GROUP" --name "$REDIS_NAME" --query "{name:name, host:hostName, port:sslPort, status:provisioningState}" -o table 2>/dev/null || echo "  Not found"
+
+echo ""
+echo "--- Storage ---"
+az storage account show --resource-group "$RESOURCE_GROUP" --name "$STORAGE_ACCOUNT_NAME" --query "{name:name, sku:sku.name, status:provisioningState}" -o table 2>/dev/null || echo "  Not found"
+
+# Show URLs from saved files
+echo ""
+echo "--- URLs ---"
+BACKEND_URL_FILE="$SCRIPT_DIR/backend-url${ENV_SUFFIX}.env"
+if [[ -f "$BACKEND_URL_FILE" ]]; then
+    source "$BACKEND_URL_FILE"
+    echo "  Backend: $BACKEND_URL"
+    echo "  Health:  ${BACKEND_URL}/actuator/health"
+    echo "  Swagger: ${BACKEND_URL}/swagger-ui.html"
+fi
+
+echo ""
+echo "--- Useful Commands ---"
+echo "  Update backend:    ./update-backend.sh $ENVIRONMENT"
+echo "  Show DB creds:     ./show-database-credentials.sh $ENVIRONMENT"
+echo "  Test DB:           ./test-database-connection.sh $ENVIRONMENT"
+echo "  Add custom domain: ./add-custom-domain.sh $ENVIRONMENT <domain>"
+echo "  Cleanup (danger):  ./cleanup.sh $ENVIRONMENT"

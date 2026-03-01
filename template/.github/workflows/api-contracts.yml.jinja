@@ -1,0 +1,27 @@
+name: API Contracts Validation
+
+on:
+  push:
+    paths:
+      - 'shared/api-contracts/**'
+  pull_request:
+    paths:
+      - 'shared/api-contracts/**'
+
+jobs:
+  validate:
+    name: Validate OpenAPI Spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Install openapi-generator-cli
+        run: npm install -g @openapitools/openapi-generator-cli
+
+      - name: Validate OpenAPI spec
+        run: openapi-generator-cli validate -i shared/api-contracts/openapi.yml

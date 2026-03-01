@@ -1,0 +1,34 @@
+package {{ package_identifier }}.core.di
+
+import {{ package_identifier }}.core.common.AppDispatchers
+import {{ package_identifier }}.core.common.DefaultAppDispatchers
+import {{ package_identifier }}.core.session.SessionManager
+import {{ package_identifier }}.core.session.SessionManagerImpl
+import dagger.Binds
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class AppModule {
+
+    @Binds
+    @Singleton
+    abstract fun bindSessionManager(impl: SessionManagerImpl): SessionManager
+
+    @Binds
+    @Singleton
+    abstract fun bindAppDispatchers(impl: DefaultAppDispatchers): AppDispatchers
+
+    companion object {
+        @Provides
+        @Singleton
+        fun provideApplicationScope(): CoroutineScope =
+            CoroutineScope(SupervisorJob())
+    }
+}

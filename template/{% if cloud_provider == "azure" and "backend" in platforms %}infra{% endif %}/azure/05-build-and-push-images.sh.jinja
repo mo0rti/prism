@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Step 5: Build and Push Docker Images to ACR
+# =============================================================================
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/load-env-config.sh" "${1:-prod}"
+
+# Load ACR credentials
+ACR_FILE="$SCRIPT_DIR/acr-credentials${ENV_SUFFIX}.env"
+if [[ ! -f "$ACR_FILE" ]]; then
+    echo "ERROR: ACR credentials not found. Run 01-setup-foundation.sh first."
+    exit 1
+fi
+source "$ACR_FILE"
+
+IMAGE_TAG="${2:-$(date +%Y%m%d-%H%M%S)}"
+
+echo "============================================"
+echo "  Building and Pushing Docker Images"
+echo "  Registry: $ACR_LOGIN_SERVER"
+echo "  Tag: $IMAGE_TAG"
+echo "============================================"
+
+# Login to ACR
+echo ""
+echo "Logging in to ACR..."
+echo "$ACR_PASSWORD" | docker login "$ACR_LOGIN_SERVER" -u "$ACR_USERNAME" --password-stdin
+
+# --- Build and push backend ---
+BACKEND_IMAGE="${ACR_LOGIN_SERVER}/{{ project_slug }}-backend"
+
+echo ""
+echo "Building backend image..."
+docker build \
+    -t "${BACKEND_IMAGE}:${IMAGE_TAG}" \
+    -t "${BACKEND_IMAGE}:latest" \
+    -f "$PROJECT_ROOT/backend/Dockerfile" \
+    "$PROJECT_ROOT/backend"
+
+echo "Pushing backend image..."
+docker push "${BACKEND_IMAGE}:${IMAGE_TAG}"
+docker push "${BACKEND_IMAGE}:latest"
+
+# =============================================================================
+# To add another service, duplicate the block above:
+#
+# SERVICE_IMAGE="${ACR_LOGIN_SERVER}/{{ project_slug }}-<service-name>"
+# docker build -t "${SERVICE_IMAGE}:${IMAGE_TAG}" -f "$PROJECT_ROOT/<service>/Dockerfile" "$PROJECT_ROOT/<service>"
+# docker push "${SERVICE_IMAGE}:${IMAGE_TAG}"
+# docker push "${SERVICE_IMAGE}:latest"
+# =============================================================================
+
+# Save image tags
+TAG_FILE="$SCRIPT_DIR/image-tags${ENV_SUFFIX}.env"
+cat > "$TAG_FILE" <<EOF
+IMAGE_TAG=$IMAGE_TAG
+BACKEND_IMAGE=${BACKEND_IMAGE}:${IMAGE_TAG}
+EOF
+
+echo ""
+echo "Images pushed."
+echo "  Backend: ${BACKEND_IMAGE}:${IMAGE_TAG}"
+echo "  Tags saved to: $TAG_FILE"
+echo "Next: Run 06-deploy-backend.sh"

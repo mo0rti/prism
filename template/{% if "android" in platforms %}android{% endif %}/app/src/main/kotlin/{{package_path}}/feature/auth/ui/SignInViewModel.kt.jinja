@@ -1,0 +1,76 @@
+package {{ package_identifier }}.feature.auth.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import {{ package_identifier }}.feature.auth.domain.repository.AuthRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+sealed interface SignInUiState {
+    data object Idle : SignInUiState
+    data object Loading : SignInUiState
+    data object Success : SignInUiState
+    data class Error(val message: String) : SignInUiState
+}
+
+@HiltViewModel
+class SignInViewModel @Inject constructor(
+    private val authRepository: AuthRepository,
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow<SignInUiState>(SignInUiState.Idle)
+    val uiState: StateFlow<SignInUiState> = _uiState.asStateFlow()
+
+{% if "password" in auth_methods %}
+    private val _email = MutableStateFlow("")
+    val email: StateFlow<String> = _email.asStateFlow()
+
+    private val _password = MutableStateFlow("")
+    val password: StateFlow<String> = _password.asStateFlow()
+
+    fun onEmailChange(value: String) { _email.value = value }
+    fun onPasswordChange(value: String) { _password.value = value }
+
+    fun signInWithPassword() {
+        viewModelScope.launch {
+            _uiState.value = SignInUiState.Loading
+            try {
+                authRepository.login(_email.value, _password.value)
+                _uiState.value = SignInUiState.Success
+            } catch (e: Exception) {
+                _uiState.value = SignInUiState.Error(e.message ?: "Sign in failed")
+            }
+        }
+    }
+
+    fun register(displayName: String) {
+        viewModelScope.launch {
+            _uiState.value = SignInUiState.Loading
+            try {
+                authRepository.register(_email.value, _password.value, displayName)
+                _uiState.value = SignInUiState.Success
+            } catch (e: Exception) {
+                _uiState.value = SignInUiState.Error(e.message ?: "Registration failed")
+            }
+        }
+    }
+{% endif %}
+
+    fun signInWithOAuth(provider: String, code: String, redirectUri: String) {
+        viewModelScope.launch {
+            _uiState.value = SignInUiState.Loading
+            try {
+                authRepository.oauthCallback(provider, code, redirectUri)
+                _uiState.value = SignInUiState.Success
+            } catch (e: Exception) {
+                _uiState.value = SignInUiState.Error(e.message ?: "OAuth sign in failed")
+            }
+        }
+    }
+
+    fun clearError() { _uiState.value = SignInUiState.Idle }
+}

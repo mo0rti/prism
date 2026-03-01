@@ -4,38 +4,50 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.toRoute
-import {{ package_identifier }}.data.local.TokenStorage
-import {{ package_identifier }}.ui.auth.LoginScreen
-import {{ package_identifier }}.ui.examples.ExampleListScreen
+import {{ package_identifier }}.core.model.AuthState
+import {{ package_identifier }}.core.session.SessionManager
+import {{ package_identifier }}.feature.auth.ui.SignInRoute
+import {{ package_identifier }}.feature.example.ui.ExampleListRoute
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+
+@HiltViewModel
+class NavViewModel @Inject constructor(
+    val sessionManager: SessionManager,
+) : ViewModel()
 
 @Composable
-fun NavGraph(tokenStorage: TokenStorage = hiltViewModel<NavGraphViewModel>().tokenStorage) {
+fun NavGraph(viewModel: NavViewModel = hiltViewModel()) {
     val navController = rememberNavController()
-    val hasToken by tokenStorage.hasToken.collectAsState(initial = false)
+    val authState by viewModel.sessionManager.authState.collectAsState()
 
-    val startDestination: Screen = if (hasToken) Screen.ExampleList else Screen.Login
+    val startDestination: Screen = when (authState) {
+        is AuthState.Authenticated -> Screen.ExampleList
+        is AuthState.Unauthenticated -> Screen.SignIn
+        is AuthState.Loading -> Screen.SignIn
+    }
 
     NavHost(navController = navController, startDestination = startDestination) {
-        composable<Screen.Login> {
-            LoginScreen(
-                onLoginSuccess = {
+        composable<Screen.SignIn> {
+            SignInRoute(
+                onSignInSuccess = {
                     navController.navigate(Screen.ExampleList) {
-                        popUpTo<Screen.Login> { inclusive = true }
+                        popUpTo<Screen.SignIn> { inclusive = true }
                     }
-                }
+                },
             )
         }
         composable<Screen.ExampleList> {
-            ExampleListScreen(
+            ExampleListRoute(
                 onLogout = {
-                    navController.navigate(Screen.Login) {
+                    navController.navigate(Screen.SignIn) {
                         popUpTo<Screen.ExampleList> { inclusive = true }
                     }
-                }
+                },
             )
         }
     }

@@ -1,0 +1,47 @@
+package {{ package_identifier }}.feature.example.data.remote.dto
+
+import {{ package_identifier }}.feature.example.domain.model.Example
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class ExampleResponse(
+    val id: String,
+    val title: String,
+    val description: String? = null,
+    val status: String,
+    val createdBy: String,
+    val createdAt: String,
+    val updatedAt: String,
+) {
+    fun toDomain(): Example = Example(
+        id = id,
+        title = title,
+        description = description,
+        status = status,
+        createdBy = createdBy,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+    )
+}
+
+@Serializable
+data class ExampleListResponse(
+    val content: List<ExampleResponse>,
+    val page: Int,
+    val size: Int,
+    val totalElements: Long,
+    val totalPages: Int,
+)
+
+@Serializable
+data class CreateExampleRequest(
+    val title: String,
+    val description: String? = null,
+)
+
+@Serializable
+data class UpdateExampleRequest(
+    val title: String? = null,
+    val description: String? = null,
+    val status: String? = null,
+)

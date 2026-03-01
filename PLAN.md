@@ -706,8 +706,8 @@ copier update
 | 3D | Android (Kotlin + Jetpack Compose, MVVM, Room) | **Done** |
 | 3E | iOS (Swift 6 + SwiftUI, MVVM, SwiftData) | **Done** |
 | 4 | AI context layer (CLAUDE.md, AGENTS.md, commands, skills, Cursor rules) | **Done** |
-| 5 | CI/CD workflows + infrastructure templates | Pending |
-| 6 | Hygen in-project generators | Pending |
+| 5 | CI/CD workflows + infrastructure templates | **Done** |
+| 6 | Hygen in-project generators | **Done** |
 
 ### Library Versions (as of Feb 2026)
 

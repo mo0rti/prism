@@ -73,6 +73,21 @@ ios/Generated/
 # =============================================================================
 shared/generated/
 
+{% if cloud_provider == "azure" %}
+# =============================================================================
+# Azure Infrastructure (generated credentials — never commit)
+# =============================================================================
+infra/azure/azure-config.env
+infra/azure/app-secrets.env
+infra/azure/*-credentials*.env
+infra/azure/postgres-password*.env
+infra/azure/log-analytics*.env
+infra/azure/container-apps-env*.env
+infra/azure/image-tags*.env
+infra/azure/azure-storage*.env
+infra/azure/backend-url*.env
+{% endif %}
+
 # =============================================================================
 # Docker
 # =============================================================================

@@ -1,0 +1,25 @@
+package {{ package_identifier }}.feature.example.ui
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.hilt.navigation.compose.hiltViewModel
+
+@Composable
+fun ExampleListRoute(
+    onLogout: () -> Unit,
+    viewModel: ExampleListViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    ExampleListScreen(
+        uiState = uiState,
+        onLoadMore = viewModel::loadMore,
+        onDelete = viewModel::deleteExample,
+        onLogout = {
+            viewModel.logout()
+            onLogout()
+        },
+        onRetry = viewModel::loadExamples,
+    )
+}

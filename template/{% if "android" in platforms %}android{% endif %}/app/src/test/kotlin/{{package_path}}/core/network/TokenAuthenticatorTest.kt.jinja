@@ -1,0 +1,61 @@
+package {{ package_identifier }}.core.network
+
+import {{ package_identifier }}.core.datastore.TokenStorage
+import {{ package_identifier }}.core.session.SessionManager
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class TokenAuthenticatorTest {
+
+    private val tokenStorage = mockk<TokenStorage>(relaxed = true)
+    private val sessionManager = mockk<SessionManager>(relaxed = true)
+    private val json = Json { ignoreUnknownKeys = true }
+
+    private val authenticator = TokenAuthenticator(tokenStorage, sessionManager, json)
+
+    private fun create401Response(request: Request): Response =
+        Response.Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_2)
+            .code(401)
+            .message("Unauthorized")
+            .body("".toResponseBody())
+            .build()
+
+    @Test
+    fun `returns null and logs out when no refresh token available`() = runTest {
+        every { tokenStorage.refreshToken } returns flowOf(null)
+
+        val request = Request.Builder().url("https://api.example.com/data").build()
+        val result = authenticator.authenticate(null, create401Response(request))
+
+        assertNull(result)
+        coVerify { sessionManager.onLogout() }
+    }
+
+    @Test
+    fun `returns null on retry to prevent infinite loops`() = runTest {
+        val request = Request.Builder()
+            .url("https://api.example.com/data")
+            .header("X-Retry-Auth", "true")
+            .build()
+
+        val result = authenticator.authenticate(null, create401Response(request))
+
+        assertNull(result)
+        coVerify { sessionManager.onLogout() }
+    }
+}

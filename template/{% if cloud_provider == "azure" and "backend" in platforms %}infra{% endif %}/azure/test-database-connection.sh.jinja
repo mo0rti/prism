@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Test Database Connection
+# =============================================================================
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/load-env-config.sh" "${1:-prod}"
+
+CRED_FILE="$SCRIPT_DIR/database-credentials${ENV_SUFFIX}.env"
+if [[ ! -f "$CRED_FILE" ]]; then
+    echo "ERROR: Credentials file not found. Run 02-setup-database.sh first."
+    exit 1
+fi
+source "$CRED_FILE"
+
+echo "============================================"
+echo "  Testing Database Connection ($ENVIRONMENT)"
+echo "============================================"
+
+echo ""
+echo "--- PostgreSQL Server Status ---"
+az postgres flexible-server show \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$POSTGRES_SERVER_NAME" \
+    --query "{name:name, state:state, version:version}" -o table 2>/dev/null || echo "  Server not found"
+
+echo ""
+echo "--- Firewall Rules ---"
+az postgres flexible-server firewall-rule list \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$POSTGRES_SERVER_NAME" -o table 2>/dev/null || echo "  No rules found"
+
+echo ""
+echo "--- Connection Test ---"
+if command -v psql &>/dev/null; then
+    PGPASSWORD="$POSTGRES_PASSWORD" psql \
+        -h "$POSTGRES_HOST" \
+        -p "$POSTGRES_PORT" \
+        -U "$POSTGRES_USER" \
+        -d "$POSTGRES_DATABASE" \
+        -c "SELECT version();" 2>/dev/null && echo "  Connection successful!" || echo "  Connection failed"
+else
+    echo "  psql not installed. Install PostgreSQL client to test connectivity."
+    echo "  Alternatively, check via Azure Portal or use the JDBC URL in your app."
+fi
+
+echo ""
+echo "--- Redis Connection Test ---"
+if command -v redis-cli &>/dev/null; then
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -a "$REDIS_PASSWORD" --tls PING 2>/dev/null && echo "  Redis connection successful!" || echo "  Redis connection failed"
+else
+    echo "  redis-cli not installed. Install Redis tools to test connectivity."
+fi
