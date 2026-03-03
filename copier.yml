@@ -3,6 +3,13 @@ _templates_suffix: .jinja
 _jinja_extensions:
   - jinja2_time.TimeExtension
 
+_exclude:
+  - "{% if 'android' not in platforms %}android{% endif %}"
+  - "{% if 'ios' not in platforms %}ios{% endif %}"
+  - "{% if 'backend' not in platforms %}backend{% endif %}"
+  - "{% if cloud_provider != 'azure' or 'backend' not in platforms %}infra{% endif %}"
+  - "{% if not use_docker %}docker-compose.yml{% endif %}"
+
 # =============================================================================
 # Project Identity
 # =============================================================================
