@@ -1,5 +1,5 @@
 ---
-to: "<%= entity ? 'backend/src/main/kotlin/{{ package_identifier | replace(\".\", \"/\") }}/features/' + h.changeCase.camel(name) + '/controller/' + h.changeCase.pascal(entity) + 'Controller.kt' : null %>"
+to: "<%= entity ? 'backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/features/' + h.changeCase.camel(name) + '/controller/' + h.changeCase.pascal(entity) + 'Controller.kt' : null %>"
 ---
 package {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.controller
 
