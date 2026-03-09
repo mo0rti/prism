@@ -1,11 +1,11 @@
 ---
-to: "<%= entity ? 'backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/features/' + h.changeCase.camel(name) + '/service/' + h.changeCase.pascal(entity) + 'Service.kt' : null %>"
+to: "<%= entity ? 'backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/modules/' + h.changeCase.camel(name) + '/service/' + h.changeCase.pascal(entity) + 'Service.kt' : null %>"
 ---
-package {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.service
+package {{ package_identifier }}.modules.<%= h.changeCase.camel(name) %>.service
 
-import {{ package_identifier }}.common.exception.ApiException
-import {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.model.<%= h.changeCase.pascal(entity) %>
-import {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.repository.<%= h.changeCase.pascal(entity) %>Repository
+import {{ package_identifier }}.shared.exception.ApiException
+import {{ package_identifier }}.modules.<%= h.changeCase.camel(name) %>.model.<%= h.changeCase.pascal(entity) %>
+import {{ package_identifier }}.modules.<%= h.changeCase.camel(name) %>.repository.<%= h.changeCase.pascal(entity) %>Repository
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.http.HttpStatus

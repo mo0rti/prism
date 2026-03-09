@@ -1,11 +1,11 @@
 ---
-to: "<%= entity ? 'backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/features/' + h.changeCase.camel(name) + '/controller/' + h.changeCase.pascal(entity) + 'Controller.kt' : null %>"
+to: "<%= entity ? 'backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/modules/' + h.changeCase.camel(name) + '/controller/' + h.changeCase.pascal(entity) + 'Controller.kt' : null %>"
 ---
-package {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.controller
+package {{ package_identifier }}.modules.<%= h.changeCase.camel(name) %>.controller
 
-import {{ package_identifier }}.common.model.PagedResponse
-import {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.model.<%= h.changeCase.pascal(entity) %>
-import {{ package_identifier }}.features.<%= h.changeCase.camel(name) %>.service.<%= h.changeCase.pascal(entity) %>Service
+import {{ package_identifier }}.shared.model.PagedResponse
+import {{ package_identifier }}.modules.<%= h.changeCase.camel(name) %>.model.<%= h.changeCase.pascal(entity) %>
+import {{ package_identifier }}.modules.<%= h.changeCase.camel(name) %>.service.<%= h.changeCase.pascal(entity) %>Service
 import org.springframework.data.domain.PageRequest
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*

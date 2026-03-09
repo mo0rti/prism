@@ -13,16 +13,32 @@ Spring Boot 4 (Kotlin 2.2+, Java 21) backend service.
 
 ```
 src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  config/          → Security, CORS, OAuth2
-  common/          → Shared models, exceptions, error handler
-  auth/            → Authentication (OAuth + {% if "password" in auth_methods %}password + {% endif %}JWT)
-  features/        → Feature modules (controller → service → repository)
+  bootstrap/         → Framework config (Security, CORS, OAuth2, OpenAPI)
+    security/        → JWT token provider and authentication filter
+  shared/            → Cross-cutting concerns (exceptions, models, audit)
+    audit/           → AuditableEntity base class (createdAt/updatedAt)
+    exception/       → ApiException hierarchy + GlobalExceptionHandler
+    model/           → Shared DTOs (ApiErrorResponse, PagedResponse)
+  modules/           → Feature modules
+    auth/            → Authentication (OAuth + {% if "password" in auth_methods %}password + {% endif %}JWT)
+      controller/    → REST endpoints
+      dto/           → Request/response data classes
+      model/         → User entity + enums
+      repository/    → JPA repository
+      service/       → Auth + OAuth2 business logic
+    example/         → Example CRUD feature (template for new features)
+      controller/    → REST endpoints
+      dto/           → Request/response data classes
+      model/         → Example entity + enums
+      repository/    → JPA repository
+      service/       → Business logic + permission checks
 ```
 
 ## Conventions
 
-- **Package per feature**: each feature in `features/{name}/` with controller, service, repository, model subpackages
-- **DTOs**: separate request/response data classes, never expose entities
+- **Package per feature**: each feature in `modules/{name}/` with controller, dto, model, repository, service subpackages
+- **DTOs in `dto/`**: separate from entities in `model/` — never expose entities directly
+- **Entities extend `AuditableEntity`**: provides `createdAt`/`updatedAt` via `@MappedSuperclass`
 - **Exceptions**: throw `ApiException` subclasses — `GlobalExceptionHandler` maps to JSON
 - **Auth**: JWT Bearer token; `@AuthenticationPrincipal user: User` in controllers
 - **Migrations**: Flyway in `resources/db/migration/V{N}__{description}.sql`
@@ -30,9 +46,10 @@ src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 
 ## Key Files
 
-- `config/SecurityConfig.kt` — endpoint security rules, JWT filter
-- `config/OAuth2Config.kt` — OAuth provider credentials
-- `auth/security/JwtTokenProvider.kt` — token generation/validation
+- `bootstrap/SecurityConfig.kt` — endpoint security rules, JWT filter
+- `bootstrap/OAuth2Config.kt` — OAuth provider credentials
+- `bootstrap/security/JwtTokenProvider.kt` — token generation/validation
+- `shared/audit/AuditableEntity.kt` — base entity with timestamps
 - `application.yml` — all configuration (DB, JWT, OAuth, CORS)
 - `resources/db/migration/V1__init.sql` — initial schema
 

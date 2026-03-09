@@ -14,15 +14,21 @@ globs: "backend/**"
 ## Structure
 ```
 src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  config/       → SecurityConfig, WebConfig, OAuth2Config
-  common/       → ApiException, GlobalExceptionHandler, PagedResponse
-  auth/         → AuthController, AuthService, JwtTokenProvider, User entity
-  features/     → Feature modules (controller/service/repository/entity/dto)
+  bootstrap/    → SecurityConfig, WebConfig, OAuth2Config, OpenApiConfig
+    security/   → JwtTokenProvider, JwtAuthenticationFilter
+  shared/       → Cross-cutting: exceptions, models, audit
+    audit/      → AuditableEntity (@MappedSuperclass with timestamps)
+    exception/  → ApiException hierarchy + GlobalExceptionHandler
+    model/      → ApiErrorResponse, PagedResponse
+  modules/      → Feature modules
+    auth/       → controller/, dto/, model/, repository/, service/
+    example/    → controller/, dto/, model/, repository/, service/
 ```
 
 ## Patterns
 - Controller → Service → Repository → Entity
-- DTOs separate from entities (Request/Response suffixed)
+- DTOs in `dto/` package, entities in `model/` — never expose entities
+- Entities extend `AuditableEntity` for automatic timestamps
 - Global exception handler returns `ApiErrorResponse`
 - Pagination via `Pageable` → `PagedResponse<T>`
 - All endpoints require JWT except `/auth/**`

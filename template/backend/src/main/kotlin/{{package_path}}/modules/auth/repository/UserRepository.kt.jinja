@@ -1,0 +1,12 @@
+package {{ package_identifier }}.modules.auth.repository
+
+import {{ package_identifier }}.modules.auth.model.AuthProvider
+import {{ package_identifier }}.modules.auth.model.User
+import org.springframework.data.jpa.repository.JpaRepository
+import java.util.UUID
+
+interface UserRepository : JpaRepository<User, UUID> {
+    fun findByEmail(email: String): User?
+    fun findByAuthProviderAndProviderId(authProvider: AuthProvider, providerId: String): User?
+    fun existsByEmail(email: String): Boolean
+}

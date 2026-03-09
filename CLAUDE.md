@@ -68,9 +68,9 @@ copier copy --trust --data 'project_name=TestApp' --data 'platforms=[backend, an
 cd /path/to/generated-project && copier update --trust
 ```
 
-## Library Versions (Feb 2026)
+## Library Versions (Mar 2026)
 
-- **Android**: AGP 9.0.1, Compose BOM 2026.01.01, Hilt 2.56.2, Retrofit 3.0.0, Room 2.8.4
+- **Android**: AGP 8.9.1, Kotlin 2.3.10, Compose BOM 2026.01.01, Hilt 2.57.2, Retrofit 3.0.0, Room 2.8.4
 - **iOS**: Swift 6.0, Xcode 26, iOS 17.0 min, SwiftData
 - **Backend**: Spring Boot 4.0.1, Kotlin 2.2+, Java 21, JJWT 0.12.6, Jackson 3.x
 

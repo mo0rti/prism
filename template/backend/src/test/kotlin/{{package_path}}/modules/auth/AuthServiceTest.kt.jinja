@@ -1,0 +1,130 @@
+package {{ package_identifier }}.modules.auth
+
+import {{ package_identifier }}.modules.auth.dto.*
+import {{ package_identifier }}.modules.auth.model.*
+import {{ package_identifier }}.modules.auth.repository.UserRepository
+import {{ package_identifier }}.modules.auth.service.AuthService
+import {{ package_identifier }}.bootstrap.security.JwtTokenProvider
+{% if "password" in auth_methods %}
+import {{ package_identifier }}.shared.exception.ConflictException
+import {{ package_identifier }}.shared.exception.UnauthorizedException
+{% endif %}
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.test.context.ActiveProfiles
+
+@SpringBootTest
+@ActiveProfiles("test")
+class AuthServiceTest {
+
+    @Autowired
+    private lateinit var authService: AuthService
+
+    @Autowired
+    private lateinit var userRepository: UserRepository
+
+    @Autowired
+    private lateinit var jwtTokenProvider: JwtTokenProvider
+
+    @BeforeEach
+    fun setup() {
+        userRepository.deleteAll()
+    }
+
+{% if "password" in auth_methods %}
+    @Test
+    fun `register creates user and returns tokens`() {
+        val request = RegisterRequest(
+            email = "test@example.com",
+            password = "password123",
+            displayName = "Test User"
+        )
+        val response = authService.register(request)
+
+        assertNotNull(response.accessToken)
+        assertNotNull(response.refreshToken)
+        assertEquals("test@example.com", response.user.email)
+        assertEquals("Test User", response.user.displayName)
+        assertTrue(jwtTokenProvider.validateToken(response.accessToken))
+    }
+
+    @Test
+    fun `register with duplicate email throws conflict`() {
+        val request = RegisterRequest(
+            email = "test@example.com",
+            password = "password123",
+            displayName = "Test User"
+        )
+        authService.register(request)
+
+        assertThrows(ConflictException::class.java) {
+            authService.register(request)
+        }
+    }
+
+    @Test
+    fun `login with valid credentials returns tokens`() {
+        authService.register(RegisterRequest(
+            email = "test@example.com",
+            password = "password123",
+            displayName = "Test User"
+        ))
+
+        val response = authService.login(LoginRequest(
+            email = "test@example.com",
+            password = "password123"
+        ))
+
+        assertNotNull(response.accessToken)
+        assertEquals("test@example.com", response.user.email)
+    }
+
+    @Test
+    fun `login with wrong password throws unauthorized`() {
+        authService.register(RegisterRequest(
+            email = "test@example.com",
+            password = "password123",
+            displayName = "Test User"
+        ))
+
+        assertThrows(UnauthorizedException::class.java) {
+            authService.login(LoginRequest(
+                email = "test@example.com",
+                password = "wrongpassword"
+            ))
+        }
+    }
+{% endif %}
+
+    @Test
+    fun `refresh token returns new tokens`() {
+        val user = userRepository.save(User(
+            email = "test@example.com",
+            displayName = "Test User",
+            authProvider = AuthProvider.LOCAL
+        ))
+
+        val refreshToken = jwtTokenProvider.generateRefreshToken(user)
+        val response = authService.refreshToken(RefreshTokenRequest(refreshToken))
+
+        assertNotNull(response.accessToken)
+        assertNotNull(response.refreshToken)
+    }
+
+    @Test
+    fun `getCurrentUser returns user data`() {
+        val user = userRepository.save(User(
+            email = "test@example.com",
+            displayName = "Test User",
+            authProvider = AuthProvider.LOCAL
+        ))
+
+        val response = authService.getCurrentUser(user)
+
+        assertEquals(user.id, response.id)
+        assertEquals("test@example.com", response.email)
+    }
+}

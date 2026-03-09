@@ -2,7 +2,7 @@
 to: _manual
 message: |
   Add this method to the controller at:
-  backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/features/<%= h.changeCase.camel(feature) %>/controller/<%= h.changeCase.pascal(entity) %>Controller.kt
+  backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/modules/<%= h.changeCase.camel(feature) %>/controller/<%= h.changeCase.pascal(entity) %>Controller.kt
 
   <% if (method === 'GET') { %>
       @GetMapping("<%= path %>")

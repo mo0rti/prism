@@ -1,0 +1,49 @@
+package {{ package_identifier }}.modules.auth.controller
+
+import {{ package_identifier }}.modules.auth.dto.*
+import {{ package_identifier }}.modules.auth.model.User
+import {{ package_identifier }}.modules.auth.service.AuthService
+import jakarta.validation.Valid
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.web.bind.annotation.*
+
+@RestController
+@RequestMapping("/api/v1/auth")
+class AuthController(
+    private val authService: AuthService
+) {
+
+    @PostMapping("/oauth/callback")
+    fun oauthCallback(@Valid @RequestBody request: OAuthCallbackRequest): ResponseEntity<AuthResponse> {
+        val response = authService.oauthCallback(request)
+        return ResponseEntity.ok(response)
+    }
+
+{% if "password" in auth_methods %}
+    @PostMapping("/register")
+    fun register(@Valid @RequestBody request: RegisterRequest): ResponseEntity<AuthResponse> {
+        val response = authService.register(request)
+        return ResponseEntity.status(HttpStatus.CREATED).body(response)
+    }
+
+    @PostMapping("/login")
+    fun login(@Valid @RequestBody request: LoginRequest): ResponseEntity<AuthResponse> {
+        val response = authService.login(request)
+        return ResponseEntity.ok(response)
+    }
+{% endif %}
+
+    @PostMapping("/refresh")
+    fun refreshToken(@Valid @RequestBody request: RefreshTokenRequest): ResponseEntity<AuthResponse> {
+        val response = authService.refreshToken(request)
+        return ResponseEntity.ok(response)
+    }
+
+    @GetMapping("/me")
+    fun getCurrentUser(@AuthenticationPrincipal user: User): ResponseEntity<UserResponse> {
+        val response = authService.getCurrentUser(user)
+        return ResponseEntity.ok(response)
+    }
+}

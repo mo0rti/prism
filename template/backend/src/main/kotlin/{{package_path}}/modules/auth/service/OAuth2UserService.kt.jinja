@@ -1,0 +1,228 @@
+package {{ package_identifier }}.modules.auth.service
+
+import {{ package_identifier }}.modules.auth.model.AuthProvider
+import {{ package_identifier }}.modules.auth.model.User
+import {{ package_identifier }}.modules.auth.repository.UserRepository
+import {{ package_identifier }}.shared.exception.UnauthorizedException
+import {{ package_identifier }}.bootstrap.OAuth2Config
+import org.slf4j.LoggerFactory
+import org.springframework.http.*
+import org.springframework.stereotype.Service
+import org.springframework.util.LinkedMultiValueMap
+import org.springframework.web.client.RestTemplate
+
+data class OAuth2UserInfo(
+    val providerId: String,
+    val email: String,
+    val displayName: String,
+    val avatarUrl: String?
+)
+
+@Service
+class OAuth2UserService(
+    private val userRepository: UserRepository,
+    private val oAuth2Config: OAuth2Config,
+    private val restTemplate: RestTemplate
+) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
+    fun processOAuthCallback(provider: String, code: String, redirectUri: String): User {
+        val authProvider = try {
+            AuthProvider.valueOf(provider.uppercase())
+        } catch (_: Exception) {
+            throw UnauthorizedException("Unsupported OAuth provider: $provider")
+        }
+
+        val userInfo = when (authProvider) {
+{% if "google" in auth_methods %}
+            AuthProvider.GOOGLE -> exchangeGoogleCode(code, redirectUri)
+{% endif %}
+{% if "apple" in auth_methods %}
+            AuthProvider.APPLE -> exchangeAppleCode(code, redirectUri)
+{% endif %}
+{% if "facebook" in auth_methods %}
+            AuthProvider.FACEBOOK -> exchangeFacebookCode(code, redirectUri)
+{% endif %}
+{% if "microsoft" in auth_methods %}
+            AuthProvider.MICROSOFT -> exchangeMicrosoftCode(code, redirectUri)
+{% endif %}
+            else -> throw UnauthorizedException("OAuth provider $provider is not enabled")
+        }
+
+        return findOrCreateUser(authProvider, userInfo)
+    }
+
+    private fun findOrCreateUser(provider: AuthProvider, userInfo: OAuth2UserInfo): User {
+        val existing = userRepository.findByAuthProviderAndProviderId(provider, userInfo.providerId)
+        if (existing != null) {
+            existing.displayName = userInfo.displayName
+            existing.avatarUrl = userInfo.avatarUrl
+            return userRepository.save(existing)
+        }
+
+        val byEmail = userRepository.findByEmail(userInfo.email)
+        if (byEmail != null) {
+            byEmail.authProvider = provider
+            byEmail.providerId = userInfo.providerId
+            byEmail.avatarUrl = userInfo.avatarUrl
+            return userRepository.save(byEmail)
+        }
+
+        return userRepository.save(
+            User(
+                email = userInfo.email,
+                displayName = userInfo.displayName,
+                avatarUrl = userInfo.avatarUrl,
+                authProvider = provider,
+                providerId = userInfo.providerId
+            )
+        )
+    }
+
+{% if "google" in auth_methods %}
+    private fun exchangeGoogleCode(code: String, redirectUri: String): OAuth2UserInfo {
+        val tokenResponse = exchangeCodeForToken(
+            tokenUri = oAuth2Config.googleTokenUri,
+            clientId = oAuth2Config.googleClientId,
+            clientSecret = oAuth2Config.googleClientSecret,
+            code = code,
+            redirectUri = redirectUri
+        )
+        val accessToken = tokenResponse["access_token"] as? String
+            ?: throw UnauthorizedException("Failed to get Google access token")
+
+        val headers = HttpHeaders().apply { setBearerAuth(accessToken) }
+        val userInfo = restTemplate.exchange(
+            oAuth2Config.googleUserInfoUri,
+            HttpMethod.GET,
+            HttpEntity<Void>(headers),
+            Map::class.java
+        ).body ?: throw UnauthorizedException("Failed to get Google user info")
+
+        return OAuth2UserInfo(
+            providerId = userInfo["sub"] as String,
+            email = userInfo["email"] as String,
+            displayName = userInfo["name"] as? String ?: userInfo["email"] as String,
+            avatarUrl = userInfo["picture"] as? String
+        )
+    }
+{% endif %}
+
+{% if "apple" in auth_methods %}
+    private fun exchangeAppleCode(code: String, redirectUri: String): OAuth2UserInfo {
+        // Apple requires a client_secret JWT signed with your private key.
+        // This is a simplified implementation — production should generate the JWT properly.
+        val tokenResponse = exchangeCodeForToken(
+            tokenUri = oAuth2Config.appleTokenUri,
+            clientId = oAuth2Config.appleClientId,
+            clientSecret = generateAppleClientSecret(),
+            code = code,
+            redirectUri = redirectUri
+        )
+        val idToken = tokenResponse["id_token"] as? String
+            ?: throw UnauthorizedException("Failed to get Apple ID token")
+
+        // Decode the ID token (simplified — production should verify the signature)
+        val payload = decodeJwtPayload(idToken)
+        return OAuth2UserInfo(
+            providerId = payload["sub"] as String,
+            email = payload["email"] as String,
+            displayName = payload["email"] as String,
+            avatarUrl = null
+        )
+    }
+
+    private fun generateAppleClientSecret(): String {
+        // TODO: Implement Apple client secret JWT generation using appleTeamId, appleKeyId, applePrivateKey
+        log.warn("Apple client secret generation not fully implemented — provide your own implementation")
+        return ""
+    }
+
+    private fun decodeJwtPayload(jwt: String): Map<String, Any> {
+        val parts = jwt.split(".")
+        if (parts.size != 3) throw UnauthorizedException("Invalid ID token format")
+        val payload = String(java.util.Base64.getUrlDecoder().decode(parts[1]))
+        @Suppress("UNCHECKED_CAST")
+        return com.fasterxml.jackson.databind.ObjectMapper().readValue(payload, Map::class.java) as Map<String, Any>
+    }
+{% endif %}
+
+{% if "facebook" in auth_methods %}
+    private fun exchangeFacebookCode(code: String, redirectUri: String): OAuth2UserInfo {
+        val tokenResponse = exchangeCodeForToken(
+            tokenUri = oAuth2Config.facebookTokenUri,
+            clientId = oAuth2Config.facebookClientId,
+            clientSecret = oAuth2Config.facebookClientSecret,
+            code = code,
+            redirectUri = redirectUri
+        )
+        val accessToken = tokenResponse["access_token"] as? String
+            ?: throw UnauthorizedException("Failed to get Facebook access token")
+
+        val userInfoUrl = "${oAuth2Config.facebookUserInfoUri}&access_token=$accessToken"
+        val userInfo = restTemplate.getForObject(userInfoUrl, Map::class.java)
+            ?: throw UnauthorizedException("Failed to get Facebook user info")
+
+        val picture = (userInfo["picture"] as? Map<*, *>)?.let { pic ->
+            (pic["data"] as? Map<*, *>)?.get("url") as? String
+        }
+
+        return OAuth2UserInfo(
+            providerId = userInfo["id"] as String,
+            email = userInfo["email"] as String,
+            displayName = userInfo["name"] as? String ?: userInfo["email"] as String,
+            avatarUrl = picture
+        )
+    }
+{% endif %}
+
+{% if "microsoft" in auth_methods %}
+    private fun exchangeMicrosoftCode(code: String, redirectUri: String): OAuth2UserInfo {
+        val tokenResponse = exchangeCodeForToken(
+            tokenUri = oAuth2Config.microsoftTokenUri,
+            clientId = oAuth2Config.microsoftClientId,
+            clientSecret = oAuth2Config.microsoftClientSecret,
+            code = code,
+            redirectUri = redirectUri
+        )
+        val accessToken = tokenResponse["access_token"] as? String
+            ?: throw UnauthorizedException("Failed to get Microsoft access token")
+
+        val headers = HttpHeaders().apply { setBearerAuth(accessToken) }
+        val userInfo = restTemplate.exchange(
+            oAuth2Config.microsoftUserInfoUri,
+            HttpMethod.GET,
+            HttpEntity<Void>(headers),
+            Map::class.java
+        ).body ?: throw UnauthorizedException("Failed to get Microsoft user info")
+
+        return OAuth2UserInfo(
+            providerId = userInfo["id"] as String,
+            email = (userInfo["mail"] ?: userInfo["userPrincipalName"]) as String,
+            displayName = userInfo["displayName"] as? String ?: "User",
+            avatarUrl = null
+        )
+    }
+{% endif %}
+
+    @Suppress("UNCHECKED_CAST")
+    private fun exchangeCodeForToken(
+        tokenUri: String,
+        clientId: String,
+        clientSecret: String,
+        code: String,
+        redirectUri: String
+    ): Map<String, Any> {
+        val params = LinkedMultiValueMap<String, String>().apply {
+            add("grant_type", "authorization_code")
+            add("code", code)
+            add("redirect_uri", redirectUri)
+            add("client_id", clientId)
+            add("client_secret", clientSecret)
+        }
+        val headers = HttpHeaders().apply { contentType = MediaType.APPLICATION_FORM_URLENCODED }
+        val response = restTemplate.postForObject(tokenUri, HttpEntity(params, headers), Map::class.java)
+            ?: throw UnauthorizedException("Token exchange failed")
+        return response as Map<String, Any>
+    }
+}

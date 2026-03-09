@@ -1,0 +1,75 @@
+package {{ package_identifier }}.bootstrap
+
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import org.springframework.web.client.RestTemplate
+
+@Configuration
+class OAuth2Config {
+
+{% if "google" in auth_methods %}
+    @Value("\${app.oauth.google.client-id}")
+    lateinit var googleClientId: String
+
+    @Value("\${app.oauth.google.client-secret}")
+    lateinit var googleClientSecret: String
+
+    @Value("\${app.oauth.google.token-uri:https://oauth2.googleapis.com/token}")
+    lateinit var googleTokenUri: String
+
+    @Value("\${app.oauth.google.user-info-uri:https://www.googleapis.com/oauth2/v3/userinfo}")
+    lateinit var googleUserInfoUri: String
+{% endif %}
+
+{% if "apple" in auth_methods %}
+    @Value("\${app.oauth.apple.client-id}")
+    lateinit var appleClientId: String
+
+    @Value("\${app.oauth.apple.team-id}")
+    lateinit var appleTeamId: String
+
+    @Value("\${app.oauth.apple.key-id}")
+    lateinit var appleKeyId: String
+
+    @Value("\${app.oauth.apple.private-key}")
+    lateinit var applePrivateKey: String
+
+    @Value("\${app.oauth.apple.token-uri:https://appleid.apple.com/auth/token}")
+    lateinit var appleTokenUri: String
+{% endif %}
+
+{% if "facebook" in auth_methods %}
+    @Value("\${app.oauth.facebook.client-id}")
+    lateinit var facebookClientId: String
+
+    @Value("\${app.oauth.facebook.client-secret}")
+    lateinit var facebookClientSecret: String
+
+    @Value("\${app.oauth.facebook.token-uri:https://graph.facebook.com/v18.0/oauth/access_token}")
+    lateinit var facebookTokenUri: String
+
+    @Value("\${app.oauth.facebook.user-info-uri:https://graph.facebook.com/v18.0/me?fields=id,name,email,picture}")
+    lateinit var facebookUserInfoUri: String
+{% endif %}
+
+{% if "microsoft" in auth_methods %}
+    @Value("\${app.oauth.microsoft.client-id}")
+    lateinit var microsoftClientId: String
+
+    @Value("\${app.oauth.microsoft.client-secret}")
+    lateinit var microsoftClientSecret: String
+
+    @Value("\${app.oauth.microsoft.tenant-id:common}")
+    lateinit var microsoftTenantId: String
+
+    @Value("\${app.oauth.microsoft.token-uri:https://login.microsoftonline.com/common/oauth2/v2.0/token}")
+    lateinit var microsoftTokenUri: String
+
+    @Value("\${app.oauth.microsoft.user-info-uri:https://graph.microsoft.com/v1.0/me}")
+    lateinit var microsoftUserInfoUri: String
+{% endif %}
+
+    @Bean
+    fun restTemplate(): RestTemplate = RestTemplate()
+}
