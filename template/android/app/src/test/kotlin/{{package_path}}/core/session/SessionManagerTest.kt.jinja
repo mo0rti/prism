@@ -23,7 +23,7 @@ class SessionManagerTest {
     }
 
     private fun createSessionManager(scope: TestScope): SessionManager {
-        return SessionManager(tokenStorage, scope)
+        return SessionManager(tokenStorage, scope.backgroundScope)
     }
 
     @Test

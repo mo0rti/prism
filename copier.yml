@@ -34,6 +34,12 @@ description:
   help: "One-line project description"
   default: "A multi-platform application"
 
+package_path:
+  type: str
+  help: "Package path derived from package identifier (used for directory names)"
+  default: "{{ package_identifier | replace('.', '/') }}"
+  when: false
+
 # =============================================================================
 # Platform Selection
 # =============================================================================
