@@ -5,19 +5,18 @@ import {{ package_identifier }}.core.model.User
 import {{ package_identifier }}.core.network.ApiService
 import {{ package_identifier }}.core.session.SessionManager
 import {{ package_identifier }}.feature.auth.data.remote.dto.*
-import {{ package_identifier }}.feature.auth.domain.repository.AuthRepository
 import kotlinx.coroutines.flow.firstOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class AuthRepositoryImpl @Inject constructor(
+class AuthRepository @Inject constructor(
     private val apiService: ApiService,
     private val tokenStorage: TokenStorage,
     private val sessionManager: SessionManager,
-) : AuthRepository {
+) {
 
-    override suspend fun oauthCallback(provider: String, code: String, redirectUri: String): User {
+    suspend fun oauthCallback(provider: String, code: String, redirectUri: String): User {
         val response = apiService.oauthCallback(OAuthCallbackRequest(provider, code, redirectUri))
         tokenStorage.saveTokens(response.accessToken, response.refreshToken)
         sessionManager.onTokensUpdated()
@@ -25,14 +24,14 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
 {% if "password" in auth_methods %}
-    override suspend fun register(email: String, password: String, displayName: String): User {
+    suspend fun register(email: String, password: String, displayName: String): User {
         val response = apiService.register(RegisterRequest(email, password, displayName))
         tokenStorage.saveTokens(response.accessToken, response.refreshToken)
         sessionManager.onTokensUpdated()
         return response.user.toDomain()
     }
 
-    override suspend fun login(email: String, password: String): User {
+    suspend fun login(email: String, password: String): User {
         val response = apiService.login(LoginRequest(email, password))
         tokenStorage.saveTokens(response.accessToken, response.refreshToken)
         sessionManager.onTokensUpdated()
@@ -40,7 +39,7 @@ class AuthRepositoryImpl @Inject constructor(
     }
 {% endif %}
 
-    override suspend fun refreshToken(): User {
+    suspend fun refreshToken(): User {
         val refreshToken = tokenStorage.refreshToken.firstOrNull()
             ?: throw IllegalStateException("No refresh token available")
         val response = apiService.refreshToken(RefreshTokenRequest(refreshToken))
@@ -49,10 +48,10 @@ class AuthRepositoryImpl @Inject constructor(
         return response.user.toDomain()
     }
 
-    override suspend fun getCurrentUser(): User =
+    suspend fun getCurrentUser(): User =
         apiService.getCurrentUser().toDomain()
 
-    override suspend fun logout() {
+    suspend fun logout() {
         sessionManager.onLogout()
     }
 }

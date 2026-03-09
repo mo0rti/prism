@@ -1,10 +1,51 @@
 package {{ package_identifier }}.core.session
 
 import {{ package_identifier }}.core.model.AuthState
+import {{ package_identifier }}.core.datastore.TokenStorage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import javax.inject.Inject
+import javax.inject.Singleton
 
-interface SessionManager {
-    val authState: StateFlow<AuthState>
-    suspend fun onTokensUpdated()
-    suspend fun onLogout()
+@Singleton
+class SessionManager @Inject constructor(
+    private val tokenStorage: TokenStorage,
+    private val scope: CoroutineScope,
+) {
+
+    private val _authState = MutableStateFlow<AuthState>(AuthState.Loading)
+    val authState: StateFlow<AuthState> = _authState.asStateFlow()
+
+    init {
+        tokenStorage.hasToken
+            .onEach { hasToken ->
+                _authState.value = if (hasToken) {
+                    AuthState.Authenticated(
+                        {{ package_identifier }}.core.model.User(
+                            id = "",
+                            email = "",
+                            displayName = "",
+                            authProvider = "",
+                            role = "",
+                        )
+                    )
+                } else {
+                    AuthState.Unauthenticated
+                }
+            }
+            .launchIn(scope)
+    }
+
+    suspend fun onTokensUpdated() {
+        // Token was saved by the repository; the DataStore flow will
+        // automatically emit a new value and update authState above.
+    }
+
+    suspend fun onLogout() {
+        tokenStorage.clearTokens()
+    }
 }

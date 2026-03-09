@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(copier copy *)",
+      "Bash(copier update *)",
+      "Bash(ls *)",
+      "Bash(find *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Read(//c/Workspace/Projects/Ingredish/Repos/ingredish-android/docs/**)",
+      "Bash(rmdir \"c:/Workspace/Projects/Template/template/android/app/src/main/kotlin/{{package_path}}/feature/auth/domain/repository\")",
+      "Bash(rmdir \"c:/Workspace/Projects/Template/template/android/app/src/main/kotlin/{{package_path}}/feature/example/domain/repository\")",
+      "Bash(find \"c:/Workspace/Projects/Template/template/android/app/src/main/kotlin/{{package_path}}/core\" -name \"*.jinja\")",
+      "Bash(find \"c:/Workspace/Projects/Template/template/android/app/src/main/kotlin/{{package_path}}/feature\" -name \"*.jinja\" -path \"*/repository/*\" -o -name \"*.jinja\" -path \"*/domain/*\")",
+      "Bash(copier copy --trust --defaults --data 'project_name=Test App' . /tmp/template-test-output)",
+      "Bash(where copier)",
+      "Bash(pip show copier)",
+      "Bash(python -m copier --help)",
+      "Bash(pipx list)",
+      "Bash(pip install copier)",
+      "Bash(pip install jinja2-time)",
+      "Read(//tmp/template-test-output/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Workspace\\Projects\\Template\\template\\android\\app\\src\\main\\kotlin\\{{package_path}}\\core\\session",
+      "c:\\Workspace\\Projects\\Template\\template\\android\\app\\src\\main\\kotlin\\{{package_path}}\\feature\\auth\\domain\\repository",
+      "c:\\Workspace\\Projects\\Template\\template\\android\\app\\src\\main\\kotlin\\{{package_path}}\\feature\\example\\domain\\repository",
+      "c:\\Workspace\\Projects\\Template\\template\\android\\app\\src\\main\\kotlin\\{{package_path}}\\core\\di",
+      "c:\\Workspace\\Projects\\Template\\template\\android\\app\\src\\main\\kotlin\\{{package_path}}\\core\\common",
+      "c:\\Workspace\\Projects\\Template\\template\\android\\app\\src\\main\\kotlin\\{{package_path}}\\feature\\auth\\data\\repository",
+      "c:\\Workspace\\Projects\\Template\\template\\android\\app\\src\\main\\kotlin\\{{package_path}}\\feature\\example\\data\\repository",
+      "\\tmp"
+    ]
+  }
+}
