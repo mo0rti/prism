@@ -1,9 +1,9 @@
 package {{ package_identifier }}.feature.example.ui
 
 import {{ package_identifier }}.core.model.PagedData
-import {{ package_identifier }}.feature.auth.domain.repository.AuthRepository
+import {{ package_identifier }}.feature.auth.data.repository.AuthRepository
+import {{ package_identifier }}.feature.example.data.repository.ExampleRepository
 import {{ package_identifier }}.feature.example.domain.model.Example
-import {{ package_identifier }}.feature.example.domain.repository.ExampleRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk

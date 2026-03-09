@@ -2,7 +2,7 @@
 globs: "android/**"
 ---
 
-# Android — Kotlin + Jetpack Compose (Clean Architecture)
+# Android — Kotlin + Jetpack Compose (MVVM)
 
 ## Stack
 - Kotlin, Jetpack Compose (BOM 2026.01.01), Hilt DI
@@ -16,20 +16,19 @@ globs: "android/**"
 app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
   app/             → Application + MainActivity
   core/
-    common/        → AppResult, AppDispatchers
-    session/       → SessionManager (auth state source)
+    common/        → AppResult
+    session/       → SessionManager (concrete class, auth state source)
     network/       → ApiService, AuthInterceptor, TokenAuthenticator
     datastore/     → TokenStorage (DataStore)
     database/      → AppDatabase, Converters (shared only)
-    di/            → NetworkModule, DatabaseModule, RepositoryModule, AppModule
+    di/            → NetworkModule, DatabaseModule, DispatcherModule, AppModule
     model/         → User, Session (AuthState), Paging
   navigation/      → Screen routes, NavGraph
   feature/*/
     domain/model/      → Feature-specific domain models
-    domain/repository/ → Repository interfaces
     data/remote/dto/   → @Serializable DTOs
     data/local/        → Room Entity, DAO, Mappers (if feature needs persistence)
-    data/repository/   → Repository implementations
+    data/repository/   → Concrete repository classes (no interfaces)
     ui/                → Route, Screen, ViewModel, components/
   designsystem/
     theme/         → Color, Type, Shape, Dimensions, Theme
@@ -40,11 +39,13 @@ app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 ## Patterns
 - `@HiltViewModel` with `StateFlow<UiState>` (UiState sealed interface co-located in ViewModel file)
 - Route/Screen split: Route = nav wiring + ViewModel; Screen = pure composable
-- Repository: interface in `domain/repository/`, impl in `data/repository/`
-- Split DI: NetworkModule, DatabaseModule, RepositoryModule, AppModule
+- Repositories: concrete classes with `@Inject constructor`, injected by Hilt by type (no interfaces)
+- Services and managers: concrete classes by default; no interface + impl pairs unless multiple implementations needed
+- DI modules: NetworkModule, DatabaseModule, DispatcherModule, AppModule
 - SessionManager exposes `StateFlow<AuthState>` for auth gating
 - TokenAuthenticator handles 401 → refresh → retry automatically
 - Type-safe navigation via `@Serializable` sealed interface
+- Dispatchers: `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` qualifiers
 
 ## Conventions
 - Feature-specific persistence in `feature/*/data/local/`, not `core/database/`

@@ -22,8 +22,8 @@ class SessionManagerTest {
         every { hasToken } returns hasTokenFlow
     }
 
-    private fun createSessionManager(scope: TestScope): SessionManagerImpl {
-        return SessionManagerImpl(tokenStorage, scope)
+    private fun createSessionManager(scope: TestScope): SessionManager {
+        return SessionManager(tokenStorage, scope)
     }
 
     @Test
