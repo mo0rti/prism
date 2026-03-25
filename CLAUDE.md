@@ -39,6 +39,7 @@ README.md               # Template usage instructions
 - **Directory exclusion**: Whole directories excluded via `_exclude` in copier.yml, not per-file guards
 - **Package path**: Use `{{package_path}}` (forward slashes) for Kotlin/Java directory structure
 - **Two layers of AI context**: `template/.claude/` is for generated projects; `.claude/` (root) is for this template repo
+- **Documentation organization**: Project-wide docs (features, API, advisory board) stay in `template/docs/`. Platform-specific technical docs live inside each platform directory (`template/android/docs/`, `template/backend/docs/`, `template/ios/docs/`). Entity docs are backend-specific and live in `template/backend/docs/entities/`. This ensures platform docs are auto-excluded with their platform via `_exclude` rules.
 
 ## Build Progress
 

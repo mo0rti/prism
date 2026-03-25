@@ -1,0 +1,48 @@
+# Navigation and Screens - {{ project_name }} Android
+
+## Navigation setup
+
+- **Routes**: `navigation/Screen.kt` - sealed interface with `@Serializable` route definitions.
+- **Host**: `navigation/NavGraph.kt` - `NavHost` composition with all destinations.
+- **Library**: Jetpack Navigation Compose with type-safe routes.
+
+## Route definitions
+
+Routes are defined as a `@Serializable` sealed interface:
+
+```kotlin
+@Serializable
+sealed interface Screen {
+    @Serializable data object SignIn : Screen
+    @Serializable data object ExampleList : Screen
+    @Serializable data class ExampleDetail(val id: String) : Screen
+}
+```
+
+## Auth-based start destination
+
+NavGraph observes `SessionManager.authState` to determine the start destination:
+
+- `AuthState.Authenticated` -> main app flow
+- `AuthState.Unauthenticated` -> sign-in screen
+
+## Screen mapping
+
+Each screen destination maps to a Route composable:
+
+```kotlin
+composable<Screen.ExampleList> {
+    ExampleListRoute(
+        onNavigateToDetail = { id -> navController.navigate(Screen.ExampleDetail(id)) }
+    )
+}
+```
+
+## Adding a new screen
+
+1. Add a route to `Screen` sealed interface in `navigation/Screen.kt`.
+2. Create `feature/<name>/ui/<Name>Route.kt` and `<Name>Screen.kt`.
+3. Create `feature/<name>/ui/<Name>ViewModel.kt` with `UiState`.
+4. Add the `composable<Screen.Name>` block in `NavGraph.kt`.
+5. Wire navigation callbacks from calling screens.
+6. Update this document with the new route.

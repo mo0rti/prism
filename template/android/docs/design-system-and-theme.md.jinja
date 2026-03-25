@@ -1,0 +1,63 @@
+# Design System and Theme - {{ project_name }} Android
+
+## Theme
+
+The app theme is defined in `designsystem/theme/`:
+
+| File | Purpose |
+|------|---------|
+| `Theme.kt` | `AppTheme` composable wrapping `MaterialTheme` |
+| `Color.kt` | Color definitions and color scheme |
+| `Type.kt` | Typography scale |
+| `Shape.kt` | Shape definitions (rounded corners) |
+| `Dimensions.kt` | Spacing and sizing constants |
+
+### Usage
+
+```kotlin
+AppTheme {
+    // Access via MaterialTheme
+    Text(
+        text = "Hello",
+        style = MaterialTheme.typography.headlineMedium,
+        color = MaterialTheme.colorScheme.primary,
+    )
+}
+```
+
+## UiText
+
+`designsystem/text/UiText.kt` provides a framework-light string wrapper:
+
+```kotlin
+sealed interface UiText {
+    data class DynamicString(val value: String) : UiText
+    data class StringResource(@StringRes val resId: Int) : UiText
+}
+```
+
+Use `UiText` in ViewModels for error messages and display text to avoid Android framework dependencies in business logic.
+
+## Shared components
+
+Located in `designsystem/components/`:
+
+| Component | Purpose |
+|-----------|---------|
+| `LoadingIndicator` | Centered circular progress indicator |
+| `ErrorView` | Error message with optional retry button |
+
+## Adding shared components
+
+When a composable is used by more than one feature:
+
+1. Move it from `feature/*/ui/components/` to `designsystem/components/`.
+2. Keep it stateless - accept state and callbacks as parameters.
+3. Wrap previews in `AppTheme`.
+4. Update this document.
+
+## Design tokens
+
+Shared design tokens are defined in `shared/design-tokens/tokens.json`. These provide the canonical color, spacing, typography, and border-radius values consumed by all platforms.
+
+When updating theme values, check if the design tokens file should be updated first to keep all platforms aligned.

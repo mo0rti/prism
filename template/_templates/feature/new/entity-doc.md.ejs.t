@@ -1,5 +1,5 @@
 ---
-to: "<%= entity ? 'docs/entities/' + h.changeCase.param(entity) + '.md' : null %>"
+to: "<%= entity ? 'backend/docs/entities/' + h.changeCase.param(entity) + '.md' : null %>"
 ---
 # Entity: <%= h.changeCase.pascal(entity) %>
 

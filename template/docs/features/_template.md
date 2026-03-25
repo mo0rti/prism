@@ -17,7 +17,7 @@
 
 ## Entities
 
-- [EntityName](../entities/entity-name.md) - role in this feature
+- [EntityName](../../backend/docs/entities/entity-name.md) - role in this feature
 
 ## API Endpoints
 

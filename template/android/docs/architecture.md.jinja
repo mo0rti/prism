@@ -1,0 +1,118 @@
+# Architecture - {{ project_name }} Android
+
+## Overview
+
+{{ project_name }} Android is a single-module Kotlin app built with Jetpack Compose, Hilt, Retrofit, Room, and DataStore.
+
+## Architecture Pattern: MVVM
+
+```
+View (Compose)  ->  ViewModel (StateFlow)  ->  Repository  ->  Data Source (API / Room / DataStore)
+```
+
+### Layers
+
+| Layer | Responsibility | Location |
+|-------|---------------|----------|
+| **UI** | Compose screens, observe ViewModel state | `feature/*/ui/` |
+| **ViewModel** | Hold UI state, call repositories, map results | `feature/*/ui/*ViewModel.kt` |
+| **Repository** | Coordinate remote + local data, map DTOs to domain models | `feature/*/data/repository/` |
+| **Remote** | Retrofit API calls, request/response DTOs | `feature/*/data/remote/` |
+| **Local** | Room entities, DAOs, mappers | `feature/*/data/local/` |
+| **Domain** | Framework-light models, business types | `feature/*/domain/` |
+
+### Data flow
+
+1. Screen observes `ViewModel.uiState: StateFlow<UiState>`.
+2. User action calls a ViewModel intent method (e.g. `onRefresh()`).
+3. ViewModel calls repository, updates `_uiState`.
+4. Repository fetches from API or local cache, maps DTOs to domain models.
+5. Screen recomposes with new state.
+
+## ViewModel conventions
+
+- Annotated with `@HiltViewModel`, injected by Hilt.
+- Exposes `StateFlow<UiState>` where `UiState` is a sealed interface co-located in the ViewModel file.
+- One-off events (navigation, snackbars) via `SharedFlow`.
+- Intent methods are explicit: `onRefresh()`, `onSaveClicked()`, `onItemSelected(id)`.
+
+```kotlin
+@HiltViewModel
+class ExampleListViewModel @Inject constructor(
+    private val repository: ExampleRepository,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+) : ViewModel() {
+    private val _uiState = MutableStateFlow<UiState>(UiState.Loading)
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    sealed interface UiState {
+        data object Loading : UiState
+        data class Success(val items: List<Example>) : UiState
+        data class Error(val message: UiText) : UiState
+    }
+
+    fun onRefresh() {
+        viewModelScope.launch(ioDispatcher) {
+            _uiState.value = UiState.Loading
+            repository.getExamples().fold(
+                onSuccess = { _uiState.value = UiState.Success(it) },
+                onFailure = { _uiState.value = UiState.Error(UiText.DynamicString(it.message.orEmpty())) }
+            )
+        }
+    }
+}
+```
+
+## Repository conventions
+
+- Concrete classes only - no interface + impl pairs unless multiple implementations are needed.
+- Located in `feature/*/data/repository/`.
+- Injected by Hilt via constructor injection (no RepositoryModule needed).
+- Map DTOs to domain models at the repository boundary.
+- Return `AppResult<T>` for operations that can fail.
+
+## Route/Screen split
+
+Each screen follows a two-composable pattern:
+
+- **Route** (`*Route.kt`): Handles navigation wiring, collects ViewModel state, passes lambdas to Screen.
+- **Screen** (`*Screen.kt`): Pure composable that takes state + callbacks as parameters. Previewable.
+
+```kotlin
+@Composable
+fun ExampleListRoute(
+    viewModel: ExampleListViewModel = hiltViewModel(),
+    onNavigateToDetail: (String) -> Unit,
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    ExampleListScreen(
+        uiState = uiState,
+        onRefresh = viewModel::onRefresh,
+        onItemClick = onNavigateToDetail,
+    )
+}
+
+@Composable
+fun ExampleListScreen(
+    uiState: ExampleListViewModel.UiState,
+    onRefresh: () -> Unit,
+    onItemClick: (String) -> Unit,
+) {
+    // Pure UI - no ViewModel reference
+}
+```
+
+## Session and auth
+
+- `SessionManager` in `core/session/` exposes `StateFlow<AuthState>`.
+- `AuthInterceptor` adds Bearer token to requests.
+- `TokenAuthenticator` handles 401 -> refresh -> retry automatically.
+- `TokenStorage` persists tokens in encrypted DataStore.
+- NavGraph observes `AuthState` to route between auth and main flows.
+
+## Key rules
+
+- Do not hardcode API URLs - use the configured base URL in `ApiService`.
+- Do not bypass `SessionManager` for token access.
+- Do not import UI types (Compose, Android) in repository or domain layers.
+- No use cases by default - add `usecase/` only when orchestration logic is needed.

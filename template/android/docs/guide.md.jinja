@@ -1,0 +1,71 @@
+# Android Guide - {{ project_name }}
+
+## Tech Stack
+
+- **Kotlin 2.2+** with **Jetpack Compose** (BOM)
+- **Hilt** for dependency injection
+- **Retrofit 3.0** + **Kotlinx Serialization** for networking
+- **Jetpack Navigation Compose** for routing (type-safe routes)
+- **Room** for local persistence
+- **DataStore** for local preferences / token storage
+- **Material 3** for theming
+
+## Architecture: MVVM
+
+```
+UI Layer (Compose)  ->  ViewModel (StateFlow)  ->  Repository  ->  Data Source
+```
+
+See [architecture.md](architecture.md) for full architectural detail.
+
+## Project Structure
+
+```
+app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
+  app/             -> Application + MainActivity
+  core/
+    common/        -> AppResult
+    session/       -> SessionManager (concrete class)
+    network/       -> ApiService, AuthInterceptor, TokenAuthenticator
+    datastore/     -> TokenStorage (DataStore)
+    database/      -> AppDatabase, Converters (shared only)
+    di/            -> NetworkModule, DatabaseModule, DispatcherModule, AppModule
+    model/         -> Cross-feature models: User, Session (AuthState), Paging
+  navigation/      -> Screen routes, NavGraph
+  feature/
+    auth/
+      domain/      -> AuthCredentials model
+      data/        -> AuthRepository, AuthDtos
+      ui/          -> SignInRoute, SignInScreen, SignInViewModel
+    example/
+      domain/      -> Example model
+      data/        -> ExampleRepository, ExampleDtos, ExampleEntity, ExampleDao, Mappers
+      ui/          -> ExampleListRoute, ExampleListScreen, ExampleListViewModel, components/
+  designsystem/
+    theme/         -> Color, Type, Shape, Dimensions, Theme
+    text/          -> UiText (framework-light string wrapper)
+    components/    -> LoadingIndicator, ErrorView
+```
+
+See [file-structure.md](file-structure.md) for the full package map.
+
+## Detailed Documentation
+
+| Doc | Purpose |
+|-----|---------|
+| [architecture.md](architecture.md) | MVVM, layers, DTO-first, repositories, session |
+| [file-structure.md](file-structure.md) | Package layout and conventions |
+| [build-and-environments.md](build-and-environments.md) | Build commands, SDK versions |
+| [networking-and-di.md](networking-and-di.md) | Retrofit, OkHttp, auth, Hilt modules |
+| [navigation-and-screens.md](navigation-and-screens.md) | Routes, NavGraph, screen mapping |
+| [design-system-and-theme.md](design-system-and-theme.md) | AppTheme, components, UiText |
+| [conventions-and-workflow.md](conventions-and-workflow.md) | Strings, workflow, doc-sync rules |
+
+## Commands
+
+```bash
+./gradlew assembleDebug          # Build APK (or gradlew.bat on Windows)
+./gradlew compileDebugKotlin     # Fast compile check
+./gradlew testDebugUnitTest      # Unit tests
+./gradlew installDebug           # Install on device
+```

@@ -22,7 +22,7 @@ Monorepo, MVVM on all platforms, API-first (OpenAPI -> typed clients).
 - MVVM: one ViewModel per screen, sealed UiState/ViewState enum
 - Repository pattern: interface/protocol + implementation
 - Feature docs in `docs/features/` with advisory board review
-- Entity docs in `docs/entities/`
+- Entity docs in `backend/docs/entities/`
 - Auth: JWT tokens, OAuth ({% for m in auth_methods %}{{ m }}{% if not loop.last %}, {% endif %}{% endfor %})
 
 ## Commands
@@ -37,6 +37,8 @@ Monorepo, MVVM on all platforms, API-first (OpenAPI -> typed clients).
 
 - `docs/architecture.md` - system overview
 - `docs/features/` - feature specs with board review
-- `docs/entities/` - entity definitions
 - `docs/api/conventions.md` - API patterns
 - `docs/advisory-board.md` - virtual advisory board
+{% if "backend" in platforms %}- `backend/docs/entities/` - entity definitions
+- `backend/docs/azure-setup.md` - Azure deployment
+{% endif %}

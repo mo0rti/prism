@@ -1,0 +1,78 @@
+# Conventions and Workflow - {{ project_name }} Android
+
+## Coding conventions
+
+### Strings
+
+- Put all user-facing strings in `app/src/main/res/values/strings.xml`.
+- Reference with `stringResource(R.string.key)` in Compose or `UiText.StringResource(R.string.key)` in ViewModels.
+- Never hardcode user-facing text in Kotlin code.
+
+### Dispatchers
+
+- Use `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` qualifiers from `DispatcherModule`.
+- Do not use `Dispatchers.IO` or `Dispatchers.Main` directly - it prevents testability.
+
+### AppResult
+
+- Use `AppResult<T>` instead of `kotlin.Result` to avoid naming collisions.
+- Located in `core/common/AppResult.kt`.
+
+### Use cases
+
+- No use cases by default.
+- Add `feature/*/domain/usecase/` only when orchestration logic spans multiple repositories or requires non-trivial business rules.
+- A use case is a single-purpose class with an `operator fun invoke()`.
+
+### Repositories
+
+- Concrete classes only in `feature/*/data/repository/`.
+- No interface + impl pairs unless multiple implementations are truly needed (e.g. fake for testing).
+- Injected by Hilt via constructor injection.
+
+### DTOs
+
+- `@Serializable` data classes in `feature/*/data/remote/dto/`.
+- Domain models in `feature/*/domain/` are framework-light (no serialization annotations).
+- Map DTOs to domain models in the repository layer.
+
+### Testing
+
+- Unit tests: MockK + Turbine.
+- Test file structure mirrors source structure under `app/src/test/`.
+- Test ViewModel state transitions with Turbine's `test {}` block.
+- Use `@IoDispatcher` qualifier with `TestDispatcher` in tests.
+
+## Workflow: Implementing a new feature
+
+1. Check this document and existing patterns in `feature/`, `designsystem/`, `core/`.
+2. Verify the API contract in `shared/api-contracts/openapi.yml`.
+3. Plan the layers: DTOs, API interface, repository, ViewModel, Screen, navigation, resources.
+4. Implement:
+   a. DTOs and API interface in `feature/<name>/data/remote/`.
+   b. Domain model in `feature/<name>/domain/`.
+   c. Repository in `feature/<name>/data/repository/`.
+   d. ViewModel with UiState in `feature/<name>/ui/`.
+   e. Route + Screen composables in `feature/<name>/ui/`.
+   f. Navigation route in `Screen.kt` and destination in `NavGraph.kt`.
+   g. Strings in `strings.xml`.
+5. Validate with `./gradlew compileDebugKotlin` and targeted tests.
+6. Update any affected docs in `docs/`.
+
+## Keep documentation in sync
+
+When you change code in this project, update the relevant documentation in the same session:
+
+- Add, remove, or rename packages or key files -> update `docs/file-structure.md`.
+- Change architecture, patterns, or layer roles -> update `docs/architecture.md`.
+- Change build commands or environments -> update `docs/build-and-environments.md`.
+- Add or change APIs, DI modules, or networking -> update `docs/networking-and-di.md`.
+- Add or change routes or screens -> update `docs/navigation-and-screens.md`.
+- Change theme, design system, or components -> update `docs/design-system-and-theme.md`.
+- Change conventions or the new-feature workflow -> update this document.
+
+## Documentation style
+
+- Describe the current state only.
+- Use present tense as source-of-truth behavior.
+- Avoid historical phrasing ("was", "used to", "now", "previously") unless the document is a migration guide.
