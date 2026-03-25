@@ -46,7 +46,6 @@ jobs:
           name: test-results
           path: backend/build/reports/tests/
 
-{% if cloud_provider == "azure" %}
   build-and-push:
     name: Build & Push Image
     needs: test
@@ -93,5 +92,4 @@ jobs:
             --name {% raw %}${{ secrets.AZURE_CONTAINER_APP_NAME }}{% endraw %} \
             --image "$IMAGE" \
             --revision-suffix "$REVISION"
-{% endif %}
 {% endif %}

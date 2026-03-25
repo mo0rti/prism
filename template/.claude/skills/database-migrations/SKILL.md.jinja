@@ -1,0 +1,150 @@
+---
+name: database-migrations
+description: Flyway migration conventions for this project. Use when creating or reviewing database migrations, schema changes, or SQL files.
+---
+
+# Database Migration Conventions ({{ project_name }} Backend)
+
+This project uses **Flyway** with **{% if database == 'postgres' %}PostgreSQL{% else %}MySQL{% endif %}**. Migrations live in `backend/src/main/resources/db/migration/`.
+
+## File Naming
+
+```
+V{N}__{snake_case_description}.sql
+```
+
+- `N` is the next sequential integer (check existing migrations for the current highest)
+- Double underscore `__` separates version from description
+- Description uses `snake_case`
+- Examples: `V2__add_user_profile_table.sql`, `V3__add_index_on_example_owner`
+
+## SQL Style
+
+- **UPPERCASE** SQL keywords: `CREATE TABLE`, `ALTER TABLE`, `DROP INDEX`, etc.
+- **lowercase** identifiers: table names, column names, constraint names
+- **4-space indentation** for column definitions and sub-clauses
+- End every statement with `;`
+
+## Column Type Conventions
+{% if database == 'postgres' %}
+| Concept | PostgreSQL Type |
+|---------|----------------|
+| Primary key | `UUID NOT NULL DEFAULT gen_random_uuid()` |
+| Foreign key | `UUID NOT NULL` (or nullable if optional) |
+| Timestamps | `TIMESTAMP WITH TIME ZONE` (never `TIMESTAMP` alone) |
+| JSON data | `JSONB` (never `JSON`) |
+| Booleans | `BOOLEAN NOT NULL DEFAULT false` |
+| Enums | `VARCHAR` + `CHECK` constraint (see below) |
+| Text | `VARCHAR(N)` for bounded, `TEXT` for unbounded |
+{% else %}
+| Concept | MySQL Type |
+|---------|------------|
+| Primary key | `BINARY(16) NOT NULL` (UUID stored as binary) |
+| Foreign key | `BINARY(16) NOT NULL` (or nullable if optional) |
+| Timestamps | `TIMESTAMP(6)` or `DATETIME(6)` |
+| JSON data | `JSON` |
+| Booleans | `TINYINT(1) NOT NULL DEFAULT 0` |
+| Enums | `VARCHAR` + application-level validation |
+| Text | `VARCHAR(N)` for bounded, `TEXT` for unbounded |
+{% endif %}
+
+## Enum Handling
+
+Do NOT use database-level enum types. Use `VARCHAR` with application-level validation{% if database == 'postgres' %} and a `CHECK` constraint{% endif %}:
+{% if database == 'postgres' %}
+```sql
+ALTER TABLE some_table
+    ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'PENDING'
+        CONSTRAINT chk_some_table_status
+            CHECK (status = ANY (ARRAY['PENDING', 'ACTIVE', 'CANCELLED']));
+```
+{% else %}
+```sql
+ALTER TABLE some_table
+    ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'PENDING';
+```
+{% endif %}
+
+## Naming Conventions
+
+| Object | Pattern | Example |
+|--------|---------|---------|
+| Primary key | `pk_{table}` | `pk_users` |
+| Foreign key | `fk_{child}_{parent}` | `fk_example_user` |
+| Unique constraint | `uq_{table}_{columns}` | `uq_users_email` |
+| Check constraint | `chk_{table}_{column}` | `chk_example_status` |
+| Index | `idx_{table}_{columns}` | `idx_example_owner_id` |
+
+## Standard Table Template
+{% if database == 'postgres' %}
+```sql
+CREATE TABLE some_table (
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    owner_id UUID NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT pk_some_table PRIMARY KEY (id),
+    CONSTRAINT fk_some_table_owner
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_some_table_owner_id ON some_table(owner_id);
+```
+{% else %}
+```sql
+CREATE TABLE some_table (
+    id BINARY(16) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    owner_id BINARY(16) NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at TIMESTAMP(6) NULL ON UPDATE CURRENT_TIMESTAMP(6),
+    CONSTRAINT pk_some_table PRIMARY KEY (id),
+    CONSTRAINT fk_some_table_owner
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_some_table_owner_id ON some_table(owner_id);
+```
+{% endif %}
+
+## Safety Guards
+
+- Use `IF EXISTS` / `IF NOT EXISTS` where appropriate for idempotency:
+  ```sql
+  DROP INDEX IF EXISTS idx_old_index;
+  CREATE INDEX IF NOT EXISTS idx_new_index ON some_table(column);
+  ```
+- When modifying constraints: drop old constraint first, then add new one
+
+## Multi-Statement Ordering
+
+When a migration has multiple dependent changes, order them correctly:
+
+1. Drop dependent constraints/indexes
+2. Alter columns / update data
+3. Add new constraints/indexes
+
+## Audit Columns
+
+All tables managed by `AuditableEntity` must have:
+{% if database == 'postgres' %}
+```sql
+created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+updated_at TIMESTAMP WITH TIME ZONE
+```
+{% else %}
+```sql
+created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+updated_at TIMESTAMP(6) NULL ON UPDATE CURRENT_TIMESTAMP(6)
+```
+{% endif %}
+
+- `created_at` is `NOT NULL` with a default
+- `updated_at` is nullable (null until first update)
+
+## Foreign Key Cascades
+
+- Use `ON DELETE CASCADE` when child records have no meaning without the parent
+- Use `ON DELETE SET NULL` when the child can exist independently
+- Default to `ON DELETE CASCADE` for junction/collection tables

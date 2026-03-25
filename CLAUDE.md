@@ -23,7 +23,7 @@ README.md               # Template usage instructions
 
 ## How This Template Works
 
-- `copier.yml` defines questions (project_name, platforms, auth_methods, cloud_provider, etc.)
+- `copier.yml` defines questions (project_name, platforms, auth_methods, database, etc.); cloud_provider (azure) and web_hosting (cloudflare) are hardcoded
 - Files in `template/` use Jinja2: `{{ project_name }}` for substitution, `{% if "android" in platforms %}` for conditionals
 - The `.jinja` suffix is stripped after generation
 - `_exclude` in copier.yml omits entire directories based on selected platforms

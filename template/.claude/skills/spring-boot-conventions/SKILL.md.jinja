@@ -1,0 +1,116 @@
+---
+name: spring-boot-conventions
+description: Spring Boot 4 + Kotlin conventions for this project. Use when writing or reviewing controllers, services, DTOs, or module structure. For entities see jpa-kotlin-patterns, for errors see error-handling, for security see security-auth.
+---
+
+# Spring Boot Conventions ({{ project_name }} Backend)
+
+This project uses **Spring Boot 4.0.x** with **Kotlin 2.2+** and **Java 21**. It follows a package-based modular structure under `{{ package_identifier }}.modules.<domain>`.
+
+## Module Structure
+
+Each domain module lives under `modules/<domain>/` with subpackages:
+
+```
+modules/<domain>/
+  controller/    # REST controllers
+  dto/           # Request/response data classes
+  model/         # Entities, enums, value objects
+  repository/    # JPA repositories
+  service/       # Business logic, orchestration
+```
+
+Not every module needs all subpackages — small modules may only have `controller/` + `service/`.
+
+### Layer Dependencies (strict)
+
+- `controller` depends on `service` only (never directly on `repository` or `model` entities)
+- `service` depends on `model` and `repository`
+- `model` has NO web, DTO, or framework dependencies
+- Controllers never call repositories directly
+
+## Controller Conventions
+
+```kotlin
+@RestController
+@RequestMapping("/api/v1/<domain>")
+@Tag(name = "<Domain>")  // Swagger grouping
+class SomethingController(private val someService: SomeService) {
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Get something by ID")
+    fun getById(@PathVariable id: UUID): ResponseEntity<SomeDto> { ... }
+}
+```
+
+- All endpoints live under `/api/v1/`
+- Return `ResponseEntity<T>` from all controller methods
+- Use `@Operation(summary = ...)` for Swagger docs on every endpoint
+- Use `@Tag(name = ...)` at the class level for Swagger grouping
+- Path variables use `UUID` type for entity IDs
+
+## Service Conventions
+
+```kotlin
+@Service
+class SomeService(
+    private val someRepository: SomeRepository,
+    private val otherService: OtherService
+) {
+    @Transactional
+    fun createSomething(request: CreateSomethingRequest): SomeDto { ... }
+
+    @Transactional(readOnly = true)
+    fun getById(id: UUID): SomeDto { ... }
+}
+```
+
+- Use `@Transactional` on write methods, `@Transactional(readOnly = true)` on read methods
+- Services are the only layer that converts between entities and DTOs
+- Throw exceptions for error cases — `GlobalExceptionHandler` converts them to HTTP responses
+- Never call `@Transactional` methods from the same class (proxy bypass)
+
+## DTO Conventions
+
+Two mapping patterns are used:
+
+### 1. Extension functions (preferred for simple mappings)
+
+```kotlin
+// In the DTO file or a dedicated mapper file
+fun SomeEntity.toDto() = SomeDto(
+    id = this.id,
+    name = this.name
+)
+
+fun CreateSomethingRequest.toEntity() = SomeEntity(
+    name = this.name
+)
+```
+
+### 2. @Component mapper classes (for complex mappings with dependencies)
+
+```kotlin
+@Component
+class SomeMapper(private val otherService: OtherService) {
+    fun toDto(entity: SomeEntity): SomeDto { ... }
+}
+```
+
+- DTOs are data classes in the `dto/` package
+- Entities are NEVER serialized directly to JSON — always map to DTOs
+- Request DTOs are separate from response DTOs when shapes differ
+- Use summary DTOs for list views, full DTOs for detail views (don't over-fetch)
+
+## Repository Conventions
+
+See the `jpa-kotlin-patterns` skill for full repository, entity, and transaction patterns.
+
+Repository interfaces live in the `repository/` package within each module.
+
+## Forbidden Patterns
+
+- `entity -> DTO` imports (entities never depend on API DTOs)
+- `controller -> repository` imports (controllers call services, never repositories directly)
+- `runBlocking` in MVC controllers
+- Jackson annotations on JPA `@Entity` classes (use DTOs as the serialization boundary)

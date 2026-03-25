@@ -39,7 +39,6 @@ jobs:
         working-directory: admin
         run: npm run build
 
-{% if web_hosting == "cloudflare" %}
   deploy:
     name: Deploy to Cloudflare Pages
     needs: lint-and-test
@@ -71,5 +70,4 @@ jobs:
           accountId: {% raw %}${{ secrets.CLOUDFLARE_ACCOUNT_ID }}{% endraw %}
           command: pages deploy out --project-name={{ project_slug }}-admin
           workingDirectory: admin
-{% endif %}
 {% endif %}

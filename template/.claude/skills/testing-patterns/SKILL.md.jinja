@@ -1,0 +1,145 @@
+---
+name: testing-patterns
+description: Testing Patterns for the backend. Use when writing unit tests, integration tests, or reviewing test code. Covers JUnit 5, MockK, and test conventions.
+---
+
+# Testing Patterns ({{ project_name }} Backend)
+
+Testing conventions for this **Spring Boot 4 + Kotlin** project using **JUnit 5** and **MockK**.
+
+## Test Dependencies
+
+```kotlin
+testImplementation("io.mockk:mockk:1.14.+")
+testImplementation("org.springframework.boot:spring-boot-starter-test")
+testImplementation("org.springframework.security:spring-security-test")
+```
+
+## File Location
+
+Tests mirror the main source structure:
+
+```
+src/test/kotlin/{{ package_identifier | replace('.', '/') }}/
+  modules/<domain>/
+    <ServiceName>Test.kt
+```
+
+## Unit Tests (Service / Domain Logic)
+
+Use **MockK** (not Mockito) for Kotlin-idiomatic mocking.
+
+```kotlin
+package {{ package_identifier }}.modules.example
+
+import io.mockk.*
+import org.junit.jupiter.api.*
+import org.junit.jupiter.api.Assertions.*
+import {{ package_identifier }}.modules.example.service.ExampleService
+import {{ package_identifier }}.modules.example.repository.ExampleRepository
+
+@DisplayName("ExampleService")
+class ExampleServiceTest {
+
+    private val exampleRepository = mockk<ExampleRepository>()
+    private val service = ExampleService(exampleRepository)
+
+    @AfterEach
+    fun tearDown() {
+        unmockkAll()
+    }
+
+    @Nested
+    @DisplayName("getById")
+    inner class GetById {
+
+        @Test
+        fun `should return dto when entity exists`() {
+            // Arrange
+            val entity = ExampleEntity(name = "Test")
+            every { exampleRepository.findById(any()) } returns Optional.of(entity)
+
+            // Act
+            val result = service.getById(UUID.randomUUID())
+
+            // Assert
+            assertEquals("Test", result.name)
+            verify(exactly = 1) { exampleRepository.findById(any()) }
+        }
+
+        @Test
+        fun `should throw NotFoundException when entity does not exist`() {
+            every { exampleRepository.findById(any()) } returns Optional.empty()
+
+            assertThrows<NotFoundException> {
+                service.getById(UUID.randomUUID())
+            }
+        }
+    }
+}
+```
+
+### Key Conventions
+
+- **Backtick test names**: `` `should do X when Y` `` — readable, Kotlin-idiomatic
+- **`@Nested` + `@DisplayName`**: Group tests by method or scenario
+- **`@AfterEach` with `unmockkAll()`**: Clean up MockK state between tests
+- **Constructor injection in tests**: Pass mocks directly, no `@InjectMocks`
+- **`mockk<T>(relaxed = true)`**: Use relaxed mocks when you don't care about all return values
+
+### MockK Cheat Sheet
+
+```kotlin
+// Stubbing
+every { repo.findById(any()) } returns Optional.of(entity)
+every { repo.save(any()) } answers { firstArg() }
+
+// Verification
+verify(exactly = 1) { repo.save(any()) }
+verify { repo.findById(match { it == expectedId }) }
+
+// Argument capture
+val slot = slot<SomeEntity>()
+every { repo.save(capture(slot)) } returns entity
+assertEquals("expected", slot.captured.name)
+```
+
+## Integration Tests
+
+Use `@SpringBootTest` + `@ActiveProfiles("test")` for tests that need a Spring context.
+
+```kotlin
+@SpringBootTest
+@ActiveProfiles("test")
+class ExampleServiceIntegrationTest {
+
+    @Autowired
+    private lateinit var exampleService: ExampleService
+
+    @Autowired
+    private lateinit var exampleRepository: ExampleRepository
+
+    @Test
+    fun `should persist and retrieve entity`() {
+        val created = exampleService.create(CreateExampleRequest(name = "Test"))
+        val found = exampleRepository.findById(created.id)
+        assertTrue(found.isPresent)
+    }
+}
+```
+
+## What to Test per Layer
+
+| Layer | What to Test | Approach |
+|-------|-------------|----------|
+| **Service** | Business logic, validation, exception paths | Unit test with MockK |
+| **Domain** | Entity behavior, helper methods, equals/hashCode | Unit test, no mocks needed |
+| **Repository** | Custom queries | Integration test (real DB) |
+| **Controller** | Request mapping, validation, response codes | `@WebMvcTest` or integration test |
+
+## Anti-Patterns
+
+- **Do NOT use Mockito** — use MockK for Kotlin (null-safety, extension functions)
+- **Do NOT use `@SpringBootTest` for unit tests** — only for integration tests that need the full context
+- **Do NOT use `@MockBean` in unit tests** — use constructor injection with MockK mocks instead
+- **Do NOT test private methods** — test through public API

@@ -1,0 +1,137 @@
+---
+name: error-handling
+description: Error Handling Conventions. Use when creating exceptions, error codes, or handling errors in services and controllers.
+---
+
+# Error Handling Conventions ({{ project_name }} Backend)
+
+This project uses a structured exception hierarchy. Use when creating new features, modules, or domain exceptions.
+
+## Architecture Overview
+
+```
+ApiException (open RuntimeException)
+  ├── status: HttpStatus        — HTTP status code
+  ├── code: String              — machine-readable error code
+  ├── message: String           — human-readable message
+  └── details: Map<String, Any>? — optional structured details
+
+GlobalExceptionHandler (@RestControllerAdvice)
+  └── catches ApiException → ApiErrorResponse
+
+ApiErrorResponse
+  ├── code: String              — machine-readable code
+  ├── message: String           — human-readable message
+  └── details: Map<String, Any>? — validation errors, context
+```
+
+## Built-in Exception Types
+
+The template provides these exception classes in `shared/exception/`:
+
+| Exception | Status | Default Code | Use For |
+|-----------|--------|-------------|---------|
+| `NotFoundException` | 404 | `NOT_FOUND` | Entity not found by ID |
+| `ConflictException` | 409 | `CONFLICT` | Duplicate, already exists |
+| `UnauthorizedException` | 401 | `UNAUTHORIZED` | Missing/invalid auth |
+| `ForbiddenException` | 403 | `FORBIDDEN` | Insufficient permissions |
+| `BadRequestException` | 400 | `BAD_REQUEST` | Invalid input, business rule violation |
+
+## Adding a New Domain Exception
+
+### Option 1: Use a built-in exception with a custom code
+
+For most cases, use the built-in exceptions with a domain-specific code:
+
+```kotlin
+throw NotFoundException(
+    message = "Recipe not found",
+    code = "RECIPE_NOT_FOUND"
+)
+```
+
+### Option 2: Create a domain-specific exception class
+
+For frequently thrown exceptions, create a dedicated class in `modules/<domain>/`:
+
+```kotlin
+package {{ package_identifier }}.modules.recipe.exception
+
+import {{ package_identifier }}.shared.exception.ApiException
+import org.springframework.http.HttpStatus
+
+class RecipeNotFoundException(
+    override val message: String = "Recipe not found",
+    details: Map<String, Any>? = null
+) : ApiException(
+    status = HttpStatus.NOT_FOUND,
+    code = "RECIPE_NOT_FOUND",
+    message = message,
+    details = details
+)
+```
+
+### Throwing from Service Layer
+
+```kotlin
+@Service
+class RecipeService(private val repository: RecipeRepository) {
+
+    @Transactional(readOnly = true)
+    fun getById(id: UUID): RecipeDto {
+        val entity = repository.findById(id).orElseThrow {
+            NotFoundException("Recipe not found", code = "RECIPE_NOT_FOUND")
+        }
+        return entity.toDto()
+    }
+}
+```
+
+**That's it.** `GlobalExceptionHandler` automatically catches `ApiException` and returns `ApiErrorResponse`.
+
+## Exception Patterns
+
+### Simple Not-Found
+
+```kotlin
+val user = userRepository.findById(userId).orElseThrow {
+    NotFoundException("User not found")
+}
+```
+
+### With Details Map
+
+```kotlin
+throw BadRequestException(
+    message = "Cannot delete recipe with active orders",
+    code = "RECIPE_IN_USE",
+    details = mapOf("recipeId" to recipeId, "activeOrders" to count)
+)
+```
+
+### Permission Check
+
+```kotlin
+if (recipe.owner.id != currentUserId) {
+    throw ForbiddenException("You do not own this recipe")
+}
+```
+
+## What GlobalExceptionHandler Already Catches
+
+You do **NOT** need to handle these in your code — they're caught globally:
+
+| Exception | Mapped To |
+|-----------|-----------|
+| `ApiException` (all subclasses) | `status` + `ApiErrorResponse` |
+| `MethodArgumentNotValidException` | 400 + field-level validation details |
+| `Exception` (catch-all) | 500 `INTERNAL_ERROR` |
+
+## Rules
+
+- **Always extend `ApiException`** — never throw raw `RuntimeException` or Spring's `ResponseStatusException` from service code
+- **Place domain exceptions in `modules/<domain>/`** — or use built-in exceptions with custom codes
+- **Do NOT catch exceptions in controllers** — let them propagate to `GlobalExceptionHandler`
+- **Use `details` map** for machine-parsable context (IDs, field names, constraint values)
+- **Keep error messages user-friendly** — the `message` field is shown to API consumers
+- **Throw from service layer** — not from controllers or repositories

@@ -7,7 +7,7 @@ _exclude:
   - "{% if 'android' not in platforms %}android{% endif %}"
   - "{% if 'ios' not in platforms %}ios{% endif %}"
   - "{% if 'backend' not in platforms %}backend{% endif %}"
-  - "{% if cloud_provider != 'azure' or 'backend' not in platforms %}infra{% endif %}"
+  - "{% if 'backend' not in platforms %}infra{% endif %}"
   - "{% if not use_docker %}docker-compose.yml{% endif %}"
 
 # =============================================================================
@@ -91,27 +91,20 @@ use_docker:
   default: true
 
 # =============================================================================
-# Hosting & Cloud
+# Hosting & Cloud (hardcoded — Azure for backend, Cloudflare for web)
 # =============================================================================
 
 cloud_provider:
   type: str
   help: "Cloud provider for backend and services"
-  choices:
-    Azure: azure
-    AWS: aws
-    GCP: gcp
   default: azure
+  when: false
 
 web_hosting:
   type: str
   help: "Hosting provider for web applications"
-  choices:
-    Cloudflare Pages: cloudflare
-    Vercel: vercel
-    Netlify: netlify
-  when: "{{ 'web' in platforms or 'admin' in platforms }}"
   default: cloudflare
+  when: false
 
 # =============================================================================
 # Repository

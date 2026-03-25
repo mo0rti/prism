@@ -2,56 +2,64 @@
 
 Spring Boot 4 (Kotlin 2.2+, Java 21) backend service.
 
-## Quick Reference
+## Build & Run
 
 - **Build**: `./gradlew build` (or `gradlew.bat build` on Windows)
 - **Run**: `./gradlew bootRun`
 - **Test**: `./gradlew test`
 - **Port**: 8080 (configurable via `PORT` env var)
 
+## Critical Rules
+
+### Forbidden Patterns
+
+- `entity -> DTO` imports (entities never depend on API DTOs)
+- `controller -> repository` imports (controllers call services, never repositories directly)
+- `runBlocking` in MVC controllers
+- Jackson annotations on JPA `@Entity` classes (use DTOs as the serialization boundary)
+
+### Gotchas
+
+- **Jackson 3.x split namespace**: core annotations stay at `com.fasterxml.jackson.annotation.*`, runtime classes moved to `tools.jackson.*`. There is NO `tools.jackson.annotation` package.
+- **Entity IDs**: always `lateinit var id: UUID` in the class body — never make it nullable (`UUID? = null`) as that causes cascading compile errors.
+- **Inject ObjectMapper**: Spring beans must inject `tools.jackson.databind.ObjectMapper`, never create standalone `jacksonObjectMapper()`.
+
 ## Architecture
 
 ```
 src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  bootstrap/         → Framework config (Security, CORS, OAuth2, OpenAPI)
-    security/        → JWT token provider and authentication filter
-  shared/            → Cross-cutting concerns (exceptions, models, audit)
-    audit/           → AuditableEntity base class (createdAt/updatedAt)
-    exception/       → ApiException hierarchy + GlobalExceptionHandler
-    model/           → Shared DTOs (ApiErrorResponse, PagedResponse)
-  modules/           → Feature modules
-    auth/            → Authentication (OAuth + {% if "password" in auth_methods %}password + {% endif %}JWT)
-      controller/    → REST endpoints
-      dto/           → Request/response data classes
-      model/         → User entity + enums
-      repository/    → JPA repository
-      service/       → Auth + OAuth2 business logic
-    example/         → Example CRUD feature (template for new features)
-      controller/    → REST endpoints
-      dto/           → Request/response data classes
-      model/         → Example entity + enums
-      repository/    → JPA repository
-      service/       → Business logic + permission checks
+  bootstrap/         — Framework config (Security, CORS, OAuth2, OpenAPI)
+    security/        — JWT token provider and authentication filter
+  shared/            — Cross-cutting concerns (exceptions, models, audit)
+    audit/           — AuditableEntity base class (createdAt/updatedAt)
+    exception/       — ApiException hierarchy + GlobalExceptionHandler
+    model/           — Shared DTOs (ApiErrorResponse, PagedResponse)
+  modules/           — Feature modules
+    auth/            — Authentication (OAuth + {% if "password" in auth_methods %}password + {% endif %}JWT)
+    example/         — Example CRUD feature (template for new features)
 ```
+
+Each module has: `controller/`, `dto/`, `model/`, `repository/`, `service/`.
 
 ## Conventions
 
-- **Package per feature**: each feature in `modules/{name}/` with controller, dto, model, repository, service subpackages
+- **Package per feature**: each feature in `modules/{name}/` with subpackages
 - **DTOs in `dto/`**: separate from entities in `model/` — never expose entities directly
 - **Entities extend `AuditableEntity`**: provides `createdAt`/`updatedAt` via `@MappedSuperclass`
+- **Entity IDs**: `@Id lateinit var id: UUID` in class body, `@GeneratedValue(strategy = GenerationType.UUID)`
 - **Exceptions**: throw `ApiException` subclasses — `GlobalExceptionHandler` maps to JSON
-- **Auth**: JWT Bearer token; `@AuthenticationPrincipal user: User` in controllers
+- **Services**: `@Transactional` on writes, `@Transactional(readOnly = true)` on reads
+- **Auth**: JWT Bearer token; stateless sessions
 - **Migrations**: Flyway in `resources/db/migration/V{N}__{description}.sql`
-- **Tests**: `@SpringBootTest` + `@ActiveProfiles("test")` with H2 in-memory DB
+- **Tests**: JUnit 5 + MockK (not Mockito), backtick test names, `@Nested` grouping
 
 ## Key Files
 
 - `bootstrap/SecurityConfig.kt` — endpoint security rules, JWT filter
-- `bootstrap/OAuth2Config.kt` — OAuth provider credentials
 - `bootstrap/security/JwtTokenProvider.kt` — token generation/validation
 - `shared/audit/AuditableEntity.kt` — base entity with timestamps
+- `shared/exception/ApiException.kt` — exception hierarchy
 - `application.yml` — all configuration (DB, JWT, OAuth, CORS)
-- `resources/db/migration/V1__init.sql` — initial schema
 
 ## API
 

@@ -1,0 +1,106 @@
+---
+name: security-auth
+description: Security & Authentication conventions. Use when creating endpoints, adding authorization, working with JWT, security annotations, or the security filter chain.
+---
+
+# Security & Authentication ({{ project_name }} Backend)
+
+Security conventions for this Spring Boot 4 + Kotlin project.
+
+## Security Architecture
+
+- **Stateless JWT** — `SessionCreationPolicy.STATELESS`, no server-side sessions
+- **BCrypt** for password hashing{% if "password" in auth_methods %}
+- **Password auth** enabled via form login{% endif %}
+{% for method in auth_methods %}{% if method == "google" %}- **Google OAuth** configured{% elif method == "apple" %}- **Apple Sign-In** configured{% elif method == "facebook" %}- **Facebook Login** configured{% elif method == "microsoft" %}- **Microsoft Account** configured{% endif %}
+{% endfor %}- **CSRF disabled** (stateless API)
+- **CORS** configured from `cors.allowed-origins` property
+- **Filter chain**: `JwtAuthenticationFilter` (before `UsernamePasswordAuthenticationFilter`)
+
+## Endpoint Security
+
+### Public (no auth required)
+
+Defined in `SecurityConfig.filterChain()`:
+- `/api/v1/auth/**` (login, signup, token refresh)
+- `/actuator/**` (health checks)
+- `/swagger-ui/**`, `/v3/api-docs/**` (API docs)
+
+### Authenticated (everything else)
+
+- `.anyRequest().authenticated()` — requires valid JWT Bearer token
+
+## Creating a Secured Endpoint
+
+```kotlin
+@RestController
+@RequestMapping("/api/v1/recipes")
+@Tag(name = "Recipes")
+class RecipeController(private val recipeService: RecipeService) {
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Get recipe by ID")
+    fun getById(@PathVariable id: UUID): ResponseEntity<RecipeDto> {
+        return ResponseEntity.ok(recipeService.getById(id))
+    }
+
+    @PostMapping
+    @Operation(summary = "Create recipe")
+    fun create(@Valid @RequestBody request: CreateRecipeRequest): ResponseEntity<RecipeDto> {
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(recipeService.create(request))
+    }
+}
+```
+
+All endpoints under `/api/v1/` (except auth) require a valid JWT by default — no additional annotation needed.
+
+## Accessing the Current User
+
+In controllers, use `@AuthenticationPrincipal`:
+
+```kotlin
+@GetMapping("/me")
+@Operation(summary = "Get current user profile")
+fun getProfile(@AuthenticationPrincipal user: User): ResponseEntity<UserDto> {
+    return ResponseEntity.ok(user.toDto())
+}
+```
+
+In services, get from the security context:
+
+```kotlin
+val authentication = SecurityContextHolder.getContext().authentication
+val userId = (authentication.principal as User).id
+```
+
+## Adding a Public Endpoint
+
+If an endpoint must bypass authentication:
+
+1. Add `@PermitAll` annotation to the controller method (from `jakarta.annotation.security`)
+2. Add the path to `SecurityConfig.filterChain()` in `.requestMatchers(...).permitAll()`
+
+**Both steps are required** — the annotation alone is not sufficient.
+
+## JWT Token Flow
+
+1. Client authenticates (OAuth callback or {% if "password" in auth_methods %}username/password{% else %}OAuth provider{% endif %})
+2. Backend validates credentials and returns JWT via `JwtTokenProvider`
+3. Client stores token and sends as `Authorization: Bearer <token>` header
+4. `JwtAuthenticationFilter` extracts, validates, and sets `SecurityContext`
+
+## Key Files
+
+- `bootstrap/SecurityConfig.kt` — filter chain, endpoint security rules, CORS
+{% if auth_methods | length > 1 or "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `bootstrap/OAuth2Config.kt` — OAuth provider credentials and configuration
+{% endif %}- `bootstrap/security/JwtTokenProvider.kt` — token generation and validation
+- `bootstrap/security/JwtAuthenticationFilter.kt` — request filter that validates JWT
+- `application.yml` — JWT secret, token expiry, OAuth client IDs
+
+## Rules
+
+- **Never hardcode secrets** — use environment variables (`${JWT_SECRET}`, `${GOOGLE_CLIENT_ID}`, etc.)
+- **Adding a public endpoint?** Must be added to BOTH the controller annotation AND `SecurityConfig.filterChain()`
+- **Do NOT catch `AccessDeniedException`** in controllers — `GlobalExceptionHandler` handles it
+- **Auth endpoints are always public** — never require a token for login/signup/refresh

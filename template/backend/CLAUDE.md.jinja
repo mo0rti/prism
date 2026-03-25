@@ -2,58 +2,77 @@
 
 Spring Boot 4 (Kotlin 2.2+, Java 21) backend service.
 
-## Quick Reference
+## Build & Run
 
 - **Build**: `./gradlew build` (or `gradlew.bat build` on Windows)
 - **Run**: `./gradlew bootRun`
 - **Test**: `./gradlew test`
 - **Port**: 8080 (configurable via `PORT` env var)
 
+## Critical Rules
+
+### Forbidden Patterns
+
+- `entity -> DTO` imports (entities never depend on API DTOs)
+- `controller -> repository` imports (controllers call services, never repositories directly)
+- `runBlocking` in MVC controllers
+- Jackson annotations on JPA `@Entity` classes (use DTOs as the serialization boundary)
+
+### Gotchas
+
+- **Jackson 3.x split namespace**: core annotations stay at `com.fasterxml.jackson.annotation.*`, runtime classes moved to `tools.jackson.*`. There is NO `tools.jackson.annotation` package.
+- **Entity IDs**: always `lateinit var id: UUID` in the class body — never make it nullable (`UUID? = null`) as that causes cascading compile errors. Use `!::id.isInitialized` in equals/hashCode.
+- **Inject ObjectMapper**: Spring beans must inject `tools.jackson.databind.ObjectMapper`, never create standalone `jacksonObjectMapper()`.
+
 ## Architecture
 
 ```
 src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  bootstrap/         → Framework config (Security, CORS, OAuth2, OpenAPI)
-    security/        → JWT token provider and authentication filter
-  shared/            → Cross-cutting concerns (exceptions, models, audit)
-    audit/           → AuditableEntity base class (createdAt/updatedAt)
-    exception/       → ApiException hierarchy + GlobalExceptionHandler
-    model/           → Shared DTOs (ApiErrorResponse, PagedResponse)
-  modules/           → Feature modules
-    auth/            → Authentication (OAuth + {% if "password" in auth_methods %}password + {% endif %}JWT)
-      controller/    → REST endpoints
-      dto/           → Request/response data classes
-      model/         → User entity + enums
-      repository/    → JPA repository
-      service/       → Auth + OAuth2 business logic
-    example/         → Example CRUD feature (template for new features)
-      controller/    → REST endpoints
-      dto/           → Request/response data classes
-      model/         → Example entity + enums
-      repository/    → JPA repository
-      service/       → Business logic + permission checks
+  bootstrap/         — Framework config (Security, CORS, OAuth2, OpenAPI)
+    security/        — JWT token provider and authentication filter
+  shared/            — Cross-cutting concerns (exceptions, models, audit)
+    audit/           — AuditableEntity base class (createdAt/updatedAt)
+    exception/       — ApiException hierarchy + GlobalExceptionHandler
+    model/           — Shared DTOs (ApiErrorResponse, PagedResponse)
+  modules/           — Feature modules
+    auth/            — Authentication (OAuth + {% if "password" in auth_methods %}password + {% endif %}JWT)
+      controller/    — REST endpoints
+      dto/           — Request/response data classes
+      model/         — User entity + enums
+      repository/    — JPA repository
+      service/       — Auth + OAuth2 business logic
+    example/         — Example CRUD feature (template for new features)
+      controller/    — REST endpoints
+      dto/           — Request/response data classes
+      model/         — Example entity + enums
+      repository/    — JPA repository
+      service/       — Business logic + permission checks
 ```
 
 ## Conventions
 
-- **Package per feature**: each feature in `modules/{name}/` with controller, dto, model, repository, service subpackages
-- **DTOs in `dto/`**: separate from entities in `model/` — never expose entities directly
-- **Entities extend `AuditableEntity`**: provides `createdAt`/`updatedAt` via `@MappedSuperclass`
-- **Exceptions**: throw `ApiException` subclasses — `GlobalExceptionHandler` maps to JSON
-- **Auth**: JWT Bearer token; `@AuthenticationPrincipal user: User` in controllers
-- **Migrations**: Flyway in `resources/db/migration/V{N}__{description}.sql`
-- **Tests**: `@SpringBootTest` + `@ActiveProfiles("test")` with H2 in-memory DB
+Detailed conventions are documented in skills — Claude loads these automatically when relevant:
+
+- @.claude/skills/spring-boot-conventions/SKILL.md — module structure, layers, controller/service/DTO patterns
+- @.claude/skills/database-migrations/SKILL.md — Flyway naming, SQL style, {% if database == 'postgres' %}PostgreSQL{% else %}MySQL{% endif %} types
+- @.claude/skills/jackson-spring-boot4/SKILL.md — Jackson 3.x split namespace, ObjectMapper injection
+- @.claude/skills/jpa-kotlin-patterns/SKILL.md — entity patterns, AuditableEntity, relationships, N+1 prevention
+- @.claude/skills/error-handling/SKILL.md — ApiException, GlobalExceptionHandler, error codes
+- @.claude/skills/security-auth/SKILL.md — JWT, endpoint security, OAuth2, public vs authenticated
+- @.claude/skills/testing-patterns/SKILL.md — JUnit 5, MockK, unit vs integration test conventions
 
 ## Key Files
 
 - `bootstrap/SecurityConfig.kt` — endpoint security rules, JWT filter
-- `bootstrap/OAuth2Config.kt` — OAuth provider credentials
-- `bootstrap/security/JwtTokenProvider.kt` — token generation/validation
+{% if auth_methods | length > 1 or "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `bootstrap/OAuth2Config.kt` — OAuth provider credentials
+{% endif %}- `bootstrap/security/JwtTokenProvider.kt` — token generation/validation
 - `shared/audit/AuditableEntity.kt` — base entity with timestamps
+- `shared/exception/ApiException.kt` — exception hierarchy
+- `shared/exception/GlobalExceptionHandler.kt` — maps exceptions to JSON
 - `application.yml` — all configuration (DB, JWT, OAuth, CORS)
 - `resources/db/migration/V1__init.sql` — initial schema
 
 ## API
 
-See `@docs/api/conventions.md` for REST conventions.
-See `@shared/api-contracts/openapi.yml` for the full API spec.
+See `docs/api/conventions.md` for REST conventions.
+See `shared/api-contracts/openapi.yml` for the full API spec.

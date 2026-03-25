@@ -20,7 +20,7 @@ When implementing a new platform template, follow the patterns established by co
    - Add `.jinja` suffix if it contains any Jinja2 expressions
    - Use `{{ project_name }}`, `{{ project_slug }}`, `{{ package_identifier }}` for project identity
    - Use `{% if "provider" in auth_methods %}` for conditional auth provider code
-   - Use `{% if cloud_provider == "azure" %}` for cloud-specific config
+   - Cloud provider (Azure) and web hosting (Cloudflare) are hardcoded — no conditionals needed
 
 4. **Create platform AI context** — Create `CLAUDE.md.jinja` and `AGENTS.md.jinja` for the platform following the style of existing platform context files.
 

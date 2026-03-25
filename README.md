@@ -39,8 +39,6 @@ Copier will walk you through the following questions:
 | **Auth methods** | Google, Apple, Facebook, Microsoft, Password (multi-select) | Google, Apple, Password |
 | **Database** | PostgreSQL or MySQL | PostgreSQL |
 | **Docker Compose** | Include local dev services? | yes |
-| **Cloud provider** | Azure, AWS, or GCP | Azure |
-| **Web hosting** | Cloudflare Pages, Vercel, or Netlify | Cloudflare Pages |
 | **GitHub org** | GitHub organization or username | *(empty)* |
 
 ### Non-interactive mode
@@ -206,8 +204,8 @@ The template generates GitHub Actions workflows for each platform:
 |----------|---------|---------|
 | **API Contracts** | Push to `shared/api-contracts/` | Validate OpenAPI spec |
 | **Backend** | Push to `backend/` or `shared/` | Test, build Docker image, deploy to Azure Container Apps |
-| **Web** | Push to `web/` or `shared/` | Lint, build, deploy to Cloudflare/Vercel/Netlify |
-| **Admin** | Push to `admin/` or `shared/` | Lint, build, deploy to Cloudflare/Vercel/Netlify |
+| **Web** | Push to `web/` or `shared/` | Lint, build, deploy to Cloudflare Pages |
+| **Admin** | Push to `admin/` or `shared/` | Lint, build, deploy to Cloudflare Pages |
 | **Android** | Push to `android/` or `shared/`, `v*` tags | Test, lint, build APK, Fastlane release to Play Store |
 | **iOS** | Push to `ios/` or `shared/`, `v*` tags | Test on simulator, Fastlane release to TestFlight |
 

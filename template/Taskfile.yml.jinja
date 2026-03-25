@@ -152,7 +152,7 @@ tasks:
     cmds:
       - "{{'{{'}} .OPENAPI_GENERATOR {{'}}'}} validate -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}"
 
-{% if cloud_provider == "azure" and "backend" in platforms %}
+{% if "backend" in platforms %}
   # ===========================================================================
   # Infrastructure (Azure)
   # ===========================================================================

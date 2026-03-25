@@ -13,7 +13,8 @@ When template files (`.jinja`) are created or modified, validate them for correc
 - All `{{` have matching `}}`
 - All `{% if %}` have matching `{% endif %}`
 - All `{% for %}` have matching `{% endfor %}`
-- Variable names match those defined in `copier.yml`: `project_name`, `project_slug`, `package_identifier`, `description`, `platforms`, `auth_methods`, `database`, `use_docker`, `cloud_provider`, `web_hosting`, `github_org`
+- Variable names match those defined in `copier.yml`: `project_name`, `project_slug`, `package_identifier`, `description`, `platforms`, `auth_methods`, `database`, `use_docker`, `github_org`
+- `cloud_provider` and `web_hosting` are hardcoded (azure and cloudflare) — no conditionals needed for these
 
 ### Platform Conditionals
 - Platform checks use correct syntax: `{% if "backend" in platforms %}` (not `{% if backend %}`)

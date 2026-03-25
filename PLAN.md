@@ -294,7 +294,7 @@ docs/
 ### Phase 1: Template Repository Foundation
 
 **Files to create:**
-- `copier.yml` — Questionnaire: project_name, project_slug, package_identifier, description, platforms (multiselect), auth_methods (multiselect), cloud_provider, web_hosting, use_docker, github_org
+- `copier.yml` — Questionnaire: project_name, project_slug, package_identifier, description, platforms (multiselect), auth_methods (multiselect), database, use_docker, github_org (cloud_provider=azure and web_hosting=cloudflare are hardcoded)
 - `README.md` — Template maintainer instructions
 - `.gitignore`
 - `template/` — All templated output (via `_subdirectory: template`)

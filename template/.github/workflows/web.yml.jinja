@@ -39,7 +39,6 @@ jobs:
         working-directory: web
         run: npm run build
 
-{% if web_hosting == "cloudflare" %}
   deploy:
     name: Deploy to Cloudflare Pages
     needs: lint-and-test
@@ -71,23 +70,4 @@ jobs:
           accountId: {% raw %}${{ secrets.CLOUDFLARE_ACCOUNT_ID }}{% endraw %}
           command: pages deploy out --project-name={{ project_slug }}-web
           workingDirectory: web
-{% elif web_hosting == "vercel" %}
-  deploy:
-    name: Deploy to Vercel
-    needs: lint-and-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: {% raw %}${{ secrets.VERCEL_TOKEN }}{% endraw %}
-          vercel-org-id: {% raw %}${{ secrets.VERCEL_ORG_ID }}{% endraw %}
-          vercel-project-id: {% raw %}${{ secrets.VERCEL_PROJECT_ID }}{% endraw %}
-          vercel-args: '--prod'
-          working-directory: web
-{% endif %}
 {% endif %}
