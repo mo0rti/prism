@@ -1,4 +1,12 @@
-Verify that AI context files (CLAUDE.md, AGENTS.md, Cursor rules) are consistent.
+---
+name: sync-ai-context
+description: Verify that AI context files (CLAUDE.md, AGENTS.md, Cursor rules) are consistent across all platforms.
+disable-model-invocation: true
+---
+
+# Sync AI Context
+
+Verify that AI context files are consistent across all platforms.
 
 ## Steps
 

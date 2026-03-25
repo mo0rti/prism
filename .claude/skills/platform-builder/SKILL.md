@@ -1,43 +1,53 @@
 ---
 name: platform-builder
-description: Guide the implementation of a new platform template (web, admin) following established patterns from completed platforms. Triggers when building Phase 3B or 3C.
+description: Add or extend a platform template (web, admin, backend, android, or ios) following established patterns from completed platforms.
+argument-hint: [platform-name]
+disable-model-invocation: true
 ---
 
 # Platform Builder
 
-When implementing a new platform template, follow the patterns established by completed platforms and the specification in PLAN.md.
+Add or extend a platform template following established patterns.
 
-## How to Execute
+## Request
 
-1. **Read the spec** - Load the relevant Phase 3 section from `PLAN.md` for the target platform.
+$ARGUMENTS
 
-2. **Study reference platforms** - Read completed platform templates to understand patterns:
-   - `template/backend/` - Spring Boot patterns, Jinja usage, CLAUDE.md structure
-   - `template/android/` - MVVM patterns, feature structure, Hilt DI
+## Steps
+
+1. **Check current state** - Read `PLAN.md` Build Progress section to see which platforms are done vs pending. Ask which platform to work on if not specified.
+
+2. **Read the spec** - Read the relevant Phase 3 section from `PLAN.md` for the target platform's full specification.
+
+3. **Study reference platforms** - Read completed platform templates to understand patterns:
+   - `template/backend/` - Spring Boot patterns, Jinja usage, CLAUDE.md structure, `backend/docs/` for technical docs
+   - `template/android/` - MVVM patterns, feature structure, Hilt DI, `android/docs/` for technical docs with 7 doc files
    - `template/ios/` - MVVM patterns mirroring Android, SwiftUI conventions
 
-3. **Create the platform directory** - Build `template/{platform}/` with all files listed in the PLAN.md spec. For each file:
+4. **Create the platform directory** - Build `template/{platform}/` with all files listed in the PLAN.md spec:
    - Add `.jinja` suffix if it contains any Jinja2 expressions
    - Use `{{ project_name }}`, `{{ project_slug }}`, `{{ package_identifier }}` for project identity
    - Use `{% if "provider" in auth_methods %}` for conditional auth provider code
-   - Cloud provider (Azure) and web hosting (Cloudflare) are hardcoded - no conditionals needed
 
-4. **Create platform AI context** - Create `CLAUDE.md.jinja` and `AGENTS.md.jinja` for the platform following the style of existing platform context files.
+5. **Create platform documentation** - Create `template/{platform}/docs/` with platform-specific technical docs (guide.md.jinja at minimum, more for complex platforms like Android's 7-doc structure).
 
-5. **Update cross-cutting files**:
+6. **Create platform AI context** - Create `CLAUDE.md.jinja` and `AGENTS.md.jinja` for the platform:
+   - Include doc table pointing to `docs/` within the platform directory
+   - Reference skills with `@.claude/skills/` syntax
+   - Include key conventions, doc-sync rules, and feature workflow
+
+7. **Create platform skills** - Add Claude skills in `template/.claude/skills/` for the platform:
+   - Convention skills (auto-triggered): coding conventions, design system, contract alignment
+   - Action skills (manual): feature delivery, build verify, deploy
+
+8. **Update cross-cutting files**:
    - `template/Taskfile.yml.jinja` - add platform tasks
-   - `template/CLAUDE.md.jinja` - add to architecture map
+   - `template/CLAUDE.md.jinja` - add to architecture map and platform-specific context section
    - `template/AGENTS.md.jinja` - mirror changes
    - `template/.cursor/rules/{platform}.mdc.jinja` - add platform rule
    - `template/.github/workflows/{platform}.yml.jinja` - add CI/CD workflow
    - `template/_templates/` - add Hygen generators if applicable
 
-6. **Update copier.yml** if needed - no changes typically needed since platforms are already defined.
+9. **Update progress** - Update the Build Progress table in `PLAN.md`.
 
-7. **Update PLAN.md** - Mark the phase as Done in Build Progress.
-
-## When to Trigger
-
-- User asks to build or implement a platform template (especially web or admin)
-- User references Phase 3B or Phase 3C
-- User says "let's build the web template" or similar
+10. **Test** - Run `/test-template` to verify generation works.

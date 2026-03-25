@@ -1,4 +1,12 @@
-Test the Copier template by generating a project with all platforms enabled.
+---
+name: test-template
+description: Test the Copier template by generating a project with all platforms enabled and verifying the output.
+disable-model-invocation: true
+---
+
+# Test Template
+
+Test the Copier template by generating a project and verifying the output.
 
 ## Steps
 
