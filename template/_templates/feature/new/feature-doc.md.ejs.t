@@ -24,7 +24,7 @@ _Describe the core business rules, workflows, and edge cases._
 ## Entities
 
 <% if (entity) { %>
-- **<%= h.changeCase.pascal(entity) %>**: See `docs/entities/<%= h.changeCase.param(entity) %>.md`
+- **<%= h.changeCase.pascal(entity) %>**: See `backend/docs/entities/<%= h.changeCase.param(entity) %>.md`
 <% } else { %>
 - _TODO: Define entities for this feature_
 <% } %>

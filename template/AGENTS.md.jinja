@@ -13,7 +13,7 @@ Monorepo with MVVM across all platforms. API-first: OpenAPI spec drives typed cl
 {% if "android" in platforms %}android/       -> Kotlin + Jetpack Compose (MVVM, Hilt, Room){% endif %}
 {% if "ios" in platforms %}ios/           -> Swift 6 + SwiftUI (MVVM, SwiftData) - Mac/Xcode only{% endif %}
 shared/        -> OpenAPI spec + design tokens
-docs/          -> Living documentation (entities, features, deployment)
+docs/          -> Project-wide documentation (features, API, advisory board, deployment)
 ```
 
 ## Common Commands
@@ -45,12 +45,14 @@ Backend issues JWT after successful auth. Clients store token and send as `Autho
 ## Key Documentation
 
 - `docs/architecture.md` - system design, platform map, tech decisions
-- `docs/entities/` - entity definitions, fields, relationships
 - `docs/features/` - feature specs with business logic and board review
 - `docs/api/conventions.md` - API naming, pagination, error format
 - `docs/advisory-board.md` - virtual advisory board personas
-- `docs/deployment/` - Azure, Cloudflare, CI/CD setup
+- `docs/deployment/ci-cd.md` - CI/CD setup
 - `shared/api-contracts/openapi.yml` - API contract (source of truth)
+{% if "backend" in platforms %}- `backend/docs/entities/` - entity definitions, fields, relationships
+- `backend/docs/azure-setup.md` - Azure deployment
+{% endif %}
 
 ## Conventions
 

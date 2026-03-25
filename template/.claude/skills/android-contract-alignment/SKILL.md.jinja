@@ -1,0 +1,39 @@
+---
+name: android-contract-alignment
+description: Backend contract alignment rules for DTOs, enums, Retrofit APIs, and auth. Use when adding or reviewing endpoints, request or response shapes, or server-aligned enums.
+user-invocable: false
+---
+
+# Android Contract Alignment
+
+Use this skill when backend-facing Android code changes.
+
+## Role boundary
+
+- Own request and response shapes, enums, Retrofit endpoints, and auth-related contract wiring.
+- Defer screen structure, design-system reuse, and general repository workflow to companion skills.
+
+## DTO and enum rules
+
+- Keep DTOs in `feature/*/data/remote/dto/` when the payload is feature-specific.
+- Keep shared DTOs in `core/model/` when multiple features consume the same shape.
+- DTOs use `@Serializable` (Kotlinx Serialization) - do not use Gson or Moshi annotations.
+- Domain models in `feature/*/domain/` are framework-light (no serialization annotations).
+- Map DTOs to domain models in the repository layer, not in ViewModels.
+
+## Retrofit and service rules
+
+- Retrofit API interfaces live in `feature/*/data/remote/api/` or `core/network/`.
+- API base URL comes from `ApiService` configuration in `core/network/`; do not hardcode URLs.
+- Auth headers come from `AuthInterceptor` via `SessionManager`; do not add ad hoc token plumbing in features.
+- Token refresh is handled by `TokenAuthenticator` (OkHttp Authenticator) - features do not handle 401s.
+
+## Cross-check sources
+
+- Use the OpenAPI spec in `shared/api-contracts/openapi.yml` as the primary source for endpoint shapes.
+{% if "backend" in platforms %}- Use the backend in `backend/` to confirm endpoint behavior when the spec is ambiguous.
+{% endif %}
+## Validation
+
+- Run `./gradlew compileDebugKotlin` (or `gradlew.bat` on Windows) after contract changes.
+- Add targeted tests when mapper or repository logic changes.

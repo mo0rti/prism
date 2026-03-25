@@ -1,0 +1,43 @@
+---
+name: android-conventions
+description: Android repository rules for Kotlin, Compose, MVVM, Hilt, navigation, networking, strings, and documentation sync. Use when writing or reviewing app code, especially for architecture-sensitive changes.
+user-invocable: false
+---
+
+# Android Conventions
+
+Apply these rules whenever you change Android app code in this repository.
+
+## Role boundary
+
+- Use this skill for repository-wide guardrails that apply across features.
+- Keep feature sequencing in `android-feature-delivery`, backend-facing contract details in `android-contract-alignment`, shared Compose guidance in `compose-design-system`, and task selection in `android-build-verify`.
+
+## Core rules
+
+- Keep app code inside the single `:app` module unless a module split is explicitly requested.
+- Follow MVVM per screen:
+  - `uiState: StateFlow<...>`
+  - one-off events or effects via `SharedFlow`
+  - explicit ViewModel intent methods such as `onRefresh()` or `onSaveClicked()`
+- Keep repositories as concrete classes in `feature/*/data/repository/`. Do not introduce repository interfaces or a repository binding module unless explicitly requested.
+- Add Retrofit APIs in `feature/*/data/remote/api/` and provide them from the existing Hilt modules under `core/di/`.
+- Use `SessionManager` for auth and session state; do not bypass it for token access.
+- Keep routes in `navigation/Screen.kt` and destination wiring in `navigation/NavGraph.kt`.
+- Put user-facing strings in `app/src/main/res/values/strings.xml`.
+- Move reusable Compose components, modifiers, and drawing helpers into `designsystem/` instead of duplicating them in features.
+
+## Read these docs only when needed
+
+- `android/docs/architecture.md` for layer rules and repository conventions
+- `android/docs/file-structure.md` for package locations
+- `android/docs/networking-and-di.md` for Retrofit, auth, and DI wiring
+- `android/docs/navigation-and-screens.md` for route and host patterns
+- `android/docs/design-system-and-theme.md` for shared Compose components
+- `android/docs/conventions-and-workflow.md` for strings, workflow, and doc-sync rules
+
+## Minimum verification
+
+- Run `./gradlew compileDebugKotlin` (or `gradlew.bat` on Windows) after architecture-sensitive changes.
+- Add a targeted test or build task when navigation, networking, session, packaging, or resources change.
+- If implementation changes docs-described behavior, update the relevant file in `android/docs/` in the same session.

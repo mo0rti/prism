@@ -1,0 +1,69 @@
+# Networking and DI - {{ project_name }} Android
+
+## Networking Stack
+
+| Component | Technology |
+|-----------|-----------|
+| HTTP client | OkHttp |
+| REST client | Retrofit 3.0 |
+| Serialization | Kotlinx Serialization (JSON) |
+| Auth | Bearer token via interceptor |
+
+## Retrofit Setup
+
+- `ApiService` in `core/network/` defines the Retrofit instance.
+- Base URL is configured in `NetworkModule`.
+- All API interfaces are provided through Hilt modules in `core/di/`.
+
+## Auth Flow (Network Layer)
+
+```
+Request -> AuthInterceptor (adds Bearer token) -> Server
+                                                     |
+                                              401 Unauthorized
+                                                     |
+                                        TokenAuthenticator
+                                          (refresh token)
+                                                     |
+                                              Retry request
+```
+
+- `AuthInterceptor`: OkHttp interceptor that reads the access token from `SessionManager` and adds it as `Authorization: Bearer <token>`.
+- `TokenAuthenticator`: OkHttp `Authenticator` that handles 401 responses by calling the refresh endpoint, updating `SessionManager`, and retrying the original request.
+- `SessionManager`: Single source of truth for auth state. Exposes `StateFlow<AuthState>`.
+
+## DTOs
+
+- DTOs use `@Serializable` (Kotlinx Serialization).
+- Feature-specific DTOs: `feature/*/data/remote/dto/`.
+- Shared DTOs: `core/model/` (only when consumed by multiple features).
+- Map DTOs to domain models in the repository layer.
+
+## Hilt DI Modules
+
+| Module | Location | Provides |
+|--------|----------|----------|
+| `NetworkModule` | `core/di/` | OkHttp client, Retrofit, `ApiService`, `AuthInterceptor`, `TokenAuthenticator` |
+| `DatabaseModule` | `core/di/` | Room `AppDatabase`, DAOs |
+| `DispatcherModule` | `core/di/` | `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` coroutine dispatchers |
+| `AppModule` | `core/di/` | Application-scoped utilities |
+
+## Dispatchers
+
+Use qualified dispatchers from `DispatcherModule` instead of `Dispatchers.IO` directly:
+
+```kotlin
+@Inject constructor(
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+)
+```
+
+This enables testing with `TestDispatcher`.
+
+## Adding a new API endpoint
+
+1. Define the endpoint in the OpenAPI spec (`shared/api-contracts/openapi.yml`).
+2. Create or update the Retrofit API interface in `feature/*/data/remote/api/`.
+3. Add the API to a Hilt module in `core/di/`.
+4. Create DTOs in `feature/*/data/remote/dto/`.
+5. Call the API from the repository.

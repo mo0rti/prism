@@ -239,29 +239,42 @@ Since Claude reads `CLAUDE.md`, Codex reads `AGENTS.md`, and Cursor reads `.mdc`
 
 ## Documentation Strategy (Critical for AI Context)
 
+Project-wide docs live in `docs/`. Platform-specific technical docs live inside each platform directory.
+
 ```
-docs/
-  architecture.md              # System overview, platform map, tech decisions, MVVM
-  advisory-board.md            # Virtual advisory board (provided at project creation)
-  entities/
-    _template.md               # Entity doc template
-    user.md                    # User entity: fields, relationships, validation, business logic
-    example.md                 # Example entity (placeholder)
-  deployment/
-    azure-setup.md             # Azure Container Apps, PostgreSQL, AI Services, Key Vault
-    cloudflare-setup.md        # Cloudflare Pages config, env vars, build settings
-    ci-cd.md                   # GitHub Actions pipelines, required secrets
+docs/                                    # Project-wide (always generated)
+  architecture.md                        # System overview, platform map, tech decisions, MVVM
+  advisory-board.md                      # Virtual advisory board (provided at project creation)
   features/
-    _template.md               # Feature doc template (includes Board Review section)
-    auth.md                    # Auth: OAuth providers, password flow, token lifecycle
-    example-feature.md         # Example feature (placeholder)
+    _template.md                         # Feature doc template (includes Board Review section)
+    auth.md                              # Auth: OAuth providers, password flow, token lifecycle
+    example-feature.md                   # Example feature (placeholder)
   api/
-    conventions.md             # Naming, pagination, error format, versioning
-  platform-guides/
-    android.md                 # MVVM patterns, Hilt, Compose, testing
-    ios.md                     # MVVM patterns, SwiftUI, testing
-    web.md                     # Next.js patterns, Cloudflare deployment
-    backend.md                 # Spring Boot 4 patterns, Azure deployment
+    conventions.md                       # Naming, pagination, error format, versioning
+  deployment/
+    ci-cd.md                             # GitHub Actions pipelines, required secrets
+    cloudflare-setup.md                  # Cloudflare Pages config, env vars, build settings
+
+backend/docs/                            # Backend-specific (excluded when no backend)
+  guide.md                               # Spring Boot 4 patterns, conventions
+  azure-setup.md                         # Azure Container Apps, PostgreSQL setup
+  entities/
+    _template.md                         # Entity doc template
+    user.md                              # User entity: fields, relationships, validation
+    example.md                           # Example entity (placeholder)
+
+android/docs/                            # Android-specific (excluded when no android)
+  guide.md                               # Overview with doc table
+  architecture.md                        # MVVM layers, ViewModel/Repository/Screen patterns
+  file-structure.md                      # Package layout
+  build-and-environments.md              # Build commands, SDK versions, troubleshooting
+  networking-and-di.md                   # Retrofit, OkHttp, auth, Hilt modules
+  navigation-and-screens.md              # Routes, NavGraph, screen mapping
+  design-system-and-theme.md             # AppTheme, components, UiText
+  conventions-and-workflow.md            # Coding conventions, workflow, doc-sync
+
+ios/docs/                                # iOS-specific (excluded when no ios)
+  guide.md                               # SwiftUI, MVVM patterns, testing
 ```
 
 **Feature doc template includes Board Review section:**
@@ -306,13 +319,16 @@ docs/
 
 ### Phase 2: Documentation Skeleton + Shared Infrastructure
 
-**`template/docs/`:**
+**`template/docs/`** (project-wide):
 - architecture.md.jinja, advisory-board.md.jinja
-- entities/_template.md, user.md.jinja, example.md.jinja
-- deployment/azure-setup.md.jinja, cloudflare-setup.md.jinja, ci-cd.md.jinja
 - features/_template.md, auth.md.jinja, example-feature.md.jinja
 - api/conventions.md.jinja
-- platform-guides/android.md.jinja, ios.md.jinja, web.md.jinja, backend.md.jinja
+- deployment/ci-cd.md.jinja, cloudflare-setup.md.jinja
+
+**Platform-specific docs** (inside each platform directory):
+- `template/backend/docs/` - guide.md.jinja, azure-setup.md.jinja, entities/{user,example}.md.jinja, entities/_template.md
+- `template/android/docs/` - guide.md.jinja, architecture.md.jinja, file-structure.md.jinja, build-and-environments.md.jinja, networking-and-di.md.jinja, navigation-and-screens.md.jinja, design-system-and-theme.md.jinja, conventions-and-workflow.md.jinja
+- `template/ios/docs/` - guide.md.jinja
 
 **`template/shared/`:**
 - api-contracts/openapi.yml.jinja - OpenAPI 3.1 with auth + example CRUD
@@ -502,7 +518,7 @@ claude
 #### What the AI agent does (in order):
 1. **Advisory Board Review** - each board member evaluates the feature
 2. **Creates feature doc** -> `docs/features/restaurant-listings.md`
-3. **Creates entity docs** -> `docs/entities/restaurant.md`, `docs/entities/review.md`
+3. **Creates entity docs** -> `backend/docs/entities/restaurant.md`, `backend/docs/entities/review.md`
 4. **Updates OpenAPI spec** -> new endpoints in `shared/api-contracts/openapi.yml`
 5. **Regenerates API clients** -> `task generate-clients`
 6. **Implements backend** -> controller, service, repository, entity, Flyway migration
@@ -577,10 +593,10 @@ The AI adds to OpenAPI spec -> generates clients -> implements backend.
 ```bash
 # Android:
 > Add "Favorites" screen showing saved restaurants in LazyColumn with
-> swipe-to-remove. Follow MVVM pattern in docs/platform-guides/android.md.
+> swipe-to-remove. Follow MVVM pattern in android/docs/guide.md.
 
 # iOS:
-> Add "Favorites" view matching Android. Use docs/platform-guides/ios.md.
+> Add "Favorites" view matching Android. Use ios/docs/guide.md.
 
 # Web:
 > Add /favorites page with grid layout and remove button.

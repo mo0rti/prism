@@ -37,12 +37,13 @@ task web:dev
 
 - [Architecture Overview](docs/architecture.md)
 - [API Conventions](docs/api/conventions.md)
-{% if "backend" in platforms %}- [Backend Guide](docs/platform-guides/backend.md)
-{% endif %}{% if "web" in platforms %}- [Web Guide](docs/platform-guides/web.md)
-{% endif %}{% if "android" in platforms %}- [Android Guide](docs/platform-guides/android.md)
-{% endif %}{% if "ios" in platforms %}- [iOS Guide](docs/platform-guides/ios.md)
-{% endif %}- [Azure Deployment](docs/deployment/azure-setup.md)
-{% if "web" in platforms or "admin" in platforms %}- [Cloudflare Deployment](docs/deployment/cloudflare-setup.md)
+{% if "backend" in platforms %}- [Backend Guide](backend/docs/guide.md)
+- [Backend Entities](backend/docs/entities/)
+- [Azure Deployment](backend/docs/azure-setup.md)
+{% endif %}{% if "web" in platforms %}- [Web Guide](docs/web-guide.md)
+{% endif %}{% if "android" in platforms %}- [Android Guide](android/docs/guide.md)
+{% endif %}{% if "ios" in platforms %}- [iOS Guide](ios/docs/guide.md)
+{% endif %}{% if "web" in platforms or "admin" in platforms %}- [Cloudflare Deployment](docs/deployment/cloudflare-setup.md)
 {% endif %}- [CI/CD](docs/deployment/ci-cd.md)
 
 ## Common Tasks

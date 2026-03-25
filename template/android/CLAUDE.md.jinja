@@ -1,60 +1,96 @@
 # Android - {{ project_name }}
 
-Kotlin + Jetpack Compose with MVVM.
+Kotlin + Jetpack Compose with MVVM, Hilt, Retrofit, Room, and DataStore.
 
-## Quick Reference
+## Documentation
 
-- **Build**: `./gradlew assembleDebug` (or `gradlew.bat` on Windows)
-- **Test**: `./gradlew testDebugUnitTest`
-- **Install**: `./gradlew installDebug`
-- **Min SDK**: 29 | **Target SDK**: 35 | **Compile SDK**: 36
+**Full project documentation** is in **`docs/`**. Use it as the reference for architecture, file structure, build, networking, navigation, design system, and workflows.
 
-## Architecture
+| Doc | Purpose |
+|-----|---------|
+| [docs/architecture.md](docs/architecture.md) | MVVM, layers, DTO-first, repositories, session, navigation. |
+| [docs/file-structure.md](docs/file-structure.md) | Package layout: `feature/`, `core/`, `designsystem/`, `navigation/`. |
+| [docs/build-and-environments.md](docs/build-and-environments.md) | Build commands, SDK versions, troubleshooting. |
+| [docs/networking-and-di.md](docs/networking-and-di.md) | Retrofit, OkHttp, auth, Hilt modules. |
+| [docs/navigation-and-screens.md](docs/navigation-and-screens.md) | Routes (Screen.kt), NavGraph, start destination, screen mapping. |
+| [docs/design-system-and-theme.md](docs/design-system-and-theme.md) | AppTheme, colors, typography, design system components, UiText. |
+| [docs/conventions-and-workflow.md](docs/conventions-and-workflow.md) | Strings, dispatchers, SessionManager, new-feature workflow. |
 
-```
-app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  app/             -> Application + MainActivity
-  core/
-    common/        -> AppResult
-    session/       -> SessionManager (concrete class)
-    network/       -> ApiService, AuthInterceptor, TokenAuthenticator
-    datastore/     -> TokenStorage (DataStore)
-    database/      -> AppDatabase, Converters (shared only)
-    di/            -> NetworkModule, DatabaseModule, DispatcherModule, AppModule
-    model/         -> Cross-feature models: User, Session (AuthState), Paging
-  navigation/      -> Screen routes, NavGraph
-  feature/
-    auth/
-      domain/      -> AuthCredentials model
-      data/        -> AuthRepository, AuthDtos
-      ui/          -> SignInRoute, SignInScreen, SignInViewModel
-    example/
-      domain/      -> Example model
-      data/        -> ExampleRepository, ExampleDtos, ExampleEntity, ExampleDao, Mappers
-      ui/          -> ExampleListRoute, ExampleListScreen, ExampleListViewModel, components/
-  designsystem/
-    theme/         -> Color, Type, Shape, Dimensions, Theme
-    text/          -> UiText (framework-light string wrapper)
-    components/    -> LoadingIndicator, ErrorView
+## Build & Run
+
+```bash
+# Build APK
+./gradlew assembleDebug          # or gradlew.bat on Windows
+
+# Fast compile check
+./gradlew compileDebugKotlin
+
+# Unit tests
+./gradlew testDebugUnitTest
+
+# Install on device
+./gradlew installDebug
 ```
 
-## Patterns
+**Min SDK**: 29 | **Target SDK**: 35 | **Compile SDK**: 36
 
-- **ViewModel**: `@HiltViewModel` with `StateFlow<UiState>` (sealed interface co-located in ViewModel file)
-- **Route/Screen split**: Route handles navigation wiring + ViewModel; Screen is a pure composable
-- **Repositories**: Concrete classes in `feature/*/data/repository/`, injected by Hilt by type (no interfaces)
-- **Services and managers**: Concrete classes by default; no interface + impl pairs unless multiple implementations are needed
-- **DI**: Hilt - modules: NetworkModule, DatabaseModule, DispatcherModule, AppModule
-- **Session**: `SessionManager` exposes `StateFlow<AuthState>`, consumed by NavGraph
-- **Token refresh**: `TokenAuthenticator` (OkHttp Authenticator) handles 401 -> refresh -> retry
-- **Navigation**: Type-safe routes via `@Serializable` sealed interface
+## Architecture (summary)
 
-## Conventions
+MVVM in a single `:app` module. See **docs/architecture.md** for full detail.
 
-- Feature-specific persistence (Entity, DAO, Mappers) lives in `feature/*/data/local/`
-- Shared database infrastructure (AppDatabase, Converters) lives in `core/database/`
-- DTOs (`@Serializable`) in `feature/*/data/remote/dto/` - domain models are framework-light
-- No use cases by default - add `usecase/` only when orchestration logic is needed
-- `AppResult<T>` instead of `kotlin.Result` to avoid naming collision
-- Tests: MockK + Turbine, test structure mirrors source
-- Dispatchers: Use `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` qualifiers from DispatcherModule
+- **Feature code:** `feature/<name>/data/` (API, DTOs, repository), `feature/<name>/domain/` (models), `feature/<name>/ui/` (screens, ViewModels).
+- **Shared UI/theme:** `designsystem/` (theme, components, text).
+- **Cross-cutting:** `core/` (network, database, session, DI, model).
+- **Repositories:** Concrete classes only in `feature/*/data/repository/`; no repository interfaces.
+- **Navigation:** Routes in `navigation/Screen.kt`, host in `navigation/NavGraph.kt`.
+
+## Key Conventions
+
+- MVVM: `StateFlow` for UI state, `SharedFlow` for one-off events, explicit `onXxx(...)` ViewModel methods.
+- Hilt for DI; Retrofit in `core/di/NetworkModule.kt`; use `SessionManager` for auth/token.
+- Strings in `strings.xml`; use `stringResource` or `UiText`.
+- Keep navigation in `Screen.kt` and `NavGraph.kt`.
+- Keep reusable Compose components in `designsystem/` instead of feature-local files.
+- DTOs (`@Serializable`) in `feature/*/data/remote/dto/`; domain models are framework-light.
+- `AppResult<T>` instead of `kotlin.Result` to avoid naming collision.
+- Dispatchers: Use `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` qualifiers from DispatcherModule.
+- Tests: MockK + Turbine, test structure mirrors source.
+
+## Keep documentation in sync
+
+When you change code in this project, **update the relevant documentation in the same session** so docs stay accurate:
+
+- If you add, remove, or rename **packages, modules, or key files** -> update **docs/file-structure.md** (and any doc that lists them).
+- If you change **architecture, patterns, or layer roles** -> update **docs/architecture.md**.
+- If you change **build commands or environments** -> update **docs/build-and-environments.md**.
+- If you add/change **APIs, DI modules, or networking** -> update **docs/networking-and-di.md**.
+- If you add/change **routes or screens** -> update **docs/navigation-and-screens.md**.
+- If you change **theme, design system, or components** -> update **docs/design-system-and-theme.md**.
+- If you change **conventions or the new-feature workflow** -> update **docs/conventions-and-workflow.md**.
+
+Documentation style rule:
+- Documentation must describe the current state only.
+- Avoid historical phrasing like "was", "used to", "now", "previously".
+- Write implementation notes in present tense as source-of-truth behavior.
+
+## Workflow: Implementing a New Feature
+
+1. Check **docs/conventions-and-workflow.md** and existing patterns in `feature/`, `designsystem/`, `core/`.
+2. Verify API/data contract with the OpenAPI spec in `shared/api-contracts/openapi.yml`.
+3. Plan DTO/API/repository/ViewModel/screen/navigation/DI changes.
+4. Implement using existing MVVM and conventions.
+5. Validate with `./gradlew compileDebugKotlin` and targeted tests.
+6. **Update any affected docs** (see "Keep documentation in sync" above).
+
+## Local Claude Skills
+
+Project-specific Claude skills live in **`.claude/skills/`** and follow the current Claude Code project-skill layout.
+Keep skill boundaries orthogonal: `android-conventions` is the baseline ruleset, `android-feature-delivery` is the coordinator for cross-layer work, and the remaining skills own specialist domains.
+Use `/android-feature-delivery <feature-description>` when you want the full research, planning, validation, and documentation workflow for a larger feature request.
+
+- @.claude/skills/android-conventions/SKILL.md - repository-wide Kotlin, MVVM, DI, navigation, strings, and doc-sync guardrails
+- @.claude/skills/android-build-verify/SKILL.md - choose the smallest sufficient Gradle compile, test, or assemble task
+- @.claude/skills/android-feature-delivery/SKILL.md - coordinate multi-layer feature work and pull in companion skills
+- @.claude/skills/android-contract-alignment/SKILL.md - own backend-facing DTO, enum, Retrofit, and service-alignment decisions
+- @.claude/skills/compose-design-system/SKILL.md - own shared Compose UI language, reusable components, and screen-pattern reuse
+- @.claude/skills/deploy-device/SKILL.md - build, install, and launch on a connected Android device
