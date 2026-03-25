@@ -2,10 +2,10 @@
 
 ## Board Review
 
-- **Product (Sarah)**: Approved — authentication is a core requirement for any user-facing app
-- **Architecture (Marcus)**: Approved — OAuth2 + JWT is the industry standard. Stateless JWT keeps backend simple
-- **Security (Aisha)**: Approved with conditions — must use PKCE for OAuth on mobile, rotate refresh tokens, store tokens securely (Keychain on iOS, EncryptedSharedPreferences/DataStore on Android)
-- **Business (David)**: Approved — social login reduces signup friction, increases conversion
+- **Product (Sarah)**: Approved - authentication is a core requirement for any user-facing app
+- **Architecture (Marcus)**: Approved - OAuth2 + JWT is the industry standard. Stateless JWT keeps backend simple
+- **Security (Aisha)**: Approved with conditions - must use PKCE for OAuth on mobile, rotate refresh tokens, store tokens securely (Keychain on iOS, EncryptedSharedPreferences/DataStore on Android)
+- **Business (David)**: Approved - social login reduces signup friction, increases conversion
 - **Decision**: Go
 
 ## Business Logic
@@ -26,17 +26,17 @@
 
 {% if "password" in auth_methods %}
 ### Password Flow
-1. **Registration**: Client sends email + password → `POST /auth/register`
+1. **Registration**: Client sends email + password -> `POST /auth/register`
 2. Backend validates email uniqueness, hashes password with BCrypt
 3. Backend creates User entity, issues JWT
-4. **Login**: Client sends email + password → `POST /auth/login`
+4. **Login**: Client sends email + password -> `POST /auth/login`
 5. Backend validates credentials, issues JWT
 {% endif %}
 
 ### Token Lifecycle
 - **Access token**: JWT, expires in 24 hours
 - **Refresh token**: opaque string, expires in 30 days
-- **Refresh**: `POST /auth/refresh` with refresh token → new access + refresh tokens
+- **Refresh**: `POST /auth/refresh` with refresh token -> new access + refresh tokens
 - **Logout**: Client deletes stored tokens
 
 ### Account Linking
@@ -44,7 +44,7 @@
 
 ## Entities
 
-- [User](../entities/user.md) — the authenticated user
+- [User](../entities/user.md) - the authenticated user
 
 ## API Endpoints
 

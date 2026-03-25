@@ -1,4 +1,4 @@
-# Multi-Platform Project Templating System — Implementation Plan
+# Multi-Platform Project Templating System - Implementation Plan
 
 > **Date**: February 2026
 > **Status**: In Progress
@@ -11,11 +11,11 @@
 This is a reusable template repository that scaffolds complete multi-platform projects (Android, iOS, backend, web, admin) in minutes. It encodes all architectural decisions once, so AI agents (Claude Code, Codex, Cursor) can generate a fully wired monorepo for any new idea.
 
 **Environment:**
-- **Primary dev machine: Windows** — all platforms except iOS must be fully developable on Windows
-- **iOS development: Mac only** (Xcode requirement) — iOS code lives in the monorepo but builds only on Mac
+- **Primary dev machine: Windows** - all platforms except iOS must be fully developable on Windows
+- **iOS development: Mac only** (Xcode requirement) - iOS code lives in the monorepo but builds only on Mac
 - **Backend/DB/AI services: Azure** (Container Apps, Azure DB for PostgreSQL, Azure AI Services)
 - **Web hosting: Cloudflare** (Pages for web/admin, Workers if needed)
-- **AI coding tools: Claude Code, Codex, Cursor** — all three need context
+- **AI coding tools: Claude Code, Codex, Cursor** - all three need context
 - **Architecture: MVVM consistently** across both Android and iOS
 - **Backend: Spring Boot 4** (released Nov 2025, requires Kotlin 2.2+, Java 17+/21 recommended, Jackson 3.x, JUnit Jupiter 6, Jakarta EE 11)
 - **Auth: OAuth (Google, Apple, Facebook, Microsoft) + optional username/password**
@@ -35,7 +35,7 @@ Jinja2 is the templating language used by Copier. Files ending in `.jinja` conta
 | Template engine | **Copier** | `copier update` pushes template improvements to existing projects; YAML config; cross-platform |
 | Architecture | **Monorepo** | AI agents see everything; atomic cross-platform changes |
 | Mobile architecture | **MVVM on both Android and iOS** | Consistent mental model; ViewModel + UiState pattern on both |
-| API contract | **OpenAPI 3.1 + openapi-generator** | One YAML → typed clients for Kotlin, Swift, TypeScript |
+| API contract | **OpenAPI 3.1 + openapi-generator** | One YAML -> typed clients for Kotlin, Swift, TypeScript |
 | Build orchestration | **Taskfile (go-task)** | Cross-platform (Windows/Mac/Linux); simpler than Make |
 | iOS project gen | **XcodeGen** | Template `project.yml`, generate `.xcodeproj` on Mac only |
 | Backend | **Spring Boot 4** (Kotlin 2.2+, Java 21) | Latest stable, improved startup, modular auto-config |
@@ -43,7 +43,7 @@ Jinja2 is the templating language used by Copier. Files ending in `.jinja` conta
 | Backend hosting | **Azure Container Apps** | Cloud choice |
 | Database | **Azure Database for PostgreSQL** | Managed, Azure-native |
 | Web hosting | **Cloudflare Pages** | Hosting choice |
-| Documentation | **Living docs in `docs/`** | Entities, deployment, business logic — AI context |
+| Documentation | **Living docs in `docs/`** | Entities, deployment, business logic - AI context |
 
 ---
 
@@ -59,11 +59,11 @@ Jinja2 is the templating language used by Copier. Files ending in `.jinja` conta
 - **Docker**: Docker Desktop for Windows
 
 ### What requires Mac
-- **iOS build/run**: Xcode, xcodegen, xcodebuild, Fastlane — Mac only
+- **iOS build/run**: Xcode, xcodegen, xcodebuild, Fastlane - Mac only
 - **iOS Taskfile tasks**: Guarded with `platforms: [darwin]`, skip gracefully on Windows
 
 ### Client generation
-Cross-platform Taskfile task calls `openapi-generator-cli` (Java). iOS client generation works on Windows — you just can't compile it without Xcode.
+Cross-platform Taskfile task calls `openapi-generator-cli` (Java). iOS client generation works on Windows - you just can't compile it without Xcode.
 
 ---
 
@@ -94,8 +94,8 @@ auth_methods:
 
 **Client implementation (all platforms):**
 - Each client shows login screen with enabled provider buttons
-- OAuth flow: client opens provider's auth URL → gets auth code → sends to backend → backend exchanges for token → returns JWT
-- Password flow: client sends credentials → backend validates → returns JWT
+- OAuth flow: client opens provider's auth URL -> gets auth code -> sends to backend -> backend exchanges for token -> returns JWT
+- Password flow: client sends credentials -> backend validates -> returns JWT
 - Same token storage mechanism regardless of provider
 
 ---
@@ -106,29 +106,29 @@ A virtual advisory board provides AI agents with stakeholder perspectives to eva
 
 ### How it works
 
-**`docs/advisory-board.md`** — provided by you when creating the project:
+**`docs/advisory-board.md`** - provided by you when creating the project:
 
 ```markdown
 # Advisory Board
 
 ## Members
 
-### Sarah Chen — Chief Product Officer
+### Sarah Chen - Chief Product Officer
 - **Expertise**: Product strategy, user experience, market fit
 - **Focus**: Does this feature serve the target user? Is the UX intuitive? What's the MVP?
 - **Challenge lens**: "Is this solving a real problem or a nice-to-have?"
 
-### Marcus Rivera — CTO / Architecture Lead
+### Marcus Rivera - CTO / Architecture Lead
 - **Expertise**: System design, scalability, technical debt
 - **Focus**: Is this architecturally sound? Will it scale? What are the maintenance costs?
 - **Challenge lens**: "What breaks at 100x scale? What's the simplest solution?"
 
-### Aisha Patel — Security & Compliance Officer
+### Aisha Patel - Security & Compliance Officer
 - **Expertise**: InfoSec, data privacy, GDPR/SOC2, authentication
 - **Focus**: Is user data protected? Are there compliance implications?
 - **Challenge lens**: "What happens if this gets breached? What data are we exposing?"
 
-### David Kim — Business & Revenue Strategist
+### David Kim - Business & Revenue Strategist
 - **Expertise**: Monetization, growth metrics, unit economics
 - **Focus**: How does this feature drive revenue or retention?
 - **Challenge lens**: "What's the ROI? How do we measure success?"
@@ -158,12 +158,12 @@ When triggered, the skill reads `docs/advisory-board.md`, adopts each persona se
 
 ---
 
-## AI Agent Context — Correct Structure per Tool
+## AI Agent Context - Correct Structure per Tool
 
 ### Claude Code (reads `CLAUDE.md`, uses `.claude/`)
 
 ```
-CLAUDE.md                              # Root — architecture, conventions, commands
+CLAUDE.md                              # Root - architecture, conventions, commands
 .claude/
   commands/                            # Manual slash commands (/name)
     scaffold-feature.md                # /scaffold-feature
@@ -189,7 +189,7 @@ ios/CLAUDE.md                          # Lazy-loaded when working in ios/
 ### OpenAI Codex (reads `AGENTS.md`, uses `.codex/`)
 
 ```
-AGENTS.md                              # Root — mirrors CLAUDE.md content
+AGENTS.md                              # Root - mirrors CLAUDE.md content
 .codex/
   skills/                              # Auto-invoked based on description
     advisory-review/
@@ -211,13 +211,13 @@ ios/AGENTS.md                          # iOS-specific instructions
 ```
 .cursor/
   rules/
-    project.mdc                        # alwaysApply: true — global conventions
-    backend.mdc                        # globs: "backend/**" — auto-attached for backend files
-    web.mdc                            # globs: "web/**,admin/**" — auto-attached for web files
-    android.mdc                        # globs: "android/**" — auto-attached for Android files
-    ios.mdc                            # globs: "ios/**" — auto-attached for iOS files
-    advisory-review.mdc                # description: "Review feature..." — agent requested
-    api-conventions.mdc                # globs: "shared/api-contracts/**" — OpenAPI rules
+    project.mdc                        # alwaysApply: true - global conventions
+    backend.mdc                        # globs: "backend/**" - auto-attached for backend files
+    web.mdc                            # globs: "web/**,admin/**" - auto-attached for web files
+    android.mdc                        # globs: "android/**" - auto-attached for Android files
+    ios.mdc                            # globs: "ios/**" - auto-attached for iOS files
+    advisory-review.mdc                # description: "Review feature..." - agent requested
+    api-conventions.mdc                # globs: "shared/api-contracts/**" - OpenAPI rules
 ```
 
 **Key**: `.cursorrules` is deprecated. Use `.cursor/rules/*.mdc` with four rule types:
@@ -294,14 +294,14 @@ docs/
 ### Phase 1: Template Repository Foundation
 
 **Files to create:**
-- `copier.yml` — Questionnaire: project_name, project_slug, package_identifier, description, platforms (multiselect), auth_methods (multiselect), database, use_docker, github_org (cloud_provider=azure and web_hosting=cloudflare are hardcoded)
-- `README.md` — Template maintainer instructions
+- `copier.yml` - Questionnaire: project_name, project_slug, package_identifier, description, platforms (multiselect), auth_methods (multiselect), database, use_docker, github_org (cloud_provider=azure and web_hosting=cloudflare are hardcoded)
+- `README.md` - Template maintainer instructions
 - `.gitignore`
-- `template/` — All templated output (via `_subdirectory: template`)
+- `template/` - All templated output (via `_subdirectory: template`)
 - `template/README.md.jinja`
-- `template/.gitignore.jinja` — Combined gitignore (all platforms + Windows/macOS/Linux)
-- `template/Taskfile.yml.jinja` — Root task runner; iOS tasks guarded with `platforms: [darwin]`
-- `template/.env.example.jinja` — Azure + Cloudflare + OAuth env vars
+- `template/.gitignore.jinja` - Combined gitignore (all platforms + Windows/macOS/Linux)
+- `template/Taskfile.yml.jinja` - Root task runner; iOS tasks guarded with `platforms: [darwin]`
+- `template/.env.example.jinja` - Azure + Cloudflare + OAuth env vars
 - `template/.editorconfig`
 
 ### Phase 2: Documentation Skeleton + Shared Infrastructure
@@ -315,7 +315,7 @@ docs/
 - platform-guides/android.md.jinja, ios.md.jinja, web.md.jinja, backend.md.jinja
 
 **`template/shared/`:**
-- api-contracts/openapi.yml.jinja — OpenAPI 3.1 with auth + example CRUD
+- api-contracts/openapi.yml.jinja - OpenAPI 3.1 with auth + example CRUD
 - api-contracts/.openapi-generator-ignore
 - design-tokens/tokens.json.jinja, README.md
 
@@ -324,24 +324,24 @@ docs/
 #### 3A: Backend (Spring Boot 4 / Kotlin 2.2+)
 Directory: `template/{% if "backend" in platforms %}backend{% endif %}/`
 
-- `build.gradle.kts.jinja` — Spring Boot 4.0.x, Kotlin 2.2+, Java 21, Spring Security OAuth2 Client, JPA, Flyway, SpringDoc, Jackson 3.x, JUnit Jupiter 6
-- `Taskfile.yml` — run, build, test, lint (cross-platform via gradlew/gradlew.bat)
-- `Dockerfile.jinja` — Multi-stage, targets Azure Container Apps
+- `build.gradle.kts.jinja` - Spring Boot 4.0.x, Kotlin 2.2+, Java 21, Spring Security OAuth2 Client, JPA, Flyway, SpringDoc, Jackson 3.x, JUnit Jupiter 6
+- `Taskfile.yml` - run, build, test, lint (cross-platform via gradlew/gradlew.bat)
+- `Dockerfile.jinja` - Multi-stage, targets Azure Container Apps
 - `src/main/kotlin/{{package_path}}/`
   - `Application.kt.jinja`
-  - `config/SecurityConfig.kt.jinja` — Conditionally wires OAuth providers + optional password auth
-  - `config/WebConfig.kt.jinja` — CORS for Cloudflare-hosted frontends
-  - `config/AzureConfig.kt.jinja` — Azure Key Vault, AI Services
-  - `config/OAuth2Config.kt.jinja` — OAuth2 client registration per provider
-  - `common/exception/GlobalExceptionHandler.kt.jinja`
-  - `common/model/ApiError.kt.jinja`, `PagedResponse.kt.jinja`
-  - `auth/controller/AuthController.kt.jinja` — OAuth callback, login, register, refresh
-  - `auth/service/AuthService.kt.jinja`, `OAuth2UserService.kt.jinja`
-  - `auth/security/JwtTokenProvider.kt.jinja`, `JwtAuthenticationFilter.kt.jinja`
-  - `features/example/` — Controller, Service, Repository, Entity, DTOs
-- `src/main/resources/application.yml.jinja` — Azure PostgreSQL, OAuth env vars, JWT config
+  - `bootstrap/SecurityConfig.kt.jinja` - Conditionally wires OAuth providers + optional password auth
+  - `bootstrap/WebConfig.kt.jinja` - CORS for Cloudflare-hosted frontends
+  - `bootstrap/OpenApiConfig.kt.jinja` - SpringDoc/Swagger config
+  - `bootstrap/OAuth2Config.kt.jinja` - OAuth2 client registration per provider
+  - `bootstrap/security/JwtTokenProvider.kt.jinja`, `JwtAuthenticationFilter.kt.jinja`
+  - `shared/exception/ApiException.kt.jinja`, `GlobalExceptionHandler.kt.jinja`
+  - `shared/model/ApiErrorResponse.kt.jinja`, `PagedResponse.kt.jinja`
+  - `shared/audit/AuditableEntity.kt.jinja`
+  - `modules/auth/` - controller, dto, model, repository, service
+  - `modules/example/` - Controller, Service, Repository, Entity, DTOs
+- `src/main/resources/application.yml.jinja` - Azure PostgreSQL, OAuth env vars, JWT config
 - `src/main/resources/db/migration/V1__init.sql.jinja`
-- `src/test/kotlin/` — Tests
+- `src/test/kotlin/` - Tests
 - `CLAUDE.md.jinja`, `AGENTS.md.jinja`
 
 #### 3B: Web Client (Next.js + TypeScript)
@@ -349,9 +349,9 @@ Directory: `template/{% if "web" in platforms %}web{% endif %}/`
 
 - `package.json.jinja`, `next.config.ts.jinja` (Cloudflare compatible), `wrangler.toml.jinja`
 - `tailwind.config.ts.jinja`, `tsconfig.json`, `Taskfile.yml`
-- `src/app/` — Auth pages (OAuth buttons + optional login form), dashboard, example CRUD
-- `src/lib/api/client.ts.jinja` — Axios with Bearer interceptor
-- `src/lib/auth/` — AuthContext, AuthProvider, ProtectedRoute
+- `src/app/` - Auth pages (OAuth buttons + optional login form), dashboard, example CRUD
+- `src/lib/api/client.ts.jinja` - Axios with Bearer interceptor
+- `src/lib/auth/` - AuthContext, AuthProvider, ProtectedRoute
 - `src/components/`, `src/types/`
 - `CLAUDE.md.jinja`, `AGENTS.md.jinja`
 
@@ -360,37 +360,35 @@ Directory: `template/{% if "admin" in platforms %}admin{% endif %}/`
 
 Same as web + sidebar layout, data tables, stat cards, admin role guard, separate `wrangler.toml.jinja`
 
-#### 3D: Android (Kotlin + Jetpack Compose) — MVVM
+#### 3D: Android (Kotlin + Jetpack Compose) - MVVM
 Directory: `template/{% if "android" in platforms %}android{% endif %}/`
 
 ```
-ui/           → View layer (Compose screens)
-viewmodel/    → ViewModels with UiState (StateFlow)
-domain/       → Use cases
-data/         → Repositories, API service, local storage
-di/           → Hilt modules
-navigation/   → NavHost + routes
+core/         -> DI modules, networking, database, datastore, models
+feature/      -> Feature modules (auth, example) with ui + data + domain
+designsystem/ -> Theme, components, text utilities
+navigation/   -> NavGraph + Screen routes
 ```
 
-- `build.gradle.kts.jinja`, `gradle/libs.versions.toml.jinja` — Compose BOM, Hilt, Retrofit, Credential Manager
-- `Taskfile.yml` — cross-platform (gradlew.bat on Windows)
+- `build.gradle.kts.jinja` - Compose BOM, Hilt, Retrofit, Room
+- `Taskfile.yml` - cross-platform (gradlew.bat on Windows)
 - Full MVVM structure with auth (OAuth + password), example screens
 - `CLAUDE.md.jinja`, `AGENTS.md.jinja`
 
-#### 3E: iOS (Swift + SwiftUI) — MVVM (matching Android)
+#### 3E: iOS (Swift + SwiftUI) - MVVM (matching Android)
 Directory: `template/{% if "ios" in platforms %}ios{% endif %}/`
 
 ```
-UI/           → View layer (SwiftUI views)
-ViewModel/    → ViewModels with ViewState (@Observable)
-Domain/       → Use cases (mirrors Android)
-Data/         → Repositories, API client, local storage
-DI/           → Dependency container
-Navigation/   → Router + routes
+UI/           -> View layer (SwiftUI views)
+ViewModel/    -> ViewModels with ViewState (@Observable)
+Domain/       -> Use cases (mirrors Android)
+Data/         -> Repositories, API client, local storage
+DI/           -> Dependency container
+Navigation/   -> Router + routes
 ```
 
-- `project.yml.jinja` — XcodeGen spec (Mac-only)
-- `Taskfile.yml` — guarded with `platforms: [darwin]`
+- `project.yml.jinja` - XcodeGen spec (Mac-only)
+- `Taskfile.yml` - guarded with `platforms: [darwin]`
 - Full MVVM structure mirroring Android's pattern
 - `CLAUDE.md.jinja`, `AGENTS.md.jinja`
 
@@ -402,7 +400,7 @@ Navigation/   → Router + routes
 | ViewModel | `@HiltViewModel` + `StateFlow<UiState>` | `@Observable` + `ViewState` enum |
 | UiState | Sealed class: Idle, Loading, Success, Error | Enum: idle, loading, success, error |
 | DI | Hilt (`@Inject`) | Protocol-based via `.environment()` |
-| Repository | Interface + Impl, Hilt-injected | Protocol + Impl, container-injected |
+| Repository | Concrete classes, Hilt `@Inject` constructor | Concrete classes, container-injected |
 | Navigation | Jetpack Navigation Compose | NavigationStack + navigationDestination |
 
 ### Phase 4: AI Context Layer
@@ -414,11 +412,11 @@ Navigation/   → Router + routes
 ### Phase 5: CI/CD and Infrastructure
 
 **GitHub Actions** with path-based triggers per platform:
-- backend.yml → Azure Container Registry → Azure Container Apps
-- web.yml, admin.yml → Cloudflare Pages via Wrangler
-- android.yml → Fastlane → Google Play
-- ios.yml → macOS runner → Fastlane → TestFlight
-- api-contracts.yml → validate OpenAPI spec
+- backend.yml -> Azure Container Registry -> Azure Container Apps
+- web.yml, admin.yml -> Cloudflare Pages via Wrangler
+- android.yml -> Fastlane -> Google Play
+- ios.yml -> macOS runner -> Fastlane -> TestFlight
+- api-contracts.yml -> validate OpenAPI spec
 
 **Infrastructure**: docker-compose.yml, Azure Bicep templates, Fastlane configs
 
@@ -436,22 +434,22 @@ Navigation/   → Router + routes
 
 #### Step 1: Prepare Your Inputs
 1. **A one-paragraph description** of your idea (what it does, who it's for)
-2. **Your advisory board file** (`board.md`) — personas who will evaluate features
-3. **OAuth credentials** — register with Google, Apple, Facebook, Microsoft (can be done later)
+2. **Your advisory board file** (`board.md`) - personas who will evaluate features
+3. **OAuth credentials** - register with Google, Apple, Facebook, Microsoft (can be done later)
 
 #### Step 2: Scaffold the Project
 ```bash
 copier copy https://github.com/YOUR_ORG/Template ./my-new-idea
 
 # Copier asks interactively:
-# - Project name? → "FoodieHub"
-# - Slug? → "foodiehub"
-# - Package ID? → "com.example.foodiehub"
-# - Description? → "A restaurant discovery and booking platform"
-# - Platforms? → [backend, web, admin, android, ios]
-# - Auth methods? → [google, apple, password]
-# - Use Docker? → yes
-# - GitHub org? → "my-org"
+# - Project name? -> "FoodieHub"
+# - Slug? -> "foodiehub"
+# - Package ID? -> "com.example.foodiehub"
+# - Description? -> "A restaurant discovery and booking platform"
+# - Platforms? -> [backend, web, admin, android, ios]
+# - Auth methods? -> [google, apple, password]
+# - Use Docker? -> yes
+# - GitHub org? -> "my-org"
 ```
 
 #### Step 3: Set Up Your Project
@@ -478,7 +476,7 @@ task web:dev                  # Next.js on :3000
 ```
 
 #### Step 4: Verify
-Open `http://localhost:3000` — login page with OAuth buttons + optional password form. Example CRUD pages work end-to-end.
+Open `http://localhost:3000` - login page with OAuth buttons + optional password form. Example CRUD pages work end-to-end.
 
 #### Step 5: Start Building
 See Scenario 2.
@@ -496,23 +494,23 @@ claude
 # Option A: Use the command
 > /scaffold-feature
 
-# Option B: Describe naturally — advisory-review skill auto-triggers
+# Option B: Describe naturally - advisory-review skill auto-triggers
 > I want to add a restaurant listing feature. Users should browse by
 > cuisine, location, and rating. Restaurant owners manage their listings.
 ```
 
 #### What the AI agent does (in order):
-1. **Advisory Board Review** — each board member evaluates the feature
-2. **Creates feature doc** → `docs/features/restaurant-listings.md`
-3. **Creates entity docs** → `docs/entities/restaurant.md`, `docs/entities/review.md`
-4. **Updates OpenAPI spec** → new endpoints in `shared/api-contracts/openapi.yml`
-5. **Regenerates API clients** → `task generate-clients`
-6. **Implements backend** → controller, service, repository, entity, Flyway migration
-7. **Implements web** → pages, API client calls, components
-8. **Implements admin** → management pages, data tables
-9. **Implements Android** → Screen + ViewModel (MVVM)
-10. **Implements iOS** → View + ViewModel (MVVM)
-11. **Updates feature doc status** → checks off completed platforms
+1. **Advisory Board Review** - each board member evaluates the feature
+2. **Creates feature doc** -> `docs/features/restaurant-listings.md`
+3. **Creates entity docs** -> `docs/entities/restaurant.md`, `docs/entities/review.md`
+4. **Updates OpenAPI spec** -> new endpoints in `shared/api-contracts/openapi.yml`
+5. **Regenerates API clients** -> `task generate-clients`
+6. **Implements backend** -> controller, service, repository, entity, Flyway migration
+7. **Implements web** -> pages, API client calls, components
+8. **Implements admin** -> management pages, data tables
+9. **Implements Android** -> Screen + ViewModel (MVVM)
+10. **Implements iOS** -> View + ViewModel (MVVM)
+11. **Updates feature doc status** -> checks off completed platforms
 
 #### Using Codex
 ```bash
@@ -570,7 +568,7 @@ The AI will:
 > Return paginated list sorted by distance.
 ```
 
-The AI adds to OpenAPI spec → generates clients → implements backend.
+The AI adds to OpenAPI spec -> generates clients -> implements backend.
 
 ---
 
@@ -635,7 +633,7 @@ cd web && npx wrangler pages project create foodiehub-web
 #### Mobile
 ```bash
 git tag -a v1.0.0 -m "First release" && git push origin v1.0.0
-# GitHub Actions → Fastlane → Play Store / TestFlight
+# GitHub Actions -> Fastlane -> Play Store / TestFlight
 ```
 
 ---
@@ -653,7 +651,7 @@ copier update
 ### Scenario 10: Working Across Windows and Mac
 
 **Windows (daily):** Backend, web, admin, Android all work. iOS code generated but can't compile.
-**Mac (iOS):** Pull latest → `task ios:generate-project` → `task ios:build` → Xcode.
+**Mac (iOS):** Pull latest -> `task ios:generate-project` -> `task ios:build` -> Xcode.
 **CI/CD:** iOS uses `runs-on: macos-latest`, everything else `ubuntu-latest`.
 
 ---
@@ -709,14 +707,12 @@ copier update
 | 5 | CI/CD workflows + infrastructure templates | **Done** |
 | 6 | Hygen in-project generators | **Done** |
 
-### Library Versions (as of Feb 2026)
+### Library Versions (as of Mar 2026)
 
 **Android:**
-- AGP 9.0.1, Compose BOM 2026.01.01, Hilt 2.56.2
-- Navigation 2.9.7, Lifecycle 2.9.1, Retrofit 3.0.0
-- kotlinx-serialization 1.10.0, Coroutines 1.10.2
-- DataStore 1.2.0, Room 2.8.4
-- compileSdk 36, minSdk 29, targetSdk 35
+- AGP 8.9.1, Kotlin 2.3.10, Compose BOM 2026.01.01, Hilt 2.57.2
+- Retrofit 3.0.0, Room 2.8.4
+- Gradle 8.13
 
 **iOS:**
 - Swift 6.0, Xcode 26, iOS 17.0 min
@@ -735,13 +731,13 @@ copier update
 
 ## Verification
 
-1. `copier copy` with all platforms → all present
-2. `copier copy` without iOS → iOS absent
-3. Backend `gradlew.bat build` → compiles
-4. Web `npm run build` → compiles
-5. `task generate-clients` → all clients generated
-6. `docker compose up` → running
-7. Android `gradlew.bat assembleDebug` → APK
-8. iOS (Mac) `xcodebuild build` → compiles
+1. `copier copy` with all platforms -> all present
+2. `copier copy` without iOS -> iOS absent
+3. Backend `gradlew.bat build` -> compiles
+4. Web `npm run build` -> compiles
+5. `task generate-clients` -> all clients generated
+6. `docker compose up` -> running
+7. Android `gradlew.bat assembleDebug` -> APK
+8. iOS (Mac) `xcodebuild build` -> compiles
 9. AI context loads correctly in all three tools
 10. `/scaffold-feature` creates docs + code across platforms

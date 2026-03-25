@@ -20,7 +20,7 @@ modules/<domain>/
   service/       # Business logic, orchestration
 ```
 
-Not every module needs all subpackages — small modules may only have `controller/` + `service/`.
+Not every module needs all subpackages - small modules may only have `controller/` + `service/`.
 
 ### Layer Dependencies (strict)
 
@@ -67,7 +67,7 @@ class SomeService(
 
 - Use `@Transactional` on write methods, `@Transactional(readOnly = true)` on read methods
 - Services are the only layer that converts between entities and DTOs
-- Throw exceptions for error cases — `GlobalExceptionHandler` converts them to HTTP responses
+- Throw exceptions for error cases - `GlobalExceptionHandler` converts them to HTTP responses
 - Never call `@Transactional` methods from the same class (proxy bypass)
 
 ## DTO Conventions
@@ -98,7 +98,7 @@ class SomeMapper(private val otherService: OtherService) {
 ```
 
 - DTOs are data classes in the `dto/` package
-- Entities are NEVER serialized directly to JSON — always map to DTOs
+- Entities are NEVER serialized directly to JSON - always map to DTOs
 - Request DTOs are separate from response DTOs when shapes differ
 - Use summary DTOs for list views, full DTOs for detail views (don't over-fetch)
 

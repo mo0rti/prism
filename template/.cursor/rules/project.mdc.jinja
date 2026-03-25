@@ -8,17 +8,17 @@ alwaysApply: true
 
 ## Architecture
 
-Monorepo, MVVM on all platforms, API-first (OpenAPI → typed clients).
+Monorepo, MVVM on all platforms, API-first (OpenAPI -> typed clients).
 
-{% if "backend" in platforms %}- **Backend**: Spring Boot 4, Kotlin 2.2+, Java 21 — Azure Container Apps{% endif %}
-{% if "web" in platforms %}- **Web**: Next.js + TypeScript — Cloudflare Pages{% endif %}
-{% if "admin" in platforms %}- **Admin**: Next.js + TypeScript — Cloudflare Pages{% endif %}
+{% if "backend" in platforms %}- **Backend**: Spring Boot 4, Kotlin 2.2+, Java 21 - Azure Container Apps{% endif %}
+{% if "web" in platforms %}- **Web**: Next.js + TypeScript - Cloudflare Pages{% endif %}
+{% if "admin" in platforms %}- **Admin**: Next.js + TypeScript - Cloudflare Pages{% endif %}
 {% if "android" in platforms %}- **Android**: Kotlin + Jetpack Compose, Hilt, Retrofit 3, Room{% endif %}
 {% if "ios" in platforms %}- **iOS**: Swift 6 + SwiftUI, async/await, Keychain, SwiftData (Mac/Xcode only){% endif %}
 
 ## Key Conventions
 
-- API-first: define in `shared/api-contracts/openapi.yml` → generate clients → implement
+- API-first: define in `shared/api-contracts/openapi.yml` -> generate clients -> implement
 - MVVM: one ViewModel per screen, sealed UiState/ViewState enum
 - Repository pattern: interface/protocol + implementation
 - Feature docs in `docs/features/` with advisory board review
@@ -27,7 +27,7 @@ Monorepo, MVVM on all platforms, API-first (OpenAPI → typed clients).
 
 ## Commands
 
-- `task generate-clients` — regenerate typed API clients
+- `task generate-clients` - regenerate typed API clients
 {% if "backend" in platforms %}- `task backend:run` / `task backend:test`{% endif %}
 {% if "web" in platforms %}- `task web:dev`{% endif %}
 {% if "android" in platforms %}- `task android:build` / `task android:test`{% endif %}
@@ -35,8 +35,8 @@ Monorepo, MVVM on all platforms, API-first (OpenAPI → typed clients).
 
 ## Documentation
 
-- `docs/architecture.md` — system overview
-- `docs/features/` — feature specs with board review
-- `docs/entities/` — entity definitions
-- `docs/api/conventions.md` — API patterns
-- `docs/advisory-board.md` — virtual advisory board
+- `docs/architecture.md` - system overview
+- `docs/features/` - feature specs with board review
+- `docs/entities/` - entity definitions
+- `docs/api/conventions.md` - API patterns
+- `docs/advisory-board.md` - virtual advisory board

@@ -111,7 +111,7 @@ class OAuth2UserService(
 {% if "apple" in auth_methods %}
     private fun exchangeAppleCode(code: String, redirectUri: String): OAuth2UserInfo {
         // Apple requires a client_secret JWT signed with your private key.
-        // This is a simplified implementation — production should generate the JWT properly.
+        // This is a simplified implementation - production should generate the JWT properly.
         val tokenResponse = exchangeCodeForToken(
             tokenUri = oAuth2Config.appleTokenUri,
             clientId = oAuth2Config.appleClientId,
@@ -122,7 +122,7 @@ class OAuth2UserService(
         val idToken = tokenResponse["id_token"] as? String
             ?: throw UnauthorizedException("Failed to get Apple ID token")
 
-        // Decode the ID token (simplified — production should verify the signature)
+        // Decode the ID token (simplified - production should verify the signature)
         val payload = decodeJwtPayload(idToken)
         return OAuth2UserInfo(
             providerId = payload["sub"] as String,
@@ -134,7 +134,7 @@ class OAuth2UserService(
 
     private fun generateAppleClientSecret(): String {
         // TODO: Implement Apple client secret JWT generation using appleTeamId, appleKeyId, applePrivateKey
-        log.warn("Apple client secret generation not fully implemented — provide your own implementation")
+        log.warn("Apple client secret generation not fully implemented - provide your own implementation")
         return ""
     }
 

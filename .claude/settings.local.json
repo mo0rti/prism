@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(while read:*)",
+      "Bash(do sed:*)",
+      "Bash(done)"
+    ]
+  }
+}

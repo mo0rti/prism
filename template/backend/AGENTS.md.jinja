@@ -1,4 +1,4 @@
-# Backend — {{ project_name }}
+# Backend - {{ project_name }}
 
 Spring Boot 4 (Kotlin 2.2+, Java 21) backend service.
 
@@ -21,22 +21,22 @@ Spring Boot 4 (Kotlin 2.2+, Java 21) backend service.
 ### Gotchas
 
 - **Jackson 3.x split namespace**: core annotations stay at `com.fasterxml.jackson.annotation.*`, runtime classes moved to `tools.jackson.*`. There is NO `tools.jackson.annotation` package.
-- **Entity IDs**: always `lateinit var id: UUID` in the class body — never make it nullable (`UUID? = null`) as that causes cascading compile errors.
+- **Entity IDs**: always `lateinit var id: UUID` in the class body - never make it nullable (`UUID? = null`) as that causes cascading compile errors.
 - **Inject ObjectMapper**: Spring beans must inject `tools.jackson.databind.ObjectMapper`, never create standalone `jacksonObjectMapper()`.
 
 ## Architecture
 
 ```
 src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  bootstrap/         — Framework config (Security, CORS, OAuth2, OpenAPI)
-    security/        — JWT token provider and authentication filter
-  shared/            — Cross-cutting concerns (exceptions, models, audit)
-    audit/           — AuditableEntity base class (createdAt/updatedAt)
-    exception/       — ApiException hierarchy + GlobalExceptionHandler
-    model/           — Shared DTOs (ApiErrorResponse, PagedResponse)
-  modules/           — Feature modules
-    auth/            — Authentication (OAuth + {% if "password" in auth_methods %}password + {% endif %}JWT)
-    example/         — Example CRUD feature (template for new features)
+  bootstrap/         - Framework config (Security, CORS, OAuth2, OpenAPI)
+    security/        - JWT token provider and authentication filter
+  shared/            - Cross-cutting concerns (exceptions, models, audit)
+    audit/           - AuditableEntity base class (createdAt/updatedAt)
+    exception/       - ApiException hierarchy + GlobalExceptionHandler
+    model/           - Shared DTOs (ApiErrorResponse, PagedResponse)
+  modules/           - Feature modules
+    auth/            - Authentication (OAuth + {% if "password" in auth_methods %}password + {% endif %}JWT)
+    example/         - Example CRUD feature (template for new features)
 ```
 
 Each module has: `controller/`, `dto/`, `model/`, `repository/`, `service/`.
@@ -44,10 +44,10 @@ Each module has: `controller/`, `dto/`, `model/`, `repository/`, `service/`.
 ## Conventions
 
 - **Package per feature**: each feature in `modules/{name}/` with subpackages
-- **DTOs in `dto/`**: separate from entities in `model/` — never expose entities directly
+- **DTOs in `dto/`**: separate from entities in `model/` - never expose entities directly
 - **Entities extend `AuditableEntity`**: provides `createdAt`/`updatedAt` via `@MappedSuperclass`
 - **Entity IDs**: `@Id lateinit var id: UUID` in class body, `@GeneratedValue(strategy = GenerationType.UUID)`
-- **Exceptions**: throw `ApiException` subclasses — `GlobalExceptionHandler` maps to JSON
+- **Exceptions**: throw `ApiException` subclasses - `GlobalExceptionHandler` maps to JSON
 - **Services**: `@Transactional` on writes, `@Transactional(readOnly = true)` on reads
 - **Auth**: JWT Bearer token; stateless sessions
 - **Migrations**: Flyway in `resources/db/migration/V{N}__{description}.sql`
@@ -55,11 +55,11 @@ Each module has: `controller/`, `dto/`, `model/`, `repository/`, `service/`.
 
 ## Key Files
 
-- `bootstrap/SecurityConfig.kt` — endpoint security rules, JWT filter
-- `bootstrap/security/JwtTokenProvider.kt` — token generation/validation
-- `shared/audit/AuditableEntity.kt` — base entity with timestamps
-- `shared/exception/ApiException.kt` — exception hierarchy
-- `application.yml` — all configuration (DB, JWT, OAuth, CORS)
+- `bootstrap/SecurityConfig.kt` - endpoint security rules, JWT filter
+- `bootstrap/security/JwtTokenProvider.kt` - token generation/validation
+- `shared/audit/AuditableEntity.kt` - base entity with timestamps
+- `shared/exception/ApiException.kt` - exception hierarchy
+- `application.yml` - all configuration (DB, JWT, OAuth, CORS)
 
 ## API
 

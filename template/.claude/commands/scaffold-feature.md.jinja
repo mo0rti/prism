@@ -4,32 +4,32 @@ Ask me for the feature name and a brief description if I haven't provided them.
 
 ## Steps
 
-1. **Advisory Board Review** — Read `docs/advisory-board.md` and evaluate the feature from each board member's perspective. Present their feedback and ask me if I want to proceed.
+1. **Advisory Board Review** - Read `docs/advisory-board.md` and evaluate the feature from each board member's perspective. Present their feedback and ask me if I want to proceed.
 
-2. **Create Feature Documentation** — Create `docs/features/{feature-name}.md` using the template from `docs/features/_template.md`. Fill in:
+2. **Create Feature Documentation** - Create `docs/features/{feature-name}.md` using the template from `docs/features/_template.md`. Fill in:
    - Business logic and requirements
    - Board review summary from step 1
    - Entities involved (new or modified)
    - API endpoints needed
    - Platform implementation checklist
 
-3. **Create/Update Entity Documentation** — For each new or modified entity, create or update `docs/entities/{entity}.md` using `docs/entities/_template.md`.
+3. **Create/Update Entity Documentation** - For each new or modified entity, create or update `docs/entities/{entity}.md` using `docs/entities/_template.md`.
 
-4. **Update OpenAPI Spec** — Add new endpoints and schemas to `shared/api-contracts/openapi.yml`. Follow conventions in `docs/api/conventions.md`.
+4. **Update OpenAPI Spec** - Add new endpoints and schemas to `shared/api-contracts/openapi.yml`. Follow conventions in `docs/api/conventions.md`.
 
-5. **Generate API Clients** — Run `task generate-clients` to regenerate typed clients.
+5. **Generate API Clients** - Run `task generate-clients` to regenerate typed clients.
 
-6. **Implement Backend** — Create controller, service, repository, entity, DTOs, and Flyway migration in `backend/`. Follow patterns in `backend/CLAUDE.md`.
+6. **Implement Backend** - Create controller, service, repository, entity, DTOs, and Flyway migration in `backend/`. Follow patterns in `backend/CLAUDE.md`.
 
-{% if "web" in platforms %}7. **Implement Web Client** — Create pages and components in `web/`. Follow patterns in `web/CLAUDE.md`.{% endif %}
+{% if "web" in platforms %}7. **Implement Web Client** - Create pages and components in `web/`. Follow patterns in `web/CLAUDE.md`.{% endif %}
 
-{% if "admin" in platforms %}8. **Implement Admin Portal** — Create management pages in `admin/`. Follow patterns in `admin/CLAUDE.md`.{% endif %}
+{% if "admin" in platforms %}8. **Implement Admin Portal** - Create management pages in `admin/`. Follow patterns in `admin/CLAUDE.md`.{% endif %}
 
-{% if "android" in platforms %}9. **Implement Android** — Create Screen + ViewModel (MVVM pattern) in `android/`. Follow patterns in `android/CLAUDE.md`.{% endif %}
+{% if "android" in platforms %}9. **Implement Android** - Create Screen + ViewModel (MVVM pattern) in `android/`. Follow patterns in `android/CLAUDE.md`.{% endif %}
 
-{% if "ios" in platforms %}10. **Implement iOS** — Create View + ViewModel (MVVM pattern) in `ios/`. Follow patterns in `ios/CLAUDE.md`.{% endif %}
+{% if "ios" in platforms %}10. **Implement iOS** - Create View + ViewModel (MVVM pattern) in `ios/`. Follow patterns in `ios/CLAUDE.md`.{% endif %}
 
-11. **Update Feature Doc** — Check off completed platforms in the implementation status checklist.
+11. **Update Feature Doc** - Check off completed platforms in the implementation status checklist.
 
 ## Important
 

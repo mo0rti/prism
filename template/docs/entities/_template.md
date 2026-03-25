@@ -13,8 +13,8 @@ Brief description of what this entity represents in the system.
 
 ## Relationships
 
-- **belongs to** [OtherEntity](other-entity.md) — description of relationship
-- **has many** [AnotherEntity](another-entity.md) — description of relationship
+- **belongs to** [OtherEntity](other-entity.md) - description of relationship
+- **has many** [AnotherEntity](another-entity.md) - description of relationship
 
 ## Validation Rules
 

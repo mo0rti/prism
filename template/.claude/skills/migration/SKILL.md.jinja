@@ -9,13 +9,13 @@ Create a Flyway migration for $ARGUMENTS.
 
 Steps:
 
-1. **Analyze impact** — identify affected entities, relationships, indexes, and constraints.
-2. **Determine the next version number** — check existing files in `backend/src/main/resources/db/migration/` for the current highest version.
-3. **Generate the migration SQL** — follow the `database-migrations` skill conventions:
+1. **Analyze impact** - identify affected entities, relationships, indexes, and constraints.
+2. **Determine the next version number** - check existing files in `backend/src/main/resources/db/migration/` for the current highest version.
+3. **Generate the migration SQL** - follow the `database-migrations` skill conventions:
    - File name: `V{N}__{snake_case_description}.sql`
    - UPPERCASE SQL keywords, lowercase identifiers
    - {% if database == 'postgres' %}UUID primary keys with `gen_random_uuid()`, `TIMESTAMP WITH TIME ZONE` for timestamps{% else %}Proper MySQL types and engine settings{% endif %}
    - Named constraints (`pk_`, `fk_`, `uq_`, `idx_`, `chk_`)
    - Audit columns (`created_at`, `updated_at`) for `AuditableEntity` tables
-4. **Update the entity** if Kotlin code changes are needed — follow the `jpa-kotlin-patterns` skill (lateinit UUID id, AuditableEntity, proper relationships).
-5. **Consider rollback** — document how to reverse the change if needed.
+4. **Update the entity** if Kotlin code changes are needed - follow the `jpa-kotlin-patterns` skill (lateinit UUID id, AuditableEntity, proper relationships).
+5. **Consider rollback** - document how to reverse the change if needed.

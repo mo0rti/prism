@@ -2,7 +2,7 @@
 globs: "android/**"
 ---
 
-# Android — Kotlin + Jetpack Compose (MVVM)
+# Android - Kotlin + Jetpack Compose (MVVM)
 
 ## Stack
 - Kotlin, Jetpack Compose (BOM 2026.01.01), Hilt DI
@@ -14,26 +14,26 @@ globs: "android/**"
 ## Structure
 ```
 app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  app/             → Application + MainActivity
+  app/             -> Application + MainActivity
   core/
-    common/        → AppResult
-    session/       → SessionManager (concrete class, auth state source)
-    network/       → ApiService, AuthInterceptor, TokenAuthenticator
-    datastore/     → TokenStorage (DataStore)
-    database/      → AppDatabase, Converters (shared only)
-    di/            → NetworkModule, DatabaseModule, DispatcherModule, AppModule
-    model/         → User, Session (AuthState), Paging
-  navigation/      → Screen routes, NavGraph
+    common/        -> AppResult
+    session/       -> SessionManager (concrete class, auth state source)
+    network/       -> ApiService, AuthInterceptor, TokenAuthenticator
+    datastore/     -> TokenStorage (DataStore)
+    database/      -> AppDatabase, Converters (shared only)
+    di/            -> NetworkModule, DatabaseModule, DispatcherModule, AppModule
+    model/         -> User, Session (AuthState), Paging
+  navigation/      -> Screen routes, NavGraph
   feature/*/
-    domain/model/      → Feature-specific domain models
-    data/remote/dto/   → @Serializable DTOs
-    data/local/        → Room Entity, DAO, Mappers (if feature needs persistence)
-    data/repository/   → Concrete repository classes (no interfaces)
-    ui/                → Route, Screen, ViewModel, components/
+    domain/model/      -> Feature-specific domain models
+    data/remote/dto/   -> @Serializable DTOs
+    data/local/        -> Room Entity, DAO, Mappers (if feature needs persistence)
+    data/repository/   -> Concrete repository classes (no interfaces)
+    ui/                -> Route, Screen, ViewModel, components/
   designsystem/
-    theme/         → Color, Type, Shape, Dimensions, Theme
-    text/          → UiText
-    components/    → LoadingIndicator, ErrorView
+    theme/         -> Color, Type, Shape, Dimensions, Theme
+    text/          -> UiText
+    components/    -> LoadingIndicator, ErrorView
 ```
 
 ## Patterns
@@ -43,13 +43,13 @@ app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 - Services and managers: concrete classes by default; no interface + impl pairs unless multiple implementations needed
 - DI modules: NetworkModule, DatabaseModule, DispatcherModule, AppModule
 - SessionManager exposes `StateFlow<AuthState>` for auth gating
-- TokenAuthenticator handles 401 → refresh → retry automatically
+- TokenAuthenticator handles 401 -> refresh -> retry automatically
 - Type-safe navigation via `@Serializable` sealed interface
 - Dispatchers: `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` qualifiers
 
 ## Conventions
 - Feature-specific persistence in `feature/*/data/local/`, not `core/database/`
 - DTOs in `data/remote/dto/`, domain models are framework-light (no @Serializable)
-- No use cases by default — add `usecase/` only for non-trivial orchestration
+- No use cases by default - add `usecase/` only for non-trivial orchestration
 - `AppResult<T>` avoids collision with `kotlin.Result`
 - Tests: MockK + Turbine, mirror source structure

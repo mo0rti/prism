@@ -11,9 +11,9 @@ A [Copier](https://copier.readthedocs.io/) template for scaffolding multi-platfo
 ## Prerequisites
 
 - Python 3.10+ with `pip install copier`
-- [go-task](https://taskfile.dev/) — cross-platform task runner
-- `npm install -g @openapitools/openapi-generator-cli` — API client generation
-- `npm install -g hygen` — in-project generators
+- [go-task](https://taskfile.dev/) - cross-platform task runner
+- `npm install -g @openapitools/openapi-generator-cli` - API client generation
+- `npm install -g hygen` - in-project generators
 - JDK 21, Node.js LTS, Docker Desktop
 
 For iOS development (Mac only):

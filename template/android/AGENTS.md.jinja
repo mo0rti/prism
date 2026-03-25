@@ -1,4 +1,4 @@
-# Android — {{ project_name }}
+# Android - {{ project_name }}
 
 Kotlin + Jetpack Compose with MVVM.
 
@@ -13,29 +13,29 @@ Kotlin + Jetpack Compose with MVVM.
 
 ```
 app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  app/             → Application + MainActivity
+  app/             -> Application + MainActivity
   core/
-    common/        → AppResult
-    session/       → SessionManager (concrete class)
-    network/       → ApiService, AuthInterceptor, TokenAuthenticator
-    datastore/     → TokenStorage (DataStore)
-    database/      → AppDatabase, Converters (shared only)
-    di/            → NetworkModule, DatabaseModule, DispatcherModule, AppModule
-    model/         → Cross-feature models: User, Session (AuthState), Paging
-  navigation/      → Screen routes, NavGraph
+    common/        -> AppResult
+    session/       -> SessionManager (concrete class)
+    network/       -> ApiService, AuthInterceptor, TokenAuthenticator
+    datastore/     -> TokenStorage (DataStore)
+    database/      -> AppDatabase, Converters (shared only)
+    di/            -> NetworkModule, DatabaseModule, DispatcherModule, AppModule
+    model/         -> Cross-feature models: User, Session (AuthState), Paging
+  navigation/      -> Screen routes, NavGraph
   feature/
     auth/
-      domain/      → AuthCredentials model
-      data/        → AuthRepository, AuthDtos
-      ui/          → SignInRoute, SignInScreen, SignInViewModel
+      domain/      -> AuthCredentials model
+      data/        -> AuthRepository, AuthDtos
+      ui/          -> SignInRoute, SignInScreen, SignInViewModel
     example/
-      domain/      → Example model
-      data/        → ExampleRepository, ExampleDtos, ExampleEntity, ExampleDao, Mappers
-      ui/          → ExampleListRoute, ExampleListScreen, ExampleListViewModel, components/
+      domain/      -> Example model
+      data/        -> ExampleRepository, ExampleDtos, ExampleEntity, ExampleDao, Mappers
+      ui/          -> ExampleListRoute, ExampleListScreen, ExampleListViewModel, components/
   designsystem/
-    theme/         → Color, Type, Shape, Dimensions, Theme
-    text/          → UiText (framework-light string wrapper)
-    components/    → LoadingIndicator, ErrorView
+    theme/         -> Color, Type, Shape, Dimensions, Theme
+    text/          -> UiText (framework-light string wrapper)
+    components/    -> LoadingIndicator, ErrorView
 ```
 
 ## Patterns
@@ -44,17 +44,17 @@ app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 - **Route/Screen split**: Route handles navigation wiring + ViewModel; Screen is a pure composable
 - **Repositories**: Concrete classes in `feature/*/data/repository/`, injected by Hilt by type (no interfaces)
 - **Services and managers**: Concrete classes by default; no interface + impl pairs unless multiple implementations are needed
-- **DI**: Hilt — modules: NetworkModule, DatabaseModule, DispatcherModule, AppModule
+- **DI**: Hilt - modules: NetworkModule, DatabaseModule, DispatcherModule, AppModule
 - **Session**: `SessionManager` exposes `StateFlow<AuthState>`, consumed by NavGraph
-- **Token refresh**: `TokenAuthenticator` (OkHttp Authenticator) handles 401 → refresh → retry
+- **Token refresh**: `TokenAuthenticator` (OkHttp Authenticator) handles 401 -> refresh -> retry
 - **Navigation**: Type-safe routes via `@Serializable` sealed interface
 
 ## Conventions
 
 - Feature-specific persistence (Entity, DAO, Mappers) lives in `feature/*/data/local/`
 - Shared database infrastructure (AppDatabase, Converters) lives in `core/database/`
-- DTOs (`@Serializable`) in `feature/*/data/remote/dto/` — domain models are framework-light
-- No use cases by default — add `usecase/` only when orchestration logic is needed
+- DTOs (`@Serializable`) in `feature/*/data/remote/dto/` - domain models are framework-light
+- No use cases by default - add `usecase/` only when orchestration logic is needed
 - `AppResult<T>` instead of `kotlin.Result` to avoid naming collision
 - Tests: MockK + Turbine, test structure mirrors source
 - Dispatchers: Use `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` qualifiers from DispatcherModule

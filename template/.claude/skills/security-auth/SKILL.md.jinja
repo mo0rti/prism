@@ -9,7 +9,7 @@ Security conventions for this Spring Boot 4 + Kotlin project.
 
 ## Security Architecture
 
-- **Stateless JWT** — `SessionCreationPolicy.STATELESS`, no server-side sessions
+- **Stateless JWT** - `SessionCreationPolicy.STATELESS`, no server-side sessions
 - **BCrypt** for password hashing{% if "password" in auth_methods %}
 - **Password auth** enabled via form login{% endif %}
 {% for method in auth_methods %}{% if method == "google" %}- **Google OAuth** configured{% elif method == "apple" %}- **Apple Sign-In** configured{% elif method == "facebook" %}- **Facebook Login** configured{% elif method == "microsoft" %}- **Microsoft Account** configured{% endif %}
@@ -28,7 +28,7 @@ Defined in `SecurityConfig.filterChain()`:
 
 ### Authenticated (everything else)
 
-- `.anyRequest().authenticated()` — requires valid JWT Bearer token
+- `.anyRequest().authenticated()` - requires valid JWT Bearer token
 
 ## Creating a Secured Endpoint
 
@@ -53,7 +53,7 @@ class RecipeController(private val recipeService: RecipeService) {
 }
 ```
 
-All endpoints under `/api/v1/` (except auth) require a valid JWT by default — no additional annotation needed.
+All endpoints under `/api/v1/` (except auth) require a valid JWT by default - no additional annotation needed.
 
 ## Accessing the Current User
 
@@ -81,7 +81,7 @@ If an endpoint must bypass authentication:
 1. Add `@PermitAll` annotation to the controller method (from `jakarta.annotation.security`)
 2. Add the path to `SecurityConfig.filterChain()` in `.requestMatchers(...).permitAll()`
 
-**Both steps are required** — the annotation alone is not sufficient.
+**Both steps are required** - the annotation alone is not sufficient.
 
 ## JWT Token Flow
 
@@ -92,15 +92,15 @@ If an endpoint must bypass authentication:
 
 ## Key Files
 
-- `bootstrap/SecurityConfig.kt` — filter chain, endpoint security rules, CORS
-{% if auth_methods | length > 1 or "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `bootstrap/OAuth2Config.kt` — OAuth provider credentials and configuration
-{% endif %}- `bootstrap/security/JwtTokenProvider.kt` — token generation and validation
-- `bootstrap/security/JwtAuthenticationFilter.kt` — request filter that validates JWT
-- `application.yml` — JWT secret, token expiry, OAuth client IDs
+- `bootstrap/SecurityConfig.kt` - filter chain, endpoint security rules, CORS
+{% if auth_methods | length > 1 or "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `bootstrap/OAuth2Config.kt` - OAuth provider credentials and configuration
+{% endif %}- `bootstrap/security/JwtTokenProvider.kt` - token generation and validation
+- `bootstrap/security/JwtAuthenticationFilter.kt` - request filter that validates JWT
+- `application.yml` - JWT secret, token expiry, OAuth client IDs
 
 ## Rules
 
-- **Never hardcode secrets** — use environment variables (`${JWT_SECRET}`, `${GOOGLE_CLIENT_ID}`, etc.)
+- **Never hardcode secrets** - use environment variables (`${JWT_SECRET}`, `${GOOGLE_CLIENT_ID}`, etc.)
 - **Adding a public endpoint?** Must be added to BOTH the controller annotation AND `SecurityConfig.filterChain()`
-- **Do NOT catch `AccessDeniedException`** in controllers — `GlobalExceptionHandler` handles it
-- **Auth endpoints are always public** — never require a token for login/signup/refresh
+- **Do NOT catch `AccessDeniedException`** in controllers - `GlobalExceptionHandler` handles it
+- **Auth endpoints are always public** - never require a token for login/signup/refresh

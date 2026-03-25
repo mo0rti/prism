@@ -1,4 +1,4 @@
-# iOS — {{ project_name }}
+# iOS - {{ project_name }}
 
 Swift 6 + SwiftUI with MVVM architecture. Requires Mac with Xcode 26 for building.
 
@@ -13,24 +13,24 @@ Swift 6 + SwiftUI with MVVM architecture. Requires Mac with Xcode 26 for buildin
 
 ```
 {{ project_slug }}/
-  DI/            → DependencyContainer (@Observable)
-  Navigation/    → AppRouter + Route enum
+  DI/            -> DependencyContainer (@Observable)
+  Navigation/    -> AppRouter + Route enum
   Data/
-    Network/     → APIClient (async/await) + APIEndpoint
-    Storage/     → Keychain TokenStorage (actor) + SwiftData models
-    Repository/  → Protocol + Impl pattern
-  Domain/Model/  → Codable DTOs
+    Network/     -> APIClient (async/await) + APIEndpoint
+    Storage/     -> Keychain TokenStorage (actor) + SwiftData models
+    Repository/  -> Protocol + Impl pattern
+  Domain/Model/  -> Codable DTOs
   UI/
-    Theme/       → AppTheme (from design tokens)
-    Auth/        → LoginView + LoginViewModel
-    Examples/    → ExampleListView + ExampleListViewModel
-    Common/      → LoadingView, ErrorView, PrimaryButton
+    Theme/       -> AppTheme (from design tokens)
+    Auth/        -> LoginView + LoginViewModel
+    Examples/    -> ExampleListView + ExampleListViewModel
+    Common/      -> LoadingView, ErrorView, PrimaryButton
 ```
 
 ## MVVM Pattern
 
 - **ViewModel**: `@Observable` class with `ViewState` enum
-- **ViewState**: enum — `idle`, `loading`, `success`, `error(String)`
+- **ViewState**: enum - `idle`, `loading`, `success`, `error(String)`
 - **View**: SwiftUI `View` structs with `@Bindable` ViewModel
 - **DI**: Protocol-based via `DependencyContainer`, injected via `.environment()`
 - **Navigation**: `NavigationStack` + `Route` enum
@@ -47,9 +47,9 @@ Swift 6 + SwiftUI with MVVM architecture. Requires Mac with Xcode 26 for buildin
 
 ## Key Files
 
-- `DI/DependencyContainer.swift` — all dependency wiring
-- `Data/Network/APIClient.swift` — URLSession-based, generic `request<T>` method
-- `Data/Storage/TokenStorage.swift` — Keychain-backed, actor-isolated
-- `Data/Storage/CachedExample.swift` — SwiftData model for local caching
-- `UI/Theme/AppTheme.swift` — colors + spacing from design tokens
-- `project.yml` — XcodeGen spec (Mac only)
+- `DI/DependencyContainer.swift` - all dependency wiring
+- `Data/Network/APIClient.swift` - URLSession-based, generic `request<T>` method
+- `Data/Storage/TokenStorage.swift` - Keychain-backed, actor-isolated
+- `Data/Storage/CachedExample.swift` - SwiftData model for local caching
+- `UI/Theme/AppTheme.swift` - colors + spacing from design tokens
+- `project.yml` - XcodeGen spec (Mac only)

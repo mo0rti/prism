@@ -2,7 +2,7 @@
 globs: "backend/**"
 ---
 
-# Backend — Spring Boot 4 (Kotlin)
+# Backend - Spring Boot 4 (Kotlin)
 
 ## Stack
 - Spring Boot 4.0.x, Kotlin 2.2+, Java 21
@@ -14,23 +14,23 @@ globs: "backend/**"
 ## Structure
 ```
 src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  bootstrap/    → SecurityConfig, WebConfig, OAuth2Config, OpenApiConfig
-    security/   → JwtTokenProvider, JwtAuthenticationFilter
-  shared/       → Cross-cutting: exceptions, models, audit
-    audit/      → AuditableEntity (@MappedSuperclass with timestamps)
-    exception/  → ApiException hierarchy + GlobalExceptionHandler
-    model/      → ApiErrorResponse, PagedResponse
-  modules/      → Feature modules
-    auth/       → controller/, dto/, model/, repository/, service/
-    example/    → controller/, dto/, model/, repository/, service/
+  bootstrap/    -> SecurityConfig, WebConfig, OAuth2Config, OpenApiConfig
+    security/   -> JwtTokenProvider, JwtAuthenticationFilter
+  shared/       -> Cross-cutting: exceptions, models, audit
+    audit/      -> AuditableEntity (@MappedSuperclass with timestamps)
+    exception/  -> ApiException hierarchy + GlobalExceptionHandler
+    model/      -> ApiErrorResponse, PagedResponse
+  modules/      -> Feature modules
+    auth/       -> controller/, dto/, model/, repository/, service/
+    example/    -> controller/, dto/, model/, repository/, service/
 ```
 
 ## Patterns
-- Controller → Service → Repository → Entity
-- DTOs in `dto/` package, entities in `model/` — never expose entities
+- Controller -> Service -> Repository -> Entity
+- DTOs in `dto/` package, entities in `model/` - never expose entities
 - Entities extend `AuditableEntity` for automatic timestamps
 - Global exception handler returns `ApiErrorResponse`
-- Pagination via `Pageable` → `PagedResponse<T>`
+- Pagination via `Pageable` -> `PagedResponse<T>`
 - All endpoints require JWT except `/auth/**`
 - Flyway migrations in `src/main/resources/db/migration/`
 - Tests use `@SpringBootTest` + MockK

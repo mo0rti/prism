@@ -81,7 +81,7 @@ class ExampleServiceTest {
 
 ### Key Conventions
 
-- **Backtick test names**: `` `should do X when Y` `` — readable, Kotlin-idiomatic
+- **Backtick test names**: `` `should do X when Y` `` - readable, Kotlin-idiomatic
 - **`@Nested` + `@DisplayName`**: Group tests by method or scenario
 - **`@AfterEach` with `unmockkAll()`**: Clean up MockK state between tests
 - **Constructor injection in tests**: Pass mocks directly, no `@InjectMocks`
@@ -139,7 +139,7 @@ class ExampleServiceIntegrationTest {
 
 ## Anti-Patterns
 
-- **Do NOT use Mockito** — use MockK for Kotlin (null-safety, extension functions)
-- **Do NOT use `@SpringBootTest` for unit tests** — only for integration tests that need the full context
-- **Do NOT use `@MockBean` in unit tests** — use constructor injection with MockK mocks instead
-- **Do NOT test private methods** — test through public API
+- **Do NOT use Mockito** - use MockK for Kotlin (null-safety, extension functions)
+- **Do NOT use `@SpringBootTest` for unit tests** - only for integration tests that need the full context
+- **Do NOT use `@MockBean` in unit tests** - use constructor injection with MockK mocks instead
+- **Do NOT test private methods** - test through public API

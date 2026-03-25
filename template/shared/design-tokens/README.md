@@ -1,6 +1,6 @@
 # Design Tokens
 
-Shared visual language across all platforms. Edit `tokens.json` to change the design system — all platforms should reference these values.
+Shared visual language across all platforms. Edit `tokens.json` to change the design system - all platforms should reference these values.
 
 ## How Each Platform Consumes Tokens
 

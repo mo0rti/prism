@@ -1,4 +1,4 @@
-# iOS Guide — {{ project_name }}
+# iOS Guide - {{ project_name }}
 
 ## Tech Stack
 
@@ -12,7 +12,7 @@
 ## Architecture: MVVM (mirrors Android)
 
 ```
-UI Layer (SwiftUI)  →  ViewModel (@Observable)  →  Repository  →  Data Source
+UI Layer (SwiftUI)  ->  ViewModel (@Observable)  ->  Repository  ->  Data Source
 ```
 
 ### View (UI)
@@ -93,10 +93,10 @@ class ExampleListViewModel {
 
 - One View + one ViewModel per feature screen
 - Use `enum ViewState` for all screen states (mirrors Android's sealed class)
-- Use `@Observable` (not `ObservableObject` / `@Published` — that's the older pattern)
+- Use `@Observable` (not `ObservableObject` / `@Published` - that's the older pattern)
 - Use `task` for async operations in ViewModels
 - Token stored in Keychain, attached to URLRequest via AuthInterceptor
-- XcodeGen generates `.xcodeproj` from `project.yml` — never edit `.xcodeproj` manually
+- XcodeGen generates `.xcodeproj` from `project.yml` - never edit `.xcodeproj` manually
 
 ## Commands (Mac only)
 

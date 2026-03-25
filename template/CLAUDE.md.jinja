@@ -7,13 +7,13 @@
 Monorepo with MVVM across all platforms. API-first: OpenAPI spec drives typed clients.
 
 ```
-{% if "backend" in platforms %}backend/       → Spring Boot 4 (Kotlin 2.2+, Java 21) — Azure Container Apps{% endif %}
-{% if "web" in platforms %}web/           → Next.js + TypeScript — Cloudflare Pages{% endif %}
-{% if "admin" in platforms %}admin/         → Next.js + TypeScript (admin portal) — Cloudflare Pages{% endif %}
-{% if "android" in platforms %}android/       → Kotlin + Jetpack Compose (MVVM, Hilt, Room){% endif %}
-{% if "ios" in platforms %}ios/           → Swift 6 + SwiftUI (MVVM, SwiftData) — Mac/Xcode only{% endif %}
-shared/        → OpenAPI spec + design tokens
-docs/          → Living documentation (entities, features, deployment)
+{% if "backend" in platforms %}backend/       -> Spring Boot 4 (Kotlin 2.2+, Java 21) - Azure Container Apps{% endif %}
+{% if "web" in platforms %}web/           -> Next.js + TypeScript - Cloudflare Pages{% endif %}
+{% if "admin" in platforms %}admin/         -> Next.js + TypeScript (admin portal) - Cloudflare Pages{% endif %}
+{% if "android" in platforms %}android/       -> Kotlin + Jetpack Compose (MVVM, Hilt, Room){% endif %}
+{% if "ios" in platforms %}ios/           -> Swift 6 + SwiftUI (MVVM, SwiftData) - Mac/Xcode only{% endif %}
+shared/        -> OpenAPI spec + design tokens
+docs/          -> Living documentation (entities, features, deployment)
 ```
 
 ## Common Commands
@@ -44,17 +44,17 @@ Backend issues JWT after successful auth. Clients store token and send as `Autho
 
 ## Key Documentation
 
-- `docs/architecture.md` — system design, platform map, tech decisions
-- `docs/entities/` — entity definitions, fields, relationships
-- `docs/features/` — feature specs with business logic and board review
-- `docs/api/conventions.md` — API naming, pagination, error format
-- `docs/advisory-board.md` — virtual advisory board personas
-- `docs/deployment/` — Azure, Cloudflare, CI/CD setup
-- `shared/api-contracts/openapi.yml` — API contract (source of truth)
+- `docs/architecture.md` - system design, platform map, tech decisions
+- `docs/entities/` - entity definitions, fields, relationships
+- `docs/features/` - feature specs with business logic and board review
+- `docs/api/conventions.md` - API naming, pagination, error format
+- `docs/advisory-board.md` - virtual advisory board personas
+- `docs/deployment/` - Azure, Cloudflare, CI/CD setup
+- `shared/api-contracts/openapi.yml` - API contract (source of truth)
 
 ## Conventions
 
-- **API-first**: Define endpoints in OpenAPI → generate clients → implement
+- **API-first**: Define endpoints in OpenAPI -> generate clients -> implement
 - **MVVM**: ViewModel + UiState/ViewState on both Android and iOS
 - **DI**: Hilt (Android), protocol-based container (iOS), Spring (backend)
 - **Tests**: MockK + Turbine (Android), XCTest (iOS), JUnit Jupiter 6 (backend)
@@ -64,9 +64,9 @@ Backend issues JWT after successful auth. Clients store token and send as `Autho
 ## Platform-Specific Context
 
 Each platform has its own `CLAUDE.md` with detailed patterns:
-{% if "backend" in platforms %}- `backend/CLAUDE.md` — Spring Boot 4, security, JPA, Flyway
-{% endif %}{% if "web" in platforms %}- `web/CLAUDE.md` — Next.js, Cloudflare Pages, auth flow
-{% endif %}{% if "admin" in platforms %}- `admin/CLAUDE.md` — Admin portal, role guards, data tables
-{% endif %}{% if "android" in platforms %}- `android/CLAUDE.md` — Compose, Hilt, Retrofit 3, Room
-{% endif %}{% if "ios" in platforms %}- `ios/CLAUDE.md` — SwiftUI, async/await, Keychain, SwiftData
+{% if "backend" in platforms %}- `backend/CLAUDE.md` - Spring Boot 4, security, JPA, Flyway
+{% endif %}{% if "web" in platforms %}- `web/CLAUDE.md` - Next.js, Cloudflare Pages, auth flow
+{% endif %}{% if "admin" in platforms %}- `admin/CLAUDE.md` - Admin portal, role guards, data tables
+{% endif %}{% if "android" in platforms %}- `android/CLAUDE.md` - Compose, Hilt, Retrofit 3, Room
+{% endif %}{% if "ios" in platforms %}- `ios/CLAUDE.md` - SwiftUI, async/await, Keychain, SwiftData
 {% endif %}

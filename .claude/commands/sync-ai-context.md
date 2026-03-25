@@ -3,9 +3,9 @@ Verify that AI context files (CLAUDE.md, AGENTS.md, Cursor rules) are consistent
 ## Steps
 
 1. Read these files and compare their content:
-   - `template/CLAUDE.md.jinja` — Claude Code context
-   - `template/AGENTS.md.jinja` — Codex/Cursor context
-   - `template/.cursor/rules/project.mdc.jinja` — Cursor global rules
+   - `template/CLAUDE.md.jinja` - Claude Code context
+   - `template/AGENTS.md.jinja` - Codex/Cursor context
+   - `template/.cursor/rules/project.mdc.jinja` - Cursor global rules
 
 2. Check for drift:
    - Architecture descriptions should match across all three

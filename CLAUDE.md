@@ -5,8 +5,8 @@ Copier template that scaffolds monorepo projects with Backend (Spring Boot 4), W
 ## Project Structure
 
 ```
-copier.yml              # Template questionnaire (project name, platforms, auth, cloud)
-template/               # All templated output — Jinja2 files (.jinja suffix stripped on generation)
+copier.yml              # Template questionnaire (project name, platforms, auth, database)
+template/               # All templated output - Jinja2 files (.jinja suffix stripped on generation)
   backend/              # Spring Boot 4 (Kotlin 2.2+, Java 21)
   android/              # Kotlin + Jetpack Compose (MVVM)
   ios/                  # Swift 6 + SwiftUI (MVVM)
@@ -33,7 +33,7 @@ README.md               # Template usage instructions
 
 - **All files under `template/` must use `.jinja` suffix** if they contain any Jinja2 expressions
 - **Test with `copier copy`** after changes: `copier copy --trust . /tmp/test-output`
-- **EJS inside Jinja**: Hygen templates (`_templates/`) use EJS (`.ejs.t`) wrapped in Jinja — use `{{ '<%' }}` to escape EJS tags inside Jinja
+- **EJS inside Jinja**: Hygen templates (`_templates/`) use EJS (`.ejs.t`) wrapped in Jinja - use `{{ '<%' }}` to escape EJS tags inside Jinja
 - **Single quotes in Jinja filters inside EJS**: Use `replace(' ', '-')` not `replace(" ", "-")` when inside EJS template strings
 - **Platform guards**: Use `{% if "platform" in platforms %}...{% endif %}` for conditional content
 - **Directory exclusion**: Whole directories excluded via `_exclude` in copier.yml, not per-file guards
@@ -44,16 +44,16 @@ README.md               # Template usage instructions
 
 | Phase | Status |
 |-------|--------|
-| 1 — Foundation (copier.yml, skeleton) | Done |
-| 2 — Docs + Shared (OpenAPI, design tokens) | Done |
-| 3A — Backend (Spring Boot 4) | Done |
-| 3B — Web client (Next.js) | Pending |
-| 3C — Admin portal (Next.js) | Pending |
-| 3D — Android (Kotlin/Compose MVVM) | Done |
-| 3E — iOS (Swift/SwiftUI MVVM) | Done |
-| 4 — AI context (CLAUDE.md, AGENTS.md, Cursor rules) | Done |
-| 5 — CI/CD (GitHub Actions) | Done |
-| 6 — Hygen generators | Done |
+| 1 - Foundation (copier.yml, skeleton) | Done |
+| 2 - Docs + Shared (OpenAPI, design tokens) | Done |
+| 3A - Backend (Spring Boot 4) | Done |
+| 3B - Web client (Next.js) | Pending |
+| 3C - Admin portal (Next.js) | Pending |
+| 3D - Android (Kotlin/Compose MVVM) | Done |
+| 3E - iOS (Swift/SwiftUI MVVM) | Done |
+| 4 - AI context (CLAUDE.md, AGENTS.md, Cursor rules) | Done |
+| 5 - CI/CD (GitHub Actions) | Done |
+| 6 - Hygen generators | Done |
 
 ## Common Commands
 
@@ -77,7 +77,7 @@ cd /path/to/generated-project && copier update --trust
 ## Conventions
 
 - MVVM on both Android and iOS with matching patterns (ViewModel + UiState/ViewState)
-- API-first: OpenAPI 3.1 spec → openapi-generator → typed clients for all platforms
+- API-first: OpenAPI 3.1 spec -> openapi-generator -> typed clients for all platforms
 - Taskfile (go-task) for build orchestration, cross-platform (Windows/Mac/Linux)
 - iOS tasks guarded with `platforms: [darwin]` in Taskfile
 - Windows is primary dev machine; Mac required only for iOS build/run
@@ -85,7 +85,7 @@ cd /path/to/generated-project && copier update --trust
 
 ## Reference
 
-- `PLAN.md` — full architecture plan, all decisions, usage scenarios
-- `copier.yml` — template configuration and questionnaire
-- `template/CLAUDE.md.jinja` — Claude context template for generated projects
-- `template/AGENTS.md.jinja` — Codex context template for generated projects
+- `PLAN.md` - full architecture plan, all decisions, usage scenarios
+- `copier.yml` - template configuration and questionnaire
+- `template/CLAUDE.md.jinja` - Claude context template for generated projects
+- `template/AGENTS.md.jinja` - Codex context template for generated projects

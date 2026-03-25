@@ -32,9 +32,9 @@ class SomeEntity(
 
 ### Critical Rules
 
-- **`lateinit var id: UUID`** — NEVER make it nullable (`UUID? = null`). Nullable IDs cause cascading compile errors across services/controllers/mappers.
-- **`@Column(columnDefinition = "uuid")`** on the `@Id` field — ensures the database uses native UUID type.
-- **`AuditableEntity()`** provides `createdAt` (`lateinit var Instant`) and `updatedAt` (`var Instant? = null`). Does NOT contain `@Id` — each entity defines its own.
+- **`lateinit var id: UUID`** - NEVER make it nullable (`UUID? = null`). Nullable IDs cause cascading compile errors across services/controllers/mappers.
+- **`@Column(columnDefinition = "uuid")`** on the `@Id` field - ensures the database uses native UUID type.
+- **`AuditableEntity()`** provides `createdAt` (`lateinit var Instant`) and `updatedAt` (`var Instant? = null`). Does NOT contain `@Id` - each entity defines its own.
 
 ## AuditableEntity Base Class
 
@@ -96,7 +96,7 @@ class UserProfile(
 ) : AuditableEntity()
 ```
 
-This is the **only** case where `@Id` is nullable — because `@MapsId` fills it from the parent.
+This is the **only** case where `@Id` is nullable - because `@MapsId` fills it from the parent.
 
 ## @ElementCollection for Enum Sets
 
@@ -134,7 +134,7 @@ var metadata: Map<String, Any> = emptyMap()
 
 ## Collection Management
 
-Use helper methods for `orphanRemoval = true` collections — never reassign the collection reference:
+Use helper methods for `orphanRemoval = true` collections - never reassign the collection reference:
 
 ```kotlin
 // In the entity class:
@@ -150,7 +150,7 @@ fun addItem(item: ChildEntity) {
 
 **Never do this:**
 ```kotlin
-// WRONG — breaks orphan removal, causes Hibernate errors
+// WRONG - breaks orphan removal, causes Hibernate errors
 entity.items = newItemsList
 ```
 
@@ -171,7 +171,7 @@ var children: MutableList<ChildEntity> = mutableListOf()
 var parent: ParentEntity
 ```
 
-**Always use `FetchType.LAZY`** for `@ManyToOne` — override the EAGER default.
+**Always use `FetchType.LAZY`** for `@ManyToOne` - override the EAGER default.
 
 ### ManyToMany
 
@@ -225,5 +225,5 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: 25
 ## Transaction Rules
 
 - `@Transactional` on write methods
-- `@Transactional(readOnly = true)` on read methods — optimizes dirty checking
+- `@Transactional(readOnly = true)` on read methods - optimizes dirty checking
 - Never call `@Transactional` methods from the same class (proxy bypass)

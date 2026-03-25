@@ -1,6 +1,6 @@
 ---
 name: template-validator
-description: Validate Jinja2 template files for common issues — broken syntax, unescaped EJS, missing conditionals, incorrect variable references. Triggers when editing .jinja files.
+description: Validate Jinja2 template files for common issues - broken syntax, unescaped EJS, missing conditionals, incorrect variable references. Triggers when editing .jinja files.
 ---
 
 # Template Validator
@@ -14,7 +14,7 @@ When template files (`.jinja`) are created or modified, validate them for correc
 - All `{% if %}` have matching `{% endif %}`
 - All `{% for %}` have matching `{% endfor %}`
 - Variable names match those defined in `copier.yml`: `project_name`, `project_slug`, `package_identifier`, `description`, `platforms`, `auth_methods`, `database`, `use_docker`, `github_org`
-- `cloud_provider` and `web_hosting` are hardcoded (azure and cloudflare) — no conditionals needed for these
+- `cloud_provider` and `web_hosting` are hardcoded (azure and cloudflare) - no conditionals needed for these
 
 ### Platform Conditionals
 - Platform checks use correct syntax: `{% if "backend" in platforms %}` (not `{% if backend %}`)

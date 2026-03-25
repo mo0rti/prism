@@ -1,4 +1,4 @@
-# Backend Guide — {{ project_name }}
+# Backend Guide - {{ project_name }}
 
 ## Tech Stack
 
@@ -22,7 +22,7 @@ backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
   common/
     exception/
       ApiException.kt             # Custom exception with HTTP status + error code
-      GlobalExceptionHandler.kt   # @ControllerAdvice → ApiError JSON
+      GlobalExceptionHandler.kt   # @ControllerAdvice -> ApiError JSON
     model/
       ApiError.kt                 # { code, message, details }
       PagedResponse.kt            # Generic paginated response wrapper
@@ -61,7 +61,7 @@ backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 ### Migrations
 - Flyway SQL migrations in `resources/db/migration/`
 - Naming: `V{number}__{description}.sql`
-- Never modify existing migrations — create new ones
+- Never modify existing migrations - create new ones
 
 ### Testing
 - `@WebMvcTest` for controller tests
