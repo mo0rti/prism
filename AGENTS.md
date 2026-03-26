@@ -23,10 +23,21 @@ template/               # All templated output - Jinja2 files (.jinja suffix str
 
 ## Key Rules
 
-- **Two layers of AI context**: `template/.claude/` is for generated projects; `.claude/` (root) is for this template repo
+- **Two layers of AI context**: `template/.claude/` and `template/AGENTS.md.jinja` are for generated projects; `.claude/` and `AGENTS.md` (root) are for this template repo
 - **Documentation organization**: Project-wide docs stay in `template/docs/`. Platform-specific technical docs live inside each platform directory (`template/android/docs/`, `template/backend/docs/`, `template/ios/docs/`). Entity docs are backend-specific (`template/backend/docs/entities/`). Platform docs are auto-excluded with their platform via `_exclude` rules.
 - **Test with `copier copy`** after changes: `copier copy --trust . /tmp/test-output`
 - **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
+
+## Jinja2 Template Rules
+
+When editing `.jinja` files in `template/`:
+- All `{{` must have matching `}}`; all `{% if %}` need `{% endif %}`; all `{% for %}` need `{% endfor %}`
+- Variables: `project_name`, `project_slug`, `package_identifier`, `description`, `platforms`, `auth_methods`, `database`, `use_docker`, `cloud_provider`, `web_hosting`, `github_org`, `ios_module_name`
+- `database`, `cloud_provider`, and `web_hosting` are explicit questionnaire inputs with one concrete option available today
+- Platform conditionals: `{% if "backend" in platforms %}` (not `{% if backend %}`)
+- EJS escaping in `_templates/`: `<%= %>` becomes `{{ '<%=' }} %}`
+- Kotlin/Java files use `{{package_path}}` in directory names
+- All files with Jinja2 expressions must have `.jinja` suffix
 
 ## Common Commands
 

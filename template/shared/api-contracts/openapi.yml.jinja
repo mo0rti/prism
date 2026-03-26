@@ -15,6 +15,7 @@ paths:
   # ===========================================================================
   # Authentication
   # ===========================================================================
+{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
   /auth/oauth/callback:
     post:
       operationId: oauthCallback
@@ -36,6 +37,7 @@ paths:
                 $ref: '#/components/schemas/AuthResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+{% endif %}
 
 {% if "password" in auth_methods %}
   /auth/register:
@@ -243,19 +245,21 @@ paths:
 components:
   schemas:
     # --- Auth ---
+{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
     OAuthCallbackRequest:
       type: object
       required: [provider, code, redirectUri]
       properties:
         provider:
           type: string
-          enum: [google, apple, facebook, microsoft]
+          enum: [{% for method in auth_methods if method != "password" %}{{ method }}{% if not loop.last %}, {% endif %}{% endfor %}]
         code:
           type: string
           description: Authorization code from OAuth provider
         redirectUri:
           type: string
           description: Redirect URI used in the OAuth flow
+{% endif %}
 
 {% if "password" in auth_methods %}
     RegisterRequest:
@@ -322,6 +326,7 @@ components:
           nullable: true
         authProvider:
           type: string
+          enum: [LOCAL{% for method in auth_methods if method != "password" %}, {{ method | upper }}{% endfor %}]
         role:
           type: string
           enum: [USER, ADMIN]

@@ -8,11 +8,13 @@ import java.util.UUID
 
 // --- Requests ---
 
+{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
 data class OAuthCallbackRequest(
     @field:NotBlank val provider: String,
     @field:NotBlank val code: String,
     @field:NotBlank val redirectUri: String
 )
+{% endif %}
 
 {% if "password" in auth_methods %}
 data class RegisterRequest(
