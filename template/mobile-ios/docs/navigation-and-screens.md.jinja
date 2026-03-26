@@ -1,0 +1,25 @@
+# iOS Navigation And Screens - {{ project_name }}
+
+## Routing
+
+- `Navigation/Route.swift` defines the app routes:
+  - `login`
+  - `exampleList`
+  - `exampleDetail(id:)`
+- `Navigation/AppRouter.swift` is the top-level auth gate.
+- Authenticated navigation uses `NavigationStack`.
+
+## Current Screen Inventory
+
+- `UI/Auth/LoginView.swift`
+- `UI/Examples/ExampleListView.swift`
+- `UI/Common/ErrorView.swift`
+- `UI/Common/LoadingView.swift`
+- `UI/Common/PrimaryButton.swift`
+
+## Screen Rules
+
+- Each screen owns a dedicated ViewModel.
+- ViewModels are `@Observable`.
+- Views consume ViewModels through `@Bindable`.
+- Route additions should update both `Route.swift` and the router or any calling navigation code.

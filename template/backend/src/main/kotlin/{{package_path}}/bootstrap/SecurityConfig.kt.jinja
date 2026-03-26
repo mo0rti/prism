@@ -26,9 +26,15 @@ class SecurityConfig(
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
                 auth
-                    .requestMatchers("/api/v1/auth/**").permitAll()
+{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+                    .requestMatchers("/api/v1/auth/oauth/callback").permitAll()
+{% endif %}
+{% if "password" in auth_methods %}
+                    .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login").permitAll()
+{% endif %}
+                    .requestMatchers("/api/v1/auth/refresh").permitAll()
                     .requestMatchers("/actuator/health").permitAll()
-                    .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                    .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                     .anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)

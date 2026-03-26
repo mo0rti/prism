@@ -1,0 +1,25 @@
+# iOS Design System And Theme - {{ project_name }}
+
+## Shared Theme Primitives
+
+`UI/Theme/AppTheme.swift` currently defines:
+
+- semantic colors such as `appPrimary`, `appSurface`, `appError`, and dark-theme variants
+- spacing constants in `Spacing`
+- corner radius constants in `CornerRadius`
+- a `Color(hex:)` helper for token translation
+
+## Shared UI
+
+Reusable UI currently lives in:
+
+- `UI/Common/LoadingView.swift`
+- `UI/Common/ErrorView.swift`
+- `UI/Common/PrimaryButton.swift`
+
+## Reuse Rules
+
+- Prefer `Spacing` and `CornerRadius` constants over repeating raw values.
+- Prefer shared theme colors over redefining colors in feature views.
+- Promote reusable SwiftUI pieces into `UI/Common/` instead of copying them into feature folders.
+- Keep feature views focused on composition and screen-specific behavior.

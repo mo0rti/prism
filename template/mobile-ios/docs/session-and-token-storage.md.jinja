@@ -1,0 +1,24 @@
+# iOS Session And Token Storage - {{ project_name }}
+
+## Token Storage
+
+- `TokenStorage` is an actor.
+- It stores `access_token` and `refresh_token` in Keychain using the service name `{{ package_identifier }}.auth`.
+- It exposes `saveTokens`, `getAccessToken`, `getRefreshToken`, `hasToken`, and `clearTokens`.
+
+## Session Bootstrap
+
+- `AppRouter` asks `TokenStorage.hasToken()` during `.task` startup.
+- If a token exists, the app starts in the authenticated example-list flow.
+- If not, the app starts in the login flow.
+
+## Repository Responsibilities
+
+- `AuthRepository` saves tokens after successful auth operations.
+- `AuthRepository.logout()` clears tokens.
+- `AuthRepository.getCurrentUser()` uses the authenticated `/auth/me` endpoint.
+
+## Current Scope
+
+- The generated template persists tokens only.
+- It does not scaffold a broader persisted session object, cached profile bootstrap, or automatic refresh retry state machine by default.

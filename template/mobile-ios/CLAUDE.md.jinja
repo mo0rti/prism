@@ -1,55 +1,101 @@
 # iOS - {{ project_name }}
 
-Swift 6 + SwiftUI with MVVM architecture. Requires Mac with Xcode 26 for building.
+Swift 6 + SwiftUI app generated from this template. It uses MVVM, Observation, async/await, XcodeGen, Keychain-backed token storage, and SwiftData caching for local example data. Building requires a Mac with Xcode 26.
 
-## Quick Reference
+## Build And Run
 
-- **Generate project**: `task mobile-ios:generate-project` (runs xcodegen)
-- **Build**: `task mobile-ios:build`
-- **Test**: `task mobile-ios:test`
-- **Min iOS**: 17.0 | **Swift**: 6.0 | **Xcode**: 26
-
-## Architecture (MVVM)
-
-```
-{{ project_slug }}/
-  DI/            -> DependencyContainer (@Observable)
-  Navigation/    -> AppRouter + Route enum
-  Data/
-    Network/     -> APIClient (async/await) + APIEndpoint
-    Storage/     -> Keychain TokenStorage (actor) + SwiftData models
-    Repository/  -> Protocol + Impl pattern
-  Domain/Model/  -> Codable DTOs
-  UI/
-    Theme/       -> AppTheme (from design tokens)
-    Auth/        -> LoginView + LoginViewModel
-    Examples/    -> ExampleListView + ExampleListViewModel
-    Common/      -> LoadingView, ErrorView, PrimaryButton
+```bash
+task mobile-ios:generate-project
+task mobile-ios:build
+task mobile-ios:test
 ```
 
-## MVVM Pattern
+## Architecture Summary
 
-- **ViewModel**: `@Observable` class with `ViewState` enum
-- **ViewState**: enum - `idle`, `loading`, `success`, `error(String)`
-- **View**: SwiftUI `View` structs with `@Bindable` ViewModel
-- **DI**: Protocol-based via `DependencyContainer`, injected via `.environment()`
-- **Navigation**: `NavigationStack` + `Route` enum
+The generated iOS slice uses MVVM with a small, explicit structure:
 
-## Conventions
+- `{{ project_slug }}/DI/` - `DependencyContainer` composition root
+- `{{ project_slug }}/Navigation/` - `AppRouter` auth gate and `Route` enum
+- `{{ project_slug }}/Data/Network/` - `APIClient`, `APIEndpoint`, and transport rules
+- `{{ project_slug }}/Data/Repository/` - repository protocols plus implementations
+- `{{ project_slug }}/Data/Storage/` - `TokenStorage` actor and `CachedExample` SwiftData model
+- `{{ project_slug }}/Domain/Model/` - API-aligned models
+- `{{ project_slug }}/UI/` - `Auth/`, `Examples/`, `Common/`, and `Theme/`
 
-- One ViewModel per screen, initialized with repository dependencies
-- Repositories are protocols with `Impl` classes
-- APIClient is an `actor` for thread safety
-- TokenStorage uses Keychain via Security framework
-- Local caching via SwiftData (`@Model` classes in `Data/Storage/`)
-- Tests use mock repositories conforming to protocols
-- All network calls use `async`/`await`
+## Documentation
 
-## Key Files
+Treat `mobile-ios/docs/` as the current-state source of truth:
 
-- `DI/DependencyContainer.swift` - all dependency wiring
-- `Data/Network/APIClient.swift` - URLSession-based, generic `request<T>` method
-- `Data/Storage/TokenStorage.swift` - Keychain-backed, actor-isolated
-- `Data/Storage/CachedExample.swift` - SwiftData model for local caching
-- `UI/Theme/AppTheme.swift` - colors + spacing from design tokens
-- `project.yml` - XcodeGen spec (Mac only)
+| Document | Purpose |
+|----------|---------|
+| [docs/guide.md](docs/guide.md) | Overview and entry point into the iOS docs set. |
+| [docs/repo-orientation.md](docs/repo-orientation.md) | Fastest way to get oriented in the generated iOS repo. |
+| [docs/architecture.md](docs/architecture.md) | Layers, DI, state flow, and architectural guardrails. |
+| [docs/file-structure.md](docs/file-structure.md) | Root layout and where new files belong. |
+| [docs/build-and-environments.md](docs/build-and-environments.md) | XcodeGen, Taskfile, build commands, and runtime config. |
+| [docs/networking-and-auth.md](docs/networking-and-auth.md) | `APIClient`, endpoints, auth flow, and contract usage. |
+| [docs/session-and-token-storage.md](docs/session-and-token-storage.md) | Keychain storage, router bootstrap, and logout behavior. |
+| [docs/navigation-and-screens.md](docs/navigation-and-screens.md) | Routes, auth gating, and current screen inventory. |
+| [docs/design-system-and-theme.md](docs/design-system-and-theme.md) | Shared theme tokens and reusable UI patterns. |
+| [docs/naming-conventions.md](docs/naming-conventions.md) | File, type, and directory naming rules. |
+| [docs/conventions-and-workflow.md](docs/conventions-and-workflow.md) | Daily coding rules and feature-delivery workflow. |
+
+## Cross-Project References
+
+- `shared/api-contracts/openapi.yml` is the primary contract reference for endpoints, payloads, and auth flows.
+{% if "backend" in platforms %}- `backend/` is the behavior reference when the OpenAPI spec needs clarification.
+{% endif %}{% if "mobile-android" in platforms %}- `mobile-android/` is useful for product parity and UX intent, but prefer iOS-native solutions when platform conventions differ.
+{% endif %}
+
+## Workflow: Implementing A New Feature
+
+1. Read `mobile-ios/docs/repo-orientation.md` if you need a quick map of the generated iOS slice.
+2. Inspect the closest existing files under `Data/`, `Navigation/`, and `UI/`.
+3. Verify backend-facing models and endpoints in `shared/api-contracts/openapi.yml`.
+{% if "backend" in platforms %}4. Cross-check `backend/` when endpoint behavior or response semantics matter.
+{% if "mobile-android" in platforms %}5. Cross-check `mobile-android/` when product parity matters.
+6. Update only the layers the task needs: models, networking, repositories, router, screens, tests, and docs.
+7. Run the smallest sufficient iOS build or test task on Mac.
+8. Update affected docs before closing the task.
+{% else %}5. Update only the layers the task needs: models, networking, repositories, router, screens, tests, and docs.
+6. Run the smallest sufficient iOS build or test task on Mac.
+7. Update affected docs before closing the task.
+{% endif %}{% else %}{% if "mobile-android" in platforms %}4. Cross-check `mobile-android/` when product parity matters.
+5. Update only the layers the task needs: models, networking, repositories, router, screens, tests, and docs.
+6. Run the smallest sufficient iOS build or test task on Mac.
+7. Update affected docs before closing the task.
+{% else %}4. Update only the layers the task needs: models, networking, repositories, router, screens, tests, and docs.
+5. Run the smallest sufficient iOS build or test task on Mac.
+6. Update affected docs before closing the task.
+{% endif %}{% endif %}
+
+## Platform Decision Rule
+
+- Think and act like a senior iOS developer first.
+- Preserve product and contract parity where it matters.
+- Prefer SwiftUI- and Apple-native implementation choices when the Android and iOS approaches should differ.
+
+## Keep Documentation In Sync
+
+When implementation changes affect project memory or workflow, update the matching doc in the same session:
+
+- `mobile-ios/docs/file-structure.md` for directory, file, or module changes
+- `mobile-ios/docs/architecture.md` for layer or DI changes
+- `mobile-ios/docs/build-and-environments.md` for Taskfile, XcodeGen, scheme, or config changes
+- `mobile-ios/docs/networking-and-auth.md` and `mobile-ios/docs/session-and-token-storage.md` for networking, auth, session, or token changes
+- `mobile-ios/docs/navigation-and-screens.md` for route or screen changes
+- `mobile-ios/docs/design-system-and-theme.md` for shared UI or theme changes
+- `mobile-ios/docs/naming-conventions.md` or `mobile-ios/docs/conventions-and-workflow.md` for repo-wide convention changes
+- `README.md`, `AGENTS.md`, `CLAUDE.md`, or repo-local skills when agent-facing workflow changes
+
+## Local Claude Skills
+
+Project-specific Claude skills live in `.claude/skills/`.
+
+- @.claude/skills/ios-conventions/SKILL.md - repository-wide Swift, SwiftUI, MVVM, DI, navigation, and doc-sync guardrails
+- @.claude/skills/ios-build-verify/SKILL.md - choose the smallest sufficient `xcodebuild` or Taskfile validation
+- @.claude/skills/ios-feature-delivery/SKILL.md - coordinate multi-layer feature work and pull in companion skills
+- @.claude/skills/ios-contract-alignment/SKILL.md - own backend-facing DTO, endpoint, API client, and auth-boundary decisions
+- @.claude/skills/swiftui-design-system/SKILL.md - own shared SwiftUI design language, components, and screen-pattern reuse
+
+Keep the Codex-native repo skills in `.agents/skills/` semantically aligned with these Claude skills where topics overlap.

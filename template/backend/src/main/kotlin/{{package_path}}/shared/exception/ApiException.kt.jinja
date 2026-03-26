@@ -11,23 +11,27 @@ open class ApiException(
 
 class NotFoundException(
     message: String,
-    code: String = "NOT_FOUND"
-) : ApiException(HttpStatus.NOT_FOUND, code, message)
+    code: String = "NOT_FOUND",
+    details: Map<String, Any>? = null
+) : ApiException(HttpStatus.NOT_FOUND, code, message, details)
 
 class ConflictException(
     message: String,
-    code: String = "CONFLICT"
-) : ApiException(HttpStatus.CONFLICT, code, message)
+    code: String = "CONFLICT",
+    details: Map<String, Any>? = null
+) : ApiException(HttpStatus.CONFLICT, code, message, details)
 
 class UnauthorizedException(
     message: String = "Authentication required",
-    code: String = "UNAUTHORIZED"
-) : ApiException(HttpStatus.UNAUTHORIZED, code, message)
+    code: String = "UNAUTHORIZED",
+    details: Map<String, Any>? = null
+) : ApiException(HttpStatus.UNAUTHORIZED, code, message, details)
 
 class ForbiddenException(
     message: String = "Insufficient permissions",
-    code: String = "FORBIDDEN"
-) : ApiException(HttpStatus.FORBIDDEN, code, message)
+    code: String = "FORBIDDEN",
+    details: Map<String, Any>? = null
+) : ApiException(HttpStatus.FORBIDDEN, code, message, details)
 
 class BadRequestException(
     message: String,

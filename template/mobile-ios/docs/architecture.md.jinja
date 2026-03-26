@@ -1,0 +1,29 @@
+# iOS Architecture - {{ project_name }}
+
+The generated iOS slice follows MVVM with a small, explicit layering model.
+
+## Layer Map
+
+- `DI/` - `DependencyContainer` creates and owns shared services and repositories
+- `Navigation/` - `AppRouter` controls the top-level auth gate and `Route` defines destinations
+- `Data/Network/` - `APIClient` actor and `APIEndpoint` describe HTTP access
+- `Data/Repository/` - repository protocols plus implementations bridge networking and screens
+- `Data/Storage/` - `TokenStorage` stores auth tokens in Keychain and `CachedExample` stores local example data
+- `Domain/Model/` - API-aligned models and request or response shapes
+- `UI/` - SwiftUI screens, ViewModels, shared common views, and theme primitives
+
+## State And Flow
+
+- `AppRouter` checks `TokenStorage.hasToken()` to decide whether the app starts in login or example-list flow.
+- Screen ViewModels use `@Observable`.
+- SwiftUI screens consume ViewModels through `@Bindable`.
+- Repositories call `APIClient`.
+- `APIClient` adds auth headers when an endpoint requires auth.
+
+## Architectural Boundaries
+
+- Views do not call `APIClient` directly.
+- Repositories own transport-facing logic.
+- `TokenStorage` is the only Keychain boundary.
+- Route definitions stay in `Navigation/Route.swift`.
+- Shared UI belongs in `UI/Common/` or `UI/Theme/`, not duplicated across feature folders.

@@ -43,15 +43,14 @@ Each module has: `controller/`, `dto/`, `model/`, `repository/`, `service/`.
 
 ## Conventions
 
-- **Package per feature**: each feature in `modules/{name}/` with subpackages
-- **DTOs in `dto/`**: separate from entities in `model/` - never expose entities directly
-- **Entities extend `AuditableEntity`**: provides `createdAt`/`updatedAt` via `@MappedSuperclass`
-- **Entity IDs**: `@Id lateinit var id: UUID` in class body, `@GeneratedValue(strategy = GenerationType.UUID)`
-- **Exceptions**: throw `ApiException` subclasses - `GlobalExceptionHandler` maps to JSON
-- **Services**: `@Transactional` on writes, `@Transactional(readOnly = true)` on reads
-- **Auth**: JWT Bearer token; stateless sessions
-- **Migrations**: Flyway in `resources/db/migration/V{N}__{description}.sql`
-- **Tests**: JUnit 5 + MockK (not Mockito), backtick test names, `@Nested` grouping
+Detailed conventions are documented in local Codex skills:
+
+- `$spring-boot-conventions` - module structure, layers, controller/service/DTO patterns
+- `$security-auth` - JWT, route exposure, OAuth2, and current-user access
+- `$error-handling` - `ApiException`, validation responses, and API error codes
+- `$testing-patterns` - JUnit 5, MockK, unit versus integration test conventions
+- `$endpoint` - end-to-end endpoint delivery, including contract updates
+- `$generate-clients` - regenerate typed clients after OpenAPI changes
 
 ## Key Files
 
@@ -71,6 +70,8 @@ See `shared/api-contracts/openapi.yml` for the full API spec.
 Project-specific Codex skills live in `.agents/skills/`.
 
 - `$spring-boot-conventions` - backend controller, service, DTO, and package-structure conventions
+- `$security-auth` - JWT, route exposure, OAuth2, and current-user access
+- `$error-handling` - `ApiException`, validation responses, and API error codes
 - `$endpoint` - guide end-to-end backend endpoint work, including contract updates
 - `$testing-patterns` - backend unit and integration test conventions
 - `$generate-clients` - regenerate typed clients after OpenAPI changes

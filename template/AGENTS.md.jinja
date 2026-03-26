@@ -72,7 +72,7 @@ Each platform has its own `AGENTS.md` with detailed patterns:
 {% endif %}{% if "web-user-app" in platforms %}- `web-user-app/AGENTS.md` - Next.js, next-intl, marketing + dashboard flows
 {% endif %}{% if "web-admin-portal" in platforms %}- `web-admin-portal/AGENTS.md` - Admin web portal, credentials auth, management tables
 {% endif %}{% if "mobile-android" in platforms %}- `mobile-android/AGENTS.md` - Compose, Hilt, Retrofit 3, Room
-{% endif %}{% if "mobile-ios" in platforms %}- `mobile-ios/AGENTS.md` - SwiftUI, async/await, Keychain, SwiftData
+{% endif %}{% if "mobile-ios" in platforms %}- `mobile-ios/AGENTS.md` - SwiftUI, async/await, Keychain, SwiftData, local iOS skills, mobile-ios/docs/ references
 {% endif %}
 
 Codex reads `AGENTS.md` from repo root down to the working directory, so defer to the platform-level file when you are working inside a specific platform folder.
@@ -84,7 +84,7 @@ Project-specific Codex skills live in `.agents/skills/`:
 - `$generate-clients` - regenerate typed clients after OpenAPI contract changes
 - `$scaffold-feature` - coordinate doc-first feature delivery across the selected platforms
 
-Platform-specific `AGENTS.md` files list additional specialized Codex skills for Android and backend work.
+Platform-specific `AGENTS.md` files list additional specialized Codex skills for Android, backend, and iOS work.
 
 ## Adding Features
 

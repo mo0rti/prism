@@ -1,0 +1,6 @@
+interface:
+  display_name: "iOS Conventions"
+  short_description: "Apply SwiftUI MVVM and repo guardrails"
+  default_prompt: "Use $ios-conventions when updating iOS code in this project."
+policy:
+  allow_implicit_invocation: true

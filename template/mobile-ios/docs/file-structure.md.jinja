@@ -1,0 +1,63 @@
+# iOS File Structure - {{ project_name }}
+
+## Root Layout
+
+```text
+mobile-ios/
+  AGENTS.md
+  CLAUDE.md
+  Taskfile.yml
+  project.yml
+  docs/
+  fastlane/
+  {{ project_slug }}/
+  {{ project_slug }}Tests/
+```
+
+## App Structure
+
+```text
+{{ project_slug }}/
+  App.swift
+  Info.plist
+  DI/
+    DependencyContainer.swift
+  Navigation/
+    AppRouter.swift
+    Route.swift
+  Data/
+    Network/
+      APIClient.swift
+      APIEndpoint.swift
+    Repository/
+      AuthRepository.swift
+      ExampleRepository.swift
+    Storage/
+      TokenStorage.swift
+      CachedExample.swift
+  Domain/
+    Model/
+      Models.swift
+  UI/
+    Auth/
+      LoginView.swift
+      LoginViewModel.swift
+    Examples/
+      ExampleListView.swift
+      ExampleListViewModel.swift
+    Common/
+      ErrorView.swift
+      LoadingView.swift
+      PrimaryButton.swift
+    Theme/
+      AppTheme.swift
+```
+
+## Placement Rules
+
+- Add shared services to `Data/Network/` or `Data/Storage/`.
+- Keep repository protocol and implementation in the same file under `Data/Repository/`.
+- Keep API-aligned models in `Domain/Model/`.
+- Keep route definitions in `Navigation/Route.swift`.
+- Put reusable UI in `UI/Common/` and visual primitives in `UI/Theme/`.
+- Mirror source structure in `{{ project_slug }}Tests/` where practical.

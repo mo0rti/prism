@@ -1,0 +1,36 @@
+---
+name: ios-contract-alignment
+description: Backend contract alignment rules for DTOs, endpoints, APIClient usage, and token-backed auth. Use when adding or reviewing request or response shapes, API endpoints, repository mappings, or auth-boundary code in the generated iOS app.
+user-invocable: false
+---
+
+# iOS Contract Alignment
+
+Use this skill when backend-facing iOS code changes.
+
+## Role boundary
+
+- Own request and response shapes, endpoint mapping, repository-to-model translation, and auth-boundary wiring.
+- Defer screen structure and general workflow to companion skills.
+
+## Rules
+
+- Keep API-aligned models in `Domain/Model/`.
+- Keep endpoint definitions in `Data/Network/APIEndpoint.swift`.
+- Keep transport logic in `APIClient`.
+- Keep repository mapping logic in `Data/Repository/`, not in views.
+- The runtime base URL already includes `/api/v1`, so endpoint paths append feature-relative routes such as `/auth/...` or `/examples/...`.
+- Auth headers come from `TokenStorage` through `APIClient`; do not add ad hoc token plumbing in features.
+- `AuthRepository.refreshToken()` exists, but automatic refresh-and-retry is not scaffolded into `APIClient` by default.
+
+## Cross-check sources
+
+- Use `shared/api-contracts/openapi.yml` as the primary source for endpoint shapes.
+{% if "backend" in platforms %}- Use `backend/` to confirm behavior when the spec is ambiguous.
+{% endif %}{% if "mobile-android" in platforms %}- Use `mobile-android/` to confirm parity expectations when iOS should mirror Android behavior.
+{% endif %}
+
+## Validation
+
+- Run `task mobile-ios:build` on Mac after contract changes.
+- Read `mobile-ios/docs/networking-and-auth.md` and `mobile-ios/docs/session-and-token-storage.md` when auth, token, or session behavior changes.

@@ -1,0 +1,35 @@
+---
+name: swiftui-design-system
+description: SwiftUI design system rules for this generated project. Use when building, refactoring, or reviewing screens, shared components, theme primitives, spacing, color roles, or reusable view patterns in the iOS app.
+user-invocable: false
+---
+
+# SwiftUI Design System
+
+Use this skill when SwiftUI work should stay aligned with the generated app's shared UI language.
+
+## Role boundary
+
+- Own shared UI language, reusable SwiftUI components, and cross-feature visual patterns.
+- Defer DTO, repository, auth, and build-task decisions to the companion iOS skills.
+
+## Shared UI rules
+
+- Use `Color.app...` theme colors from `UI/Theme/AppTheme.swift` instead of hardcoded colors where a shared token already exists.
+- Use `Spacing` and `CornerRadius` constants instead of repeating raw values.
+- Put reusable components in `UI/Common/`; keep feature files focused on screen composition.
+- Keep screen backgrounds, badges, buttons, and shared loading or error states visually consistent across features.
+
+## Existing patterns to reuse
+
+- `PrimaryButton`
+- `LoadingView`
+- `ErrorView`
+- `Spacing`
+- `CornerRadius`
+
+## Preview and composition rules
+
+- Add previews when they materially help understand a shared or reusable SwiftUI component.
+- Keep shared components stateless and parameter-driven where possible.
+- Promote repeated view fragments out of feature screens into `UI/Common/`.
