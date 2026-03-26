@@ -17,7 +17,7 @@ template/               # All templated output - Jinja2 files (.jinja suffix str
   shared/               # OpenAPI 3.1 spec + design tokens
   docs/                 # Project-wide documentation (features, API, advisory board)
   .claude/              # Claude context for generated projects (commands, skills)
-  .codex/               # Codex context for generated projects
+  .agents/              # Codex skills for generated projects
   .cursor/              # Cursor rules for generated projects
   .github/              # CI/CD workflow templates
   _templates/           # Hygen in-project generators

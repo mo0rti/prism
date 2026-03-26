@@ -1,0 +1,6 @@
+interface:
+  display_name: "Advisory Review"
+  short_description: "Review proposals with the advisory board"
+  default_prompt: "Use $advisory-review to evaluate this proposal with the advisory board before implementation."
+policy:
+  allow_implicit_invocation: true

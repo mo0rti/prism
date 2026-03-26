@@ -1,62 +1,55 @@
 # Multi-Platform Project Template
 
-Copier template that scaffolds monorepo projects with Backend (Spring Boot 4), User Web App (Next.js), Admin Web Portal (Next.js), Android (Kotlin/Compose), and iOS (Swift/SwiftUI).
+This repository is the Copier template itself. Treat the root `AGENTS.md` as maintainer guidance for the template repo, and treat files under `template/` as instructions that will be copied into generated projects.
 
-The questionnaire keeps roadmap-facing options visible. Backend, Android, and iOS are the primary implemented slices today; the user web app, admin web portal, and some auth/deployment choices remain intentionally visible while their end-to-end support continues to evolve.
+## How Codex Context Works Here
 
-## Project Structure
+- Codex reads `AGENTS.md` from the repo root down to the current working directory.
+- Repository-local Codex skills live in `.agents/skills/`, following the current Codex docs.
+- Generated projects scaffold their own Codex skills from `template/.agents/skills/`.
+- Keep shared facts aligned across `AGENTS.md`, `CLAUDE.md`, `template/AGENTS.md.jinja`, `template/CLAUDE.md.jinja`, and `.cursor/rules/`, but preserve tool-specific syntax instead of forcing identical wording.
 
-```
-copier.yml              # Template questionnaire (project identity, platforms, auth, database, deployment)
-template/               # All templated output - Jinja2 files (.jinja suffix stripped on generation)
-  backend/              # Spring Boot 4 (Kotlin 2.2+, Java 21)
-  web-user-app/         # Next.js user-facing web app
-  web-admin-portal/     # Next.js admin web portal
-  mobile-android/              # Kotlin + Jetpack Compose (MVVM)
-  mobile-ios/                  # Swift 6 + SwiftUI (MVVM)
-  shared/               # OpenAPI 3.1 spec + design tokens
-  docs/                 # Project-wide documentation (features, API, advisory board)
-  .claude/              # Claude context for generated projects (commands, skills)
-  .codex/               # Codex context for generated projects
-  .cursor/              # Cursor rules for generated projects
-  .github/              # CI/CD workflow templates
-  _templates/           # Hygen in-project generators
-```
+## Repository Focus
 
-## Key Rules
+- This template scaffolds backend, web-user-app, web-admin-portal, mobile-android, and mobile-ios slices.
+- Backend, Android, and iOS are the stronger implemented paths today.
+- User web app, admin web portal, and some auth or deployment combinations remain partial or experimental; keep maturity language explicit and honest.
+- Never leave questionnaire-visible options silently generating broken output.
 
-- **Two layers of AI context**: `template/.claude/` and `template/AGENTS.md.jinja` are for generated projects; `.claude/` and `AGENTS.md` (root) are for this template repo
-- **Documentation organization**: Project-wide docs stay in `template/docs/`. Platform-specific technical docs live inside each platform directory (`template/mobile-android/docs/`, `template/backend/docs/`, `template/mobile-ios/docs/`). Entity docs are backend-specific (`template/backend/docs/entities/`). Platform docs are auto-excluded with their platform via `_exclude` rules.
-- **Test with `copier copy`** after changes: `copier copy --trust . /tmp/test-output`
-- **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
+## Working Rules
 
-## Jinja2 Template Rules
+- Keep project-wide docs in `template/docs/`.
+- Keep platform-specific technical docs in `template/{platform}/docs/`.
+- Keep entity docs in `template/backend/docs/entities/`.
+- Run `copier copy --trust . <tempdir>` after template changes.
+- When editing files under `template/`, keep Jinja syntax valid:
+  - all `{{` have matching `}}`
+  - all `{% if %}` and `{% for %}` blocks are balanced
+  - platform conditionals use `{% if "backend" in platforms %}` style
+  - Kotlin and Java directory paths use `{{package_path}}`
+  - any file containing Jinja expressions keeps a `.jinja` suffix
+- Update AI context when commands, paths, maturity, or workflow expectations change.
 
-When editing `.jinja` files in `template/`:
-- All `{{` must have matching `}}`; all `{% if %}` need `{% endif %}`; all `{% for %}` need `{% endfor %}`
-- Variables: `project_name`, `project_slug`, `package_identifier`, `description`, `platforms`, `auth_methods`, `database`, `use_docker`, `cloud_provider`, `web_hosting`, `github_org`, `ios_module_name`
-- `database`, `cloud_provider`, and `web_hosting` are explicit questionnaire inputs with one concrete option available today
-- Platform conditionals: `{% if "backend" in platforms %}` (not `{% if backend %}`)
-- EJS escaping in `_templates/`: `<%= %>` becomes `{{ '<%=' }} %}`
-- Kotlin/Java files use `{{package_path}}` in directory names
-- All files with Jinja2 expressions must have `.jinja` suffix
+## Repo Skills
+
+Project skills for this template repo live in `.agents/skills/` and are best invoked explicitly:
+
+- `$platform-builder` for adding or extending a platform slice in the template
+- `$sync-ai-context` for repairing drift between Claude, Codex, and Cursor guidance
+- `$test-template` for Copier generation checks after template edits
+
+## Key Files
+
+- `README.md` for maintainer workflow and current maturity
+- `PLAN.md` for architecture decisions, platform specs, and intended direction
+- `copier.yml` for questionnaire inputs and exclusions
+- `template/AGENTS.md.jinja` for generated-project Codex guidance
+- `template/CLAUDE.md.jinja` for generated-project Claude guidance
 
 ## Common Commands
 
 ```bash
-# Test template generation (all platforms)
-copier copy --trust . /tmp/test-output
-
-# Test with specific options
-copier copy --trust --data 'project_name=TestApp' --data 'platforms=[backend, mobile-android]' . /tmp/test-output
-
-# Update an existing generated project
-cd /path/to/generated-project && copier update --trust
+copier copy --trust . C:\temp\template-test
+copier copy --trust --defaults --data "project_name=Test App" --data "platforms=[backend]" . C:\temp\template-test-backend
+rg -n --hidden --glob '!**/.git/**' "\.agents/skills|AGENTS\.md|CLAUDE\.md" .
 ```
-
-## Reference
-
-- `PLAN.md` - full architecture plan, decisions, build progress, library versions
-- `copier.yml` - template configuration and questionnaire
-- `template/CLAUDE.md.jinja` - Claude context template for generated projects
-- `template/AGENTS.md.jinja` - Codex context template for generated projects

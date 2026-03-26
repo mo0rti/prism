@@ -1,0 +1,38 @@
+---
+name: scaffold-feature
+description: Coordinate doc-first, end-to-end feature scaffolding across this generated project. Use when a user explicitly wants a new feature planned or implemented across docs, API contract, backend, and the selected client platforms; not for isolated bug fixes or one-file edits.
+---
+
+# Scaffold Feature
+
+Use this skill for new feature delivery that spans documentation and code.
+
+## Inputs
+
+- Feature name
+- Short description or desired user outcome
+- Any explicit platform or scope constraints
+
+## Workflow
+
+1. Ask only for missing inputs needed to name or scope the feature.
+2. Read `docs/advisory-board.md` and run the board review first.
+3. Create or update `docs/features/{feature-name}.md` from `docs/features/_template.md`.
+4. Create or update `backend/docs/entities/*.md` for every new or changed backend entity.
+5. Update `shared/api-contracts/openapi.yml` following `docs/api/conventions.md`.
+6. Run `task generate-clients`.
+7. Implement the affected platform slices:
+{% if "backend" in platforms %}- `backend/`
+{% endif %}{% if "web-user-app" in platforms %}- `web-user-app/`
+{% endif %}{% if "web-admin-portal" in platforms %}- `web-admin-portal/`
+{% endif %}{% if "mobile-android" in platforms %}- `mobile-android/`
+{% endif %}{% if "mobile-ios" in platforms %}- `mobile-ios/`
+{% endif %}
+8. Update the feature doc checklist and status with what was completed, deferred, or blocked.
+
+## Guardrails
+
+- Create or update documentation before code.
+- Follow the platform-specific `AGENTS.md` files when working inside a platform.
+- Reuse generated clients instead of inventing ad-hoc request models.
+- Keep partial implementations explicit in the feature doc.

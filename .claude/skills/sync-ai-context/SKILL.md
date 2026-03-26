@@ -26,6 +26,7 @@ Verify that AI context files are consistent across all platforms.
    - Same for mobile-android, mobile-ios, web-user-app, web-admin-portal
 
 4. Check that skills cover the same capabilities:
-   - `template/.claude/skills/` vs `template/.codex/skills/`
+   - `.claude/skills/` vs `.agents/skills/`
+   - `template/.claude/skills/` vs `template/.agents/skills/`
 
 5. Report any inconsistencies found and offer to fix them.

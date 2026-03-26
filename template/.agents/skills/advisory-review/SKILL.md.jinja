@@ -1,0 +1,42 @@
+---
+name: advisory-review
+description: Review a new feature proposal, meaningful scope change, or product or architecture decision with the virtual advisory board in `docs/advisory-board.md`. Use when deciding whether to proceed, rework, defer, or rescope an initiative; not for routine bug fixes or low-risk refactors.
+---
+
+# Advisory Review
+
+Use this skill when the work is still being evaluated, not blindly implemented.
+
+## Workflow
+
+1. Read `docs/advisory-board.md` to load the current board members and their decision lenses.
+2. Restate the proposal in one or two sentences so the review stays anchored to the same scope.
+3. For each board member, capture:
+   - what they support
+   - the questions they would ask
+   - the concerns or risks they would raise
+   - a recommendation: proceed, rework, or defer
+4. Synthesize the responses into:
+   - overall consensus
+   - key cross-functional risks
+   - the smallest sensible next step
+5. If the user proceeds, fold the summary into `docs/features/{name}.md` under the Board Review section.
+
+## Output
+
+Use this structure:
+
+```markdown
+## Advisory Board Review: [Proposal]
+
+### [Member] - [Role]
+- Supports: ...
+- Questions: ...
+- Concerns: ...
+- Recommendation: Proceed / Rework / Defer
+
+### Board Summary
+- Consensus: ...
+- Key risks: ...
+- Next step: ...
+```

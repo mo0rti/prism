@@ -75,6 +75,15 @@ Each platform has its own `AGENTS.md` with detailed patterns:
 {% endif %}{% if "mobile-ios" in platforms %}- `mobile-ios/AGENTS.md` - SwiftUI, async/await, Keychain, SwiftData
 {% endif %}
 
+Codex reads `AGENTS.md` from repo root down to the working directory, so defer to the platform-level file when you are working inside a specific platform folder.
+
+## Codex Skills
+
+Project-specific Codex skills live in `.agents/skills/`:
+- `$advisory-review` - review proposals with the virtual advisory board
+- `$generate-clients` - regenerate typed clients after OpenAPI contract changes
+- `$scaffold-feature` - coordinate doc-first feature delivery across the selected platforms
+
 ## Adding Features
 
 1. Define feature in `docs/features/` (use template from `docs/features/_template.md`)
