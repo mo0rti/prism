@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --surface: 0 0% 100%;
+  --foreground: 142 24% 14%;
+  --accent: 145 63% 42%;
+  --muted: 142 16% 96%;
+  --ring: 145 63% 42%;
+}
+
+.dark {
+  --surface: 150 19% 12%;
+  --foreground: 0 0% 98%;
+  --accent: 145 63% 52%;
+  --muted: 150 10% 20%;
+  --ring: 145 63% 52%;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(134, 239, 172, 0.28), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(110, 231, 183, 0.18), transparent 35%),
+    hsl(var(--surface));
+  color: hsl(var(--foreground));
+}
+
+a {
+  @apply transition-colors;
+}
+
+::selection {
+  background: rgba(34, 197, 94, 0.22);
+}

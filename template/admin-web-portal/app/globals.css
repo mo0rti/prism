@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --panel: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --accent: 160 84% 39%;
+}
+
+.dark {
+  --panel: 222 47% 11%;
+  --foreground: 210 40% 98%;
+  --accent: 158 64% 52%;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(20, 184, 166, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.03), transparent),
+    hsl(var(--panel));
+  color: hsl(var(--foreground));
+}

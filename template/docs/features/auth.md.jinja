@@ -66,10 +66,15 @@
 - Filter: `backend/src/.../auth/security/JwtAuthenticationFilter.kt`
 - Config: `backend/src/.../config/SecurityConfig.kt`, `OAuth2Config.kt`
 
-### Web
-- Pages: `web/src/app/(auth)/login/`, `web/src/app/(auth)/register/`
-- Auth context: `web/src/lib/auth/context.tsx`
-- API client: `web/src/lib/api/client.ts` (interceptor adds Bearer token)
+### User Web App
+- Pages: `user-web-app/app/[locale]/(public)/login/`, `user-web-app/app/[locale]/dashboard/`
+- Auth handlers: `user-web-app/auth.ts`, `user-web-app/app/api/auth/[...nextauth]/route.ts`
+- API client: `user-web-app/lib/api/client.ts`
+
+### Admin Web Portal
+- Pages: `admin-web-portal/app/admin/(auth)/login/`, `admin-web-portal/app/admin/(dashboard)/`
+- Auth handlers: `admin-web-portal/auth.ts`, `admin-web-portal/app/api/auth/[...nextauth]/route.ts`
+- API client: `admin-web-portal/lib/api/client.ts`
 
 ### Android
 - Screen: `android/.../ui/auth/LoginScreen.kt`
@@ -91,6 +96,7 @@
 - [x] API contract defined in OpenAPI
 - [x] API clients generated
 - [x] Backend implemented
-- [x] Web implemented
+- [x] User web app implemented
+- [x] Admin portal implemented
 - [x] Android implemented
 - [x] iOS implemented

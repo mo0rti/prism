@@ -7,13 +7,14 @@ _exclude:
   - "{% if 'android' not in platforms %}android{% endif %}"
   - "{% if 'ios' not in platforms %}ios{% endif %}"
   - "{% if 'backend' not in platforms %}backend{% endif %}"
+  - "{% if 'user-web-app' not in platforms %}user-web-app{% endif %}"
+  - "{% if 'admin-web-portal' not in platforms %}admin-web-portal{% endif %}"
   - "{% if 'backend' not in platforms %}infra{% endif %}"
   - "{% if not use_docker %}docker-compose.yml{% endif %}"
-  - ".github/workflows/web.yml"
-  - ".github/workflows/admin.yml"
-  - "docs/web-guide.md"
-  - "docs/deployment/cloudflare-setup.md"
-  - "_templates/page"
+  - "{% if 'user-web-app' not in platforms %}.github/workflows/user-web-app.yml{% endif %}"
+  - "{% if 'admin-web-portal' not in platforms %}.github/workflows/admin-web-portal.yml{% endif %}"
+  - "{% if 'user-web-app' not in platforms and 'admin-web-portal' not in platforms %}docs/deployment/cloudflare-setup.md{% endif %}"
+  - "{% if 'user-web-app' not in platforms and 'admin-web-portal' not in platforms %}_templates/page{% endif %}"
 
 # =============================================================================
 # Project Identity
@@ -61,11 +62,11 @@ platforms:
   help: "Which platforms do you want to include?"
   choices:
     Spring Boot Backend: backend
-    Next.js Web Client: web
-    Admin Portal: admin
+    User-Facing Web App: user-web-app
+    Admin Web Portal: admin-web-portal
     Android (Kotlin/Compose): android
     iOS (Swift/SwiftUI): ios
-  default: "[backend, web, admin, android, ios]"
+  default: "[backend, user-web-app, admin-web-portal, android, ios]"
 
 # =============================================================================
 # Authentication
@@ -75,6 +76,7 @@ auth_methods:
   type: yaml
   multiselect: true
   help: "Which authentication methods do you want to support?"
+  validator: "{% if 'user-web-app' in platforms and not auth_methods %}User Web App currently requires at least one auth method{% elif 'admin-web-portal' in platforms and 'password' not in auth_methods %}Admin Web Portal currently requires Username + Password auth{% endif %}"
   choices:
     Google OAuth: google
     Apple Sign-In: apple
@@ -114,7 +116,7 @@ web_hosting:
   type: str
   help: "Where should web applications be deployed?"
   choices:
-    Cloudflare Pages (Currently available): cloudflare
+    Cloudflare via OpenNext (Currently available): cloudflare
   default: cloudflare
 
 # =============================================================================

@@ -11,15 +11,15 @@ includes:
     taskfile: ./backend/Taskfile.yml
     dir: ./backend
 {% endif %}
-{% if "web" in platforms %}
-  web:
-    taskfile: ./web/Taskfile.yml
-    dir: ./web
+{% if "user-web-app" in platforms %}
+  user-web-app:
+    taskfile: ./user-web-app/Taskfile.yml
+    dir: ./user-web-app
 {% endif %}
-{% if "admin" in platforms %}
-  admin:
-    taskfile: ./admin/Taskfile.yml
-    dir: ./admin
+{% if "admin-web-portal" in platforms %}
+  admin-web-portal:
+    taskfile: ./admin-web-portal/Taskfile.yml
+    dir: ./admin-web-portal
 {% endif %}
 {% if "android" in platforms %}
   android:
@@ -43,7 +43,7 @@ tasks:
 {% if "backend" in platforms %}
       - task: generate-client-backend
 {% endif %}
-{% if "web" in platforms or "admin" in platforms %}
+{% if "user-web-app" in platforms or "admin-web-portal" in platforms %}
       - task: generate-client-typescript
 {% endif %}
 {% if "android" in platforms %}
@@ -69,7 +69,7 @@ tasks:
         --package-name="{{ package_identifier }}.api"
 {% endif %}
 
-{% if "web" in platforms or "admin" in platforms %}
+{% if "user-web-app" in platforms or "admin-web-portal" in platforms %}
   generate-client-typescript:
     desc: "Generate TypeScript Axios client from OpenAPI"
     internal: true
@@ -118,11 +118,11 @@ tasks:
 {% if "backend" in platforms %}
       - task: backend:lint
 {% endif %}
-{% if "web" in platforms %}
-      - task: web:lint
+{% if "user-web-app" in platforms %}
+      - task: user-web-app:lint
 {% endif %}
-{% if "admin" in platforms %}
-      - task: admin:lint
+{% if "admin-web-portal" in platforms %}
+      - task: admin-web-portal:lint
 {% endif %}
 {% if "android" in platforms %}
       - task: android:lint
@@ -134,11 +134,11 @@ tasks:
 {% if "backend" in platforms %}
       - task: backend:test
 {% endif %}
-{% if "web" in platforms %}
-      - task: web:test
+{% if "user-web-app" in platforms %}
+      - task: user-web-app:test
 {% endif %}
-{% if "admin" in platforms %}
-      - task: admin:test
+{% if "admin-web-portal" in platforms %}
+      - task: admin-web-portal:test
 {% endif %}
 {% if "android" in platforms %}
       - task: android:test

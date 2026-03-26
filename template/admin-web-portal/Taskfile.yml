@@ -1,0 +1,52 @@
+version: "3"
+
+tasks:
+  install:
+    desc: Install dependencies
+    cmds:
+      - npm install
+
+  dev:
+    desc: Start the admin web portal
+    cmds:
+      - npm run dev
+
+  build:
+    desc: Build the admin web portal
+    cmds:
+      - npm run build
+
+  lint:
+    desc: Lint the admin web portal
+    cmds:
+      - npm run lint
+
+  typecheck:
+    desc: Type-check the admin web portal
+    cmds:
+      - npm run typecheck
+
+  test:
+    desc: Run the current verification suite
+    cmds:
+      - npm run typecheck
+
+  clean:
+    desc: Clean Next.js and OpenNext artifacts
+    cmds:
+      - npm run clean
+
+  build:cloudflare:
+    desc: Build the Cloudflare worker bundle
+    cmds:
+      - npm run build:cloudflare
+
+  preview:
+    desc: Preview the Cloudflare worker locally
+    cmds:
+      - npm run preview
+
+  deploy:
+    desc: Deploy to Cloudflare
+    cmds:
+      - npm run deploy
