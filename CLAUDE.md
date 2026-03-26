@@ -7,6 +7,7 @@ The questionnaire keeps roadmap-facing options visible. Backend, Android, and iO
 ## Project Structure
 
 ```
+docs/                    # Documentation for this template repository
 copier.yml              # Template questionnaire (project identity, platforms, auth, database, deployment)
 template/               # All templated output - Jinja2 files (.jinja suffix stripped on generation)
   backend/              # Spring Boot 4 (Kotlin 2.2+, Java 21)
@@ -26,7 +27,7 @@ template/               # All templated output - Jinja2 files (.jinja suffix str
 ## Key Rules
 
 - **Two layers of AI context**: `template/.claude/` is for generated projects; `.claude/` (root) is for this template repo
-- **Documentation organization**: Project-wide docs stay in `template/docs/`. Platform-specific technical docs live inside each platform directory (`template/mobile-android/docs/`, `template/backend/docs/`, `template/mobile-ios/docs/`). Entity docs are backend-specific (`template/backend/docs/entities/`). Platform docs are auto-excluded with their platform via `_exclude` rules.
+- **Documentation organization**: Template-repo docs live in root `docs/`. Generated-project docs stay in `template/docs/`. Platform-specific technical docs live inside each platform directory (`template/mobile-android/docs/`, `template/backend/docs/`, `template/mobile-ios/docs/`). Entity docs are backend-specific (`template/backend/docs/entities/`). Platform docs are auto-excluded with their platform via `_exclude` rules.
 - **Test with `copier copy`** after changes: `copier copy --trust . /tmp/test-output`
 - **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
 
@@ -45,6 +46,9 @@ cd /path/to/generated-project && copier update --trust
 
 ## Reference
 
+- `docs/README.md` - root documentation index for this template repo
+- `docs/maintainer-workflow.md` - template maintenance workflow and validation variants
+- `docs/questionnaire.md` - questionnaire inputs and maturity notes
 - `PLAN.md` - full architecture plan, decisions, build progress, library versions
 - `copier.yml` - template configuration and questionnaire
 - `template/CLAUDE.md.jinja` - Claude context template for generated projects

@@ -1,0 +1,33 @@
+# Questionnaire
+
+Copier will walk you through these inputs:
+
+| Question | Description | Default |
+|----------|-------------|---------|
+| **Project name** | Human-readable name (e.g., `My Awesome App`) | *(required)* |
+| **Project slug** | Lowercase slug for directories (e.g., `my-awesome-app`) | derived from name |
+| **Package identifier** | Reverse-domain ID (e.g., `com.example.myawesomeapp`) | derived from slug |
+| **Description** | One-line project description | `A multi-platform application` |
+| **Platforms** | Which platform slices to include (multi-select) | backend, web-user-app, web-admin-portal, mobile-android, mobile-ios |
+| **Auth methods** | Google, Apple, Facebook, Microsoft, Password (multi-select) | Google, Apple, Password |
+| **Database** | Which database to target | PostgreSQL |
+| **Docker Compose** | Include local dev services? | yes |
+| **Backend deployment** | Where backend services should be deployed | Azure |
+| **Web deployment** | Where web applications should be deployed | Cloudflare via OpenNext |
+| **GitHub org** | GitHub organization or username | *(empty)* |
+
+## Current Notes Per Input
+
+- `Platforms`: backend, Android, and iOS remain the more proven paths; `web-user-app` and `web-admin-portal` now generate initial setup, but they still need broader end-to-end validation.
+- `Auth methods`: Google and password are implemented; Apple remains selectable but still needs more hardening.
+- `Admin Web Portal`: currently requires `password` auth when selected.
+- `User Web App`: currently requires at least one auth method when selected.
+- `Database`, `Backend deployment`, and `Web deployment`: implemented as questionnaire inputs, with one available option each for now.
+
+## Recommended First Selections
+
+- **Backend only** for contract inspection and repository-shape validation
+- **Backend + Android** for the strongest current application path
+- **Backend + User Web App** or **Backend + Admin Web Portal** to evaluate the new initial web slices in isolation
+- **Backend + User Web App + Admin Web Portal** if you want to validate the initial web/admin setup together
+- **Backend + iOS** only if you are prepared to validate iOS generation details locally
