@@ -15,7 +15,7 @@ This repository is the template itself, not a generated project.
 - Backend, Android, and iOS are the stronger paths today.
 - User web app and admin web portal now generate initial slices, but they still need broader end-to-end validation.
 - Apple Sign-In remains experimental.
-- The safest workflow is still explicit sample generation plus structural validation.
+- The safest workflow is explicit sample generation plus `./scripts/validate-template.ps1`.
 
 ## Quick Start
 
@@ -27,7 +27,8 @@ This repository is the template itself, not a generated project.
 copier copy --trust . ../my-new-project
 ```
 
-4. Validate the generated structure before treating it as production-ready.
+4. If you are maintaining the template, run `./scripts/validate-template.ps1` after changes.
+5. Validate any generated project locally before treating it as production-ready.
 
 ## Docs Map
 
@@ -48,6 +49,6 @@ copier copy --trust . ../my-new-project
 
 ## Short Version
 
-Use this repository to generate and validate targeted sample repos.
+Use this repository to generate and validate targeted sample repos, and use `./scripts/validate-template.ps1` as the default maintainer check.
 
 Treat **backend + Android** as the most practical evaluation path today. Treat the web slices as real but still under active hardening, and validate any path you plan to rely on locally.

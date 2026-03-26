@@ -1,0 +1,27 @@
+name: Template Validation
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  validate-template:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Copier
+        run: python -m pip install --upgrade pip copier
+
+      - name: Run Template Validation
+        shell: pwsh
+        run: ./scripts/validate-template.ps1

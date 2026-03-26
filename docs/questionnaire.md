@@ -9,7 +9,7 @@ Copier will walk you through these inputs:
 | **Package identifier** | Reverse-domain ID (e.g., `com.example.myawesomeapp`) | derived from slug |
 | **Description** | One-line project description | `A multi-platform application` |
 | **Platforms** | Which platform slices to include (multi-select) | backend, web-user-app, web-admin-portal, mobile-android, mobile-ios |
-| **Auth methods** | Google, Apple, Facebook, Microsoft, Password (multi-select) | Google, Apple, Password |
+| **Auth methods** | Google, Apple, Facebook, Microsoft, Password (multi-select) | Google, Password |
 | **Database** | Which database to target | PostgreSQL |
 | **Docker Compose** | Include local dev services? | yes |
 | **Backend deployment** | Where backend services should be deployed | Azure |
@@ -19,7 +19,7 @@ Copier will walk you through these inputs:
 ## Current Notes Per Input
 
 - `Platforms`: backend, Android, and iOS remain the more proven paths; `web-user-app` and `web-admin-portal` now generate initial setup, but they still need broader end-to-end validation.
-- `Auth methods`: Google and password are implemented; Apple remains selectable but still needs more hardening.
+- `Auth methods`: Google and password are the safer defaults. Apple remains selectable but still needs more hardening.
 - `Admin Web Portal`: currently requires `password` auth when selected.
 - `User Web App`: currently requires at least one auth method when selected.
 - `Database`, `Backend deployment`, and `Web deployment`: implemented as questionnaire inputs, with one available option each for now.

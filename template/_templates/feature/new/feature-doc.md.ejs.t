@@ -49,8 +49,6 @@ _Describe the core business rules, workflows, and edge cases._
 - [ ] API contract defined in `shared/api-contracts/openapi.yml`
 - [ ] API clients generated (`task generate-clients`)
 - [ ] Backend implemented
-- [ ] Web client implemented
-- [ ] Admin portal implemented
-- [ ] Android implemented
-- [ ] iOS implemented
-- [ ] Tests passing on all platforms
+- [ ] Selected web app slices implemented
+- [ ] Selected mobile app slices implemented
+- [ ] Tests passing for the selected platform slices

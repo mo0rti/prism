@@ -15,7 +15,7 @@ tasks:
       - xcodebuild build -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,name=iPhone 16" -configuration Debug
     vars:
       PROJECT_NAME: '{{'{{'}} .PROJECT_NAME | default "{{ project_name }}" {{'}}'}}'
-      SCHEME: '{{'{{'}} .SCHEME | default "{{ project_slug }}" {{'}}'}}'
+      SCHEME: '{{'{{'}} .SCHEME | default "{{ ios_module_name }}" {{'}}'}}'
 
   test:
     desc: Run unit tests
@@ -25,7 +25,7 @@ tasks:
       - xcodebuild test -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,name=iPhone 16"
     vars:
       PROJECT_NAME: '{{'{{'}} .PROJECT_NAME | default "{{ project_name }}" {{'}}'}}'
-      SCHEME: '{{'{{'}} .SCHEME | default "{{ project_slug }}" {{'}}'}}'
+      SCHEME: '{{'{{'}} .SCHEME | default "{{ ios_module_name }}" {{'}}'}}'
 
   clean:
     desc: Clean build artifacts
@@ -35,4 +35,4 @@ tasks:
       - xcodebuild clean -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" 2>/dev/null || true
     vars:
       PROJECT_NAME: '{{'{{'}} .PROJECT_NAME | default "{{ project_name }}" {{'}}'}}'
-      SCHEME: '{{'{{'}} .SCHEME | default "{{ project_slug }}" {{'}}'}}'
+      SCHEME: '{{'{{'}} .SCHEME | default "{{ ios_module_name }}" {{'}}'}}'

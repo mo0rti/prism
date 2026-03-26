@@ -11,7 +11,7 @@ Represents a registered user in the system. Users can authenticate via OAuth pro
 | email | String | Yes | Email address (unique) |
 | displayName | String | Yes | User's display name |
 | avatarUrl | String | No | Profile picture URL |
-| authProvider | String | Yes | Authentication provider (google, apple, facebook, microsoft, password) |
+| authProvider | String | Yes | Authentication provider ({% for method in auth_methods %}{{ method }}{% if not loop.last %}, {% endif %}{% endfor %}) |
 | authProviderId | String | No | ID from the OAuth provider |
 | passwordHash | String | No | BCrypt hash (only for password auth) |
 | role | Enum | Yes | User role: USER, ADMIN |

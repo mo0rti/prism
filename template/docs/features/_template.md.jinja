@@ -36,20 +36,28 @@
 - Service: `backend/src/.../features/name/service/`
 - Repository: `backend/src/.../features/name/repository/`
 
+{% if "web-user-app" in platforms %}
 ### User Web App
 - Pages: `web-user-app/app/[locale]/dashboard/name/`
 - API: `web-user-app/lib/api/name.ts`
+{% endif %}
 
+{% if "web-admin-portal" in platforms %}
 ### Admin Web Portal
 - Pages: `web-admin-portal/app/admin/(dashboard)/name/`
+{% endif %}
 
+{% if "mobile-android" in platforms %}
 ### Android
 - Screen: `mobile-android/.../ui/name/`
 - ViewModel: `mobile-android/.../ui/name/NameViewModel.kt`
+{% endif %}
 
+{% if "mobile-ios" in platforms %}
 ### iOS
 - View: `mobile-ios/.../UI/Name/`
 - ViewModel: `mobile-ios/.../UI/Name/NameViewModel.swift`
+{% endif %}
 
 ## Implementation Status
 
@@ -60,7 +68,15 @@
 - [ ] API clients generated
 - [ ] Backend implemented
 - [ ] Backend tests passing
+{% if "web-user-app" in platforms %}
 - [ ] User web app implemented
+{% endif %}
+{% if "web-admin-portal" in platforms %}
 - [ ] Admin portal implemented
+{% endif %}
+{% if "mobile-android" in platforms %}
 - [ ] Android implemented
+{% endif %}
+{% if "mobile-ios" in platforms %}
 - [ ] iOS implemented
+{% endif %}

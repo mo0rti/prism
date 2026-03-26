@@ -69,7 +69,7 @@ az containerapp secret set \
         "apple-private-key=${APPLE_PRIVATE_KEY:-placeholder}" \
 {% endif %}
 {% if "facebook" in auth_methods %}
-        "facebook-app-secret=${FACEBOOK_APP_SECRET:-placeholder}" \
+        "facebook-client-secret=${FACEBOOK_CLIENT_SECRET:-placeholder}" \
 {% endif %}
 {% if "microsoft" in auth_methods %}
         "microsoft-client-secret=${MICROSOFT_CLIENT_SECRET:-placeholder}" \
