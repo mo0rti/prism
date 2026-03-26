@@ -270,7 +270,7 @@ The current generated workflow set includes:
 copier.yml            # Questionnaire and generation contract
 template/             # Files copied into generated projects
   .claude/            # Claude project context and slash commands
-  .codex/             # Codex project context and skills
+  .agents/            # Codex project skills
   .cursor/            # Cursor project rules
   .github/            # Workflow templates
   _templates/         # Hygen generators

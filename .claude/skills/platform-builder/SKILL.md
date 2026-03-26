@@ -36,9 +36,10 @@ $ARGUMENTS
    - Reference skills with `@.claude/skills/` syntax
    - Include key conventions, doc-sync rules, and feature workflow
 
-7. **Create platform skills** - Add Claude skills in `template/.claude/skills/` for the platform:
-   - Convention skills (auto-triggered): coding conventions, design system, contract alignment
-   - Action skills (manual): feature delivery, build verify, deploy
+7. **Create platform skills** - Add project skills for the platform:
+   - Claude skills in `template/.claude/skills/`
+   - Codex skills in `template/.agents/skills/` when the workflow should be available in generated projects
+   - Keep skill scope orthogonal: conventions, contract alignment, delivery, and verification should not collapse into one giant skill
 
 8. **Update cross-cutting files**:
    - `template/Taskfile.yml.jinja` - add platform tasks

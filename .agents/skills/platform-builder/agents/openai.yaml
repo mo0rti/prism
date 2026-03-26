@@ -1,0 +1,6 @@
+interface:
+  display_name: "Platform Builder"
+  short_description: "Extend a platform slice in the Copier template"
+  default_prompt: "Use $platform-builder to add or extend a platform in this template repo."
+policy:
+  allow_implicit_invocation: false

@@ -145,7 +145,7 @@ description: Review a feature proposal with the virtual advisory board
 ```
 When triggered, the skill reads `docs/advisory-board.md`, adopts each persona sequentially, and generates structured feedback.
 
-**Codex skill** (`.codex/skills/advisory-review/SKILL.md`): Same concept, adapted for Codex's format.
+**Codex skill** (`.agents/skills/advisory-review/SKILL.md`): Same concept, adapted for Codex's format.
 
 **Cursor rule** (`.cursor/rules/advisory-review.mdc`): Agent Requested rule that triggers when discussing feature design.
 
@@ -186,14 +186,15 @@ mobile-ios/CLAUDE.md                          # Lazy-loaded when working in mobi
 
 **Key**: CLAUDE.md files are hierarchical. Root loads on startup; subdirectory files lazy-load when Claude touches those files. Keep root under 100 lines, point to `docs/` for details.
 
-### OpenAI Codex (reads `AGENTS.md`, uses `.codex/`)
+### OpenAI Codex (reads `AGENTS.md`, uses `.agents/skills`)
 
 ```
-AGENTS.md                              # Root - mirrors CLAUDE.md content
-.codex/
-  skills/                              # Auto-invoked based on description
+AGENTS.md                              # Root - repository instructions
+.agents/
+  skills/                              # Repository skills discovered by Codex
     advisory-review/
       SKILL.md                         # Board review (same concept as Claude skill)
+      agents/openai.yaml               # Optional UI metadata / invocation policy
     scaffold-feature/
       SKILL.md                         # Feature scaffolding
     generate-clients/
@@ -205,7 +206,7 @@ mobile-android/AGENTS.md                      # Android-specific instructions
 mobile-ios/AGENTS.md                          # iOS-specific instructions
 ```
 
-**Key**: AGENTS.md files concatenate root-to-leaf (up to 32KB). Codex skills use `$skill-name` syntax or auto-invoke based on description in SKILL.md frontmatter.
+**Key**: AGENTS.md files concatenate root-to-leaf (up to 32KB by default). Repository skills are discovered from `.agents/skills`, and Codex can use them via `$skill-name` or implicit matching based on the SKILL.md description.
 
 ### Cursor (reads `.cursor/rules/*.mdc`, also reads `AGENTS.md`)
 
@@ -703,7 +704,7 @@ copier update
 | `AGENTS.md` | Codex + Cursor | Architecture, conventions |
 | `.claude/commands/*.md` | Claude Code | Manual slash commands |
 | `.claude/skills/*/SKILL.md` | Claude Code | Auto-invoked skills |
-| `.codex/skills/*/SKILL.md` | Codex | Auto-invoked skills |
+| `.agents/skills/*/SKILL.md` | Codex | Repo-local Codex skills |
 | `.cursor/rules/*.mdc` | Cursor | Typed rules (Always, Auto, Agent, Manual) |
 | `docs/` | All tools | Single source of truth |
 | `docs/advisory-board.md` | All tools | Virtual advisory board |

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Test Template"
+  short_description: "Generate and verify a sample project output"
+  default_prompt: "Use $test-template to validate this Copier template after recent changes."
+policy:
+  allow_implicit_invocation: false

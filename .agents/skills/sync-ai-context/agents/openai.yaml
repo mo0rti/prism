@@ -1,0 +1,6 @@
+interface:
+  display_name: "Sync AI Context"
+  short_description: "Audit AGENTS, CLAUDE, and Cursor drift"
+  default_prompt: "Use $sync-ai-context to check this repo for drift across Claude, Codex, and Cursor instructions."
+policy:
+  allow_implicit_invocation: false

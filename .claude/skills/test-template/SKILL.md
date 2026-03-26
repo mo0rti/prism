@@ -18,7 +18,7 @@ Test the Copier template by generating a project and verifying the output.
 2. Verify the output structure:
    - Check all platform directories exist: `backend/`, `web-user-app/`, `web-admin-portal/`, `mobile-android/`, `mobile-ios/`
    - Check `CLAUDE.md`, `AGENTS.md`, `Taskfile.yml` were generated without Jinja artifacts
-   - Check `.claude/`, `.codex/`, `.cursor/` directories are present
+   - Check `.claude/`, `.agents/skills/`, and `.cursor/` are present
    - Check `docs/`, `shared/`, `.github/workflows/` are present
 
 3. Scan for common template issues:
