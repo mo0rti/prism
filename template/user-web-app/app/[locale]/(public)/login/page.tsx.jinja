@@ -1,0 +1,138 @@
+"use client"
+
+import { FormEvent, useState } from "react"
+import { signIn } from "next-auth/react"
+import { useLocale, useTranslations } from "next-intl"
+import { Link } from "@/lib/i18n/routing"
+
+type SignInMethod = "credentials" | "google" | "apple" | "facebook" | "microsoft"
+
+export default function LoginPage() {
+  const locale = useLocale()
+  const t = useTranslations("common.login")
+  const [loadingMethod, setLoadingMethod] = useState<SignInMethod | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const callbackUrl = `/${locale}/dashboard/home`
+  const methods: Array<{ id: SignInMethod; label: string }> = [
+{% if "google" in auth_methods %}    { id: "google", label: `${t("socialPrefix")} Google` },
+{% endif %}{% if "apple" in auth_methods %}    { id: "apple", label: `${t("socialPrefix")} Apple` },
+{% endif %}{% if "facebook" in auth_methods %}    { id: "facebook", label: `${t("socialPrefix")} Facebook` },
+{% endif %}{% if "microsoft" in auth_methods %}    { id: "microsoft", label: `${t("socialPrefix")} Microsoft` },
+{% endif %}  ]
+
+  async function handleCredentials(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setLoadingMethod("credentials")
+    setError(null)
+
+    const formData = new FormData(event.currentTarget)
+    const result = await signIn("credentials", {
+      email: formData.get("email"),
+      password: formData.get("password"),
+      redirect: false,
+      callbackUrl,
+    })
+
+    if (result?.error) {
+      setError(t("credentialsError"))
+      setLoadingMethod(null)
+      return
+    }
+
+    window.location.assign(callbackUrl)
+  }
+
+  async function handleSocialSignIn(method: SignInMethod) {
+    setLoadingMethod(method)
+    setError(null)
+    await signIn(method, { callbackUrl })
+  }
+
+  return (
+    <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-5xl items-center px-6 py-12">
+      <div className="grid w-full gap-8 rounded-[2rem] border border-emerald-100 bg-white/90 p-8 shadow-soft backdrop-blur lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="space-y-4 rounded-[1.5rem] bg-slate-950 p-8 text-white">
+          <p className="text-sm uppercase tracking-[0.2em] text-emerald-300">User Web App</p>
+          <h1 className="text-3xl font-semibold">{t("title")}</h1>
+          <p className="text-sm leading-7 text-slate-300">{t("description")}</p>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+            This template follows the Ingredish client-web shape: public marketing routes, dashboard routes, next-intl, and a Cloudflare-ready Next.js setup.
+          </div>
+        </div>
+
+        <div className="space-y-6">
+{% if "password" in auth_methods %}          <form onSubmit={handleCredentials} className="space-y-4 rounded-[1.5rem] border border-slate-200 p-6">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="email">
+                {t("email")}
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                required
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-emerald-400"
+                placeholder="hello@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="password">
+                {t("password")}
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-emerald-400"
+                placeholder="password"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loadingMethod === "credentials"}
+              className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 font-medium text-white transition hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"
+            >
+              {loadingMethod === "credentials" ? "Signing in..." : t("submit")}
+            </button>
+          </form>
+{% endif %}
+
+          {methods.length > 0 ? (
+            <div className="space-y-3">
+              {methods.map((method) => (
+                <button
+                  key={method.id}
+                  type="button"
+                  onClick={() => handleSocialSignIn(method.id)}
+                  disabled={loadingMethod === method.id}
+                  className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-700 transition hover:border-emerald-200 hover:bg-emerald-50 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {loadingMethod === method.id ? "Connecting..." : method.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+{% if "password" not in auth_methods %}          {methods.length === 0 ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {t("noMethods")}
+            </div>
+          ) : null}
+{% endif %}
+
+          {error ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="text-sm text-slate-500">
+            <Link href="/" className="font-medium text-emerald-700 hover:text-emerald-600">
+              Return to the public home page
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,62 @@
+"use client"
+
+import { signOut, useSession } from "next-auth/react"
+import { useTranslations } from "next-intl"
+import { Link, usePathname } from "@/lib/i18n/routing"
+import { cn } from "@/lib/utils"
+
+export function SiteHeader({ locale }: { locale: string }) {
+  const { data: session } = useSession()
+  const t = useTranslations("common.nav")
+  const pathname = usePathname()
+
+  const items = [
+    { href: "/", label: t("home") },
+    { href: "/dashboard/home", label: t("dashboard") },
+  ] as const
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-white/60 bg-white/80 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <Link href="/" className="text-lg font-semibold tracking-tight text-emerald-700">
+          {{ project_name }}
+        </Link>
+        <nav className="hidden items-center gap-6 text-sm text-slate-600 md:flex">
+          {items.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "transition hover:text-slate-950",
+                pathname === item.href && "font-medium text-slate-950",
+              )}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <div className="flex items-center gap-3 text-sm">
+          {session ? (
+            <>
+              <span className="hidden text-slate-500 sm:inline">{session.user?.email}</span>
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: `/${locale}/login` })}
+                className="rounded-full border border-slate-200 px-4 py-2 font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                {t("logout")}
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/login"
+              className="rounded-full bg-emerald-600 px-4 py-2 font-medium text-white transition hover:bg-emerald-500"
+            >
+              {t("login")}
+            </Link>
+          )}
+        </div>
+      </div>
+    </header>
+  )
+}

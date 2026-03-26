@@ -36,12 +36,12 @@
 - Service: `backend/src/.../features/name/service/`
 - Repository: `backend/src/.../features/name/repository/`
 
-### Web
-- Pages: `web/src/app/(main)/name/`
-- API: `web/src/lib/api/name.ts`
+### User Web App
+- Pages: `user-web-app/app/[locale]/dashboard/name/`
+- API: `user-web-app/lib/api/name.ts`
 
-### Admin
-- Pages: `admin/src/app/(dashboard)/name/`
+### Admin Web Portal
+- Pages: `admin-web-portal/app/admin/(dashboard)/name/`
 
 ### Android
 - Screen: `android/.../ui/name/`
@@ -60,7 +60,7 @@
 - [ ] API clients generated
 - [ ] Backend implemented
 - [ ] Backend tests passing
-- [ ] Web implemented
-- [ ] Admin implemented
+- [ ] User web app implemented
+- [ ] Admin portal implemented
 - [ ] Android implemented
 - [ ] iOS implemented

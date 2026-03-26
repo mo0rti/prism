@@ -2,45 +2,52 @@
 
 ## Projects
 
-{% if "web" in platforms %}| Web Client | `{{ project_slug }}-web` | Cloudflare Pages |
-{% endif %}{% if "admin" in platforms %}| Admin Portal | `{{ project_slug }}-admin` | Cloudflare Pages |
+| Application | Worker Name | Hosting |
+|-------------|-------------|---------|
+{% if "user-web-app" in platforms %}| User Web App | `{{ project_slug }}-user-web-app` | Cloudflare via OpenNext |
+{% endif %}{% if "admin-web-portal" in platforms %}| Admin Web Portal | `{{ project_slug }}-admin-web-portal` | Cloudflare via OpenNext |
 {% endif %}
 
 ## Initial Setup
 
-### 1. Create Cloudflare Pages Projects
+### 1. Build and deploy the worker bundle
 
-{% if "web" in platforms %}
+{% if "user-web-app" in platforms %}
 ```bash
-cd web
-npx wrangler pages project create {{ project_slug }}-web
+cd user-web-app
+npm install
+npm run build:cloudflare
+npx wrangler deploy
 ```
 {% endif %}
 
-{% if "admin" in platforms %}
+{% if "admin-web-portal" in platforms %}
 ```bash
-cd admin
-npx wrangler pages project create {{ project_slug }}-admin
+cd admin-web-portal
+npm install
+npm run build:cloudflare
+npx wrangler deploy
 ```
 {% endif %}
 
 ### 2. Set Environment Variables
 
-In Cloudflare dashboard -> Pages -> Settings -> Environment Variables:
+In Cloudflare dashboard -> Workers & Pages -> your worker -> Settings -> Variables:
 
 | Variable | Value |
 |----------|-------|
-| `NEXT_PUBLIC_API_URL` | `https://api.{{ project_slug }}.com/api/v1` |
+| `NEXT_PUBLIC_API_BASE_URL` | `https://api.{{ project_slug }}.com` |
+| `AUTH_SECRET` | Generated secret for NextAuth |
 
 ## CI/CD
 
 GitHub Actions deploys on push to `main`:
-- Builds Next.js (`npm run build`)
-- Deploys to Cloudflare Pages via Wrangler
+- Builds the OpenNext Cloudflare bundle
+- Deploys the worker via Wrangler
 
 ## Required GitHub Secrets
 
 | Secret | Description |
 |--------|-------------|
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
-| `CLOUDFLARE_API_TOKEN` | API token with Pages edit permissions |
+| `CLOUDFLARE_API_TOKEN` | API token with Workers edit permissions |

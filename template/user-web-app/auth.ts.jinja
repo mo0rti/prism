@@ -1,0 +1,116 @@
+import NextAuth from "next-auth"
+{% if "google" in auth_methods %}import Google from "next-auth/providers/google"
+{% endif %}{% if "apple" in auth_methods %}import Apple from "next-auth/providers/apple"
+{% endif %}{% if "facebook" in auth_methods %}import Facebook from "next-auth/providers/facebook"
+{% endif %}{% if "microsoft" in auth_methods %}import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id"
+{% endif %}{% if "password" in auth_methods %}import Credentials from "next-auth/providers/credentials"
+{% endif %}
+
+export const { auth, handlers, signIn, signOut } = NextAuth({
+  trustHost: true,
+  providers: [
+{% if "google" in auth_methods %}
+    Google({
+      clientId: process.env.AUTH_GOOGLE_ID ?? "",
+      clientSecret: process.env.AUTH_GOOGLE_SECRET ?? "",
+    }),
+{% endif %}{% if "apple" in auth_methods %}
+    Apple({
+      clientId: process.env.AUTH_APPLE_ID ?? "",
+      clientSecret: process.env.AUTH_APPLE_SECRET ?? "",
+    }),
+{% endif %}{% if "facebook" in auth_methods %}
+    Facebook({
+      clientId: process.env.AUTH_FACEBOOK_ID ?? "",
+      clientSecret: process.env.AUTH_FACEBOOK_SECRET ?? "",
+    }),
+{% endif %}{% if "microsoft" in auth_methods %}
+    MicrosoftEntraID({
+      clientId: process.env.AUTH_MICROSOFT_ID ?? "",
+      clientSecret: process.env.AUTH_MICROSOFT_SECRET ?? "",
+      tenantId: process.env.AUTH_MICROSOFT_TENANT_ID ?? "common",
+    }),
+{% endif %}{% if "password" in auth_methods %}
+    Credentials({
+      name: "Email and Password",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null
+        }
+
+        const apiBaseUrl = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL
+        if (!apiBaseUrl) {
+          return null
+        }
+
+        try {
+          const response = await fetch(`${apiBaseUrl}/api/v1/auth/login`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              email: credentials.email,
+              password: credentials.password,
+            }),
+          })
+
+          if (!response.ok) {
+            return null
+          }
+
+          const payload = await response.json()
+          const user = payload.user ?? {}
+
+          return {
+            id: user.id ?? credentials.email,
+            email: user.email ?? credentials.email,
+            name: user.displayName ?? user.name ?? credentials.email,
+            accessToken: payload.accessToken,
+            refreshToken: payload.refreshToken,
+          }
+        } catch {
+          return null
+        }
+      },
+    }),
+{% endif %}
+  ],
+  pages: {
+    signIn: "/login",
+  },
+  callbacks: {
+    async jwt({ token, user, account }) {
+      if (user) {
+        token.userId = user.id
+        token.accessToken = (user as { accessToken?: string }).accessToken
+        token.refreshToken = (user as { refreshToken?: string }).refreshToken
+      }
+
+      if (account) {
+        token.provider = account.provider
+      }
+
+      return token
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.userId as string
+        session.user.provider = token.provider as string | undefined
+      }
+
+      session.accessToken = token.accessToken as string | undefined
+      session.refreshToken = token.refreshToken as string | undefined
+
+      return session
+    },
+  },
+  session: {
+    strategy: "jwt",
+  },
+})

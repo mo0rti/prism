@@ -5,7 +5,7 @@ module.exports = {
         type: 'list',
         name: 'target',
         message: 'Which app?',
-        choices: ['web', 'admin'],
+        choices: ['user-web-app', 'admin-web-portal'],
       },
       {
         type: 'input',

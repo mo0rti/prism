@@ -1,8 +1,8 @@
 # Multi-Platform Project Template
 
-Copier template that scaffolds monorepo projects with Backend (Spring Boot 4), Web (Next.js), Admin (Next.js), Android (Kotlin/Compose), and iOS (Swift/SwiftUI).
+Copier template that scaffolds monorepo projects with Backend (Spring Boot 4), User Web App (Next.js), Admin Web Portal (Next.js), Android (Kotlin/Compose), and iOS (Swift/SwiftUI).
 
-The questionnaire keeps roadmap-facing options visible. Backend, Android, and iOS are the primary implemented slices today; web, admin, and some auth/deployment choices remain intentionally visible while their end-to-end support continues to evolve.
+The questionnaire keeps roadmap-facing options visible. Backend, Android, and iOS are the primary implemented slices today; the user web app, admin web portal, and some auth/deployment choices remain intentionally visible while their end-to-end support continues to evolve.
 
 ## Project Structure
 
@@ -10,6 +10,8 @@ The questionnaire keeps roadmap-facing options visible. Backend, Android, and iO
 copier.yml              # Template questionnaire (project identity, platforms, auth, database, deployment)
 template/               # All templated output - Jinja2 files (.jinja suffix stripped on generation)
   backend/              # Spring Boot 4 (Kotlin 2.2+, Java 21)
+  user-web-app/         # Next.js user-facing web app
+  admin-web-portal/     # Next.js admin web portal
   android/              # Kotlin + Jetpack Compose (MVVM)
   ios/                  # Swift 6 + SwiftUI (MVVM)
   shared/               # OpenAPI 3.1 spec + design tokens

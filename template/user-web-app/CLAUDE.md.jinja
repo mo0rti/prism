@@ -1,0 +1,25 @@
+# User Web App
+
+Next.js App Router project for the user-facing web surface. This slice is based on the Ingredish client-web structure:
+
+- locale-aware routing with `next-intl`
+- public marketing routes plus authenticated dashboard routes
+- NextAuth for web session handling
+- `/api/v1/*` proxy routes for backend integration
+- Cloudflare/OpenNext deployment
+
+## Focus Areas
+
+- Keep public routes polished and content-first.
+- Keep dashboard routes product-focused, not admin-focused.
+- Prefer route handlers and shared helpers over duplicating fetch logic.
+- Treat auth provider buttons and credentials flows as user-facing UX, not internal tooling.
+
+## Key Paths
+
+- `app/[locale]/` - locale-aware user routes
+- `app/[locale]/dashboard/` - authenticated product shell
+- `app/api/auth/[...nextauth]/route.ts` - NextAuth route handlers
+- `app/api/v1/[...path]/route.ts` - backend proxy
+- `auth.ts` - web session configuration
+- `lib/i18n/` - locale config and routing helpers

@@ -1,0 +1,60 @@
+# User Web App Guide - {{ project_name }}
+
+## Purpose
+
+`user-web-app/` is the end-user-facing web experience. It should host:
+
+- public marketing and landing pages
+- authentication entry points
+- logged-in dashboard/product workflows
+- profile, billing, and user-settings journeys
+
+## Patterns Borrowed from Ingredish
+
+- Next.js App Router with locale-aware routes
+- `next-intl` for URL-level locale handling
+- NextAuth for web session management
+- a same-origin `/api/v1/*` proxy for backend calls
+- Cloudflare/OpenNext deployment structure
+
+## Suggested Structure
+
+```text
+app/
+  [locale]/
+    page.tsx
+    (public)/
+      login/page.tsx
+    dashboard/
+      layout.tsx
+      home/page.tsx
+      examples/page.tsx
+      profile/page.tsx
+  api/
+    auth/[...nextauth]/route.ts
+    v1/[...path]/route.ts
+components/
+  layout/
+  providers/
+lib/
+  api/
+  config/
+  i18n/
+```
+
+## Current Maturity
+
+- The scaffold is intentionally lightweight but real.
+- It provides a coherent buildable starting point, not a full production product.
+- OAuth-to-backend token exchange still needs hardening if you want full end-to-end backend-issued sessions for every provider.
+
+## Commands
+
+```bash
+task user-web-app:install
+task user-web-app:dev
+task user-web-app:lint
+task user-web-app:typecheck
+task user-web-app:build
+task user-web-app:deploy
+```

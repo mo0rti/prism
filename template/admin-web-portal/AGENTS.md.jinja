@@ -1,0 +1,16 @@
+# Admin Web Portal
+
+Next.js App Router project for internal operations and back-office workflows. This slice is based on the Ingredish admin portal:
+
+- `/admin` route space with protected dashboard pages
+- credentials-first auth for operators
+- management tables and workflow-oriented screens
+- a same-origin `/api/v1/*` proxy for backend calls
+- Cloudflare/OpenNext deployment
+
+## Focus Areas
+
+- Keep this slice operational and staff-facing.
+- Prefer dashboards, tables, filters, and action modals over marketing components.
+- Treat role checks and audit visibility as first-class requirements.
+- Keep backend integration centralized through shared API helpers and route handlers.

@@ -1,9 +1,9 @@
 ---
-to: <%= target %>/src/app/<%= route %>/loading.tsx
+to: <%= target === 'user-web-app' ? `user-web-app/app/[locale]/dashboard/${route}/loading.tsx` : `admin-web-portal/app/admin/(dashboard)/${route}/loading.tsx` %>
 ---
 export default function Loading() {
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="px-4 py-8">
       <div className="animate-pulse">
         <div className="h-8 bg-gray-200 rounded w-1/4 mb-6" />
         <div className="space-y-4">

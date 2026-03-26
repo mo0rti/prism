@@ -1,0 +1,58 @@
+# Admin Web Portal Guide - {{ project_name }}
+
+## Purpose
+
+`admin-web-portal/` is the internal web interface for operators and staff. It should host:
+
+- administrative dashboards and monitoring
+- moderation and content-management workflows
+- user/support tooling
+- operations pages with filters, tables, and action dialogs
+
+## Patterns Borrowed from Ingredish
+
+- protected `/admin` route space
+- credentials-based sign-in for operators
+- persistent sidebar shell for management workflows
+- same-origin `/api/v1/*` proxy for backend calls
+- Cloudflare/OpenNext deployment structure
+
+## Suggested Structure
+
+```text
+app/
+  admin/
+    (auth)/
+      login/page.tsx
+    (dashboard)/
+      layout.tsx
+      page.tsx
+      users/page.tsx
+      content/page.tsx
+  api/
+    auth/[...nextauth]/route.ts
+    v1/[...path]/route.ts
+components/
+  layout/
+  providers/
+lib/
+  api/
+  config/
+```
+
+## Current Maturity
+
+- This scaffold gives you a coherent internal portal starting point.
+- It is intentionally lean compared with the full Ingredish admin repo.
+- You should extend role checks, domain-specific pages, and operational workflows based on your product.
+
+## Commands
+
+```bash
+task admin-web-portal:install
+task admin-web-portal:dev
+task admin-web-portal:lint
+task admin-web-portal:typecheck
+task admin-web-portal:build
+task admin-web-portal:deploy
+```
