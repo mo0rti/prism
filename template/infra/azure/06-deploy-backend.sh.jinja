@@ -55,7 +55,7 @@ az containerapp create \
         "apple-private-key=${APPLE_PRIVATE_KEY:-placeholder}" \
 {% endif %}
 {% if "facebook" in auth_methods %}
-        "facebook-app-secret=${FACEBOOK_APP_SECRET:-placeholder}" \
+        "facebook-client-secret=${FACEBOOK_CLIENT_SECRET:-placeholder}" \
 {% endif %}
 {% if "microsoft" in auth_methods %}
         "microsoft-client-secret=${MICROSOFT_CLIENT_SECRET:-placeholder}" \
@@ -71,7 +71,8 @@ az containerapp create \
         "SPRING_DATA_REDIS_PASSWORD=secretref:redis-password" \
         "SPRING_DATA_REDIS_SSL_ENABLED=true" \
         "JWT_SECRET=secretref:jwt-secret" \
-        "JWT_EXPIRATION_MS=${JWT_EXPIRATION_MS:-86400000}" \
+        "JWT_ACCESS_TOKEN_EXPIRY=${JWT_ACCESS_TOKEN_EXPIRY:-3600}" \
+        "JWT_REFRESH_TOKEN_EXPIRY=${JWT_REFRESH_TOKEN_EXPIRY:-604800}" \
 {% if "google" in auth_methods %}
         "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}" \
         "GOOGLE_CLIENT_SECRET=secretref:google-client-secret" \
@@ -83,8 +84,8 @@ az containerapp create \
         "APPLE_PRIVATE_KEY=secretref:apple-private-key" \
 {% endif %}
 {% if "facebook" in auth_methods %}
-        "FACEBOOK_APP_ID=${FACEBOOK_APP_ID:-}" \
-        "FACEBOOK_APP_SECRET=secretref:facebook-app-secret" \
+        "FACEBOOK_CLIENT_ID=${FACEBOOK_CLIENT_ID:-}" \
+        "FACEBOOK_CLIENT_SECRET=secretref:facebook-client-secret" \
 {% endif %}
 {% if "microsoft" in auth_methods %}
         "MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID:-}" \

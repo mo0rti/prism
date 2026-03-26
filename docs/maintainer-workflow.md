@@ -34,10 +34,11 @@ PLAN.md               # Architecture and intended direction
 ## Recommended Maintainer Flow
 
 1. Update `copier.yml` and/or files under `template/`.
-2. Generate explicit sample variants instead of relying on assumptions.
-3. Compare generated output against the root docs, generated README/docs, task wiring, and the selected platform combinations.
-4. Update repository docs when the template contract changes.
-5. Keep roadmap-visible options honest about whether they are current, partial, experimental, or planned.
+2. Run `./scripts/validate-template.ps1` after template changes.
+3. Generate any extra explicit sample variants you need instead of relying on assumptions.
+4. Compare generated output against the root docs, generated README/docs, task wiring, and the selected platform combinations.
+5. Update repository docs when the template contract changes.
+6. Keep roadmap-visible options honest about whether they are current, partial, experimental, or planned.
 
 ## Recommended Validation Variants
 
@@ -52,6 +53,7 @@ PLAN.md               # Architecture and intended direction
 ## Reference Commands
 
 ```bash
+./scripts/validate-template.ps1
 copier copy --trust . ../template-test
 copier copy --trust --defaults --data "project_name=Test App" --data "platforms=[backend]" . ../template-test-backend
 copier copy --trust --defaults --data "project_name=Test Web App" --data "platforms=[backend, web-user-app, web-admin-portal]" . ../template-test-web

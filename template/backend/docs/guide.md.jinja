@@ -74,5 +74,5 @@ backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 task backend:run        # ./gradlew bootRun
 task backend:build      # ./gradlew build
 task backend:test       # ./gradlew test
-task backend:lint       # ./gradlew ktlintCheck
+task backend:lint       # ./gradlew check -x test
 ```

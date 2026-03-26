@@ -13,7 +13,7 @@ settings:
     CURRENT_PROJECT_VERSION: 1
 
 targets:
-  {{ project_slug }}:
+  {{ ios_module_name }}:
     type: application
     platform: iOS
     sources:
@@ -25,12 +25,12 @@ targets:
         API_BASE_URL: http://localhost:8080/api/v1
     scheme:
       testTargets:
-        - {{ project_slug }}Tests
+        - {{ ios_module_name }}Tests
 
-  {{ project_slug }}Tests:
+  {{ ios_module_name }}Tests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: {{ project_slug }}Tests
     dependencies:
-      - target: {{ project_slug }}
+      - target: {{ ios_module_name }}

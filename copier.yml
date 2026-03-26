@@ -83,7 +83,7 @@ auth_methods:
     Facebook Login: facebook
     Microsoft Account: microsoft
     Username + Password: password
-  default: "[google, apple, password]"
+  default: "[google, password]"
 
 # =============================================================================
 # Infrastructure

@@ -1,0 +1,35 @@
+version: "3"
+
+vars:
+  GRADLEW: '{{'{{'}}if eq OS "windows"{{'}}'}}gradlew.bat{{'{{'}}else{{'}}'}}./gradlew{{'{{'}}end{{'}}'}}'
+
+tasks:
+  run:
+    desc: Run the backend server
+    cmds:
+      - "{{'{{'}}.GRADLEW{{'}}'}} bootRun"
+
+  build:
+    desc: Build the backend
+    cmds:
+      - "{{'{{'}}.GRADLEW{{'}}'}} build -x test"
+
+  test:
+    desc: Run backend tests
+    cmds:
+      - "{{'{{'}}.GRADLEW{{'}}'}} test"
+
+  lint:
+    desc: Run backend static verification
+    cmds:
+      - "{{'{{'}}.GRADLEW{{'}}'}} check -x test"
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - "{{'{{'}}.GRADLEW{{'}}'}} clean"
+
+  docker-build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t {{ project_slug }}-backend .

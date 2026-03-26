@@ -4,13 +4,14 @@
 
 | Area | Status | Notes |
 |------|--------|-------|
-| Template generation | Usable | `copier copy` works with the current questionnaire when required inputs are supplied. |
-| Backend scaffold | Partial | Core backend files generate, but build-wrapper and lint/tooling hardening is still in progress. |
-| User Web App scaffold | Partial | An initial Next.js slice now generates with routing, auth wiring, docs, and workflow/task setup, but it still needs broader validation across auth and deployment combinations. |
-| Admin Web Portal scaffold | Partial | An initial Next.js admin slice now generates with dashboard/auth structure, docs, and workflow/task setup, but it is still early and needs more hardening. |
-| Android scaffold | Partial | This remains one of the stronger application paths in the template. |
-| iOS scaffold | Partial | Present, but naming and task-generation details still need validation. |
+| Template generation | Validated | `./scripts/validate-template.ps1` now checks backend-only, backend + web/admin, backend + Android, and backend + iOS generation. |
+| Backend scaffold | Partial | Generated backend repos now include the Gradle wrapper and coherent task/Docker wiring, but this pass did not re-run a full Gradle build. |
+| User Web App scaffold | Partial | An initial Next.js slice now generates with routing, auth wiring, docs, workflows, and validation coverage, but it still needs broader end-to-end build and deployment verification. |
+| Admin Web Portal scaffold | Partial | An initial Next.js admin slice now generates with dashboard/auth structure, docs, workflows, and validation coverage, but it is still early and needs broader end-to-end verification. |
+| Android scaffold | Partial | This remains one of the stronger application paths in the template and is included in the validation matrix. |
+| iOS scaffold | Partial | Common-name generation now validates correctly, but Mac/Xcode build verification still needs to happen locally. |
 | Apple Sign-In | Experimental | Selectable, but not yet production-hardened. |
+| Template validation automation | Present | `scripts/validate-template.ps1` and `.github/workflows/template-validation.yml` are now part of the maintainer workflow. |
 | Database choice | Current input | PostgreSQL is the only available choice today. |
 | Backend deployment choice | Current input | Azure is the only available choice today. |
 | Web deployment choice | Current input | Cloudflare via OpenNext is the only available choice today. |
@@ -31,22 +32,25 @@ If your goal is to inspect, improve, and validate the scaffold, this repo is rea
 - `platforms=[backend, mobile-android]` for the strongest current application path
 - `platforms=[backend, web-user-app]` or `platforms=[backend, web-admin-portal]` for focused web-slice evaluation
 - `platforms=[backend, web-user-app, web-admin-portal]` to validate the initial web/admin setup together
-- `platforms=[backend, mobile-ios]` only if you are prepared to validate iOS generation details locally
+- `platforms=[backend, mobile-ios]` for structural validation of the iOS slice, followed by local Mac/Xcode verification
 
 ## Practical Validation Snapshot
 
 The following checks were confirmed during the recent repository review and follow-up generation passes:
 
 - `copier copy` works when required inputs such as `project_name` are provided
+- `./scripts/validate-template.ps1` now reproduces the maintainer validation pass in one command
+- generated backend output now includes wrapper files and consistent Taskfile/Docker references
 - a generated sample with `platforms=[backend, web-user-app, web-admin-portal]` produces coherent top-level directories for those slices, shared assets, docs, task wiring, and matching workflow files
 - `web-user-app/` and `web-admin-portal/` now generate initial Next.js application structure, auth route handlers, docs, and platform Taskfiles
-- generated backend output still needs build-wrapper and lint/tooling hardening
+- a generated `platforms=[backend, mobile-ios]` sample with `project_name=Review App` now produces iOS-safe target, scheme, and Swift module names
 
 This is why the safest workflow is still explicit generation plus structural validation, not assumption-based adoption.
 
 ## Short Version
 
 - Use this repository to generate and validate targeted sample repos.
+- Use `./scripts/validate-template.ps1` after template edits instead of relying on manual spot checks.
 - Treat backend + Android as the most practical evaluation path today.
 - Treat user web app and admin web portal as real but still-hardening initial slices.
 - Treat Apple Sign-In as experimental until it is scaffolded and validated end to end.

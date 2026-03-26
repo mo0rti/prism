@@ -4,8 +4,8 @@ platform :ios do
   desc "Run tests"
   lane :test do
     run_tests(
-      project: "{{ project_slug }}.xcodeproj",
-      scheme: "{{ project_slug }}",
+      project: "{{ project_name }}.xcodeproj",
+      scheme: "{{ ios_module_name }}",
       device: "iPhone 16",
       clean: true,
     )
@@ -33,8 +33,8 @@ platform :ios do
     )
 
     build_app(
-      project: "{{ project_slug }}.xcodeproj",
-      scheme: "{{ project_slug }}",
+      project: "{{ project_name }}.xcodeproj",
+      scheme: "{{ ios_module_name }}",
       export_method: "app-store",
     )
 

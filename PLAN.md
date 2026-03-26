@@ -82,7 +82,7 @@ auth_methods:
     Facebook Login: facebook
     Microsoft Account: microsoft
     Username + Password: password
-  default: "[google, apple, password]"
+  default: "[google, password]"
 ```
 
 **Backend implementation (Spring Boot 4):**
@@ -465,7 +465,7 @@ copier copy https://github.com/YOUR_ORG/Template ./my-new-idea
 # - Package ID? -> "com.example.foodiehub"
 # - Description? -> "A restaurant discovery and booking platform"
 # - Platforms? -> [backend, web-user-app, web-admin-portal, mobile-android, mobile-ios]
-# - Auth methods? -> [google, apple, password]
+# - Auth methods? -> [google, password]
 # - Use Docker? -> yes
 # - GitHub org? -> "my-org"
 ```

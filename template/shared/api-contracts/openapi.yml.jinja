@@ -15,7 +15,7 @@ paths:
   # ===========================================================================
   # Authentication
   # ===========================================================================
-{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
   /auth/oauth/callback:
     post:
       operationId: oauthCallback

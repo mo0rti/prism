@@ -106,7 +106,7 @@ tasks:
         -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
         -g swift6
         -o ./mobile-ios/Generated/APIClient
-        --additional-properties=library=urlsession,projectName={{ project_slug | replace('-','') }}API
+        --additional-properties=library=urlsession,projectName={{ ios_module_name }}API
 {% endif %}
 
   # ===========================================================================

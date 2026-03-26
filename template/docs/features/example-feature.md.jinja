@@ -38,7 +38,15 @@
 - [x] API contract defined in OpenAPI
 - [x] API clients generated
 - [x] Backend implemented
-- [x] Web implemented
-- [x] Admin implemented
+{% if "web-user-app" in platforms %}
+- [x] User web app implemented
+{% endif %}
+{% if "web-admin-portal" in platforms %}
+- [x] Admin portal implemented
+{% endif %}
+{% if "mobile-android" in platforms %}
 - [x] Android implemented
+{% endif %}
+{% if "mobile-ios" in platforms %}
 - [x] iOS implemented
+{% endif %}

@@ -25,8 +25,10 @@ task mobile-ios:test
 Equivalent direct build commands come from the Taskfile and use:
 
 - `xcodegen generate`
-- `xcodebuild build -project "{{ project_name }}.xcodeproj" -scheme "{{ project_slug }}" -destination "platform=iOS Simulator,name=iPhone 16" -configuration Debug`
-- `xcodebuild test -project "{{ project_name }}.xcodeproj" -scheme "{{ project_slug }}" -destination "platform=iOS Simulator,name=iPhone 16"`
+- `xcodebuild build -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -destination "platform=iOS Simulator,name=iPhone 16" -configuration Debug`
+- `xcodebuild test -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -destination "platform=iOS Simulator,name=iPhone 16"`
+
+The generated project keeps `{{ project_slug }}` for filesystem paths and uses `{{ ios_module_name }}` for the Swift/Xcode target and scheme.
 
 ## Runtime Configuration
 

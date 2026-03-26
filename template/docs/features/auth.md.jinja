@@ -50,7 +50,9 @@
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
+{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
 | POST | /auth/oauth/callback | No | Exchange OAuth code for JWT |
+{% endif %}
 {% if "password" in auth_methods %}| POST | /auth/register | No | Register with email + password |
 | POST | /auth/login | No | Login with email + password |
 {% endif %}| POST | /auth/refresh | No | Refresh access token |
@@ -66,27 +68,35 @@
 - Filter: `backend/src/.../auth/security/JwtAuthenticationFilter.kt`
 - Config: `backend/src/.../config/SecurityConfig.kt`, `OAuth2Config.kt`
 
+{% if "web-user-app" in platforms %}
 ### User Web App
 - Pages: `web-user-app/app/[locale]/(public)/login/`, `web-user-app/app/[locale]/dashboard/`
 - Auth handlers: `web-user-app/auth.ts`, `web-user-app/app/api/auth/[...nextauth]/route.ts`
 - API client: `web-user-app/lib/api/client.ts`
+{% endif %}
 
+{% if "web-admin-portal" in platforms %}
 ### Admin Web Portal
 - Pages: `web-admin-portal/app/admin/(auth)/login/`, `web-admin-portal/app/admin/(dashboard)/`
 - Auth handlers: `web-admin-portal/auth.ts`, `web-admin-portal/app/api/auth/[...nextauth]/route.ts`
 - API client: `web-admin-portal/lib/api/client.ts`
+{% endif %}
 
+{% if "mobile-android" in platforms %}
 ### Android
 - Screen: `mobile-android/.../ui/auth/LoginScreen.kt`
 - ViewModel: `mobile-android/.../ui/auth/LoginViewModel.kt`
 - Repository: `mobile-android/.../data/repository/AuthRepository.kt`
 - Token storage: `mobile-android/.../data/local/TokenStorage.kt` (DataStore)
+{% endif %}
 
+{% if "mobile-ios" in platforms %}
 ### iOS
 - View: `mobile-ios/.../UI/Auth/LoginView.swift`
 - ViewModel: `mobile-ios/.../UI/Auth/LoginViewModel.swift`
 - Repository: `mobile-ios/.../Data/Repository/AuthRepository.swift`
 - Token storage: `mobile-ios/.../Data/Storage/TokenStorage.swift` (Keychain)
+{% endif %}
 
 ## Implementation Status
 
@@ -96,7 +106,15 @@
 - [x] API contract defined in OpenAPI
 - [x] API clients generated
 - [x] Backend implemented
+{% if "web-user-app" in platforms %}
 - [x] User web app implemented
+{% endif %}
+{% if "web-admin-portal" in platforms %}
 - [x] Admin portal implemented
+{% endif %}
+{% if "mobile-android" in platforms %}
 - [x] Android implemented
+{% endif %}
+{% if "mobile-ios" in platforms %}
 - [x] iOS implemented
+{% endif %}
