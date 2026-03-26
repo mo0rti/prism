@@ -1,0 +1,6 @@
+interface:
+  display_name: "Android Contract Alignment"
+  short_description: "Keep Android DTOs and APIs aligned"
+  default_prompt: "Use $android-contract-alignment when changing Android API contracts or DTOs."
+policy:
+  allow_implicit_invocation: true

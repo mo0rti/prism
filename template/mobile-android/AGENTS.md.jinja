@@ -59,3 +59,12 @@ When you change code, update the relevant documentation in `docs/` in the same s
 4. Implement using MVVM conventions
 5. Validate with `./gradlew compileDebugKotlin` and tests
 6. Update affected docs
+
+## Local Codex Skills
+
+Project-specific Codex skills live in `.agents/skills/`.
+
+- `$android-conventions` - repository-wide Android MVVM, DI, navigation, strings, and doc-sync guardrails
+- `$android-build-verify` - pick the smallest trustworthy Gradle validation for Android changes
+- `$android-contract-alignment` - own DTO, Retrofit, enum, mapper, and auth-boundary contract decisions
+- `$scaffold-feature` - coordinate larger feature work across docs, contracts, and platform code

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Backend Testing Patterns"
+  short_description: "Apply JUnit and MockK backend test conventions"
+  default_prompt: "Use $testing-patterns when writing or reviewing backend tests in this project."
+policy:
+  allow_implicit_invocation: true

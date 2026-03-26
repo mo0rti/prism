@@ -1,0 +1,6 @@
+interface:
+  display_name: "Backend Endpoint"
+  short_description: "Add or update a backend REST endpoint"
+  default_prompt: "Use $endpoint to add or extend a backend REST endpoint in this project."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,30 @@
+---
+name: android-build-verify
+description: Choose the cheapest trustworthy Gradle validation for Android changes. Use when asked to compile, assemble, test, debug build failures, or decide which Android verification task should run after edits in `mobile-android/`.
+---
+
+# Android Build Verify
+
+Use the smallest Gradle task that gives trustworthy feedback for the Android change.
+
+## Default Task Selection
+
+- `./gradlew compileDebugKotlin` or `gradlew.bat compileDebugKotlin`
+  - Use for most Kotlin, Compose, ViewModel, DI, and navigation edits.
+- `./gradlew testDebugUnitTest` or `gradlew.bat testDebugUnitTest`
+  - Add when repository or ViewModel logic changes and unit coverage exists or should exist.
+- `./gradlew assembleDebug` or `gradlew.bat assembleDebug`
+  - Add when resources, manifests, packaging, generated sources, or broader app integration may be affected.
+- `./gradlew connectedDebugAndroidTest`
+  - Use only when a device or emulator is available and instrumentation coverage is relevant.
+
+## Troubleshooting
+
+- If Hilt or generated-code failures look stale after refactors, stop the Gradle daemon, remove `app/build` and `.gradle`, and rebuild with `--no-build-cache --rerun-tasks`.
+- If the change is UI-only but touches shared Compose code, prefer `compileDebugKotlin` first and escalate to `assembleDebug` only if needed.
+
+## Report Clearly
+
+- State exactly which tasks ran.
+- State whether they passed or failed.
+- If you skip a stronger verification step, say why.
