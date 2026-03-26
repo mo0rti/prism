@@ -18,6 +18,7 @@ This repository is the Copier template itself. Treat the root `AGENTS.md` as mai
 
 ## Working Rules
 
+- Keep template-repo docs in root `docs/`.
 - Keep project-wide docs in `template/docs/`.
 - Keep platform-specific technical docs in `template/{platform}/docs/`.
 - Keep entity docs in `template/backend/docs/entities/`.
@@ -40,7 +41,10 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 
 ## Key Files
 
-- `README.md` for maintainer workflow and current maturity
+- `README.md` for the short repository overview
+- `docs/README.md` for the repo docs index
+- `docs/maintainer-workflow.md` for template maintenance flow
+- `docs/current-status.md` for maturity and validation context
 - `PLAN.md` for architecture decisions, platform specs, and intended direction
 - `copier.yml` for questionnaire inputs and exclusions
 - `template/AGENTS.md.jinja` for generated-project Codex guidance
