@@ -1,0 +1,33 @@
+# iOS Conventions And Workflow - {{ project_name }}
+
+## Daily Conventions
+
+- Use SwiftUI for UI.
+- Use `@Observable` ViewModels and `@Bindable` where views need mutation access.
+- Use `async/await` for asynchronous work.
+- Keep repository protocols and implementations together in `Data/Repository/`.
+- Route all HTTP access through `APIClient`.
+- Route all token persistence through `TokenStorage`.
+- Update the relevant docs in the same session when behavior or structure changes.
+
+## Feature Workflow
+
+1. Read `docs/repo-orientation.md` if you need a quick map.
+2. Inspect the closest existing feature and the relevant docs.
+3. Verify endpoint shapes in `shared/api-contracts/openapi.yml`.
+{% if "backend" in platforms %}4. Cross-check `backend/` when the contract needs behavioral clarification.
+{% if "mobile-android" in platforms %}5. Cross-check `mobile-android/` when parity matters.
+6. Update only the layers the task needs.
+7. Run the smallest sufficient iOS build or test task on Mac.
+8. Update affected docs before closing the task.
+{% else %}5. Update only the layers the task needs.
+6. Run the smallest sufficient iOS build or test task on Mac.
+7. Update affected docs before closing the task.
+{% endif %}{% else %}{% if "mobile-android" in platforms %}4. Cross-check `mobile-android/` when parity matters.
+5. Update only the layers the task needs.
+6. Run the smallest sufficient iOS build or test task on Mac.
+7. Update affected docs before closing the task.
+{% else %}4. Update only the layers the task needs.
+5. Run the smallest sufficient iOS build or test task on Mac.
+6. Update affected docs before closing the task.
+{% endif %}{% endif %}

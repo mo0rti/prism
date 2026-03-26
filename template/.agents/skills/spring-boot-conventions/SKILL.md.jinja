@@ -1,11 +1,17 @@
 ---
 name: spring-boot-conventions
-description: Spring Boot 4 and Kotlin conventions for this backend. Use when writing or reviewing controllers, services, DTOs, or module structure under `backend/`. For entities or security, defer to the more specialized project docs and neighboring patterns.
+description: Spring Boot 4 and Kotlin conventions for this backend. Use when writing or reviewing controllers, services, DTOs, or module structure under `backend/`. For JPA, security/auth, or API error semantics, defer to the more specialized project skills.
 ---
 
 # Spring Boot Conventions
 
 Use this skill for repository-wide backend structure and layer rules.
+
+## Role Boundary
+
+- Use this skill for general module, controller, service, and DTO conventions.
+- Use `$security-auth` for route exposure, JWT handling, and auth behavior.
+- Use `$error-handling` for exception taxonomy and API error responses.
 
 ## Module Structure
 

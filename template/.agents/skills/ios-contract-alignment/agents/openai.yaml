@@ -1,0 +1,6 @@
+interface:
+  display_name: "iOS Contract Alignment"
+  short_description: "Keep iOS DTOs and endpoints aligned"
+  default_prompt: "Use $ios-contract-alignment when changing iOS API contracts or auth-boundary code."
+policy:
+  allow_implicit_invocation: true

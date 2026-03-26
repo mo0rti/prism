@@ -1,0 +1,34 @@
+# iOS Networking And Auth - {{ project_name }}
+
+## Networking Stack
+
+- `APIEndpoint` defines path, method, and auth requirement.
+- `APIClient` is an actor that performs JSON requests with `URLSession`.
+- `APIClient.request<T>` decodes JSON responses.
+- `APIClient.requestVoid` handles successful empty responses.
+- `APIError` maps common transport and HTTP failure cases.
+
+## Contract Source Of Truth
+
+- `shared/api-contracts/openapi.yml` is the primary reference for endpoint paths, payloads, enums, and auth behavior.
+{% if "backend" in platforms %}- `backend/` is the secondary reference when the spec needs implementation clarification.
+{% endif %}
+
+## Auth Flow
+
+- `TokenStorage` stores access and refresh tokens in Keychain.
+- `APIClient` reads the access token from `TokenStorage` and adds the `Authorization` header when an endpoint requires auth.
+- `AuthRepository` owns login, refresh, current-user, and logout flows.
+{% if auth_methods %}- Enabled auth methods in this generated project:
+{% for method in auth_methods %}{% if method == "google" %}  - Google OAuth
+{% elif method == "apple" %}  - Apple Sign-In
+{% elif method == "facebook" %}  - Facebook Login
+{% elif method == "microsoft" %}  - Microsoft Account
+{% elif method == "password" %}  - Email and password
+{% endif %}{% endfor %}{% endif %}
+
+## Current Behavior
+
+- The base URL already includes `/api/v1`.
+- Endpoint paths in `APIEndpoint` append to that base URL and therefore start with feature-relative paths like `/auth/...` or `/examples/...`.
+- `AuthRepository.refreshToken()` exists, but `APIClient` does not perform automatic refresh-and-retry orchestration by default.

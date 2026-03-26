@@ -1,0 +1,42 @@
+---
+name: ios-conventions
+description: iOS repository rules for Swift, SwiftUI, MVVM, DI, navigation, networking, and documentation sync. Use when writing or reviewing app code in this generated project, especially for architecture-sensitive changes.
+user-invocable: false
+---
+
+# iOS Conventions
+
+Apply these rules whenever you change iOS app code in this repository.
+
+## Role boundary
+
+- Use this skill for repository-wide guardrails that apply across features.
+- Keep feature sequencing in `ios-feature-delivery`, backend-facing contract details in `ios-contract-alignment`, shared SwiftUI guidance in `swiftui-design-system`, and task selection in `ios-build-verify`.
+
+## Core rules
+
+- Follow MVVM with the generated structure under `{{ project_slug }}/`.
+- All API calls go through `APIClient`; do not create raw `URLSession` calls in features.
+- Repositories have protocols and implementations in the same file under `Data/Repository/`.
+- ViewModels are `@Observable` types and views use `@Bindable` when they need mutation access.
+- Use `async/await` for async operations.
+- Use `TokenStorage` for auth and session state; do not bypass it for token access.
+- Keep routes in `Navigation/Route.swift` and top-level auth gating in `Navigation/AppRouter.swift`.
+- Move reusable SwiftUI components into `UI/Common/` and shared styling primitives into `UI/Theme/`.
+
+## Read these docs only when needed
+
+- `mobile-ios/docs/repo-orientation.md`
+- `mobile-ios/docs/architecture.md`
+- `mobile-ios/docs/file-structure.md`
+- `mobile-ios/docs/networking-and-auth.md`
+- `mobile-ios/docs/session-and-token-storage.md`
+- `mobile-ios/docs/navigation-and-screens.md`
+- `mobile-ios/docs/design-system-and-theme.md`
+- `mobile-ios/docs/naming-conventions.md`
+- `mobile-ios/docs/conventions-and-workflow.md`
+
+## Minimum verification
+
+- Run `task mobile-ios:build` on Mac after architecture-sensitive changes.
+- If you are not on Mac, say the iOS build could not be executed and still update docs for any behavior changes.

@@ -1,0 +1,62 @@
+---
+name: security-auth
+description: Backend security and authentication conventions for this Spring Boot project. Use when changing public versus authenticated routes, JWT handling, current-user access, OAuth or password-auth flows, or security-related configuration under `backend/`.
+---
+
+# Security & Authentication
+
+Use this skill for backend auth exposure, JWT, and security-boundary decisions.
+
+## Role Boundary
+
+- Use this skill for public/private route decisions, JWT flow, auth configuration, and current-user access.
+- Use `$spring-boot-conventions` for general controller and service structure.
+- Use `$error-handling` for auth-related exception codes and API error responses.
+- Use `$endpoint` when the task spans contract, DTO, controller, and persistence changes.
+
+## Current Security Model
+
+- Stateless JWT: `SessionCreationPolicy.STATELESS`
+{% if "password" in auth_methods %}- Password auth uses `BCryptPasswordEncoder`
+{% endif %}- `JwtAuthenticationFilter` runs before `UsernamePasswordAuthenticationFilter`
+- CORS allowed origins come from `app.cors.allowed-origins`
+- Route access is defined with request matchers in `bootstrap/SecurityConfig.kt`
+- Method-security annotations are not enabled by default in this template
+
+## Public Endpoints
+
+{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `/api/v1/auth/oauth/callback`
+{% endif %}{% if "password" in auth_methods %}- `/api/v1/auth/register`
+- `/api/v1/auth/login`
+{% endif %}- `/api/v1/auth/refresh`
+- `/actuator/health`
+- `/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs/**`
+
+## Authenticated Endpoints
+
+- `/api/v1/auth/me`
+- Every other backend route not explicitly permitted in `SecurityConfig`
+
+## Rules
+
+- Keep public matchers explicit; never widen them to `/api/v1/auth/**`.
+- Update `SecurityConfig` whenever endpoint exposure changes.
+- Use `@AuthenticationPrincipal` in controllers when possible.
+- Reach for `SecurityContextHolder` only where controller injection is not practical.
+- Keep secrets in environment-backed config, never hardcoded Kotlin values.
+- Align route security with `shared/api-contracts/openapi.yml`.
+
+## Key Files
+
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/SecurityConfig.kt`
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/JwtAuthenticationFilter.kt`
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/JwtTokenProvider.kt`
+{% if auth_methods | length > 1 or "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/OAuth2Config.kt`
+{% endif %}- `backend/src/main/resources/application.yml`
+- `shared/api-contracts/openapi.yml`
+
+## Minimum Verification
+
+- Re-check unauthenticated access to any route whose matcher changed.
+- Re-check intended public auth endpoints after auth-surface changes.
+- Update the OpenAPI contract if endpoint security changed.

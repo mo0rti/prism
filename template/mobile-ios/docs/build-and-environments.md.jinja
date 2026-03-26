@@ -1,0 +1,40 @@
+# iOS Build And Environments - {{ project_name }}
+
+## Tooling
+
+- XcodeGen generates the Xcode project from `project.yml`
+- Taskfile provides `mobile-ios:generate-project`, `mobile-ios:build`, and `mobile-ios:test`
+- iOS tasks are Mac-only and are guarded with `platforms: [darwin]`
+
+## Generated Project Settings
+
+- Deployment target: iOS 17.0
+- Swift version: 6.0
+- Xcode version: 26.0
+- Default bundle identifier: `{{ package_identifier }}`
+- Default runtime base URL: `http://localhost:8080/api/v1`
+
+## Commands
+
+```bash
+task mobile-ios:generate-project
+task mobile-ios:build
+task mobile-ios:test
+```
+
+Equivalent direct build commands come from the Taskfile and use:
+
+- `xcodegen generate`
+- `xcodebuild build -project "{{ project_name }}.xcodeproj" -scheme "{{ project_slug }}" -destination "platform=iOS Simulator,name=iPhone 16" -configuration Debug`
+- `xcodebuild test -project "{{ project_name }}.xcodeproj" -scheme "{{ project_slug }}" -destination "platform=iOS Simulator,name=iPhone 16"`
+
+## Runtime Configuration
+
+- `project.yml` writes `API_BASE_URL` into build settings.
+- `Info.plist` reads `$(API_BASE_URL)`.
+- `APIClient` defaults to the Info.plist value and falls back to `http://localhost:8080/api/v1` if needed.
+
+## Current Scope
+
+- The template scaffolds a single app target plus a unit-test target.
+- It does not scaffold multi-environment schemes or device-install workflows by default.

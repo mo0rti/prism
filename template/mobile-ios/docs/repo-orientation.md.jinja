@@ -1,0 +1,24 @@
+# iOS Repo Orientation - {{ project_name }}
+
+Use this doc when you need the fastest path through the generated iOS slice.
+
+## Start Here
+
+1. `project.yml` - XcodeGen source of truth
+2. `Taskfile.yml` - generate, build, and test entry points
+3. `{{ project_slug }}/App.swift` - app entry
+4. `{{ project_slug }}/DI/DependencyContainer.swift` - dependency wiring
+5. `{{ project_slug }}/Navigation/AppRouter.swift` and `Navigation/Route.swift` - auth gate and routing
+6. `{{ project_slug }}/Data/Network/APIClient.swift` and `APIEndpoint.swift` - transport layer
+7. `{{ project_slug }}/Data/Repository/` - protocol plus implementation repository files
+8. `{{ project_slug }}/Data/Storage/TokenStorage.swift` - session persistence
+9. `{{ project_slug }}/UI/` - screens, shared UI, and theme
+
+## If The Task Is About...
+
+- Architecture or file placement: read `docs/architecture.md` and `docs/file-structure.md`
+- Build, XcodeGen, or runtime config: read `docs/build-and-environments.md`
+- API contracts or auth flow: read `docs/networking-and-auth.md` and `docs/session-and-token-storage.md`
+- Routing or screen behavior: read `docs/navigation-and-screens.md`
+- Shared styling or reusable UI: read `docs/design-system-and-theme.md`
+- Naming or day-to-day coding rules: read `docs/naming-conventions.md` and `docs/conventions-and-workflow.md`

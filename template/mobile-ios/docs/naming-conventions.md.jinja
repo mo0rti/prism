@@ -1,0 +1,20 @@
+# iOS Naming Conventions - {{ project_name }}
+
+## Files And Types
+
+- Views use `FeatureNameView.swift`
+- ViewModels use `FeatureNameViewModel.swift`
+- Repository files keep protocol plus implementation in the same file, for example `AuthRepository.swift`
+- Models use API-aligned, singular type names where possible
+- Route cases use lowerCamelCase
+
+## Directories
+
+- Keep network code in `Data/Network/`
+- Keep repositories in `Data/Repository/`
+- Keep persistence in `Data/Storage/`
+- Keep shared presentation pieces in `UI/Common/` or `UI/Theme/`
+
+## Tests
+
+- Test files should mirror the source type they validate, for example `LoginViewModelTests.swift`

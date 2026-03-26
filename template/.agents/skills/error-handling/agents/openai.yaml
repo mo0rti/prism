@@ -1,0 +1,6 @@
+interface:
+  display_name: "Error Handling"
+  short_description: "Keep backend API errors consistent"
+  default_prompt: "Use $error-handling to design backend exceptions, error codes, and validation responses."
+policy:
+  allow_implicit_invocation: true

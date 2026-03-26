@@ -1,0 +1,6 @@
+interface:
+  display_name: "Security & Auth"
+  short_description: "Guard backend route and JWT behavior"
+  default_prompt: "Use $security-auth to handle backend route security, JWT flow, and authentication behavior."
+policy:
+  allow_implicit_invocation: true
