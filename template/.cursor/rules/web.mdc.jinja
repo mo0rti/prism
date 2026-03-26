@@ -1,5 +1,5 @@
 ---
-globs: "web/**,admin/**"
+globs: "web-user-app/**,web-admin-portal/**"
 ---
 
 # Web & Admin - Next.js + TypeScript
@@ -9,7 +9,7 @@ globs: "web/**,admin/**"
 - Cloudflare Pages deployment
 - Axios with Bearer token interceptor
 
-## Structure (web/)
+## Structure (web-user-app/ and web-admin-portal/)
 ```
 src/
   app/          -> Pages (App Router)
@@ -34,6 +34,9 @@ src/
 - Error boundaries for graceful error handling
 
 ## Commands
-- `npm run dev` or `task web:dev`
-- `npm run build` or `task web:build`
-- `npx wrangler pages deploy` or `task web:deploy`
+- `npm run dev` or `task web-user-app:dev`
+- `npm run build` or `task web-user-app:build`
+- `npx wrangler pages deploy` or `task web-user-app:deploy`
+- `task web-admin-portal:dev`
+- `task web-admin-portal:build`
+- `task web-admin-portal:deploy`

@@ -8,13 +8,13 @@
 
 ## Context
 
-This is a reusable template repository that scaffolds complete multi-platform projects (Android, iOS, backend, web, admin) in minutes. It encodes all architectural decisions once, so AI agents (Claude Code, Codex, Cursor) can generate a fully wired monorepo for any new idea.
+This is a reusable template repository that scaffolds complete multi-platform projects (Android, iOS, backend, user web app, admin web portal) in minutes. It encodes all architectural decisions once, so AI agents (Claude Code, Codex, Cursor) can generate a fully wired monorepo for any new idea.
 
 **Environment:**
 - **Primary dev machine: Windows** - all platforms except iOS must be fully developable on Windows
 - **iOS development: Mac only** (Xcode requirement) - iOS code lives in the monorepo but builds only on Mac
 - **Backend/DB/AI services: Azure** (Container Apps, Azure DB for PostgreSQL, Azure AI Services)
-- **Web hosting: Cloudflare** (Pages for web/admin, Workers if needed)
+- **Web hosting: Cloudflare** (OpenNext deployments for the user web app and admin web portal, Workers if needed)
 - **AI coding tools: Claude Code, Codex, Cursor** - all three need context
 - **Architecture: MVVM consistently** across both Android and iOS
 - **Backend: Spring Boot 4** (released Nov 2025, requires Kotlin 2.2+, Java 17+/21 recommended, Jackson 3.x, JUnit Jupiter 6, Jakarta EE 11)
@@ -24,7 +24,7 @@ This is a reusable template repository that scaffolds complete multi-platform pr
 
 ## What is Jinja2?
 
-Jinja2 is the templating language used by Copier. Files ending in `.jinja` contain placeholders like `{{ project_name }}` that get replaced with real values when you scaffold a project. After generation, the `.jinja` suffix is stripped. Conditional blocks like `{% if "android" in platforms %}` control which directories/code are included.
+Jinja2 is the templating language used by Copier. Files ending in `.jinja` contain placeholders like `{{ project_name }}` that get replaced with real values when you scaffold a project. After generation, the `.jinja` suffix is stripped. Conditional blocks like `{% if "mobile-android" in platforms %}` control which directories/code are included.
 
 ---
 
@@ -42,7 +42,7 @@ Jinja2 is the templating language used by Copier. Files ending in `.jinja` conta
 | Auth | **OAuth (Google/Apple/Facebook/Microsoft) + optional password** | Spring Security OAuth2 Client + optional form login |
 | Backend hosting | **Azure Container Apps** | Cloud choice |
 | Database | **Azure Database for PostgreSQL** | Managed, Azure-native |
-| Web hosting | **Cloudflare Pages** | Hosting choice |
+| Web hosting | **Cloudflare via OpenNext** | Hosting choice |
 | Documentation | **Living docs in `docs/`** | Entities, deployment, business logic - AI context |
 
 ---
@@ -51,7 +51,7 @@ Jinja2 is the templating language used by Copier. Files ending in `.jinja` conta
 
 ### What works on Windows
 - **Backend** (Spring Boot/Kotlin): Gradle via `gradlew.bat`
-- **Web + Admin** (Next.js): Node.js, fully cross-platform
+- **User Web App + Admin Web Portal** (Next.js): Node.js, fully cross-platform
 - **Android**: Android Studio + Gradle natively on Windows
 - **Shared/API contracts**: openapi-generator is Java-based, runs everywhere
 - **Taskfile**: go-task has native Windows binaries
@@ -178,10 +178,10 @@ CLAUDE.md                              # Root - architecture, conventions, comma
       SKILL.md                         # Multi-perspective code review
   settings.json                        # Hooks, permissions
 backend/CLAUDE.md                      # Lazy-loaded when working in backend/
-web/CLAUDE.md                          # Lazy-loaded when working in web/
-admin/CLAUDE.md                        # Lazy-loaded when working in admin/
-android/CLAUDE.md                      # Lazy-loaded when working in android/
-ios/CLAUDE.md                          # Lazy-loaded when working in ios/
+web-user-app/CLAUDE.md                # Lazy-loaded when working in web-user-app/
+web-admin-portal/CLAUDE.md            # Lazy-loaded when working in web-admin-portal/
+mobile-android/CLAUDE.md                      # Lazy-loaded when working in mobile-android/
+mobile-ios/CLAUDE.md                          # Lazy-loaded when working in mobile-ios/
 ```
 
 **Key**: CLAUDE.md files are hierarchical. Root loads on startup; subdirectory files lazy-load when Claude touches those files. Keep root under 100 lines, point to `docs/` for details.
@@ -199,9 +199,10 @@ AGENTS.md                              # Root - mirrors CLAUDE.md content
     generate-clients/
       SKILL.md                         # API client generation
 backend/AGENTS.md                      # Backend-specific instructions
-web/AGENTS.md                          # Web-specific instructions
-android/AGENTS.md                      # Android-specific instructions
-ios/AGENTS.md                          # iOS-specific instructions
+web-user-app/AGENTS.md                 # User web app-specific instructions
+web-admin-portal/AGENTS.md             # Admin web portal-specific instructions
+mobile-android/AGENTS.md                      # Android-specific instructions
+mobile-ios/AGENTS.md                          # iOS-specific instructions
 ```
 
 **Key**: AGENTS.md files concatenate root-to-leaf (up to 32KB). Codex skills use `$skill-name` syntax or auto-invoke based on description in SKILL.md frontmatter.
@@ -213,9 +214,9 @@ ios/AGENTS.md                          # iOS-specific instructions
   rules/
     project.mdc                        # alwaysApply: true - global conventions
     backend.mdc                        # globs: "backend/**" - auto-attached for backend files
-    web.mdc                            # globs: "web/**,admin/**" - auto-attached for web files
-    android.mdc                        # globs: "android/**" - auto-attached for Android files
-    ios.mdc                            # globs: "ios/**" - auto-attached for iOS files
+    web.mdc                            # globs: "web-user-app/**,web-admin-portal/**" - auto-attached for web files
+    mobile-android.mdc                 # globs: "mobile-android/**" - auto-attached for Android files
+    mobile-ios.mdc                     # globs: "mobile-ios/**" - auto-attached for iOS files
     advisory-review.mdc                # description: "Review feature..." - agent requested
     api-conventions.mdc                # globs: "shared/api-contracts/**" - OpenAPI rules
 ```
@@ -253,7 +254,7 @@ docs/                                    # Project-wide (always generated)
     conventions.md                       # Naming, pagination, error format, versioning
   deployment/
     ci-cd.md                             # GitHub Actions pipelines, required secrets
-    cloudflare-setup.md                  # Cloudflare Pages config, env vars, build settings
+    cloudflare-setup.md                  # Cloudflare/OpenNext config, env vars, build settings
 
 backend/docs/                            # Backend-specific (excluded when no backend)
   guide.md                               # Spring Boot 4 patterns, conventions
@@ -263,7 +264,7 @@ backend/docs/                            # Backend-specific (excluded when no ba
     user.md                              # User entity: fields, relationships, validation
     example.md                           # Example entity (placeholder)
 
-android/docs/                            # Android-specific (excluded when no android)
+mobile-android/docs/                            # Android-specific (excluded when no mobile-android)
   guide.md                               # Overview with doc table
   architecture.md                        # MVVM layers, ViewModel/Repository/Screen patterns
   file-structure.md                      # Package layout
@@ -273,7 +274,7 @@ android/docs/                            # Android-specific (excluded when no an
   design-system-and-theme.md             # AppTheme, components, UiText
   conventions-and-workflow.md            # Coding conventions, workflow, doc-sync
 
-ios/docs/                                # iOS-specific (excluded when no ios)
+mobile-ios/docs/                                # iOS-specific (excluded when no mobile-ios)
   guide.md                               # SwiftUI, MVVM patterns, testing
 ```
 
@@ -294,8 +295,8 @@ ios/docs/                                # iOS-specific (excluded when no ios)
 ## Platform Implementation Status
 - [ ] API contract defined
 - [ ] Backend implemented
-- [ ] Web implemented
-- [ ] Admin implemented
+- [ ] User Web App implemented
+- [ ] Admin Web Portal implemented
 - [ ] Android implemented
 - [ ] iOS implemented
 ```
@@ -327,8 +328,8 @@ ios/docs/                                # iOS-specific (excluded when no ios)
 
 **Platform-specific docs** (inside each platform directory):
 - `template/backend/docs/` - guide.md.jinja, azure-setup.md.jinja, entities/{user,example}.md.jinja, entities/_template.md
-- `template/android/docs/` - guide.md.jinja, architecture.md.jinja, file-structure.md.jinja, build-and-environments.md.jinja, networking-and-di.md.jinja, navigation-and-screens.md.jinja, design-system-and-theme.md.jinja, conventions-and-workflow.md.jinja
-- `template/ios/docs/` - guide.md.jinja
+- `template/mobile-android/docs/` - guide.md.jinja, architecture.md.jinja, file-structure.md.jinja, build-and-environments.md.jinja, networking-and-di.md.jinja, navigation-and-screens.md.jinja, design-system-and-theme.md.jinja, conventions-and-workflow.md.jinja
+- `template/mobile-ios/docs/` - guide.md.jinja
 
 **`template/shared/`:**
 - api-contracts/openapi.yml.jinja - OpenAPI 3.1 with auth + example CRUD
@@ -360,8 +361,8 @@ Directory: `template/{% if "backend" in platforms %}backend{% endif %}/`
 - `src/test/kotlin/` - Tests
 - `CLAUDE.md.jinja`, `AGENTS.md.jinja`
 
-#### 3B: Web Client (Next.js + TypeScript)
-Directory: `template/{% if "web" in platforms %}web{% endif %}/`
+#### 3B: User Web App (Next.js + TypeScript)
+Directory: `template/{% if "web-user-app" in platforms %}web-user-app{% endif %}/`
 
 - `package.json.jinja`, `next.config.ts.jinja` (Cloudflare compatible), `wrangler.toml.jinja`
 - `tailwind.config.ts.jinja`, `tsconfig.json`, `Taskfile.yml`
@@ -371,13 +372,13 @@ Directory: `template/{% if "web" in platforms %}web{% endif %}/`
 - `src/components/`, `src/types/`
 - `CLAUDE.md.jinja`, `AGENTS.md.jinja`
 
-#### 3C: Admin Portal (Next.js + TypeScript)
-Directory: `template/{% if "admin" in platforms %}admin{% endif %}/`
+#### 3C: Admin Web Portal (Next.js + TypeScript)
+Directory: `template/{% if "web-admin-portal" in platforms %}web-admin-portal{% endif %}/`
 
-Same as web + sidebar layout, data tables, stat cards, admin role guard, separate `wrangler.toml.jinja`
+Same as the user web app + sidebar layout, data tables, stat cards, admin role guard, and separate Cloudflare/OpenNext config.
 
 #### 3D: Android (Kotlin + Jetpack Compose) - MVVM
-Directory: `template/{% if "android" in platforms %}android{% endif %}/`
+Directory: `template/{% if "mobile-android" in platforms %}mobile-android{% endif %}/`
 
 ```
 core/         -> DI modules, networking, database, datastore, models
@@ -392,7 +393,7 @@ navigation/   -> NavGraph + Screen routes
 - `CLAUDE.md.jinja`, `AGENTS.md.jinja`
 
 #### 3E: iOS (Swift + SwiftUI) - MVVM (matching Android)
-Directory: `template/{% if "ios" in platforms %}ios{% endif %}/`
+Directory: `template/{% if "mobile-ios" in platforms %}mobile-ios{% endif %}/`
 
 ```
 UI/           -> View layer (SwiftUI views)
@@ -429,9 +430,9 @@ Navigation/   -> Router + routes
 
 **GitHub Actions** with path-based triggers per platform:
 - backend.yml -> Azure Container Registry -> Azure Container Apps
-- web.yml, admin.yml -> Cloudflare Pages via Wrangler
-- android.yml -> Fastlane -> Google Play
-- ios.yml -> macOS runner -> Fastlane -> TestFlight
+- web-user-app.yml, web-admin-portal.yml -> Cloudflare via OpenNext/Wrangler
+- mobile-android.yml -> Fastlane -> Google Play
+- mobile-ios.yml -> macOS runner -> Fastlane -> TestFlight
 - api-contracts.yml -> validate OpenAPI spec
 
 **Infrastructure**: docker-compose.yml, Azure Bicep templates, Fastlane configs
@@ -462,7 +463,7 @@ copier copy https://github.com/YOUR_ORG/Template ./my-new-idea
 # - Slug? -> "foodiehub"
 # - Package ID? -> "com.example.foodiehub"
 # - Description? -> "A restaurant discovery and booking platform"
-# - Platforms? -> [backend, web, admin, android, ios]
+# - Platforms? -> [backend, web-user-app, web-admin-portal, mobile-android, mobile-ios]
 # - Auth methods? -> [google, apple, password]
 # - Use Docker? -> yes
 # - GitHub org? -> "my-org"
@@ -488,7 +489,7 @@ task generate-clients
 # 5. Start local development
 docker compose up -d          # PostgreSQL + backend
 task backend:run              # Spring Boot on :8080
-task web:dev                  # Next.js on :3000
+task web-user-app:dev         # Next.js on :3000
 ```
 
 #### Step 4: Verify
@@ -522,8 +523,8 @@ claude
 4. **Updates OpenAPI spec** -> new endpoints in `shared/api-contracts/openapi.yml`
 5. **Regenerates API clients** -> `task generate-clients`
 6. **Implements backend** -> controller, service, repository, entity, Flyway migration
-7. **Implements web** -> pages, API client calls, components
-8. **Implements admin** -> management pages, data tables
+7. **Implements web-user-app** -> pages, API client calls, components
+8. **Implements web-admin-portal** -> management pages, data tables
 9. **Implements Android** -> Screen + ViewModel (MVVM)
 10. **Implements iOS** -> View + ViewModel (MVVM)
 11. **Updates feature doc status** -> checks off completed platforms
@@ -593,10 +594,10 @@ The AI adds to OpenAPI spec -> generates clients -> implements backend.
 ```bash
 # Android:
 > Add "Favorites" screen showing saved restaurants in LazyColumn with
-> swipe-to-remove. Follow MVVM pattern in android/docs/guide.md.
+> swipe-to-remove. Follow MVVM pattern in mobile-android/docs/guide.md.
 
 # iOS:
-> Add "Favorites" view matching Android. Use ios/docs/guide.md.
+> Add "Favorites" view matching Android. Use mobile-ios/docs/guide.md.
 
 # Web:
 > Add /favorites page with grid layout and remove button.
@@ -640,10 +641,10 @@ az deployment group create --resource-group myapp-rg --template-file main.bicep
 # Subsequent: automatic on merge to main, or `task backend:deploy`
 ```
 
-#### Web + Admin (Cloudflare)
+#### User Web App + Admin Web Portal (Cloudflare)
 ```bash
-cd web && npx wrangler pages project create foodiehub-web
-# Subsequent: automatic on merge to main, or `task web:deploy`
+cd web-user-app && npx wrangler deploy
+# Subsequent: automatic on merge to main, or `task web-user-app:deploy`
 ```
 
 #### Mobile
@@ -666,8 +667,8 @@ copier update
 
 ### Scenario 10: Working Across Windows and Mac
 
-**Windows (daily):** Backend, web, admin, Android all work. iOS code generated but can't compile.
-**Mac (iOS):** Pull latest -> `task ios:generate-project` -> `task ios:build` -> Xcode.
+**Windows (daily):** Backend, web-user-app, web-admin-portal, and Android all work. iOS code generated but can't compile.
+**Mac (iOS):** Pull latest -> `task mobile-ios:generate-project` -> `task mobile-ios:build` -> Xcode.
 **CI/CD:** iOS uses `runs-on: macos-latest`, everything else `ubuntu-latest`.
 
 ---
@@ -678,14 +679,15 @@ copier update
 |--------|---------|
 | Generate API clients | `task generate-clients` |
 | Start local dev | `docker compose up -d && task backend:run` |
-| Web dev server | `task web:dev` |
-| Admin dev server | `task admin:dev` |
-| Build Android APK | `task android:build` |
-| Build iOS (Mac) | `task ios:generate-project && task ios:build` |
+| User web app dev server | `task web-user-app:dev` |
+| Admin web portal dev server | `task web-admin-portal:dev` |
+| Build Android APK | `task mobile-android:build` |
+| Build iOS (Mac) | `task mobile-ios:generate-project && task mobile-ios:build` |
 | Run all tests | `task test` |
 | Lint all | `task lint` |
 | Deploy backend | `task backend:deploy` |
-| Deploy web | `task web:deploy` |
+| Deploy user web app | `task web-user-app:deploy` |
+| Deploy admin web portal | `task web-admin-portal:deploy` |
 | Scaffold feature (Claude) | `/scaffold-feature` |
 | Scaffold feature (Codex) | `$scaffold-feature` |
 | Advisory board review | Auto-triggers, or `/advisory-review` |
@@ -715,8 +717,8 @@ copier update
 | 1 | `copier.yml` + `template/` skeleton | **Done** |
 | 2 | `docs/` skeleton + `shared/` (OpenAPI, design tokens) | **Done** |
 | 3A | Backend (Spring Boot 4, Kotlin 2.2+, Java 21) | **Done** |
-| 3B | Web client (Next.js + TypeScript) | Pending |
-| 3C | Admin portal (Next.js + TypeScript) | Pending |
+| 3B | User Web App (Next.js + TypeScript) | Pending |
+| 3C | Admin Web Portal (Next.js + TypeScript) | Pending |
 | 3D | Android (Kotlin + Jetpack Compose, MVVM, Room) | **Done** |
 | 3E | iOS (Swift 6 + SwiftUI, MVVM, SwiftData) | **Done** |
 | 4 | AI context layer (CLAUDE.md, AGENTS.md, commands, skills, Cursor rules) | **Done** |

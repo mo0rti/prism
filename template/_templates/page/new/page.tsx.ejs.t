@@ -1,5 +1,5 @@
 ---
-to: <%= target === 'user-web-app' ? `user-web-app/app/[locale]/dashboard/${route}/page.tsx` : `admin-web-portal/app/admin/(dashboard)/${route}/page.tsx` %>
+to: <%= target === 'web-user-app' ? `web-user-app/app/[locale]/dashboard/${route}/page.tsx` : `web-admin-portal/app/admin/(dashboard)/${route}/page.tsx` %>
 ---
 export default function <%= h.changeCase.pascal(title.replace(/\s+/g, '')) %>Page() {
   return (

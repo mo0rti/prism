@@ -1,5 +1,5 @@
 ---
-to: "<%= platform === 'android' ? 'android/app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/feature/' + h.changeCase.camel(feature) + '/ui/' + h.changeCase.pascal(name) + 'ViewModel.kt' : null %>"
+to: "<%= platform === 'mobile-android' ? 'mobile-android/app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/feature/' + h.changeCase.camel(feature) + '/ui/' + h.changeCase.pascal(name) + 'ViewModel.kt' : null %>"
 ---
 package {{ package_identifier }}.feature.<%= h.changeCase.camel(feature) %>.ui
 

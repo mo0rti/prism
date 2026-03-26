@@ -37,19 +37,19 @@
 - Repository: `backend/src/.../features/name/repository/`
 
 ### User Web App
-- Pages: `user-web-app/app/[locale]/dashboard/name/`
-- API: `user-web-app/lib/api/name.ts`
+- Pages: `web-user-app/app/[locale]/dashboard/name/`
+- API: `web-user-app/lib/api/name.ts`
 
 ### Admin Web Portal
-- Pages: `admin-web-portal/app/admin/(dashboard)/name/`
+- Pages: `web-admin-portal/app/admin/(dashboard)/name/`
 
 ### Android
-- Screen: `android/.../ui/name/`
-- ViewModel: `android/.../ui/name/NameViewModel.kt`
+- Screen: `mobile-android/.../ui/name/`
+- ViewModel: `mobile-android/.../ui/name/NameViewModel.kt`
 
 ### iOS
-- View: `ios/.../UI/Name/`
-- ViewModel: `ios/.../UI/Name/NameViewModel.swift`
+- View: `mobile-ios/.../UI/Name/`
+- ViewModel: `mobile-ios/.../UI/Name/NameViewModel.swift`
 
 ## Implementation Status
 

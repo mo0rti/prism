@@ -13,9 +13,10 @@ Generate typed client code from `shared/api-contracts/openapi.yml`.
 2. Run generation: `task generate-clients`
 3. Verify generated code compiles:
 {% if "backend" in platforms %}   - `task backend:build`{% endif %}
-{% if "web" in platforms %}   - `task web:build`{% endif %}
-{% if "android" in platforms %}   - `task android:build`{% endif %}
-{% if "ios" in platforms %}   - `task ios:build` (Mac only){% endif %}
+{% if "web-user-app" in platforms %}   - `task web-user-app:build`{% endif %}
+{% if "web-admin-portal" in platforms %}   - `task web-admin-portal:build`{% endif %}
+{% if "mobile-android" in platforms %}   - `task mobile-android:build`{% endif %}
+{% if "mobile-ios" in platforms %}   - `task mobile-ios:build` (Mac only){% endif %}
 
 ## When to Use
 

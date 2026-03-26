@@ -9,7 +9,7 @@ This document turns the repository review into an execution plan.
 It reflects the current product direction:
 
 - keep future-facing options visible in the Copier questionnaire
-- keep `web`, `admin`, and Apple Sign-In present as roadmap-facing options
+- keep `web-user-app`, `web-admin-portal`, and Apple Sign-In present as platform options
 - keep `database`, backend deployment, and web deployment as explicit inputs even when only one concrete choice is currently available
 - remove misleading language such as "hardcoded"
 - make the template honest about what is implemented today, what is partial, and what is still planned
@@ -77,8 +77,8 @@ It does mean the template must represent the option honestly.
 
 ### Out of scope for now
 
-- fully implementing `web`
-- fully implementing `admin`
+- fully implementing `web-user-app`
+- fully implementing `web-admin-portal`
 - adding new concrete database providers beyond PostgreSQL
 - adding new backend cloud providers beyond Azure
 - adding new web hosting providers beyond Cloudflare
@@ -117,7 +117,7 @@ Preserve future-facing options while making their current maturity explicit.
 
 ### Actions
 
-1. Keep `web` and `admin` visible in the `platforms` questionnaire.
+1. Keep `web-user-app` and `web-admin-portal` visible in the `platforms` questionnaire.
 2. Keep Apple Sign-In visible in `auth_methods`.
 3. Make `database` a visible choice question with PostgreSQL as the currently available option.
 4. Make backend deployment/cloud provider a visible choice question with Azure as the currently available option.
@@ -159,7 +159,7 @@ Ensure that selectable options never produce incoherent output.
 
 ### Actions
 
-1. Audit what happens when `web` or `admin` is selected.
+1. Audit what happens when `web-user-app` or `web-admin-portal` is selected.
 2. For any offered but unfinished option, choose one of these patterns:
    - generate a minimal placeholder slice that is explicit about TODO status
    - or omit operational wiring while clearly documenting that the option is planned
@@ -251,7 +251,7 @@ Make the generated iOS project syntactically valid and operationally consistent.
    - scheme name
    - `@testable import`
    - Swift app type name
-4. Fix nested templating in `template/ios/Taskfile.yml`.
+4. Fix nested templating in `template/mobile-ios/Taskfile.yml`.
 5. Align XcodeGen, Fastlane, and task commands around the same naming rules.
 6. Add a validation case using a project name with spaces or hyphens.
 
@@ -263,12 +263,12 @@ Make the generated iOS project syntactically valid and operationally consistent.
 ### Files to touch
 
 - `copier.yml`
-- `template/ios/project.yml.jinja`
-- `template/ios/Taskfile.yml`
-- `template/ios/{{project_slug}}/App.swift.jinja`
-- `template/ios/{{project_slug}}Tests/LoginViewModelTests.swift.jinja`
-- `template/ios/{{project_slug}}Tests/ExampleListViewModelTests.swift.jinja`
-- `template/ios/fastlane/Fastfile.jinja`
+- `template/mobile-ios/project.yml.jinja`
+- `template/mobile-ios/Taskfile.yml`
+- `template/mobile-ios/{{project_slug}}/App.swift.jinja`
+- `template/mobile-ios/{{project_slug}}Tests/LoginViewModelTests.swift.jinja`
+- `template/mobile-ios/{{project_slug}}Tests/ExampleListViewModelTests.swift.jinja`
+- `template/mobile-ios/fastlane/Fastfile.jinja`
 - iOS docs and generated AI context if needed
 
 ### Acceptance criteria
@@ -405,7 +405,7 @@ Make it hard to reintroduce questionnaire drift or broken generated output.
 
 These decisions should not drag out:
 
-1. What should happen when `web` or `admin` is selected before full implementation?
+1. What should happen when `web-user-app` or `web-admin-portal` is selected before full implementation?
    - Recommended: generate coherent placeholders or clearly omit operational wiring without dangling references
 2. Should default selection include planned platforms?
    - Recommended: only if the default generated repo remains coherent and intentional
@@ -442,11 +442,11 @@ If work starts immediately, this is the first practical batch:
 1. Update `copier.yml` so `database`, backend deployment, and web deployment are visible questionnaire inputs.
 2. Remove "hardcoded" wording from root docs and generated docs.
 3. Add explicit maturity language for:
-   - `web`
-   - `admin`
+   - `web-user-app`
+   - `web-admin-portal`
    - Apple Sign-In
 4. Fix backend Gradle wrapper and backend task/build hygiene.
-5. Fix iOS identifier generation and `template/ios/Taskfile.yml`.
+5. Fix iOS identifier generation and `template/mobile-ios/Taskfile.yml`.
 6. Align `.env.example`, backend runtime config, and deployment scripts.
 7. Make generated OpenAPI provider enums reflect selected auth methods.
 8. Audit generated root tasks, workflows, docs, and AI context for missing-path references.

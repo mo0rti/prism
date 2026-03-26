@@ -1,5 +1,5 @@
 ---
-to: <%= target === 'user-web-app' ? `user-web-app/app/[locale]/dashboard/${route}/loading.tsx` : `admin-web-portal/app/admin/(dashboard)/${route}/loading.tsx` %>
+to: <%= target === 'web-user-app' ? `web-user-app/app/[locale]/dashboard/${route}/loading.tsx` : `web-admin-portal/app/admin/(dashboard)/${route}/loading.tsx` %>
 ---
 export default function Loading() {
   return (

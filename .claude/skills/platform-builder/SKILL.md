@@ -1,6 +1,6 @@
 ---
 name: platform-builder
-description: Add or extend a platform template (web, admin, backend, android, or ios) following established patterns from completed platforms.
+description: Add or extend a platform template (web-user-app, web-admin-portal, backend, mobile-android, or mobile-ios) following established patterns from completed platforms.
 argument-hint: [platform-name]
 disable-model-invocation: true
 ---
@@ -21,8 +21,8 @@ $ARGUMENTS
 
 3. **Study reference platforms** - Read completed platform templates to understand patterns:
    - `template/backend/` - Spring Boot patterns, Jinja usage, CLAUDE.md structure, `backend/docs/` for technical docs
-   - `template/android/` - MVVM patterns, feature structure, Hilt DI, `android/docs/` for technical docs with 7 doc files
-   - `template/ios/` - MVVM patterns mirroring Android, SwiftUI conventions
+   - `template/mobile-android/` - MVVM patterns, feature structure, Hilt DI, `mobile-android/docs/` for technical docs with 7 doc files
+   - `template/mobile-ios/` - MVVM patterns mirroring Android, SwiftUI conventions
 
 4. **Create the platform directory** - Build `template/{platform}/` with all files listed in the PLAN.md spec:
    - Add `.jinja` suffix if it contains any Jinja2 expressions

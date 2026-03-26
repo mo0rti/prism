@@ -29,15 +29,15 @@ Apply these rules whenever you change Android app code in this repository.
 
 ## Read these docs only when needed
 
-- `android/docs/architecture.md` for layer rules and repository conventions
-- `android/docs/file-structure.md` for package locations
-- `android/docs/networking-and-di.md` for Retrofit, auth, and DI wiring
-- `android/docs/navigation-and-screens.md` for route and host patterns
-- `android/docs/design-system-and-theme.md` for shared Compose components
-- `android/docs/conventions-and-workflow.md` for strings, workflow, and doc-sync rules
+- `mobile-android/docs/architecture.md` for layer rules and repository conventions
+- `mobile-android/docs/file-structure.md` for package locations
+- `mobile-android/docs/networking-and-di.md` for Retrofit, auth, and DI wiring
+- `mobile-android/docs/navigation-and-screens.md` for route and host patterns
+- `mobile-android/docs/design-system-and-theme.md` for shared Compose components
+- `mobile-android/docs/conventions-and-workflow.md` for strings, workflow, and doc-sync rules
 
 ## Minimum verification
 
 - Run `./gradlew compileDebugKotlin` (or `gradlew.bat` on Windows) after architecture-sensitive changes.
 - Add a targeted test or build task when navigation, networking, session, packaging, or resources change.
-- If implementation changes docs-described behavior, update the relevant file in `android/docs/` in the same session.
+- If implementation changes docs-described behavior, update the relevant file in `mobile-android/docs/` in the same session.

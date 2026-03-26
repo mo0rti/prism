@@ -67,26 +67,26 @@
 - Config: `backend/src/.../config/SecurityConfig.kt`, `OAuth2Config.kt`
 
 ### User Web App
-- Pages: `user-web-app/app/[locale]/(public)/login/`, `user-web-app/app/[locale]/dashboard/`
-- Auth handlers: `user-web-app/auth.ts`, `user-web-app/app/api/auth/[...nextauth]/route.ts`
-- API client: `user-web-app/lib/api/client.ts`
+- Pages: `web-user-app/app/[locale]/(public)/login/`, `web-user-app/app/[locale]/dashboard/`
+- Auth handlers: `web-user-app/auth.ts`, `web-user-app/app/api/auth/[...nextauth]/route.ts`
+- API client: `web-user-app/lib/api/client.ts`
 
 ### Admin Web Portal
-- Pages: `admin-web-portal/app/admin/(auth)/login/`, `admin-web-portal/app/admin/(dashboard)/`
-- Auth handlers: `admin-web-portal/auth.ts`, `admin-web-portal/app/api/auth/[...nextauth]/route.ts`
-- API client: `admin-web-portal/lib/api/client.ts`
+- Pages: `web-admin-portal/app/admin/(auth)/login/`, `web-admin-portal/app/admin/(dashboard)/`
+- Auth handlers: `web-admin-portal/auth.ts`, `web-admin-portal/app/api/auth/[...nextauth]/route.ts`
+- API client: `web-admin-portal/lib/api/client.ts`
 
 ### Android
-- Screen: `android/.../ui/auth/LoginScreen.kt`
-- ViewModel: `android/.../ui/auth/LoginViewModel.kt`
-- Repository: `android/.../data/repository/AuthRepository.kt`
-- Token storage: `android/.../data/local/TokenStorage.kt` (DataStore)
+- Screen: `mobile-android/.../ui/auth/LoginScreen.kt`
+- ViewModel: `mobile-android/.../ui/auth/LoginViewModel.kt`
+- Repository: `mobile-android/.../data/repository/AuthRepository.kt`
+- Token storage: `mobile-android/.../data/local/TokenStorage.kt` (DataStore)
 
 ### iOS
-- View: `ios/.../UI/Auth/LoginView.swift`
-- ViewModel: `ios/.../UI/Auth/LoginViewModel.swift`
-- Repository: `ios/.../Data/Repository/AuthRepository.swift`
-- Token storage: `ios/.../Data/Storage/TokenStorage.swift` (Keychain)
+- View: `mobile-ios/.../UI/Auth/LoginView.swift`
+- ViewModel: `mobile-ios/.../UI/Auth/LoginViewModel.swift`
+- Repository: `mobile-ios/.../Data/Repository/AuthRepository.swift`
+- Token storage: `mobile-ios/.../Data/Storage/TokenStorage.swift` (Keychain)
 
 ## Implementation Status
 

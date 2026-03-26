@@ -4,17 +4,17 @@ _jinja_extensions:
   - jinja2_time.TimeExtension
 
 _exclude:
-  - "{% if 'android' not in platforms %}android{% endif %}"
-  - "{% if 'ios' not in platforms %}ios{% endif %}"
+  - "{% if 'mobile-android' not in platforms %}mobile-android{% endif %}"
+  - "{% if 'mobile-ios' not in platforms %}mobile-ios{% endif %}"
   - "{% if 'backend' not in platforms %}backend{% endif %}"
-  - "{% if 'user-web-app' not in platforms %}user-web-app{% endif %}"
-  - "{% if 'admin-web-portal' not in platforms %}admin-web-portal{% endif %}"
+  - "{% if 'web-user-app' not in platforms %}web-user-app{% endif %}"
+  - "{% if 'web-admin-portal' not in platforms %}web-admin-portal{% endif %}"
   - "{% if 'backend' not in platforms %}infra{% endif %}"
   - "{% if not use_docker %}docker-compose.yml{% endif %}"
-  - "{% if 'user-web-app' not in platforms %}.github/workflows/user-web-app.yml{% endif %}"
-  - "{% if 'admin-web-portal' not in platforms %}.github/workflows/admin-web-portal.yml{% endif %}"
-  - "{% if 'user-web-app' not in platforms and 'admin-web-portal' not in platforms %}docs/deployment/cloudflare-setup.md{% endif %}"
-  - "{% if 'user-web-app' not in platforms and 'admin-web-portal' not in platforms %}_templates/page{% endif %}"
+  - "{% if 'web-user-app' not in platforms %}.github/workflows/web-user-app.yml{% endif %}"
+  - "{% if 'web-admin-portal' not in platforms %}.github/workflows/web-admin-portal.yml{% endif %}"
+  - "{% if 'web-user-app' not in platforms and 'web-admin-portal' not in platforms %}docs/deployment/cloudflare-setup.md{% endif %}"
+  - "{% if 'web-user-app' not in platforms and 'web-admin-portal' not in platforms %}_templates/page{% endif %}"
 
 # =============================================================================
 # Project Identity
@@ -62,11 +62,11 @@ platforms:
   help: "Which platforms do you want to include?"
   choices:
     Spring Boot Backend: backend
-    User-Facing Web App: user-web-app
-    Admin Web Portal: admin-web-portal
-    Android (Kotlin/Compose): android
-    iOS (Swift/SwiftUI): ios
-  default: "[backend, user-web-app, admin-web-portal, android, ios]"
+    User-Facing Web App: web-user-app
+    Admin Web Portal: web-admin-portal
+    Android (Kotlin/Compose): mobile-android
+    iOS (Swift/SwiftUI): mobile-ios
+  default: "[backend, web-user-app, web-admin-portal, mobile-android, mobile-ios]"
 
 # =============================================================================
 # Authentication
@@ -76,7 +76,7 @@ auth_methods:
   type: yaml
   multiselect: true
   help: "Which authentication methods do you want to support?"
-  validator: "{% if 'user-web-app' in platforms and not auth_methods %}User Web App currently requires at least one auth method{% elif 'admin-web-portal' in platforms and 'password' not in auth_methods %}Admin Web Portal currently requires Username + Password auth{% endif %}"
+  validator: "{% if 'web-user-app' in platforms and not auth_methods %}User Web App currently requires at least one auth method{% elif 'web-admin-portal' in platforms and 'password' not in auth_methods %}Admin Web Portal currently requires Username + Password auth{% endif %}"
   choices:
     Google OAuth: google
     Apple Sign-In: apple

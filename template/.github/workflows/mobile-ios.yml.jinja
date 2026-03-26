@@ -1,0 +1,75 @@
+{% if "mobile-ios" in platforms %}
+name: iOS CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile-ios/**'
+      - 'shared/**'
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mobile-ios/**'
+      - 'shared/**'
+
+jobs:
+  test:
+    name: Test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: mobile-ios
+        run: xcodegen generate
+
+      - name: Run tests
+        working-directory: mobile-ios
+        run: |
+          xcodebuild test \
+            -project {{ project_slug }}.xcodeproj \
+            -scheme {{ project_slug }} \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -resultBundlePath TestResults \
+            | xcpretty || true
+
+  release:
+    name: Release to TestFlight
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: mobile-ios
+        run: xcodegen generate
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: mobile-ios
+
+      - name: Deploy to TestFlight
+        working-directory: mobile-ios
+        env:
+          ASC_KEY_ID: {% raw %}${{ secrets.ASC_KEY_ID }}{% endraw %}
+          ASC_ISSUER_ID: {% raw %}${{ secrets.ASC_ISSUER_ID }}{% endraw %}
+          ASC_KEY_CONTENT: {% raw %}${{ secrets.ASC_KEY_CONTENT }}{% endraw %}
+          MATCH_PASSWORD: {% raw %}${{ secrets.MATCH_PASSWORD }}{% endraw %}
+          MATCH_GIT_URL: {% raw %}${{ secrets.MATCH_GIT_URL }}{% endraw %}
+          GITHUB_RUN_NUMBER: {% raw %}${{ github.run_number }}{% endraw %}
+        run: bundle exec fastlane beta
+{% endif %}

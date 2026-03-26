@@ -10,10 +10,10 @@ The questionnaire keeps roadmap-facing options visible. Backend, Android, and iO
 copier.yml              # Template questionnaire (project identity, platforms, auth, database, deployment)
 template/               # All templated output - Jinja2 files (.jinja suffix stripped on generation)
   backend/              # Spring Boot 4 (Kotlin 2.2+, Java 21)
-  user-web-app/         # Next.js user-facing web app
-  admin-web-portal/     # Next.js admin web portal
-  android/              # Kotlin + Jetpack Compose (MVVM)
-  ios/                  # Swift 6 + SwiftUI (MVVM)
+  web-user-app/         # Next.js user-facing web app
+  web-admin-portal/     # Next.js admin web portal
+  mobile-android/              # Kotlin + Jetpack Compose (MVVM)
+  mobile-ios/                  # Swift 6 + SwiftUI (MVVM)
   shared/               # OpenAPI 3.1 spec + design tokens
   docs/                 # Project-wide documentation (features, API, advisory board)
   .claude/              # Claude context for generated projects (commands, skills)
@@ -26,7 +26,7 @@ template/               # All templated output - Jinja2 files (.jinja suffix str
 ## Key Rules
 
 - **Two layers of AI context**: `template/.claude/` is for generated projects; `.claude/` (root) is for this template repo
-- **Documentation organization**: Project-wide docs stay in `template/docs/`. Platform-specific technical docs live inside each platform directory (`template/android/docs/`, `template/backend/docs/`, `template/ios/docs/`). Entity docs are backend-specific (`template/backend/docs/entities/`). Platform docs are auto-excluded with their platform via `_exclude` rules.
+- **Documentation organization**: Project-wide docs stay in `template/docs/`. Platform-specific technical docs live inside each platform directory (`template/mobile-android/docs/`, `template/backend/docs/`, `template/mobile-ios/docs/`). Entity docs are backend-specific (`template/backend/docs/entities/`). Platform docs are auto-excluded with their platform via `_exclude` rules.
 - **Test with `copier copy`** after changes: `copier copy --trust . /tmp/test-output`
 - **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
 
@@ -37,7 +37,7 @@ template/               # All templated output - Jinja2 files (.jinja suffix str
 copier copy --trust . /tmp/test-output
 
 # Test with specific options
-copier copy --trust --data 'project_name=TestApp' --data 'platforms=[backend, android]' . /tmp/test-output
+copier copy --trust --data 'project_name=TestApp' --data 'platforms=[backend, mobile-android]' . /tmp/test-output
 
 # Update an existing generated project
 cd /path/to/generated-project && copier update --trust

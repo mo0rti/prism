@@ -21,13 +21,13 @@ Ask me for the feature name and a brief description if I haven't provided them.
 
 6. **Implement Backend** - Create controller, service, repository, entity, DTOs, and Flyway migration in `backend/`. Follow patterns in `backend/CLAUDE.md`.
 
-{% if "web" in platforms %}7. **Implement Web Client** - Create pages and components in `web/`. Follow patterns in `web/CLAUDE.md`.{% endif %}
+{% if "web-user-app" in platforms %}7. **Implement User Web App** - Create pages and components in `web-user-app/`. Follow patterns in `web-user-app/CLAUDE.md`.{% endif %}
 
-{% if "admin" in platforms %}8. **Implement Admin Portal** - Create management pages in `admin/`. Follow patterns in `admin/CLAUDE.md`.{% endif %}
+{% if "web-admin-portal" in platforms %}8. **Implement Admin Portal** - Create management pages in `web-admin-portal/`. Follow patterns in `web-admin-portal/CLAUDE.md`.{% endif %}
 
-{% if "android" in platforms %}9. **Implement Android** - Create Screen + ViewModel (MVVM pattern) in `android/`. Follow patterns in `android/CLAUDE.md`.{% endif %}
+{% if "mobile-android" in platforms %}9. **Implement Android** - Create Screen + ViewModel (MVVM pattern) in `mobile-android/`. Follow patterns in `mobile-android/CLAUDE.md`.{% endif %}
 
-{% if "ios" in platforms %}10. **Implement iOS** - Create View + ViewModel (MVVM pattern) in `ios/`. Follow patterns in `ios/CLAUDE.md`.{% endif %}
+{% if "mobile-ios" in platforms %}10. **Implement iOS** - Create View + ViewModel (MVVM pattern) in `mobile-ios/`. Follow patterns in `mobile-ios/CLAUDE.md`.{% endif %}
 
 11. **Update Feature Doc** - Check off completed platforms in the implementation status checklist.
 

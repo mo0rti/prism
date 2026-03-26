@@ -23,7 +23,7 @@ Verify that AI context files are consistent across all platforms.
 
 3. Check platform-specific files are in sync:
    - `template/backend/CLAUDE.md.jinja` vs `template/backend/AGENTS.md.jinja` vs `template/.cursor/rules/backend.mdc.jinja`
-   - Same for android, ios, web, admin
+   - Same for mobile-android, mobile-ios, web-user-app, web-admin-portal
 
 4. Check that skills cover the same capabilities:
    - `template/.claude/skills/` vs `template/.codex/skills/`

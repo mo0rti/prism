@@ -9,10 +9,10 @@
 | Platform | Tech Stack | Hosting | Purpose |
 |----------|-----------|---------|---------|
 {% if "backend" in platforms %}| Backend | Spring Boot 4, Kotlin 2.2+, Java 21 | Azure Container Apps | REST API, business logic, auth |
-{% endif %}{% if "user-web-app" in platforms %}| User Web App | Next.js, TypeScript, Tailwind CSS, next-intl, NextAuth | Cloudflare via OpenNext | User-facing marketing and authenticated dashboard |
-{% endif %}{% if "admin-web-portal" in platforms %}| Admin Web Portal | Next.js, TypeScript, Tailwind CSS, NextAuth | Cloudflare via OpenNext | Internal admin operations and management UI |
-{% endif %}{% if "android" in platforms %}| Android | Kotlin, Jetpack Compose, Hilt | Google Play | Native Android app |
-{% endif %}{% if "ios" in platforms %}| iOS | Swift, SwiftUI | App Store | Native iOS app |
+{% endif %}{% if "web-user-app" in platforms %}| User Web App | Next.js, TypeScript, Tailwind CSS, next-intl, NextAuth | Cloudflare via OpenNext | User-facing marketing and authenticated dashboard |
+{% endif %}{% if "web-admin-portal" in platforms %}| Admin Web Portal | Next.js, TypeScript, Tailwind CSS, NextAuth | Cloudflare via OpenNext | Internal admin operations and management UI |
+{% endif %}{% if "mobile-android" in platforms %}| Android | Kotlin, Jetpack Compose, Hilt | Google Play | Native Android app |
+{% endif %}{% if "mobile-ios" in platforms %}| iOS | Swift, SwiftUI | App Store | Native iOS app |
 {% endif %}| Database | PostgreSQL 16 | Azure Database | Data persistence |
 
 ## Architecture Pattern

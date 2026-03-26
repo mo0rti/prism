@@ -30,42 +30,42 @@ backend/.gradle/
 backend/out/
 backend/src/generated/
 {% endif %}
-{% if "web" in platforms %}
+{% if "web-user-app" in platforms %}
 # =============================================================================
 # Web (Next.js)
 # =============================================================================
-web/node_modules/
-web/.next/
-web/out/
+web-user-app/node_modules/
+web-user-app/.next/
+web-user-app/out/
 {% endif %}
-{% if "admin" in platforms %}
+{% if "web-admin-portal" in platforms %}
 # =============================================================================
 # Admin (Next.js)
 # =============================================================================
-admin/node_modules/
-admin/.next/
-admin/out/
+web-admin-portal/node_modules/
+web-admin-portal/.next/
+web-admin-portal/out/
 {% endif %}
-{% if "android" in platforms %}
+{% if "mobile-android" in platforms %}
 # =============================================================================
 # Android
 # =============================================================================
-android/.gradle/
-android/build/
-android/app/build/
-android/local.properties
-android/app/src/main/java/generated/
+mobile-android/.gradle/
+mobile-android/build/
+mobile-android/app/build/
+mobile-android/local.properties
+mobile-android/app/src/main/java/generated/
 {% endif %}
-{% if "ios" in platforms %}
+{% if "mobile-ios" in platforms %}
 # =============================================================================
 # iOS
 # =============================================================================
-ios/*.xcodeproj/
-ios/*.xcworkspace/
-ios/Pods/
-ios/build/
-ios/DerivedData/
-ios/Generated/
+mobile-ios/*.xcodeproj/
+mobile-ios/*.xcworkspace/
+mobile-ios/Pods/
+mobile-ios/build/
+mobile-ios/DerivedData/
+mobile-ios/Generated/
 {% endif %}
 
 # =============================================================================

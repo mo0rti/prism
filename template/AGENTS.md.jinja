@@ -8,10 +8,10 @@ Monorepo with MVVM across all platforms. API-first: OpenAPI spec drives typed cl
 
 ```
 {% if "backend" in platforms %}backend/       -> Spring Boot 4 (Kotlin 2.2+, Java 21) - Azure Container Apps{% endif %}
-{% if "user-web-app" in platforms %}user-web-app/  -> Next.js + TypeScript user-facing web app - Cloudflare via OpenNext{% endif %}
-{% if "admin-web-portal" in platforms %}admin-web-portal/  -> Next.js + TypeScript admin web portal - Cloudflare via OpenNext{% endif %}
-{% if "android" in platforms %}android/       -> Kotlin + Jetpack Compose (MVVM, Hilt, Room){% endif %}
-{% if "ios" in platforms %}ios/           -> Swift 6 + SwiftUI (MVVM, SwiftData) - Mac/Xcode only{% endif %}
+{% if "web-user-app" in platforms %}web-user-app/  -> Next.js + TypeScript user-facing web app - Cloudflare via OpenNext{% endif %}
+{% if "web-admin-portal" in platforms %}web-admin-portal/  -> Next.js + TypeScript admin web portal - Cloudflare via OpenNext{% endif %}
+{% if "mobile-android" in platforms %}mobile-android/       -> Kotlin + Jetpack Compose (MVVM, Hilt, Room){% endif %}
+{% if "mobile-ios" in platforms %}mobile-ios/           -> Swift 6 + SwiftUI (MVVM, SwiftData) - Mac/Xcode only{% endif %}
 shared/        -> OpenAPI spec + design tokens
 docs/          -> Project-wide documentation (features, API, advisory board, deployment)
 ```
@@ -23,12 +23,12 @@ docs/          -> Project-wide documentation (features, API, advisory board, dep
 | Generate API clients | `task generate-clients` |
 {% if "backend" in platforms %}| Start backend | `task backend:run` |
 | Backend tests | `task backend:test` |
-{% endif %}{% if "user-web-app" in platforms %}| Start user web app | `task user-web-app:dev` |
-{% endif %}{% if "admin-web-portal" in platforms %}| Start admin web portal | `task admin-web-portal:dev` |
-{% endif %}{% if "android" in platforms %}| Build Android | `task android:build` |
-| Android tests | `task android:test` |
-{% endif %}{% if "ios" in platforms %}| Build iOS (Mac) | `task ios:build` |
-| iOS tests (Mac) | `task ios:test` |
+{% endif %}{% if "web-user-app" in platforms %}| Start user web app | `task web-user-app:dev` |
+{% endif %}{% if "web-admin-portal" in platforms %}| Start admin web portal | `task web-admin-portal:dev` |
+{% endif %}{% if "mobile-android" in platforms %}| Build Android | `task mobile-android:build` |
+| Android tests | `task mobile-android:test` |
+{% endif %}{% if "mobile-ios" in platforms %}| Build iOS (Mac) | `task mobile-ios:build` |
+| iOS tests (Mac) | `task mobile-ios:test` |
 {% endif %}| Run all tests | `task test` |
 
 ## Auth
@@ -52,8 +52,8 @@ Backend issues JWT after successful auth. Clients store token and send as `Autho
 - `shared/api-contracts/openapi.yml` - API contract (source of truth)
 {% if "backend" in platforms %}- `backend/docs/entities/` - entity definitions, fields, relationships
 - `backend/docs/azure-setup.md` - Azure deployment
-{% endif %}{% if "user-web-app" in platforms %}- `user-web-app/docs/guide.md` - user-facing web app structure, auth flow, deployment
-{% endif %}{% if "admin-web-portal" in platforms %}- `admin-web-portal/docs/guide.md` - admin shell, credentials auth, operational workflows
+{% endif %}{% if "web-user-app" in platforms %}- `web-user-app/docs/guide.md` - user-facing web app structure, auth flow, deployment
+{% endif %}{% if "web-admin-portal" in platforms %}- `web-admin-portal/docs/guide.md` - admin shell, credentials auth, operational workflows
 {% endif %}
 
 ## Conventions
@@ -69,10 +69,10 @@ Backend issues JWT after successful auth. Clients store token and send as `Autho
 
 Each platform has its own `AGENTS.md` with detailed patterns:
 {% if "backend" in platforms %}- `backend/AGENTS.md` - Spring Boot 4, security, JPA, Flyway
-{% endif %}{% if "user-web-app" in platforms %}- `user-web-app/AGENTS.md` - Next.js, next-intl, marketing + dashboard flows
-{% endif %}{% if "admin-web-portal" in platforms %}- `admin-web-portal/AGENTS.md` - Admin web portal, credentials auth, management tables
-{% endif %}{% if "android" in platforms %}- `android/AGENTS.md` - Compose, Hilt, Retrofit 3, Room
-{% endif %}{% if "ios" in platforms %}- `ios/AGENTS.md` - SwiftUI, async/await, Keychain, SwiftData
+{% endif %}{% if "web-user-app" in platforms %}- `web-user-app/AGENTS.md` - Next.js, next-intl, marketing + dashboard flows
+{% endif %}{% if "web-admin-portal" in platforms %}- `web-admin-portal/AGENTS.md` - Admin web portal, credentials auth, management tables
+{% endif %}{% if "mobile-android" in platforms %}- `mobile-android/AGENTS.md` - Compose, Hilt, Retrofit 3, Room
+{% endif %}{% if "mobile-ios" in platforms %}- `mobile-ios/AGENTS.md` - SwiftUI, async/await, Keychain, SwiftData
 {% endif %}
 
 ## Adding Features
@@ -81,7 +81,7 @@ Each platform has its own `AGENTS.md` with detailed patterns:
 2. Run advisory board review for strategic feedback
 3. Add endpoints to `shared/api-contracts/openapi.yml`
 4. Run `task generate-clients` to regenerate typed clients
-5. Implement backend -> user-web-app -> admin-web-portal -> Android -> iOS as applicable
+5. Implement backend -> web-user-app -> web-admin-portal -> Android -> iOS as applicable
 6. Update feature doc with implementation status
 
 ## Adding Endpoints

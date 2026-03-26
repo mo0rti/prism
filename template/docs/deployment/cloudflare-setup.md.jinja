@@ -4,26 +4,26 @@
 
 | Application | Worker Name | Hosting |
 |-------------|-------------|---------|
-{% if "user-web-app" in platforms %}| User Web App | `{{ project_slug }}-user-web-app` | Cloudflare via OpenNext |
-{% endif %}{% if "admin-web-portal" in platforms %}| Admin Web Portal | `{{ project_slug }}-admin-web-portal` | Cloudflare via OpenNext |
+{% if "web-user-app" in platforms %}| User Web App | `{{ project_slug }}-web-user-app` | Cloudflare via OpenNext |
+{% endif %}{% if "web-admin-portal" in platforms %}| Admin Web Portal | `{{ project_slug }}-web-admin-portal` | Cloudflare via OpenNext |
 {% endif %}
 
 ## Initial Setup
 
 ### 1. Build and deploy the worker bundle
 
-{% if "user-web-app" in platforms %}
+{% if "web-user-app" in platforms %}
 ```bash
-cd user-web-app
+cd web-user-app
 npm install
 npm run build:cloudflare
 npx wrangler deploy
 ```
 {% endif %}
 
-{% if "admin-web-portal" in platforms %}
+{% if "web-admin-portal" in platforms %}
 ```bash
-cd admin-web-portal
+cd web-admin-portal
 npm install
 npm run build:cloudflare
 npx wrangler deploy

@@ -10,15 +10,16 @@ Reads `shared/api-contracts/openapi.yml` and generates typed client code for eac
 2. Run client generation: `task generate-clients`
 3. Verify generated clients compile:
 {% if "backend" in platforms %}   - `task backend:build`{% endif %}
-{% if "web" in platforms %}   - `task web:build`{% endif %}
-{% if "android" in platforms %}   - `task android:build`{% endif %}
-{% if "ios" in platforms %}   - `task ios:build` (Mac only){% endif %}
+{% if "web-user-app" in platforms %}   - `task web-user-app:build`{% endif %}
+{% if "web-admin-portal" in platforms %}   - `task web-admin-portal:build`{% endif %}
+{% if "mobile-android" in platforms %}   - `task mobile-android:build`{% endif %}
+{% if "mobile-ios" in platforms %}   - `task mobile-ios:build` (Mac only){% endif %}
 
 ## Generated Output
 
-{% if "web" in platforms %}- **TypeScript** (web + admin): `web/src/lib/api/generated/`, `admin/src/lib/api/generated/`{% endif %}
-{% if "android" in platforms %}- **Kotlin** (Android): `android/app/src/main/kotlin/.../data/remote/generated/`{% endif %}
-{% if "ios" in platforms %}- **Swift** (iOS): `ios/{{ project_slug }}/Data/Network/Generated/`{% endif %}
+{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}- **TypeScript** (web-user-app + web-admin-portal): `web-user-app/src/lib/api/generated/`, `web-admin-portal/src/lib/api/generated/`{% endif %}
+{% if "mobile-android" in platforms %}- **Kotlin** (Android): `mobile-android/app/src/main/kotlin/.../data/remote/generated/`{% endif %}
+{% if "mobile-ios" in platforms %}- **Swift** (iOS): `mobile-ios/{{ project_slug }}/Data/Network/Generated/`{% endif %}
 
 ## When to Run
 

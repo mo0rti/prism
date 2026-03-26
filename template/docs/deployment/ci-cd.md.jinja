@@ -9,10 +9,10 @@ All CI/CD runs on **GitHub Actions** with **path-based triggers** - each platfor
 | Workflow | Trigger Paths | What It Does |
 |----------|--------------|--------------|
 {% if "backend" in platforms %}| `backend.yml` | `backend/**`, `shared/**` | Gradle test + build, Docker push to Azure ACR, deploy to Container Apps |
-{% endif %}{% if "user-web-app" in platforms %}| `user-web-app.yml` | `user-web-app/**`, `shared/**` | npm lint + typecheck + build, deploy to Cloudflare via OpenNext |
-{% endif %}{% if "admin-web-portal" in platforms %}| `admin-web-portal.yml` | `admin-web-portal/**`, `shared/**` | npm lint + typecheck + build, deploy to Cloudflare via OpenNext |
-{% endif %}{% if "android" in platforms %}| `android.yml` | `android/**`, `shared/**` | Gradle test + assembleDebug, Fastlane deploy on tags |
-{% endif %}{% if "ios" in platforms %}| `ios.yml` | `ios/**`, `shared/**` | xcodebuild test (macOS runner), Fastlane deploy on tags |
+{% endif %}{% if "web-user-app" in platforms %}| `web-user-app.yml` | `web-user-app/**`, `shared/**` | npm lint + typecheck + build, deploy to Cloudflare via OpenNext |
+{% endif %}{% if "web-admin-portal" in platforms %}| `web-admin-portal.yml` | `web-admin-portal/**`, `shared/**` | npm lint + typecheck + build, deploy to Cloudflare via OpenNext |
+{% endif %}{% if "mobile-android" in platforms %}| `mobile-android.yml` | `mobile-android/**`, `shared/**` | Gradle test + assembleDebug, Fastlane deploy on tags |
+{% endif %}{% if "mobile-ios" in platforms %}| `mobile-ios.yml` | `mobile-ios/**`, `shared/**` | xcodebuild test (macOS runner), Fastlane deploy on tags |
 {% endif %}| `api-contracts.yml` | `shared/api-contracts/**` | Validate OpenAPI spec |
 
 ## Required GitHub Secrets
@@ -25,7 +25,7 @@ All CI/CD runs on **GitHub Actions** with **path-based triggers** - each platfor
 | `AZURE_CONTAINER_APP_NAME` | Container App name |
 | `AZURE_RESOURCE_GROUP` | Resource group |
 
-{% if "user-web-app" in platforms or "admin-web-portal" in platforms %}
+{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}
 ### Cloudflare
 | Secret | Description |
 |--------|-------------|
@@ -33,7 +33,7 @@ All CI/CD runs on **GitHub Actions** with **path-based triggers** - each platfor
 | `CLOUDFLARE_API_TOKEN` | API token |
 {% endif %}
 
-{% if "android" in platforms %}
+{% if "mobile-android" in platforms %}
 ### Android
 | Secret | Description |
 |--------|-------------|
@@ -44,7 +44,7 @@ All CI/CD runs on **GitHub Actions** with **path-based triggers** - each platfor
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Play Console service account |
 {% endif %}
 
-{% if "ios" in platforms %}
+{% if "mobile-ios" in platforms %}
 ### iOS
 | Secret | Description |
 |--------|-------------|

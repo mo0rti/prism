@@ -7,20 +7,20 @@
 This is a multi-platform monorepo containing:
 
 {% if "backend" in platforms %}- **backend/** - Spring Boot 4 (Kotlin) REST API -> Azure Container Apps
-{% endif %}{% if "user-web-app" in platforms %}- **user-web-app/** - Next.js user-facing web app (TypeScript) -> Cloudflare via OpenNext
-{% endif %}{% if "admin-web-portal" in platforms %}- **admin-web-portal/** - Next.js admin web portal (TypeScript) -> Cloudflare via OpenNext
-{% endif %}{% if "android" in platforms %}- **android/** - Android app (Kotlin/Jetpack Compose, MVVM)
-{% endif %}{% if "ios" in platforms %}- **ios/** - iOS app (Swift/SwiftUI, MVVM)
+{% endif %}{% if "web-user-app" in platforms %}- **web-user-app/** - Next.js user-facing web app (TypeScript) -> Cloudflare via OpenNext
+{% endif %}{% if "web-admin-portal" in platforms %}- **web-admin-portal/** - Next.js admin web portal (TypeScript) -> Cloudflare via OpenNext
+{% endif %}{% if "mobile-android" in platforms %}- **mobile-android/** - Android app (Kotlin/Jetpack Compose, MVVM)
+{% endif %}{% if "mobile-ios" in platforms %}- **mobile-ios/** - iOS app (Swift/SwiftUI, MVVM)
 {% endif %}
 ## Quick Start
 
 ```bash
 # 1. Set up environment
 {% if "backend" in platforms %}cp .env.example .env
-{% endif %}{% if "user-web-app" in platforms %}cp user-web-app/.env.example user-web-app/.env.local
-{% endif %}{% if "admin-web-portal" in platforms %}cp admin-web-portal/.env.example admin-web-portal/.env.local
+{% endif %}{% if "web-user-app" in platforms %}cp web-user-app/.env.example web-user-app/.env.local
+{% endif %}{% if "web-admin-portal" in platforms %}cp web-admin-portal/.env.example web-admin-portal/.env.local
 {% endif %}
-# Edit the copied env files with your {% if "backend" in platforms %}backend{% if "user-web-app" in platforms or "admin-web-portal" in platforms %} and {% endif %}{% endif %}{% if "user-web-app" in platforms or "admin-web-portal" in platforms %}web app{% endif %} credentials
+# Edit the copied env files with your {% if "backend" in platforms %}backend{% if "web-user-app" in platforms or "web-admin-portal" in platforms %} and {% endif %}{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}web app{% endif %} credentials
 
 # 2. Generate API clients from OpenAPI spec
 task generate-clients
@@ -30,12 +30,12 @@ docker compose up -d
 {% endif %}{% if "backend" in platforms %}
 # 4. Start backend
 task backend:run
-{% endif %}{% if "user-web-app" in platforms %}
+{% endif %}{% if "web-user-app" in platforms %}
 # 5. Start the user web app
-task user-web-app:dev
-{% endif %}{% if "admin-web-portal" in platforms %}
+task web-user-app:dev
+{% endif %}{% if "web-admin-portal" in platforms %}
 # 6. Start the admin web portal
-task admin-web-portal:dev
+task web-admin-portal:dev
 {% endif %}
 ```
 
@@ -46,11 +46,11 @@ task admin-web-portal:dev
 {% if "backend" in platforms %}- [Backend Guide](backend/docs/guide.md)
 - [Backend Entities](backend/docs/entities/)
 - [Azure Deployment](backend/docs/azure-setup.md)
-{% endif %}{% if "user-web-app" in platforms %}- [User Web App Guide](user-web-app/docs/guide.md)
-{% endif %}{% if "admin-web-portal" in platforms %}- [Admin Web Portal Guide](admin-web-portal/docs/guide.md)
-{% endif %}{% if "android" in platforms %}- [Android Guide](android/docs/guide.md)
-{% endif %}{% if "ios" in platforms %}- [iOS Guide](ios/docs/guide.md)
-{% endif %}{% if "user-web-app" in platforms or "admin-web-portal" in platforms %}- [Cloudflare Deployment](docs/deployment/cloudflare-setup.md)
+{% endif %}{% if "web-user-app" in platforms %}- [User Web App Guide](web-user-app/docs/guide.md)
+{% endif %}{% if "web-admin-portal" in platforms %}- [Admin Web Portal Guide](web-admin-portal/docs/guide.md)
+{% endif %}{% if "mobile-android" in platforms %}- [Android Guide](mobile-android/docs/guide.md)
+{% endif %}{% if "mobile-ios" in platforms %}- [iOS Guide](mobile-ios/docs/guide.md)
+{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}- [Cloudflare Deployment](docs/deployment/cloudflare-setup.md)
 {% endif %}- [CI/CD](docs/deployment/ci-cd.md)
 
 ## Common Tasks
@@ -58,10 +58,10 @@ task admin-web-portal:dev
 | Action | Command |
 |--------|---------|
 | Generate API clients | `task generate-clients` |
-{% if "user-web-app" in platforms %}| Install user web app deps | `task user-web-app:install` |
-{% endif %}{% if "admin-web-portal" in platforms %}| Install admin web portal deps | `task admin-web-portal:install` |
+{% if "web-user-app" in platforms %}| Install user web app deps | `task web-user-app:install` |
+{% endif %}{% if "web-admin-portal" in platforms %}| Install admin web portal deps | `task web-admin-portal:install` |
 {% endif %}{% if "backend" in platforms %}| Start backend | `task backend:run` |
-{% endif %}{% if "user-web-app" in platforms %}| Start user web app | `task user-web-app:dev` |
-{% endif %}{% if "admin-web-portal" in platforms %}| Start admin web portal | `task admin-web-portal:dev` |
+{% endif %}{% if "web-user-app" in platforms %}| Start user web app | `task web-user-app:dev` |
+{% endif %}{% if "web-admin-portal" in platforms %}| Start admin web portal | `task web-admin-portal:dev` |
 {% endif %}| Run all tests | `task test` |
 | Lint all platforms | `task lint` |

@@ -21,7 +21,7 @@ This is a template repository review, so the bar is higher than for a normal app
 As of 2026-03-26, the intended product direction is:
 
 - keep future-facing options visible in the Copier questionnaire
-- keep `web` and `admin` present as roadmap-facing platform options
+- keep `web-user-app` and `web-admin-portal` present as platform options
 - keep Apple Sign-In present as an auth option
 - keep `database`, backend deployment/cloud provider, and web deployment/hosting as explicit user inputs even if only one concrete option is currently available
 - avoid language such as "hardcoded" when the real state is "currently available choice"
@@ -97,25 +97,25 @@ These were used to confirm whether the template promises match what `copier copy
   - `README.md`
   - `copier.yml`
   - `template/Taskfile.yml.jinja`
-  - `template/.github/workflows/web.yml.jinja`
-  - `template/.github/workflows/admin.yml.jinja`
+  - `template/.github/workflows/web-user-app.yml.jinja`
+  - `template/.github/workflows/web-admin-portal.yml.jinja`
 - Problem:
-  - Keeping `web` and `admin` visible as roadmap-facing options is acceptable.
+  - Keeping `web-user-app` and `web-admin-portal` visible as platform options is acceptable.
   - What is not acceptable is offering them without a coherent output model.
   - The questionnaire can expose those options, but selected output must not reference missing directories or act as if the implementation already exists.
   - Today the repo still mixes roadmap visibility with active wiring.
 - Evidence:
-  - `README.md` presents web and admin as real deliverables without clearly describing their maturity.
-  - `copier.yml` includes `web` and `admin` in `platforms` choices and defaults.
-  - `template/Taskfile.yml.jinja` includes `web` and `admin` taskfiles.
-  - `template/.github/workflows/web.yml.jinja` and `admin.yml.jinja` assume real projects exist.
-  - A default `copier copy` run generated a root `Taskfile.yml` with `web` and `admin` includes, but the generated project had no `web/` or `admin/` directories at all.
+  - `README.md` presented the user web app and admin web portal as real deliverables without clearly describing their maturity.
+  - `copier.yml` includes `web-user-app` and `web-admin-portal` in `platforms` choices and defaults.
+  - `template/Taskfile.yml.jinja` includes `web-user-app` and `web-admin-portal` taskfiles.
+  - `template/.github/workflows/web-user-app.yml.jinja` and `web-admin-portal.yml.jinja` assume real projects exist.
+  - Earlier review runs found root task wiring for the web-facing slices before the concrete template directories existed.
 - Why it matters:
   - The problem is not "unfinished work exists".
   - The problem is "unfinished work is selectable without a coherent generated result".
   - That makes the template feel larger than it really is and breaks trust immediately.
 - Recommended fix:
-  - Keep `web` and `admin` visible in the questionnaire if they are part of the product roadmap.
+  - Keep `web-user-app` and `web-admin-portal` visible in the questionnaire if they are part of the product roadmap.
   - But ensure the generated output does one of the following consistently:
     - creates explicit placeholder slices
     - or omits operational wiring while labeling those platforms as planned
@@ -127,10 +127,10 @@ These were used to confirm whether the template promises match what `copier copy
 - Area: iOS / Build Correctness / DX
 - Location:
   - `copier.yml`
-  - `template/ios/project.yml.jinja`
-  - `template/ios/{{project_slug}}/App.swift.jinja`
-  - `template/ios/{{project_slug}}Tests/LoginViewModelTests.swift.jinja`
-  - `template/ios/Taskfile.yml`
+  - `template/mobile-ios/project.yml.jinja`
+  - `template/mobile-ios/{{project_slug}}/App.swift.jinja`
+  - `template/mobile-ios/{{project_slug}}Tests/LoginViewModelTests.swift.jinja`
+  - `template/mobile-ios/Taskfile.yml`
 - Problem:
   - The default slug format uses hyphens.
   - The iOS template uses `project_slug` directly for Swift module names, target names, test imports, and type names.
@@ -138,13 +138,13 @@ These were used to confirm whether the template promises match what `copier copy
   - The generated iOS Taskfile also still contains unresolved inner template placeholders after generation.
 - Evidence:
   - `copier.yml` default slug format derives kebab-case names.
-  - `template/ios/project.yml.jinja` uses `{{ project_slug }}` as the target and scheme.
-  - `template/ios/{{project_slug}}/App.swift.jinja` defines `struct {{ project_slug | capitalize }}App`.
-  - `template/ios/{{project_slug}}Tests/LoginViewModelTests.swift.jinja` uses `@testable import {{ project_slug }}`.
+  - `template/mobile-ios/project.yml.jinja` uses `{{ project_slug }}` as the target and scheme.
+  - `template/mobile-ios/{{project_slug}}/App.swift.jinja` defines `struct {{ project_slug | capitalize }}App`.
+  - `template/mobile-ios/{{project_slug}}Tests/LoginViewModelTests.swift.jinja` uses `@testable import {{ project_slug }}`.
   - In a generated sample with project name `Review App`, the output included:
     - `struct Review-appApp: App`
     - `@testable import review-app`
-  - The generated `ios/Taskfile.yml` still contained:
+  - The generated `mobile-ios/Taskfile.yml` still contained:
     - `{{project_name}}`
     - `{{project_slug}}`
 - Why it matters:
@@ -153,7 +153,7 @@ These were used to confirm whether the template promises match what `copier copy
 - Recommended fix:
   - Introduce a separate sanitized Swift/Xcode identifier, e.g. `ios_module_name`.
   - Never use the public slug directly as a Swift module or type identifier.
-  - Fix the nested templating in `template/ios/Taskfile.yml`.
+  - Fix the nested templating in `template/mobile-ios/Taskfile.yml`.
   - Add generation tests using project names with spaces and hyphens.
 
 ### Finding 3
@@ -284,7 +284,7 @@ These were used to confirm whether the template promises match what `copier copy
     - `docs/web-guide.md`
     - `docs/deployment/cloudflare-setup.md`
     - `_templates/page/new/prompt.js`
-    - `AGENTS.md` instructions telling contributors to implement backend -> web -> admin -> Android -> iOS
+    - `AGENTS.md` instructions telling contributors to implement backend -> web-user-app -> web-admin-portal -> Android -> iOS
 - Why it matters:
   - Generated repos become noisy and misleading.
   - The repo does not yet distinguish:
@@ -387,7 +387,7 @@ This means the repo is scaling its complexity faster than its reliability.
 
 ### Documentation that overstates reality
 
-- Web/admin/platform roadmap intent is not clearly separated from implemented support.
+- User-web-app/web-admin-portal/platform roadmap intent is not clearly separated from implemented support.
 - Generated root docs and AI context can still imply those platforms are ready to work on immediately.
 - Some docs describe choices as fixed implementation facts rather than current available options.
 
@@ -512,7 +512,7 @@ That means:
 
 ### 3. Make planned and partial paths coherent
 
-- if `web` or `admin` is selectable, generated output must not point to missing directories
+- if `web-user-app` or `web-admin-portal` is selectable, generated output must not point to missing directories
 - if Apple is selectable, its current maturity must be explicit
 - generated docs and AI context must reflect the same model
 
@@ -559,8 +559,8 @@ Until that contract is made explicit and tested automatically, this template is 
 - `README.md` presents all five platforms as supported.
 - `copier.yml` defaults to all five platforms.
 - `template/Taskfile.yml.jinja` wires all five into root tasks.
-- There is no `template/web/`.
-- There is no `template/admin/`.
+- At the time of the original review, there was no concrete `template/web-user-app/` slice yet.
+- At the time of the original review, there was no concrete `template/web-admin-portal/` slice yet.
 
 This is not evidence that roadmap options must be removed.
 It is evidence that selectable roadmap options currently lack a coherent output model.
@@ -581,15 +581,15 @@ It is evidence that selectable roadmap options currently lack a coherent output 
   - scheme name
   - Swift import/module name
   - Swift app type name
-- unresolved nested template placeholders remain in generated `ios/Taskfile.yml`
+- unresolved nested template placeholders remain in generated `mobile-ios/Taskfile.yml`
 
 ### D. Reduced-platform generation leakage
 
 Backend-only generation still included:
 
-- web guide
+- user web app guide
 - Cloudflare deployment doc
-- page generator targeting web/admin
+- page generator targeting web-user-app/web-admin-portal
 - AI instructions referencing implementation across all platforms
 
 ### E. Verification observations

@@ -18,7 +18,7 @@ paths:
 
 - Entity docs (database models, migrations) belong in `template/backend/docs/entities/` — they describe database implementation details.
 - Deployment docs (Azure setup, infra) belong in `template/backend/docs/` — tied to backend infrastructure.
-- Platform guides live inside their platform: `template/android/docs/guide.md.jinja`, not `template/docs/`.
+- Platform guides live inside their platform: `template/mobile-android/docs/guide.md.jinja`, not `template/docs/`.
 - Feature docs stay in `template/docs/features/` — features span multiple platforms.
 - When adding docs for a new platform, create `template/{platform}/docs/` with at least a `guide.md.jinja`.
 

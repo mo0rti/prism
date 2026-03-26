@@ -1,5 +1,5 @@
 ---
-to: "<%= entity ? 'android/app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/feature/' + h.changeCase.camel(name) + '/ui/' + h.changeCase.pascal(entity) + 'ListViewModel.kt' : null %>"
+to: "<%= entity ? 'mobile-android/app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/feature/' + h.changeCase.camel(name) + '/ui/' + h.changeCase.pascal(entity) + 'ListViewModel.kt' : null %>"
 ---
 package {{ package_identifier }}.feature.<%= h.changeCase.camel(name) %>.ui
 

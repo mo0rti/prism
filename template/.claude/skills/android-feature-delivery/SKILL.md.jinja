@@ -22,7 +22,7 @@ $ARGUMENTS
 ## 1. Research the current shape
 
 - Inspect the surrounding feature under `feature/`, plus shared code in `designsystem/`, `core/`, and `navigation/`.
-- Read only the docs needed for the task, starting with `android/docs/conventions-and-workflow.md` and `android/docs/architecture.md`.
+- Read only the docs needed for the task, starting with `mobile-android/docs/conventions-and-workflow.md` and `mobile-android/docs/architecture.md`.
 - Reuse nearby patterns before inventing a new one.
 
 ## 2. Verify external contracts
@@ -41,7 +41,7 @@ Cover only the layers the feature truly needs:
 - Compose screens and shared components
 - Navigation routes and callbacks
 - Resources such as strings, icons, or drawables
-- Documentation updates in `android/docs/`
+- Documentation updates in `mobile-android/docs/`
 
 ## 4. Load the right companion skills
 
@@ -54,7 +54,7 @@ Cover only the layers the feature truly needs:
 
 - Implement only the layers the feature actually touches.
 - Run at least `./gradlew compileDebugKotlin` (or `gradlew.bat` on Windows), plus stronger targeted verification when the change crosses logic, packaging, or integration boundaries.
-- Update any affected docs in `android/docs/` in the same session.
+- Update any affected docs in `mobile-android/docs/` in the same session.
 
 ## Companion skills
 

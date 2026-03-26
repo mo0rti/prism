@@ -11,25 +11,25 @@ includes:
     taskfile: ./backend/Taskfile.yml
     dir: ./backend
 {% endif %}
-{% if "user-web-app" in platforms %}
-  user-web-app:
-    taskfile: ./user-web-app/Taskfile.yml
-    dir: ./user-web-app
+{% if "web-user-app" in platforms %}
+  web-user-app:
+    taskfile: ./web-user-app/Taskfile.yml
+    dir: ./web-user-app
 {% endif %}
-{% if "admin-web-portal" in platforms %}
-  admin-web-portal:
-    taskfile: ./admin-web-portal/Taskfile.yml
-    dir: ./admin-web-portal
+{% if "web-admin-portal" in platforms %}
+  web-admin-portal:
+    taskfile: ./web-admin-portal/Taskfile.yml
+    dir: ./web-admin-portal
 {% endif %}
-{% if "android" in platforms %}
-  android:
-    taskfile: ./android/Taskfile.yml
-    dir: ./android
+{% if "mobile-android" in platforms %}
+  mobile-android:
+    taskfile: ./mobile-android/Taskfile.yml
+    dir: ./mobile-android
 {% endif %}
-{% if "ios" in platforms %}
-  ios:
-    taskfile: ./ios/Taskfile.yml
-    dir: ./ios
+{% if "mobile-ios" in platforms %}
+  mobile-ios:
+    taskfile: ./mobile-ios/Taskfile.yml
+    dir: ./mobile-ios
 {% endif %}
 
 tasks:
@@ -43,14 +43,14 @@ tasks:
 {% if "backend" in platforms %}
       - task: generate-client-backend
 {% endif %}
-{% if "user-web-app" in platforms or "admin-web-portal" in platforms %}
+{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}
       - task: generate-client-typescript
 {% endif %}
-{% if "android" in platforms %}
-      - task: generate-client-android
+{% if "mobile-android" in platforms %}
+      - task: generate-client-mobile-android
 {% endif %}
-{% if "ios" in platforms %}
-      - task: generate-client-ios
+{% if "mobile-ios" in platforms %}
+      - task: generate-client-mobile-ios
 {% endif %}
     sources:
       - "{{'{{'}} .OPENAPI_SPEC {{'}}'}}"
@@ -69,7 +69,7 @@ tasks:
         --package-name="{{ package_identifier }}.api"
 {% endif %}
 
-{% if "user-web-app" in platforms or "admin-web-portal" in platforms %}
+{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}
   generate-client-typescript:
     desc: "Generate TypeScript Axios client from OpenAPI"
     internal: true
@@ -82,8 +82,8 @@ tasks:
         --additional-properties=supportsES6=true,withSeparateModelsAndApi=true
 {% endif %}
 
-{% if "android" in platforms %}
-  generate-client-android:
+{% if "mobile-android" in platforms %}
+  generate-client-mobile-android:
     desc: "Generate Kotlin Retrofit client from OpenAPI"
     internal: true
     cmds:
@@ -91,13 +91,13 @@ tasks:
         {{'{{'}} .OPENAPI_GENERATOR {{'}}'}} generate
         -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
         -g kotlin
-        -o ./android/app/src/main/java/generated
+        -o ./mobile-android/app/src/main/java/generated
         --additional-properties=library=jvm-retrofit2,serializationLibrary=kotlinx_serialization
         --package-name="{{ package_identifier }}.api"
 {% endif %}
 
-{% if "ios" in platforms %}
-  generate-client-ios:
+{% if "mobile-ios" in platforms %}
+  generate-client-mobile-ios:
     desc: "Generate Swift URLSession client from OpenAPI"
     internal: true
     cmds:
@@ -105,7 +105,7 @@ tasks:
         {{'{{'}} .OPENAPI_GENERATOR {{'}}'}} generate
         -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
         -g swift6
-        -o ./ios/Generated/APIClient
+        -o ./mobile-ios/Generated/APIClient
         --additional-properties=library=urlsession,projectName={{ project_slug | replace('-','') }}API
 {% endif %}
 
@@ -118,14 +118,14 @@ tasks:
 {% if "backend" in platforms %}
       - task: backend:lint
 {% endif %}
-{% if "user-web-app" in platforms %}
-      - task: user-web-app:lint
+{% if "web-user-app" in platforms %}
+      - task: web-user-app:lint
 {% endif %}
-{% if "admin-web-portal" in platforms %}
-      - task: admin-web-portal:lint
+{% if "web-admin-portal" in platforms %}
+      - task: web-admin-portal:lint
 {% endif %}
-{% if "android" in platforms %}
-      - task: android:lint
+{% if "mobile-android" in platforms %}
+      - task: mobile-android:lint
 {% endif %}
 
   test:
@@ -134,14 +134,14 @@ tasks:
 {% if "backend" in platforms %}
       - task: backend:test
 {% endif %}
-{% if "user-web-app" in platforms %}
-      - task: user-web-app:test
+{% if "web-user-app" in platforms %}
+      - task: web-user-app:test
 {% endif %}
-{% if "admin-web-portal" in platforms %}
-      - task: admin-web-portal:test
+{% if "web-admin-portal" in platforms %}
+      - task: web-admin-portal:test
 {% endif %}
-{% if "android" in platforms %}
-      - task: android:test
+{% if "mobile-android" in platforms %}
+      - task: mobile-android:test
 {% endif %}
 
   # ===========================================================================

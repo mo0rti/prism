@@ -5,7 +5,7 @@ module.exports = {
         type: 'list',
         name: 'platform',
         message: 'Platform',
-        choices: ['android', 'ios'],
+        choices: ['mobile-android', 'mobile-ios'],
       },
       {
         type: 'input',
