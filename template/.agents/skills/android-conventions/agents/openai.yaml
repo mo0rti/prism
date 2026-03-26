@@ -1,0 +1,6 @@
+interface:
+  display_name: "Android Conventions"
+  short_description: "Apply Android MVVM and repository guardrails"
+  default_prompt: "Use $android-conventions when updating Android code in this project."
+policy:
+  allow_implicit_invocation: true

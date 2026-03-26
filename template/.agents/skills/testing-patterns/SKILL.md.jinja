@@ -1,0 +1,40 @@
+---
+name: testing-patterns
+description: Backend testing conventions for JUnit and MockK. Use when writing or reviewing backend unit tests, service tests, integration tests, or deciding how a backend change should be verified under `backend/`.
+---
+
+# Testing Patterns
+
+Use this skill for backend test structure and verification choices.
+
+## Test Layout
+
+Keep tests mirroring the main source structure under `src/test/kotlin/`.
+
+## Unit Test Rules
+
+- Use MockK rather than Mockito.
+- Prefer constructor injection of mocks over Spring-based unit-test setup.
+- Use backtick test names for readable scenarios.
+- Group related scenarios with `@Nested` and `@DisplayName` when it improves clarity.
+- Clean up MockK state between tests when required.
+
+## Integration Test Rules
+
+- Use `@SpringBootTest` only when the test genuinely needs a Spring context.
+- Use the test profile for integration scenarios.
+- Prefer narrower test slices over full-context tests when possible.
+
+## What to Test
+
+- Service logic, validation, and exception paths with unit tests.
+- Repository custom queries with integration tests.
+- Controller mapping and response behavior with MVC-slice or integration tests.
+- Domain logic without mocks when possible.
+
+## Avoid
+
+- Mockito in Kotlin-first backend tests
+- `@SpringBootTest` for pure unit tests
+- `@MockBean` when plain constructor-injected mocks are enough
+- tests that target private methods instead of public behavior

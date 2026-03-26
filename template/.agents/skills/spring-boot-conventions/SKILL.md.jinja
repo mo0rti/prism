@@ -1,0 +1,57 @@
+---
+name: spring-boot-conventions
+description: Spring Boot 4 and Kotlin conventions for this backend. Use when writing or reviewing controllers, services, DTOs, or module structure under `backend/`. For entities or security, defer to the more specialized project docs and neighboring patterns.
+---
+
+# Spring Boot Conventions
+
+Use this skill for repository-wide backend structure and layer rules.
+
+## Module Structure
+
+Each domain module lives under `modules/<domain>/` with subpackages such as:
+
+```text
+modules/<domain>/
+  controller/
+  dto/
+  model/
+  repository/
+  service/
+```
+
+Not every module needs every subpackage, but keep dependencies one-way:
+
+- `controller` depends on `service`
+- `service` depends on `model` and `repository`
+- `model` stays free of web and DTO dependencies
+- controllers never call repositories directly
+
+## Controller Rules
+
+- Keep endpoints under `/api/v1/`.
+- Return `ResponseEntity<T>` from controller methods.
+- Add `@Operation(summary = ...)` on each endpoint.
+- Add `@Tag(name = ...)` at the class level for grouping.
+- Use `UUID` path variables for entity identifiers.
+
+## Service Rules
+
+- Use `@Transactional` on writes and `@Transactional(readOnly = true)` on reads.
+- Convert between entities and DTOs in the service or a dedicated mapper, never in controllers.
+- Throw domain-specific exceptions and let the global exception layer map them to HTTP responses.
+- Avoid self-invocation of transactional methods in the same class.
+
+## DTO Rules
+
+- Keep DTOs in `dto/`.
+- Never serialize entities directly to JSON.
+- Use separate request and response DTOs when shapes differ.
+- Prefer summary DTOs for list views and fuller DTOs for detail views.
+
+## Forbidden Patterns
+
+- `entity -> DTO` imports
+- `controller -> repository` imports
+- `runBlocking` in MVC controllers
+- Jackson annotations on JPA entities
