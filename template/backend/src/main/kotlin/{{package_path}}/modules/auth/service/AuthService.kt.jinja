@@ -22,10 +22,12 @@ class AuthService(
 {% endif %}
 ) {
 
+{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
     fun oauthCallback(request: OAuthCallbackRequest): AuthResponse {
         val user = oAuth2UserService.processOAuthCallback(request.provider, request.code, request.redirectUri)
         return createAuthResponse(user)
     }
+{% endif %}
 
 {% if "password" in auth_methods %}
     fun register(request: RegisterRequest): AuthResponse {

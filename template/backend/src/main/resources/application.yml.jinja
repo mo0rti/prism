@@ -3,13 +3,8 @@ spring:
     name: {{ project_slug }}-backend
 
   datasource:
-{% if database == "postgresql" %}
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/{{ project_slug }}}
     driver-class-name: org.postgresql.Driver
-{% elif database == "mysql" %}
-    url: ${DATABASE_URL:jdbc:mysql://localhost:3306/{{ project_slug }}}
-    driver-class-name: com.mysql.cj.jdbc.Driver
-{% endif %}
     username: ${DATABASE_USERNAME:{{ project_slug }}}
     password: ${DATABASE_PASSWORD:{{ project_slug }}}
 
@@ -17,11 +12,7 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
-{% if database == "postgresql" %}
     database-platform: org.hibernate.dialect.PostgreSQLDialect
-{% elif database == "mysql" %}
-    database-platform: org.hibernate.dialect.MySQLDialect
-{% endif %}
 
   flyway:
     enabled: true

@@ -9,6 +9,11 @@ _exclude:
   - "{% if 'backend' not in platforms %}backend{% endif %}"
   - "{% if 'backend' not in platforms %}infra{% endif %}"
   - "{% if not use_docker %}docker-compose.yml{% endif %}"
+  - ".github/workflows/web.yml"
+  - ".github/workflows/admin.yml"
+  - "docs/web-guide.md"
+  - "docs/deployment/cloudflare-setup.md"
+  - "_templates/page"
 
 # =============================================================================
 # Project Identity
@@ -38,6 +43,12 @@ package_path:
   type: str
   help: "Package path derived from package identifier (used for directory names)"
   default: "{{ package_identifier | replace('.', '/') }}"
+  when: false
+
+ios_module_name:
+  type: str
+  help: "Valid Swift/Xcode module name derived from the project slug"
+  default: "{{ project_slug | replace('-', ' ') | replace('_', ' ') | title | replace(' ', '') }}"
   when: false
 
 # =============================================================================
@@ -78,11 +89,9 @@ auth_methods:
 
 database:
   type: str
-  help: "Database for backend"
+  help: "Which database do you want to use?"
   choices:
-    PostgreSQL: postgres
-    MySQL: mysql
-  when: "{{ 'backend' in platforms }}"
+    PostgreSQL (Currently available): postgres
   default: postgres
 
 use_docker:
@@ -91,20 +100,22 @@ use_docker:
   default: true
 
 # =============================================================================
-# Hosting & Cloud (hardcoded — Azure for backend, Cloudflare for web)
+# Deployment & Hosting
 # =============================================================================
 
 cloud_provider:
   type: str
-  help: "Cloud provider for backend and services"
+  help: "Where should backend services be deployed?"
+  choices:
+    Azure (Currently available): azure
   default: azure
-  when: false
 
 web_hosting:
   type: str
-  help: "Hosting provider for web applications"
+  help: "Where should web applications be deployed?"
+  choices:
+    Cloudflare Pages (Currently available): cloudflare
   default: cloudflare
-  when: false
 
 # =============================================================================
 # Repository

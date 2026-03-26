@@ -38,17 +38,9 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
 
     // Database
-{% if database == "postgresql" %}
     runtimeOnly("org.postgresql:postgresql")
-{% elif database == "mysql" %}
-    runtimeOnly("com.mysql:mysql-connector-j")
-{% endif %}
     implementation("org.flywaydb:flyway-core")
-{% if database == "postgresql" %}
     implementation("org.flywaydb:flyway-database-postgresql")
-{% elif database == "mysql" %}
-    implementation("org.flywaydb:flyway-mysql")
-{% endif %}
 
     // API Documentation
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.4")

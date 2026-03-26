@@ -3,7 +3,8 @@
     "allow": [
       "Bash(while read:*)",
       "Bash(do sed:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "WebFetch(domain:developers.openai.com)"
     ]
   }
 }
