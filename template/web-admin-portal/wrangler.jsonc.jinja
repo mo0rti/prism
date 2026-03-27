@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "{{ project_slug }}-web-admin-portal",
   "main": ".open-next/worker.js",
-  "compatibility_date": "2025-12-11",
+  "compatibility_date": "2026-03-26",
   "compatibility_flags": [
     "nodejs_compat",
     "global_fetch_strictly_public"
@@ -11,8 +11,19 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "observability": {
+    "enabled": true
+  },
+  "upload_source_maps": true,
+  // Uncomment if the Worker spends most of its time talking to one backend region.
+  // "placement": {
+  //   "mode": "smart"
+  // },
+  // Use vars for non-sensitive runtime config. Put AUTH_SECRET in Cloudflare Worker
+  // secrets via `wrangler secret put AUTH_SECRET`.
   "vars": {
     "NODE_ENV": "production",
+    "API_BASE_URL": "https://api.{{ project_slug }}.com",
     "NEXT_PUBLIC_API_BASE_URL": "https://api.{{ project_slug }}.com",
     "AUTH_URL": "https://admin.{{ project_slug }}.com",
     "AUTH_TRUST_HOST": "true"

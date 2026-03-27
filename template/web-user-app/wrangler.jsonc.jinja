@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "{{ project_slug }}-web-user-app",
   "main": ".open-next/worker.js",
-  "compatibility_date": "2025-12-11",
+  "compatibility_date": "2026-03-26",
   "compatibility_flags": [
     "nodejs_compat",
     "global_fetch_strictly_public"
@@ -11,10 +11,26 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "observability": {
+    "enabled": true
+  },
+  "upload_source_maps": true,
+  // Uncomment if the Worker spends most of its time talking to one backend region.
+  // "placement": {
+  //   "mode": "smart"
+  // },
+  // Use vars for non-sensitive runtime config. Put secrets such as AUTH_SECRET and
+  // provider client secrets in Cloudflare Worker secrets via `wrangler secret put`.
   "vars": {
     "NODE_ENV": "production",
+    "API_BASE_URL": "https://api.{{ project_slug }}.com",
     "NEXT_PUBLIC_API_BASE_URL": "https://api.{{ project_slug }}.com",
     "AUTH_URL": "https://app.{{ project_slug }}.com",
-    "AUTH_TRUST_HOST": "true"
+    "AUTH_TRUST_HOST": "true"{% if "google" in auth_methods %},
+    "AUTH_GOOGLE_ID": "your-google-client-id"{% endif %}{% if "apple" in auth_methods %},
+    "AUTH_APPLE_ID": "your-apple-service-id"{% endif %}{% if "facebook" in auth_methods %},
+    "AUTH_FACEBOOK_ID": "your-facebook-app-id"{% endif %}{% if "microsoft" in auth_methods %},
+    "AUTH_MICROSOFT_ID": "your-microsoft-client-id",
+    "AUTH_MICROSOFT_TENANT_ID": "common"{% endif %}
   }
 }

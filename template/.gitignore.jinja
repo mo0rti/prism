@@ -20,6 +20,7 @@ Desktop.ini
 .env
 .env.local
 .env.*.local
+.dev.vars*
 
 {% if "backend" in platforms %}
 # =============================================================================
@@ -36,6 +37,7 @@ backend/src/generated/
 # =============================================================================
 web-user-app/node_modules/
 web-user-app/.next/
+web-user-app/.open-next/
 web-user-app/out/
 {% endif %}
 {% if "web-admin-portal" in platforms %}
@@ -44,6 +46,7 @@ web-user-app/out/
 # =============================================================================
 web-admin-portal/node_modules/
 web-admin-portal/.next/
+web-admin-portal/.open-next/
 web-admin-portal/out/
 {% endif %}
 {% if "mobile-android" in platforms %}

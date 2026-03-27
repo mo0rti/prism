@@ -11,8 +11,8 @@ alwaysApply: true
 Monorepo, MVVM on all platforms, API-first (OpenAPI -> typed clients).
 
 {% if "backend" in platforms %}- **Backend**: Spring Boot 4, Kotlin 2.2+, Java 21 - Azure Container Apps{% endif %}
-{% if "web-user-app" in platforms %}- **Web User App**: Next.js + TypeScript - Cloudflare Pages{% endif %}
-{% if "web-admin-portal" in platforms %}- **Web Admin Portal**: Next.js + TypeScript - Cloudflare Pages{% endif %}
+{% if "web-user-app" in platforms %}- **Web User App**: Next.js + TypeScript - Cloudflare Workers via OpenNext{% endif %}
+{% if "web-admin-portal" in platforms %}- **Web Admin Portal**: Next.js + TypeScript - Cloudflare Workers via OpenNext{% endif %}
 {% if "mobile-android" in platforms %}- **Android**: Kotlin + Jetpack Compose, Hilt, Retrofit 3, Room{% endif %}
 {% if "mobile-ios" in platforms %}- **iOS**: Swift 6 + SwiftUI, async/await, Keychain, SwiftData (Mac/Xcode only){% endif %}
 

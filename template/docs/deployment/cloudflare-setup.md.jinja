@@ -1,23 +1,116 @@
-# Cloudflare Deployment - {{ project_name }}
+# Cloudflare Workers Deployment - {{ project_name }}
 
-## Projects
+## Current Approach
+
+- Web apps deploy to **Cloudflare Workers** using **OpenNext**. This template does not target Cloudflare Pages.
+- `npm run dev` uses the normal Next.js development server.
+- `npm run preview` is the closest local production check because it runs the built app through Wrangler and `workerd`.
+- OpenNext's official guidance still recommends Linux, macOS, or WSL for the most reliable Cloudflare build and deploy experience.
+
+## Applications
 
 | Application | Worker Name | Hosting |
 |-------------|-------------|---------|
-{% if "web-user-app" in platforms %}| User Web App | `{{ project_slug }}-web-user-app` | Cloudflare via OpenNext |
-{% endif %}{% if "web-admin-portal" in platforms %}| Admin Web Portal | `{{ project_slug }}-web-admin-portal` | Cloudflare via OpenNext |
+{% if "web-user-app" in platforms %}| User Web App | `{{ project_slug }}-web-user-app` | Cloudflare Workers via OpenNext |
+{% endif %}{% if "web-admin-portal" in platforms %}| Admin Web Portal | `{{ project_slug }}-web-admin-portal` | Cloudflare Workers via OpenNext |
 {% endif %}
 
-## Initial Setup
+## 1. Configure Non-Secret Worker Variables
 
-### 1. Build and deploy the worker bundle
+Edit each app's `wrangler.jsonc` before the first deploy.
+
+{% if "web-user-app" in platforms %}
+### `web-user-app/wrangler.jsonc`
+
+Set these values to your deployed backend URL and public web URL:
+
+| Variable | Purpose |
+|----------|---------|
+| `API_BASE_URL` | Server-side calls from NextAuth and route handlers |
+| `NEXT_PUBLIC_API_BASE_URL` | Browser-visible API base URL |
+| `AUTH_URL` | Public URL of the deployed user web app |
+| `AUTH_TRUST_HOST` | Keep as `true` behind Cloudflare |
+{% if "google" in auth_methods %}| `AUTH_GOOGLE_ID` | Google OAuth client ID |
+{% endif %}{% if "apple" in auth_methods %}| `AUTH_APPLE_ID` | Apple service/client ID |
+{% endif %}{% if "facebook" in auth_methods %}| `AUTH_FACEBOOK_ID` | Facebook app ID |
+{% endif %}{% if "microsoft" in auth_methods %}| `AUTH_MICROSOFT_ID` | Microsoft client ID |
+| `AUTH_MICROSOFT_TENANT_ID` | Microsoft tenant ID, often `common` |
+{% endif %}
+{% endif %}
+
+{% if "web-admin-portal" in platforms %}
+### `web-admin-portal/wrangler.jsonc`
+
+Set these values to your deployed backend URL and public admin URL:
+
+| Variable | Purpose |
+|----------|---------|
+| `API_BASE_URL` | Server-side calls from NextAuth and route handlers |
+| `NEXT_PUBLIC_API_BASE_URL` | Browser-visible API base URL |
+| `AUTH_URL` | Public URL of the deployed admin portal |
+| `AUTH_TRUST_HOST` | Keep as `true` behind Cloudflare |
+{% endif %}
+
+## 2. Prepare Local Preview Variables
+
+For `npm run preview`, copy `.dev.vars.example` to `.dev.vars` inside each web app you want to preview.
+
+{% if "web-user-app" in platforms %}
+```bash
+cd web-user-app
+cp .dev.vars.example .dev.vars
+```
+{% endif %}
+
+{% if "web-admin-portal" in platforms %}
+```bash
+cd web-admin-portal
+cp .dev.vars.example .dev.vars
+```
+{% endif %}
+
+## 3. Create Cloudflare Secrets
+
+Create secrets once per Worker using Wrangler or the Cloudflare dashboard.
+
+{% if "web-user-app" in platforms %}
+### User Web App Secrets
+
+```bash
+cd web-user-app
+npx wrangler secret put AUTH_SECRET
+{% if "google" in auth_methods %}
+npx wrangler secret put AUTH_GOOGLE_SECRET
+{% endif %}
+{% if "apple" in auth_methods %}
+npx wrangler secret put AUTH_APPLE_SECRET
+{% endif %}
+{% if "facebook" in auth_methods %}
+npx wrangler secret put AUTH_FACEBOOK_SECRET
+{% endif %}
+{% if "microsoft" in auth_methods %}
+npx wrangler secret put AUTH_MICROSOFT_SECRET
+{% endif %}
+```
+{% endif %}
+
+{% if "web-admin-portal" in platforms %}
+### Admin Web Portal Secrets
+
+```bash
+cd web-admin-portal
+npx wrangler secret put AUTH_SECRET
+```
+{% endif %}
+
+## 4. Preview and Deploy
 
 {% if "web-user-app" in platforms %}
 ```bash
 cd web-user-app
 npm install
-npm run build:cloudflare
-npx wrangler deploy
+npm run preview
+npm run deploy
 ```
 {% endif %}
 
@@ -25,25 +118,20 @@ npx wrangler deploy
 ```bash
 cd web-admin-portal
 npm install
-npm run build:cloudflare
-npx wrangler deploy
+npm run preview
+npm run deploy
 ```
 {% endif %}
 
-### 2. Set Environment Variables
+## 5. Backend Interop
 
-In Cloudflare dashboard -> Workers & Pages -> your worker -> Settings -> Variables:
-
-| Variable | Value |
-|----------|-------|
-| `NEXT_PUBLIC_API_BASE_URL` | `https://api.{{ project_slug }}.com` |
-| `AUTH_SECRET` | Generated secret for NextAuth |
+If your backend is deployed to Azure from this template, set `CORS_ALLOWED_ORIGINS` there to match the public Cloudflare URLs for the web apps. Otherwise the browser apps can deploy successfully but fail CORS checks against the backend.
 
 ## CI/CD
 
 GitHub Actions deploys on push to `main`:
-- Builds the OpenNext Cloudflare bundle
-- Deploys the worker via Wrangler
+- Runs lint, typecheck, `next build`, OpenNext bundle generation, and `wrangler deploy --dry-run` on validation jobs
+- Runs `npm run deploy` on `main`
 
 ## Required GitHub Secrets
 
@@ -51,3 +139,9 @@ GitHub Actions deploys on push to `main`:
 |--------|-------------|
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
 | `CLOUDFLARE_API_TOKEN` | API token with Workers edit permissions |
+
+## References
+
+- Cloudflare Next.js on Workers guide: https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/
+- Cloudflare Wrangler configuration reference: https://developers.cloudflare.com/workers/wrangler/configuration/
+- OpenNext Cloudflare docs: https://opennext.js.org/cloudflare

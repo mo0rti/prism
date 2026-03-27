@@ -50,6 +50,8 @@ PLAN.md               # Architecture and intended direction
 - `platforms=[backend, web-user-app, web-admin-portal]`
 - default generation as a contract-sanity check, not as the main proof of usability
 
+`./scripts/validate-template.ps1` now also smoke-tests generated web slices through `npm install`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run build:cloudflare`, and `wrangler deploy --dry-run` when Node.js is available.
+
 ## Reference Commands
 
 ```bash

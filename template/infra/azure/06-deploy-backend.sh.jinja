@@ -94,7 +94,7 @@ az containerapp create \
 {% endif %}
         "AZURE_STORAGE_ACCOUNT_NAME=$AZURE_STORAGE_ACCOUNT_NAME" \
         "AZURE_STORAGE_ACCOUNT_KEY=secretref:azure-storage-key" \
-        "FRONTEND_URL=${FRONTEND_URL:-}" \
+        "CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}" \
         "APP_STAGE=$ENVIRONMENT"
 
 # Get backend URL

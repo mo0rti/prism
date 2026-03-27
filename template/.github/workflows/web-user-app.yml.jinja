@@ -23,7 +23,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
+          node-version: "22"
 
       - name: Install dependencies
         working-directory: web-user-app
@@ -41,6 +41,14 @@ jobs:
         working-directory: web-user-app
         run: npm run build
 
+      - name: Build Cloudflare bundle
+        working-directory: web-user-app
+        run: npm run build:cloudflare
+
+      - name: Smoke test Wrangler packaging
+        working-directory: web-user-app
+        run: npx wrangler deploy --dry-run
+
   deploy:
     name: Deploy to Cloudflare
     needs: lint-typecheck-build
@@ -53,19 +61,15 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
+          node-version: "22"
 
       - name: Install dependencies
         working-directory: web-user-app
         run: npm install
 
-      - name: Build Cloudflare bundle
-        working-directory: web-user-app
-        run: npm run build:cloudflare
-
       - name: Deploy worker
         working-directory: web-user-app
-        run: npx wrangler deploy
+        run: npm run deploy
         env:
           CLOUDFLARE_API_TOKEN: {% raw %}${{ secrets.CLOUDFLARE_API_TOKEN }}{% endraw %}
           CLOUDFLARE_ACCOUNT_ID: {% raw %}${{ secrets.CLOUDFLARE_ACCOUNT_ID }}{% endraw %}

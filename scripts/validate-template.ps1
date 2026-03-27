@@ -249,10 +249,66 @@ function Validate-WebSample {
     Assert-PathExists -Path (Join-Path $Root ".github\workflows\web-admin-portal.yml") -Message "Web sample should generate the admin web workflow."
     Assert-PathExists -Path (Join-Path $Root "docs\deployment\cloudflare-setup.md") -Message "Web sample should generate Cloudflare docs."
     Assert-PathExists -Path (Join-Path $Root "_templates\page") -Message "Web sample should include page generators."
+    Assert-PathExists -Path (Join-Path $Root "web-user-app\.dev.vars.example") -Message "Web sample should include a Cloudflare preview env example for the user web app."
+    Assert-PathExists -Path (Join-Path $Root "web-admin-portal\.dev.vars.example") -Message "Web sample should include a Cloudflare preview env example for the admin portal."
 
     Assert-FileContains -Path (Join-Path $Root "docs\features\auth.md") -Needle "### User Web App" -Message "Web sample auth doc should include user web guidance."
     Assert-FileContains -Path (Join-Path $Root "docs\features\auth.md") -Needle "### Admin Web Portal" -Message "Web sample auth doc should include admin web guidance."
     Assert-TreeNotContains -Root $Root -Needle "JWT_EXPIRATION_MS" -Message "Generated web sample should not contain stale JWT_EXPIRATION_MS wiring."
+    Assert-FileContains -Path (Join-Path $Root "web-user-app\wrangler.jsonc") -Needle '"observability": {' -Message "User web Wrangler config should enable observability."
+    Assert-FileContains -Path (Join-Path $Root "web-user-app\wrangler.jsonc") -Needle '"upload_source_maps": true' -Message "User web Wrangler config should upload source maps."
+    Assert-FileContains -Path (Join-Path $Root "web-user-app\wrangler.jsonc") -Needle '"API_BASE_URL": "https://api.review-web.com"' -Message "User web Wrangler config should include API_BASE_URL."
+    Assert-FileContains -Path (Join-Path $Root "web-admin-portal\wrangler.jsonc") -Needle '"observability": {' -Message "Admin web Wrangler config should enable observability."
+    Assert-FileContains -Path (Join-Path $Root "web-admin-portal\wrangler.jsonc") -Needle '"upload_source_maps": true' -Message "Admin web Wrangler config should upload source maps."
+    Assert-FileContains -Path (Join-Path $Root "web-admin-portal\wrangler.jsonc") -Needle '"API_BASE_URL": "https://api.review-web.com"' -Message "Admin web Wrangler config should include API_BASE_URL."
+    Assert-FileContains -Path (Join-Path $Root ".github\workflows\web-user-app.yml") -Needle 'run: npx wrangler deploy --dry-run' -Message "User web workflow should smoke-test Wrangler packaging."
+    Assert-FileContains -Path (Join-Path $Root ".github\workflows\web-admin-portal.yml") -Needle 'run: npx wrangler deploy --dry-run' -Message "Admin web workflow should smoke-test Wrangler packaging."
+    Assert-FileContains -Path (Join-Path $Root "docs\deployment\cloudflare-setup.md") -Needle 'Cloudflare Workers' -Message "Generated Cloudflare docs should describe Workers, not Pages."
+
+    $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
+    if ($null -ne $npmCommand) {
+        foreach ($webApp in @("web-user-app", "web-admin-portal")) {
+            Push-Location (Join-Path $Root $webApp)
+            try {
+                Write-Host "Running web smoke tests for $webApp..."
+                & npm install | Out-Host
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Generated $webApp sample failed 'npm install'."
+                }
+
+                & npm run lint | Out-Host
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Generated $webApp sample failed 'npm run lint'."
+                }
+
+                & npm run typecheck | Out-Host
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Generated $webApp sample failed 'npm run typecheck'."
+                }
+
+                & npm run build | Out-Host
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Generated $webApp sample failed 'npm run build'."
+                }
+
+                & npm run build:cloudflare | Out-Host
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Generated $webApp sample failed 'npm run build:cloudflare'."
+                }
+
+                & npx wrangler deploy --dry-run | Out-Host
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Generated $webApp sample failed 'wrangler deploy --dry-run'."
+                }
+            }
+            finally {
+                Pop-Location
+            }
+        }
+    }
+    else {
+        Write-Host "Skipping generated web smoke tests because npm is not available on PATH."
+    }
 }
 
 function Validate-AndroidSample {

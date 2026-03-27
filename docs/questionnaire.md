@@ -18,7 +18,7 @@ Copier will walk you through these inputs:
 
 ## Current Notes Per Input
 
-- `Platforms`: backend, Android, and iOS remain the more proven paths; `web-user-app` and `web-admin-portal` now generate initial setup, but they still need broader end-to-end validation.
+- `Platforms`: backend, Android, and iOS remain the more proven paths; `web-user-app` and `web-admin-portal` now generate initial setup and pass install/build/OpenNext/Wrangler dry-run checks, but they still need live Cloudflare deployment validation.
 - `Auth methods`: Google and password are the safer defaults. Apple remains selectable but still needs more hardening.
 - `Admin Web Portal`: currently requires `password` auth when selected.
 - `User Web App`: currently requires at least one auth method when selected.
