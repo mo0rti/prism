@@ -1,6 +1,6 @@
 # Repository Review
 
-Date: 2026-03-26
+Date: 2026-03-27
 
 ## Purpose
 
@@ -23,9 +23,9 @@ This pass included:
   - `platforms=[backend, web-user-app, web-admin-portal]`
   - `platforms=[backend, mobile-android]`
   - `platforms=[backend, mobile-ios]` with `project_name=Review App`
-- running `./scripts/validate-template.ps1`
+- running `./scripts/validate-template.ps1`, which now includes generated web install/lint/typecheck/build/OpenNext/Wrangler smoke tests when Node.js is available
 
-This pass focused on template correctness and structural coherence. It did not run full package installation or full platform builds for every slice.
+This pass focused on template correctness and validated generation/build coherence. It included generated web smoke tests, but it did not run a live Cloudflare deployment or local Mac/Xcode verification.
 
 ## Executive Verdict
 
@@ -45,7 +45,7 @@ The main material gap that still remains is Apple Sign-In runtime hardening:
 - it is no longer part of the default auth selection
 - the backend Apple client-secret path is still not production-ready
 
-Broader end-to-end build validation for web/admin and local Mac/Xcode validation for iOS are still recommended.
+Live Cloudflare deployment validation for web/admin and local Mac/Xcode validation for iOS are still recommended.
 
 ## Status Of Earlier Observations
 
@@ -118,6 +118,7 @@ The validation script checks at least:
 - backend + web-user-app + web-admin-portal generation
 - backend + mobile-android generation
 - backend + mobile-ios generation with a spaced project name
+- generated web install/lint/typecheck/build/OpenNext/Wrangler dry-run smoke tests when Node.js is available
 
 ## Current Findings
 
@@ -139,16 +140,16 @@ The validation script checks at least:
 ### Finding 2
 
 - Severity: Medium
-- Area: Validation depth beyond structure
+- Area: Live deployment validation beyond smoke tests
 - Files:
   - `scripts/validate-template.ps1`
   - `docs/current-status.md`
   - `docs/maintainer-workflow.md`
 - Problem:
-  - The repository now has a solid structural generation check, but this pass still did not run full npm/Gradle/Xcode build workflows for every validated slice.
-  - Web/admin and iOS especially still need broader execution-level validation to move from "good structural scaffold" toward "dependable starter."
+  - The repository now has stronger validation than it did before: generated web samples now run install, lint, typecheck, Next build, OpenNext build, and Wrangler dry-run successfully.
+  - The remaining gap is not basic web buildability anymore; it is live Cloudflare deployment verification and local Mac/Xcode verification.
 - Why it matters:
-  - Structural validation is a major improvement, but it is not the same as full runtime/build confidence.
+  - Smoke tests are a major improvement, but they are not the same as proving real hosted behavior with credentials, routes, and domains.
 
 ## Overall Assessment
 
@@ -158,6 +159,7 @@ The validation script checks at least:
 - the questionnaire surface and maturity framing at the repo-doc level
 - the existence of concrete backend, Android, iOS, web-user-app, and web-admin-portal template slices
 - backend generation through its documented wrapper-based path
+- generated web/admin buildability through documented install/build/OpenNext/Wrangler dry-run paths
 - iOS generation for common project names
 - reduced-platform scope hygiene in generated docs and AI context
 - the repo's new regression-prevention baseline
@@ -165,12 +167,12 @@ The validation script checks at least:
 ### What still needs caution
 
 - Apple auth as a selectable path
-- broader end-to-end validation for web/admin output
+- live Cloudflare deployment validation for web/admin output
 - local Mac/Xcode verification for generated iOS projects
 
 ## Recommended Next Moves
 
 1. Either harden Apple Sign-In properly in the backend runtime or gate it even more aggressively until that work is complete.
-2. Run focused end-to-end verification for generated web/admin repos and record the results in `docs/current-status.md`.
+2. Run live Cloudflare verification for generated web/admin repos and record the results in `docs/current-status.md`.
 3. Run local Mac/Xcode validation for the generated iOS sample and document the outcome.
 4. Keep expanding the validation script whenever a new template contract becomes important enough to enforce automatically.

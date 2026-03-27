@@ -1,6 +1,6 @@
 # Remediation Plan
 
-Date: 2026-03-26
+Date: 2026-03-27
 
 ## Purpose
 
@@ -19,9 +19,9 @@ It started as the execution plan for the issues confirmed in `REPOSITORY_REVIEW.
 | iOS-safe identifier model | Complete for structural generation | `ios_module_name` is wired through the iOS slice and validates with spaced project names. |
 | Config and Azure deployment alignment | Complete for the current contract | JWT expiry naming and provider variable wiring were aligned across env and Azure files. |
 | Reduced-platform docs and AI-context hygiene | Complete for the validated cases | Shared docs and generated AI context are more conditional and scope-aware. |
-| Automated template validation | Complete | `scripts/validate-template.ps1` and CI now enforce the main generation matrix. |
+| Automated template validation | Complete | `scripts/validate-template.ps1` and CI now enforce the main generation matrix, including generated web smoke tests. |
 | Apple auth coherence | Open | Apple remains experimental at the runtime level. |
-| Focused web/admin execution validation | Open | Structural generation is validated, but broader build/typecheck/runtime verification is still pending. |
+| Focused web/admin execution validation | Complete for current smoke-test scope | Generated web/admin repos now pass `npm install`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run build:cloudflare`, and `wrangler deploy --dry-run`, but live Cloudflare deployment still needs real-account validation. |
 | Local iOS execution validation | Open | Structural generation is validated, but Mac/Xcode build verification is still pending. |
 
 ## Completed In This Pass
@@ -67,6 +67,7 @@ Completed work:
 
 - added `scripts/validate-template.ps1`
 - added `.github/workflows/template-validation.yml`
+- extended validation so generated web samples now run install, lint, typecheck, Next build, OpenNext build, and Wrangler dry-run smoke tests when Node.js is available
 - validated:
   - `platforms=[backend]` with explicit Apple coverage
   - `platforms=[backend, web-user-app, web-admin-portal]`
@@ -98,27 +99,29 @@ Bring Apple Sign-In from "selectable but experimental" closer to a coherent impl
 - generated Apple auth behavior is coherent across runtime, env, and contract
 - maturity wording remains honest
 
-## Workstream B: Web/Admin Execution Validation
+## Workstream B: Web/Admin Live Cloudflare Validation
 
 ### Goal
 
-Move web/admin from structurally validated output to more execution-validated output.
+Move web/admin from smoke-tested generated output to verified live Cloudflare deployment behavior.
 
 ### Actions
 
 1. Generate a fresh `backend + web-user-app + web-admin-portal` sample.
-2. Run the smallest practical verification for that sample:
-   - dependency install
-   - lint
-   - typecheck
-   - build
-3. Record the results in `docs/current-status.md`.
-4. Add any repeatable checks worth enforcing to `scripts/validate-template.ps1` or follow-on CI jobs.
+2. Deploy the generated web apps to a real Cloudflare account and verify:
+   - Worker secret setup
+   - runtime vars in `wrangler.jsonc`
+   - `npm run preview`
+   - `npm run deploy`
+   - the deployed `workers.dev` or custom-domain routes
+3. Confirm backend/browser interoperability against the deployed URLs, including CORS assumptions.
+4. Record the results in `docs/current-status.md`.
+5. Add any safe repeatable checks worth enforcing to maintainer docs or CI without requiring real credentials.
 
 ### Acceptance Criteria
 
-- web/admin maturity claims are backed by an actual recorded execution pass
-- current-status docs describe validated behavior, not just intended structure
+- web/admin maturity claims are backed by an actual recorded live deployment pass
+- current-status docs distinguish smoke-test validation from live-account validation
 
 ## Workstream C: Local iOS Execution Validation
 
@@ -150,6 +153,6 @@ Confirm that the structurally fixed iOS output also behaves correctly in local A
 ## Short Next-Step List
 
 1. Harden or further gate Apple Sign-In.
-2. Run execution-level validation for the generated web/admin sample.
+2. Run live Cloudflare validation for the generated web/admin sample.
 3. Run local Mac/Xcode validation for the generated iOS sample.
 4. Keep the validation script current as the template contract evolves.

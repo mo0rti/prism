@@ -1,20 +1,22 @@
 # Multi-Platform Project Templating System - Implementation Plan
 
-> **Date**: February 2026
-> **Status**: In Progress
+> **Date**: March 2026
+> **Status**: Active architecture and direction reference
 > **Purpose**: Reference document for the multi-platform template architecture, decisions, and usage workflows.
+
+> **Current-state note**: This file mixes validated architecture choices with intended direction and roadmap context. For the best picture of what is currently verified, use `docs/current-status.md` and `docs/maintainer-workflow.md`.
 
 ---
 
 ## Context
 
-This is a reusable template repository that scaffolds complete multi-platform projects (Android, iOS, backend, user web app, admin web portal) in minutes. It encodes all architectural decisions once, so AI agents (Claude Code, Codex, Cursor) can generate a fully wired monorepo for any new idea.
+This is a reusable template repository that scaffolds multi-platform starter projects (Android, iOS, backend, user web app, admin web portal). It encodes shared architectural decisions once, so AI agents (Claude Code, Codex, Cursor) can generate a wired monorepo baseline for new ideas.
 
 **Environment:**
-- **Primary dev machine: Windows** - all platforms except iOS must be fully developable on Windows
+- **Primary dev machine: Windows** - backend, web, Android, and template-maintenance workflows are expected to work on Windows; iOS still requires macOS/Xcode, and OpenNext recommends WSL/Linux/macOS for the most reliable Cloudflare deployment path
 - **iOS development: Mac only** (Xcode requirement) - iOS code lives in the monorepo but builds only on Mac
 - **Backend/DB/AI services: Azure** (Container Apps, Azure DB for PostgreSQL, Azure AI Services)
-- **Web hosting: Cloudflare** (OpenNext deployments for the user web app and admin web portal, Workers if needed)
+- **Web hosting: Cloudflare Workers via OpenNext**
 - **AI coding tools: Claude Code, Codex, Cursor** - all three need context
 - **Architecture: MVVM consistently** across both Android and iOS
 - **Backend: Spring Boot 4** (released Nov 2025, requires Kotlin 2.2+, Java 17+/21 recommended, Jackson 3.x, JUnit Jupiter 6, Jakarta EE 11)
@@ -235,7 +237,7 @@ Since Claude reads `CLAUDE.md`, Codex reads `AGENTS.md`, and Cursor reads `.mdc`
 1. **`docs/` is the single source of truth** for all substantive documentation
 2. **CLAUDE.md and AGENTS.md** are thin pointers (~50-100 lines each): architecture summary + common commands + `@docs/` references
 3. **`.cursor/rules/*.mdc`** files contain only rule metadata + brief conventions; reference `docs/` for details
-4. **A Taskfile task `sync-ai-context`** validates that all three files reference the same docs and flags drift
+4. **Repository-local skills such as `$sync-ai-context` plus normal maintainer review** help flag drift between Claude, Codex, and Cursor guidance
 
 ---
 
@@ -308,7 +310,7 @@ mobile-ios/docs/                                # iOS-specific (excluded when no
 
 ### Phase 1: Template Repository Foundation
 
-**Files to create:**
+**Core files in this phase:**
 - `copier.yml` - Questionnaire: project_name, project_slug, package_identifier, description, platforms (multiselect), auth_methods (multiselect), database, use_docker, github_org (cloud_provider=azure and web_hosting=cloudflare are hardcoded)
 - `README.md` - Template maintainer instructions
 - `.gitignore`

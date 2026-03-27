@@ -13,7 +13,7 @@ This repository is the template itself, not a generated project.
 ## Current Snapshot
 
 - Backend, Android, and iOS are the stronger paths today.
-- User web app and admin web portal now generate initial slices, but they still need broader end-to-end validation.
+- User web app and admin web portal now generate real slices and pass generated `npm install`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run build:cloudflare`, and `wrangler deploy --dry-run` checks, but still need live Cloudflare deployment validation.
 - Apple Sign-In remains experimental.
 - The safest workflow is explicit sample generation plus `./scripts/validate-template.ps1`.
 
@@ -51,4 +51,4 @@ copier copy --trust . ../my-new-project
 
 Use this repository to generate and validate targeted sample repos, and use `./scripts/validate-template.ps1` as the default maintainer check.
 
-Treat **backend + Android** as the most practical evaluation path today. Treat the web slices as real but still under active hardening, and validate any path you plan to rely on locally.
+Treat **backend + Android** as the most practical evaluation path today. Treat the web slices as real and smoke-tested, but still under active hardening until live Cloudflare deployment is revalidated.
