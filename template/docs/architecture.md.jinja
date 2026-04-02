@@ -17,6 +17,7 @@
 
 ## Architecture Pattern
 
+{% if "mobile-android" in platforms or "mobile-ios" in platforms %}
 ### Mobile: MVVM (Model-View-ViewModel)
 
 Both Android and iOS follow the same MVVM architecture:
@@ -34,6 +35,7 @@ View (UI)  ->  ViewModel (State + Logic)  ->  Repository  ->  Data Source (API/L
 | Local Storage | DataStore | Keychain |
 | DI | Hilt | Protocol-based container |
 
+{% endif %}
 ### API Contract
 
 Single source of truth: `shared/api-contracts/openapi.yml`
