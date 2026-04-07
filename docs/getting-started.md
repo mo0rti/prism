@@ -96,6 +96,7 @@ Use this only after reviewing template changes and only in a generated project t
 Start with structural checks before treating the generated repo as production-ready:
 
 - confirm the selected platform directories actually exist
+- confirm `CONTEXT.md` and `knowledge/wiki/SCHEMA.md` exist
 - inspect the generated root `Taskfile.yml` for references to missing modules
 - inspect the generated `README.md` and platform docs
 - inspect `.github/workflows/` for the slices you selected
@@ -110,9 +111,14 @@ Do not assume `task lint`, `task test`, or every multi-platform selection is val
 Generated projects do include their own `README.md`, but the safest practical flow right now is:
 
 1. confirm the selected platform directories exist
-2. copy `.env.example` to `.env`
-3. inspect the generated root `Taskfile.yml` and generated `README.md`
-4. run `task validate-api` and `task generate-clients` if `go-task` and the OpenAPI generator are installed
-5. validate platform-specific build, install, and run commands before treating them as settled workflow
+2. read `CONTEXT.md` and `knowledge/wiki/SCHEMA.md`
+3. initialize the product wiki:
+   - Claude Code: `/setup-project`
+   - Codex: `$setup-project`
+   - Cursor: ask the agent to "run setup-project"
+4. copy `.env.example` to `.env`
+5. inspect the generated root `Taskfile.yml` and generated `README.md`
+6. run `task validate-api` and `task generate-clients` if `go-task` and the OpenAPI generator are installed
+7. validate platform-specific build, install, and run commands before treating them as settled workflow
 
 For now, treat backend-only, backend + Android, and focused web/admin samples as the best first evaluation paths.

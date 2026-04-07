@@ -63,7 +63,8 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 - `docs/README.md` for the repo docs index
 - `docs/maintainer-workflow.md` for template maintenance flow
 - `docs/current-status.md` for maturity and validation context
-- `PLAN.md` for architecture decisions, platform specs, and intended direction
+- `PRISM_AGENT_PLAN.md` for the current Prism wiki lifecycle plan
+- `PLAN.md` for legacy architecture decisions and platform specs predating Prism
 - `copier.yml` for questionnaire inputs and exclusions
 - `template/AGENTS.md.jinja` for generated-project Codex guidance
 - `template/CLAUDE.md.jinja` for generated-project Claude guidance

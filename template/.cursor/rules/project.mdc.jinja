@@ -20,7 +20,8 @@ Monorepo, MVVM on all platforms, API-first (OpenAPI -> typed clients).
 
 - API-first: define in `shared/api-contracts/openapi.yml` -> generate clients -> implement
 - MVVM: one ViewModel per screen, sealed UiState/ViewState enum
-- Repository pattern: interface/protocol + implementation
+- Repositories: concrete classes by default; add interfaces/protocols only when multiple
+  implementations are genuinely needed
 - Feature wiki pages in `knowledge/wiki/features/` — single source of truth for what to build
 - Entity docs in `backend/docs/entities/`
 - Auth: JWT tokens, OAuth ({% for m in auth_methods %}{{ m }}{% if not loop.last %}, {% endif %}{% endfor %})

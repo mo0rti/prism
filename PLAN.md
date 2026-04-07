@@ -1,10 +1,15 @@
 # Multi-Platform Project Templating System - Implementation Plan
 
 > **Date**: March 2026
-> **Status**: Active architecture and direction reference
+> **Status**: Legacy architecture and direction reference
 > **Purpose**: Reference document for the multi-platform template architecture, decisions, and usage workflows.
 
-> **Current-state note**: This file mixes validated architecture choices with intended direction and roadmap context. For the best picture of what is currently verified, use `docs/current-status.md` and `docs/maintainer-workflow.md`.
+> **Current-state note**: This file predates the Prism wiki lifecycle migration and
+> still contains legacy references such as `/scaffold-feature`, `/advisory-review`,
+> `docs/features/`, and `docs/advisory-board.md`. For current generated-project
+> workflow guidance, use `PRISM_AGENT_PLAN.md`, `README.md`,
+> `docs/generated-projects.md`, and the generated context templates under
+> `template/`.
 
 ---
 

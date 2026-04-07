@@ -12,6 +12,19 @@ This is a multi-platform monorepo containing:
 {% endif %}{% if "mobile-android" in platforms %}- **mobile-android/** - Android app (Kotlin/Jetpack Compose, MVVM)
 {% endif %}{% if "mobile-ios" in platforms %}- **mobile-ios/** - iOS app (Swift/SwiftUI, MVVM)
 {% endif %}
+
+## First-Time Setup
+
+This project includes a living product wiki at `knowledge/wiki/`. Before building
+the first feature, initialize the wiki and advisory board:
+
+- **Claude Code:** `/setup-project`
+- **Codex:** `$setup-project`
+- **Cursor:** ask the agent to "run setup-project"
+
+This setup step interviews the team about domain risks, creates
+`knowledge/wiki/advisory/BOARD.md`, and prepares the wiki for feature intake.
+
 ## Quick Start
 
 ```bash
@@ -41,6 +54,8 @@ task web-admin-portal:dev
 
 ## Documentation
 
+- [Product Context](CONTEXT.md)
+- [Product Wiki Schema](knowledge/wiki/SCHEMA.md)
 - [Architecture Overview](docs/architecture.md)
 - [API Conventions](docs/api/conventions.md)
 {% if "backend" in platforms %}- [Backend Guide](backend/docs/guide.md)

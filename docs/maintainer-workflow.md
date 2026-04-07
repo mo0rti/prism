@@ -20,7 +20,9 @@ template/             # Files copied into generated projects
   mobile-ios/         # iOS scaffold
   shared/             # OpenAPI and design tokens
   docs/               # Generated-project documentation
+  knowledge/          # Generated-project product wiki skeleton
   infra/              # Infrastructure scripts
+  CONTEXT.md.jinja    # Generated-project root AI context anchor
   README.md.jinja     # Generated-project README
   Taskfile.yml.jinja  # Generated-project root Taskfile
   AGENTS.md.jinja     # Generated-project Codex guidance
@@ -28,7 +30,8 @@ template/             # Files copied into generated projects
 README.md             # Short repository entrypoint
 AGENTS.md             # Codex maintainer guidance for this repo
 CLAUDE.md             # Claude maintainer guidance for this repo
-PLAN.md               # Architecture and intended direction
+PRISM_AGENT_PLAN.md   # Current Prism wiki lifecycle plan
+PLAN.md               # Legacy architecture context predating Prism
 ```
 
 ## Recommended Maintainer Flow
@@ -68,4 +71,5 @@ copier copy --trust --defaults --data "project_name=Test Web App" --data "platfo
 - [`getting-started.md`](getting-started.md) for generation and validation commands
 - [`questionnaire.md`](questionnaire.md) for the current questionnaire contract
 - [`generated-projects.md`](generated-projects.md) for generated-project outputs and workflow support
-- [`PLAN.md`](../PLAN.md) for architecture and intended direction
+- [`PRISM_AGENT_PLAN.md`](../PRISM_AGENT_PLAN.md) for the current Prism wiki lifecycle plan
+- [`PLAN.md`](../PLAN.md) for legacy architecture context predating Prism

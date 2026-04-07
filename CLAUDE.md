@@ -40,17 +40,17 @@ wiki commands from a generated project against this repository.
 
 - **Two layers of AI context**: `template/.claude/` is for generated projects; `.claude/` (root) is for this template repo
 - **Documentation organization**: Template-repo docs live in root `docs/`. Generated-project docs stay in `template/docs/`. Platform-specific technical docs live inside each platform directory (`template/mobile-android/docs/`, `template/backend/docs/`, `template/mobile-ios/docs/`). Entity docs are backend-specific (`template/backend/docs/entities/`). Platform docs are auto-excluded with their platform via `_exclude` rules.
-- **Test with `copier copy`** after changes: `copier copy --trust . /tmp/test-output`
+- **Test with `copier copy`** after changes: `copier copy --trust . C:\temp\template-test`
 - **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
 
 ## Common Commands
 
 ```bash
 # Test template generation (all platforms)
-copier copy --trust . /tmp/test-output
+copier copy --trust . C:\temp\template-test
 
 # Test with specific options
-copier copy --trust --data 'project_name=TestApp' --data 'platforms=[backend, mobile-android]' . /tmp/test-output
+copier copy --trust --data 'project_name=TestApp' --data 'platforms=[backend, mobile-android]' . C:\temp\template-test-mobile
 
 # Update an existing generated project
 cd /path/to/generated-project && copier update --trust
@@ -61,7 +61,8 @@ cd /path/to/generated-project && copier update --trust
 - `docs/README.md` - root documentation index for this template repo
 - `docs/maintainer-workflow.md` - template maintenance workflow and validation variants
 - `docs/questionnaire.md` - questionnaire inputs and maturity notes
-- `PLAN.md` - full architecture plan, decisions, build progress, library versions
+- `PRISM_AGENT_PLAN.md` - current Prism wiki lifecycle plan
+- `PLAN.md` - legacy architecture plan, decisions, build progress, library versions
 - `copier.yml` - template configuration and questionnaire
 - `template/CLAUDE.md.jinja` - Claude context template for generated projects
 - `template/AGENTS.md.jinja` - Codex context template for generated projects
