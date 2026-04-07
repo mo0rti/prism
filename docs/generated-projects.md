@@ -7,6 +7,8 @@ Generated repositories include more than application code. They also include doc
 Generated projects include:
 
 - a generated `README.md`
+- a generated `CONTEXT.md` as the root AI context anchor
+- a required `knowledge/` tree with raw intake and the living product wiki
 - platform-specific docs under `docs/`, `backend/docs/`, `mobile-android/docs/`, `mobile-ios/docs/`, `web-user-app/docs/`, and `web-admin-portal/docs/`
 - generated AI context files such as `AGENTS.md` and `CLAUDE.md`
 - GitHub workflow files
@@ -14,6 +16,19 @@ Generated projects include:
 - deployment docs such as `docs/deployment/cloudflare-setup.md` when web platforms are selected
 
 Treat those outputs as part of the product, but still validate the paths you plan to rely on.
+
+## First-Time Setup
+
+After `copier copy`, generated projects have a wiki skeleton but no project-specific
+advisory board state yet. Before building the first feature, open the generated project
+in your AI agent and initialize it:
+
+- Claude Code: `/setup-project`
+- Codex: `$setup-project`
+- Cursor: ask the agent to "run setup-project"
+
+This creates the advisory board in `knowledge/wiki/advisory/BOARD.md` and prepares the
+wiki for `po-intake`, `design-intake`, and the rest of the lifecycle.
 
 ## AI Agent Commands
 

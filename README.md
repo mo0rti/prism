@@ -120,7 +120,8 @@ copier copy --trust . ../my-new-project
 
 - [AGENTS.md](AGENTS.md) for Codex maintainer guidance in this repo
 - [CLAUDE.md](CLAUDE.md) for Claude maintainer guidance in this repo
-- [PLAN.md](PLAN.md) for architecture and intended direction
+- [PRISM_AGENT_PLAN.md](PRISM_AGENT_PLAN.md) for the current Prism wiki lifecycle plan
+- [PLAN.md](PLAN.md) for legacy architecture context predating Prism
 
 ## Short Version
 

@@ -165,6 +165,7 @@ function Validate-WikiStructure {
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\advisory\BOARD.md") -Message "Generated project missing knowledge/wiki/advisory/BOARD.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\features\_FORMAT.md") -Message "Generated project missing knowledge/wiki/features/_FORMAT.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\personas\_FORMAT.md") -Message "Generated project missing knowledge/wiki/personas/_FORMAT.md."
+    Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\business-rules\_FORMAT.md") -Message "Generated project missing knowledge/wiki/business-rules/_FORMAT.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\design\_FORMAT.md") -Message "Generated project missing knowledge/wiki/design/_FORMAT.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\platform-requirements\_FORMAT.md") -Message "Generated project missing knowledge/wiki/platform-requirements/_FORMAT.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\api-contracts\_FORMAT.md") -Message "Generated project missing knowledge/wiki/api-contracts/_FORMAT.md."
@@ -200,7 +201,7 @@ function Validate-WikiStructure {
     # Superseded skill must not exist
     Assert-PathMissing -Path (Join-Path $Root ".agents\skills\scaffold-feature") -Message "scaffold-feature skill should not exist in generated project."
 
-    # business-rules/ exists (no _FORMAT.md, only .gitkeep)
+    # business-rules/ keeps a .gitkeep alongside its required _FORMAT.md
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\business-rules\.gitkeep") -Message "Generated project missing knowledge/wiki/business-rules/.gitkeep."
 
     # Cursor wiki rule present
@@ -208,6 +209,11 @@ function Validate-WikiStructure {
 
     # docs/README.md present
     Assert-PathExists -Path (Join-Path $Root "docs\README.md") -Message "Generated project missing docs/README.md."
+
+    # Generated README must onboard users into the required wiki setup step
+    Assert-FileContains -Path (Join-Path $Root "README.md") -Needle "First-Time Setup" -Message "Generated README.md must include first-time wiki setup guidance."
+    Assert-FileContains -Path (Join-Path $Root "README.md") -Needle "setup-project" -Message "Generated README.md must reference setup-project."
+    Assert-FileContains -Path (Join-Path $Root "README.md") -Needle "knowledge/wiki" -Message "Generated README.md must reference the product wiki."
 
     # Root context files must not reference old paths
     Assert-FileNotContains -Path (Join-Path $Root "CLAUDE.md") -Needle "docs/features/" -Message "Root CLAUDE.md should not reference docs/features/."
