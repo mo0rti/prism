@@ -21,9 +21,21 @@ Monorepo, MVVM on all platforms, API-first (OpenAPI -> typed clients).
 - API-first: define in `shared/api-contracts/openapi.yml` -> generate clients -> implement
 - MVVM: one ViewModel per screen, sealed UiState/ViewState enum
 - Repository pattern: interface/protocol + implementation
-- Feature docs in `docs/features/` with advisory board review
+- Feature wiki pages in `knowledge/wiki/features/` — single source of truth for what to build
 - Entity docs in `backend/docs/entities/`
 - Auth: JWT tokens, OAuth ({% for m in auth_methods %}{{ m }}{% if not loop.last %}, {% endif %}{% endfor %})
+
+## Product Wiki
+
+Read wiki pages before implementing. Check `knowledge/wiki/index.md` first.
+
+- `knowledge/wiki/index.md` - feature status board
+- `knowledge/wiki/features/` - feature specs
+- `knowledge/wiki/advisory/BOARD.md` - advisory board personas
+- `knowledge/wiki/platform-requirements/` - platform-specific implementation notes
+- `knowledge/wiki/business-rules/` - cross-cutting constraints
+
+**Do not implement features without a wiki page.** Ask the user to run `po-intake` first.
 
 ## Commands
 
@@ -37,9 +49,7 @@ Monorepo, MVVM on all platforms, API-first (OpenAPI -> typed clients).
 ## Documentation
 
 - `docs/architecture.md` - system overview
-- `docs/features/` - feature specs with board review
 - `docs/api/conventions.md` - API patterns
-- `docs/advisory-board.md` - virtual advisory board
 {% if "backend" in platforms %}- `backend/docs/entities/` - entity definitions
 - `backend/docs/azure-setup.md` - Azure deployment
 {% endif %}

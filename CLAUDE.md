@@ -16,13 +16,25 @@ template/               # All templated output - Jinja2 files (.jinja suffix str
   mobile-android/              # Kotlin + Jetpack Compose (MVVM)
   mobile-ios/                  # Swift 6 + SwiftUI (MVVM)
   shared/               # OpenAPI 3.1 spec + design tokens
-  docs/                 # Project-wide documentation (features, API, advisory board)
+  docs/                 # Project-wide reference docs (architecture, API conventions, deployment)
   .claude/              # Claude context for generated projects (commands, skills)
   .agents/              # Codex skills for generated projects
   .cursor/              # Cursor rules for generated projects
   .github/              # CI/CD workflow templates
   _templates/           # Hygen in-project generators
 ```
+
+## Two distinct AI context layers
+
+1. **Template repo layer** (this file, `.claude/`, `.agents/`) — context for AI working
+   on the template itself: adding platforms, fixing Jinja2 templates, updating schemas.
+
+2. **Generated project layer** (`template/.claude/`, `template/.agents/`) — context
+   templates rendered into generated projects. Changes here affect every generated project.
+
+The `knowledge/` directory in `template/knowledge/` is the template for the wiki system.
+When working on the template, you are authoring the system, not using it. Do not run
+wiki commands from a generated project against this repository.
 
 ## Key Rules
 

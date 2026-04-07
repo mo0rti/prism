@@ -1,54 +1,19 @@
 ---
-to: docs/features/<%= name %>.md
+to: knowledge/intake/pending/feature-<%= h.changeCase.param(name) %>/intake.md
 ---
-# Feature: <%= h.changeCase.title(name) %>
+# Intake: <%= h.changeCase.title(name) %>
+
+**Submitted:** <%= new Date().toISOString().slice(0,10) %>
+
+## Description
 
 <%= description %>
 
-## Board Review
+## Notes
 
-- **Product**: _[pending review]_
-- **Architecture**: _[pending review]_
-- **Security**: _[pending review]_
-- **Business**: _[pending review]_
-- **Decision**: _[pending]_
+_Add any additional context, user stories, acceptance criteria, or open questions here._
 
-> Run `/advisory-review` (Claude), `$advisory-review` (Codex), or ask in Cursor to get board feedback.
+---
 
-## Business Logic
-
-_Describe the core business rules, workflows, and edge cases._
-
-- TODO: Define business rules
-
-## Entities
-
-<% if (entity) { %>
-- **<%= h.changeCase.pascal(entity) %>**: See `backend/docs/entities/<%= h.changeCase.param(entity) %>.md`
-<% } else { %>
-- _TODO: Define entities for this feature_
-<% } %>
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-<% if (entity) { %>
-| GET | `/<%= h.changeCase.param(h.inflection.pluralize(entity)) %>` | List all (paginated) |
-| GET | `/<%= h.changeCase.param(h.inflection.pluralize(entity)) %>/:id` | Get by ID |
-| POST | `/<%= h.changeCase.param(h.inflection.pluralize(entity)) %>` | Create |
-| PUT | `/<%= h.changeCase.param(h.inflection.pluralize(entity)) %>/:id` | Update |
-| DELETE | `/<%= h.changeCase.param(h.inflection.pluralize(entity)) %>/:id` | Delete |
-<% } else { %>
-| | | _TODO: Define endpoints_ |
-<% } %>
-
-## Platform Implementation Status
-
-- [ ] Feature documented
-- [ ] API contract defined in `shared/api-contracts/openapi.yml`
-- [ ] API clients generated (`task generate-clients`)
-- [ ] Backend implemented
-- [ ] Selected web app slices implemented
-- [ ] Selected mobile app slices implemented
-- [ ] Tests passing for the selected platform slices
+> **Next step:** Run `/po-intake feature-<%= h.changeCase.param(name) %>` (Claude Code) or `po-intake feature-<%= h.changeCase.param(name) %>` (Codex) to process this into a wiki feature spec.
+> The PO intake command will assign a sequential ID, create the wiki page, and update the index.

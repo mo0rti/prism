@@ -1,0 +1,50 @@
+---
+name: feature-status
+description: Read-only full pipeline view of all features grouped by status. Shows open questions by owner role, quarantined intake items, and board reviews pending. Use at standups or for team coordination.
+---
+
+# Feature Status
+
+Read-only command. Shows the complete pipeline state of all features.
+
+## Workflow
+
+1. Read `knowledge/wiki/index.md`
+2. Read all feature files in `knowledge/wiki/features/`
+3. Read `knowledge/intake/quarantined/` for pending conflicts
+
+## Output format
+
+```
+## Pipeline
+
+raw (N)             F-XXX — [title] | owner: po
+specified (N)       F-XXX — [title] | owner: po | open questions: N | board: pending
+ready-for-design    F-XXX — [title] | owner: designer | board: done
+in-design (N)       F-XXX — [title] | owner: designer
+ready-for-dev (N)   F-XXX — [title] | owner: dev | platforms: [list] | board: done
+in-dev (N)          F-XXX — [title] | owner: dev
+done (N)            F-XXX — [title]
+
+## Open questions by role
+### PO
+- F-XXX — [question text]
+
+### Designer
+- F-XXX — [question text]
+
+### Developer
+- F-XXX — [question text]
+
+## Quarantine backlog
+- [folder-name] — [conflict summary]
+
+## Board reviews pending
+- F-XXX — [title] [status] — board review not yet run
+```
+
+## Notes
+
+- Do not modify any wiki files. This is a read-only operation.
+- If there are no open questions for a role, omit that section.
+- If the quarantine backlog is empty, state "No quarantined items."
