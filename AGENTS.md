@@ -2,6 +2,24 @@
 
 This repository is the Copier template itself. Treat the root `AGENTS.md` as maintainer guidance for the template repo, and treat files under `template/` as instructions that will be copied into generated projects.
 
+## Two distinct AI context layers
+
+1. **Template repo layer** (this file, `.agents/skills/`) — context for AI working
+   on the template itself: adding platforms, fixing Jinja2 templates, updating schemas.
+
+2. **Generated project layer** (`template/.agents/skills/`) — skill templates rendered
+   into generated projects. Changes here affect every generated project.
+
+The `knowledge/` directory in `template/knowledge/` is the template for the wiki system.
+When working on the template, you are authoring the system, not using it. Do not run
+wiki lifecycle operations (po-intake, design-intake, etc.) against this repository.
+
+Note: `$scaffold-feature` and `$advisory-review` were removed from generated projects
+and must not be referenced. They are replaced by the wiki lifecycle system
+(`$setup-project`, `$board-review`, and the lifecycle operations documented in
+`template/AGENTS.md.jinja`). The template-repo skills (`$platform-builder`,
+`$sync-ai-context`, `$test-template`) are unaffected.
+
 ## How Codex Context Works Here
 
 - Codex reads `AGENTS.md` from the repo root down to the current working directory.

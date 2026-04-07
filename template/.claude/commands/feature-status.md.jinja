@@ -1,0 +1,35 @@
+# Feature status — full pipeline view
+
+## Usage
+/feature-status
+
+## What this command does
+
+Read `index.md` and all feature files. Output a full pipeline view grouped by status:
+
+```
+## Pipeline
+
+raw (1)             F-008 — [title] | owner: po
+
+specified (2)       F-006 — [title] | owner: po | open questions: 3 | board: pending
+                    F-007 — [title] | owner: po | open questions: 0 | board: not-needed
+
+ready-for-design    F-003 — [title] | owner: designer | board: done
+
+in-design (1)       F-005 — [title] | owner: designer | board: pending (not yet run)
+
+ready-for-dev (2)   F-002 — [title] | owner: dev | platforms: mobile-android, mobile-ios, backend | board: done
+                    F-004 — [title] | owner: dev | platforms: backend | board: not-needed
+
+in-dev (1)          F-001 — [title] | owner: dev
+
+done (1)            F-000 — [title]
+```
+
+After the pipeline:
+- All open questions grouped by owner role
+- Any intake items in quarantined/ needing human resolution
+- Features with advisory-review: pending that have not had a board review run
+
+Read-only command. Do not modify any wiki files.

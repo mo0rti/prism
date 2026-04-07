@@ -1,6 +1,0 @@
-interface:
-  display_name: "Scaffold Feature"
-  short_description: "Drive end-to-end feature scaffolding"
-  default_prompt: "Use $scaffold-feature to scaffold a new feature across this generated project."
-policy:
-  allow_implicit_invocation: false

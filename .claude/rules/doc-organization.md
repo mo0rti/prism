@@ -11,7 +11,8 @@ paths:
 
 ## Convention
 
-- **`template/docs/`** — Project-wide documentation (features, API conventions, advisory board, architecture). Relevant to all platforms.
+- **`template/docs/`** — Project-wide reference documentation (architecture, API conventions, deployment guides). For humans. Does NOT contain feature specs or advisory board config.
+- **`template/knowledge/wiki/`** — AI-facing product wiki. Feature specs, platform requirements, advisory board, design decisions. This is the source of truth for what to build.
 - **`template/{platform}/docs/`** — Platform-specific technical docs (architecture, file structure, networking, design system, etc.). Only relevant to that platform.
 
 ## Rules
@@ -19,7 +20,7 @@ paths:
 - Entity docs (database models, migrations) belong in `template/backend/docs/entities/` — they describe database implementation details.
 - Deployment docs (Azure setup, infra) belong in `template/backend/docs/` — tied to backend infrastructure.
 - Platform guides live inside their platform: `template/mobile-android/docs/guide.md.jinja`, not `template/docs/`.
-- Feature docs stay in `template/docs/features/` — features span multiple platforms.
+- **Feature specs for generated projects live in `knowledge/wiki/features/`** — this is the Prism wiki, the source of truth for what to build. Do not put feature specs in `template/docs/`.
 - When adding docs for a new platform, create `template/{platform}/docs/` with at least a `guide.md.jinja`.
 
 ## Why This Matters

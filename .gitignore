@@ -16,3 +16,6 @@ __pycache__/
 
 # Test output
 /tmp/
+
+# Claude local settings (machine-specific, not for version control)
+.claude/settings.local.json

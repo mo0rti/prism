@@ -17,15 +17,34 @@ Treat those outputs as part of the product, but still validate the paths you pla
 
 ## AI Agent Commands
 
-Generated projects include agent context for Claude, Codex, and Cursor. Explicit slash commands are currently templated for Claude under `.claude/commands/`:
+Generated projects include agent context for Claude, Codex, and Cursor. The commands below are Claude Code slash commands under `.claude/commands/`. Codex equivalents are invoked by plain name (e.g. `po-intake`, `design-handoff`) except for the five operations that ship as Codex skills under `.agents/skills/` and use a `$` prefix: `$setup-project`, `$board-review`, `$prep-sprint`, `$feature-status`, `$lint-wiki`. Cursor users invoke the same operations by asking the agent by name.
 
-| Command | Purpose |
-|---------|---------|
-| `/scaffold-feature` | Guide feature delivery across the generated slices that exist in the project |
+### Wiki lifecycle (all roles)
+
+| Claude Code | Purpose |
+|-------------|---------|
+| `/setup-project` | One-time project initialization — interviews you and builds the advisory board |
+| `/po-intake [folder]` | Process raw PO notes into feature specs |
+| `/po-clarify` | Answer open questions assigned to PO |
+| `/po-handoff [F-XXX]` | Hand off a feature to design |
+| `/design-intake [F-XXX] [folder]` | Attach design artifacts to a feature |
+| `/design-clarify` | Answer open design questions |
+| `/design-handoff [F-XXX]` | Hand off a feature to dev |
+| `/board-review [F-XXX]` | Domain expert review before dev starts |
+| `/prep-sprint` | Show what is ready to build |
+| `/dev-done [F-XXX]` | Mark a feature as shipped |
+| `/feature-status` | Full pipeline view |
+| `/lint-wiki` | Health-check the knowledge base |
+| `/ask [F-XXX] "q" --to po\|designer\|dev` | Route a question to a role |
+| `/audit-feature [F-XXX]` | Cross-check spec vs. source intake |
+
+### Coding utilities
+
+| Claude Code | Purpose |
+|-------------|---------|
 | `/add-endpoint` | Add an API endpoint and update the contract/backend scaffolding |
 | `/generate-clients` | Regenerate platform clients after OpenAPI changes |
 | `/document-entity` | Create or refine backend entity documentation |
-| `/document-feature` | Create or refine feature documentation |
 
 ## Code Generators
 
@@ -33,7 +52,7 @@ Generated projects currently include these Hygen generators under `_templates/`:
 
 | Generator | Purpose |
 |-----------|---------|
-| `feature new` | Scaffold a backend + Android + iOS feature slice and related docs |
+| `feature new` | Scaffold a backend + Android + iOS feature slice and create an intake note in `knowledge/intake/pending/` for `po-intake` to process |
 | `screen new` | Scaffold a new Android or iOS screen |
 | `endpoint new` | Scaffold an OpenAPI path snippet and backend endpoint starter |
 | `page new` | Scaffold a new page for generated web slices when `web-user-app` or `web-admin-portal` is included |

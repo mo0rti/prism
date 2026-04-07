@@ -1,0 +1,42 @@
+# {{ project_name }} — Documentation
+
+## Two documentation layers
+
+**`docs/`** — Human-readable reference documentation.
+For humans who need to understand, deploy, or onboard to the project.
+Contents: architecture diagrams, deployment guides, API conventions, onboarding.
+
+**`knowledge/`** — AI-facing product context. The living wiki.
+For AI coding agents (and humans) who need to know *what to build next*.
+Contents: feature specs, platform requirements, API contracts, design decisions,
+advisory board reviews. Maintained by the AI on every lifecycle operation.
+
+Do not put feature specs or platform requirements in `docs/`. They belong in `knowledge/wiki/`.
+Do not put architecture or deployment guides in `knowledge/`. They belong in `docs/`.
+
+## What is in docs/
+
+| File | Purpose |
+|------|---------|
+| `docs/architecture.md` | System design, platform map, tech decisions |
+| `docs/api/conventions.md` | API naming, pagination, error format |
+| `docs/deployment/ci-cd.md` | CI/CD setup and deployment pipelines |
+{% if "backend" in platforms %}| `backend/docs/azure-setup.md` | Azure Container Apps deployment |
+| `backend/docs/entities/` | Database entity definitions and relationships |
+{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}| `docs/deployment/cloudflare-setup.md` | Cloudflare/OpenNext deployment |
+{% endif %}
+
+## What is in knowledge/
+
+See `knowledge/wiki/SCHEMA.md` for the complete wiki structure and operational rules.
+
+The quick summary:
+- `knowledge/wiki/features/` — one page per feature with spec, acceptance criteria, open questions
+- `knowledge/wiki/platform-requirements/` — per-platform implementation specs
+- `knowledge/wiki/api-contracts/` — API endpoint and data model contracts
+- `knowledge/wiki/design/` — UI design decisions and component specs
+- `knowledge/wiki/business-rules/` — invariants and constraints
+- `knowledge/wiki/decisions/` — Architecture Decision Records
+- `knowledge/wiki/advisory/` — advisory board configuration and review outputs
+- `knowledge/wiki/index.md` — feature status board
+- `knowledge/intake/` — raw inputs before AI processes them

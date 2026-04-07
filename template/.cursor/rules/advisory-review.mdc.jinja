@@ -1,43 +1,25 @@
 ---
-description: "Review feature proposals, architectural decisions, or product strategy with the virtual advisory board. Use when discussing new features or significant changes."
+description: "Run a board review before implementing features that have domain-specific risk. Use when advisory-review status is pending or when starting implementation on a feature that has not yet been reviewed."
 ---
 
-# Advisory Board Review
+# Board Review
 
-When the user discusses a new feature, architectural change, or strategic decision, engage the advisory board.
+Before implementing a feature that has `advisory-review: pending`, run a board review.
 
 ## Steps
 
-1. Read `docs/advisory-board.md` for board member personas.
+1. Read `knowledge/wiki/advisory/BOARD.md` for board member personas.
+2. Read `knowledge/wiki/features/[F-XXX]-[slug].md` for the feature spec.
+3. Read `knowledge/wiki/personas/` to understand who uses this feature.
+4. Read `knowledge/wiki/business-rules/` for relevant constraints.
+5. For each board member with relevant domain concerns, apply their expertise lens.
+6. Generate the review at `knowledge/wiki/advisory/[F-XXX]-review.md` using the
+   four-question format: Conflicts, Gaps, Build order, Biggest risk.
+7. Set `advisory-review: done` on the feature page.
+8. Update `knowledge/wiki/index.md` and append to `knowledge/wiki/log.md`.
 
-2. Evaluate the proposal from each member's perspective:
-   - What they support
-   - Questions they'd raise
-   - Concerns or risks
-   - Recommendation: proceed / rework / defer
+## When to use
 
-3. Present structured feedback:
-
-```
-## Advisory Board Review: [Name]
-
-### [Member] - [Role]
-- Supports: ...
-- Questions: ...
-- Concerns: ...
-- Recommendation: ...
-
-### Board Summary
-- Consensus: ...
-- Key risks: ...
-- Next steps: ...
-```
-
-4. If the user proceeds, include the summary in `docs/features/{name}.md` under "Board Review".
-
-## Triggers
-- "I want to add..."
-- "What if we..."
-- "Should we..."
-- New feature discussions
-- Architectural decisions
+- Feature page has `advisory-review: pending`
+- User asks for board feedback on a feature
+- Starting implementation on a feature that was never reviewed

@@ -1,0 +1,47 @@
+---
+name: lint-wiki
+description: Health-check the knowledge wiki for missing platform requirements, design gaps, API contract gaps, contradictions, stale status, orphan pages, index drift, quarantine backlog, and missing ADRs. Outputs a lint report. Does not auto-fix.
+---
+
+# Lint Wiki
+
+Health-check the full knowledge wiki. Reports issues; does not auto-fix.
+
+## Workflow
+
+1. Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/index.md`
+2. Read all files in all wiki subdirectories
+3. Check for and report all issues:
+
+   a. **Missing platform requirements** — features in `ready-for-dev` or later with no
+      platform-requirements page for one or more active platforms
+   b. **Design gaps** — features in `in-design` or later with no design page (UI platforms only)
+   c. **API contract gaps** — features with an API surface but no api-contracts page
+   d. **Contradictions** — conflicting behaviour across platform-requirements pages or
+      specs that contradict business-rules pages
+   e. **Board review pending** — features in `ready-for-dev` or `in-dev` with
+      `advisory-review: pending`
+   f. **Skipped board reviews** — features with `advisory-review: skipped` (list reason,
+      team awareness only — not an error)
+   g. **Orphan pages** — wiki pages not linked from any other page and not in index.md
+   h. **Index drift** — pages on disk missing from index.md, or index.md entries for
+      non-existent pages
+   i. **Stale status** — features in `in-dev` for more than 14 days (flag, do not update)
+   j. **Quarantine backlog** — items in `intake/quarantined/` older than 7 days
+   k. **Unresolved open questions** — features in `ready-for-dev` or `in-dev` with open questions
+   l. **Missing ADRs** — significant technical choices in platform-requirements with no
+      corresponding decision record
+
+4. Output lint report as `knowledge/wiki/lint-[YYYY-MM-DD].md`
+5. Append to `knowledge/wiki/log.md`
+
+## Report format
+
+For each issue: affected file(s), description of the problem, suggested remediation.
+
+If no issues found: state explicitly "Wiki is consistent. No issues found."
+
+## Notes
+
+- Do not auto-fix anything. Report and let the human decide.
+- Run before sprint planning as a weekly health check.

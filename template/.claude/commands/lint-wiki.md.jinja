@@ -1,0 +1,36 @@
+# Lint wiki — health-check the knowledge base
+
+## Usage
+/lint-wiki
+
+## What this command does
+
+1. Read SCHEMA.md, index.md, and all files in all wiki subdirectories
+2. Check for and report:
+   a. **Missing platform requirements** — features in ready-for-dev or later with no
+      platform-requirements page for one or more active platforms
+   b. **Design gaps** — features in in-design or later with no design page
+   c. **API contract gaps** — features with an API surface but no api-contracts page
+   d. **Contradictions** — conflicting behaviour descriptions across platform-requirements
+      pages, or specs that contradict business-rules pages
+   e. **Board review pending** — features in ready-for-dev or in-dev with
+      advisory-review: pending (these should have been reviewed before dev started)
+   f. **Skipped board reviews** — features with advisory-review: skipped; list the
+      reason given and the feature name (for team awareness, not as an error)
+   g. **Orphan pages** — wiki pages not linked from any other page and not in index.md
+   h. **Index drift** — pages on disk missing from index.md, or index.md entries for
+      pages that don't exist
+   i. **Stale status** — features in in-dev for more than 14 days (flag, do not auto-update)
+   j. **Quarantine backlog** — items in intake/quarantined/ older than 7 days
+   k. **Unresolved open questions** — features in ready-for-dev or in-dev with open
+      questions (should have been resolved before handoff)
+   l. **Missing ADRs** — significant technical choices in platform-requirements with no
+      corresponding decision record
+3. Output a lint report as `knowledge/wiki/lint-[YYYY-MM-DD].md`
+4. Append to log.md
+
+## Notes for the agent
+
+- Do not auto-fix. Report and let the human decide.
+- For each issue: affected file(s), description of the problem, suggested remediation.
+- An empty lint report is a healthy sign. State explicitly if the wiki is consistent.
