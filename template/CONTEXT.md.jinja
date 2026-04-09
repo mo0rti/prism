@@ -47,7 +47,7 @@ All product knowledge lives in `knowledge/wiki/`. Before implementing any featur
 
 The wiki is the single source of truth. If a feature has no wiki page, do not implement
 it. Ask the human to run the `po-intake` operation first
-(Claude: `/po-intake [folder]`, Codex: `po-intake [folder]`,
+(Claude: `/po-intake [folder]`, Codex: `$po-intake [folder]`,
 Cursor: ask the agent to "run po-intake on [folder]").
 
 ## Available commands
@@ -62,13 +62,17 @@ Board: `/board-review [F-XXX]`
 Shared: `/feature-status`, `/ask [F-XXX] "question" --to po|designer|dev`,
         `/audit-feature [F-XXX]`, `/lint-wiki`
 
-**Codex** (use `$skill` for structured skills, plain name for lifecycle operations):
+**Codex** (use `$skill` syntax for structured project operations):
 
-Skills with dedicated files: `$setup-project`, `$board-review`, `$prep-sprint`,
-`$feature-status`, `$lint-wiki`
-
-Lifecycle operations (invoke by name): `po-intake`, `po-clarify`, `po-handoff`,
-`design-intake`, `design-clarify`, `design-handoff`, `dev-done`, `ask`, `audit-feature`
+Setup: `$setup-project`
+PO: `$po-intake [folder]`, `$po-clarify`, `$po-handoff [F-XXX]`
+Designer: `$design-intake [F-XXX] [folder]`, `$design-clarify`, `$design-handoff [F-XXX]`
+Developer: `$prep-sprint`, `$dev-done [F-XXX]`
+Board: `$board-review [F-XXX]`
+Shared: `$feature-status`, `$ask [F-XXX] "question" --to po|designer|dev`,
+        `$audit-feature [F-XXX]`, `$lint-wiki`, `$wiki-show F-XXX`,
+        `$wiki-blockers`, `$wiki-query "text"`, `$wiki-owner po|designer|dev`,
+        `$wiki-platform <platform-id>`
 
 **Cursor**: ask the agent by operation name, e.g. "run setup-project" or "run po-intake
 on the folder meeting-notes-2026-04-07". The agent will follow the steps in

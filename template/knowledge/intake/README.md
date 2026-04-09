@@ -24,7 +24,7 @@ discovered during implementation. Drop as a markdown note referencing the featur
 
    Command syntax by tool:
    - Claude Code: `/po-intake [folder]` or `/design-intake [F-XXX] [folder]`
-   - Codex: `po-intake [folder]` or `design-intake [F-XXX] [folder]`
+   - Codex: `$po-intake [folder]` or `$design-intake [F-XXX] [folder]`
    - Cursor: ask the agent to "run po-intake on [folder]" or "run design-intake on F-XXX [folder]"
 
 ## After processing

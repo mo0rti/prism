@@ -1,0 +1,6 @@
+interface:
+  display_name: "Design Intake"
+  short_description: "Attach design artifacts to a feature and create its design page"
+  default_prompt: "Use $design-intake F-XXX [folder-name] to process pending design input into a feature-linked design page."
+policy:
+  allow_implicit_invocation: true
