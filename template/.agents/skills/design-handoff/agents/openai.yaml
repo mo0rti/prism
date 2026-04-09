@@ -3,4 +3,4 @@ interface:
   short_description: "Move a feature to ready-for-dev and generate platform requirements"
   default_prompt: "Use $design-handoff F-XXX to validate design readiness, check advisory state, and hand a feature to development."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

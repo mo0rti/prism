@@ -3,4 +3,4 @@ interface:
   short_description: "Move a feature to ready-for-design with a design brief"
   default_prompt: "Use $po-handoff F-XXX to validate PO completeness, handle advisory-review state, and hand a feature to design."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

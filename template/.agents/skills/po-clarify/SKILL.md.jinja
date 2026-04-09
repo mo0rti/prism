@@ -20,7 +20,7 @@ Use this skill to work through open PO-owned questions one feature at a time.
 5. For each answer:
    - update the open questions table
    - update the feature spec if the answer introduces a new requirement
-   - flag and quarantine if the answer contradicts existing wiki content
+   - flag the conflict and leave the question open if the answer contradicts existing wiki content
 6. Update `index.md` if owner or status changes
 7. Append a single summary entry to `log.md`
 
@@ -31,6 +31,8 @@ Use this skill to work through open PO-owned questions one feature at a time.
 - confirm each update before moving to the next question
 - if an answer introduces a new open question, add it immediately
 - treat board-generated questions with the same priority as other open questions
+- if one feature hits a contradiction, skip that conflicting answer and leave the question open for that feature only
+- do not stop the whole clarify session unless the user asks to stop
 
 ## Canonical format reference
 
@@ -51,4 +53,4 @@ Return:
 ## Error and stop conditions
 
 - if there are no open PO questions, return a clean empty-state response
-- if a user answer conflicts with existing wiki content, quarantine and stop the conflicting update
+- if a user answer conflicts with existing wiki content, report the conflict, leave that question open, and stop the conflicting update for that feature, then continue with the next feature unless the user wants to stop

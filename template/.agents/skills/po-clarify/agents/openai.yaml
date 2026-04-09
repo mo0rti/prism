@@ -3,4 +3,4 @@ interface:
   short_description: "Resolve open questions assigned to the product owner"
   default_prompt: "Use $po-clarify to work through open PO questions one feature at a time and update the wiki accordingly."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

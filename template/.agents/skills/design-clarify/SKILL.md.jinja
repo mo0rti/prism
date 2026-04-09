@@ -30,6 +30,8 @@ Use this skill to work through open designer-owned questions one feature at a ti
 - confirm each update before moving to the next question
 - flag board-generated questions clearly and treat them as high priority
 - update the design page when answers resolve previously missing UI states
+- if one feature hits a contradiction or missing-page blocker, stop updates for that feature only
+- do not stop the whole clarify session unless the user asks to stop
 
 ## Canonical format reference
 
@@ -49,4 +51,4 @@ Return:
 ## Error and stop conditions
 
 - if there are no open designer questions, return a clean empty-state response
-- if a required design page is missing for a design-state update, report that cleanly before proceeding
+- if a required design page is missing for a design-state update, report that cleanly and stop updates for that feature, then continue with the next feature unless the user wants to stop
