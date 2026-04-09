@@ -30,7 +30,7 @@ template/             # Files copied into generated projects
 README.md             # Short repository entrypoint
 AGENTS.md             # Codex maintainer guidance for this repo
 CLAUDE.md             # Claude maintainer guidance for this repo
-plans/                # Private planning and review docs kept out of version control
+plans/                # Maintainer planning and review docs tracked in this repo
 ```
 
 ## Recommended Maintainer Flow
@@ -70,3 +70,5 @@ copier copy --trust --defaults --data "project_name=Test Web App" --data "platfo
 - [`getting-started.md`](getting-started.md) for generation and validation commands
 - [`questionnaire.md`](questionnaire.md) for the current questionnaire contract
 - [`generated-projects.md`](generated-projects.md) for generated-project outputs and workflow support
+- [`prism-model.md`](prism-model.md) for the conceptual Prism workflow model
+- [`wiki-workflow.md`](wiki-workflow.md) for the generated-project wiki and query layer

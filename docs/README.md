@@ -12,6 +12,15 @@ This folder holds repository-level documentation for the template itself.
 | [generated-projects.md](generated-projects.md) | What generated repositories include: docs, AI context, generators, and workflows |
 | [maintainer-workflow.md](maintainer-workflow.md) | Template structure, maintainer workflow, and recommended validation variants |
 
+## Prism Docs
+
+| Document | Purpose |
+|----------|---------|
+| [prism-model.md](prism-model.md) | What Prism is, the problems it solves, and the generated-project workflow model |
+| [wiki-workflow.md](wiki-workflow.md) | How the product wiki works, what `WIKI_REPORT.md` and `SETTINGS.md` do, and how the read/query layer behaves |
+| [ai-surfaces.md](ai-surfaces.md) | How Claude and Codex surfaces are packaged in generated projects and which differences are intentional |
+| [wiki-validation.md](wiki-validation.md) | How the wiki usability layer was validated and what confidence boundaries apply today |
+
 ## Related Root Files
 
 - [`README.md`](../README.md) for the short repository overview
