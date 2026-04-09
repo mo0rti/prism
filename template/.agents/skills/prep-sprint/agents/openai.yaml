@@ -1,0 +1,6 @@
+interface:
+  display_name: "Prep Sprint"
+  short_description: "Read-only sprint readiness view across the wiki"
+  default_prompt: "Use $prep-sprint to review what is ready to build, blocked, pending board review, or still in earlier lifecycle stages."
+policy:
+  allow_implicit_invocation: true

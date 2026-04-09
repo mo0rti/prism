@@ -3,4 +3,4 @@ interface:
   short_description: "Process raw intake notes into structured wiki entries"
   default_prompt: "Use $po-intake [folder-name] to turn a pending intake folder into features, personas, business rules, and index updates."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

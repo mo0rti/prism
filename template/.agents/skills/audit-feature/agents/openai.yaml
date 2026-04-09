@@ -3,4 +3,4 @@ interface:
   short_description: "Cross-check a feature spec against its source intake"
   default_prompt: "Use $audit-feature F-XXX to verify source traceability and find missed, drifted, or untraced requirements."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

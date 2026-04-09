@@ -1,0 +1,6 @@
+interface:
+  display_name: "Feature Status"
+  short_description: "Pipeline view plus generated WIKI_REPORT refresh"
+  default_prompt: "Use $feature-status to show the current feature pipeline and refresh knowledge/wiki/WIKI_REPORT.md."
+policy:
+  allow_implicit_invocation: true

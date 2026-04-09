@@ -7,6 +7,9 @@ description: Regenerate typed API clients from `shared/api-contracts/openapi.yml
 
 Use this skill after changing the OpenAPI contract or anything derived from it.
 
+This skill intentionally allows implicit invocation because it is deterministic code
+generation and verification, not a product-wiki lifecycle state transition.
+
 ## Workflow
 
 1. Validate the contract with `task validate-api`.

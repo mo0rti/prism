@@ -7,6 +7,10 @@ description: Show the full feature pipeline and refresh knowledge/wiki/WIKI_REPO
 
 Show the current pipeline view and refresh the generated orientation report.
 
+This skill intentionally allows implicit invocation because it only refreshes the
+generated `knowledge/wiki/WIKI_REPORT.md` orientation artifact. That report is
+regenerable, gitignored, and not the source of truth for project state.
+
 ## Workflow
 
 1. Read `knowledge/wiki/SCHEMA.md`

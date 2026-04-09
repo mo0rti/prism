@@ -3,4 +3,4 @@ interface:
   short_description: "Resolve open questions assigned to the designer"
   default_prompt: "Use $design-clarify to work through open designer questions one feature at a time and update the wiki."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

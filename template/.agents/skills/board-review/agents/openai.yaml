@@ -3,4 +3,4 @@ interface:
   short_description: "Domain expert feature review via the project advisory board"
   default_prompt: "Use $board-review F-XXX to review a feature through the advisory board before development starts."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

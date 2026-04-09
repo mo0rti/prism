@@ -3,4 +3,4 @@ interface:
   short_description: "Route a feature question to PO, designer, or dev"
   default_prompt: "Use $ask F-XXX \"question\" --to po|designer|dev to add a new open question to the feature."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false
