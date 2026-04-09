@@ -30,8 +30,7 @@ template/             # Files copied into generated projects
 README.md             # Short repository entrypoint
 AGENTS.md             # Codex maintainer guidance for this repo
 CLAUDE.md             # Claude maintainer guidance for this repo
-PRISM_AGENT_PLAN.md   # Current Prism wiki lifecycle plan
-PLAN.md               # Legacy architecture context predating Prism
+plans/                # Private planning and review docs kept out of version control
 ```
 
 ## Recommended Maintainer Flow
@@ -71,5 +70,3 @@ copier copy --trust --defaults --data "project_name=Test Web App" --data "platfo
 - [`getting-started.md`](getting-started.md) for generation and validation commands
 - [`questionnaire.md`](questionnaire.md) for the current questionnaire contract
 - [`generated-projects.md`](generated-projects.md) for generated-project outputs and workflow support
-- [`PRISM_AGENT_PLAN.md`](../PRISM_AGENT_PLAN.md) for the current Prism wiki lifecycle plan
-- [`PLAN.md`](../PLAN.md) for legacy architecture context predating Prism

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Wiki Query"
+  short_description: "Read-only retrieval-assisted search across the wiki"
+  default_prompt: "Use $wiki-query \"text\" to find compact, typed matches across the product wiki."
+policy:
+  allow_implicit_invocation: true

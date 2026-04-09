@@ -1,0 +1,6 @@
+interface:
+  display_name: "Wiki Owner"
+  short_description: "Read-only owner dashboard for po, designer, or dev"
+  default_prompt: "Use $wiki-owner po|designer|dev to show open questions, waiting work, and stale items for one owner role."
+policy:
+  allow_implicit_invocation: true

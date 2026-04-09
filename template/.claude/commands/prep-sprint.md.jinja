@@ -5,11 +5,14 @@
 
 ## What this command does
 
-1. Read `knowledge/wiki/SCHEMA.md`
-2. Read `knowledge/wiki/index.md`
-3. Read all feature files with status = `ready-for-dev` or `in-dev`
-4. For each feature, read its platform-requirements pages
-5. Output a structured report:
+1. Read `knowledge/wiki/WIKI_REPORT.md` first if it exists for a quick orientation summary
+2. If `knowledge/wiki/WIKI_REPORT.md` is absent, tell the user to run `/feature-status`
+   first so the orientation report exists on demand
+3. Read `knowledge/wiki/SCHEMA.md`
+4. Read `knowledge/wiki/index.md`
+5. Read all feature files with status = `ready-for-dev` or `in-dev`
+6. For each feature, read its platform-requirements pages
+7. Output a structured report:
 
    ```
    ## Ready to build
@@ -35,10 +38,12 @@
    - F-003 — Admin dashboard [in-design, owner: designer]
    ```
 
-6. Do not modify any wiki files. Read-only command.
+8. Do not modify any wiki files. Read-only command.
 
 ## Notes for the agent
 
+- `WIKI_REPORT.md` is an orientation artifact, not the source of truth; use the underlying
+  feature and requirement pages for actual delivery decisions.
 - Features with `advisory-review: pending` must not appear in the "Ready to build"
   section. List them separately under "Board review pending."
 - Dependencies must be checked and stated explicitly.

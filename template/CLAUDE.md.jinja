@@ -4,8 +4,7 @@
 
 ## First-time setup
 
-If this is a newly scaffolded project, initialize the product wiki before feature
-work:
+If this is a newly scaffolded project, initialize the product wiki before feature work:
 
 - Claude Code: `/setup-project`
 - Codex: `$setup-project`
@@ -15,30 +14,35 @@ See `CONTEXT.md` and `knowledge/wiki/SCHEMA.md` for the full cross-tool workflow
 
 ## Product knowledge wiki
 
-This project uses a shared product wiki at `knowledge/wiki/` as the single source of
-truth for what to build. Before implementing any feature:
+This project uses a shared product wiki at `knowledge/wiki/` as the single source of truth
+for what to build. Before implementing any feature:
 
-1. Read `knowledge/wiki/index.md` — confirm the feature is in `ready-for-dev` or `in-dev`
+1. Read `knowledge/wiki/WIKI_REPORT.md` if it exists for a quick orientation summary.
+2. If `knowledge/wiki/WIKI_REPORT.md` is absent, run `/feature-status` first to generate it.
+3. Read `knowledge/wiki/index.md` and confirm the feature is in `ready-for-dev` or `in-dev`
    status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
-   stop and inform the human — a board review should happen before implementation.
-2. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context
-3. Read `knowledge/wiki/platform-requirements/[feature-id]-[THIS_PLATFORM].md` for your
-   specific implementation requirements
-4. Read `knowledge/wiki/api-contracts/[feature-id].md` if this feature has an API surface
-5. Check `knowledge/wiki/business-rules/` for rules that apply to this feature
+   stop and inform the human - a board review should happen before implementation.
+4. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context.
+5. Read `knowledge/wiki/platform-requirements/[feature-id]-[THIS_PLATFORM].md` for your
+   platform-specific implementation requirements.
+6. Read `knowledge/wiki/api-contracts/[feature-id].md` if this feature has an API surface.
+7. Check `knowledge/wiki/business-rules/` for rules that apply to this feature.
 
-**Do not implement features without a wiki page.** Ask the human to run the `po-intake`
-operation first: `/po-intake [folder]`
+`WIKI_REPORT.md` is only an orientation artifact. The underlying feature, design,
+platform-requirement, and rule pages remain the source of truth.
 
-If you discover information during implementation that should update the wiki, propose
-the update and ask for confirmation before writing, or route a question using
+**Do not implement features without a wiki page.** Ask the human to run `/po-intake [folder]`
+first.
+
+If you discover information during implementation that should update the wiki, propose the
+update and ask for confirmation before writing, or route a question using
 `/ask F-XXX "..." --to po`.
 
 ## Architecture
 
 Monorepo with MVVM across all platforms. API-first: OpenAPI spec drives typed clients.
 
-```
+```text
 {% if "backend" in platforms %}backend/       -> Spring Boot 4 (Kotlin 2.2+, Java 21) - Azure Container Apps{% endif %}
 {% if "web-user-app" in platforms %}web-user-app/  -> Next.js + TypeScript user-facing web app - Cloudflare via OpenNext{% endif %}
 {% if "web-admin-portal" in platforms %}web-admin-portal/  -> Next.js + TypeScript admin web portal - Cloudflare via OpenNext{% endif %}
@@ -66,13 +70,36 @@ docs/          -> Human-readable reference documentation
 
 ## Wiki commands (Claude Code slash commands)
 
-Setup: `/setup-project`
-PO: `/po-intake [folder]`, `/po-clarify`, `/po-handoff [F-XXX]`
-Designer: `/design-intake [F-XXX] [folder]`, `/design-clarify`, `/design-handoff [F-XXX]`
-Developer: `/prep-sprint`, `/dev-done [F-XXX]`
-Board: `/board-review [F-XXX]`
-Shared: `/feature-status`, `/ask [F-XXX] "question" --to po|designer|dev`,
-        `/audit-feature [F-XXX]`, `/lint-wiki`
+### Orient / read-only
+
+- `/feature-status` - pipeline view plus refresh of `knowledge/wiki/WIKI_REPORT.md`
+- `/prep-sprint` - developer session view: what is ready to build, what is blocked, what is pending board review
+- `/wiki-show F-XXX` - focused context bundle for one feature
+- `/wiki-blockers` - blockers view using the canonical blocker categories
+- `/wiki-query "text"` - retrieval-assisted wiki search across features, rules, design, and requirements
+- `/wiki-owner po|designer|dev` - role dashboard for open questions, waiting work, and stale items
+- `/wiki-platform <platform-id>` - platform queue for active features, requirement state, and blockers
+
+Read `knowledge/wiki/WIKI_REPORT.md` first when present. If it is absent, run
+`/feature-status` before deep reading.
+
+### Lifecycle / write
+
+- `/setup-project`
+- `/po-intake [folder]`
+- `/po-clarify`
+- `/po-handoff [F-XXX]`
+- `/design-intake [F-XXX] [folder]`
+- `/design-clarify`
+- `/design-handoff [F-XXX]`
+- `/dev-done [F-XXX]`
+
+### Audit / review
+
+- `/board-review [F-XXX]`
+- `/lint-wiki`
+- `/ask [F-XXX] "question" --to po|designer|dev`
+- `/audit-feature [F-XXX]`
 
 ## Auth
 
@@ -89,6 +116,7 @@ Backend issues JWT after successful auth. Clients store token and send as `Autho
 
 - `knowledge/wiki/SCHEMA.md` - wiki conventions and operational rules
 - `knowledge/wiki/index.md` - feature status board
+- `knowledge/wiki/WIKI_REPORT.md` - generated orientation summary when present
 - `knowledge/wiki/advisory/BOARD.md` - advisory board composition
 - `docs/architecture.md` - system design, platform map, tech decisions
 - `docs/api/conventions.md` - API naming, pagination, error format

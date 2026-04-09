@@ -9,10 +9,19 @@ Read-only command. Shows the current buildable state of the product wiki.
 
 ## Workflow
 
-1. Read `knowledge/wiki/SCHEMA.md`
-2. Read `knowledge/wiki/index.md`
-3. Read all feature files with status `ready-for-dev` or `in-dev`
-4. For each feature, read its platform-requirements pages
+1. Read `knowledge/wiki/WIKI_REPORT.md` first if it exists for a quick orientation summary
+2. If `knowledge/wiki/WIKI_REPORT.md` is absent, tell the user to run `$feature-status`
+   first so the orientation report exists on demand
+3. Read `knowledge/wiki/SCHEMA.md`
+4. Read `knowledge/wiki/index.md`
+5. Read all feature files with status `ready-for-dev` or `in-dev`
+6. For each feature, read its platform-requirements pages
+
+## Canonical format reference
+
+Mirror the detailed output contract from:
+
+- `/.claude/commands/prep-sprint.md`
 
 ## Output format
 
@@ -41,6 +50,7 @@ Dependencies: [feature IDs or "none"]
 ## Notes
 
 - Do not modify any wiki files. This is a read-only operation.
+- `WIKI_REPORT.md` is an orientation artifact, not the source of truth.
 - Features with `advisory-review: pending` must NOT appear in "Ready to build."
 - State explicitly if any ready-for-dev feature has no platform-requirements pages.
 - Check and state dependencies explicitly.

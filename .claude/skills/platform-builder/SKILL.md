@@ -15,16 +15,16 @@ $ARGUMENTS
 
 ## Steps
 
-1. **Check current state** - Read `PLAN.md` Build Progress section to see which platforms are done vs pending. Ask which platform to work on if not specified.
+1. **Check current state** - Read `docs/current-status.md` and inspect the existing template slices to see which platforms are stronger vs still partial. Ask which platform to work on if not specified.
 
-2. **Read the spec** - Read the relevant Phase 3 section from `PLAN.md` for the target platform's full specification.
+2. **Read the spec** - Infer the current platform contract from `copier.yml`, `template/`, `README.md`, and the maintainer docs.
 
 3. **Study reference platforms** - Read completed platform templates to understand patterns:
    - `template/backend/` - Spring Boot patterns, Jinja usage, CLAUDE.md structure, `backend/docs/` for technical docs
    - `template/mobile-android/` - MVVM patterns, feature structure, Hilt DI, `mobile-android/docs/` for technical docs with 7 doc files
    - `template/mobile-ios/` - MVVM patterns mirroring Android, SwiftUI conventions
 
-4. **Create the platform directory** - Build `template/{platform}/` with all files listed in the PLAN.md spec:
+4. **Create the platform directory** - Build `template/{platform}/` with the files required by the current platform contract:
    - Add `.jinja` suffix if it contains any Jinja2 expressions
    - Use `{{ project_name }}`, `{{ project_slug }}`, `{{ package_identifier }}` for project identity
    - Use `{% if "provider" in auth_methods %}` for conditional auth provider code
@@ -49,6 +49,6 @@ $ARGUMENTS
    - `template/.github/workflows/{platform}.yml.jinja` - add CI/CD workflow
    - `template/_templates/` - add Hygen generators if applicable
 
-9. **Update progress** - Update the Build Progress table in `PLAN.md`.
+9. **Update progress** - Update the committed repo docs when the public template contract changes, especially `docs/current-status.md`, `docs/maintainer-workflow.md`, and `README.md` where relevant.
 
 10. **Test** - Run `/test-template` to verify generation works.

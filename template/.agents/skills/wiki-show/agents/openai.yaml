@@ -1,0 +1,6 @@
+interface:
+  display_name: "Wiki Show"
+  short_description: "Read-only feature context bundle for one feature ID"
+  default_prompt: "Use $wiki-show F-XXX to assemble the current linked context and blockers for one feature."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Wiki Platform"
+  short_description: "Read-only platform queue for one Prism platform"
+  default_prompt: "Use $wiki-platform <platform-id> to show active features, requirement status, and blockers for one platform."
+policy:
+  allow_implicit_invocation: true

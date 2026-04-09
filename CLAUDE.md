@@ -61,8 +61,8 @@ cd /path/to/generated-project && copier update --trust
 - `docs/README.md` - root documentation index for this template repo
 - `docs/maintainer-workflow.md` - template maintenance workflow and validation variants
 - `docs/questionnaire.md` - questionnaire inputs and maturity notes
-- `PRISM_AGENT_PLAN.md` - current Prism wiki lifecycle plan
-- `PLAN.md` - legacy architecture plan, decisions, build progress, library versions
 - `copier.yml` - template configuration and questionnaire
 - `template/CLAUDE.md.jinja` - Claude context template for generated projects
 - `template/AGENTS.md.jinja` - Codex context template for generated projects
+
+Use `plans/` for planning references.
