@@ -1,0 +1,6 @@
+interface:
+  display_name: "Dev Done"
+  short_description: "Mark a feature as shipped and update wiki status"
+  default_prompt: "Use $dev-done F-XXX to record post-ship notes and mark a feature as done across the wiki."
+policy:
+  allow_implicit_invocation: true

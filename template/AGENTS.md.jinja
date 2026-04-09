@@ -31,12 +31,12 @@ for what to build. Before implementing any feature:
 `WIKI_REPORT.md` is only an orientation artifact. The underlying feature, design,
 platform-requirement, and rule pages remain the source of truth.
 
-**Do not implement features without a wiki page.** Ask the human to run `po-intake [folder]`
+**Do not implement features without a wiki page.** Ask the human to run `$po-intake [folder]`
 first.
 
 If you discover information during implementation that should update the wiki, propose the
 update and ask for confirmation before writing, or route a question using
-`ask F-XXX "..." --to po`.
+`$ask F-XXX "..." --to po`.
 
 ## Architecture
 
@@ -86,20 +86,20 @@ Read `knowledge/wiki/WIKI_REPORT.md` first when present. If it is absent, run
 ### Lifecycle / write
 
 - `$setup-project` - interactive project initialization (run once after scaffolding)
-- `po-intake [folder]` - process raw PO notes into feature specs
-- `po-clarify` - answer open questions assigned to PO
-- `po-handoff [F-XXX]` - move feature to ready-for-design
-- `design-intake [F-XXX] [folder]` - attach design artifacts to a feature
-- `design-clarify` - answer open questions assigned to Designer
-- `design-handoff [F-XXX]` - move feature to ready-for-dev
-- `dev-done [F-XXX]` - mark a feature as shipped
+- `$po-intake [folder]` - process raw PO notes into feature specs
+- `$po-clarify` - answer open questions assigned to PO
+- `$po-handoff [F-XXX]` - move feature to ready-for-design
+- `$design-intake [F-XXX] [folder]` - attach design artifacts to a feature
+- `$design-clarify` - answer open questions assigned to Designer
+- `$design-handoff [F-XXX]` - move feature to ready-for-dev
+- `$dev-done [F-XXX]` - mark a feature as shipped
 
 ### Audit / review
 
 - `$board-review [F-XXX]` - domain expert feature review via the advisory board
 - `$lint-wiki` - structural health check for the knowledge base
-- `ask [F-XXX] "question" --to po|designer|dev` - route a question
-- `audit-feature [F-XXX]` - cross-check spec against source intake
+- `$ask [F-XXX] "question" --to po|designer|dev` - route a question
+- `$audit-feature [F-XXX]` - cross-check spec against source intake
 
 ## Auth
 
@@ -152,8 +152,8 @@ Each platform has its own `AGENTS.md` with detailed patterns:
 ## Adding Features
 
 1. Read `knowledge/wiki/WIKI_REPORT.md` if present, or run `$feature-status` first.
-2. If no feature page exists, run `po-intake [folder]` to create one from raw notes.
-3. After design is complete, run `design-handoff [F-XXX]` to generate platform-requirements.
+2. If no feature page exists, run `$po-intake [folder]` to create one from raw notes.
+3. After design is complete, run `$design-handoff [F-XXX]` to generate platform-requirements.
 4. Add endpoints to `shared/api-contracts/openapi.yml` and run `task generate-clients`.
 5. Implement the selected platform slices per `knowledge/wiki/platform-requirements/`.
-6. When shipped, run `dev-done [F-XXX]`.
+6. When shipped, run `$dev-done [F-XXX]`.

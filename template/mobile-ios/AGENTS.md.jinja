@@ -18,12 +18,12 @@ truth for what to build. Before implementing any feature:
 6. Read `knowledge/wiki/design/[feature-id]-[slug].md` for UI design decisions
 
 **Do not implement features without a wiki page.** Ask the human to run the `po-intake`
-operation first (Claude: `/po-intake [folder]`, Codex: `po-intake [folder]`,
+operation first (Claude: `/po-intake [folder]`, Codex: `$po-intake [folder]`,
 Cursor: ask the agent to "run po-intake on [folder]").
 
 If you discover information during implementation that should update the wiki, propose
 the update and ask for confirmation before writing, or route a question using the `ask`
-command (Claude: `/ask F-XXX "..." --to po`, Codex: `ask F-XXX "..." --to po`).
+command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
 
 ## Build And Run
 
