@@ -1,11 +1,89 @@
 param(
-    [string]$OutputRoot = (Join-Path $env:TEMP "template-validation")
+    [string]$OutputRoot = (Join-Path $env:TEMP "template-validation"),
+    [ValidateSet("full", "contract", "backend-smoke")]
+    [string]$Mode = "full"
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
+$CurrentClaudeCommands = @(
+    "add-endpoint",
+    "ask",
+    "audit-feature",
+    "board-review",
+    "design-clarify",
+    "design-handoff",
+    "design-intake",
+    "dev-done",
+    "document-entity",
+    "feature-status",
+    "generate-clients",
+    "lint-wiki",
+    "po-clarify",
+    "po-handoff",
+    "po-intake",
+    "prep-sprint",
+    "setup-project",
+    "wiki-blockers",
+    "wiki-owner",
+    "wiki-platform",
+    "wiki-query",
+    "wiki-show"
+)
+
+$CurrentWorkflowSkills = @(
+    "ask",
+    "audit-feature",
+    "board-review",
+    "design-clarify",
+    "design-handoff",
+    "design-intake",
+    "dev-done",
+    "document-entity",
+    "feature-status",
+    "generate-clients",
+    "lint-wiki",
+    "po-clarify",
+    "po-handoff",
+    "po-intake",
+    "prep-sprint",
+    "setup-project",
+    "wiki-blockers",
+    "wiki-owner",
+    "wiki-platform",
+    "wiki-query",
+    "wiki-show"
+)
+
+$ExplicitOnlyWorkflowSkills = @(
+    "ask",
+    "audit-feature",
+    "board-review",
+    "design-clarify",
+    "design-handoff",
+    "design-intake",
+    "dev-done",
+    "document-entity",
+    "po-clarify",
+    "po-handoff",
+    "po-intake",
+    "setup-project"
+)
+
+$PermissiveWorkflowSkills = @(
+    "feature-status",
+    "generate-clients",
+    "lint-wiki",
+    "prep-sprint",
+    "wiki-blockers",
+    "wiki-owner",
+    "wiki-platform",
+    "wiki-query",
+    "wiki-show"
+)
 
 function Assert-PathExists {
     param(
@@ -182,10 +260,8 @@ function Validate-WikiStructure {
     # CONTEXT.md rendered (no .jinja suffix)
     Assert-PathExists -Path (Join-Path $Root "CONTEXT.md") -Message "Generated project missing rendered CONTEXT.md."
 
-    # All 14 Claude commands present (rendered, no .jinja suffix)
-    foreach ($cmd in @("setup-project", "board-review", "po-intake", "po-clarify", "po-handoff",
-                       "design-intake", "design-clarify", "design-handoff",
-                       "prep-sprint", "dev-done", "feature-status", "ask", "audit-feature", "lint-wiki")) {
+    # Current Claude command surface present (rendered, no .jinja suffix)
+    foreach ($cmd in $CurrentClaudeCommands) {
         Assert-PathExists -Path (Join-Path $Root ".claude\commands\$cmd.md") -Message "Generated project missing .claude/commands/$cmd.md."
     }
 
@@ -193,9 +269,18 @@ function Validate-WikiStructure {
     Assert-PathMissing -Path (Join-Path $Root ".claude\commands\scaffold-feature.md") -Message "scaffold-feature command should not exist in generated project."
     Assert-PathMissing -Path (Join-Path $Root ".claude\commands\document-feature.md") -Message "document-feature command should not exist in generated project."
 
-    # Codex skills present
-    foreach ($skill in @("setup-project", "board-review", "prep-sprint", "feature-status", "lint-wiki")) {
+    # Current Codex workflow skills present
+    foreach ($skill in $CurrentWorkflowSkills) {
         Assert-PathExists -Path (Join-Path $Root ".agents\skills\$skill\SKILL.md") -Message "Generated project missing .agents/skills/$skill/SKILL.md."
+        Assert-PathExists -Path (Join-Path $Root ".agents\skills\$skill\agents\openai.yaml") -Message "Generated project missing .agents/skills/$skill/agents/openai.yaml."
+    }
+
+    foreach ($skill in $ExplicitOnlyWorkflowSkills) {
+        Assert-FileContains -Path (Join-Path $Root ".agents\skills\$skill\agents\openai.yaml") -Needle "allow_implicit_invocation: false" -Message "Generated skill $skill must require explicit invocation."
+    }
+
+    foreach ($skill in $PermissiveWorkflowSkills) {
+        Assert-FileContains -Path (Join-Path $Root ".agents\skills\$skill\agents\openai.yaml") -Needle "allow_implicit_invocation: true" -Message "Generated skill $skill must declare permissive invocation explicitly."
     }
 
     # Superseded skill must not exist
@@ -209,6 +294,11 @@ function Validate-WikiStructure {
 
     # docs/README.md present
     Assert-PathExists -Path (Join-Path $Root "docs\README.md") -Message "Generated project missing docs/README.md."
+
+    # Current wiki usability artifacts
+    Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\SETTINGS.md") -Message "Generated project missing knowledge/wiki/SETTINGS.md."
+    Assert-FileContains -Path (Join-Path $Root ".gitignore") -Needle "knowledge/wiki/WIKI_REPORT.md" -Message "Generated project .gitignore must ignore knowledge/wiki/WIKI_REPORT.md."
+    Assert-PathMissing -Path (Join-Path $Root "knowledge\wiki\WIKI_REPORT.md") -Message "Generated project should not include a committed knowledge/wiki/WIKI_REPORT.md on first render."
 
     # Generated README must onboard users into the required wiki setup step
     Assert-FileContains -Path (Join-Path $Root "README.md") -Needle "First-Time Setup" -Message "Generated README.md must include first-time wiki setup guidance."
@@ -262,7 +352,10 @@ function Validate-WikiStructure {
 }
 
 function Validate-BackendOnly {
-    param([string]$Root)
+    param(
+        [string]$Root,
+        [bool]$RunSmoke = $true
+    )
 
     Assert-NoCopierPlaceholders -Root $Root
     Validate-WikiStructure -Root $Root
@@ -321,7 +414,7 @@ function Validate-BackendOnly {
     }
 
     $javaCommand = Get-Command java -ErrorAction SilentlyContinue
-    if ($null -ne $javaCommand) {
+    if ($RunSmoke -and $null -ne $javaCommand) {
         Push-Location (Join-Path $Root "backend")
         try {
             Write-Host "Running backend Gradle packaging smoke test..."
@@ -336,11 +429,11 @@ function Validate-BackendOnly {
         }
     }
     else {
-        Write-Host "Skipping backend Gradle smoke test because Java is not available on PATH."
+        Write-Host "Skipping backend Gradle smoke test because it is disabled for this mode or Java is not available on PATH."
     }
 
     $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
-    if ($null -ne $dockerCommand) {
+    if ($RunSmoke -and $null -ne $dockerCommand) {
         Push-Location (Join-Path $Root "backend")
         try {
             $imageTag = "template-backend-validation:$PID"
@@ -355,12 +448,15 @@ function Validate-BackendOnly {
         }
     }
     else {
-        Write-Host "Skipping backend Docker smoke test because Docker is not available on PATH."
+        Write-Host "Skipping backend Docker smoke test because it is disabled for this mode or Docker is not available on PATH."
     }
 }
 
 function Validate-WebSample {
-    param([string]$Root)
+    param(
+        [string]$Root,
+        [bool]$RunSmoke = $true
+    )
 
     Assert-NoCopierPlaceholders -Root $Root
     Validate-WikiStructure -Root $Root
@@ -401,7 +497,7 @@ function Validate-WebSample {
     Assert-FileContains -Path (Join-Path $Root "docs\deployment\cloudflare-setup.md") -Needle 'Cloudflare Workers' -Message "Generated Cloudflare docs should describe Workers, not Pages."
 
     $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
-    if ($null -ne $npmCommand) {
+    if ($RunSmoke -and $null -ne $npmCommand) {
         foreach ($webApp in @("web-user-app", "web-admin-portal")) {
             Push-Location (Join-Path $Root $webApp)
             try {
@@ -442,7 +538,7 @@ function Validate-WebSample {
         }
     }
     else {
-        Write-Host "Skipping generated web smoke tests because npm is not available on PATH."
+        Write-Host "Skipping generated web smoke tests because they are disabled for this mode or npm is not available on PATH."
     }
 }
 
@@ -502,30 +598,68 @@ if (Test-Path -LiteralPath $OutputRoot) {
 }
 New-Item -ItemType Directory -Path $OutputRoot | Out-Null
 
-$backendRoot = New-GeneratedProject -Name "backend" -DataArgs @(
-    "project_name=Review Backend",
-    "platforms=[backend]",
-    "auth_methods=[google, apple, facebook, microsoft, password]"
-)
-Validate-BackendOnly -Root $backendRoot
+switch ($Mode) {
+    "backend-smoke" {
+        $backendRoot = New-GeneratedProject -Name "backend" -DataArgs @(
+            "project_name=Review Backend",
+            "platforms=[backend]",
+            "auth_methods=[google, apple, facebook, microsoft, password]"
+        )
+        Validate-BackendOnly -Root $backendRoot -RunSmoke $true
+    }
+    "contract" {
+        $backendRoot = New-GeneratedProject -Name "backend" -DataArgs @(
+            "project_name=Review Backend",
+            "platforms=[backend]",
+            "auth_methods=[google, apple, facebook, microsoft, password]"
+        )
+        Validate-BackendOnly -Root $backendRoot -RunSmoke $false
 
-$webRoot = New-GeneratedProject -Name "web" -DataArgs @(
-    "project_name=Review Web",
-    "platforms=[backend, web-user-app, web-admin-portal]"
-)
-Validate-WebSample -Root $webRoot
+        $webRoot = New-GeneratedProject -Name "web" -DataArgs @(
+            "project_name=Review Web",
+            "platforms=[backend, web-user-app, web-admin-portal]"
+        )
+        Validate-WebSample -Root $webRoot -RunSmoke $false
 
-$androidRoot = New-GeneratedProject -Name "android" -DataArgs @(
-    "project_name=Review Android",
-    "platforms=[backend, mobile-android]"
-)
-Validate-AndroidSample -Root $androidRoot
+        $androidRoot = New-GeneratedProject -Name "android" -DataArgs @(
+            "project_name=Review Android",
+            "platforms=[backend, mobile-android]"
+        )
+        Validate-AndroidSample -Root $androidRoot
 
-$iosRoot = New-GeneratedProject -Name "ios" -DataArgs @(
-    "project_name=Review App",
-    "platforms=[backend, mobile-ios]"
-)
-Validate-IosSample -Root $iosRoot
+        $iosRoot = New-GeneratedProject -Name "ios" -DataArgs @(
+            "project_name=Review App",
+            "platforms=[backend, mobile-ios]"
+        )
+        Validate-IosSample -Root $iosRoot
+    }
+    "full" {
+        $backendRoot = New-GeneratedProject -Name "backend" -DataArgs @(
+            "project_name=Review Backend",
+            "platforms=[backend]",
+            "auth_methods=[google, apple, facebook, microsoft, password]"
+        )
+        Validate-BackendOnly -Root $backendRoot -RunSmoke $true
+
+        $webRoot = New-GeneratedProject -Name "web" -DataArgs @(
+            "project_name=Review Web",
+            "platforms=[backend, web-user-app, web-admin-portal]"
+        )
+        Validate-WebSample -Root $webRoot -RunSmoke $false
+
+        $androidRoot = New-GeneratedProject -Name "android" -DataArgs @(
+            "project_name=Review Android",
+            "platforms=[backend, mobile-android]"
+        )
+        Validate-AndroidSample -Root $androidRoot
+
+        $iosRoot = New-GeneratedProject -Name "ios" -DataArgs @(
+            "project_name=Review App",
+            "platforms=[backend, mobile-ios]"
+        )
+        Validate-IosSample -Root $iosRoot
+    }
+}
 
 Write-Host ""
 Write-Host "Template validation passed."

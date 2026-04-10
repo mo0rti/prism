@@ -4,10 +4,39 @@ on:
   push:
     branches:
       - main
+    paths:
+      - ".github/workflows/template-validation.yml"
+      - "copier.yml"
+      - "scripts/validate-template.ps1"
+      - "template/**"
   pull_request:
+    paths:
+      - ".github/workflows/template-validation.yml"
+      - "copier.yml"
+      - "scripts/validate-template.ps1"
+      - "template/**"
 
 jobs:
-  validate-template:
+  contract-validation:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Copier
+        run: python -m pip install --upgrade pip copier
+
+      - name: Run Contract Validation
+        shell: pwsh
+        run: ./scripts/validate-template.ps1 -Mode contract
+
+  backend-smoke:
     runs-on: windows-latest
 
     steps:
@@ -25,6 +54,25 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Install Copier
+        run: python -m pip install --upgrade pip copier
+
+      - name: Run Backend Smoke Validation
+        shell: pwsh
+        run: ./scripts/validate-template.ps1 -Mode backend-smoke
+
+  web-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -33,6 +81,30 @@ jobs:
       - name: Install Copier
         run: python -m pip install --upgrade pip copier
 
-      - name: Run Template Validation
-        shell: pwsh
-        run: ./scripts/validate-template.ps1
+      - name: Generate Web Validation Sample
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET="$RUNNER_TEMP/prism-web-validation"
+          rm -rf "$TARGET"
+          copier copy --trust --defaults \
+            --data "project_name=Review Web" \
+            --data "platforms=[backend, web-user-app, web-admin-portal]" \
+            . "$TARGET"
+          echo "PRISM_WEB_TARGET=$TARGET" >> "$GITHUB_ENV"
+
+      - name: Run Web Smoke Tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for app in web-user-app web-admin-portal; do
+            echo "Running web smoke tests for $app"
+            pushd "$PRISM_WEB_TARGET/$app" >/dev/null
+            npm install
+            npm run lint
+            npm run typecheck
+            npm run build
+            npm run build:cloudflare
+            npx wrangler deploy --dry-run
+            popd >/dev/null
+          done
