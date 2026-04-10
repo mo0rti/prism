@@ -6,6 +6,22 @@ same way in each tool.
 This page explains the packaging model so the differences are understandable instead of
 looking accidental.
 
+## Short Version
+
+The practical status today is:
+
+- wiki usability parity is shipped in both tools
+- core lifecycle parity is shipped in both tools
+- the main remaining smaller review area is the set of Claude-only deep technical skills
+
+The important framing is:
+
+- Claude is command-first for workflow operations
+- Codex is skill-first for workflow operations
+- packaging differences are expected
+- the real question is whether the generated-project guidance exposes usable capabilities in
+  each tool
+
 ## Important Framing
 
 Comparing `template/.claude/commands/` directly to `template/.agents/skills/` is not
@@ -28,13 +44,20 @@ The real comparison is:
 - are the important workflow operations available in structured form?
 - are the remaining differences intentional?
 
+## What This Means In Practice
+
+If you are using a generated project:
+
+- use the generated `CLAUDE.md` to understand the Claude command surface
+- use the generated `AGENTS.md` to understand the Codex skill surface
+- use the project wiki as the product source of truth
+- use `WIKI_REPORT.md` as an orientation artifact, not authority
+
+If a capability exists in both tools, it may still be packaged differently.
+
+That is normal in Prism.
+
 ## Current Surface Model
-
-Current practical status:
-
-- wiki usability parity is shipped in both tools
-- core lifecycle parity is shipped in both tools
-- the main remaining smaller review area is the set of Claude-only deep technical skills
 
 ### Claude
 
@@ -62,7 +85,7 @@ The following areas are now available in structured form across both tools:
 - lifecycle operations for PO, design, and dev handoff
 - feature status and wiki health checks
 - wiki read/query operations
-- backend endpoint work (at different abstraction levels, see below)
+- backend endpoint work at different abstraction levels
 - security/auth guidance
 - testing and platform-convention guidance
 
@@ -109,7 +132,7 @@ Examples:
 - security/auth
 - testing guidance
 
-## Same capability, different packaging
+## Same Capability, Different Packaging
 
 Several important operations now exist in both tools but under different mechanisms:
 
@@ -132,7 +155,7 @@ Examples:
 This is acceptable as long as the generated-project guidance stays explicit about how to
 invoke them in each tool.
 
-## Different abstraction levels
+## Different Abstraction Levels
 
 Some concepts exist at different abstraction levels across tools.
 
@@ -167,16 +190,16 @@ These are not necessarily bugs, but they should be treated as conscious product 
 
 ## Practical Reading Guidance
 
-When exploring a generated project:
+When you are orienting in a generated project:
 
-- use the generated `CLAUDE.md` to understand the Claude command surface
-- use the generated `AGENTS.md` to understand the Codex skill surface
-- use the project wiki as the product source of truth
-- use `WIKI_REPORT.md` as an orientation artifact, not authority
+1. read the generated `README.md`
+2. use the generated `AGENTS.md` or `CLAUDE.md` for tool-specific invocation guidance
+3. use the wiki and `WIKI_REPORT.md` to understand product state
+4. use this page only when you need to understand why Claude and Codex surfaces differ
 
-## Related Docs
+## What To Read Next
 
-- [prism-model.md](prism-model.md)
-- [wiki-workflow.md](wiki-workflow.md)
-- [wiki-validation.md](wiki-validation.md)
-- [generated-projects.md](generated-projects.md)
+- [generated-projects.md](generated-projects.md) for the generated-repo structure and command groups
+- [wiki-workflow.md](wiki-workflow.md) for the wiki lifecycle and read/query behavior
+- [prism-model.md](prism-model.md) for the overall Prism workflow model
+- [wiki-validation.md](wiki-validation.md) for validation and confidence boundaries
