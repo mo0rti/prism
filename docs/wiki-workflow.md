@@ -3,11 +3,17 @@
 This page explains how the generated-project product wiki works, how the read/query layer
 fits into it, and how to interpret `WIKI_REPORT.md`.
 
+If you are new to Prism, read this page in this order:
+
+1. understand the wiki and source-of-truth boundary
+2. follow the role flow that matches your work
+3. use the command reference examples for deeper drill-down
+
 ## Core Idea
 
 The wiki is the shared source of truth for product intent in generated Prism projects.
 
-The important directories are:
+The most important directories are:
 
 - `knowledge/wiki/features/`
 - `knowledge/wiki/design/`
@@ -18,6 +24,16 @@ The important directories are:
 
 The lifecycle operations create and refine that state. The read/query operations help
 agents and humans navigate it.
+
+## Source-of-Truth Boundary
+
+The most important rule is simple:
+
+- the wiki files are the source of truth
+- `WIKI_REPORT.md` is only an orientation layer
+- read/query commands assemble context, but they do not replace the underlying files
+
+If `WIKI_REPORT.md` disagrees with the underlying wiki files, the wiki files win.
 
 ## `WIKI_REPORT.md`
 
@@ -36,8 +52,6 @@ It is not:
 - the source of truth
 - a hand-maintained document
 - a replacement for `index.md` or feature pages
-
-If `WIKI_REPORT.md` disagrees with the underlying wiki files, the wiki files win.
 
 ## `SETTINGS.md`
 
@@ -58,6 +72,57 @@ Project-level settings for wiki read/query behavior.
 
 Commands that use this setting must fall back cleanly to `14` if the file is missing, the
 key is missing, or the value is malformed.
+
+## Start Here By Role
+
+### If you are a Product Owner
+
+Typical flow:
+
+1. place raw notes in `knowledge/intake/pending/`
+2. run `po-intake`
+3. review the generated feature pages and open questions
+4. use `po-clarify` to answer PO-owned questions
+5. use `po-handoff` when the feature is ready for design
+
+Helpful read/query commands:
+
+- `feature-status` for the full lifecycle board
+- `wiki-show F-XXX` for one feature
+- `wiki-owner po` for PO-owned open work
+- `wiki-blockers` when a feature seems stuck
+
+### If you are a Designer
+
+Typical flow:
+
+1. inspect the feature with `wiki-show F-XXX`
+2. attach design artifacts with `design-intake`
+3. resolve open design questions with `design-clarify`
+4. confirm platform implications in the wiki
+5. use `design-handoff` when the feature is ready for development
+
+Helpful read/query commands:
+
+- `wiki-owner designer`
+- `wiki-platform <platform-id>`
+- `wiki-query "text"` for targeted product context search
+
+### If you are a Developer
+
+Typical flow:
+
+1. read `WIKI_REPORT.md` when present, or run `feature-status`
+2. run `prep-sprint` to see what is actually ready
+3. use `wiki-show F-XXX` to assemble focused implementation context
+4. read platform requirements before implementation
+5. use `dev-done` only when implementation is truly complete
+
+Helpful read/query commands:
+
+- `wiki-blockers`
+- `wiki-platform <platform-id>`
+- `wiki-query "text"`
 
 ## Orientation and Read/Query Commands
 
@@ -435,14 +500,6 @@ Supported identifiers:
 - web-user-app
 - web-admin-portal
 ```
-
-## Source-of-Truth Boundary
-
-The most important rule is simple:
-
-- the wiki files are the source of truth
-- `WIKI_REPORT.md` is only an orientation layer
-- read/query commands assemble context, but they do not replace the underlying files
 
 ## Related Docs
 

@@ -5,7 +5,7 @@ Prism is the workflow and coordination model embedded in this template.
 It is not just a generated code scaffold. It is a way to carry product intent from raw
 input to implementation across multiple AI-assisted roles and platform slices.
 
-## What Prism Is
+## Short Version
 
 Each generated project combines:
 
@@ -14,11 +14,15 @@ Each generated project combines:
 - one lifecycle that moves work from intake to design to development
 - one advisory-board layer for domain-sensitive features
 
-The key split is:
+The practical idea is simple:
 
 - `knowledge/intake/` stores raw human input and workflow state
 - `knowledge/wiki/` stores structured product knowledge used by all agents
 - `docs/` stores human-readable technical and operational reference material
+
+If you only remember one thing, remember this:
+
+- the wiki is the shared product source of truth
 
 ## The Problems Prism Solves
 
@@ -53,20 +57,20 @@ domain-sensitive features before development starts.
 
 ## Core Architecture
 
-Prism has three layers.
+Prism has three layers:
 
-### Intake and translation
+### 1. Intake and translation
 
 Raw PO and design artifacts land in `knowledge/intake/`.
 
 The AI reads them, structures them, and proposes updates to the wiki.
 
-### Broadcast and persistence
+### 2. Broadcast and persistence
 
 The wiki is the shared coordination layer that every platform agent reads before
 implementing.
 
-### Domain intelligence
+### 3. Domain intelligence
 
 The advisory board adds domain-specific review when product logic has consequences the
 team should not reason about in isolation.
@@ -104,7 +108,7 @@ Important meanings:
 - `SETTINGS.md` holds project-level wiki behavior settings such as `wiki-stale-after-days`
 - `WIKI_REPORT.md` is a generated orientation artifact, not a source-of-truth document
 
-## Source of Truth
+## Source Of Truth
 
 The source of truth for what to build is the wiki, especially:
 
@@ -119,7 +123,7 @@ wiki files always win if there is a disagreement.
 
 ## First-Time Setup
 
-Every generated project has two startup phases.
+Every generated project has two startup phases:
 
 ### 1. Scaffold the repo
 
@@ -228,9 +232,9 @@ Do not invent aliases such as `ios`, `android`, or `web`.
 Board review is only useful if important questions, rules, and feature changes feed back
 into the wiki instead of living only in a standalone review file.
 
-## Related Docs
+## What To Read Next
 
-- [generated-projects.md](generated-projects.md)
-- [wiki-workflow.md](wiki-workflow.md)
-- [ai-surfaces.md](ai-surfaces.md)
-- [wiki-validation.md](wiki-validation.md)
+- [generated-projects.md](generated-projects.md) for the generated-repo shape and safe-first commands
+- [wiki-workflow.md](wiki-workflow.md) for the wiki lifecycle and read/query layer
+- [ai-surfaces.md](ai-surfaces.md) for Claude/Codex packaging guidance
+- [wiki-validation.md](wiki-validation.md) for current confidence boundaries
