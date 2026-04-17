@@ -1,0 +1,6 @@
+interface:
+  display_name: "Android Feature Delivery"
+  short_description: "Coordinate multi-layer Android feature work"
+  default_prompt: "Use $android-feature-delivery to coordinate a larger Android feature change."
+policy:
+  allow_implicit_invocation: false

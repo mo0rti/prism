@@ -1,0 +1,43 @@
+---
+name: compose-design-system
+description: Compose UI and design-system rules for this repo. Use when building, refactoring, or reviewing screens, shared components, theme architecture, color roles, day/night theming, previews, or reusable modifiers.
+---
+
+# Compose Design System
+
+Use this skill when Compose work should stay aligned with the app's shared UI language.
+
+## Role boundary
+
+- Own shared UI language, reusable Compose primitives, previews, and cross-feature visual patterns.
+- Defer DTO, repository, auth, and build-task decisions to the companion Android skills.
+
+## Shared UI rules
+
+- Use `AppTheme`, `MaterialTheme`, and shared components from `designsystem/` instead of feature-local one-offs.
+- Put reusable components, modifiers, and drawing helpers in `designsystem/`; keep feature files focused on composition.
+- Keep user-facing text in `strings.xml` and resolve it with `stringResource(...)` or `UiText`.
+
+## Screen patterns
+
+- Each screen follows Route/Screen split: Route handles navigation wiring + ViewModel; Screen is a pure composable.
+- UiState is a sealed interface co-located in the ViewModel file.
+- Observe state with `collectAsStateWithLifecycle()`.
+- Use `LaunchedEffect` for one-time events (navigation, snackbars).
+
+## Theme structure
+
+- `designsystem/theme/` contains Color, Type, Shape, Dimensions, and Theme definitions.
+- `designsystem/text/` contains `UiText` (framework-light string wrapper).
+- `designsystem/components/` contains shared composables: LoadingIndicator, ErrorView, and feature-agnostic primitives.
+
+## Preview rules
+
+- Wrap previews in `AppTheme`.
+- Prefer extending existing design-system primitives before creating a new shared abstraction.
+- When a UI element is reusable across features, move it out of the feature package.
+
+## Read when needed
+
+- `mobile-android/docs/design-system-and-theme.md`
+- `mobile-android/docs/file-structure.md`
