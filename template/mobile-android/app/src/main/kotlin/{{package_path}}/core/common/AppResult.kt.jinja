@@ -27,3 +27,9 @@ inline fun <T, R> AppResult<T>.map(transform: (T) -> R): AppResult<R> = when (th
     is AppResult.Success -> AppResult.Success(transform(data))
     is AppResult.Error -> this
 }
+
+inline fun <T> appResultOf(block: () -> T): AppResult<T> = try {
+    AppResult.Success(block())
+} catch (error: Exception) {
+    AppResult.Error(message = error.message.orEmpty(), cause = error)
+}

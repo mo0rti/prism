@@ -1,6 +1,9 @@
 package {{ package_identifier }}.feature.auth.ui
 
+import {{ package_identifier }}.R
+import {{ package_identifier }}.core.common.AppResult
 import {{ package_identifier }}.core.model.User
+import {{ package_identifier }}.designsystem.text.UiText
 import {{ package_identifier }}.feature.auth.data.repository.AuthRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -51,20 +54,19 @@ class SignInViewModelTest {
 {% if "password" in auth_methods %}
     @Test
     fun `sign in with password success`() = runTest(testDispatcher) {
-        coEvery { authRepository.login(any(), any()) } returns testUser
+        coEvery { authRepository.login(any(), any()) } returns AppResult.Success(testUser)
 
         viewModel.onEmailChange("test@example.com")
         viewModel.onPasswordChange("password123")
         viewModel.signInWithPassword()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(viewModel.uiState.value is SignInUiState.Success)
         coVerify { authRepository.login("test@example.com", "password123") }
     }
 
     @Test
     fun `sign in with password failure shows error`() = runTest(testDispatcher) {
-        coEvery { authRepository.login(any(), any()) } throws RuntimeException("Invalid credentials")
+        coEvery { authRepository.login(any(), any()) } returns AppResult.Error("Invalid credentials")
 
         viewModel.onEmailChange("test@example.com")
         viewModel.onPasswordChange("wrong")
@@ -73,17 +75,32 @@ class SignInViewModelTest {
 
         val state = viewModel.uiState.value
         assertTrue(state is SignInUiState.Error)
-        assertEquals("Invalid credentials", (state as SignInUiState.Error).message)
+        assertEquals(UiText.DynamicString("Invalid credentials"), (state as SignInUiState.Error).message)
     }
 {% endif %}
 
     @Test
     fun `oauth sign in success`() = runTest(testDispatcher) {
-        coEvery { authRepository.oauthCallback(any(), any(), any()) } returns testUser
+        coEvery { authRepository.oauthCallback(any(), any(), any()) } returns AppResult.Success(testUser)
 
         viewModel.signInWithOAuth("google", "auth-code", "redirect-uri")
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(viewModel.uiState.value is SignInUiState.Success)
+        coVerify { authRepository.oauthCallback("google", "auth-code", "redirect-uri") }
+    }
+
+    @Test
+    fun `oauth setup required shows explicit error`() {
+        viewModel.showOAuthSetupRequired("google")
+
+        val state = viewModel.uiState.value
+        assertTrue(state is SignInUiState.Error)
+        assertEquals(
+            UiText.StringResource(
+                R.string.error_oauth_setup_required,
+                args = listOf("Google"),
+            ),
+            (state as SignInUiState.Error).message,
+        )
     }
 }

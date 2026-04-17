@@ -1,12 +1,17 @@
 package {{ package_identifier }}.feature.auth.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import {{ package_identifier }}.R
 import {{ package_identifier }}.designsystem.components.LoadingIndicator
 
 @Composable
@@ -23,8 +28,12 @@ fun SignInScreen(
     onDismissError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .safeDrawingPadding(),
         contentAlignment = Alignment.Center,
     ) {
         when (uiState) {
@@ -35,12 +44,14 @@ fun SignInScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .imePadding()
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     Text(
-                        text = "Welcome",
+                        text = stringResource(R.string.auth_welcome),
                         style = MaterialTheme.typography.headlineLarge,
                     )
 
@@ -54,7 +65,7 @@ fun SignInScreen(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(
-                                text = uiState.message,
+                                text = uiState.message.asString(context),
                                 modifier = Modifier.padding(16.dp),
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                             )
@@ -65,7 +76,7 @@ fun SignInScreen(
                     OutlinedTextField(
                         value = email,
                         onValueChange = onEmailChange,
-                        label = { Text("Email") },
+                        label = { Text(stringResource(R.string.auth_email_label)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
@@ -73,7 +84,7 @@ fun SignInScreen(
                     OutlinedTextField(
                         value = password,
                         onValueChange = onPasswordChange,
-                        label = { Text("Password") },
+                        label = { Text(stringResource(R.string.auth_password_label)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
@@ -84,29 +95,29 @@ fun SignInScreen(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = email.isNotBlank() && password.isNotBlank(),
                     ) {
-                        Text("Sign In")
+                        Text(stringResource(R.string.auth_sign_in))
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 {% endif %}
 
 {% if "google" in auth_methods %}
-                    OAuthButton(text = "Continue with Google") {
+                    OAuthButton(text = stringResource(R.string.auth_continue_google)) {
                         onSignInWithOAuth("google")
                     }
 {% endif %}
 {% if "apple" in auth_methods %}
-                    OAuthButton(text = "Continue with Apple") {
+                    OAuthButton(text = stringResource(R.string.auth_continue_apple)) {
                         onSignInWithOAuth("apple")
                     }
 {% endif %}
 {% if "facebook" in auth_methods %}
-                    OAuthButton(text = "Continue with Facebook") {
+                    OAuthButton(text = stringResource(R.string.auth_continue_facebook)) {
                         onSignInWithOAuth("facebook")
                     }
 {% endif %}
 {% if "microsoft" in auth_methods %}
-                    OAuthButton(text = "Continue with Microsoft") {
+                    OAuthButton(text = stringResource(R.string.auth_continue_microsoft)) {
                         onSignInWithOAuth("microsoft")
                     }
 {% endif %}

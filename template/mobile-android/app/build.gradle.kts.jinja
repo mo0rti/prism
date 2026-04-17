@@ -8,7 +8,7 @@ plugins {
     alias(libs.plugins.room)
 }
 
-mobile-android {
+android {
     namespace = "{{ package_identifier }}"
     compileSdk = 36
 
@@ -100,4 +100,11 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(libs.turbine)
     testImplementation(libs.room.testing)
+
+    // Android UI Test
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.espresso.core)
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }

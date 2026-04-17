@@ -1,15 +1,17 @@
 package {{ package_identifier }}.navigation
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.flow.StateFlow
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import {{ package_identifier }}.core.model.AuthState
 import {{ package_identifier }}.core.session.SessionManager
+import {{ package_identifier }}.designsystem.components.LoadingIndicator
 import {{ package_identifier }}.feature.auth.ui.SignInRoute
 import {{ package_identifier }}.feature.example.ui.ExampleListRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,38 +19,50 @@ import javax.inject.Inject
 
 @HiltViewModel
 class NavViewModel @Inject constructor(
-    val sessionManager: SessionManager,
-) : ViewModel()
+    sessionManager: SessionManager,
+) : ViewModel() {
+    val authState: StateFlow<AuthState> = sessionManager.authState
+}
 
 @Composable
 fun NavGraph(viewModel: NavViewModel = hiltViewModel()) {
-    val navController = rememberNavController()
-    val authState by viewModel.sessionManager.authState.collectAsState()
+    val authState by viewModel.authState.collectAsStateWithLifecycle()
 
-    val startDestination: Screen = when (authState) {
-        is AuthState.Authenticated -> Screen.ExampleList
-        is AuthState.Unauthenticated -> Screen.SignIn
-        is AuthState.Loading -> Screen.SignIn
+    AuthGate(authState = authState)
+}
+
+@Composable
+fun AuthGate(
+    authState: AuthState,
+    authenticatedContent: @Composable () -> Unit = { AuthenticatedNavGraph() },
+    unauthenticatedContent: @Composable () -> Unit = { UnauthenticatedNavGraph() },
+    loadingContent: @Composable () -> Unit = { LoadingIndicator() },
+) {
+    when (authState) {
+        is AuthState.Loading -> loadingContent()
+        is AuthState.Authenticated -> authenticatedContent()
+        is AuthState.Unauthenticated -> unauthenticatedContent()
     }
+}
 
-    NavHost(navController = navController, startDestination = startDestination) {
-        composable<Screen.SignIn> {
-            SignInRoute(
-                onSignInSuccess = {
-                    navController.navigate(Screen.ExampleList) {
-                        popUpTo<Screen.SignIn> { inclusive = true }
-                    }
-                },
-            )
-        }
+@Composable
+private fun AuthenticatedNavGraph() {
+    val navController = rememberNavController()
+
+    NavHost(navController = navController, startDestination = Screen.ExampleList) {
         composable<Screen.ExampleList> {
-            ExampleListRoute(
-                onLogout = {
-                    navController.navigate(Screen.SignIn) {
-                        popUpTo<Screen.ExampleList> { inclusive = true }
-                    }
-                },
-            )
+            ExampleListRoute()
+        }
+    }
+}
+
+@Composable
+private fun UnauthenticatedNavGraph() {
+    val navController = rememberNavController()
+
+    NavHost(navController = navController, startDestination = Screen.SignIn) {
+        composable<Screen.SignIn> {
+            SignInRoute()
         }
     }
 }

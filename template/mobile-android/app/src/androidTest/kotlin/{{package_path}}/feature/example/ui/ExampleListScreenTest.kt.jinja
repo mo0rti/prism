@@ -1,0 +1,101 @@
+package {{ package_identifier }}.feature.example.ui
+
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import {{ package_identifier }}.R
+import {{ package_identifier }}.designsystem.text.UiText
+import {{ package_identifier }}.designsystem.theme.AppTheme
+import {{ package_identifier }}.feature.example.domain.model.Example
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+
+class ExampleListScreenTest {
+
+    @get:Rule
+    val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    @Test
+    fun `shows empty state when there are no examples`() {
+        composeRule.setContent {
+            AppTheme {
+                ExampleListScreen(
+                    uiState = ExampleListUiState.Success(
+                        examples = emptyList(),
+                        page = 0,
+                        totalPages = 1,
+                    ),
+                    onLoadMore = {},
+                    onDelete = {},
+                    onLogout = {},
+                    onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(
+            composeRule.activity.getString(R.string.examples_empty_title),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            composeRule.activity.getString(R.string.examples_empty_message),
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun `shows error state and triggers retry`() {
+        var retried = false
+
+        composeRule.setContent {
+            AppTheme {
+                ExampleListScreen(
+                    uiState = ExampleListUiState.Error(UiText.DynamicString("Load failed")),
+                    onLoadMore = {},
+                    onDelete = {},
+                    onLogout = {},
+                    onRetry = { retried = true },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Load failed").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            composeRule.activity.getString(R.string.action_retry),
+        ).performClick()
+
+        assertTrue(retried)
+    }
+
+    @Test
+    fun `shows example item title in success state`() {
+        val example = Example(
+            id = "1",
+            title = "First example",
+            description = "Description",
+            status = "DRAFT",
+            createdBy = "owner",
+            createdAt = "2024-01-01",
+            updatedAt = "2024-01-02",
+        )
+
+        composeRule.setContent {
+            AppTheme {
+                ExampleListScreen(
+                    uiState = ExampleListUiState.Success(
+                        examples = listOf(example),
+                        page = 0,
+                        totalPages = 1,
+                    ),
+                    onLoadMore = {},
+                    onDelete = {},
+                    onLogout = {},
+                    onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("First example").assertIsDisplayed()
+    }
+}

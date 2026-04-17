@@ -17,6 +17,8 @@
 
 - Use `AppResult<T>` instead of `kotlin.Result` to avoid naming collisions.
 - Located in `core/common/AppResult.kt`.
+- Repositories return `AppResult<T>` for fallible operations.
+- ViewModels map `AppResult.Error` into `UiText` before exposing error state to the UI.
 
 ### Use cases
 

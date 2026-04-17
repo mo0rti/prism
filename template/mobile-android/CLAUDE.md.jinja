@@ -34,8 +34,9 @@ command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
 | [docs/architecture.md](docs/architecture.md) | MVVM, layers, DTO-first, repositories, session, navigation. |
 | [docs/file-structure.md](docs/file-structure.md) | Package layout: `feature/`, `core/`, `designsystem/`, `navigation/`. |
 | [docs/build-and-environments.md](docs/build-and-environments.md) | Build commands, SDK versions, troubleshooting. |
+| [docs/testing.md](docs/testing.md) | Compile, unit, instrumentation layers, emulator workflow, CI verification. |
 | [docs/networking-and-di.md](docs/networking-and-di.md) | Retrofit, OkHttp, auth, Hilt modules. |
-| [docs/navigation-and-screens.md](docs/navigation-and-screens.md) | Routes (Screen.kt), NavGraph, start destination, screen mapping. |
+| [docs/navigation-and-screens.md](docs/navigation-and-screens.md) | Routes (Screen.kt), NavGraph, auth gate, screen mapping. |
 | [docs/design-system-and-theme.md](docs/design-system-and-theme.md) | AppTheme, colors, typography, design system components, UiText. |
 | [docs/conventions-and-workflow.md](docs/conventions-and-workflow.md) | Strings, dispatchers, SessionManager, new-feature workflow. |
 
@@ -51,8 +52,14 @@ command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
 # Unit tests
 ./gradlew testDebugUnitTest
 
+# Instrumentation / Compose UI tests
+./gradlew connectedDebugAndroidTest
+
 # Install on device
 ./gradlew installDebug
+
+# List connected devices/emulators
+adb devices
 ```
 
 **Min SDK**: 29 | **Target SDK**: 35 | **Compile SDK**: 36
@@ -70,14 +77,16 @@ MVVM in a single `:app` module. See **docs/architecture.md** for full detail.
 ## Key Conventions
 
 - MVVM: `StateFlow` for UI state, `SharedFlow` for one-off events, explicit `onXxx(...)` ViewModel methods.
-- Hilt for DI; Retrofit in `core/di/NetworkModule.kt`; use `SessionManager` for auth/token.
+- Hilt for DI; Retrofit in `core/di/NetworkModule.kt`; use `SessionManager` for auth state and `AppResult` for fallible repository work.
 - Strings in `strings.xml`; use `stringResource` or `UiText`.
 - Keep navigation in `Screen.kt` and `NavGraph.kt`.
 - Keep reusable Compose components in `designsystem/` instead of feature-local files.
 - DTOs (`@Serializable`) in `feature/*/data/remote/dto/`; domain models are framework-light.
 - `AppResult<T>` instead of `kotlin.Result` to avoid naming collision.
+- ViewModels map repository errors into `UiText` before exposing them.
 - Dispatchers: Use `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` qualifiers from DispatcherModule.
-- Tests: MockK + Turbine, test structure mirrors source.
+- Tests: MockK + Turbine for unit tests, Compose UI tests under `app/src/androidTest/`.
+- Emulator baseline: API 35 phone for normal UI verification; add API 29 phone when changes touch auth, insets, storage, or device behavior.
 
 ## Keep documentation in sync
 
@@ -102,7 +111,7 @@ Documentation style rule:
 2. Verify API/data contract with the OpenAPI spec in `shared/api-contracts/openapi.yml`.
 3. Plan DTO/API/repository/ViewModel/screen/navigation/DI changes.
 4. Implement using existing MVVM and conventions.
-5. Validate with `./gradlew compileDebugKotlin` and targeted tests.
+5. Validate with `./gradlew compileDebugKotlin`, `./gradlew testDebugUnitTest`, and `./gradlew connectedDebugAndroidTest` on an emulator when UI behavior changes.
 6. **Update any affected docs** (see "Keep documentation in sync" above).
 
 ## Local Claude Skills

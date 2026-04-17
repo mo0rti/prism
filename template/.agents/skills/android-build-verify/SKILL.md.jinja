@@ -16,7 +16,9 @@ Use the smallest Gradle task that gives trustworthy feedback for the Android cha
 - `./gradlew assembleDebug` or `gradlew.bat assembleDebug`
   - Add when resources, manifests, packaging, generated sources, or broader app integration may be affected.
 - `./gradlew connectedDebugAndroidTest`
-  - Use only when a device or emulator is available and instrumentation coverage is relevant.
+  - Use when a device or emulator is available and instrumentation coverage is relevant.
+  - Prefer an API 35 phone emulator as the baseline local UI verification target.
+  - Add an API 29 phone emulator spot-check when the change touches auth, insets, storage, or device behavior.
 
 ## Troubleshooting
 

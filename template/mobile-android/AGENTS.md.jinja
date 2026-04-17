@@ -32,8 +32,9 @@ Full project documentation is in `docs/`. Use it as the reference for architectu
 - `docs/architecture.md` - MVVM, layers, DTO-first, repositories, session, navigation
 - `docs/file-structure.md` - Package layout: `feature/`, `core/`, `designsystem/`, `navigation/`
 - `docs/build-and-environments.md` - Build commands, SDK versions, troubleshooting
+- `docs/testing.md` - compile/unit/instrumentation layers, emulator workflow, CI verification
 - `docs/networking-and-di.md` - Retrofit, OkHttp, auth, Hilt modules
-- `docs/navigation-and-screens.md` - Routes (Screen.kt), NavGraph, start destination
+- `docs/navigation-and-screens.md` - Routes (Screen.kt), NavGraph, auth gate, screen mapping
 - `docs/design-system-and-theme.md` - AppTheme, colors, typography, design system components, UiText
 - `docs/conventions-and-workflow.md` - Strings, dispatchers, SessionManager, new-feature workflow
 
@@ -43,7 +44,9 @@ Full project documentation is in `docs/`. Use it as the reference for architectu
 ./gradlew assembleDebug          # Build APK (or gradlew.bat on Windows)
 ./gradlew compileDebugKotlin     # Fast compile check
 ./gradlew testDebugUnitTest      # Unit tests
+./gradlew connectedDebugAndroidTest  # Instrumentation / Compose UI tests
 ./gradlew installDebug           # Install on device
+adb devices                      # List connected devices/emulators
 ```
 
 Min SDK: 29 | Target SDK: 35 | Compile SDK: 36
@@ -61,14 +64,16 @@ MVVM in a single `:app` module.
 ## Key Conventions
 
 - MVVM: `StateFlow` for UI state, `SharedFlow` for one-off events, explicit `onXxx(...)` ViewModel methods
-- Hilt for DI; Retrofit in `core/di/NetworkModule.kt`; use `SessionManager` for auth/token
+- Hilt for DI; Retrofit in `core/di/NetworkModule.kt`; use `SessionManager` for auth state and `AppResult` for fallible repository work
 - Strings in `strings.xml`; use `stringResource` or `UiText`
 - Keep navigation in `Screen.kt` and `NavGraph.kt`
 - Keep reusable Compose components in `designsystem/` instead of feature-local files
 - DTOs (`@Serializable`) in `feature/*/data/remote/dto/`; domain models are framework-light
 - `AppResult<T>` instead of `kotlin.Result`
+- ViewModels map repository errors into `UiText` before exposing them
 - Dispatchers: Use `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` qualifiers
-- Tests: MockK + Turbine, test structure mirrors source
+- Tests: MockK + Turbine for unit tests, Compose UI tests under `app/src/androidTest/`
+- Emulator baseline: API 35 phone for standard UI verification; add API 29 phone when changes touch auth, insets, storage, or device behavior
 
 ## Doc-Sync Rule
 
@@ -80,7 +85,7 @@ When you change code, update the relevant documentation in `docs/` in the same s
 2. Verify API contract in `shared/api-contracts/openapi.yml`
 3. Plan DTO/API/repository/ViewModel/screen/navigation changes
 4. Implement using MVVM conventions
-5. Validate with `./gradlew compileDebugKotlin` and tests
+5. Validate with `./gradlew compileDebugKotlin`, `./gradlew testDebugUnitTest`, and `./gradlew connectedDebugAndroidTest` on an emulator when UI behavior changes
 6. Update affected docs
 
 ## Local Codex Skills

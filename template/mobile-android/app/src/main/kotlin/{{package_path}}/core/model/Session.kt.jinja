@@ -2,6 +2,6 @@ package {{ package_identifier }}.core.model
 
 sealed interface AuthState {
     data object Loading : AuthState
-    data class Authenticated(val user: User) : AuthState
+    data object Authenticated : AuthState
     data object Unauthenticated : AuthState
 }

@@ -1,0 +1,66 @@
+# Testing - {{ project_name }} Android
+
+## Testing Layers
+
+Use a layered approach so fast checks run often and slower checks run when they add signal.
+
+| Layer | Command | Purpose |
+|------|---------|---------|
+| Compile | `./gradlew compileDebugKotlin` | Fast confidence for Kotlin, Compose, DI, and navigation changes. |
+| Unit tests | `./gradlew testDebugUnitTest` | ViewModel, repository, session, mapper, and helper behavior. |
+| Instrumentation / Compose UI tests | `./gradlew connectedDebugAndroidTest` | Baseline auth-gate and key screen-state verification on a device or emulator. |
+| Lint | `./gradlew lintDebug` | Android resource, manifest, and platform lint checks. |
+
+On Windows, use `gradlew.bat` instead of `./gradlew`.
+
+## Local Verification Path
+
+Use this default sequence for most Android changes:
+
+1. `./gradlew compileDebugKotlin`
+2. `./gradlew testDebugUnitTest`
+3. Start an API 35 phone emulator
+4. `./gradlew connectedDebugAndroidTest` when the change affects UI, navigation, auth flow, insets, or device-facing behavior
+
+Add an API 29 phone emulator spot-check when the change touches auth, storage, permissions, or inset behavior that may differ on older devices.
+
+## Instrumentation Test Scope
+
+The generated template scaffolds a small baseline instrumentation suite. Today it covers:
+
+- auth gate routing
+- sign-in error rendering
+- basic password form enablement
+- example list empty, error, and success state rendering
+- retry wiring from the example error state
+
+Extend that baseline when a project adds richer navigation flows, submit flows, or device-specific UI behavior. Keep instrumentation tests focused. Prefer unit tests for ViewModel logic and repository mapping.
+
+## CI Verification
+
+GitHub Actions runs Android validation in three stages:
+
+1. `compileDebugKotlin` and `testDebugUnitTest`
+2. `lintDebug`
+3. `connectedDebugAndroidTest` on an API 35 emulator using the default system image target
+
+Instrumentation reports are uploaded as workflow artifacts so failures can be inspected from CI without reproducing locally first.
+
+CI only covers the API 35 emulator baseline. API 29 compatibility remains a local verification responsibility unless a project expands the workflow matrix.
+
+## Common Commands
+
+```bash
+./gradlew compileDebugKotlin
+./gradlew testDebugUnitTest
+./gradlew connectedDebugAndroidTest
+./gradlew lintDebug
+adb devices
+```
+
+## Test File Locations
+
+- Unit tests: `app/src/test/`
+- Instrumentation / Compose UI tests: `app/src/androidTest/`
+
+Mirror source package structure in both locations.

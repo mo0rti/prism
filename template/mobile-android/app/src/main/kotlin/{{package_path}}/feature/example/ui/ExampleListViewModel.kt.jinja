@@ -1,5 +1,8 @@
 package {{ package_identifier }}.feature.example.ui
 
+import {{ package_identifier }}.R
+import {{ package_identifier }}.core.common.AppResult
+import {{ package_identifier }}.designsystem.text.UiText
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import {{ package_identifier }}.feature.auth.data.repository.AuthRepository
@@ -21,7 +24,7 @@ sealed interface ExampleListUiState {
         val totalPages: Int,
         val isLoadingMore: Boolean = false,
     ) : ExampleListUiState
-    data class Error(val message: String) : ExampleListUiState
+    data class Error(val message: UiText) : ExampleListUiState
 }
 
 @HiltViewModel
@@ -40,17 +43,19 @@ class ExampleListViewModel @Inject constructor(
     fun loadExamples() {
         viewModelScope.launch {
             _uiState.value = ExampleListUiState.Loading
-            try {
-                val result = exampleRepository.list(page = 0)
-                _uiState.value = ExampleListUiState.Success(
-                    examples = result.content,
-                    page = result.page,
-                    totalPages = result.totalPages,
-                )
-            } catch (e: Exception) {
-                _uiState.value = ExampleListUiState.Error(
-                    e.message ?: "Failed to load examples",
-                )
+            when (val result = exampleRepository.list(page = 0)) {
+                is AppResult.Success -> {
+                    _uiState.value = ExampleListUiState.Success(
+                        examples = result.data.content,
+                        page = result.data.page,
+                        totalPages = result.data.totalPages,
+                    )
+                }
+                is AppResult.Error -> {
+                    _uiState.value = ExampleListUiState.Error(
+                        result.message.toUiText(R.string.error_failed_load_examples),
+                    )
+                }
             }
         }
     }
@@ -62,16 +67,17 @@ class ExampleListViewModel @Inject constructor(
         _uiState.value = current.copy(isLoadingMore = true)
 
         viewModelScope.launch {
-            try {
-                val nextPage = current.page + 1
-                val result = exampleRepository.list(page = nextPage)
-                _uiState.value = ExampleListUiState.Success(
-                    examples = current.examples + result.content,
-                    page = result.page,
-                    totalPages = result.totalPages,
-                )
-            } catch (e: Exception) {
-                _uiState.value = current.copy(isLoadingMore = false)
+            when (val result = exampleRepository.list(page = current.page + 1)) {
+                is AppResult.Success -> {
+                    _uiState.value = ExampleListUiState.Success(
+                        examples = current.examples + result.data.content,
+                        page = result.data.page,
+                        totalPages = result.data.totalPages,
+                    )
+                }
+                is AppResult.Error -> {
+                    _uiState.value = current.copy(isLoadingMore = false)
+                }
             }
         }
     }
@@ -82,11 +88,9 @@ class ExampleListViewModel @Inject constructor(
             examples = current.examples.filter { it.id != id },
         )
         viewModelScope.launch {
-            try {
-                exampleRepository.delete(id)
-            } catch (_: Exception) {
-                // Revert on failure
-                loadExamples()
+            when (exampleRepository.delete(id)) {
+                is AppResult.Success -> Unit
+                is AppResult.Error -> loadExamples()
             }
         }
     }
@@ -99,4 +103,11 @@ class ExampleListViewModel @Inject constructor(
 
     private val ExampleListUiState.Success.hasNextPage: Boolean
         get() = page < totalPages - 1
+
+    private fun String.toUiText(fallbackResId: Int): UiText =
+        if (isNotBlank()) {
+            UiText.DynamicString(this)
+        } else {
+            UiText.StringResource(fallbackResId)
+        }
 }

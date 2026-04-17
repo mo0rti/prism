@@ -1,6 +1,9 @@
 package {{ package_identifier }}.feature.example.ui
 
+import {{ package_identifier }}.R
+import {{ package_identifier }}.core.common.AppResult
 import {{ package_identifier }}.core.model.PagedData
+import {{ package_identifier }}.designsystem.text.UiText
 import {{ package_identifier }}.feature.auth.data.repository.AuthRepository
 import {{ package_identifier }}.feature.example.data.repository.ExampleRepository
 import {{ package_identifier }}.feature.example.domain.model.Example
@@ -51,7 +54,7 @@ class ExampleListViewModelTest {
 
     @Test
     fun `loads examples on init`() = runTest(testDispatcher) {
-        coEvery { exampleRepository.list(any(), any()) } returns pagedResult
+        coEvery { exampleRepository.list(any(), any()) } returns AppResult.Success(pagedResult)
 
         val viewModel = ExampleListViewModel(exampleRepository, authRepository)
         testDispatcher.scheduler.advanceUntilIdle()
@@ -63,20 +66,20 @@ class ExampleListViewModelTest {
 
     @Test
     fun `shows error on failure`() = runTest(testDispatcher) {
-        coEvery { exampleRepository.list(any(), any()) } throws RuntimeException("Network error")
+        coEvery { exampleRepository.list(any(), any()) } returns AppResult.Error("Network error")
 
         val viewModel = ExampleListViewModel(exampleRepository, authRepository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         val state = viewModel.uiState.value
         assertTrue(state is ExampleListUiState.Error)
-        assertEquals("Network error", (state as ExampleListUiState.Error).message)
+        assertEquals(UiText.DynamicString("Network error"), (state as ExampleListUiState.Error).message)
     }
 
     @Test
     fun `delete removes from list optimistically`() = runTest(testDispatcher) {
-        coEvery { exampleRepository.list(any(), any()) } returns pagedResult
-        coEvery { exampleRepository.delete(any()) } returns Unit
+        coEvery { exampleRepository.list(any(), any()) } returns AppResult.Success(pagedResult)
+        coEvery { exampleRepository.delete(any()) } returns AppResult.Success(Unit)
 
         val viewModel = ExampleListViewModel(exampleRepository, authRepository)
         testDispatcher.scheduler.advanceUntilIdle()

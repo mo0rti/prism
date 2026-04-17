@@ -25,8 +25,8 @@ Use this skill when backend-facing Android code changes.
 
 - Retrofit API interfaces live in `feature/*/data/remote/api/` or `core/network/`.
 - API base URL comes from `ApiService` configuration in `core/network/`; do not hardcode URLs.
-- Auth headers come from `AuthInterceptor` via `SessionManager`; do not add ad hoc token plumbing in features.
-- Token refresh is handled by `TokenAuthenticator` (OkHttp Authenticator) - features do not handle 401s.
+- Auth headers come from `AuthInterceptor` reading `TokenStorage`; do not add ad hoc token plumbing in features.
+- Token refresh is handled by `TokenAuthenticator` (OkHttp Authenticator), and refresh failure falls back to `SessionManager.onLogout()`. Features do not handle 401s directly.
 
 ## Cross-check sources
 

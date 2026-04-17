@@ -24,25 +24,12 @@ class SessionManager @Inject constructor(
         tokenStorage.hasToken
             .onEach { hasToken ->
                 _authState.value = if (hasToken) {
-                    AuthState.Authenticated(
-                        {{ package_identifier }}.core.model.User(
-                            id = "",
-                            email = "",
-                            displayName = "",
-                            authProvider = "",
-                            role = "",
-                        )
-                    )
+                    AuthState.Authenticated
                 } else {
                     AuthState.Unauthenticated
                 }
             }
             .launchIn(scope)
-    }
-
-    suspend fun onTokensUpdated() {
-        // Token was saved by the repository; the DataStore flow will
-        // automatically emit a new value and update authState above.
     }
 
     suspend fun onLogout() {

@@ -19,12 +19,15 @@ sealed interface Screen {
 }
 ```
 
-## Auth-based start destination
+## Auth gate
 
-NavGraph observes `SessionManager.authState` to determine the start destination:
+NavGraph observes `SessionManager.authState` and switches between root flows:
 
-- `AuthState.Authenticated` -> main app flow
-- `AuthState.Unauthenticated` -> sign-in screen
+- `AuthState.Loading` -> loading state while the session is being resolved
+- `AuthState.Authenticated` -> main app flow when tokens are present
+- `AuthState.Unauthenticated` -> sign-in flow
+
+Do not drive auth transitions with screen-owned success or logout callbacks. Sign-in and logout update session state; NavGraph reacts to that state and swaps the active root flow.
 
 ## Screen mapping
 

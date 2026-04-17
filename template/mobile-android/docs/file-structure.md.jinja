@@ -13,7 +13,8 @@ mobile-android/
 |   |-- src/main/
 |   |   |-- kotlin/{{ package_identifier | replace('.', '/') }}/  <- app source (see below)
 |   |   \-- res/values/      <- strings.xml, themes.xml
-|   \-- src/test/            <- unit tests (mirrors main source)
+|   |-- src/test/            <- unit tests (mirrors main source)
+|   \-- src/androidTest/     <- instrumentation and Compose UI tests
 |-- build.gradle.kts         <- root build file
 |-- settings.gradle.kts
 |-- gradle.properties
@@ -77,4 +78,4 @@ Each feature follows: `feature/<name>/data/` + `feature/<name>/domain/` + `featu
 - **Core**: Shared infrastructure in `core/` (network, database, DI, session, model).
 - **Design system**: Theme and components under `designsystem/`.
 - **DI**: Hilt modules under `core/di/`; concrete repositories injected by type (no RepositoryModule).
-- **Tests**: Mirror source structure under `app/src/test/`.
+- **Tests**: Mirror source structure under `app/src/test/` for unit tests and `app/src/androidTest/` for instrumentation/UI tests.

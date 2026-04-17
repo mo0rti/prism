@@ -9,6 +9,11 @@ tasks:
     cmds:
       - "{{.GRADLEW}} assembleDebug"
 
+  devices:
+    desc: List connected Android devices and emulators
+    cmds:
+      - "adb devices"
+
   build-release:
     desc: Build release APK
     cmds:
@@ -18,6 +23,11 @@ tasks:
     desc: Run unit tests
     cmds:
       - "{{.GRADLEW}} testDebugUnitTest"
+
+  test-ui:
+    desc: Run instrumentation and Compose UI tests on a connected device/emulator
+    cmds:
+      - "{{.GRADLEW}} connectedDebugAndroidTest"
 
   lint:
     desc: Run lint checks

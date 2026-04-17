@@ -56,6 +56,7 @@ See [file-structure.md](file-structure.md) for the full package map.
 | [architecture.md](architecture.md) | MVVM, layers, DTO-first, repositories, session |
 | [file-structure.md](file-structure.md) | Package layout and conventions |
 | [build-and-environments.md](build-and-environments.md) | Build commands, SDK versions |
+| [testing.md](testing.md) | Verification layers, emulator workflow, CI test strategy |
 | [networking-and-di.md](networking-and-di.md) | Retrofit, OkHttp, auth, Hilt modules |
 | [navigation-and-screens.md](navigation-and-screens.md) | Routes, NavGraph, screen mapping |
 | [design-system-and-theme.md](design-system-and-theme.md) | AppTheme, components, UiText |
@@ -67,5 +68,16 @@ See [file-structure.md](file-structure.md) for the full package map.
 ./gradlew assembleDebug          # Build APK (or gradlew.bat on Windows)
 ./gradlew compileDebugKotlin     # Fast compile check
 ./gradlew testDebugUnitTest      # Unit tests
+./gradlew connectedDebugAndroidTest  # Instrumentation / Compose UI tests
 ./gradlew installDebug           # Install on device
+adb devices                      # List connected devices/emulators
 ```
+
+For UI or navigation changes, the default local verification path is:
+
+1. `./gradlew compileDebugKotlin`
+2. `./gradlew testDebugUnitTest`
+3. Start a phone emulator on API 35
+4. `./gradlew connectedDebugAndroidTest`
+
+Use an API 29 phone emulator as a compatibility spot-check when the change touches auth, insets, storage, or device-integration behavior.

@@ -8,9 +8,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import {{ package_identifier }}.R
 import {{ package_identifier }}.designsystem.components.ErrorView
 import {{ package_identifier }}.designsystem.components.LoadingIndicator
 import {{ package_identifier }}.feature.example.domain.model.Example
@@ -27,14 +30,19 @@ fun ExampleListScreen(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("Examples") },
+                title = { Text(stringResource(R.string.examples_title)) },
                 actions = {
                     IconButton(onClick = onLogout) {
-                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
+                        Icon(
+                            Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = stringResource(R.string.action_logout),
+                        )
                     }
                 },
             )
@@ -43,16 +51,27 @@ fun ExampleListScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .consumeWindowInsets(padding),
         ) {
             when (uiState) {
                 is ExampleListUiState.Idle,
                 is ExampleListUiState.Loading -> {
-                    LoadingIndicator()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        LoadingIndicator()
+                    }
                 }
                 is ExampleListUiState.Success -> {
                     if (uiState.examples.isEmpty()) {
-                        EmptyExamplesView(modifier = Modifier.align(Alignment.Center))
+                        EmptyExamplesView(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(padding),
+                        )
                     } else {
                         val listState = rememberLazyListState()
 
@@ -64,8 +83,14 @@ fun ExampleListScreen(
                         }
 
                         LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
                             state = listState,
-                            contentPadding = PaddingValues(16.dp),
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                top = padding.calculateTopPadding() + 16.dp,
+                                end = 16.dp,
+                                bottom = padding.calculateBottomPadding() + 16.dp,
+                            ),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(uiState.examples, key = { it.id }) { example ->
@@ -90,10 +115,17 @@ fun ExampleListScreen(
                     }
                 }
                 is ExampleListUiState.Error -> {
-                    ErrorView(
-                        message = uiState.message,
-                        onRetry = onRetry,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ErrorView(
+                            message = uiState.message.asString(context),
+                            onRetry = onRetry,
+                        )
+                    }
                 }
             }
         }

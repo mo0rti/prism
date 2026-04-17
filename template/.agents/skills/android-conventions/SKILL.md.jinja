@@ -22,9 +22,10 @@ Use this skill for repository-wide Android guardrails.
   - `uiState` uses `StateFlow`
   - one-off effects use `SharedFlow`
   - ViewModels expose explicit intent methods such as `onRefresh()` or `onSaveClicked()`
+- Repositories return `AppResult<T>` for fallible work; ViewModels map `AppResult.Error` into `UiText` before exposing error state.
 - Keep repositories as concrete classes in `feature/*/data/repository/`; do not add repository interfaces or binding modules unless explicitly requested.
 - Add Retrofit APIs in `feature/*/data/remote/api/` and provide them through the existing Hilt modules in `core/di/`.
-- Use `SessionManager` for auth and session state; do not bypass it for token access.
+- Use `SessionManager` for auth state and logout flows; keep token reads and refresh wiring inside `TokenStorage`, `AuthInterceptor`, and `TokenAuthenticator`.
 - Keep routes in `navigation/Screen.kt` and destination wiring in `navigation/NavGraph.kt`.
 - Put user-facing strings in `app/src/main/res/values/strings.xml`.
 - Move reusable Compose components, modifiers, and drawing helpers into `designsystem/` instead of duplicating them in feature packages.

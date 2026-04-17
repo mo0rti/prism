@@ -33,7 +33,8 @@ View (Compose)  ->  ViewModel (StateFlow)  ->  Repository  ->  Data Source (API 
 
 - Annotated with `@HiltViewModel`, injected by Hilt.
 - Exposes `StateFlow<UiState>` where `UiState` is a sealed interface co-located in the ViewModel file.
-- One-off events (navigation, snackbars) via `SharedFlow`.
+- Maps repository failures into `UiText` before exposing them to the UI.
+- One-off events (navigation, snackbars) use `SharedFlow` when the screen needs transient effects.
 - Intent methods are explicit: `onRefresh()`, `onSaveClicked()`, `onItemSelected(id)`.
 
 ```kotlin
@@ -54,10 +55,15 @@ class ExampleListViewModel @Inject constructor(
     fun onRefresh() {
         viewModelScope.launch(ioDispatcher) {
             _uiState.value = UiState.Loading
-            repository.getExamples().fold(
-                onSuccess = { _uiState.value = UiState.Success(it) },
-                onFailure = { _uiState.value = UiState.Error(UiText.DynamicString(it.message.orEmpty())) }
-            )
+            when (val result = repository.list()) {
+                is AppResult.Success -> _uiState.value = UiState.Success(result.data.content)
+                is AppResult.Error -> {
+                    _uiState.value = UiState.Error(
+                        if (result.message.isNotBlank()) UiText.DynamicString(result.message)
+                        else UiText.StringResource(R.string.error_failed_load_examples)
+                    )
+                }
+            }
         }
     }
 }
@@ -69,7 +75,7 @@ class ExampleListViewModel @Inject constructor(
 - Located in `feature/*/data/repository/`.
 - Injected by Hilt via constructor injection (no RepositoryModule needed).
 - Map DTOs to domain models at the repository boundary.
-- Return `AppResult<T>` for operations that can fail.
+- Return `AppResult<T>` for operations that can fail instead of throwing into the ViewModel layer.
 
 ## Route/Screen split
 
@@ -105,14 +111,17 @@ fun ExampleListScreen(
 ## Session and auth
 
 - `SessionManager` in `core/session/` exposes `StateFlow<AuthState>`.
-- `AuthInterceptor` adds Bearer token to requests.
-- `TokenAuthenticator` handles 401 -> refresh -> retry automatically.
+- `AuthState.Authenticated` is a marker state derived from token presence, not a placeholder `User`.
+- `AuthInterceptor` reads the access token from `TokenStorage` and adds it to requests.
+- `TokenAuthenticator` handles 401 -> refresh -> retry automatically, and clears session state on refresh failure.
 - `TokenStorage` persists tokens in encrypted DataStore.
-- NavGraph observes `AuthState` to route between auth and main flows.
+- NavGraph observes `AuthState` to switch between auth and main root flows.
+- Sign-in and logout update session state; screens do not own auth routing callbacks.
 
 ## Key rules
 
 - Do not hardcode API URLs - use the configured base URL in `ApiService`.
-- Do not bypass `SessionManager` for token access.
+- Do not bypass `SessionManager` for auth state decisions or logout flows.
+- Do not bypass `TokenStorage`, `AuthInterceptor`, or `TokenAuthenticator` with feature-level token plumbing.
 - Do not import UI types (Compose, Android) in repository or domain layers.
 - No use cases by default - add `usecase/` only when orchestration logic is needed.

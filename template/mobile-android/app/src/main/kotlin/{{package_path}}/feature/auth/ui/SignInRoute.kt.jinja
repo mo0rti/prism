@@ -1,27 +1,19 @@
 package {{ package_identifier }}.feature.auth.ui
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun SignInRoute(
-    onSignInSuccess: () -> Unit,
     viewModel: SignInViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 {% if "password" in auth_methods %}
-    val email by viewModel.email.collectAsState()
-    val password by viewModel.password.collectAsState()
+    val email by viewModel.email.collectAsStateWithLifecycle()
+    val password by viewModel.password.collectAsStateWithLifecycle()
 {% endif %}
-
-    LaunchedEffect(uiState) {
-        if (uiState is SignInUiState.Success) {
-            onSignInSuccess()
-        }
-    }
 
     SignInScreen(
         uiState = uiState,
@@ -32,10 +24,7 @@ fun SignInRoute(
         onPasswordChange = viewModel::onPasswordChange,
         onSignInWithPassword = viewModel::signInWithPassword,
 {% endif %}
-        onSignInWithOAuth = { provider ->
-            // TODO: Launch OAuth flow and pass code back
-            viewModel.signInWithOAuth(provider, code = "", redirectUri = "")
-        },
+        onSignInWithOAuth = viewModel::showOAuthSetupRequired,
         onDismissError = viewModel::clearError,
     )
 }

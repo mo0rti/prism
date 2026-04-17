@@ -36,7 +36,7 @@ class SessionManagerTest {
     fun `state becomes authenticated when token exists`() = runTest(UnconfinedTestDispatcher()) {
         val sessionManager = createSessionManager(this)
         hasTokenFlow.value = true
-        assertTrue(sessionManager.authState.value is AuthState.Authenticated)
+        assertTrue(sessionManager.authState.value == AuthState.Authenticated)
     }
 
     @Test

@@ -5,9 +5,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import {{ package_identifier }}.R
 import {{ package_identifier }}.feature.example.domain.model.Example
 
 @Composable
@@ -44,7 +46,7 @@ fun ExampleCard(
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Delete",
+                    contentDescription = stringResource(R.string.action_delete),
                     tint = MaterialTheme.colorScheme.error,
                 )
             }

@@ -1,5 +1,8 @@
 package {{ package_identifier }}.feature.auth.ui
 
+import {{ package_identifier }}.R
+import {{ package_identifier }}.core.common.AppResult
+import {{ package_identifier }}.designsystem.text.UiText
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import {{ package_identifier }}.feature.auth.data.repository.AuthRepository
@@ -13,8 +16,7 @@ import javax.inject.Inject
 sealed interface SignInUiState {
     data object Idle : SignInUiState
     data object Loading : SignInUiState
-    data object Success : SignInUiState
-    data class Error(val message: String) : SignInUiState
+    data class Error(val message: UiText) : SignInUiState
 }
 
 @HiltViewModel
@@ -38,11 +40,13 @@ class SignInViewModel @Inject constructor(
     fun signInWithPassword() {
         viewModelScope.launch {
             _uiState.value = SignInUiState.Loading
-            try {
-                authRepository.login(_email.value, _password.value)
-                _uiState.value = SignInUiState.Success
-            } catch (e: Exception) {
-                _uiState.value = SignInUiState.Error(e.message ?: "Sign in failed")
+            when (val result = authRepository.login(_email.value, _password.value)) {
+                is AppResult.Success -> Unit
+                is AppResult.Error -> {
+                    _uiState.value = SignInUiState.Error(
+                        result.message.toUiText(R.string.error_sign_in_failed),
+                    )
+                }
             }
         }
     }
@@ -50,11 +54,13 @@ class SignInViewModel @Inject constructor(
     fun register(displayName: String) {
         viewModelScope.launch {
             _uiState.value = SignInUiState.Loading
-            try {
-                authRepository.register(_email.value, _password.value, displayName)
-                _uiState.value = SignInUiState.Success
-            } catch (e: Exception) {
-                _uiState.value = SignInUiState.Error(e.message ?: "Registration failed")
+            when (val result = authRepository.register(_email.value, _password.value, displayName)) {
+                is AppResult.Success -> Unit
+                is AppResult.Error -> {
+                    _uiState.value = SignInUiState.Error(
+                        result.message.toUiText(R.string.error_registration_failed),
+                    )
+                }
             }
         }
     }
@@ -63,14 +69,35 @@ class SignInViewModel @Inject constructor(
     fun signInWithOAuth(provider: String, code: String, redirectUri: String) {
         viewModelScope.launch {
             _uiState.value = SignInUiState.Loading
-            try {
-                authRepository.oauthCallback(provider, code, redirectUri)
-                _uiState.value = SignInUiState.Success
-            } catch (e: Exception) {
-                _uiState.value = SignInUiState.Error(e.message ?: "OAuth sign in failed")
+            when (val result = authRepository.oauthCallback(provider, code, redirectUri)) {
+                is AppResult.Success -> Unit
+                is AppResult.Error -> {
+                    _uiState.value = SignInUiState.Error(
+                        result.message.toUiText(R.string.error_oauth_sign_in_failed),
+                    )
+                }
             }
         }
     }
 
+    fun showOAuthSetupRequired(provider: String) {
+        val displayName = provider.replaceFirstChar { char ->
+            if (char.isLowerCase()) char.titlecase() else char.toString()
+        }
+        _uiState.value = SignInUiState.Error(
+            UiText.StringResource(
+                R.string.error_oauth_setup_required,
+                args = listOf(displayName),
+            ),
+        )
+    }
+
     fun clearError() { _uiState.value = SignInUiState.Idle }
+
+    private fun String.toUiText(fallbackResId: Int): UiText =
+        if (isNotBlank()) {
+            UiText.DynamicString(this)
+        } else {
+            UiText.StringResource(fallbackResId)
+        }
 }

@@ -11,6 +11,7 @@ From the `mobile-android/` directory:
 | `./gradlew testDebugUnitTest` | Run unit tests. |
 | `./gradlew installDebug` | Build and install on connected device. |
 | `./gradlew connectedDebugAndroidTest` | Run instrumentation tests (device/emulator required). |
+| `adb devices` | List connected devices/emulators before install or instrumentation runs. |
 
 On Windows, use `gradlew.bat` instead of `./gradlew`.
 
@@ -33,6 +34,41 @@ Additional build types (QA, Release) can be added in `app/build.gradle.kts` as n
 ## APK Output
 
 - Debug: `app/build/outputs/apk/debug/app-debug.apk`
+
+## Local Emulator Workflow
+
+Use this path when UI behavior changes and you want to verify the app on a real emulator instead of relying on compile-only checks.
+
+1. Start an emulator from Android Studio Device Manager or from the command line:
+   - `emulator -list-avds`
+   - `emulator -avd <your_avd_name>`
+2. Confirm the emulator is visible:
+   - `adb devices`
+3. Build and install the app:
+   - `./gradlew installDebug`
+4. Run instrumentation / Compose UI tests:
+   - `./gradlew connectedDebugAndroidTest`
+
+On Windows, `adb.exe` and `emulator.exe` may need to be run from the Android SDK `platform-tools/` and `emulator/` directories if they are not on `PATH`.
+
+## Recommended Verification Sequence
+
+For most Android changes, run the smallest reliable checks in this order:
+
+1. `./gradlew compileDebugKotlin`
+2. `./gradlew testDebugUnitTest`
+3. `./gradlew connectedDebugAndroidTest` when UI behavior, navigation, auth flow, insets, or screen state rendering changes
+
+## Minimum Emulator Matrix
+
+Use a small baseline matrix by default and expand only when the feature needs it.
+
+| Device | API | When to use it |
+|--------|-----|----------------|
+| Phone emulator (for example Pixel 6) | 35 | Baseline local smoke test for all UI and navigation changes. |
+| Phone emulator (for example Pixel 5) | 29 | Compatibility spot-check when changes touch insets, permissions, storage, auth, or older-device behavior. |
+
+Add tablet or foldable coverage only when the generated project introduces tablet-specific navigation, adaptive layouts, or large-screen UI.
 
 ## Troubleshooting
 

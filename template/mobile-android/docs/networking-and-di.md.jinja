@@ -28,9 +28,9 @@ Request -> AuthInterceptor (adds Bearer token) -> Server
                                               Retry request
 ```
 
-- `AuthInterceptor`: OkHttp interceptor that reads the access token from `SessionManager` and adds it as `Authorization: Bearer <token>`.
-- `TokenAuthenticator`: OkHttp `Authenticator` that handles 401 responses by calling the refresh endpoint, updating `SessionManager`, and retrying the original request.
-- `SessionManager`: Single source of truth for auth state. Exposes `StateFlow<AuthState>`.
+- `AuthInterceptor`: OkHttp interceptor that reads the access token from `TokenStorage` and adds it as `Authorization: Bearer <token>`.
+- `TokenAuthenticator`: OkHttp `Authenticator` that handles 401 responses by calling the refresh endpoint, saving the new tokens, and retrying the original request. If refresh fails, it clears session state through `SessionManager.onLogout()`.
+- `SessionManager`: Single source of truth for auth state. Exposes `StateFlow<AuthState>` backed by token presence.
 
 ## DTOs
 
