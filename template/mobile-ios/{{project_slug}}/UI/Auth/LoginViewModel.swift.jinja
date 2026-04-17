@@ -8,6 +8,7 @@ enum LoginViewState: Equatable {
     case error(String)
 }
 
+@MainActor
 @Observable
 final class LoginViewModel {
     var viewState: LoginViewState = .idle
@@ -56,6 +57,11 @@ final class LoginViewModel {
         } catch {
             viewState = .error(error.localizedDescription)
         }
+    }
+
+    func showOAuthSetupRequired(provider: String) {
+        let displayName = provider.capitalized
+        viewState = .error("\(displayName) sign-in needs a real native OAuth handoff before this button can be used.")
     }
 
     func clearError() {

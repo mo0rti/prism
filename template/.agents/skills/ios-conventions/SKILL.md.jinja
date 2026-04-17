@@ -20,11 +20,23 @@ Use this skill for repository-wide iOS guardrails.
 - Follow MVVM with the generated structure under `{{ project_slug }}/`.
 - All API calls use `APIClient`; never create raw `URLSession` calls in features.
 - Repositories have protocols and implementations in the same file under `Data/Repository/`.
-- ViewModels use `@Observable`, and views use `@Bindable` when mutation access is needed.
+- ViewModels that drive SwiftUI state are `@MainActor @Observable` by default, and views use `@Bindable` when mutation access is needed.
 - Use `async/await` for async operations.
+- Because UI-driving ViewModels are `@MainActor`, their methods already run on the main actor by default. Reach for `MainActor.run` only when non-isolated code needs to publish back into a main-actor-owned ViewModel or UI state.
+- Prefer `Sendable` value types for DTOs, domain models, and helper structs that cross actor boundaries.
 - Use `TokenStorage` for auth and session state; do not bypass it for token access.
+- `DependencyContainer` is injected with SwiftUI environment at the app root. Screens usually receive feature ViewModels through initializers, not environment objects.
+- Keep long-lived `@Observable` instances out of frequently recomputed `body` code paths. Parent views or router-level owners should create them once and pass them down.
+- `@Observable` redraws only the views that read the changed property. Do not assume every property mutation invalidates the entire screen.
 - Keep routes in `Navigation/Route.swift` and top-level auth gating in `Navigation/AppRouter.swift`.
 - Move reusable SwiftUI components into `UI/Common/` and shared styling primitives into `UI/Theme/`.
+
+## Reference files
+
+Load only the reference file the task needs:
+
+- `references/swift6-observation-and-di.md` for `@MainActor`, Observation, `@Bindable`, environment injection, and ViewModel ownership rules
+- `references/navigation.md` for route ownership, `AppRouter`, `NavigationStack`, sheet usage, and iPad-only multi-column guidance
 
 ## Read when needed
 

@@ -2,6 +2,8 @@ import Foundation
 import Security
 
 actor TokenStorage {
+    nonisolated static let tokensDidChangeNotification = Notification.Name("TokenStorage.tokensDidChange")
+
     private let service = "{{ package_identifier }}.auth"
     private let accessTokenKey = "access_token"
     private let refreshTokenKey = "refresh_token"
@@ -9,6 +11,7 @@ actor TokenStorage {
     func saveTokens(accessToken: String, refreshToken: String) {
         save(key: accessTokenKey, value: accessToken)
         save(key: refreshTokenKey, value: refreshToken)
+        NotificationCenter.default.post(name: Self.tokensDidChangeNotification, object: nil)
     }
 
     func getAccessToken() -> String? {
@@ -26,6 +29,7 @@ actor TokenStorage {
     func clearTokens() {
         delete(key: accessTokenKey)
         delete(key: refreshTokenKey)
+        NotificationCenter.default.post(name: Self.tokensDidChangeNotification, object: nil)
     }
 
     // MARK: - Keychain Helpers

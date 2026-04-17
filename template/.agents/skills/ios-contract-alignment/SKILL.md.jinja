@@ -15,7 +15,10 @@ Use this skill when backend-facing iOS code changes.
 - Keep repository mapping logic in `Data/Repository/`, not in views.
 - The runtime base URL already includes `/api/v1`, so endpoint paths append feature-relative routes such as `/auth/...` or `/examples/...`.
 - Auth headers come from `TokenStorage` through `APIClient`; do not add ad hoc token plumbing in features.
-- `AuthRepository.refreshToken()` exists, but automatic refresh-and-retry is not scaffolded into `APIClient` by default.
+- The default baseline for `APIError.unauthorized` is: clear `TokenStorage` and route the app back to login.
+- `AuthRepository.refreshToken()` exists as a named extension point, but automatic refresh-and-retry is not scaffolded into `APIClient` by default.
+- If a project adds refresh-and-retry later, centralize that behavior in `APIClient` or another transport-boundary abstraction rather than scattering retry logic across features.
+- Keep client error flow consistent: `APIClient` maps transport failures, repositories translate only when needed, ViewModels map errors into view state, and views render shared loading or error patterns.
 
 ## Cross-check sources
 

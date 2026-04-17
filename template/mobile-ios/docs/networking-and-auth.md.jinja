@@ -31,4 +31,8 @@
 
 - The base URL already includes `/api/v1`.
 - Endpoint paths in `APIEndpoint` append to that base URL and therefore start with feature-relative paths like `/auth/...` or `/examples/...`.
-- `AuthRepository.refreshToken()` exists, but `APIClient` does not perform automatic refresh-and-retry orchestration by default.
+- The default baseline for `APIError.unauthorized` is to clear stored tokens and return the app to login flow.
+- That return-to-login transition should be driven by the app-level auth gate in `AppRouter`, not by ad hoc per-screen navigation logic.
+- `AuthRepository.refreshToken()` exists as an extension point, but `APIClient` does not perform automatic refresh-and-retry orchestration by default.
+- If a project later adds refresh-and-retry, keep that behavior centralized at the transport boundary instead of scattering retry logic across features.
+- Client error flow should stay consistent: `APIClient` maps transport and HTTP failures, repositories translate only when needed, ViewModels map errors into view state, and views render shared loading or error patterns.

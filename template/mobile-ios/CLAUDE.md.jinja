@@ -2,6 +2,12 @@
 
 Swift 6 + SwiftUI app generated from this template. It uses MVVM, Observation, async/await, XcodeGen, Keychain-backed token storage, and SwiftData caching for local example data. Building requires a Mac with Xcode 26.
 
+Treat Swift 6 strict concurrency as the baseline:
+
+- ViewModels that drive SwiftUI state should be `@MainActor @Observable` by default.
+- Shared app dependencies are injected with SwiftUI environment at the app root; feature screens usually receive ViewModels through initializers.
+- The default baseline for `APIError.unauthorized` is to clear stored tokens and return the app to login flow unless the project intentionally adds centralized refresh-and-retry behavior.
+
 ## Product knowledge wiki
 
 This project uses a shared product wiki at `knowledge/wiki/` as the single source of

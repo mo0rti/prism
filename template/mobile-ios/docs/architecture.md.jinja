@@ -15,8 +15,11 @@ The generated iOS slice follows MVVM with a small, explicit layering model.
 ## State And Flow
 
 - `AppRouter` checks `TokenStorage.hasToken()` to decide whether the app starts in login or example-list flow.
-- Screen ViewModels use `@Observable`.
+- `DependencyContainer` is injected at the app root through SwiftUI environment.
+- App-level routing reads shared dependencies from that environment and passes feature ViewModels into screens through initializers.
+- Screen ViewModels are `@MainActor @Observable` by default.
 - SwiftUI screens consume ViewModels through `@Bindable`.
+- `@Observable` invalidates only the views that read a changed property, not every consumer of the ViewModel.
 - Repositories call `APIClient`.
 - `APIClient` adds auth headers when an endpoint requires auth.
 
@@ -25,5 +28,6 @@ The generated iOS slice follows MVVM with a small, explicit layering model.
 - Views do not call `APIClient` directly.
 - Repositories own transport-facing logic.
 - `TokenStorage` is the only Keychain boundary.
+- UI-driving state stays on the main actor.
 - Route definitions stay in `Navigation/Route.swift`.
 - Shared UI belongs in `UI/Common/` or `UI/Theme/`, not duplicated across feature folders.

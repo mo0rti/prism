@@ -11,11 +11,14 @@ Use this skill when SwiftUI work should stay aligned with the generated app's sh
 ## Role boundary
 
 - Own shared UI language, reusable SwiftUI components, and cross-feature visual patterns.
-- Defer DTO, repository, auth, and build-task decisions to the companion iOS skills.
+- Defer DTO, repository, auth, router ownership, and build-task decisions to the companion iOS skills.
+- Defer navigation architecture and route ownership to `ios-conventions`.
+- Treat iOS 17 as the baseline for generated projects. Mark iOS 18-only APIs as optional upgrades, not default patterns.
 
 ## Shared UI rules
 
 - Use `Color.app...` theme colors from `UI/Theme/AppTheme.swift` instead of hardcoded colors where a shared token already exists.
+- Custom `Color.app...` tokens must stay safe across light and dark appearance. If a token is not authored semantically for both, prefer system roles like `.primary`, `.secondary`, and `.background`.
 - Use `Spacing` and `CornerRadius` constants instead of repeating raw values.
 - Put reusable components in `UI/Common/`; keep feature files focused on screen composition.
 - Keep screen backgrounds, badges, buttons, and shared loading or error states visually consistent across features.
@@ -27,6 +30,15 @@ Use this skill when SwiftUI work should stay aligned with the generated app's sh
 - `ErrorView`
 - `Spacing`
 - `CornerRadius`
+
+## Reference files
+
+Read only the reference file the task needs:
+
+- `references/hig-patterns.md` for Apple-native layout, accessibility, adaptive layout, and state-pattern guidance
+- `references/swiftui-components.md` for reusable screen sections, forms, buttons, sheets, loading, and empty or error states
+
+For route ownership, `AppRouter`, or navigation architecture questions, read `ios-conventions` and its navigation reference instead.
 
 ## Preview and composition rules
 

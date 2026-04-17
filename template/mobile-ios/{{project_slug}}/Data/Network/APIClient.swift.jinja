@@ -44,6 +44,34 @@ actor APIClient {
         encoder.dateEncodingStrategy = .iso8601
     }
 
+    private func applyAuthorizationHeader(to request: inout URLRequest, for endpoint: APIEndpoint) async throws {
+        guard endpoint.requiresAuth else { return }
+
+        guard let token = await tokenStorage.getAccessToken() else {
+            throw APIError.unauthorized
+        }
+
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+
+    private func apiError(for statusCode: Int) -> APIError {
+        switch statusCode {
+        case 401: return .unauthorized
+        case 403: return .forbidden
+        case 404: return .notFound
+        case 409: return .conflict
+        default: return .serverError(statusCode)
+        }
+    }
+
+    private func handleErrorResponse(statusCode: Int) async throws -> Never {
+        if statusCode == 401 {
+            await tokenStorage.clearTokens()
+        }
+
+        throw apiError(for: statusCode)
+    }
+
     func request<T: Decodable>(_ endpoint: APIEndpoint, body: (any Encodable)? = nil) async throws -> T {
         guard let url = URL(string: baseURL + endpoint.path) else {
             throw APIError.invalidURL
@@ -52,12 +80,7 @@ actor APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = endpoint.method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if endpoint.requiresAuth {
-            if let token = await tokenStorage.getAccessToken() {
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
-        }
+        try await applyAuthorizationHeader(to: &request, for: endpoint)
 
         if let body {
             request.httpBody = try encoder.encode(body)
@@ -76,11 +99,8 @@ actor APIClient {
             } catch {
                 throw APIError.decodingError(error)
             }
-        case 401: throw APIError.unauthorized
-        case 403: throw APIError.forbidden
-        case 404: throw APIError.notFound
-        case 409: throw APIError.conflict
-        default: throw APIError.serverError(httpResponse.statusCode)
+        default:
+            try await handleErrorResponse(statusCode: httpResponse.statusCode)
         }
     }
 
@@ -92,12 +112,7 @@ actor APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = endpoint.method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if endpoint.requiresAuth {
-            if let token = await tokenStorage.getAccessToken() {
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
-        }
+        try await applyAuthorizationHeader(to: &request, for: endpoint)
 
         if let body {
             request.httpBody = try encoder.encode(body)
@@ -110,12 +125,7 @@ actor APIClient {
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            switch httpResponse.statusCode {
-            case 401: throw APIError.unauthorized
-            case 403: throw APIError.forbidden
-            case 404: throw APIError.notFound
-            default: throw APIError.serverError(httpResponse.statusCode)
-            }
+            try await handleErrorResponse(statusCode: httpResponse.statusCode)
         }
     }
 }

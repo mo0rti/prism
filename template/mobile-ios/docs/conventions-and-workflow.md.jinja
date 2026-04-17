@@ -3,11 +3,15 @@
 ## Daily Conventions
 
 - Use SwiftUI for UI.
-- Use `@Observable` ViewModels and `@Bindable` where views need mutation access.
+- Use `@MainActor @Observable` ViewModels and `@Bindable` where views need mutation access.
 - Use `async/await` for asynchronous work.
+- Keep UI-driving state on the main actor.
+- Inject `DependencyContainer` at the app root through SwiftUI environment, then pass feature ViewModels into screens through initializers.
+- Remember that `@Observable` redraws only the views that read the changed property.
 - Keep repository protocols and implementations together in `Data/Repository/`.
 - Route all HTTP access through `APIClient`.
 - Route all token persistence through `TokenStorage`.
+- Treat `APIError.unauthorized` as a clear-tokens-and-return-to-login baseline unless the project intentionally adds centralized refresh-and-retry behavior.
 - Update the relevant docs in the same session when behavior or structure changes.
 
 ## Feature Workflow

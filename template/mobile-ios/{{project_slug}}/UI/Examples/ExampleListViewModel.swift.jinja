@@ -8,6 +8,7 @@ enum ExampleListViewState: Equatable {
     case error(String)
 }
 
+@MainActor
 @Observable
 final class ExampleListViewModel {
     var viewState: ExampleListViewState = .idle
@@ -24,6 +25,12 @@ final class ExampleListViewModel {
         self.authRepository = authRepository
     }
 
+    private func shouldDeferToAuthGate(for error: Error) -> Bool {
+        guard case APIError.unauthorized = error else { return false }
+        viewState = .idle
+        return true
+    }
+
     func loadExamples() async {
         viewState = .loading
         do {
@@ -33,6 +40,7 @@ final class ExampleListViewModel {
             totalPages = response.totalPages
             viewState = .success
         } catch {
+            if shouldDeferToAuthGate(for: error) { return }
             viewState = .error(error.localizedDescription)
         }
     }
@@ -40,15 +48,16 @@ final class ExampleListViewModel {
     func loadMore() async {
         guard !isLoadingMore, currentPage + 1 < totalPages else { return }
         isLoadingMore = true
+        defer { isLoadingMore = false }
         do {
             let response = try await exampleRepository.list(page: currentPage + 1, size: 20)
             examples.append(contentsOf: response.content)
             currentPage = response.page
             totalPages = response.totalPages
         } catch {
+            if shouldDeferToAuthGate(for: error) { return }
             // Silently fail on load more
         }
-        isLoadingMore = false
     }
 
     func deleteExample(_ id: String) async {
@@ -56,11 +65,13 @@ final class ExampleListViewModel {
             try await exampleRepository.delete(id)
             examples.removeAll { $0.id == id }
         } catch {
+            if shouldDeferToAuthGate(for: error) { return }
             // Show error via snackbar if needed
         }
     }
 
     func logout() async {
         await authRepository.logout()
+        viewState = .idle
     }
 }

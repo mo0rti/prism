@@ -17,6 +17,8 @@
 - `AuthRepository` saves tokens after successful auth operations.
 - `AuthRepository.logout()` clears tokens.
 - `AuthRepository.getCurrentUser()` uses the authenticated `/auth/me` endpoint.
+- The default baseline for unauthorized API responses is to clear tokens and return the app to login flow.
+- `AppRouter` is the app-level owner that should react to cleared tokens and drive the transition back to login.
 
 ## Current Scope
 

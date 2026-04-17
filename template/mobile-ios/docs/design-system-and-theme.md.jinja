@@ -9,6 +9,12 @@
 - corner radius constants in `CornerRadius`
 - a `Color(hex:)` helper for token translation
 
+## Theme Safety Rules
+
+- Shared `Color.app...` tokens should remain safe in both light and dark appearance.
+- If a token is not clearly authored as a semantic light-and-dark-safe color, prefer system semantic roles like `.primary`, `.secondary`, and `.background`.
+- Keep custom theme tokens aligned with the design tokens source and verify that dark mode remains readable after theme edits.
+
 ## Shared UI
 
 Reusable UI currently lives in:
@@ -23,3 +29,4 @@ Reusable UI currently lives in:
 - Prefer shared theme colors over redefining colors in feature views.
 - Promote reusable SwiftUI pieces into `UI/Common/` instead of copying them into feature folders.
 - Keep feature views focused on composition and screen-specific behavior.
+- Default to `ContentUnavailableView` for empty states on iOS 17 unless the feature needs a clearly differentiated branded alternative.

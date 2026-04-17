@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ExampleListView: View {
     @Bindable var viewModel: ExampleListViewModel
-    let onLogout: () -> Void
 
     var body: some View {
         Group {
@@ -21,10 +20,7 @@ struct ExampleListView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    Task {
-                        await viewModel.logout()
-                        onLogout()
-                    }
+                    Task { await viewModel.logout() }
                 } label: {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
                 }
@@ -40,13 +36,11 @@ struct ExampleListView: View {
     private var listContent: some View {
         Group {
             if viewModel.examples.isEmpty {
-                VStack {
-                    Spacer()
-                    Text("No examples yet")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
+                ContentUnavailableView(
+                    "No examples yet",
+                    systemImage: "tray",
+                    description: Text("Create or import an example to get started.")
+                )
             } else {
                 List {
                     ForEach(viewModel.examples) { example in

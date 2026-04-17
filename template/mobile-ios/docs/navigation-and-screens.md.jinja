@@ -8,6 +8,10 @@
   - `exampleDetail(id:)`
 - `Navigation/AppRouter.swift` is the top-level auth gate.
 - Authenticated navigation uses `NavigationStack`.
+- Route ownership stays in `Navigation/Route.swift`; feature screens should not invent their own global router abstraction.
+- Unauthorized auth-state transitions should flow back through `AppRouter`, not through per-screen redirect logic.
+- Use sheets for contained flows that should not deepen the primary authenticated stack.
+- Use `NavigationSplitView` only when a feature clearly benefits from iPad or regular-width multi-column navigation.
 
 ## Current Screen Inventory
 
@@ -20,6 +24,7 @@
 ## Screen Rules
 
 - Each screen owns a dedicated ViewModel.
-- ViewModels are `@Observable`.
+- ViewModels are `@MainActor @Observable` by default.
 - Views consume ViewModels through `@Bindable`.
+- App-level owners inject shared dependencies through SwiftUI environment, then create and pass feature ViewModels through screen initializers.
 - Route additions should update both `Route.swift` and the router or any calling navigation code.

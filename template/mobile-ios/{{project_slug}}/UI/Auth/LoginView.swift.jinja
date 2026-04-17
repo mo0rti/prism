@@ -2,15 +2,12 @@ import SwiftUI
 
 struct LoginView: View {
     @Bindable var viewModel: LoginViewModel
-    let onLoginSuccess: () -> Void
 
     var body: some View {
         Group {
             switch viewModel.viewState {
-            case .loading:
+            case .loading, .success:
                 LoadingView()
-            case .success:
-                Color.clear.onAppear { onLoginSuccess() }
             default:
                 loginContent
             }
@@ -43,22 +40,22 @@ struct LoginView: View {
                 VStack(spacing: Spacing.sm + 4) {
 {% if "google" in auth_methods %}
                     oauthButton(title: "Continue with Google") {
-                        // TODO: Launch Google OAuth flow
+                        viewModel.showOAuthSetupRequired(provider: "google")
                     }
 {% endif %}
 {% if "apple" in auth_methods %}
                     oauthButton(title: "Continue with Apple") {
-                        // TODO: Launch Apple Sign In
+                        viewModel.showOAuthSetupRequired(provider: "apple")
                     }
 {% endif %}
 {% if "facebook" in auth_methods %}
                     oauthButton(title: "Continue with Facebook") {
-                        // TODO: Launch Facebook OAuth flow
+                        viewModel.showOAuthSetupRequired(provider: "facebook")
                     }
 {% endif %}
 {% if "microsoft" in auth_methods %}
                     oauthButton(title: "Continue with Microsoft") {
-                        // TODO: Launch Microsoft OAuth flow
+                        viewModel.showOAuthSetupRequired(provider: "microsoft")
                     }
 {% endif %}
                 }

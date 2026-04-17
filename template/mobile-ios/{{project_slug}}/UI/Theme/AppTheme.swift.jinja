@@ -1,54 +1,65 @@
 import SwiftUI
+import UIKit
 
 // Design tokens from shared/design-tokens/tokens.json
 extension Color {
     // Primary
-    static let appPrimary = Color(hex: "#6366F1")
-    static let appPrimaryVariant = Color(hex: "#4F46E5")
+    static let appPrimary = Color(dynamicLight: "#6366F1", dark: "#818CF8")
+    static let appPrimaryVariant = Color(dynamicLight: "#4F46E5", dark: "#6366F1")
 
     // Secondary
-    static let appSecondary = Color(hex: "#10B981")
-    static let appSecondaryVariant = Color(hex: "#059669")
+    static let appSecondary = Color(dynamicLight: "#10B981", dark: "#34D399")
+    static let appSecondaryVariant = Color(dynamicLight: "#059669", dark: "#10B981")
 
     // Background & Surface
-    static let appBackground = Color(hex: "#FFFFFF")
-    static let appSurface = Color(hex: "#F9FAFB")
-    static let appSurfaceVariant = Color(hex: "#F3F4F6")
+    static let appBackground = Color(dynamicLight: "#FFFFFF", dark: "#111827")
+    static let appSurface = Color(dynamicLight: "#F9FAFB", dark: "#1F2937")
+    static let appSurfaceVariant = Color(dynamicLight: "#F3F4F6", dark: "#374151")
 
     // Semantic
-    static let appError = Color(hex: "#EF4444")
-    static let appWarning = Color(hex: "#F59E0B")
-    static let appSuccess = Color(hex: "#10B981")
-    static let appInfo = Color(hex: "#3B82F6")
+    static let appError = Color(dynamicLight: "#EF4444", dark: "#F87171")
+    static let appWarning = Color(dynamicLight: "#F59E0B", dark: "#FBBF24")
+    static let appSuccess = Color(dynamicLight: "#10B981", dark: "#34D399")
+    static let appInfo = Color(dynamicLight: "#3B82F6", dark: "#60A5FA")
 
     // On colors
-    static let appOnPrimary = Color(hex: "#FFFFFF")
-    static let appOnBackground = Color(hex: "#111827")
-    static let appOnSurface = Color(hex: "#374151")
+    static let appOnPrimary = Color(dynamicLight: "#FFFFFF", dark: "#FFFFFF")
+    static let appOnBackground = Color(dynamicLight: "#111827", dark: "#F9FAFB")
+    static let appOnSurface = Color(dynamicLight: "#374151", dark: "#E5E7EB")
 
     // Border
-    static let appBorder = Color(hex: "#E5E7EB")
+    static let appBorder = Color(dynamicLight: "#E5E7EB", dark: "#374151")
 
-    // Dark theme
-    static let appDarkBackground = Color(hex: "#111827")
-    static let appDarkSurface = Color(hex: "#1F2937")
-    static let appDarkOnBackground = Color(hex: "#F9FAFB")
-    static let appDarkOnSurface = Color(hex: "#E5E7EB")
-    static let appDarkBorder = Color(hex: "#374151")
 }
 
 extension Color {
     init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        let scanner = Scanner(string: hex)
+        self.init(uiColor: UIColor(hex: hex) ?? .clear)
+    }
+
+    init(dynamicLight lightHex: String, dark darkHex: String) {
+        self.init(
+            uiColor: UIColor { traitCollection in
+                let hex = traitCollection.userInterfaceStyle == .dark ? darkHex : lightHex
+                return UIColor(hex: hex) ?? .clear
+            }
+        )
+    }
+}
+
+private extension UIColor {
+    convenience init?(hex: String) {
+        let trimmedHex = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        let scanner = Scanner(string: trimmedHex)
         var rgbValue: UInt64 = 0
-        scanner.scanHexInt64(&rgbValue)
 
-        let r = Double((rgbValue & 0xFF0000) >> 16) / 255.0
-        let g = Double((rgbValue & 0x00FF00) >> 8) / 255.0
-        let b = Double(rgbValue & 0x0000FF) / 255.0
+        guard scanner.scanHexInt64(&rgbValue) else { return nil }
 
-        self.init(red: r, green: g, blue: b)
+        let r = CGFloat((rgbValue & 0xFF0000) >> 16) / 255
+        let g = CGFloat((rgbValue & 0x00FF00) >> 8) / 255
+        let b = CGFloat(rgbValue & 0x0000FF) / 255
+
+        self.init(red: r, green: g, blue: b, alpha: 1)
     }
 }
 
