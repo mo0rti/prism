@@ -15,16 +15,20 @@ struct LoginView: View {
     }
 
     private var loginContent: some View {
+        // Keep the screen identifier on the rendered login content rather than
+        // transient loading state so auth-gate smoke tests can anchor reliably.
         ScrollView {
             VStack(spacing: Spacing.lg) {
                 Spacer().frame(height: 60)
 
                 Text("Welcome")
                     .font(.largeTitle.bold())
+                    .accessibilityIdentifier("login.title")
 
                 Text("Sign in to continue")
                     .font(.body)
                     .foregroundColor(.secondary)
+                    .accessibilityIdentifier("login.subtitle")
 
                 if case .error(let message) = viewModel.viewState {
                     Text(message)
@@ -34,6 +38,7 @@ struct LoginView: View {
                         .frame(maxWidth: .infinity)
                         .background(Color.appError.opacity(0.1))
                         .cornerRadius(CornerRadius.md)
+                        .accessibilityIdentifier("login.error")
                 }
 
                 // OAuth Buttons
@@ -42,23 +47,28 @@ struct LoginView: View {
                     oauthButton(title: "Continue with Google") {
                         viewModel.showOAuthSetupRequired(provider: "google")
                     }
+                    .accessibilityIdentifier("login.oauth.google")
 {% endif %}
 {% if "apple" in auth_methods %}
                     oauthButton(title: "Continue with Apple") {
                         viewModel.showOAuthSetupRequired(provider: "apple")
                     }
+                    .accessibilityIdentifier("login.oauth.apple")
 {% endif %}
 {% if "facebook" in auth_methods %}
                     oauthButton(title: "Continue with Facebook") {
                         viewModel.showOAuthSetupRequired(provider: "facebook")
                     }
+                    .accessibilityIdentifier("login.oauth.facebook")
 {% endif %}
 {% if "microsoft" in auth_methods %}
                     oauthButton(title: "Continue with Microsoft") {
                         viewModel.showOAuthSetupRequired(provider: "microsoft")
                     }
+                    .accessibilityIdentifier("login.oauth.microsoft")
 {% endif %}
                 }
+                .accessibilityIdentifier("login.oauth.actions")
 
 {% if "password" in auth_methods %}
                 Divider()
@@ -74,10 +84,12 @@ struct LoginView: View {
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("login.email")
 
                     SecureField("Password", text: $viewModel.password)
                         .textContentType(.password)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("login.password")
 
                     PrimaryButton(
                         title: "Sign In",
@@ -86,11 +98,14 @@ struct LoginView: View {
                         },
                         isEnabled: viewModel.isFormValid
                     )
+                    .accessibilityIdentifier("login.submit")
                 }
+                .accessibilityIdentifier("login.password.form")
 {% endif %}
             }
             .padding(.horizontal, Spacing.lg)
         }
+        .accessibilityIdentifier("login.screen")
     }
 
     private func oauthButton(title: String, action: @escaping () -> Void) -> some View {

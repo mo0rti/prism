@@ -4,9 +4,27 @@ import Security
 actor TokenStorage {
     nonisolated static let tokensDidChangeNotification = Notification.Name("TokenStorage.tokensDidChange")
 
-    private let service = "{{ package_identifier }}.auth"
+    private let service: String
     private let accessTokenKey = "access_token"
     private let refreshTokenKey = "refresh_token"
+
+    init(
+        service: String = "{{ package_identifier }}.auth",
+        resetOnInit: Bool = false,
+        seededTokens: (accessToken: String, refreshToken: String)? = nil
+    ) {
+        self.service = service
+
+        if resetOnInit {
+            delete(key: accessTokenKey)
+            delete(key: refreshTokenKey)
+        }
+
+        if let seededTokens {
+            save(key: accessTokenKey, value: seededTokens.accessToken)
+            save(key: refreshTokenKey, value: seededTokens.refreshToken)
+        }
+    }
 
     func saveTokens(accessToken: String, refreshToken: String) {
         save(key: accessTokenKey, value: accessToken)
@@ -34,7 +52,10 @@ actor TokenStorage {
 
     // MARK: - Keychain Helpers
 
-    private func save(key: String, value: String) {
+    // nonisolated: used during actor initialization and from actor-isolated
+    // entry points only. Keep these helpers private to avoid unsynchronized
+    // external keychain mutations.
+    nonisolated private func save(key: String, value: String) {
         guard let data = value.data(using: .utf8) else { return }
         delete(key: key)
 
@@ -48,7 +69,7 @@ actor TokenStorage {
         SecItemAdd(query as CFDictionary, nil)
     }
 
-    private func load(key: String) -> String? {
+    nonisolated private func load(key: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -64,7 +85,7 @@ actor TokenStorage {
         return String(data: data, encoding: .utf8)
     }
 
-    private func delete(key: String) {
+    nonisolated private func delete(key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

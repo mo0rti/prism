@@ -24,6 +24,7 @@ struct ExampleListView: View {
                 } label: {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
                 }
+                .accessibilityIdentifier("examples.logout")
             }
         }
         .task {
@@ -36,38 +37,44 @@ struct ExampleListView: View {
     private var listContent: some View {
         Group {
             if viewModel.examples.isEmpty {
-                ContentUnavailableView(
-                    "No examples yet",
-                    systemImage: "tray",
-                    description: Text("Create or import an example to get started.")
-                )
+                VStack {
+                    ContentUnavailableView(
+                        "No examples yet",
+                        systemImage: "tray",
+                        description: Text("Create or import an example to get started.")
+                    )
+                    .accessibilityIdentifier("examples.empty")
+                }
             } else {
-                List {
-                    ForEach(viewModel.examples) { example in
-                        ExampleRow(example: example)
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    Task { await viewModel.deleteExample(example.id) }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                ZStack {
+                    List {
+                        ForEach(viewModel.examples) { example in
+                            ExampleRow(example: example)
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) {
+                                        Task { await viewModel.deleteExample(example.id) }
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
                                 }
-                            }
-                            .onAppear {
-                                if example.id == viewModel.examples.last?.id {
-                                    Task { await viewModel.loadMore() }
+                                .onAppear {
+                                    if example.id == viewModel.examples.last?.id {
+                                        Task { await viewModel.loadMore() }
+                                    }
                                 }
-                            }
-                    }
+                        }
 
-                    if viewModel.isLoadingMore {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
+                        if viewModel.isLoadingMore {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                Spacer()
+                            }
                         }
                     }
+                    .listStyle(.plain)
+                    .accessibilityIdentifier("examples.list")
                 }
-                .listStyle(.plain)
             }
         }
     }
@@ -80,6 +87,7 @@ private struct ExampleRow: View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             Text(example.title)
                 .font(.headline)
+                .accessibilityIdentifier("examples.row.title.\(example.id)")
             if let description = example.description {
                 Text(description)
                     .font(.subheadline)
@@ -94,5 +102,6 @@ private struct ExampleRow: View {
                 .cornerRadius(CornerRadius.sm)
         }
         .padding(.vertical, Spacing.xs)
+        .accessibilityIdentifier("examples.row.\(example.id)")
     }
 }

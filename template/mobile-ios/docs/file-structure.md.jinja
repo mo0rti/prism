@@ -12,6 +12,7 @@ mobile-ios/
   fastlane/
   {{ project_slug }}/
   {{ project_slug }}Tests/
+  {{ project_slug }}UITests/
 ```
 
 ## App Structure
@@ -22,6 +23,7 @@ mobile-ios/
   Info.plist
   DI/
     DependencyContainer.swift
+    UITestSupport.swift
   Navigation/
     AppRouter.swift
     Route.swift
@@ -61,3 +63,4 @@ mobile-ios/
 - Keep route definitions in `Navigation/Route.swift`.
 - Put reusable UI in `UI/Common/` and visual primitives in `UI/Theme/`.
 - Mirror source structure in `{{ project_slug }}Tests/` where practical.
+- Keep simulator-driven behavior tests in `{{ project_slug }}UITests/`.

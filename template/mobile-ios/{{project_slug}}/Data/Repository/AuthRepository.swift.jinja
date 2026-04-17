@@ -1,6 +1,6 @@
 import Foundation
 
-protocol AuthRepository {
+protocol AuthRepository: Sendable {
     func oauthCallback(provider: String, code: String, redirectUri: String) async throws -> AuthResponse
 {% if "password" in auth_methods %}
     func register(email: String, password: String, displayName: String) async throws -> AuthResponse
@@ -11,7 +11,7 @@ protocol AuthRepository {
     func logout() async
 }
 
-final class AuthRepositoryImpl: AuthRepository {
+final class AuthRepositoryImpl: AuthRepository, Sendable {
     private let apiClient: APIClient
     private let tokenStorage: TokenStorage
 

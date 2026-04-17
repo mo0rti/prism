@@ -26,11 +26,27 @@ targets:
     scheme:
       testTargets:
         - {{ ios_module_name }}Tests
+        - {{ ios_module_name }}UITests
 
   {{ ios_module_name }}Tests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: {{ project_slug }}Tests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: {{ ios_module_name }}
+
+  {{ ios_module_name }}UITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: {{ project_slug }}UITests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: {{ ios_module_name }}
     dependencies:
       - target: {{ ios_module_name }}

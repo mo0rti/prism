@@ -7,6 +7,8 @@ Use this reference when a task touches ViewModel structure, dependency injection
 - Treat strict concurrency as the default mindset for generated iOS projects.
 - ViewModels that drive SwiftUI state should be `@MainActor @Observable` unless there is a strong, explicit reason not to.
 - If a helper type, model, or closure crosses actor boundaries, prefer making the value type `Sendable` when practical.
+- If a repository protocol or implementation is injected into a `@MainActor` ViewModel, make that dependency `Sendable` too.
+- Actor-backed dependencies already satisfy sendability, so repository types that store actors such as `APIClient` or `TokenStorage` can usually adopt `Sendable` directly.
 - Do not rely on Swift 5-era "it usually works" UI mutation patterns.
 
 Example:
@@ -17,6 +19,10 @@ enum ProfileViewState: Equatable {
     case loading
     case success
     case error(String)
+}
+
+protocol ProfileRepository: Sendable {
+    func fetchProfile() async throws -> Profile
 }
 
 @MainActor

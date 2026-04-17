@@ -9,8 +9,10 @@
 - Inject `DependencyContainer` at the app root through SwiftUI environment, then pass feature ViewModels into screens through initializers.
 - Remember that `@Observable` redraws only the views that read the changed property.
 - Keep repository protocols and implementations together in `Data/Repository/`.
+- Repository protocols and implementations injected into `@MainActor` ViewModels should be `Sendable`.
 - Route all HTTP access through `APIClient`.
 - Route all token persistence through `TokenStorage`.
+- Preserve stable accessibility identifiers on screen roots and primary controls when editing UI covered by XCUITests.
 - Treat `APIError.unauthorized` as a clear-tokens-and-return-to-login baseline unless the project intentionally adds centralized refresh-and-retry behavior.
 - Update the relevant docs in the same session when behavior or structure changes.
 

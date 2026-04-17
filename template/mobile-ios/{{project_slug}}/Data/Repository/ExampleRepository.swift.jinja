@@ -1,6 +1,6 @@
 import Foundation
 
-protocol ExampleRepository {
+protocol ExampleRepository: Sendable {
     func list(page: Int, size: Int) async throws -> ExampleListResponse
     func getById(_ id: String) async throws -> ExampleResponse
     func create(title: String, description: String?) async throws -> ExampleResponse
@@ -8,7 +8,7 @@ protocol ExampleRepository {
     func delete(_ id: String) async throws
 }
 
-final class ExampleRepositoryImpl: ExampleRepository {
+final class ExampleRepositoryImpl: ExampleRepository, Sendable {
     private let apiClient: APIClient
 
     init(apiClient: APIClient) {

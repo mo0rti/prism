@@ -1,23 +1,24 @@
 import XCTest
 @testable import {{ ios_module_name }}
 
-@MainActor
 final class LoginViewModelTests: XCTestCase {
-    private var viewModel: LoginViewModel!
-    private var mockAuthRepository: MockAuthRepository!
-
-    override func setUp() {
-        super.setUp()
-        mockAuthRepository = MockAuthRepository()
-        viewModel = LoginViewModel(authRepository: mockAuthRepository)
+    @MainActor
+    private func makeSUT() -> (viewModel: LoginViewModel, authRepository: MockAuthRepository) {
+        let authRepository = MockAuthRepository()
+        let viewModel = LoginViewModel(authRepository: authRepository)
+        return (viewModel, authRepository)
     }
 
+    @MainActor
     func testInitialStateIsIdle() {
+        let (viewModel, _) = makeSUT()
         XCTAssertEqual(viewModel.viewState, .idle)
     }
 
 {% if "password" in auth_methods %}
+    @MainActor
     func testLoginWithPasswordSuccess() async {
+        let (viewModel, mockAuthRepository) = makeSUT()
         mockAuthRepository.loginResult = .success(MockData.authResponse)
 
         await viewModel.loginWithPassword()
@@ -25,7 +26,9 @@ final class LoginViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.viewState, .success)
     }
 
+    @MainActor
     func testLoginWithPasswordFailure() async {
+        let (viewModel, mockAuthRepository) = makeSUT()
         mockAuthRepository.loginResult = .failure(APIError.unauthorized)
 
         viewModel.email = "test@example.com"
@@ -39,7 +42,9 @@ final class LoginViewModelTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testFormValidation() {
+        let (viewModel, _) = makeSUT()
         XCTAssertFalse(viewModel.isFormValid)
 
         viewModel.email = "test@example.com"
@@ -50,7 +55,9 @@ final class LoginViewModelTests: XCTestCase {
     }
 {% endif %}
 
+    @MainActor
     func testOAuthLoginSuccess() async {
+        let (viewModel, mockAuthRepository) = makeSUT()
         mockAuthRepository.oauthResult = .success(MockData.authResponse)
 
         await viewModel.loginWithOAuth(provider: "google", code: "auth-code", redirectUri: "redirect")
@@ -58,7 +65,9 @@ final class LoginViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.viewState, .success)
     }
 
+    @MainActor
     func testClearError() {
+        let (viewModel, _) = makeSUT()
         viewModel.viewState = .error("some error")
         viewModel.clearError()
         XCTAssertEqual(viewModel.viewState, .idle)
@@ -67,7 +76,8 @@ final class LoginViewModelTests: XCTestCase {
 
 // MARK: - Mocks
 
-private class MockAuthRepository: AuthRepository {
+@MainActor
+private final class MockAuthRepository: AuthRepository {
     var oauthResult: Result<AuthResponse, Error> = .failure(APIError.unauthorized)
 {% if "password" in auth_methods %}
     var loginResult: Result<AuthResponse, Error> = .failure(APIError.unauthorized)

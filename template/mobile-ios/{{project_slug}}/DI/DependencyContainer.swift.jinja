@@ -9,12 +9,26 @@ final class DependencyContainer {
     let exampleRepository: ExampleRepository
 
     init() {
-        let tokenStorage = TokenStorage()
-        let apiClient = APIClient(tokenStorage: tokenStorage)
+        if let uiTestConfiguration = UITestConfiguration.current {
+            let tokenStorage = TokenStorage(
+                service: "{{ package_identifier }}.auth.ui-tests",
+                resetOnInit: true,
+                seededTokens: uiTestConfiguration.seededTokens
+            )
+            let apiClient = APIClient(tokenStorage: tokenStorage)
 
-        self.tokenStorage = tokenStorage
-        self.apiClient = apiClient
-        self.authRepository = AuthRepositoryImpl(apiClient: apiClient, tokenStorage: tokenStorage)
-        self.exampleRepository = ExampleRepositoryImpl(apiClient: apiClient)
+            self.tokenStorage = tokenStorage
+            self.apiClient = apiClient
+            self.authRepository = UITestAuthRepository(tokenStorage: tokenStorage)
+            self.exampleRepository = UITestExampleRepository()
+        } else {
+            let tokenStorage = TokenStorage()
+            let apiClient = APIClient(tokenStorage: tokenStorage)
+
+            self.tokenStorage = tokenStorage
+            self.apiClient = apiClient
+            self.authRepository = AuthRepositoryImpl(apiClient: apiClient, tokenStorage: tokenStorage)
+            self.exampleRepository = ExampleRepositoryImpl(apiClient: apiClient)
+        }
     }
 }

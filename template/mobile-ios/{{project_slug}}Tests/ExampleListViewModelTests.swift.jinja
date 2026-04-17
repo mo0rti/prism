@@ -1,23 +1,25 @@
 import XCTest
 @testable import {{ ios_module_name }}
 
-@MainActor
 final class ExampleListViewModelTests: XCTestCase {
-    private var viewModel: ExampleListViewModel!
-    private var mockExampleRepository: MockExampleRepository!
-    private var mockAuthRepository: MockAuthRepository!
-
-    override func setUp() {
-        super.setUp()
-        mockExampleRepository = MockExampleRepository()
-        mockAuthRepository = MockAuthRepository()
-        viewModel = ExampleListViewModel(
-            exampleRepository: mockExampleRepository,
-            authRepository: mockAuthRepository
+    @MainActor
+    private func makeSUT() -> (
+        viewModel: ExampleListViewModel,
+        exampleRepository: MockExampleRepository,
+        authRepository: MockAuthRepository
+    ) {
+        let exampleRepository = MockExampleRepository()
+        let authRepository = MockAuthRepository()
+        let viewModel = ExampleListViewModel(
+            exampleRepository: exampleRepository,
+            authRepository: authRepository
         )
+        return (viewModel, exampleRepository, authRepository)
     }
 
+    @MainActor
     func testLoadExamplesSuccess() async {
+        let (viewModel, mockExampleRepository, _) = makeSUT()
         mockExampleRepository.listResult = .success(MockData.exampleListResponse)
 
         await viewModel.loadExamples()
@@ -27,7 +29,9 @@ final class ExampleListViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.examples[0].title, "Example 1")
     }
 
+    @MainActor
     func testLoadExamplesFailure() async {
+        let (viewModel, mockExampleRepository, _) = makeSUT()
         mockExampleRepository.listResult = .failure(APIError.networkError(URLError(.notConnectedToInternet)))
 
         await viewModel.loadExamples()
@@ -39,7 +43,9 @@ final class ExampleListViewModelTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testDeleteRemovesFromList() async {
+        let (viewModel, mockExampleRepository, _) = makeSUT()
         mockExampleRepository.listResult = .success(MockData.exampleListResponse)
         await viewModel.loadExamples()
 
@@ -52,7 +58,8 @@ final class ExampleListViewModelTests: XCTestCase {
 
 // MARK: - Mocks
 
-private class MockExampleRepository: ExampleRepository {
+@MainActor
+private final class MockExampleRepository: ExampleRepository {
     var listResult: Result<ExampleListResponse, Error> = .success(MockData.exampleListResponse)
 
     func list(page: Int, size: Int) async throws -> ExampleListResponse {
@@ -74,7 +81,8 @@ private class MockExampleRepository: ExampleRepository {
     func delete(_ id: String) async throws {}
 }
 
-private class MockAuthRepository: AuthRepository {
+@MainActor
+private final class MockAuthRepository: AuthRepository {
     func oauthCallback(provider: String, code: String, redirectUri: String) async throws -> AuthResponse {
         throw APIError.unauthorized
     }

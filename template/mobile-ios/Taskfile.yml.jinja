@@ -1,5 +1,10 @@
 version: "3"
 
+vars:
+  PROJECT_NAME: '{{'{{'}} .PROJECT_NAME | default "{{ project_name }}" {{'}}'}}'
+  SCHEME: '{{'{{'}} .SCHEME | default "{{ ios_module_name }}" {{'}}'}}'
+  SIMULATOR_NAME: '{{'{{'}} .SIMULATOR_NAME | default "iPhone 16" {{'}}'}}'
+
 tasks:
   generate-project:
     desc: Generate Xcode project from project.yml
@@ -11,21 +16,45 @@ tasks:
     desc: Build the iOS app
     platforms: [darwin]
     deps: [generate-project]
-    cmds:
-      - xcodebuild build -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,name=iPhone 16" -configuration Debug
     vars:
-      PROJECT_NAME: '{{'{{'}} .PROJECT_NAME | default "{{ project_name }}" {{'}}'}}'
-      SCHEME: '{{'{{'}} .SCHEME | default "{{ ios_module_name }}" {{'}}'}}'
+      SIMULATOR_ID:
+        sh: |
+          xcrun simctl list devices available | awk '/{{'{{'}} .SIMULATOR_NAME {{'}}'}} \(/ { line = $0 } END { if (line == "") { print "No available iOS simulator matched SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } if (!match(line, /\([A-Fa-f0-9-]+\)/)) { print "Could not parse simulator identifier for SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } print substr(line, RSTART + 1, RLENGTH - 2) }'
+    cmds:
+      - xcodebuild build -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}" -configuration Debug
 
   test:
-    desc: Run unit tests
+    desc: Run all iOS tests
     platforms: [darwin]
     deps: [generate-project]
-    cmds:
-      - xcodebuild test -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,name=iPhone 16"
     vars:
-      PROJECT_NAME: '{{'{{'}} .PROJECT_NAME | default "{{ project_name }}" {{'}}'}}'
-      SCHEME: '{{'{{'}} .SCHEME | default "{{ ios_module_name }}" {{'}}'}}'
+      SIMULATOR_ID:
+        sh: |
+          xcrun simctl list devices available | awk '/{{'{{'}} .SIMULATOR_NAME {{'}}'}} \(/ { line = $0 } END { if (line == "") { print "No available iOS simulator matched SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } if (!match(line, /\([A-Fa-f0-9-]+\)/)) { print "Could not parse simulator identifier for SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } print substr(line, RSTART + 1, RLENGTH - 2) }'
+    cmds:
+      - xcodebuild test -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}"
+
+  test-unit:
+    desc: Run iOS unit tests only
+    platforms: [darwin]
+    deps: [generate-project]
+    vars:
+      SIMULATOR_ID:
+        sh: |
+          xcrun simctl list devices available | awk '/{{'{{'}} .SIMULATOR_NAME {{'}}'}} \(/ { line = $0 } END { if (line == "") { print "No available iOS simulator matched SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } if (!match(line, /\([A-Fa-f0-9-]+\)/)) { print "Could not parse simulator identifier for SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } print substr(line, RSTART + 1, RLENGTH - 2) }'
+    cmds:
+      - xcodebuild test -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}" -only-testing:"{{'{{'}} .SCHEME {{'}}'}}Tests"
+
+  test-ui:
+    desc: Run iOS UI tests only
+    platforms: [darwin]
+    deps: [generate-project]
+    vars:
+      SIMULATOR_ID:
+        sh: |
+          xcrun simctl list devices available | awk '/{{'{{'}} .SIMULATOR_NAME {{'}}'}} \(/ { line = $0 } END { if (line == "") { print "No available iOS simulator matched SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } if (!match(line, /\([A-Fa-f0-9-]+\)/)) { print "Could not parse simulator identifier for SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } print substr(line, RSTART + 1, RLENGTH - 2) }'
+    cmds:
+      - xcodebuild test -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}" -only-testing:"{{'{{'}} .SCHEME {{'}}'}}UITests"
 
   clean:
     desc: Clean build artifacts
@@ -33,6 +62,3 @@ tasks:
     cmds:
       - rm -rf build/
       - xcodebuild clean -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" 2>/dev/null || true
-    vars:
-      PROJECT_NAME: '{{'{{'}} .PROJECT_NAME | default "{{ project_name }}" {{'}}'}}'
-      SCHEME: '{{'{{'}} .SCHEME | default "{{ ios_module_name }}" {{'}}'}}'

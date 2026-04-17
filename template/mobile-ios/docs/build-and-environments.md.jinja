@@ -3,8 +3,10 @@
 ## Tooling
 
 - XcodeGen generates the Xcode project from `project.yml`
-- Taskfile provides `mobile-ios:generate-project`, `mobile-ios:build`, and `mobile-ios:test`
+- Taskfile provides `mobile-ios:generate-project`, `mobile-ios:build`, `mobile-ios:test`, `mobile-ios:test-unit`, and `mobile-ios:test-ui`
 - iOS tasks are Mac-only and are guarded with `platforms: [darwin]`
+- Only the build and test tasks resolve a simulator ID from the available devices whose name exactly matches `SIMULATOR_NAME` before the UUID, defaulting to `iPhone 16`, before calling `xcodebuild`
+- When multiple exact-name simulators exist, the lookup uses the last available match reported by `simctl`, which is typically the newest installed runtime for that device name
 
 ## Generated Project Settings
 
@@ -20,15 +22,35 @@
 task mobile-ios:generate-project
 task mobile-ios:build
 task mobile-ios:test
+task mobile-ios:test-unit
+task mobile-ios:test-ui
 ```
 
 Equivalent direct build commands come from the Taskfile and use:
 
 - `xcodegen generate`
-- `xcodebuild build -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -destination "platform=iOS Simulator,name=iPhone 16" -configuration Debug`
-- `xcodebuild test -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -destination "platform=iOS Simulator,name=iPhone 16"`
+- `xcodebuild build -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -destination "platform=iOS Simulator,id=<resolved simulator id>" -configuration Debug`
+- `xcodebuild test -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -destination "platform=iOS Simulator,id=<resolved simulator id>"`
+- `xcodebuild test -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -destination "platform=iOS Simulator,id=<resolved simulator id>" -only-testing:"{{ ios_module_name }}Tests"`
+- `xcodebuild test -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -destination "platform=iOS Simulator,id=<resolved simulator id>" -only-testing:"{{ ios_module_name }}UITests"`
+
+You can override the simulator lookup when needed:
+
+- `SIMULATOR_NAME="iPhone 17" task mobile-ios:build`
+- `SIMULATOR_NAME="iPhone 17" task mobile-ios:test`
+- `SIMULATOR_NAME="iPhone 17" task mobile-ios:test-ui`
+
+If no available simulator matches `SIMULATOR_NAME`, the build or test task exits with a lookup error before invoking `xcodebuild`.
 
 The generated project keeps `{{ project_slug }}` for filesystem paths and uses `{{ ios_module_name }}` for the Swift/Xcode target and scheme.
+
+## UI Test Mode
+
+- The app includes a lightweight UI-test launch mode so generated XCUITests can verify flows without a live backend.
+- Generated UI tests launch the app with `UI_TEST_MODE=1` and an auth-state override such as `UI_TEST_AUTH_STATE=authenticated`.
+- In UI-test mode, the app swaps in deterministic repositories and seeds session state when requested.
+- Preserve stable accessibility identifiers on screen roots and key controls when changing UI that is covered by XCUITests.
+- The generated UI suite is intentionally smoke-level today; password-form automation is a known follow-up once SwiftUI exposes those controls more reliably to XCUITest.
 
 ## Runtime Configuration
 
@@ -38,5 +60,5 @@ The generated project keeps `{{ project_slug }}` for filesystem paths and uses `
 
 ## Current Scope
 
-- The template scaffolds a single app target plus a unit-test target.
+- The template scaffolds a single app target plus unit-test and UI-test targets.
 - It does not scaffold multi-environment schemes or device-install workflows by default.

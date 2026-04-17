@@ -25,6 +25,7 @@ Use this reference for route ownership, app-level navigation structure, and when
 - Top-level auth gating belongs in `AppRouter`.
 - When auth state becomes invalid, the default baseline is to return the app to login flow rather than inventing per-screen fallback behavior.
 - The app-level auth gate should react to token clearing and drive the transition back to login. Do not make individual feature screens own unauthorized routing.
+- Keep stable accessibility identifiers on top-level screens and auth-boundary controls so XCUITests can observe router-driven transitions.
 
 ## Deep links and restoration
 

@@ -1,0 +1,146 @@
+import Foundation
+
+enum UITestAuthState: String {
+    case authenticated
+    case unauthenticated
+}
+
+struct UITestConfiguration {
+    static let current = Self(processInfo: .processInfo)
+
+    let authState: UITestAuthState
+
+    var seededTokens: (accessToken: String, refreshToken: String)? {
+        guard authState == .authenticated else { return nil }
+        return ("ui-test-access-token", "ui-test-refresh-token")
+    }
+
+    private init?(processInfo: ProcessInfo) {
+        guard processInfo.environment["UI_TEST_MODE"] == "1" else { return nil }
+        authState = UITestAuthState(rawValue: processInfo.environment["UI_TEST_AUTH_STATE"] ?? "unauthenticated") ?? .unauthenticated
+    }
+}
+
+final class UITestAuthRepository: AuthRepository, Sendable {
+    private let tokenStorage: TokenStorage
+
+    init(tokenStorage: TokenStorage) {
+        self.tokenStorage = tokenStorage
+    }
+
+    func oauthCallback(provider: String, code: String, redirectUri: String) async throws -> AuthResponse {
+        try await authenticate(provider: provider.uppercased())
+    }
+
+{% if "password" in auth_methods %}
+    func register(email: String, password: String, displayName: String) async throws -> AuthResponse {
+        try await authenticate(provider: "LOCAL")
+    }
+
+    func login(email: String, password: String) async throws -> AuthResponse {
+        try await authenticate(provider: "LOCAL")
+    }
+{% endif %}
+
+    func refreshToken() async throws -> AuthResponse {
+        try await authenticate(provider: "LOCAL")
+    }
+
+    func getCurrentUser() async throws -> UserResponse {
+        UserResponse(
+            id: "ui-user-1",
+            email: "ui-test@example.com",
+            displayName: "UI Test User",
+            avatarUrl: nil,
+            authProvider: "LOCAL",
+            role: "USER"
+        )
+    }
+
+    func logout() async {
+        await tokenStorage.clearTokens()
+    }
+
+    private func authenticate(provider: String) async throws -> AuthResponse {
+        let response = AuthResponse(
+            accessToken: "ui-test-access-token",
+            refreshToken: "ui-test-refresh-token",
+            expiresIn: 3600,
+            user: UserResponse(
+                id: "ui-user-1",
+                email: "ui-test@example.com",
+                displayName: "UI Test User",
+                avatarUrl: nil,
+                authProvider: provider,
+                role: "USER"
+            )
+        )
+        await tokenStorage.saveTokens(accessToken: response.accessToken, refreshToken: response.refreshToken)
+        return response
+    }
+}
+
+final class UITestExampleRepository: ExampleRepository, Sendable {
+    func list(page: Int, size: Int) async throws -> ExampleListResponse {
+        ExampleListResponse(
+            content: [
+                ExampleResponse(
+                    id: "1",
+                    title: "Example 1",
+                    description: "UI test example one",
+                    status: "DRAFT",
+                    createdBy: "ui-user-1",
+                    createdAt: "2025-01-01",
+                    updatedAt: "2025-01-01"
+                ),
+                ExampleResponse(
+                    id: "2",
+                    title: "Example 2",
+                    description: "UI test example two",
+                    status: "PUBLISHED",
+                    createdBy: "ui-user-1",
+                    createdAt: "2025-01-02",
+                    updatedAt: "2025-01-02"
+                )
+            ],
+            page: 0,
+            size: size,
+            totalElements: 2,
+            totalPages: 1
+        )
+    }
+
+    func getById(_ id: String) async throws -> ExampleResponse {
+        let response = try await list(page: 0, size: 20)
+        guard let example = response.content.first(where: { $0.id == id }) else {
+            throw APIError.notFound
+        }
+        return example
+    }
+
+    func create(title: String, description: String?) async throws -> ExampleResponse {
+        ExampleResponse(
+            id: "new",
+            title: title,
+            description: description,
+            status: "DRAFT",
+            createdBy: "ui-user-1",
+            createdAt: "2025-01-01",
+            updatedAt: "2025-01-01"
+        )
+    }
+
+    func update(id: String, title: String?, description: String?, status: String?) async throws -> ExampleResponse {
+        ExampleResponse(
+            id: id,
+            title: title ?? "Updated Example",
+            description: description,
+            status: status ?? "DRAFT",
+            createdBy: "ui-user-1",
+            createdAt: "2025-01-01",
+            updatedAt: "2025-01-01"
+        )
+    }
+
+    func delete(_ id: String) async throws {}
+}

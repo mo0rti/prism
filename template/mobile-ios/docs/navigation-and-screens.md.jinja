@@ -21,6 +21,10 @@
 - `UI/Common/LoadingView.swift`
 - `UI/Common/PrimaryButton.swift`
 
+## Test Coverage
+
+- `{{ project_slug }}UITests/AppFlowUITests.swift` provides generated UI smoke coverage for auth-gate launch and logout behavior.
+
 ## Screen Rules
 
 - Each screen owns a dedicated ViewModel.
@@ -28,3 +32,5 @@
 - Views consume ViewModels through `@Bindable`.
 - App-level owners inject shared dependencies through SwiftUI environment, then create and pass feature ViewModels through screen initializers.
 - Route additions should update both `Route.swift` and the router or any calling navigation code.
+- Keep stable accessibility identifiers on top-level screens and critical controls that generated XCUITests depend on.
+- `examples.screen` anchors at the authenticated root, not the list content, so it can exist before example data finishes loading.
