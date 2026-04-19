@@ -11,8 +11,8 @@ They also include:
 
 This page answers two questions:
 
-1. what do I have after `copier copy`?
-2. what should I do next inside the generated project?
+1. what do I have after Prism generation?
+2. how do I work inside the generated project?
 
 ## What You Get
 
@@ -31,18 +31,15 @@ Generated projects include:
 
 Treat those outputs as part of the product, not as disposable scaffolding.
 
-## First Five Things To Do After Generation
+## First-Time Use
 
-After `copier copy`, the generated repository already contains the wiki skeleton, but it
-does not yet contain your project-specific advisory board state.
+The first-run path lives in [getting-started.md](getting-started.md).
 
-Use this first-run flow:
+What matters here is the generated-project operating model:
 
-1. confirm the selected platform directories exist
-2. read the generated `README.md` and `CONTEXT.md`
-3. inspect `knowledge/wiki/SCHEMA.md`
-4. initialize the wiki with `setup-project`
-5. use the read-only orientation commands before changing lifecycle state
+- the repository already contains the wiki skeleton
+- `setup-project` initializes the project-specific advisory board state
+- after that, the read/query layer and lifecycle commands become the main way you work with Prism
 
 Initialize the wiki with:
 
@@ -97,27 +94,20 @@ The most important operational distinction is:
 Start with the read-oriented layer first, then use the review tools when you want explicit
 health or audit output.
 
+Cursor does not use the same slash or `$` invocation syntax. In practice, Cursor users ask
+the agent to run the same named operation.
+
 ### Orient / read-only
 
-| Claude Code | Purpose |
-|-------------|---------|
-| `/prep-sprint` | Show what is ready to build |
-| `/feature-status` | Full pipeline view and refresh of the generated orientation report |
-| `/wiki-show F-XXX` | Assemble focused feature context from linked wiki files |
-| `/wiki-blockers` | Show blockers using the canonical blocker categories |
-| `/wiki-query "text"` | Retrieval-assisted search across the wiki |
-| `/wiki-owner po\|designer\|dev` | Show pending work and stale items for one owner role |
-| `/wiki-platform <platform-id>` | Show the active feature queue for one platform |
-
-Representative Codex equivalents:
-
-- `$prep-sprint`
-- `$feature-status`
-- `$wiki-show`
-- `$wiki-blockers`
-- `$wiki-query`
-- `$wiki-owner`
-- `$wiki-platform`
+| Role | Claude Code | Codex | Purpose |
+|------|-------------|-------|---------|
+| Dev | `/prep-sprint` | `$prep-sprint` | Show what is ready to build |
+| Shared | `/feature-status` | `$feature-status` | Full pipeline view and refresh of the generated orientation report |
+| Shared | `/wiki-show F-XXX` | `$wiki-show F-XXX` | Assemble focused feature context from linked wiki files |
+| Shared | `/wiki-blockers` | `$wiki-blockers` | Show blockers using the canonical blocker categories |
+| Shared | `/wiki-query "text"` | `$wiki-query "text"` | Retrieval-assisted search across the wiki |
+| Shared | `/wiki-owner po\|designer\|dev` | `$wiki-owner po\|designer\|dev` | Show pending work and stale items for one owner role |
+| Shared | `/wiki-platform <platform-id>` | `$wiki-platform <platform-id>` | Show the active feature queue for one platform |
 
 Recommended first use:
 
@@ -127,59 +117,35 @@ Recommended first use:
 
 ### Lifecycle / write
 
-| Claude Code | Purpose |
-|-------------|---------|
-| `/setup-project` | One-time project initialization that interviews you and builds the advisory board |
-| `/po-intake [folder]` | Process raw PO notes into feature specs |
-| `/po-clarify` | Answer open questions assigned to PO |
-| `/po-handoff [F-XXX]` | Hand off a feature to design |
-| `/design-intake [F-XXX] [folder]` | Attach design artifacts to a feature |
-| `/design-clarify` | Answer open design questions |
-| `/design-handoff [F-XXX]` | Hand off a feature to dev |
-| `/dev-done [F-XXX]` | Mark a feature as shipped |
-| `/ask [F-XXX] "q" --to po\|designer\|dev` | Route a question to a role |
-
-Representative Codex equivalents:
-
-- `$setup-project`
-- `$po-intake`
-- `$po-clarify`
-- `$po-handoff`
-- `$design-intake`
-- `$design-clarify`
-- `$design-handoff`
-- `$dev-done`
-- `$ask`
+| Role | Claude Code | Codex | Purpose |
+|------|-------------|-------|---------|
+| Shared | `/setup-project` | `$setup-project` | One-time project initialization that interviews you and builds the advisory board |
+| PO | `/po-intake [folder]` | `$po-intake [folder]` | Process raw PO notes into feature specs |
+| PO | `/po-clarify` | `$po-clarify` | Answer open questions assigned to PO |
+| PO | `/po-handoff [F-XXX]` | `$po-handoff [F-XXX]` | Hand off a feature to design |
+| Designer | `/design-intake [F-XXX] [folder]` | `$design-intake [F-XXX] [folder]` | Attach design artifacts to a feature |
+| Designer | `/design-clarify` | `$design-clarify` | Answer open design questions |
+| Designer | `/design-handoff [F-XXX]` | `$design-handoff [F-XXX]` | Hand off a feature to dev |
+| Dev | `/dev-done [F-XXX]` | `$dev-done [F-XXX]` | Mark a feature as shipped |
+| Shared | `/ask [F-XXX] "q" --to po\|designer\|dev` | `$ask [F-XXX] "q" --to po\|designer\|dev` | Route a question to a role |
 
 Use these only when you are intentionally changing project state.
 
 ### Audit / review
 
-| Claude Code | Purpose |
-|-------------|---------|
-| `/lint-wiki` | Health-check the knowledge base and emit a dated lint report |
-| `/board-review [F-XXX]` | Domain expert review before dev starts |
-| `/audit-feature [F-XXX]` | Cross-check spec vs. source intake |
-
-Representative Codex equivalents:
-
-- `$lint-wiki`
-- `$board-review`
-- `$audit-feature`
+| Role | Claude Code | Codex | Purpose |
+|------|-------------|-------|---------|
+| Shared | `/lint-wiki` | `$lint-wiki` | Health-check the knowledge base and emit a dated lint report |
+| Board | `/board-review [F-XXX]` | `$board-review [F-XXX]` | Domain expert review before dev starts |
+| Shared | `/audit-feature [F-XXX]` | `$audit-feature [F-XXX]` | Cross-check spec vs. source intake |
 
 ### Coding utilities
 
-| Claude Code | Purpose |
-|-------------|---------|
-| `/add-endpoint` | Add an API endpoint and update the contract/backend scaffolding |
-| `/generate-clients` | Regenerate platform clients after OpenAPI changes |
-| `/document-entity` | Create or refine backend entity documentation |
-
-Representative Codex equivalents:
-
-- backend-scoped `$endpoint` for backend endpoint implementation guidance
-- `$generate-clients`
-- `$document-entity` is available in backend-scoped guidance
+| Role | Claude Code | Codex | Purpose |
+|------|-------------|-------|---------|
+| Dev | `/add-endpoint` | backend-scoped `$endpoint` | Add an API endpoint and update the contract/backend scaffolding |
+| Shared | `/generate-clients` | `$generate-clients` | Regenerate platform clients after OpenAPI changes |
+| Backend | `/document-entity` | backend-scoped `$document-entity` | Create or refine backend entity documentation |
 
 ## What The Wiki Adds
 

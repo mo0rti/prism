@@ -1,17 +1,18 @@
 # Getting Started
 
-This page is the safest first-run path for evaluating Prism.
+This page is the safest first-run path for trying Prism.
 
-If you want a fast summary:
+If you only want the shortest route:
 
-1. install the generation prerequisites
-2. skim [questionnaire.md](questionnaire.md)
-3. generate a focused sample with the Prism CLI or raw Copier
-4. inspect the generated repo shape
-5. run `setup-project` inside the generated project
-6. validate the slices you care about before treating them as settled
+1. install Prism locally from this repo
+2. run `prism doctor`
+3. run `prism`
+4. generate one focused sample
+5. validate the generated repo
+6. inspect the generated repo and run `setup-project`
+7. validate the slices you care about before treating them as settled
 
-## 1. Choose Your Starting Path
+## 1. Pick A Small First Evaluation Path
 
 Use the smallest path that answers your question.
 
@@ -20,22 +21,29 @@ Recommended first evaluation paths:
 - **Backend only** for repository shape and contract inspection
 - **Backend + Android** for the strongest current application path
 - **Backend + User Web App** or **Backend + Admin Web Portal** for focused web evaluation
-- **Backend + User Web App + Admin Web Portal** to inspect the initial web/admin setup together
+- **Backend + User Web App + Admin Web Portal** if you want to inspect the initial web/admin setup together
 - **Backend + iOS** only if you are prepared to validate iOS details locally on macOS
 
-For current maturity notes behind those recommendations, read
+For the maturity notes behind those recommendations, read
 [current-status.md](current-status.md).
 
-## 2. Install What You Need
+## 2. Install Prism And Its Prerequisites
 
-Start with the minimum required to generate a project, then add the rest based on the
-workflow you plan to exercise.
+Start with the minimum needed to generate a project, then add the rest based on the
+workflow you want to exercise.
 
 Required to generate a project:
 
 - Python 3.10+
 - `pip install copier`
-- optional but recommended during CLI incubation: `pip install -e .`
+- `pip install -e .`
+
+Useful first commands after install:
+
+```bash
+prism doctor
+prism presets
+```
 
 Required to use generated task commands:
 
@@ -58,43 +66,31 @@ Required for iOS work on macOS:
 - Xcode
 - `gem install fastlane`
 
-`copier`, `go-task`, and the generator CLIs are external dependencies. They are not bundled
-with this repository or with generated projects.
+`copier`, `go-task`, and the generator CLIs are external dependencies. They are not
+bundled with this repository or with generated projects.
 
-## 3. Skim The Questionnaire First
+## 3. Generate Your First Project With Prism
 
-Before generating, skim [questionnaire.md](questionnaire.md) for:
-
-- available platform combinations
-- auth-method caveats
-- current maturity notes
-- the safest initial combinations to try first
-
-This saves time if you are evaluating a path that is still partial or experimental.
-
-## 4. Generate A Project
-
-### Generate with the incubating Prism CLI
-
-From a local checkout of this template repo:
+From a local checkout of this repository:
 
 ```bash
-pip install -e .
 prism
 ```
 
-Running bare `prism` now opens the Prism home screen, where you can choose
-commands like `New Project`, `Doctor`, `Validate`, and `Presets`.
+Running bare `prism` opens the Prism home screen. From there you can:
 
-From that home screen, press `/` to open the command palette and filter Prism
-commands directly.
+- choose `New Project`
+- choose `Doctor`
+- choose `Validate`
+- choose `Presets`
+- press `/` to open the command palette and filter commands directly
 
 If you run `prism new` with no extra flags, Prism starts the guided interactive flow:
 
 - shows the recommended presets
 - lets you choose a preset or advanced mode
-- asks for the missing project details
-- uses an interactive multiselect for platform and auth choices
+- asks for missing project details
+- uses interactive selectors for platform and auth choices
 - defaults the destination folder to `generated`
 - shows a final review screen before generation
 
@@ -105,91 +101,26 @@ prism new --preset backend-android --project-name "My Mobile App" --dest ../my-m
 prism validate ../my-mobile-app
 ```
 
-The CLI is currently the incubating front door for Prism generation inside this
-repository. Raw Copier commands remain the lower-level fallback and the
-authoritative rendering path underneath the CLI.
+The Prism CLI is now the main entry point for generation in this repository. Raw Copier
+commands remain the lower-level fallback underneath it.
 
-### Generate directly from GitHub
+Optional deeper context before choosing a non-standard path:
 
-```bash
-copier copy --trust https://github.com/mo0rti/prism.git ../my-new-project
-```
+- read [questionnaire.md](questionnaire.md) if you want the full question surface and option-specific caveats
+- read [current-status.md](current-status.md) if you want the latest maturity guidance before evaluating a partial slice
 
-The `--trust` flag is required because this template uses the `jinja2_time` Jinja
-extension.
+## 4. Validate What You Generated
 
-### Generate from a local checkout
-
-If you are contributing to the template itself, generating from a local checkout is the
-fastest feedback loop:
+Start with the Prism CLI structural check:
 
 ```bash
-copier copy --trust . ../my-new-project
+prism validate /path/to/generated-project
 ```
 
-## 5. Use Focused Sample Variants
+Then, if the supporting tools are installed:
 
-Backend-only sample:
-
-```bash
-copier copy --trust --defaults \
-  --data "project_name=My Backend App" \
-  --data "platforms=[backend]" \
-  . ../my-backend-app
-```
-
-Backend plus Android sample:
-
-```bash
-copier copy --trust --defaults \
-  --data "project_name=My Mobile App" \
-  --data "platforms=[backend, mobile-android]" \
-  . ../my-mobile-app
-```
-
-Backend plus initial web/admin setup sample:
-
-```bash
-copier copy --trust --defaults \
-  --data "project_name=My Web App" \
-  --data "platforms=[backend, web-user-app, web-admin-portal]" \
-  . ../my-web-app
-```
-
-Use focused samples instead of starting with the largest possible combination unless your
-goal is specifically combination testing.
-
-## 6. Inspect What Was Generated
-
-Before treating the generated repo as production-ready, start with structural checks:
-
-- confirm the selected platform directories actually exist
-- confirm `CONTEXT.md` and `knowledge/wiki/SCHEMA.md` exist
-- inspect the generated root `Taskfile.yml` for references to missing modules
-- inspect the generated `README.md` and platform docs
-- inspect `.github/workflows/` for the slices you selected
-
-Then move into the generated project workflow:
-
-1. open the generated repository
-2. initialize the wiki with:
-   - Claude Code: `/setup-project`
-   - Codex: `$setup-project`
-   - Cursor: ask the agent to run `setup-project`
-3. inspect `knowledge/wiki/SCHEMA.md` and the generated project `README.md`
-4. run `feature-status` if you want a generated orientation summary
-5. use the read/query commands before mutating lifecycle state
-
-For the generated-project structure and command surface, continue with
-[generated-projects.md](generated-projects.md).
-
-## 7. Validate The Generated Repo
-
-Shared validation checks:
-
-- run `prism validate /path/to/generated-project` for a first structural pass
-- validate the API contract with `task validate-api` if `go-task` is installed
-- generate clients with `task generate-clients` if the OpenAPI generator is installed
+- run `task validate-api`
+- run `task generate-clients`
 - inspect the generated root `Taskfile.yml`
 - inspect platform-specific docs and environment files
 
@@ -202,15 +133,40 @@ Platform-specific caution:
 Do not assume every command, workflow, or platform combination has been fully hardened just
 because the repository generated successfully.
 
-If you are maintaining the template repo itself, you can also run:
+If you are maintaining the Prism template repo itself, you can also run:
 
 ```bash
 prism validate --kind template --template-mode contract .
 ```
 
-This wraps the existing template validation script with a Prism CLI entry point.
+## 5. Inspect The Generated Repository
 
-## 8. Update An Existing Generated Project
+Before treating the generated repo as production-ready, start with structural checks:
+
+- confirm the selected platform directories exist
+- confirm `README.md`, `CONTEXT.md`, and `knowledge/wiki/SCHEMA.md` exist
+- inspect the generated root `Taskfile.yml`
+- inspect `.github/workflows/` for the slices you selected
+- inspect the generated platform docs
+
+Then move into the generated project workflow:
+
+1. open the generated repository
+2. initialize the wiki with:
+   - Claude Code: `/setup-project`
+   - Codex: `$setup-project`
+   - Cursor: ask the agent to run `setup-project`
+3. inspect `knowledge/wiki/SCHEMA.md`
+4. run `feature-status` if you want an orientation report
+5. use the read/query layer before mutating lifecycle state
+
+If you want the conceptual reason Prism works this way, read
+[prism-model.md](prism-model.md) before going deeper into the generated workflow.
+
+For the generated-project structure and safe-first commands, continue with
+[generated-projects.md](generated-projects.md).
+
+## 6. Update A Generated Project
 
 Inside a generated repository:
 
@@ -218,21 +174,46 @@ Inside a generated repository:
 prism update /path/to/generated-project
 ```
 
-This is the safer Prism-managed update path. It expects the generated project to include
-`.copier-answers.yml`, which Prism now writes during `prism new`.
+This is the Prism-managed update path. It expects the generated project to include
+`.copier-answers.yml`, which Prism writes during `prism new`.
 
 Use updates only after reviewing template changes and only in a generated project that is
 already under version control with a clean git working tree.
 
 During local incubation, Prism may fall back to a Copier `recopy` strategy because the
 template repo is not yet version-tagged for a full `copier update` flow. If you need to
-force that path explicitly:
+force that path:
 
 ```bash
 prism update /path/to/generated-project --strategy recopy
 ```
 
-## 9. What To Read Next
+## 7. Raw Copier Fallbacks
+
+If you need to bypass the Prism CLI and generate directly:
+
+Generate from GitHub:
+
+```bash
+copier copy --trust https://github.com/mo0rti/prism.git ../my-new-project
+```
+
+Generate from a local checkout:
+
+```bash
+copier copy --trust . ../my-new-project
+```
+
+The `--trust` flag is required because this template uses the `jinja2_time` Jinja
+extension.
+
+Use the raw Copier path when:
+
+- you are contributing to the template and want the fastest low-level feedback loop
+- you need to compare Prism CLI behavior with the underlying rendering path
+- you are debugging Copier-specific generation behavior
+
+## 8. What To Read Next
 
 If you just generated a project:
 
