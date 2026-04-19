@@ -4,9 +4,9 @@ This page is the safest first-run path for evaluating Prism.
 
 If you want a fast summary:
 
-1. install `copier`
+1. install the generation prerequisites
 2. skim [questionnaire.md](questionnaire.md)
-3. generate a focused sample
+3. generate a focused sample with the Prism CLI or raw Copier
 4. inspect the generated repo shape
 5. run `setup-project` inside the generated project
 6. validate the slices you care about before treating them as settled
@@ -35,6 +35,7 @@ Required to generate a project:
 
 - Python 3.10+
 - `pip install copier`
+- optional but recommended during CLI incubation: `pip install -e .`
 
 Required to use generated task commands:
 
@@ -73,10 +74,45 @@ This saves time if you are evaluating a path that is still partial or experiment
 
 ## 4. Generate A Project
 
+### Generate with the incubating Prism CLI
+
+From a local checkout of this template repo:
+
+```bash
+pip install -e .
+prism
+```
+
+Running bare `prism` now opens the Prism home screen, where you can choose
+commands like `New Project`, `Doctor`, `Validate`, and `Presets`.
+
+From that home screen, press `/` to open the command palette and filter Prism
+commands directly.
+
+If you run `prism new` with no extra flags, Prism starts the guided interactive flow:
+
+- shows the recommended presets
+- lets you choose a preset or advanced mode
+- asks for the missing project details
+- uses an interactive multiselect for platform and auth choices
+- defaults the destination folder to `generated`
+- shows a final review screen before generation
+
+You can also generate non-interactively with a recommended preset:
+
+```bash
+prism new --preset backend-android --project-name "My Mobile App" --dest ../my-mobile-app
+prism validate ../my-mobile-app
+```
+
+The CLI is currently the incubating front door for Prism generation inside this
+repository. Raw Copier commands remain the lower-level fallback and the
+authoritative rendering path underneath the CLI.
+
 ### Generate directly from GitHub
 
 ```bash
-copier copy --trust https://github.com/mo0rti/Template.git ../my-new-project
+copier copy --trust https://github.com/mo0rti/prism.git ../my-new-project
 ```
 
 The `--trust` flag is required because this template uses the `jinja2_time` Jinja
@@ -151,6 +187,7 @@ For the generated-project structure and command surface, continue with
 
 Shared validation checks:
 
+- run `prism validate /path/to/generated-project` for a first structural pass
 - validate the API contract with `task validate-api` if `go-task` is installed
 - generate clients with `task generate-clients` if the OpenAPI generator is installed
 - inspect the generated root `Taskfile.yml`
@@ -165,17 +202,35 @@ Platform-specific caution:
 Do not assume every command, workflow, or platform combination has been fully hardened just
 because the repository generated successfully.
 
+If you are maintaining the template repo itself, you can also run:
+
+```bash
+prism validate --kind template --template-mode contract .
+```
+
+This wraps the existing template validation script with a Prism CLI entry point.
+
 ## 8. Update An Existing Generated Project
 
 Inside a generated repository:
 
 ```bash
-cd /path/to/generated-project
-copier update --trust
+prism update /path/to/generated-project
 ```
 
-Use this only after reviewing template changes and only in a generated project that is
-already under version control.
+This is the safer Prism-managed update path. It expects the generated project to include
+`.copier-answers.yml`, which Prism now writes during `prism new`.
+
+Use updates only after reviewing template changes and only in a generated project that is
+already under version control with a clean git working tree.
+
+During local incubation, Prism may fall back to a Copier `recopy` strategy because the
+template repo is not yet version-tagged for a full `copier update` flow. If you need to
+force that path explicitly:
+
+```bash
+prism update /path/to/generated-project --strategy recopy
+```
 
 ## 9. What To Read Next
 

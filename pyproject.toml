@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prism-cli"
+version = "0.1.0"
+description = "Incubating Prism CLI for guided multi-platform project generation."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "PyYAML>=6,<7",
+]
+
+[project.scripts]
+prism = "prism_cli.cli:main"
+
+[tool.setuptools]
+packages = ["prism_cli"]

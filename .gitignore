@@ -13,9 +13,13 @@ Desktop.ini
 __pycache__/
 *.pyc
 .venv/
+*.egg-info/
+build/
+dist/
 
 # Test output
 /tmp/
+/generated/
 
 # Claude local settings (machine-specific, not for version control)
 .claude/settings.local.json
