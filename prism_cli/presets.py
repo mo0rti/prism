@@ -25,51 +25,26 @@ PRESETS: tuple[Preset, ...] = (
         answers={"platforms": ["backend"]},
     ),
     Preset(
-        slug="backend-android",
-        label="Backend + Android",
+        slug="backend-mobile",
+        label="Backend + Mobile",
         maturity="validated",
-        summary="Strongest current application path.",
-        answers={"platforms": ["backend", "mobile-android"]},
+        summary="Validated mobile application path with both Android and iOS clients.",
+        answers={"platforms": ["backend", "mobile-android", "mobile-ios"]},
     ),
     Preset(
-        slug="backend-user-web",
-        label="Backend + User Web App",
+        slug="backend-web",
+        label="Backend + Web",
         maturity="partial",
-        summary="Focused web slice with build-validated scaffolding.",
-        answers={"platforms": ["backend", "web-user-app"]},
-        notes=("Cloudflare deployment still needs live-account validation.",),
-    ),
-    Preset(
-        slug="backend-admin-portal",
-        label="Backend + Admin Web Portal",
-        maturity="partial",
-        summary="Focused admin slice with current password-auth requirement.",
-        # Keep these auth defaults aligned with copier.yml until manifest-driven preset sync lands.
-        answers={
-            "platforms": ["backend", "web-admin-portal"],
-            "auth_methods": ["google", "password"],
-        },
-        notes=("Admin Web Portal currently requires password auth.",),
-    ),
-    Preset(
-        slug="backend-user-web-admin",
-        label="Backend + User Web App + Admin Web Portal",
-        maturity="partial",
-        summary="Initial combined web/admin setup.",
+        summary="Combined user-web and admin-portal setup with current web caveats.",
         # Keep these auth defaults aligned with copier.yml until manifest-driven preset sync lands.
         answers={
             "platforms": ["backend", "web-user-app", "web-admin-portal"],
             "auth_methods": ["google", "password"],
         },
-        notes=("Admin Web Portal currently requires password auth.",),
-    ),
-    Preset(
-        slug="backend-ios",
-        label="Backend + iOS",
-        maturity="partial",
-        summary="Structural iOS slice that still needs local macOS validation.",
-        answers={"platforms": ["backend", "mobile-ios"]},
-        notes=("Validate locally on macOS before treating the slice as build-proven.",),
+        notes=(
+            "Cloudflare deployment still needs live-account validation.",
+            "Admin Web Portal currently requires password auth.",
+        ),
     ),
 )
 

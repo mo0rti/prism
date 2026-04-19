@@ -19,10 +19,8 @@ Use the smallest path that answers your question.
 Recommended first evaluation paths:
 
 - **Backend only** for repository shape and contract inspection
-- **Backend + Android** for the strongest current application path
-- **Backend + User Web App** or **Backend + Admin Web Portal** for focused web evaluation
-- **Backend + User Web App + Admin Web Portal** if you want to inspect the initial web/admin setup together
-- **Backend + iOS** only if you are prepared to validate iOS details locally on macOS
+- **Backend + Mobile** for the validated multi-client mobile path
+- **Backend + Web** to inspect the combined user-web and admin-portal setup
 
 For the maturity notes behind those recommendations, read
 [current-status.md](current-status.md).
@@ -97,7 +95,7 @@ If you run `prism new` with no extra flags, Prism starts the guided interactive 
 You can also generate non-interactively with a recommended preset:
 
 ```bash
-prism new --preset backend-android --project-name "My Mobile App" --dest ../my-mobile-app
+prism new --preset backend-mobile --project-name "My Mobile App" --dest ../my-mobile-app
 prism validate ../my-mobile-app
 ```
 
