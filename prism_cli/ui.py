@@ -399,7 +399,7 @@ def _render_single_select_lines(
 
         if option.description:
             lines.append(_pad_line("    " + colorize(option.description, STYLE.dim)))
-        if option.accent:
+        if option.accent and option.accent != "action":
             badge_styles = {
                 "validated": (STYLE.green, STYLE.bold),
                 "partial": (STYLE.yellow, STYLE.bold),

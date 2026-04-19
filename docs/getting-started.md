@@ -40,8 +40,12 @@ Useful first commands after install:
 
 ```bash
 prism doctor
+prism doctor --preset backend-mobile
 prism presets
 ```
+
+`prism doctor` now separates Prism core readiness from workflow and platform checks, so it
+is the fastest way to see what is blocked versus what can wait.
 
 Required to use generated task commands:
 
