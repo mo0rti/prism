@@ -27,7 +27,5 @@ Copier will walk you through these inputs:
 ## Recommended First Selections
 
 - **Backend only** for contract inspection and repository-shape validation
-- **Backend + Android** for the strongest current application path
-- **Backend + User Web App** or **Backend + Admin Web Portal** to evaluate the new initial web slices in isolation
-- **Backend + User Web App + Admin Web Portal** if you want to validate the initial web/admin setup together
-- **Backend + iOS** only if you are prepared to validate iOS generation details locally
+- **Backend + Mobile** for the validated Android + iOS application path
+- **Backend + Web** to evaluate the combined user-web and admin-portal setup
