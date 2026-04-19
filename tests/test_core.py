@@ -14,10 +14,15 @@ from prism_cli.cli import (
     DEFAULT_GENERATED_DIR,
     build_home_actions,
     build_parser,
+    build_doctor_checks,
+    choose_next_doctor_result,
     clear_directory_contents,
     detect_validation_target,
     detect_launch_context,
     dispatch_home_action,
+    doctor_install_command,
+    doctor_install_reference,
+    evaluate_doctor_checks,
     ensure_copier_answers_file,
     format_data_value,
     inspect_git_worktree,
@@ -30,13 +35,15 @@ from prism_cli.cli import (
     parse_preset_selection,
     format_copier_progress_line,
     prepare_generation_destination,
+    render_doctor_result,
     resolve_update_strategy,
+    summarize_doctor_results,
     supports_versioned_update,
     validate_answers,
     validate_generated_project_structure,
 )
 from prism_cli.presets import merge_answers
-from prism_cli.presets import PRESETS
+from prism_cli.presets import PRESETS, get_preset
 from prism_cli.ui import SelectOption, colorize, filter_select_options, panel, review_key_value, truncate_visible, visible_length
 
 
@@ -423,6 +430,95 @@ class GitHelpersTests(unittest.TestCase):
 
         self.assertTrue(state["is_repo"])
         self.assertFalse(state["is_dirty"])
+
+
+class DoctorCommandTests(unittest.TestCase):
+    def test_build_doctor_checks_marks_packaged_copier_as_bundled(self) -> None:
+        checks = build_doctor_checks(incubation_mode=False)
+        copier_check = next(check for check in checks if check.label == "Copier")
+        self.assertEqual("bundled", copier_check.packaged_status)
+
+    @patch("prism_cli.cli.shutil.which")
+    def test_evaluate_doctor_checks_marks_ios_not_applicable_on_windows(self, mocked_which: object) -> None:
+        mocked_which.return_value = None
+        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"mobile-ios"})
+        ios_result = next(result for result in results if result.check.label == "Xcode CLI")
+        self.assertEqual("not-applicable", ios_result.status)
+
+    @patch("prism_cli.cli.shutil.which")
+    def test_summarize_doctor_results_points_to_missing_workflow_tool(self, mocked_which: object) -> None:
+        def fake_which(command: str | None) -> str | None:
+            if command in {None, "", "task"}:
+                return None
+            return f"C:/tools/{command}.exe"
+
+        mocked_which.side_effect = fake_which
+        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", set())
+        summary = summarize_doctor_results(results, None)
+        rendered = "\n".join(summary)
+        self.assertIn("Prism generation", rendered)
+        self.assertIn("Next step", rendered)
+        self.assertIn("Install go-task", rendered)
+
+    def test_doctor_install_command_returns_windows_hint_for_go_task(self) -> None:
+        check = next(check for check in build_doctor_checks(incubation_mode=True) if check.label == "go-task")
+        self.assertEqual("npm install -g @go-task/cli", doctor_install_command(check, "Windows"))
+
+    def test_doctor_install_reference_falls_back_to_default(self) -> None:
+        check = next(check for check in build_doctor_checks(incubation_mode=True) if check.label == "go-task")
+        self.assertEqual("https://taskfile.dev/docs/installation", doctor_install_reference(check, "Windows"))
+
+    @patch("prism_cli.cli.shutil.which")
+    def test_summary_reports_generate_now_when_everything_is_ready(self, mocked_which: object) -> None:
+        mocked_which.return_value = "C:/tools/found.exe"
+        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"backend", "mobile-android"})
+        summary = "\n".join(summarize_doctor_results(results, get_preset("backend-mobile")))
+        self.assertIn("You can generate a Prism project now.", summary)
+
+    @patch("prism_cli.cli.shutil.which")
+    def test_preset_filtering_excludes_ios_check_for_backend_only(self, mocked_which: object) -> None:
+        mocked_which.return_value = "C:/tools/found.exe"
+        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"backend"})
+        labels = [result.check.label for result in results]
+        self.assertNotIn("Xcode CLI", labels)
+
+    def test_next_doctor_step_for_blocking_check_uses_explicit_hint(self) -> None:
+        checks = build_doctor_checks(incubation_mode=True)
+        python_check = next(check for check in checks if check.label == "Python")
+        result = cli_module.DoctorResult(check=python_check, status="missing", detail=python_check.install_hint)
+        self.assertEqual("Install Python before running prism new.", cli_module.next_doctor_step(result))
+
+    @patch("prism_cli.cli.shutil.which")
+    def test_choose_next_doctor_result_prefers_platform_relevant_missing_check(self, mocked_which: object) -> None:
+        def fake_which(command: str | None) -> str | None:
+            if command in {"task", "java"}:
+                return None
+            return "C:/tools/found.exe"
+
+        mocked_which.side_effect = fake_which
+        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"backend", "mobile-android"})
+        next_result = choose_next_doctor_result(results, {"backend", "mobile-android"})
+        assert next_result is not None
+        self.assertEqual("JDK", next_result.check.label)
+
+    def test_render_doctor_result_includes_docs_for_missing_check(self) -> None:
+        go_task = next(check for check in build_doctor_checks(incubation_mode=True) if check.label == "go-task")
+        result = cli_module.DoctorResult(
+            check=go_task,
+            status="missing",
+            detail=go_task.install_hint,
+            install_command=doctor_install_command(go_task, "Windows"),
+            install_reference=doctor_install_reference(go_task, "Windows"),
+        )
+        rendered = "\n".join(render_doctor_result(result))
+        self.assertIn("Docs:", rendered)
+        self.assertIn("@go-task/cli", rendered)
+
+    def test_render_doctor_result_for_bundled_status_mentions_prism_management(self) -> None:
+        copier = next(check for check in build_doctor_checks(incubation_mode=False) if check.label == "Copier")
+        result = cli_module.DoctorResult(check=copier, status="bundled", detail="Bundled with Prism or privately managed in packaged mode.")
+        rendered = "\n".join(render_doctor_result(result))
+        self.assertIn("Handled by Prism:", rendered)
 
 
 class IncubationModeTests(unittest.TestCase):

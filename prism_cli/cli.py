@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from prism_cli.presets import (
     ALL_PLATFORM_CHOICES,
     DEFAULT_ANSWERS,
     PRESETS,
+    Preset,
     get_preset,
     merge_answers,
 )
@@ -63,6 +65,32 @@ DEFAULT_GENERATED_DIR = "generated"
 COPIER_PROGRESS_PATTERN = re.compile(r"^\s*(create|identical|overwrite|conflict|skip|remove)\s+(.+?)\s*$")
 
 
+@dataclass(frozen=True)
+class DoctorCheck:
+    label: str
+    category: str
+    purpose: str
+    impact: str
+    install_hint: str
+    next_step_hint: str
+    install_commands: dict[str, str] | None = None
+    install_references: dict[str, str] | None = None
+    resolver: str | None = None
+    platforms: tuple[str, ...] = ()
+    required_os: str | None = None
+    blocking: bool = False
+    packaged_status: str | None = None
+
+
+@dataclass(frozen=True)
+class DoctorResult:
+    check: DoctorCheck
+    status: str
+    detail: str
+    install_command: str | None = None
+    install_reference: str | None = None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     try:
@@ -87,6 +115,11 @@ def build_parser() -> argparse.ArgumentParser:
     presets_parser.set_defaults(func=cmd_presets)
 
     doctor_parser = subparsers.add_parser("doctor", help="Check local prerequisites.")
+    doctor_parser.add_argument(
+        "--preset",
+        choices=[preset.slug for preset in PRESETS],
+        help="Evaluate readiness for a recommended Prism preset path.",
+    )
     doctor_parser.set_defaults(func=cmd_doctor)
 
     validate_parser = subparsers.add_parser("validate", help="Validate the template repo or a generated Prism project.")
@@ -289,59 +322,315 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     show_command_intro(_args, "Environment checks for generation and common workflows")
     system = platform.system()
     incubation_mode = is_incubating_checkout()
+    selected_preset = get_preset(_args.preset) if _args.preset else None
+    target_platforms = set(selected_preset.answers.get("platforms", [])) if selected_preset else set()
+    target_label = selected_preset.label if selected_preset else "General Prism readiness"
+
     body = [
         f"OS: {system}",
         f"Python: {platform.python_version()}",
         f"Mode: {'incubation' if incubation_mode else 'packaged/runtime'}",
+        f"Target: {target_label}",
         f"Repo: {REPO_ROOT if incubation_mode else 'n/a'}",
     ]
     print(panel("Environment", body))
     print()
 
-    checks = [
-        ("Python", "Required to generate", lambda: shutil.which("python")),
-        ("Node.js", "Required for shared generated tooling", lambda: shutil.which("node")),
-        ("go-task", "Required for generated task commands", lambda: shutil.which("task")),
-        ("Docker", "Common backend/container workflow", lambda: shutil.which("docker")),
-        ("JDK", "Backend and Android workflows", lambda: shutil.which("java")),
-    ]
-    if incubation_mode:
-        checks.insert(1, ("Copier", "Required to generate in incubation mode", lambda: shutil.which("copier")))
-
-    failed_required = False
-    for label, note, resolver in checks:
-        resolved = resolver()
-        if resolved:
-            print(f"[ok] {label:<10} {resolved}")
-            print(f"     {note}")
-        else:
-            print(f"[missing] {label:<10} {note}")
-            if label in {"Python", "Copier"}:
-                failed_required = True
-
-    if not incubation_mode:
-        print("[managed] Copier     Expected to be bundled or privately managed in packaged mode")
-
+    results = evaluate_doctor_checks(build_doctor_checks(incubation_mode), system, target_platforms)
+    summary = summarize_doctor_results(results, selected_preset)
+    core_missing = any(result.status == "missing" and result.check.blocking for result in results)
+    print(panel("Summary", summary))
     print()
-    if system == "Darwin":
-        print(section("macOS-only iOS checks"))
-        for label, command in (("xcodegen", "xcodegen"), ("fastlane", "fastlane"), ("Xcode CLI", "xcodebuild")):
-            resolved = shutil.which(command)
-            if resolved:
-                print(f"[ok] {label:<10} {resolved}")
-            else:
-                print(f"[missing] {label:<10} Optional for iOS validation on macOS.")
-    else:
-        print(section("iOS checks"))
-        print("Skipped: iOS build tooling checks are only applicable on macOS.")
 
-    print()
-    if failed_required:
-        print(error("Generation prerequisites are missing. Install the required tools before running `prism new`."))
+    for title, category_key in (
+        ("Core", "core"),
+        ("Workflow", "workflow"),
+        ("Backend", "backend"),
+        ("Web", "web"),
+        ("Build Tools", "build"),
+        ("iOS", "ios"),
+    ):
+        category_results = [result for result in results if result.check.category == category_key]
+        if not category_results:
+            continue
+        print(section(title))
+        for result in category_results:
+            for line in render_doctor_result(result):
+                print(line)
+        print()
+
+    if core_missing:
+        print(error("Install the blocking core dependencies before running `prism new`."))
         return EXIT_ENVIRONMENT
 
-    print(success("Core generation prerequisites look good."))
+    print(success("Prism core generation is ready."))
     return 0
+
+
+def build_doctor_checks(incubation_mode: bool) -> list[DoctorCheck]:
+    # Keep this in code for the incubation phase. The longer-term plan is to move
+    # dependency metadata into a shared manifest so CLI policy and docs do not drift.
+    checks = [
+        DoctorCheck(
+            label="Python",
+            category="core",
+            purpose="Needed for the Prism runtime in the current install model.",
+            impact="Prism generation is blocked until Python is available.",
+            install_hint="Install CPython 3.12+ from the official Python publisher, then reopen your terminal.",
+            next_step_hint="Install Python before running prism new.",
+            install_commands={
+                "Windows": "winget install Python.Python.3.12 --source winget",
+            },
+            install_references={
+                "Windows": "https://docs.python.org/3/using/windows.html",
+                "default": "https://www.python.org/downloads/",
+            },
+            # Python is special here: Prism is already running inside this interpreter,
+            # so checking the active executable is more reliable than PATH lookup.
+            resolver=sys.executable if Path(sys.executable).exists() else "python",
+            blocking=True,
+        ),
+        DoctorCheck(
+            label="Copier",
+            category="core",
+            purpose="Needed to render Prism projects from the template during incubation.",
+            impact="Prism generation is blocked until Copier is available in this Python environment.",
+            install_hint="Install Copier as an isolated CLI tool. If `uv` is not installed yet, use `pip install copier` as a fallback.",
+            next_step_hint="Install Copier before running prism new in incubation mode.",
+            install_commands={
+                "default": "uv tool install copier",
+            },
+            install_references={
+                "default": "https://copier.readthedocs.io/en/stable/",
+            },
+            resolver="copier",
+            blocking=True,
+            packaged_status="bundled" if not incubation_mode else None,
+        ),
+        DoctorCheck(
+            label="Git",
+            category="workflow",
+            purpose="Needed for generated project updates and common repository workflows.",
+            impact="Generation still works, but update and repository workflows are limited until Git is installed.",
+            install_hint="Install Git using the maintained Git for Windows build or your platform installer.",
+            next_step_hint="Install Git to unlock generated project updates and repository workflows.",
+            install_commands={
+                "Windows": "winget install --id Git.Git -e --source winget",
+            },
+            install_references={
+                "Windows": "https://git-scm.com/install/windows",
+                "default": "https://git-scm.com/downloads",
+            },
+            resolver="git",
+        ),
+        DoctorCheck(
+            label="Node.js",
+            category="workflow",
+            purpose="Needed for shared generated tooling and web workflows.",
+            impact="Generation still works, but shared Node-based tooling will be unavailable until this is installed.",
+            install_hint="Install the current Node.js LTS release from the official Node.js downloads page.",
+            next_step_hint="Install Node.js to unlock shared generated tooling and web workflows.",
+            install_references={
+                "default": "https://nodejs.org/en/download",
+            },
+            resolver="node",
+        ),
+        DoctorCheck(
+            label="go-task",
+            category="workflow",
+            purpose="Needed to run generated Taskfile commands.",
+            impact="Generation still works, but generated task workflows will not run until this is installed.",
+            install_hint="Install go-task globally, then reopen your terminal so the `task` command is on PATH. This npm-based install requires Node.js first.",
+            next_step_hint="Install go-task to run generated Taskfile commands.",
+            install_commands={
+                "default": "npm install -g @go-task/cli",
+            },
+            install_references={
+                "default": "https://taskfile.dev/docs/installation",
+            },
+            resolver="task",
+        ),
+        DoctorCheck(
+            label="Docker",
+            category="backend",
+            purpose="Needed for container-backed backend workflows and local infrastructure.",
+            impact="Backend generation still works, but container-based backend workflows are unavailable until Docker is installed.",
+            install_hint="Install Docker Desktop from Docker's setup guide, then complete the first-run setup.",
+            next_step_hint="Install Docker to unlock container-backed backend workflows.",
+            install_references={
+                "Windows": "https://docs.docker.com/desktop/setup/install/windows-install/",
+                "Darwin": "https://docs.docker.com/desktop/setup/install/mac-install/",
+                "Linux": "https://docs.docker.com/desktop/setup/install/linux/",
+                "default": "https://docs.docker.com/desktop/",
+            },
+            resolver="docker",
+            platforms=("backend",),
+        ),
+        DoctorCheck(
+            label="JDK",
+            category="build",
+            purpose="Needed for Android builds and Spring Boot local build workflows.",
+            impact="Generation still works, but Android and some Java-based local builds will be unavailable until a JDK is installed.",
+            install_hint="Install Eclipse Temurin JDK 21 and ensure `java` is available on PATH.",
+            next_step_hint="Install a JDK to unlock Spring Boot and Android local builds.",
+            install_commands={
+                "Windows": "winget install EclipseAdoptium.Temurin.21.JDK",
+            },
+            install_references={
+                "default": "https://adoptium.net/installation/",
+            },
+            resolver="java",
+            platforms=("backend", "mobile-android"),
+        ),
+        DoctorCheck(
+            label="Xcode CLI",
+            category="ios",
+            purpose="Needed for local iOS builds and validation on macOS.",
+            impact="iOS generation still works structurally, but local iOS validation requires macOS with Xcode command line tools.",
+            install_hint="Install Xcode and the Xcode command line tools on macOS.",
+            next_step_hint="Install Xcode command line tools on macOS to validate iOS locally.",
+            install_commands={
+                "Darwin": "xcode-select --install",
+            },
+            install_references={
+                "Darwin": "https://developer.apple.com/xcode/",
+            },
+            resolver="xcodebuild",
+            platforms=("mobile-ios",),
+            required_os="Darwin",
+        ),
+    ]
+    return checks
+
+
+def evaluate_doctor_checks(checks: list[DoctorCheck], system: str, target_platforms: set[str]) -> list[DoctorResult]:
+    results: list[DoctorResult] = []
+    for check in checks:
+        if check.platforms and target_platforms and not set(check.platforms).intersection(target_platforms):
+            continue
+
+        if check.packaged_status:
+            detail = "Bundled with Prism or privately managed in packaged mode."
+            results.append(DoctorResult(check=check, status=check.packaged_status, detail=detail))
+            continue
+
+        if check.required_os and system != check.required_os:
+            detail = "Not applicable on this OS. Local validation for this tool is only supported on the required platform."
+            results.append(DoctorResult(check=check, status="not-applicable", detail=detail))
+            continue
+
+        resolved = shutil.which(check.resolver) if check.resolver else None
+        if resolved:
+            results.append(DoctorResult(check=check, status="ready", detail=resolved))
+        else:
+            results.append(
+                DoctorResult(
+                    check=check,
+                    status="missing",
+                    detail=check.install_hint,
+                    install_command=doctor_install_command(check, system),
+                    install_reference=doctor_install_reference(check, system),
+                )
+            )
+    return results
+
+
+def summarize_doctor_results(results: list[DoctorResult], selected_preset: Preset | None) -> list[str]:
+    core_missing = any(result.status == "missing" and result.check.blocking for result in results)
+    workflow_missing = sum(1 for result in results if result.check.category == "workflow" and result.status == "missing")
+    platform_missing = sum(
+        1 for result in results if result.check.category in {"backend", "web", "build", "ios"} and result.status == "missing"
+    )
+    next_step = "You can generate a Prism project now."
+    next_result = choose_next_doctor_result(results, set(selected_preset.answers.get("platforms", [])) if selected_preset else set())
+    if next_result:
+        next_step = next_doctor_step(next_result)
+
+    platform_status = "Ready"
+    if platform_missing:
+        platform_status = f"{platform_missing} missing"
+    elif any(result.status == "not-applicable" and result.check.category == "ios" for result in results):
+        platform_status = "Platform checks vary by OS"
+
+    lines: list[str] = []
+    lines.extend(review_key_value("Prism generation", "Blocked" if core_missing else "Ready", *(STYLE.red, STYLE.bold) if core_missing else (STYLE.green, STYLE.bold)))
+    lines.extend(
+        review_key_value(
+            "Workflow tools",
+            "Ready" if workflow_missing == 0 else f"{workflow_missing} missing",
+            *(STYLE.green, STYLE.bold) if workflow_missing == 0 else (STYLE.yellow, STYLE.bold),
+        )
+    )
+    lines.extend(
+        review_key_value(
+            "Platform path",
+            platform_status,
+            *(STYLE.green, STYLE.bold) if platform_missing == 0 and platform_status == "Ready" else (STYLE.yellow, STYLE.bold),
+        )
+    )
+    lines.extend(review_key_value("Target preset", selected_preset.label if selected_preset else "General Prism readiness", STYLE.white))
+    lines.extend(review_key_value("Next step", next_step, STYLE.white))
+    return lines
+
+
+def choose_next_doctor_result(results: list[DoctorResult], target_platforms: set[str]) -> DoctorResult | None:
+    missing_results = [result for result in results if result.status == "missing"]
+    if not missing_results:
+        return None
+
+    def sort_key(result: DoctorResult) -> tuple[int, int, str]:
+        platform_relevant = bool(target_platforms) and bool(set(result.check.platforms).intersection(target_platforms))
+        category_priority = 0 if result.check.blocking else 1 if platform_relevant else 2 if result.check.category == "workflow" else 3
+        platform_priority = 0 if platform_relevant else 1
+        return (category_priority, platform_priority, result.check.label)
+
+    return sorted(missing_results, key=sort_key)[0]
+
+
+def next_doctor_step(result: DoctorResult) -> str:
+    return result.check.next_step_hint
+
+
+def doctor_install_command(check: DoctorCheck, system: str) -> str | None:
+    if not check.install_commands:
+        return None
+    return check.install_commands.get(system) or check.install_commands.get("default")
+
+
+def doctor_install_reference(check: DoctorCheck, system: str) -> str | None:
+    if not check.install_references:
+        return None
+    return check.install_references.get(system) or check.install_references.get("default")
+
+
+def doctor_status_badge(status: str) -> str:
+    labels = {
+        "ready": ("[ready]", (STYLE.green, STYLE.bold)),
+        "missing": ("[missing]", (STYLE.yellow, STYLE.bold)),
+        "bundled": ("[bundled]", (STYLE.cyan, STYLE.bold)),
+        "not-applicable": ("[n/a]", (STYLE.dim,)),
+    }
+    label, styles = labels.get(status, ("[info]", (STYLE.white,)))
+    return colorize(label, *styles)
+
+
+def render_doctor_result(result: DoctorResult) -> list[str]:
+    lines = [f"{doctor_status_badge(result.status)} {colorize(result.check.label, STYLE.bold, STYLE.white)}"]
+    lines.append(f"  {result.check.purpose}")
+    if result.status == "ready":
+        lines.append(f"  {colorize('Found:', STYLE.dim)} {result.detail}")
+    elif result.status == "bundled":
+        lines.append(f"  {colorize('Handled by Prism:', STYLE.dim)} {result.detail}")
+    elif result.status == "not-applicable":
+        lines.append(f"  {colorize('Scope:', STYLE.dim)} {result.detail}")
+    else:
+        lines.append(f"  {colorize('Impact:', STYLE.dim)} {result.check.impact}")
+        lines.append(f"  {colorize('Install:', STYLE.dim)} {result.check.install_hint}")
+        if result.install_command:
+            lines.append(f"  {colorize('Try:', STYLE.dim)} {colorize(result.install_command, STYLE.cyan)}")
+        if result.install_reference:
+            lines.append(f"  {colorize('Docs:', STYLE.dim)} {colorize(result.install_reference, STYLE.cyan)}")
+    return lines
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
