@@ -25,8 +25,10 @@ from prism_cli.cli import (
     load_answers_file,
     load_copier_answers,
     normalize_template_path,
+    parse_copier_progress_line,
     parse_multiselect_response,
     parse_preset_selection,
+    format_copier_progress_line,
     prepare_generation_destination,
     resolve_update_strategy,
     supports_versioned_update,
@@ -35,7 +37,7 @@ from prism_cli.cli import (
 )
 from prism_cli.presets import merge_answers
 from prism_cli.presets import PRESETS
-from prism_cli.ui import SelectOption, colorize, filter_select_options, panel, truncate_visible, visible_length
+from prism_cli.ui import SelectOption, colorize, filter_select_options, panel, review_key_value, truncate_visible, visible_length
 
 
 class ValidateAnswersTests(unittest.TestCase):
@@ -165,6 +167,23 @@ class FormatDataValueTests(unittest.TestCase):
         self.assertEqual("Prism App", format_data_value("Prism App"))
 
 
+class CopierProgressTests(unittest.TestCase):
+    def test_parses_create_progress_line(self) -> None:
+        self.assertEqual(("create", ".agents\\skills\\ask\\SKILL.md"), parse_copier_progress_line("    create  .agents\\skills\\ask\\SKILL.md"))
+
+    def test_parses_colored_create_progress_line(self) -> None:
+        colored = "\033[32m\033[1m    create\033[39m\033[0m  .agents\\skills\\ask\\SKILL.md"
+        self.assertEqual(("create", ".agents\\skills\\ask\\SKILL.md"), parse_copier_progress_line(colored))
+
+    def test_ignores_non_event_progress_line(self) -> None:
+        self.assertIsNone(parse_copier_progress_line("Copying from template version None"))
+
+    def test_formats_progress_line_with_action_text(self) -> None:
+        rendered = format_copier_progress_line("overwrite", "README.md", 0)
+        self.assertIn("Updating", rendered)
+        self.assertIn("README.md", rendered)
+
+
 class UiRenderingTests(unittest.TestCase):
     def test_visible_length_ignores_ansi_sequences(self) -> None:
         rendered = colorize("Prism CLI", "\033[1m", "\033[36m")
@@ -196,6 +215,16 @@ class UiRenderingTests(unittest.TestCase):
         lines = ui_module._render_command_palette_lines("Command palette", "do", options, 1)
         visible_lines = [visible_length(line) for line in lines]
         self.assertTrue(all(length == visible_lines[0] for length in visible_lines))
+
+    def test_review_key_value_wraps_long_values(self) -> None:
+        lines = review_key_value("Template", "C:/work/prism/" + ("very-long-segment/" * 8))
+        self.assertGreater(len(lines), 1)
+
+    def test_review_key_value_prefixes_only_first_line(self) -> None:
+        lines = review_key_value("Platforms", "Backend, Android, iOS, Web User App, Web Admin Portal")
+        self.assertTrue(lines[0].startswith("\033") or lines[0].startswith("Platforms: "))
+        if len(lines) > 1:
+            self.assertFalse("Platforms:" in lines[1])
 
     def test_single_select_lines_hide_palette_hint_when_disabled(self) -> None:
         lines = ui_module._render_single_select_lines(

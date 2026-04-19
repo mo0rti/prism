@@ -6,10 +6,12 @@ import argparse
 import contextlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -25,8 +27,11 @@ from prism_cli.presets import (
     merge_answers,
 )
 from prism_cli.ui import (
+    ANSI_PATTERN,
     PALETTE_SIGNAL,
+    STYLE,
     SelectOption,
+    colorize,
     error,
     header,
     info,
@@ -35,9 +40,14 @@ from prism_cli.ui import (
     interactive_single_select,
     maturity_badge,
     panel,
+    review_key_value,
     section,
     session_panel,
     success,
+    supports_unicode,
+    terminal_width,
+    truncate_visible,
+    visible_length,
     warn,
 )
 
@@ -50,6 +60,7 @@ EXIT_COPIER = 5
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COPIER_ANSWERS_FILE = ".copier-answers.yml"
 DEFAULT_GENERATED_DIR = "generated"
+COPIER_PROGRESS_PATTERN = re.compile(r"^\s*(create|identical|overwrite|conflict|skip|remove)\s+(.+?)\s*$")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -867,23 +878,56 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
 def render_summary(answers: dict[str, Any], dest_path: Path, template_path: str, warnings: list[str]) -> None:
     platform_labels = dict(ALL_PLATFORM_CHOICES)
     auth_labels = dict(ALL_AUTH_CHOICES)
-    body = [
-        f"Project: {answers['project_name']}",
-        f"Description: {answers.get('description', DEFAULT_ANSWERS['description'])}",
-        f"Destination: {dest_path}",
-        f"Template: {template_path}",
-        f"Platforms: {', '.join(platform_labels[p] for p in answers.get('platforms', []))}",
-        f"Auth: {', '.join(auth_labels[a] for a in answers.get('auth_methods', [])) or 'None'}",
-        f"Docker Compose: {'Yes' if answers.get('use_docker', True) else 'No'}",
-    ]
+    body: list[str] = []
+    body.append(colorize("Project", STYLE.bold, STYLE.blue))
+    body.extend(review_key_value("Name", answers["project_name"], STYLE.bold, STYLE.white))
+    body.extend(
+        review_key_value(
+            "Description",
+            answers.get("description", DEFAULT_ANSWERS["description"]),
+            STYLE.white,
+        )
+    )
+
+    body.append("")
+    body.append(colorize("Output", STYLE.bold, STYLE.blue))
+    body.extend(review_key_value("Destination", str(dest_path), STYLE.white))
+    body.extend(review_key_value("Template", template_path, STYLE.dim))
+
+    body.append("")
+    body.append(colorize("Stack", STYLE.bold, STYLE.blue))
+    body.extend(
+        review_key_value(
+            "Platforms",
+            ", ".join(platform_labels[p] for p in answers.get("platforms", [])),
+            STYLE.cyan,
+            STYLE.bold,
+        )
+    )
+    body.extend(
+        review_key_value(
+            "Auth",
+            ", ".join(auth_labels[a] for a in answers.get("auth_methods", [])) or "None",
+            STYLE.green if answers.get("auth_methods") else STYLE.yellow,
+        )
+    )
+    docker_enabled = answers.get("use_docker", True)
+    body.extend(
+        review_key_value(
+            "Docker Compose",
+            "Yes" if docker_enabled else "No",
+            STYLE.green if docker_enabled else STYLE.yellow,
+            STYLE.bold,
+        )
+    )
     if answers.get("github_org"):
-        body.append(f"GitHub org: {answers['github_org']}")
+        body.extend(review_key_value("GitHub org", answers["github_org"], STYLE.magenta))
     print()
-    print(panel("Review", body))
+    print(panel("Generation Review", body))
     print()
-    for message in warnings:
-        print(warn(message))
     if warnings:
+        warning_lines = [warn(message) for message in warnings]
+        print(panel("Warnings", warning_lines))
         print()
 
 
@@ -907,13 +951,18 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any]) -> 
         for key, value in answers.items():
             command.extend(["--data", f"{key}={format_data_value(value)}"])
         command.extend([str(effective_template), str(dest_path)])
-        result = subprocess.run(command, cwd=str(REPO_ROOT))
-        if result.returncode != 0:
+        result = run_copier_generation_process(command, REPO_ROOT)
+        if result["returncode"] != 0:
             print(error("Copier generation failed."), file=sys.stderr)
+            if result["tail"]:
+                print(panel("Copier output", list(result["tail"])), file=sys.stderr)
             return EXIT_COPIER
         ensure_copier_answers_file(dest_path, template_path, answers)
 
     print()
+    if result["event_count"]:
+        print(success(f"Generated {result['event_count']} file updates in {dest_path.name}."))
+        print()
     next_steps = [
         f"Open the generated repo: {dest_path}",
         "Read README.md and CONTEXT.md",
@@ -922,6 +971,96 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any]) -> 
     ]
     print(panel("Success", next_steps))
     return 0
+
+
+def parse_copier_progress_line(line: str) -> tuple[str, str] | None:
+    sanitized = ANSI_PATTERN.sub("", line)
+    match = COPIER_PROGRESS_PATTERN.match(sanitized)
+    if not match:
+        return None
+    action, path = match.groups()
+    return action.lower(), path
+
+
+def format_copier_progress_line(action: str, path: str, tick: int = 0) -> str:
+    indicator_frames = ("-", "\\", "|", "/")
+    if supports_unicode():
+        indicator_frames = ("⠋", "⠙", "⠸", "⠴", "⠦", "⠇")
+    indicator = indicator_frames[tick % len(indicator_frames)]
+    action_text = {
+        "create": "Creating",
+        "identical": "Keeping",
+        "overwrite": "Updating",
+        "conflict": "Conflict",
+        "skip": "Skipping",
+        "remove": "Removing",
+    }.get(action, action.capitalize())
+    action_style = {
+        "create": (STYLE.green, STYLE.bold),
+        "identical": (STYLE.dim,),
+        "overwrite": (STYLE.yellow, STYLE.bold),
+        "conflict": (STYLE.red, STYLE.bold),
+        "skip": (STYLE.dim,),
+        "remove": (STYLE.yellow,),
+    }.get(action, (STYLE.white,))
+    return f"{colorize(indicator, STYLE.cyan, STYLE.bold)} {colorize(action_text, *action_style)} {colorize(path, STYLE.white)}"
+
+
+def render_live_progress_line(line: str) -> None:
+    width = max(20, min(terminal_width(), 88))
+    rendered = line
+    if visible_length(line) > width - 1:
+        rendered = truncate_visible(line, width - 2) + ("…" if supports_unicode() else ".")
+    padding = max(0, width - 1 - visible_length(rendered))
+    sys.stdout.write("\r" + rendered + (" " * padding))
+    sys.stdout.flush()
+
+
+def finish_live_progress_line() -> None:
+    width = max(20, min(terminal_width(), 88))
+    sys.stdout.write("\r" + (" " * (width - 1)) + "\r")
+    sys.stdout.flush()
+
+
+def run_copier_generation_process(command: list[str], cwd: Path) -> dict[str, Any]:
+    if not sys.stdout.isatty():
+        result = subprocess.run(command, cwd=str(cwd))
+        return {"returncode": result.returncode, "event_count": 0, "tail": []}
+
+    process = subprocess.Popen(
+        command,
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    event_count = 0
+    tick = 0
+    output_tail: deque[str] = deque(maxlen=8)
+    showed_live_line = False
+
+    assert process.stdout is not None
+    for raw_line in process.stdout:
+        line = raw_line.rstrip()
+        if not line:
+            continue
+        parsed = parse_copier_progress_line(line)
+        if parsed is not None:
+            action, path = parsed
+            event_count += 1
+            render_live_progress_line(format_copier_progress_line(action, path, tick))
+            tick += 1
+            showed_live_line = True
+            continue
+        if line.startswith("Copying from template version"):
+            continue
+        output_tail.append(line)
+
+    returncode = process.wait()
+    if showed_live_line:
+        finish_live_progress_line()
+    return {"returncode": returncode, "event_count": event_count, "tail": list(output_tail)}
 
 
 def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy: str) -> int:

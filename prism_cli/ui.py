@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import sys
+import textwrap
 from dataclasses import dataclass, field
 
 
@@ -153,6 +154,21 @@ def success(text: str) -> str:
 
 def error(text: str) -> str:
     return colorize(text, STYLE.red, STYLE.bold)
+
+
+def review_key_value(label: str, value: str, *value_styles: str) -> list[str]:
+    width = max(20, min(terminal_width(), 88) - 4)
+    prefix = f"{label}: "
+    value_text = str(value)
+    wrapped = textwrap.wrap(value_text, width=max(12, width - len(prefix))) or [""]
+
+    lines = [
+        colorize(prefix, STYLE.dim) + colorize(wrapped[0], *(value_styles or (STYLE.white,))),
+    ]
+    continuation_prefix = " " * len(prefix)
+    for extra_line in wrapped[1:]:
+        lines.append(continuation_prefix + colorize(extra_line, *(value_styles or (STYLE.white,))))
+    return lines
 
 
 def interactive_multiselect(

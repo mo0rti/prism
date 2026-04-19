@@ -13,6 +13,10 @@ It helps you:
 
 This repository is the Prism template and CLI. It is not a generated project.
 
+![Prism home screen](docs/media/prism-menu.png)
+
+The Prism launcher is the main entry point for generation, validation, and orientation.
+
 ## What Prism Generates
 
 A Prism-generated repository can include:
@@ -39,6 +43,8 @@ pip install copier
 pip install -e .
 prism
 ```
+
+![Prism guided project creation](docs/media/prism-new-project.png)
 
 From the Prism home screen:
 

@@ -83,6 +83,8 @@ Running bare `prism` opens the Prism home screen. From there you can:
 - choose `Presets`
 - press `/` to open the command palette and filter commands directly
 
+![Prism home screen](media/prism-menu.png)
+
 If you run `prism new` with no extra flags, Prism starts the guided interactive flow:
 
 - shows the recommended presets
@@ -91,6 +93,8 @@ If you run `prism new` with no extra flags, Prism starts the guided interactive 
 - uses interactive selectors for platform and auth choices
 - defaults the destination folder to `generated`
 - shows a final review screen before generation
+
+![Preset selection during guided project creation](media/prism-new-project.png)
 
 You can also generate non-interactively with a recommended preset:
 
