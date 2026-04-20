@@ -8,7 +8,7 @@ looking accidental.
 
 ## Short Version
 
-The practical status today is:
+The practical status is:
 
 - wiki usability parity is shipped in both tools
 - core lifecycle parity is shipped in both tools
@@ -78,7 +78,7 @@ This makes Codex skill-first for workflow orchestration.
 
 ## What Is Shared
 
-The following areas are now available in structured form across both tools:
+The following areas are available in structured form across both tools:
 
 - project setup
 - advisory board review
@@ -89,7 +89,7 @@ The following areas are now available in structured form across both tools:
 - security/auth guidance
 - testing and platform-convention guidance
 
-The packaging differs, but the major workflow layer is now available in both tools.
+The packaging differs, but the major workflow layer is available in both tools.
 
 ## What Is Intentional
 
@@ -134,7 +134,7 @@ Examples:
 
 ## Same Capability, Different Packaging
 
-Several important operations now exist in both tools but under different mechanisms:
+Several important operations exist in both tools but under different mechanisms:
 
 - Claude: slash command
 - Codex: skill
@@ -168,7 +168,8 @@ These are not clean one-to-one equivalents.
 
 - `add-endpoint` is a broader workflow command spanning OpenAPI, client generation,
   backend implementation, and downstream consumers
-- `endpoint` is a backend-oriented implementation skill
+- `endpoint` is a backend-oriented implementation skill that follows the same
+  contract-first order for backend endpoint changes
 
 So this is a scope difference, not just a naming mismatch.
 

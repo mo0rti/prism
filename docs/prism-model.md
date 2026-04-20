@@ -118,6 +118,11 @@ The source of truth for what to build is the wiki, especially:
 - `knowledge/wiki/business-rules/`
 - `knowledge/wiki/api-contracts/`
 
+Within generated repos, keep the API layers distinct:
+
+- `knowledge/wiki/api-contracts/` captures wiki-layer API intent, decisions, and product context
+- `shared/api-contracts/openapi.yml` is the implementation contract file that defines API shape and drives code generation
+
 Generated summaries such as `WIKI_REPORT.md` help with orientation, but the underlying
 wiki files always win if there is a disagreement.
 

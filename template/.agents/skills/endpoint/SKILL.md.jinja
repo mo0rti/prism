@@ -9,14 +9,15 @@ Use this skill when a backend API endpoint needs to be added or materially chang
 
 ## Workflow
 
-1. Identify the target domain module under `modules/<domain>/`.
-2. Create or update the controller in `controller/` using the project’s Spring conventions.
-3. Create request and response DTOs in `dto/`.
-4. Create or update the service in `service/`.
-5. Create or update persistence in `model/` and `repository/` if storage changes are required.
-6. Add or update the matching OpenAPI path and schemas in `shared/api-contracts/openapi.yml`.
-7. Consider security, validation, pagination, and error handling before finishing.
-8. Add a migration when the endpoint requires schema changes.
+1. Identify the target domain module under `modules/<domain>/` and confirm feature context from the wiki and local backend docs as needed.
+2. Add or update the matching OpenAPI path and schemas in `shared/api-contracts/openapi.yml`.
+3. Run `task generate-clients` so generated clients stay aligned with the contract.
+4. Create or update the controller in `controller/` using the project's Spring conventions.
+5. Create request and response DTOs in `dto/`.
+6. Create or update the service in `service/`.
+7. Create or update persistence in `model/` and `repository/` if storage changes are required.
+8. Consider security, validation, pagination, and error handling before finishing.
+9. Add a migration when the endpoint requires schema changes.
 
 ## Cross-Checks
 

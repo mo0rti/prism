@@ -139,11 +139,26 @@ Use these only when you are intentionally changing project state.
 | Board | `/board-review [F-XXX]` | `$board-review [F-XXX]` | Domain expert review before dev starts |
 | Shared | `/audit-feature [F-XXX]` | `$audit-feature [F-XXX]` | Cross-check spec vs. source intake |
 
+### API and contract workflow
+
+For feature work in generated projects, keep the layers distinct:
+
+- the wiki defines what to build
+- `shared/api-contracts/openapi.yml` defines the API contract
+- `task generate-clients` regenerates derived client code from that contract
+- backend, mobile, and web code then implement or consume the contract
+
+For endpoint changes, the default order is:
+
+1. update the OpenAPI contract
+2. run `task generate-clients`
+3. implement the backend and downstream consumers
+
 ### Coding utilities
 
 | Role | Claude Code | Codex | Purpose |
 |------|-------------|-------|---------|
-| Dev | `/add-endpoint` | backend-scoped `$endpoint` | Add an API endpoint and update the contract/backend scaffolding |
+| Dev | `/add-endpoint` | backend-scoped `$endpoint` | Add an API endpoint with a contract-first workflow and update backend scaffolding |
 | Shared | `/generate-clients` | `$generate-clients` | Regenerate platform clients after OpenAPI changes |
 | Backend | `/document-entity` | backend-scoped `$document-entity` | Create or refine backend entity documentation |
 
