@@ -31,5 +31,5 @@
             <solid android:color="#FFC580" />
         </shape>
     </item>
-    <item android:gravity="center" android:width="150dp" android:height="150dp" android:drawable="@drawable/ic_auth_brand_logo" />
+    <item android:gravity="center" android:width="150dp" android:height="150dp" android:drawable="@drawable/ic_brand_logo" />
 </layer-list>
