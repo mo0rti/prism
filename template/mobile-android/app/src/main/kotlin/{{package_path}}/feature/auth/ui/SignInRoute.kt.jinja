@@ -2,8 +2,10 @@ package {{ package_identifier }}.feature.auth.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+private val supportedAuthProviders = listOf("google", "apple", "facebook", "microsoft")
 
 @Composable
 fun SignInRoute(
@@ -24,6 +26,7 @@ fun SignInRoute(
         onPasswordChange = viewModel::onPasswordChange,
         onSignInWithPassword = viewModel::signInWithPassword,
 {% endif %}
+        providers = supportedAuthProviders,
         onSignInWithOAuth = viewModel::showOAuthSetupRequired,
         onDismissError = viewModel::clearError,
     )

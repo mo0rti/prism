@@ -139,6 +139,13 @@ Backend issues JWT after successful auth. Clients store token and send as `Autho
 Codex reads `AGENTS.md` from repo root down to the working directory, so defer to the
 platform-level file when working inside a specific platform folder.
 
+Generated-workspace assumption:
+
+- Open the **generated repository root** as the workspace when using Codex.
+- The generated repo keeps shared Codex skills at `.agents/skills/` in the repo root.
+- Platform folders like `mobile-android/` and `mobile-ios/` are subfolders of that repo,
+  not separate skill roots.
+
 ## Platform-Specific Context
 
 Each platform has its own `AGENTS.md` with detailed patterns:

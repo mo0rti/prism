@@ -19,6 +19,9 @@ import {{ package_identifier }}.designsystem.components.LoadingIndicator
 import {{ package_identifier }}.feature.example.domain.model.Example
 import {{ package_identifier }}.feature.example.ui.components.EmptyExamplesView
 import {{ package_identifier }}.feature.example.ui.components.ExampleCard
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,11 +78,15 @@ fun ExampleListScreen(
                     } else {
                         val listState = rememberLazyListState()
 
-                        LaunchedEffect(listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index) {
-                            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                            if (lastVisible >= uiState.examples.size - 3) {
-                                onLoadMore()
-                            }
+                        LaunchedEffect(listState, uiState.examples.size, uiState.isLoadingMore) {
+                            snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+                                .filterNotNull()
+                                .distinctUntilChanged()
+                                .collect { lastVisible ->
+                                    if (!uiState.isLoadingMore && lastVisible >= uiState.examples.size - 3) {
+                                        onLoadMore()
+                                    }
+                                }
                         }
 
                         LazyColumn(

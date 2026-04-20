@@ -38,6 +38,29 @@ Full project documentation is in `docs/`. Use it as the reference for architectu
 - `docs/design-system-and-theme.md` - AppTheme, colors, typography, design system components, UiText
 - `docs/conventions-and-workflow.md` - Strings, dispatchers, SessionManager, new-feature workflow
 
+## Workspace Root
+
+This `mobile-android/` folder is a platform slice inside the generated project, not the
+generated project root.
+
+For Codex work, prefer opening the **generated repository root** so root context files and
+project skills are available together with the Android code.
+
+From `mobile-android/`, the generated repository root is:
+
+- `../`
+
+Important root-level files and folders from here:
+
+- `../README.md` - generated project overview
+- `../CONTEXT.md` - root AI context anchor
+- `../AGENTS.md` - root Codex guidance for the generated repo
+- `../.agents/skills/` - project Codex skills shared across the generated repo
+
+If you open only `mobile-android/` as a standalone workspace, do not assume Codex can
+automatically discover skills or root context from the parent repository. In that setup,
+manually check the parent generated-project root when it is available.
+
 ## Build & Run
 
 ```bash
@@ -49,7 +72,7 @@ Full project documentation is in `docs/`. Use it as the reference for architectu
 adb devices                      # List connected devices/emulators
 ```
 
-Min SDK: 29 | Target SDK: 35 | Compile SDK: 36
+Min SDK: 29 | Target SDK: 36 | Compile SDK: 36
 
 ## Architecture
 
@@ -91,6 +114,11 @@ When you change code, update the relevant documentation in `docs/` in the same s
 ## Local Codex Skills
 
 Project-specific Codex skills live in `.agents/skills/`.
+
+In this generated project, that path is relative to the **generated repository root**, not
+inside `mobile-android/`. From this folder, the expected location is:
+
+- `../.agents/skills/`
 
 - `$android-conventions` - repository-wide Android MVVM, DI, navigation, strings, and doc-sync guardrails
 - `$android-build-verify` - pick the smallest trustworthy Gradle validation for Android changes
