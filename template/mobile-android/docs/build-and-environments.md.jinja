@@ -63,7 +63,8 @@ For most Android changes, run the smallest reliable checks in this order:
 
 1. `./gradlew compileDebugKotlin`
 2. `./gradlew testDebugUnitTest`
-3. `./gradlew connectedDebugAndroidTest` when UI behavior, navigation, auth flow, insets, or screen state rendering changes
+3. `./gradlew compileDebugAndroidTestKotlin` when screen APIs or Compose test fixtures changed
+4. `./gradlew connectedDebugAndroidTest` when UI behavior, navigation, auth flow, insets, or screen state rendering changes
 
 ## Minimum Emulator Matrix
 
@@ -71,7 +72,8 @@ Use a small baseline matrix by default and expand only when the feature needs it
 
 | Device | API | When to use it |
 |--------|-----|----------------|
-| Phone emulator (for example Pixel 6) | 35 | Baseline local smoke test for all UI and navigation changes. |
+| Phone emulator (for example Pixel 8) | 36 | Baseline local smoke test for all UI, navigation, and target-SDK verification. |
+| Phone emulator (for example Pixel 6) | 35 | Compatibility check for Android 15 behavior when changes touch auth, insets, or navigation. |
 | Phone emulator (for example Pixel 5) | 29 | Compatibility spot-check when changes touch insets, permissions, storage, auth, or older-device behavior. |
 
 Add tablet or foldable coverage only when the generated project introduces tablet-specific navigation, adaptive layouts, or large-screen UI.

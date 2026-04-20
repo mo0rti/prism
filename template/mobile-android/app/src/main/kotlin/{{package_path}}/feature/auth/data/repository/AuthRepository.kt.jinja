@@ -7,6 +7,7 @@ import {{ package_identifier }}.core.model.User
 import {{ package_identifier }}.core.network.ApiService
 import {{ package_identifier }}.core.session.SessionManager
 import {{ package_identifier }}.feature.auth.data.remote.dto.*
+import {{ package_identifier }}.feature.auth.domain.AuthProvider
 import kotlinx.coroutines.flow.firstOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,7 +19,7 @@ class AuthRepository @Inject constructor(
     private val sessionManager: SessionManager,
 ) {
 
-    suspend fun oauthCallback(provider: String, code: String, redirectUri: String): AppResult<User> =
+    suspend fun oauthCallback(provider: AuthProvider, code: String, redirectUri: String): AppResult<User> =
         appResultOf {
             val response = apiService.oauthCallback(OAuthCallbackRequest(provider, code, redirectUri))
             tokenStorage.saveTokens(response.accessToken, response.refreshToken)

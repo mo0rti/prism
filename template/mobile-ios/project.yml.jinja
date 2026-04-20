@@ -25,6 +25,7 @@ targets:
       base:
         INFOPLIST_FILE: {{ project_slug }}/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: {{ package_identifier }}
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     scheme:
       testTargets:
         - {{ ios_module_name }}Tests

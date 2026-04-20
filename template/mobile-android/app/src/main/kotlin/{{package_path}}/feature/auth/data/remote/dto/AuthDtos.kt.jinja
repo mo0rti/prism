@@ -1,11 +1,12 @@
 package {{ package_identifier }}.feature.auth.data.remote.dto
 
 import {{ package_identifier }}.core.model.User
+import {{ package_identifier }}.feature.auth.domain.AuthProvider
 import kotlinx.serialization.Serializable
 
 @Serializable
 data class OAuthCallbackRequest(
-    val provider: String,
+    val provider: AuthProvider,
     val code: String,
     val redirectUri: String,
 )

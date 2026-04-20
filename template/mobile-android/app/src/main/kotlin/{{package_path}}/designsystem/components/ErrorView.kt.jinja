@@ -12,8 +12,8 @@ import {{ package_identifier }}.R
 @Composable
 fun ErrorView(
     message: String,
-    modifier: Modifier = Modifier,
     onRetry: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier.fillMaxSize(),

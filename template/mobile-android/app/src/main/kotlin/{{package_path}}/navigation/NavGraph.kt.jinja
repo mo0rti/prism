@@ -9,10 +9,13 @@ import kotlinx.coroutines.flow.StateFlow
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import {{ package_identifier }}.feature.auth.AuthConfig
+import {{ package_identifier }}.feature.auth.AuthExperienceMode
 import {{ package_identifier }}.core.model.AuthState
 import {{ package_identifier }}.core.session.SessionManager
 import {{ package_identifier }}.designsystem.components.LoadingIndicator
 import {{ package_identifier }}.feature.auth.ui.SignInRoute
+import {{ package_identifier }}.feature.auth.ui.SocialSignInRoute
 import {{ package_identifier }}.feature.example.ui.ExampleListRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -59,10 +62,24 @@ private fun AuthenticatedNavGraph() {
 @Composable
 private fun UnauthenticatedNavGraph() {
     val navController = rememberNavController()
+    val startDestination = when (AuthConfig.authExperienceMode) {
+        AuthExperienceMode.EMAIL_PASSWORD_ONLY -> Screen.SignIn
+        AuthExperienceMode.SOCIAL_ONLY, AuthExperienceMode.MIXED -> Screen.SocialSignIn
+    }
 
-    NavHost(navController = navController, startDestination = Screen.SignIn) {
+    NavHost(navController = navController, startDestination = startDestination) {
+        composable<Screen.SocialSignIn> {
+            SocialSignInRoute(
+                onContinueWithEmailPassword = {
+                    navController.navigate(Screen.SignIn)
+                },
+            )
+        }
         composable<Screen.SignIn> {
-            SignInRoute()
+            SignInRoute(
+                showBackToSocial = AuthConfig.authExperienceMode == AuthExperienceMode.MIXED,
+                onBackToSocial = { navController.popBackStack() },
+            )
         }
     }
 }

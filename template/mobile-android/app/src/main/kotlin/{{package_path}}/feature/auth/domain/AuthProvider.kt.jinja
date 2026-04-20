@@ -1,0 +1,54 @@
+package {{ package_identifier }}.feature.auth.domain
+
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
+import {{ package_identifier }}.R
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+@Serializable
+enum class AuthProvider(
+    val value: String,
+    @get:StringRes val labelResId: Int,
+    @get:StringRes val signInActionLabelResId: Int? = null,
+    @get:DrawableRes val socialIconResId: Int? = null,
+    val badgeText: String,
+) {
+    @SerialName("email_password")
+    EMAIL_PASSWORD(
+        value = "email_password",
+        labelResId = R.string.auth_provider_email_password_label,
+        badgeText = "@",
+    ),
+    @SerialName("google")
+    GOOGLE(
+        value = "google",
+        labelResId = R.string.auth_provider_google_label,
+        signInActionLabelResId = R.string.auth_continue_google,
+        socialIconResId = R.drawable.ic_auth_provider_google,
+        badgeText = "G",
+    ),
+    @SerialName("apple")
+    APPLE(
+        value = "apple",
+        labelResId = R.string.auth_provider_apple_label,
+        signInActionLabelResId = R.string.auth_continue_apple,
+        socialIconResId = R.drawable.ic_auth_provider_apple,
+        badgeText = "A",
+    ),
+    @SerialName("facebook")
+    FACEBOOK(
+        value = "facebook",
+        labelResId = R.string.auth_provider_facebook_label,
+        signInActionLabelResId = R.string.auth_continue_facebook,
+        socialIconResId = R.drawable.ic_auth_provider_facebook,
+        badgeText = "F",
+    ),
+    @SerialName("microsoft")
+    MICROSOFT(
+        value = "microsoft",
+        labelResId = R.string.auth_provider_microsoft_label,
+        signInActionLabelResId = R.string.auth_continue_microsoft,
+        badgeText = "M",
+    ),
+}
