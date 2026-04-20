@@ -60,7 +60,9 @@ az containerapp secret set \
     --name "$BACKEND_APP_NAME" \
     --secrets \
         "postgres-password=$POSTGRES_PASSWORD" \
+{% if "redis" in supporting_services %}
         "redis-password=$REDIS_PASSWORD" \
+{% endif %}
         "jwt-secret=$JWT_SECRET" \
 {% if "google" in auth_methods %}
         "google-client-secret=${GOOGLE_CLIENT_SECRET:-placeholder}" \

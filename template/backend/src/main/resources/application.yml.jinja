@@ -3,10 +3,10 @@ spring:
     name: {{ project_slug }}-backend
 
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/{{ project_slug }}}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/{{ project_slug | replace('-', '_') }}}
     driver-class-name: org.postgresql.Driver
-    username: ${DATABASE_USERNAME:{{ project_slug }}}
-    password: ${DATABASE_PASSWORD:{{ project_slug }}}
+    username: ${DATABASE_USERNAME:{{ project_slug | replace('-', '_') }}}
+    password: ${DATABASE_PASSWORD:{{ project_slug | replace('-', '_') }}}
 
   jpa:
     hibernate:
@@ -20,8 +20,6 @@ spring:
 
   jackson:
     default-property-inclusion: non_null
-    serialization:
-      write-dates-as-timestamps: false
 
 server:
   port: ${PORT:8080}

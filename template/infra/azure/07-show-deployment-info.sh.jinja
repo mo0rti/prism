@@ -23,9 +23,11 @@ echo ""
 echo "--- PostgreSQL ---"
 az postgres flexible-server show --resource-group "$RESOURCE_GROUP" --name "$POSTGRES_SERVER_NAME" --query "{name:name, host:fullyQualifiedDomainName, state:state, sku:sku.name}" -o table 2>/dev/null || echo "  Not found"
 
+{% if "redis" in supporting_services %}
 echo ""
 echo "--- Redis ---"
 az redis show --resource-group "$RESOURCE_GROUP" --name "$REDIS_NAME" --query "{name:name, host:hostName, port:sslPort, status:provisioningState}" -o table 2>/dev/null || echo "  Not found"
+{% endif %}
 
 echo ""
 echo "--- Storage ---"

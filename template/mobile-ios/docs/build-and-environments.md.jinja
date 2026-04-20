@@ -14,7 +14,8 @@
 - Swift version: 6.0
 - Xcode version: 26.0
 - Default bundle identifier: `{{ package_identifier }}`
-- Default runtime base URL: `http://localhost:8080/api/v1`
+- Debug runtime base URL: `http://localhost:8080/api/v1/`
+- Release runtime base URL placeholder: `https://api.example.com/api/v1/`
 
 ## Commands
 
@@ -54,9 +55,10 @@ The generated project keeps `{{ project_slug }}` for filesystem paths and uses `
 
 ## Runtime Configuration
 
-- `project.yml` writes `API_BASE_URL` into build settings.
+- `project.yml` wires `Config/Debug.xcconfig` and `Config/Release.xcconfig` through XcodeGen `configFiles`.
 - `Info.plist` reads `$(API_BASE_URL)`.
-- `APIClient` defaults to the Info.plist value and falls back to `http://localhost:8080/api/v1` if needed.
+- `APIClient` defaults to the Info.plist value and falls back to `http://localhost:8080/api/v1/` if needed.
+- Update `Config/Release.xcconfig` before building a production or TestFlight release.
 
 ## Current Scope
 

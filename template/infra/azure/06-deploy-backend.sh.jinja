@@ -46,7 +46,9 @@ az containerapp create \
     --memory "$BACKEND_MEMORY" \
     --secrets \
         "postgres-password=$POSTGRES_PASSWORD" \
+{% if "redis" in supporting_services %}
         "redis-password=$REDIS_PASSWORD" \
+{% endif %}
         "jwt-secret=$JWT_SECRET" \
 {% if "google" in auth_methods %}
         "google-client-secret=${GOOGLE_CLIENT_SECRET:-placeholder}" \
@@ -66,10 +68,12 @@ az containerapp create \
         "SPRING_DATASOURCE_URL=$POSTGRES_JDBC_URL" \
         "SPRING_DATASOURCE_USERNAME=$POSTGRES_USER" \
         "SPRING_DATASOURCE_PASSWORD=secretref:postgres-password" \
+{% if "redis" in supporting_services %}
         "SPRING_DATA_REDIS_HOST=$REDIS_HOST" \
         "SPRING_DATA_REDIS_PORT=$REDIS_PORT" \
         "SPRING_DATA_REDIS_PASSWORD=secretref:redis-password" \
         "SPRING_DATA_REDIS_SSL_ENABLED=true" \
+{% endif %}
         "JWT_SECRET=secretref:jwt-secret" \
         "JWT_ACCESS_TOKEN_EXPIRY=${JWT_ACCESS_TOKEN_EXPIRY:-3600}" \
         "JWT_REFRESH_TOKEN_EXPIRY=${JWT_REFRESH_TOKEN_EXPIRY:-604800}" \

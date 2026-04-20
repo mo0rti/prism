@@ -6,6 +6,9 @@ vars:
 tasks:
   run:
     desc: Run the backend server
+    dotenv:
+      - ../.env
+      - ../.env.example
     cmds:
       - "{{'{{'}}.GRADLEW{{'}}'}} bootRun"
 

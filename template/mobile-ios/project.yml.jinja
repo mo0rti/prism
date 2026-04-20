@@ -18,11 +18,13 @@ targets:
     platform: iOS
     sources:
       - path: {{ project_slug }}
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Release: Config/Release.xcconfig
     settings:
       base:
         INFOPLIST_FILE: {{ project_slug }}/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: {{ package_identifier }}
-        API_BASE_URL: http://localhost:8080/api/v1
     scheme:
       testTargets:
         - {{ ios_module_name }}Tests

@@ -11,6 +11,7 @@ Copier will walk you through these inputs:
 | **Platforms** | Which platform slices to include (multi-select) | backend, web-user-app, web-admin-portal, mobile-android, mobile-ios |
 | **Auth methods** | Google, Apple, Facebook, Microsoft, Password (multi-select) | Google, Password |
 | **Database** | Which database to target | PostgreSQL |
+| **Supporting services** | Optional backend-side supporting services | *(none selected)* |
 | **Docker Compose** | Include local dev services? | yes |
 | **Backend deployment** | Where backend services should be deployed | Azure |
 | **Web deployment** | Where web applications should be deployed | Cloudflare via OpenNext |
@@ -23,6 +24,7 @@ Copier will walk you through these inputs:
 - `Admin Web Portal`: currently requires `password` auth when selected.
 - `User Web App`: currently requires at least one auth method when selected.
 - `Database`, `Backend deployment`, and `Web deployment`: implemented as questionnaire inputs, with one available option each for now.
+- `Supporting services`: Redis is optional and is modeled separately from the primary database choice.
 
 ## Recommended First Selections
 

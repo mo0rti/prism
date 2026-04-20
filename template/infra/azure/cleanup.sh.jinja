@@ -17,7 +17,9 @@ echo "This will DELETE the resource group '$RESOURCE_GROUP'"
 echo "and ALL resources within it:"
 echo "  - Container Apps (backend)"
 echo "  - PostgreSQL database"
+{% if "redis" in supporting_services %}
 echo "  - Redis cache"
+{% endif %}
 echo "  - Container Registry"
 echo "  - Storage Account"
 echo "  - Log Analytics"

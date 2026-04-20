@@ -35,6 +35,12 @@ Additional build types (QA, Release) can be added in `app/build.gradle.kts` as n
 
 - Debug: `app/build/outputs/apk/debug/app-debug.apk`
 
+## Runtime Configuration
+
+- `mobile-android/local.config.properties` supplies the local `API_BASE_URL`.
+- `app/build.gradle.kts` reads that file from the Android project root and falls back to `http://10.0.2.2:8080/api/v1/` when the file is absent.
+- `10.0.2.2` lets an Android emulator reach a backend running on the host machine.
+
 ## Local Emulator Workflow
 
 Use this path when UI behavior changes and you want to verify the app on a real emulator instead of relying on compile-only checks.

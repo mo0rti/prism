@@ -70,7 +70,7 @@ backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 ## Commands
 
 ```bash
-task backend:run        # ./gradlew bootRun
+task backend:run        # loads ../.env (fallback: ../.env.example) then ./gradlew bootRun
 task backend:build      # ./gradlew build
 task backend:test       # ./gradlew test
 task backend:lint       # ./gradlew check -x test

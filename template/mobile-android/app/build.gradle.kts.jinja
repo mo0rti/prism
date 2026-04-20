@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -7,6 +9,14 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.room)
 }
+
+val localConfig = rootProject.file("local.config.properties").takeIf { it.exists() }
+    ?.let { file ->
+        Properties().apply {
+            file.inputStream().use(::load)
+        }
+    }
+    ?: Properties()
 
 android {
     namespace = "{{ package_identifier }}"
@@ -21,7 +31,11 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("API_BASE_URL") ?: "http://10.0.2.2:8080/api/v1"}\"")
+        buildConfigField(
+            "String",
+            "API_BASE_URL",
+            "\"${localConfig.getProperty("API_BASE_URL", "http://10.0.2.2:8080/api/v1/")}\"",
+        )
     }
 
     buildTypes {

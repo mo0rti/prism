@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Step 2: Create PostgreSQL Flexible Server + Redis Cache
+# Step 2: Create PostgreSQL Flexible Server{% if "redis" in supporting_services %} + Redis Cache{% endif %}
 # =============================================================================
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,7 +9,9 @@ source "$SCRIPT_DIR/load-env-config.sh" "${1:-prod}"
 echo "============================================"
 echo "  Setting up Databases"
 echo "  PostgreSQL: $POSTGRES_SERVER_NAME"
+{% if "redis" in supporting_services %}
 echo "  Redis: $REDIS_NAME"
+{% endif %}
 echo "============================================"
 
 # --- Auto-generate password if not set ---
@@ -51,6 +53,7 @@ az postgres flexible-server firewall-rule create \
     --start-ip-address "0.0.0.0" \
     --end-ip-address "0.0.0.0"
 
+{% if "redis" in supporting_services %}
 # --- Redis ---
 echo ""
 echo "Creating Redis Cache (this may take several minutes)..."
@@ -65,6 +68,7 @@ az redis create \
 REDIS_HOST=$(az redis show --resource-group "$RESOURCE_GROUP" --name "$REDIS_NAME" --query hostName -o tsv)
 REDIS_PORT=$(az redis show --resource-group "$RESOURCE_GROUP" --name "$REDIS_NAME" --query sslPort -o tsv)
 REDIS_PASSWORD=$(az redis list-keys --resource-group "$RESOURCE_GROUP" --name "$REDIS_NAME" --query primaryKey -o tsv)
+{% endif %}
 
 # --- Save credentials ---
 POSTGRES_HOST="${POSTGRES_SERVER_NAME}.postgres.database.azure.com"
@@ -79,17 +83,21 @@ POSTGRES_USER=$POSTGRES_ADMIN_USER
 POSTGRES_PASSWORD=$POSTGRES_ADMIN_PASSWORD
 POSTGRES_JDBC_URL=jdbc:postgresql://$POSTGRES_HOST:5432/$POSTGRES_DATABASE_NAME?sslmode=require
 
+{% if "redis" in supporting_services %}
 # Redis
 REDIS_HOST=$REDIS_HOST
 REDIS_PORT=$REDIS_PORT
 REDIS_PASSWORD=$REDIS_PASSWORD
 REDIS_URL=rediss://:$REDIS_PASSWORD@$REDIS_HOST:$REDIS_PORT
+{% endif %}
 EOF
 
 echo ""
 echo "Databases created."
 echo "  PostgreSQL: $POSTGRES_HOST"
+{% if "redis" in supporting_services %}
 echo "  Redis: $REDIS_HOST"
+{% endif %}
 echo "  Credentials saved to: $CRED_FILE"
 echo ""
 echo "Next: Run 03-setup-container-apps-env.sh"

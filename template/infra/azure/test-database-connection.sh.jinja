@@ -40,10 +40,11 @@ if command -v psql &>/dev/null; then
         -d "$POSTGRES_DATABASE" \
         -c "SELECT version();" 2>/dev/null && echo "  Connection successful!" || echo "  Connection failed"
 else
-    echo "  psql not installed. Install PostgreSQL client to test connectivity."
+echo "  psql not installed. Install PostgreSQL client to test connectivity."
     echo "  Alternatively, check via Azure Portal or use the JDBC URL in your app."
 fi
 
+{% if "redis" in supporting_services %}
 echo ""
 echo "--- Redis Connection Test ---"
 if command -v redis-cli &>/dev/null; then
@@ -51,3 +52,4 @@ if command -v redis-cli &>/dev/null; then
 else
     echo "  redis-cli not installed. Install Redis tools to test connectivity."
 fi
+{% endif %}

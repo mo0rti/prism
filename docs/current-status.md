@@ -13,6 +13,7 @@
 | Apple Sign-In | Experimental | Selectable, but not yet production-hardened. |
 | Template validation automation | Present | `scripts/validate-template.ps1` and `.github/workflows/template-validation.yml` now include generated web build and Wrangler dry-run smoke tests in addition to the existing generation checks. |
 | Database choice | Current input | PostgreSQL is the only available choice today. |
+| Supporting services | Current input | Redis is optional and now modeled separately from the primary database choice. |
 | Backend deployment choice | Current input | Azure is the only available choice today. |
 | Web deployment choice | Current input | Cloudflare via OpenNext is the only available choice today. |
 

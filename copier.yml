@@ -3,7 +3,15 @@ _templates_suffix: .jinja
 _jinja_extensions:
   - jinja2_time.TimeExtension
 
+_skip_if_exists:
+  - .env
+  - mobile-android/local.config.properties
+  - mobile-ios/Config/Debug.xcconfig
+  - mobile-ios/Config/Release.xcconfig
+
 _exclude:
+  - "{% if 'backend' not in platforms %}.env{% endif %}"
+  - "{% if 'backend' not in platforms %}.env.example{% endif %}"
   - "{% if 'mobile-android' not in platforms %}mobile-android{% endif %}"
   - "{% if 'mobile-ios' not in platforms %}mobile-ios{% endif %}"
   - "{% if 'backend' not in platforms %}backend{% endif %}"
@@ -128,6 +136,15 @@ database:
   choices:
     PostgreSQL (Currently available): postgres
   default: postgres
+
+supporting_services:
+  type: yaml
+  multiselect: true
+  help: "Which optional supporting services do you want to include?"
+  when: "{{ 'backend' in platforms }}"
+  choices:
+    Redis cache: redis
+  default: "[]"
 
 use_docker:
   type: bool

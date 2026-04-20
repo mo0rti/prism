@@ -28,26 +28,32 @@ This setup step interviews the team about domain risks, creates
 ## Quick Start
 
 ```bash
-# 1. Set up environment
-{% if "backend" in platforms %}cp .env.example .env
+# 1. Review local configuration
+{% if "backend" in platforms %}# Backend and local infrastructure defaults are already generated in `.env`
+{% endif %}{% if "mobile-android" in platforms %}# Android API config is already generated in `mobile-android/local.config.properties`
+{% endif %}{% if "mobile-ios" in platforms %}# iOS API config is already generated in `mobile-ios/Config/Debug.xcconfig`
+# Update `mobile-ios/Config/Release.xcconfig` before production or TestFlight builds
 {% endif %}{% if "web-user-app" in platforms %}cp web-user-app/.env.example web-user-app/.env.local
 {% endif %}{% if "web-admin-portal" in platforms %}cp web-admin-portal/.env.example web-admin-portal/.env.local
 {% endif %}
-# Edit the copied env files with your {% if "backend" in platforms %}backend{% if "web-user-app" in platforms or "web-admin-portal" in platforms %} and {% endif %}{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}web app{% endif %} credentials
+# Edit the local config files as needed for your machine and credentials
 
-# 2. Generate API clients from OpenAPI spec
+# 2. Install the OpenAPI generator CLI if needed
+# npm install -g @openapitools/openapi-generator-cli
+
+# 3. Generate API clients from OpenAPI spec
 task generate-clients
 {% if use_docker %}
-# 3. Start local services
+# 4. Start local services
 docker compose up -d
 {% endif %}{% if "backend" in platforms %}
-# 4. Start backend
+# 5. Start backend
 task backend:run
 {% endif %}{% if "web-user-app" in platforms %}
-# 5. Start the user web app
+# 6. Start the user web app
 task web-user-app:dev
 {% endif %}{% if "web-admin-portal" in platforms %}
-# 6. Start the admin web portal
+# 7. Start the admin web portal
 task web-admin-portal:dev
 {% endif %}
 ```
