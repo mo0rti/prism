@@ -1,0 +1,52 @@
+package {{ package_identifier }}.app
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import {{ package_identifier }}.core.launch.LaunchDestination
+import {{ package_identifier }}.core.launch.LaunchPreferencesStorage
+import {{ package_identifier }}.core.launch.LaunchUiState
+import {{ package_identifier }}.core.model.AuthState
+import {{ package_identifier }}.core.session.SessionManager
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+
+@HiltViewModel
+class MainActivityViewModel @Inject constructor(
+    sessionManager: SessionManager,
+    launchPreferencesStorage: LaunchPreferencesStorage,
+) : ViewModel() {
+
+    val launchUiState: StateFlow<LaunchUiState> = combine(
+        sessionManager.authState,
+        launchPreferencesStorage.isWelcomeCompleted,
+    ) { authState, isWelcomeCompleted ->
+        when (authState) {
+            AuthState.Loading -> LaunchUiState.Loading
+            AuthState.Authenticated -> LaunchUiState.Ready(LaunchDestination.Main)
+            AuthState.Unauthenticated -> {
+                if (isWelcomeCompleted) {
+                    LaunchUiState.Ready(LaunchDestination.Auth)
+                } else {
+                    LaunchUiState.Ready(LaunchDestination.Welcome)
+                }
+            }
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = LaunchUiState.Loading,
+    )
+
+    val isLaunchReady: StateFlow<Boolean> = launchUiState
+        .map { uiState -> uiState is LaunchUiState.Ready }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = false,
+        )
+}

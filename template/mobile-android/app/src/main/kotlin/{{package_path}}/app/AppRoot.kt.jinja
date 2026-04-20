@@ -1,0 +1,12 @@
+package {{ package_identifier }}.app
+
+import androidx.compose.runtime.Composable
+import {{ package_identifier }}.core.launch.LaunchUiState
+import {{ package_identifier }}.navigation.NavGraph
+
+@Composable
+fun AppRoot(
+    launchUiState: LaunchUiState,
+) {
+    NavGraph(launchUiState = launchUiState)
+}

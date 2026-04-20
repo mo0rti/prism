@@ -4,6 +4,12 @@ import kotlinx.serialization.Serializable
 
 sealed interface Screen {
     @Serializable
+    data object Welcome : Screen
+
+    @Serializable
+    data object AuthRoot : Screen
+
+    @Serializable
     data object SocialSignIn : Screen
 
     @Serializable

@@ -1,0 +1,287 @@
+package {{ package_identifier }}.feature.welcome.ui
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import {{ package_identifier }}.R
+import {{ package_identifier }}.designsystem.components.StepNavigationButtons
+import {{ package_identifier }}.designsystem.preview.ThemePreviews
+import {{ package_identifier }}.designsystem.theme.AppTheme
+import {{ package_identifier }}.feature.auth.ui.components.AuthContentMaxWidth
+import kotlinx.coroutines.launch
+
+@Composable
+fun WelcomeScreen(
+    uiState: WelcomeUiState,
+    onSkip: () -> Unit,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+    initialPage: Int = 0,
+) {
+    val pagerState = rememberPagerState(
+        initialPage = initialPage.coerceIn(0, uiState.pages.lastIndex),
+        pageCount = { uiState.pages.size },
+    )
+    val coroutineScope = rememberCoroutineScope()
+    val currentPage = pagerState.currentPage
+    val isLastPage = currentPage == uiState.pages.lastIndex
+
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = AuthContentMaxWidth),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (!isLastPage) {
+                    TextButton(
+                        onClick = onSkip,
+                        enabled = !uiState.isCompleting,
+                    ) {
+                        Text(text = stringResource(R.string.welcome_action_skip))
+                    }
+                } else {
+                    Spacer(modifier = Modifier.height(48.dp))
+                }
+            }
+
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            ) { pageIndex ->
+                val page = uiState.pages[pageIndex]
+
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    val heroHeight = (maxHeight * 0.58f).coerceIn(320.dp, 430.dp)
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 8.dp)
+                            .widthIn(max = AuthContentMaxWidth),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(32.dp),
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(heroHeight),
+                            shape = RoundedCornerShape(32.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            tonalElevation = 2.dp,
+                            shadowElevation = 2.dp,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .padding(24.dp),
+                            ) {
+                                Image(
+                                    painter = painterResource(page.illustrationResId),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit,
+                                )
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            Text(
+                                text = stringResource(page.titleResId),
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                textAlign = TextAlign.Center,
+                            )
+
+                            Text(
+                                text = stringResource(page.descriptionResId),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+            }
+
+            WelcomePageIndicators(
+                pageCount = uiState.pages.size,
+                currentPage = currentPage,
+                modifier = Modifier
+                    .padding(top = 20.dp, bottom = 24.dp),
+            )
+
+            StepNavigationButtons(
+                modifier = Modifier.fillMaxWidth(),
+                primaryText = stringResource(
+                    if (isLastPage) {
+                        R.string.welcome_action_get_started
+                    } else {
+                        R.string.welcome_action_next
+                    },
+                ),
+                onPrimaryClick = {
+                    if (isLastPage) {
+                        onDone()
+                    } else {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(currentPage + 1)
+                        }
+                    }
+                },
+                backContentDescription = stringResource(R.string.welcome_action_back),
+                onBackClick = if (currentPage > 0) {
+                    {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(currentPage - 1)
+                        }
+                    }
+                } else {
+                    null
+                },
+                isPrimaryLoading = uiState.isCompleting,
+                enabled = !uiState.isCompleting,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WelcomePageIndicators(
+    pageCount: Int,
+    currentPage: Int,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(pageCount) { pageIndex ->
+            val isSelected = pageIndex == currentPage
+            val indicatorWidth by animateDpAsState(
+                targetValue = if (isSelected) 28.dp else 10.dp,
+                label = "welcomeIndicatorWidth",
+            )
+            val indicatorColor by animateColorAsState(
+                targetValue = if (isSelected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant
+                },
+                label = "welcomeIndicatorColor",
+            )
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(indicatorColor)
+                    .width(indicatorWidth)
+                    .height(10.dp),
+            )
+        }
+    }
+}
+
+@ThemePreviews
+@Composable
+private fun WelcomeScreenPreview() {
+    AppTheme {
+        WelcomeScreen(
+            uiState = previewWelcomeUiState(),
+            onSkip = {},
+            onDone = {},
+        )
+    }
+}
+
+@ThemePreviews
+@Composable
+private fun WelcomeScreenLastPagePreview() {
+    AppTheme {
+        WelcomeScreen(
+            uiState = previewWelcomeUiState(isCompleting = true),
+            onSkip = {},
+            onDone = {},
+            initialPage = 2,
+        )
+    }
+}
+
+private fun previewWelcomeUiState(
+    isCompleting: Boolean = false,
+): WelcomeUiState = WelcomeUiState(
+    pages = listOf(
+        WelcomePage(
+            illustrationResId = R.drawable.img_welcome_slide_01,
+            titleResId = R.string.welcome_slide_1_title,
+            descriptionResId = R.string.welcome_slide_1_description,
+        ),
+        WelcomePage(
+            illustrationResId = R.drawable.img_welcome_slide_02,
+            titleResId = R.string.welcome_slide_2_title,
+            descriptionResId = R.string.welcome_slide_2_description,
+        ),
+        WelcomePage(
+            illustrationResId = R.drawable.img_welcome_slide_03,
+            titleResId = R.string.welcome_slide_3_title,
+            descriptionResId = R.string.welcome_slide_3_description,
+        ),
+    ),
+    isCompleting = isCompleting,
+)

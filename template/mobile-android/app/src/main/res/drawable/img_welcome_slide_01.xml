@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#F2EEFF" />
+            <corners android:radius="28dp" />
+        </shape>
+    </item>
+    <item android:gravity="top|center_horizontal" android:top="32dp">
+        <shape android:shape="oval">
+            <size android:width="220dp" android:height="220dp" />
+            <solid android:color="#DDD5FF" />
+        </shape>
+    </item>
+    <item android:gravity="center" android:left="36dp" android:right="36dp" android:top="88dp" android:bottom="44dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="28dp" />
+            <solid android:color="#FFFFFF" />
+        </shape>
+    </item>
+    <item android:gravity="bottom|center_horizontal" android:bottom="48dp">
+        <shape android:shape="rectangle">
+            <size android:width="200dp" android:height="18dp" />
+            <corners android:radius="999dp" />
+            <solid android:color="#D6D3F1" />
+        </shape>
+    </item>
+    <item android:gravity="center" android:width="150dp" android:height="150dp" android:drawable="@drawable/ic_auth_brand_logo" />
+</layer-list>

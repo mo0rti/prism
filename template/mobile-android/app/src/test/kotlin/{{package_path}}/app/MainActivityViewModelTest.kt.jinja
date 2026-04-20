@@ -1,0 +1,97 @@
+package {{ package_identifier }}.app
+
+import {{ package_identifier }}.core.launch.LaunchDestination
+import {{ package_identifier }}.core.launch.LaunchPreferencesStorage
+import {{ package_identifier }}.core.launch.LaunchUiState
+import {{ package_identifier }}.core.model.AuthState
+import {{ package_identifier }}.core.session.SessionManager
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class MainActivityViewModelTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+    private val authStateFlow = MutableStateFlow<AuthState>(AuthState.Loading)
+    private val welcomeCompletedFlow = MutableStateFlow(false)
+
+    private val sessionManager = mockk<SessionManager> {
+        every { authState } returns authStateFlow
+    }
+    private val launchPreferencesStorage = mockk<LaunchPreferencesStorage> {
+        every { isWelcomeCompleted } returns welcomeCompletedFlow
+    }
+
+    private lateinit var viewModel: MainActivityViewModel
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(testDispatcher)
+        viewModel = MainActivityViewModel(sessionManager, launchPreferencesStorage)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `launch remains loading while auth is loading`() = runTest(testDispatcher) {
+        advanceUntilIdle()
+
+        assertEquals(LaunchUiState.Loading, viewModel.launchUiState.value)
+        assertFalse(viewModel.isLaunchReady.value)
+    }
+
+    @Test
+    fun `unauthenticated first launch routes to welcome`() = runTest(testDispatcher) {
+        authStateFlow.value = AuthState.Unauthenticated
+
+        advanceUntilIdle()
+
+        assertEquals(
+            LaunchUiState.Ready(LaunchDestination.Welcome),
+            viewModel.launchUiState.value,
+        )
+        assertTrue(viewModel.isLaunchReady.value)
+    }
+
+    @Test
+    fun `unauthenticated returning user routes to auth`() = runTest(testDispatcher) {
+        welcomeCompletedFlow.value = true
+        authStateFlow.value = AuthState.Unauthenticated
+
+        advanceUntilIdle()
+
+        assertEquals(
+            LaunchUiState.Ready(LaunchDestination.Auth),
+            viewModel.launchUiState.value,
+        )
+    }
+
+    @Test
+    fun `authenticated user routes to main regardless of welcome state`() = runTest(testDispatcher) {
+        authStateFlow.value = AuthState.Authenticated
+
+        advanceUntilIdle()
+
+        assertEquals(
+            LaunchUiState.Ready(LaunchDestination.Main),
+            viewModel.launchUiState.value,
+        )
+    }
+}

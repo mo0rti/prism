@@ -1,0 +1,63 @@
+package {{ package_identifier }}.feature.welcome.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import {{ package_identifier }}.R
+import {{ package_identifier }}.core.launch.LaunchPreferencesStorage
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+sealed interface WelcomeRouteEvent {
+    data object Finished : WelcomeRouteEvent
+}
+
+@HiltViewModel
+class WelcomeViewModel @Inject constructor(
+    private val launchPreferencesStorage: LaunchPreferencesStorage,
+) : ViewModel() {
+
+    private val pages = listOf(
+        WelcomePage(
+            illustrationResId = R.drawable.img_welcome_slide_01,
+            titleResId = R.string.welcome_slide_1_title,
+            descriptionResId = R.string.welcome_slide_1_description,
+        ),
+        WelcomePage(
+            illustrationResId = R.drawable.img_welcome_slide_02,
+            titleResId = R.string.welcome_slide_2_title,
+            descriptionResId = R.string.welcome_slide_2_description,
+        ),
+        WelcomePage(
+            illustrationResId = R.drawable.img_welcome_slide_03,
+            titleResId = R.string.welcome_slide_3_title,
+            descriptionResId = R.string.welcome_slide_3_description,
+        ),
+    )
+
+    private val _uiState = MutableStateFlow(
+        WelcomeUiState(pages = pages),
+    )
+    val uiState: StateFlow<WelcomeUiState> = _uiState.asStateFlow()
+
+    private val _events = MutableSharedFlow<WelcomeRouteEvent>()
+    val events: SharedFlow<WelcomeRouteEvent> = _events.asSharedFlow()
+
+    fun completeWelcome() {
+        if (_uiState.value.isCompleting) return
+
+        viewModelScope.launch {
+            _uiState.update { current -> current.copy(isCompleting = true) }
+            launchPreferencesStorage.setWelcomeCompleted()
+            _events.emit(WelcomeRouteEvent.Finished)
+            _uiState.update { current -> current.copy(isCompleting = false) }
+        }
+    }
+}

@@ -1,0 +1,29 @@
+package {{ package_identifier }}.feature.welcome.ui
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+@Composable
+fun WelcomeRoute(
+    onFinished: () -> Unit,
+    viewModel: WelcomeViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            if (event is WelcomeRouteEvent.Finished) {
+                onFinished()
+            }
+        }
+    }
+
+    WelcomeScreen(
+        uiState = uiState,
+        onSkip = viewModel::completeWelcome,
+        onDone = viewModel::completeWelcome,
+    )
+}

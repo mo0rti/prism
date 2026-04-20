@@ -1,85 +1,75 @@
 package {{ package_identifier }}.navigation
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.ViewModel
-import kotlinx.coroutines.flow.StateFlow
+import androidx.compose.runtime.key
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import {{ package_identifier }}.feature.auth.AuthConfig
 import {{ package_identifier }}.feature.auth.AuthExperienceMode
-import {{ package_identifier }}.core.model.AuthState
-import {{ package_identifier }}.core.session.SessionManager
-import {{ package_identifier }}.designsystem.components.LoadingIndicator
+import {{ package_identifier }}.core.launch.LaunchDestination
+import {{ package_identifier }}.core.launch.LaunchUiState
 import {{ package_identifier }}.feature.auth.ui.SignInRoute
 import {{ package_identifier }}.feature.auth.ui.SocialSignInRoute
 import {{ package_identifier }}.feature.example.ui.ExampleListRoute
-import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
-
-@HiltViewModel
-class NavViewModel @Inject constructor(
-    sessionManager: SessionManager,
-) : ViewModel() {
-    val authState: StateFlow<AuthState> = sessionManager.authState
-}
+import {{ package_identifier }}.feature.welcome.ui.WelcomeRoute
 
 @Composable
-fun NavGraph(viewModel: NavViewModel = hiltViewModel()) {
-    val authState by viewModel.authState.collectAsStateWithLifecycle()
-
-    AuthGate(authState = authState)
-}
-
-@Composable
-fun AuthGate(
-    authState: AuthState,
-    authenticatedContent: @Composable () -> Unit = { AuthenticatedNavGraph() },
-    unauthenticatedContent: @Composable () -> Unit = { UnauthenticatedNavGraph() },
-    loadingContent: @Composable () -> Unit = { LoadingIndicator() },
+fun NavGraph(
+    launchUiState: LaunchUiState,
 ) {
-    when (authState) {
-        is AuthState.Loading -> loadingContent()
-        is AuthState.Authenticated -> authenticatedContent()
-        is AuthState.Unauthenticated -> unauthenticatedContent()
-    }
+    if (launchUiState !is LaunchUiState.Ready) return
+
+    LaunchGate(launchDestination = launchUiState.destination)
 }
 
 @Composable
-private fun AuthenticatedNavGraph() {
-    val navController = rememberNavController()
-
-    NavHost(navController = navController, startDestination = Screen.ExampleList) {
-        composable<Screen.ExampleList> {
-            ExampleListRoute()
+fun LaunchGate(
+    launchDestination: LaunchDestination,
+) {
+    key(launchDestination) {
+        val navController = rememberNavController()
+        val startDestination: Screen = when (launchDestination) {
+            LaunchDestination.Welcome -> Screen.Welcome
+            LaunchDestination.Auth -> Screen.AuthRoot
+            LaunchDestination.Main -> Screen.ExampleList
         }
-    }
-}
-
-@Composable
-private fun UnauthenticatedNavGraph() {
-    val navController = rememberNavController()
-    val startDestination = when (AuthConfig.authExperienceMode) {
-        AuthExperienceMode.EMAIL_PASSWORD_ONLY -> Screen.SignIn
-        AuthExperienceMode.SOCIAL_ONLY, AuthExperienceMode.MIXED -> Screen.SocialSignIn
-    }
-
-    NavHost(navController = navController, startDestination = startDestination) {
-        composable<Screen.SocialSignIn> {
-            SocialSignInRoute(
-                onContinueWithEmailPassword = {
-                    navController.navigate(Screen.SignIn)
-                },
-            )
+        val authStartDestination: Screen = when (AuthConfig.authExperienceMode) {
+            AuthExperienceMode.EMAIL_PASSWORD_ONLY -> Screen.SignIn
+            AuthExperienceMode.SOCIAL_ONLY, AuthExperienceMode.MIXED -> Screen.SocialSignIn
         }
-        composable<Screen.SignIn> {
-            SignInRoute(
-                showBackToSocial = AuthConfig.authExperienceMode == AuthExperienceMode.MIXED,
-                onBackToSocial = { navController.popBackStack() },
-            )
+
+        NavHost(navController = navController, startDestination = startDestination) {
+            composable<Screen.Welcome> {
+                WelcomeRoute(
+                    onFinished = {
+                        navController.navigate(Screen.AuthRoot) {
+                            popUpTo(Screen.Welcome) { inclusive = true }
+                        }
+                    },
+                )
+            }
+
+            navigation<Screen.AuthRoot>(startDestination = authStartDestination) {
+                composable<Screen.SocialSignIn> {
+                    SocialSignInRoute(
+                        onContinueWithEmailPassword = {
+                            navController.navigate(Screen.SignIn)
+                        },
+                    )
+                }
+                composable<Screen.SignIn> {
+                    SignInRoute(
+                        showBackToSocial = AuthConfig.authExperienceMode == AuthExperienceMode.MIXED,
+                        onBackToSocial = { navController.popBackStack() },
+                    )
+                }
+            }
+
+            composable<Screen.ExampleList> {
+                ExampleListRoute()
+            }
         }
     }
 }

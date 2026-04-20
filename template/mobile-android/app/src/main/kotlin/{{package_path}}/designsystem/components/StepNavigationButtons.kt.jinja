@@ -1,0 +1,168 @@
+package {{ package_identifier }}.designsystem.components
+
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.unit.dp
+import {{ package_identifier }}.designsystem.preview.ThemePreviews
+import {{ package_identifier }}.designsystem.theme.AppTheme
+
+private object StepNavigationButtonsDefaults {
+    val Height = 56.dp
+    val BackButtonSpacing = 12.dp
+    val PrimaryShape = RoundedCornerShape(28.dp)
+    val MaxWidth = 480.dp
+    val BackButtonContentPadding = PaddingValues(end = BackButtonSpacing)
+}
+
+/**
+ * Shared step or wizard footer actions with an optional animated back button
+ * and a prominent primary action.
+ */
+@Composable
+fun StepNavigationButtons(
+    modifier: Modifier = Modifier,
+    primaryText: String,
+    onPrimaryClick: () -> Unit,
+    backContentDescription: String,
+    onBackClick: (() -> Unit)? = null,
+    isPrimaryLoading: Boolean = false,
+    enabled: Boolean = true,
+) {
+    val showBack = onBackClick != null
+    val backAreaWidth by animateDpAsState(
+        targetValue = if (showBack) {
+            StepNavigationButtonsDefaults.Height + StepNavigationButtonsDefaults.BackButtonSpacing
+        } else {
+            0.dp
+        },
+        label = "stepNavigationBackAreaWidth",
+    )
+    val backButtonAlpha by animateFloatAsState(
+        targetValue = if (showBack) 1f else 0f,
+        label = "stepNavigationBackButtonAlpha",
+    )
+    val keepBackButtonComposed = showBack || backAreaWidth > 0.dp
+
+    BoxWithConstraints(
+        modifier = modifier
+            .widthIn(max = StepNavigationButtonsDefaults.MaxWidth)
+            .navigationBarsPadding(),
+    ) {
+        val primaryButtonWidth by animateDpAsState(
+            targetValue = if (showBack) {
+                maxWidth - backAreaWidth
+            } else {
+                maxWidth
+            },
+            label = "stepNavigationPrimaryButtonWidth",
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier.width(backAreaWidth),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (keepBackButtonComposed) {
+                    FilledTonalIconButton(
+                        onClick = { onBackClick?.invoke() },
+                        modifier = Modifier
+                            .padding(StepNavigationButtonsDefaults.BackButtonContentPadding)
+                            .size(StepNavigationButtonsDefaults.Height)
+                            .alpha(backButtonAlpha),
+                        enabled = enabled && !isPrimaryLoading,
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = backContentDescription,
+                        )
+                    }
+                }
+            }
+
+            Button(
+                onClick = onPrimaryClick,
+                modifier = Modifier
+                    .width(primaryButtonWidth)
+                    .height(StepNavigationButtonsDefaults.Height),
+                enabled = enabled && !isPrimaryLoading,
+                shape = StepNavigationButtonsDefaults.PrimaryShape,
+            ) {
+                if (isPrimaryLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text(text = primaryText)
+                }
+            }
+        }
+    }
+}
+
+@ThemePreviews
+@Composable
+private fun StepNavigationButtonsPreview() {
+    AppTheme {
+        Surface {
+            StepNavigationButtons(
+                modifier = Modifier.fillMaxWidth(),
+                primaryText = "Next",
+                onPrimaryClick = {},
+                backContentDescription = "Back",
+                onBackClick = {},
+            )
+        }
+    }
+}
+
+@ThemePreviews
+@Composable
+private fun StepNavigationButtonsFirstStepPreview() {
+    AppTheme {
+        Surface {
+            StepNavigationButtons(
+                modifier = Modifier.fillMaxWidth(),
+                primaryText = "Next",
+                onPrimaryClick = {},
+                backContentDescription = "Back",
+            )
+        }
+    }
+}

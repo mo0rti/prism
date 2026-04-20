@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#FFF4EA" />
+            <corners android:radius="28dp" />
+        </shape>
+    </item>
+    <item android:gravity="top|center_horizontal" android:top="24dp">
+        <shape android:shape="rectangle">
+            <size android:width="232dp" android:height="232dp" />
+            <corners android:radius="38dp" />
+            <solid android:color="#FFE4C9" />
+        </shape>
+    </item>
+    <item android:gravity="center" android:left="36dp" android:right="36dp" android:top="90dp" android:bottom="44dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="28dp" />
+            <solid android:color="#FFFFFF" />
+        </shape>
+    </item>
+    <item android:gravity="bottom|left" android:left="44dp" android:bottom="58dp">
+        <shape android:shape="oval">
+            <size android:width="44dp" android:height="44dp" />
+            <solid android:color="#FFD39E" />
+        </shape>
+    </item>
+    <item android:gravity="bottom|right" android:right="44dp" android:bottom="58dp">
+        <shape android:shape="oval">
+            <size android:width="44dp" android:height="44dp" />
+            <solid android:color="#FFC580" />
+        </shape>
+    </item>
+    <item android:gravity="center" android:width="150dp" android:height="150dp" android:drawable="@drawable/ic_auth_brand_logo" />
+</layer-list>
