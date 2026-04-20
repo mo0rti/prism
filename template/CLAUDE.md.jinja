@@ -137,6 +137,13 @@ Backend issues JWT after successful auth. Clients store token and send as `Autho
 - **Tests**: MockK + Turbine (Android), XCTest (iOS), JUnit Jupiter 6 (backend)
 - **One ViewModel per screen**, concrete repositories (no interface + impl boilerplate)
 
+Generated-workspace assumption:
+
+- Open the **generated repository root** as the workspace when using Claude Code.
+- The generated repo keeps shared Claude skills at `.claude/skills/` in the repo root.
+- Platform folders like `mobile-android/` and `mobile-ios/` are subfolders of that repo,
+  not separate skill roots.
+
 ## Platform-Specific Context
 
 Each platform has its own `CLAUDE.md` with detailed patterns:

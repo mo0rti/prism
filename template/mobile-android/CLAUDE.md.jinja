@@ -40,6 +40,29 @@ command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
 | [docs/design-system-and-theme.md](docs/design-system-and-theme.md) | AppTheme, colors, typography, design system components, UiText. |
 | [docs/conventions-and-workflow.md](docs/conventions-and-workflow.md) | Strings, dispatchers, SessionManager, new-feature workflow. |
 
+## Workspace Root
+
+This `mobile-android/` folder is a platform slice inside the generated project, not the
+generated project root.
+
+For Claude Code work, prefer opening the **generated repository root** so root context files
+and project skills are available together with the Android code.
+
+From `mobile-android/`, the generated repository root is:
+
+- `../`
+
+Important root-level files and folders from here:
+
+- `../README.md` - generated project overview
+- `../CONTEXT.md` - root AI context anchor
+- `../CLAUDE.md` - root Claude guidance for the generated repo
+- `../.claude/skills/` - project Claude skills shared across the generated repo
+
+If you open only `mobile-android/` as a standalone workspace, do not assume Claude Code can
+automatically discover skills or root context from the parent repository. In that setup,
+manually check the parent generated-project root when it is available.
+
 ## Build & Run
 
 ```bash
@@ -62,7 +85,7 @@ command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
 adb devices
 ```
 
-**Min SDK**: 29 | **Target SDK**: 35 | **Compile SDK**: 36
+**Min SDK**: 29 | **Target SDK**: 36 | **Compile SDK**: 36
 
 ## Architecture (summary)
 
@@ -117,6 +140,11 @@ Documentation style rule:
 ## Local Claude Skills
 
 Project-specific Claude skills live in **`.claude/skills/`** and follow the current Claude Code project-skill layout.
+In this generated project, that path is relative to the **generated repository root**, not
+inside `mobile-android/`. From this folder, the expected location is:
+
+- `../.claude/skills/`
+
 Keep skill boundaries orthogonal: `android-conventions` is the baseline ruleset, `android-feature-delivery` is the coordinator for cross-layer work, and the remaining skills own specialist domains.
 Use `/android-feature-delivery <feature-description>` when you want the full research, planning, validation, and documentation workflow for a larger feature request.
 

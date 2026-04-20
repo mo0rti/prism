@@ -77,6 +77,17 @@ Invocation model:
   with a `$` prefix
 - Cursor users ask the agent to run the same named operations
 
+Workspace recommendation:
+
+- Open the **generated repository root** when using Claude Code or Codex.
+- Root AI context and skill surfaces live at the generated repo root, not inside
+  platform subfolders such as `mobile-android/` or `mobile-ios/`.
+- If you open only a platform subfolder as a standalone workspace, do not assume the
+  agent will automatically discover parent-level skills or root guidance.
+- In that narrower setup, manually inspect the generated repo root files such as
+  `README.md`, `CONTEXT.md`, `AGENTS.md`, `CLAUDE.md`, `.agents/skills/`, and
+  `.claude/skills/` when they are available.
+
 For the broader model behind these surfaces, see:
 
 - [prism-model.md](prism-model.md)
