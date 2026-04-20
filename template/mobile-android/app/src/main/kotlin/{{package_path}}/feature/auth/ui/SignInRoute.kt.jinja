@@ -4,30 +4,38 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-
-private val supportedAuthProviders = listOf("google", "apple", "facebook", "microsoft")
+import {{ package_identifier }}.feature.auth.AuthConfig
 
 @Composable
 fun SignInRoute(
+    showBackToSocial: Boolean,
+    onBackToSocial: () -> Unit,
     viewModel: SignInViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 {% if "password" in auth_methods %}
     val email by viewModel.email.collectAsStateWithLifecycle()
     val password by viewModel.password.collectAsStateWithLifecycle()
-{% endif %}
 
     SignInScreen(
         uiState = uiState,
-{% if "password" in auth_methods %}
         email = email,
         password = password,
         onEmailChange = viewModel::onEmailChange,
         onPasswordChange = viewModel::onPasswordChange,
         onSignInWithPassword = viewModel::signInWithPassword,
-{% endif %}
-        providers = supportedAuthProviders,
-        onSignInWithOAuth = viewModel::showOAuthSetupRequired,
+        showBackToSocial = showBackToSocial,
+        onBackToSocial = onBackToSocial,
         onDismissError = viewModel::clearError,
     )
+{% else %}
+    SocialSignInScreen(
+        uiState = uiState,
+        providers = AuthConfig.enabledSocialProviders,
+        isEmailPasswordEnabled = false,
+        onProviderClick = viewModel::showOAuthSetupRequired,
+        onContinueWithEmailPassword = {},
+        onDismissError = viewModel::clearError,
+    )
+{% endif %}
 }

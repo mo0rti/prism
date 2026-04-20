@@ -1,0 +1,44 @@
+package {{ package_identifier }}.feature.auth
+
+import {{ package_identifier }}.feature.auth.domain.AuthProvider
+
+enum class AuthExperienceMode {
+    EMAIL_PASSWORD_ONLY,
+    SOCIAL_ONLY,
+    MIXED,
+}
+
+object AuthConfig {
+    val isEmailPasswordEnabled: Boolean = {% if "password" in auth_methods %}true{% else %}false{% endif %}
+
+    val enabledSocialProviders: List<AuthProvider> = listOf(
+{% if "google" in auth_methods %}
+        AuthProvider.GOOGLE,
+{% endif %}
+{% if "apple" in auth_methods %}
+        AuthProvider.APPLE,
+{% endif %}
+{% if "facebook" in auth_methods %}
+        AuthProvider.FACEBOOK,
+{% endif %}
+{% if "microsoft" in auth_methods %}
+        AuthProvider.MICROSOFT,
+{% endif %}
+    )
+
+    val authExperienceMode: AuthExperienceMode
+        get() = when {
+            isEmailPasswordEnabled && enabledSocialProviders.isNotEmpty() -> AuthExperienceMode.MIXED
+            isEmailPasswordEnabled -> AuthExperienceMode.EMAIL_PASSWORD_ONLY
+            else -> AuthExperienceMode.SOCIAL_ONLY
+        }
+
+    init {
+        require(AuthProvider.EMAIL_PASSWORD !in enabledSocialProviders) {
+            "EMAIL_PASSWORD must not appear in enabledSocialProviders."
+        }
+        require(isEmailPasswordEnabled || enabledSocialProviders.isNotEmpty()) {
+            "At least one auth mode must be enabled."
+        }
+    }
+}

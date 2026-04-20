@@ -24,20 +24,20 @@ class SignInScreenTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+{% if "password" in auth_methods %}
     @Test
     fun `shows error message when ui state is error`() {
         composeRule.setContent {
             AppTheme {
                 SignInScreen(
                     uiState = SignInUiState.Error(UiText.DynamicString("Bad credentials")),
-{% if "password" in auth_methods %}
                     email = "",
                     password = "",
                     onEmailChange = {},
                     onPasswordChange = {},
                     onSignInWithPassword = {},
-{% endif %}
-                    onSignInWithOAuth = {},
+                    showBackToSocial = false,
+                    onBackToSocial = {},
                     onDismissError = {},
                 )
             }
@@ -46,7 +46,6 @@ class SignInScreenTest {
         composeRule.onNodeWithText("Bad credentials").assertIsDisplayed()
     }
 
-{% if "password" in auth_methods %}
     @Test
     fun `password sign in button enables when both fields are filled`() {
         composeRule.setContent {
@@ -61,7 +60,8 @@ class SignInScreenTest {
                     onEmailChange = { email = it },
                     onPasswordChange = { password = it },
                     onSignInWithPassword = {},
-                    onSignInWithOAuth = {},
+                    showBackToSocial = false,
+                    onBackToSocial = {},
                     onDismissError = {},
                 )
             }

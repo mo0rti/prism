@@ -19,18 +19,20 @@ Use this default sequence for most Android changes:
 
 1. `./gradlew compileDebugKotlin`
 2. `./gradlew testDebugUnitTest`
-3. Start an API 35 phone emulator
-4. `./gradlew connectedDebugAndroidTest` when the change affects UI, navigation, auth flow, insets, or device-facing behavior
+3. `./gradlew compileDebugAndroidTestKotlin` when screen APIs or Compose test fixtures changed
+4. Start an API 36 phone emulator
+5. `./gradlew connectedDebugAndroidTest` when the change affects UI, navigation, auth flow, insets, or device-facing behavior
 
-Add an API 29 phone emulator spot-check when the change touches auth, storage, permissions, or inset behavior that may differ on older devices.
+Add an API 35 or API 29 phone emulator spot-check when the change touches auth, storage, permissions, or inset behavior that may differ on older devices.
 
 ## Instrumentation Test Scope
 
 The generated template scaffolds a small baseline instrumentation suite. Today it covers:
 
 - auth gate routing
+- social sign-in provider rendering
 - sign-in error rendering
-- basic password form enablement
+- password form enablement
 - example list empty, error, and success state rendering
 - retry wiring from the example error state
 
@@ -38,20 +40,19 @@ Extend that baseline when a project adds richer navigation flows, submit flows, 
 
 ## CI Verification
 
-GitHub Actions runs Android validation in three stages:
+Generated projects should validate Android changes in three stages when CI is configured:
 
-1. `compileDebugKotlin` and `testDebugUnitTest`
+1. `compileDebugKotlin`, `compileDebugAndroidTestKotlin`, and `testDebugUnitTest`
 2. `lintDebug`
-3. `connectedDebugAndroidTest` on an API 35 emulator using the default system image target
+3. `connectedDebugAndroidTest` on at least one current target-SDK emulator image
 
-Instrumentation reports are uploaded as workflow artifacts so failures can be inspected from CI without reproducing locally first.
-
-CI only covers the API 35 emulator baseline. API 29 compatibility remains a local verification responsibility unless a project expands the workflow matrix.
+Expand the emulator matrix when a project depends on older-device behavior or large-screen coverage.
 
 ## Common Commands
 
 ```bash
 ./gradlew compileDebugKotlin
+./gradlew compileDebugAndroidTestKotlin
 ./gradlew testDebugUnitTest
 ./gradlew connectedDebugAndroidTest
 ./gradlew lintDebug

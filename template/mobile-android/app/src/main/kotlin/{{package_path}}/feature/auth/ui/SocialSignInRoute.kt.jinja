@@ -1,0 +1,24 @@
+package {{ package_identifier }}.feature.auth.ui
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import {{ package_identifier }}.feature.auth.AuthConfig
+
+@Composable
+fun SocialSignInRoute(
+    onContinueWithEmailPassword: () -> Unit,
+    viewModel: SignInViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    SocialSignInScreen(
+        uiState = uiState,
+        providers = AuthConfig.enabledSocialProviders,
+        isEmailPasswordEnabled = AuthConfig.isEmailPasswordEnabled,
+        onProviderClick = viewModel::showOAuthSetupRequired,
+        onContinueWithEmailPassword = onContinueWithEmailPassword,
+        onDismissError = viewModel::clearError,
+    )
+}

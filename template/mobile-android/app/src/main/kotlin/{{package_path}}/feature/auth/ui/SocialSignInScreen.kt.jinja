@@ -1,0 +1,159 @@
+package {{ package_identifier }}.feature.auth.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import {{ package_identifier }}.R
+import {{ package_identifier }}.designsystem.preview.ThemePreviews
+import {{ package_identifier }}.designsystem.text.UiText
+import {{ package_identifier }}.designsystem.theme.AppTheme
+import {{ package_identifier }}.feature.auth.domain.AuthProvider
+import {{ package_identifier }}.feature.auth.ui.components.AuthContentMaxWidth
+import {{ package_identifier }}.feature.auth.ui.components.AuthHeroImageSection
+import {{ package_identifier }}.feature.auth.ui.components.AuthInlineError
+import {{ package_identifier }}.feature.auth.ui.components.AuthLegalLinksText
+import {{ package_identifier }}.feature.auth.ui.components.AuthProviderRows
+
+@Composable
+fun SocialSignInScreen(
+    uiState: SignInUiState,
+    providers: List<AuthProvider>,
+    isEmailPasswordEnabled: Boolean,
+    onProviderClick: (AuthProvider) -> Unit,
+    onContinueWithEmailPassword: () -> Unit,
+    onDismissError: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val isLoading = uiState is SignInUiState.Loading
+    val errorMessage = (uiState as? SignInUiState.Error)?.message?.asString(context)
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            AuthHeroImageSection()
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 20.dp)
+                    .padding(bottom = 96.dp)
+                    .widthIn(max = AuthContentMaxWidth)
+                    .align(Alignment.CenterHorizontally),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.auth_social_section_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+
+                if (errorMessage != null) {
+                    AuthInlineError(
+                        message = errorMessage,
+                        onDismiss = onDismissError,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                AuthProviderRows(
+                    providers = providers,
+                    onProviderClick = onProviderClick,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                if (isEmailPasswordEnabled) {
+                    TextButton(
+                        onClick = onContinueWithEmailPassword,
+                        enabled = !isLoading,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.auth_continue_with_email_password),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
+        AuthLegalLinksText(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+        )
+    }
+}
+
+@ThemePreviews
+@Composable
+private fun SocialSignInScreenPreview() {
+    AppTheme {
+        Surface {
+            SocialSignInScreen(
+                uiState = SignInUiState.Idle,
+                providers = listOf(
+                    AuthProvider.GOOGLE,
+                    AuthProvider.APPLE,
+                    AuthProvider.FACEBOOK,
+                ),
+                isEmailPasswordEnabled = true,
+                onProviderClick = {},
+                onContinueWithEmailPassword = {},
+                onDismissError = {},
+            )
+        }
+    }
+}
+
+@ThemePreviews
+@Composable
+private fun SocialSignInScreenSocialOnlyPreview() {
+    AppTheme {
+        Surface {
+            SocialSignInScreen(
+                uiState = SignInUiState.Error(
+                    message = UiText.StringResource(
+                        R.string.error_oauth_setup_required,
+                        listOf("Google"),
+                    ),
+                ),
+                providers = listOf(
+                    AuthProvider.GOOGLE,
+                    AuthProvider.APPLE,
+                    AuthProvider.FACEBOOK,
+                ),
+                isEmailPasswordEnabled = false,
+                onProviderClick = {},
+                onContinueWithEmailPassword = {},
+                onDismissError = {},
+            )
+        }
+    }
+}

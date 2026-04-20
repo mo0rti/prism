@@ -11,6 +11,7 @@ The app theme is defined in `designsystem/theme/`:
 | `Type.kt` | Typography scale |
 | `Shape.kt` | Shape definitions (rounded corners) |
 | `Dimensions.kt` | Spacing and sizing constants |
+| `preview/ThemePreviews.kt` | Shared light/dark preview annotation for Compose previews |
 
 ### Usage
 
@@ -50,13 +51,32 @@ Located in `designsystem/components/`:
 | `LoadingIndicator` | Centered circular progress indicator |
 | `ErrorView` | Error message with optional retry button |
 
+Feature-local auth building blocks live in `feature/auth/ui/components/`:
+
+| Component | Purpose |
+|-----------|---------|
+| `AuthBrandLockup` | Reusable auth brand mark and welcome badge used across auth screens |
+| `AuthHeroImageSection` | Full-width social sign-in hero image with branding overlay |
+| `AuthInlineError` | Inline auth error container with dismiss action |
+| `AuthProviderIconButton` | Icon-first social provider action button used by the social sign-in screen |
+| `AuthProviderRows` | Centered multi-provider row layout for social sign-in |
+| `AuthLegalLinksText` | Footer legal copy with linked terms and privacy text |
+
+Auth-specific art assets are kept in resources so generated projects can swap branding without changing layout code:
+
+| Resource | Purpose |
+|----------|---------|
+| `drawable/ic_auth_brand_logo.xml` | Auth logo used by the shared brand lockup |
+| `drawable/ic_auth_provider_*.xml` | Provider icons for Google, Apple, and Facebook |
+| `drawable-nodpi/img_auth_sign_in_hero.png` | Full-bleed social auth hero image |
+
 ## Adding shared components
 
 When a composable is used by more than one feature:
 
 1. Move it from `feature/*/ui/components/` to `designsystem/components/`.
 2. Keep it stateless - accept state and callbacks as parameters.
-3. Wrap previews in `AppTheme`.
+3. Wrap previews in `AppTheme` or `@ThemePreviews`.
 4. Update this document.
 
 ## Design tokens

@@ -38,7 +38,7 @@ mobile-android/
 | `core/common/` | `AppResult<T>` wrapper. |
 | `core/session/` | `SessionManager` - auth state and token access. |
 | `core/network/` | `ApiService`, `AuthInterceptor`, `TokenAuthenticator`. |
-| `core/datastore/` | `TokenStorage` (encrypted DataStore). |
+| `core/datastore/` | `TokenStorage` (DataStore-backed token persistence). |
 | `core/database/` | `AppDatabase`, `Converters` (shared Room infrastructure). |
 | `core/di/` | Hilt modules: `NetworkModule`, `DatabaseModule`, `DispatcherModule`, `AppModule`. |
 | `core/model/` | Cross-feature models: `User`, `Session` (AuthState), `Paging`. |
@@ -49,9 +49,10 @@ Each feature follows: `feature/<name>/data/` + `feature/<name>/domain/` + `featu
 
 | Feature | Contents |
 |---------|----------|
-| `feature/auth/domain/` | `AuthCredentials` model. |
+| `feature/auth/` | `AuthConfig` and auth mode selection for unauthenticated navigation. |
+| `feature/auth/domain/` | `AuthCredentials`, `AuthProvider`, `SignInInputValidator`. |
 | `feature/auth/data/` | `AuthRepository`, `AuthDtos`. |
-| `feature/auth/ui/` | `SignInRoute`, `SignInScreen`, `SignInViewModel`. |
+| `feature/auth/ui/` | `SocialSignInRoute`, `SocialSignInScreen`, `SignInRoute`, `SignInScreen`, `SignInViewModel`, `components/`. |
 | `feature/example/domain/` | `Example` model. |
 | `feature/example/data/` | `ExampleRepository`, `ExampleDtos`, `ExampleEntity`, `ExampleDao`, Mappers. |
 | `feature/example/ui/` | `ExampleListRoute`, `ExampleListScreen`, `ExampleListViewModel`, `components/`. |
@@ -61,6 +62,7 @@ Each feature follows: `feature/<name>/data/` + `feature/<name>/domain/` + `featu
 | Package | Purpose |
 |---------|---------|
 | `designsystem/theme/` | `AppTheme`, Color, Type, Shape, Dimensions. |
+| `designsystem/preview/` | Shared day/night preview annotations for Compose screens. |
 | `designsystem/text/` | `UiText` (framework-light string wrapper). |
 | `designsystem/components/` | Shared composables: `LoadingIndicator`, `ErrorView`. |
 
@@ -69,7 +71,7 @@ Each feature follows: `feature/<name>/data/` + `feature/<name>/domain/` + `featu
 | Path | Purpose |
 |------|---------|
 | `navigation/Screen.kt` | Sealed route definitions with `@Serializable`. |
-| `navigation/NavGraph.kt` | NavHost composition; start destination based on auth state. |
+| `navigation/NavGraph.kt` | NavHost composition; unauthenticated start destination is selected from auth state and `AuthConfig`. |
 
 ## Conventions
 

@@ -22,7 +22,7 @@ private val Context.dataStore by preferencesDataStore(name = "auth_prefs")
  */
 @Singleton
 class TokenStorage @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) {
 
     companion object {

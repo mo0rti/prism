@@ -5,6 +5,7 @@ import {{ package_identifier }}.core.common.AppResult
 import {{ package_identifier }}.core.model.User
 import {{ package_identifier }}.designsystem.text.UiText
 import {{ package_identifier }}.feature.auth.data.repository.AuthRepository
+import {{ package_identifier }}.feature.auth.domain.AuthProvider
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -83,15 +84,15 @@ class SignInViewModelTest {
     fun `oauth sign in success`() = runTest(testDispatcher) {
         coEvery { authRepository.oauthCallback(any(), any(), any()) } returns AppResult.Success(testUser)
 
-        viewModel.signInWithOAuth("google", "auth-code", "redirect-uri")
+        viewModel.signInWithOAuth(AuthProvider.GOOGLE, "auth-code", "redirect-uri")
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify { authRepository.oauthCallback("google", "auth-code", "redirect-uri") }
+        coVerify { authRepository.oauthCallback(AuthProvider.GOOGLE, "auth-code", "redirect-uri") }
     }
 
     @Test
     fun `oauth setup required shows explicit error`() {
-        viewModel.showOAuthSetupRequired("google")
+        viewModel.showOAuthSetupRequired(AuthProvider.GOOGLE)
 
         val state = viewModel.uiState.value
         assertTrue(state is SignInUiState.Error)

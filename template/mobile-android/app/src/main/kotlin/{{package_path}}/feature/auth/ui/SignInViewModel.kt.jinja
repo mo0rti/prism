@@ -6,6 +6,7 @@ import {{ package_identifier }}.designsystem.text.UiText
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import {{ package_identifier }}.feature.auth.data.repository.AuthRepository
+import {{ package_identifier }}.feature.auth.domain.AuthProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -66,7 +67,7 @@ class SignInViewModel @Inject constructor(
     }
 {% endif %}
 
-    fun signInWithOAuth(provider: String, code: String, redirectUri: String) {
+    fun signInWithOAuth(provider: AuthProvider, code: String, redirectUri: String) {
         viewModelScope.launch {
             _uiState.value = SignInUiState.Loading
             when (val result = authRepository.oauthCallback(provider, code, redirectUri)) {
@@ -80,9 +81,13 @@ class SignInViewModel @Inject constructor(
         }
     }
 
-    fun showOAuthSetupRequired(provider: String) {
-        val displayName = provider.replaceFirstChar { char ->
-            if (char.isLowerCase()) char.titlecase() else char.toString()
+    fun showOAuthSetupRequired(provider: AuthProvider) {
+        val displayName = when (provider) {
+            AuthProvider.EMAIL_PASSWORD -> "Email and password"
+            AuthProvider.GOOGLE -> "Google"
+            AuthProvider.APPLE -> "Apple"
+            AuthProvider.FACEBOOK -> "Facebook"
+            AuthProvider.MICROSOFT -> "Microsoft"
         }
         _uiState.value = SignInUiState.Error(
             UiText.StringResource(

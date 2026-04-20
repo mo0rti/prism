@@ -13,6 +13,7 @@ Routes are defined as a `@Serializable` sealed interface:
 ```kotlin
 @Serializable
 sealed interface Screen {
+    @Serializable data object SocialSignIn : Screen
     @Serializable data object SignIn : Screen
     @Serializable data object ExampleList : Screen
     @Serializable data class ExampleDetail(val id: String) : Screen
@@ -29,14 +30,27 @@ NavGraph observes `SessionManager.authState` and switches between root flows:
 
 Do not drive auth transitions with screen-owned success or logout callbacks. Sign-in and logout update session state; NavGraph reacts to that state and swaps the active root flow.
 
+For unauthenticated navigation, `AuthConfig.authExperienceMode` selects the start route:
+
+- `EMAIL_PASSWORD_ONLY` -> `Screen.SignIn`
+- `SOCIAL_ONLY` -> `Screen.SocialSignIn`
+- `MIXED` -> `Screen.SocialSignIn`, with a secondary action that routes to `Screen.SignIn`
+
 ## Screen mapping
 
 Each screen destination maps to a Route composable:
 
 ```kotlin
-composable<Screen.ExampleList> {
-    ExampleListRoute(
-        onNavigateToDetail = { id -> navController.navigate(Screen.ExampleDetail(id)) }
+composable<Screen.SocialSignIn> {
+    SocialSignInRoute(
+        onContinueWithEmailPassword = { navController.navigate(Screen.SignIn) },
+    )
+}
+
+composable<Screen.SignIn> {
+    SignInRoute(
+        showBackToSocial = true,
+        onBackToSocial = { navController.popBackStack() },
     )
 }
 ```
