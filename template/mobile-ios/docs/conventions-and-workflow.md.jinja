@@ -14,7 +14,9 @@
 - Route all token persistence through `TokenStorage`.
 - Preserve stable accessibility identifiers on screen roots and primary controls when editing UI covered by XCUITests.
 - Treat `APIError.unauthorized` as a clear-tokens-and-return-to-login baseline unless the project intentionally adds centralized refresh-and-retry behavior.
+- Avoid `@unchecked Sendable` and `nonisolated` workarounds unless the reason is explicit and documented.
 - Update the relevant docs in the same session when behavior or structure changes.
+- Regenerate the Xcode project after structural `project.yml` changes such as new targets, schemes, Swift Packages, xcconfig wiring, entitlements, resource bundles, capabilities, or deployment-target changes.
 
 ## Feature Workflow
 
@@ -24,16 +26,20 @@
 {% if "backend" in platforms %}4. Cross-check `backend/` when the contract needs behavioral clarification.
 {% if "mobile-android" in platforms %}5. Cross-check `mobile-android/` when parity matters.
 6. Update only the layers the task needs.
+7. Add the smallest useful test when ViewModel or repository logic changes, and prefer `task mobile-ios:test-unit` when UI is unaffected.
+8. Run the smallest sufficient iOS build or test task on Mac.
+9. Update affected docs before closing the task.
+{% else %}5. Update only the layers the task needs.
+6. Add the smallest useful test when ViewModel or repository logic changes, and prefer `task mobile-ios:test-unit` when UI is unaffected.
 7. Run the smallest sufficient iOS build or test task on Mac.
 8. Update affected docs before closing the task.
-{% else %}5. Update only the layers the task needs.
-6. Run the smallest sufficient iOS build or test task on Mac.
-7. Update affected docs before closing the task.
 {% endif %}{% else %}{% if "mobile-android" in platforms %}4. Cross-check `mobile-android/` when parity matters.
 5. Update only the layers the task needs.
+6. Add the smallest useful test when ViewModel or repository logic changes, and prefer `task mobile-ios:test-unit` when UI is unaffected.
+7. Run the smallest sufficient iOS build or test task on Mac.
+8. Update affected docs before closing the task.
+{% else %}4. Update only the layers the task needs.
+5. Add the smallest useful test when ViewModel or repository logic changes, and prefer `task mobile-ios:test-unit` when UI is unaffected.
 6. Run the smallest sufficient iOS build or test task on Mac.
 7. Update affected docs before closing the task.
-{% else %}4. Update only the layers the task needs.
-5. Run the smallest sufficient iOS build or test task on Mac.
-6. Update affected docs before closing the task.
 {% endif %}{% endif %}

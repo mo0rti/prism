@@ -7,6 +7,7 @@
 - iOS tasks are Mac-only and are guarded with `platforms: [darwin]`
 - Only the build and test tasks resolve a simulator ID from the available devices whose name exactly matches `SIMULATOR_NAME` before the UUID, defaulting to `iPhone 16`, before calling `xcodebuild`
 - When multiple exact-name simulators exist, the lookup uses the last available match reported by `simctl`, which is typically the newest installed runtime for that device name
+- Release automation lives in `fastlane/Fastfile` and CI, with `bundle exec fastlane beta` as the TestFlight-oriented path
 
 ## Generated Project Settings
 
@@ -25,6 +26,7 @@ task mobile-ios:build
 task mobile-ios:test
 task mobile-ios:test-unit
 task mobile-ios:test-ui
+bundle exec fastlane beta
 ```
 
 Equivalent direct build commands come from the Taskfile and use:
@@ -34,6 +36,8 @@ Equivalent direct build commands come from the Taskfile and use:
 - `xcodebuild test -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -destination "platform=iOS Simulator,id=<resolved simulator id>"`
 - `xcodebuild test -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -destination "platform=iOS Simulator,id=<resolved simulator id>" -only-testing:"{{ ios_module_name }}Tests"`
 - `xcodebuild test -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -destination "platform=iOS Simulator,id=<resolved simulator id>" -only-testing:"{{ ios_module_name }}UITests"`
+- `xcodebuild archive -project "{{ project_name }}.xcodeproj" -scheme "{{ ios_module_name }}" -configuration Release -archivePath build/{{ ios_module_name }}.xcarchive`
+- `bundle exec fastlane beta`
 
 You can override the simulator lookup when needed:
 
@@ -45,6 +49,8 @@ If no available simulator matches `SIMULATOR_NAME`, the build or test task exits
 
 The generated project keeps `{{ project_slug }}` for filesystem paths and uses `{{ ios_module_name }}` for the Swift/Xcode target and scheme.
 
+When `project.yml` changes structure rather than just source contents, regenerate before building. Typical triggers include new targets or schemes, Swift Packages, xcconfig wiring, entitlements, capabilities, resource bundles, or deployment-target changes.
+
 ## UI Test Mode
 
 - The app includes a lightweight UI-test launch mode so generated XCUITests can verify flows without a live backend.
@@ -52,6 +58,11 @@ The generated project keeps `{{ project_slug }}` for filesystem paths and uses `
 - In UI-test mode, the app swaps in deterministic repositories and seeds session state when requested.
 - Preserve stable accessibility identifiers on screen roots and key controls when changing UI that is covered by XCUITests.
 - The generated UI suite is intentionally smoke-level today; password-form automation is a known follow-up once SwiftUI exposes those controls more reliably to XCUITest.
+
+## Non-Mac Fallback
+
+- If you are not on Mac, you cannot run the generated iOS build or test tasks locally.
+- In that case, explicitly report which verification steps were skipped and defer real iOS validation to Mac CI or a Mac follow-up session.
 
 ## Runtime Configuration
 

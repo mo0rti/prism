@@ -21,6 +21,11 @@ Use this skill when SwiftUI work should stay aligned with the generated app's sh
 - Use `Spacing` and `CornerRadius` constants instead of repeating raw values.
 - Put reusable components in `UI/Common/`; keep feature files focused on screen composition.
 - Keep screen backgrounds, badges, buttons, and shared loading or error states visually consistent across features.
+- Icon-only or otherwise non-obvious actions must expose a clear `accessibilityLabel`.
+- Custom tappable surfaces must expose button semantics such as `.accessibilityAddTraits(.isButton)` when SwiftUI does not infer them automatically.
+- Grouped cards or composite rows should use `accessibilityElement(children: .combine)` when VoiceOver should read them as one coherent item.
+- Use semantic text styles by default. If custom fonts are introduced, scale them with `relativeTo:` so Dynamic Type remains correct.
+- Shared components must not rely on color alone to communicate important state.
 
 ## Existing patterns to reuse
 
@@ -39,8 +44,8 @@ Load only the reference file the task needs:
 
 For route ownership, `AppRouter`, or navigation architecture questions, read `$ios-conventions` and its navigation reference instead.
 
-## Composition rules
+## Preview and composition rules
 
-- Add previews when they materially help understand a shared or reusable SwiftUI component.
+- Shared components in `UI/Common/` must include at least one `#Preview` that applies the shared theme tokens where applicable.
 - Keep shared components stateless and parameter-driven where possible.
 - Promote repeated view fragments out of feature screens into `UI/Common/`.

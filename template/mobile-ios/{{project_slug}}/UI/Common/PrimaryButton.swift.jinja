@@ -18,3 +18,15 @@ struct PrimaryButton: View {
         .disabled(!isEnabled)
     }
 }
+
+#Preview("Enabled") {
+    PrimaryButton(title: "Continue", action: {})
+        .padding(Spacing.md)
+        .background(Color.appBackground)
+}
+
+#Preview("Disabled") {
+    PrimaryButton(title: "Continue", action: {}, isEnabled: false)
+        .padding(Spacing.md)
+        .background(Color.appBackground)
+}

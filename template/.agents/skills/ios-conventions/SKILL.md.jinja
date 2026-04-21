@@ -29,9 +29,11 @@ Use this skill for repository-wide iOS guardrails.
 - `DependencyContainer` is injected with SwiftUI environment at the app root. Screens usually receive feature ViewModels through initializers, not environment objects.
 - Keep long-lived `@Observable` instances out of frequently recomputed `body` code paths. Parent views or router-level owners should create them once and pass them down.
 - `@Observable` redraws only the views that read the changed property. Do not assume every property mutation invalidates the entire screen.
+- Do not introduce `@unchecked Sendable` or `nonisolated` workarounds in app code unless the reason is explicit and documented in the change.
 - Keep routes in `Navigation/Route.swift` and top-level auth gating in `Navigation/AppRouter.swift`.
-- Preserve stable accessibility identifiers on screen roots and critical controls that generated XCUITests depend on.
+- Preserve stable accessibility identifiers on screen roots and critical controls that generated UI tests depend on.
 - Move reusable SwiftUI components into `UI/Common/` and shared styling primitives into `UI/Theme/`.
+- Regenerate the Xcode project after structural `project.yml` changes such as new targets, schemes, Swift Packages, xcconfig wiring, build settings, entitlements, resource bundles, capabilities, or deployment-target changes.
 
 ## Reference files
 
@@ -39,6 +41,7 @@ Load only the reference file the task needs:
 
 - `references/swift6-observation-and-di.md` for `@MainActor`, Observation, `@Bindable`, environment injection, and ViewModel ownership rules
 - `references/navigation.md` for route ownership, `AppRouter`, `NavigationStack`, sheet usage, and iPad-only multi-column guidance
+- `references/swiftdata-patterns.md` for `ModelContext` actor confinement, query ownership, and schema-evolution basics
 
 ## Read when needed
 
@@ -55,5 +58,5 @@ Load only the reference file the task needs:
 ## Minimum verification
 
 - Run `task mobile-ios:build` on Mac after architecture-sensitive changes.
-- Run `task mobile-ios:test-ui` when changing screen structure, accessibility identifiers, auth gating, or app-launch behavior.
+- If you are not on Mac, explicitly report which iOS verification steps were skipped, why they were skipped, and that real validation is deferred to Mac CI or a Mac follow-up session.
 - If implementation changes docs-described behavior, update the relevant file in `mobile-ios/docs/` in the same session.

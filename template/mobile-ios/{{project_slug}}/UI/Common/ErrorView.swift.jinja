@@ -10,6 +10,7 @@ struct ErrorView: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(.largeTitle)
                 .foregroundColor(.appError)
+                .accessibilityHidden(true)
                 .accessibilityIdentifier("error.icon")
             Text(message)
                 .font(.body)
@@ -27,4 +28,14 @@ struct ErrorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("error.screen")
     }
+}
+
+#Preview("Retry") {
+    ErrorView(message: "Something went wrong. Please try again.", onRetry: {})
+        .background(Color.appBackground)
+}
+
+#Preview("Message Only") {
+    ErrorView(message: "No connection available right now.", onRetry: nil)
+        .background(Color.appBackground)
 }

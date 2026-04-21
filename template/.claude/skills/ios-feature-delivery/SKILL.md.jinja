@@ -50,10 +50,17 @@ Cover only the layers the feature truly needs:
 - Use `ios-conventions` for repository-wide Swift, SwiftUI, MVVM, navigation, and doc-sync rules.
 - Use `ios-contract-alignment` for endpoint, DTO, `APIClient`, and auth-boundary decisions.
 - Use `swiftui-design-system` for shared UI language, reusable components, and visual consistency.
+- Use `ios-testing` for XCTest baselines, Swift Testing guidance, and choosing between unit and UI coverage.
 - Use `ios-build-verify` to choose the smallest trustworthy validation.
 
 ## 5. Execute and close out
 
 - Implement only the layers the feature actually touches.
+- If ViewModel or repository logic is added or changed, add at least one targeted test and confirm it passes with `task mobile-ios:test-unit` on Mac before close-out. Escalate to `task mobile-ios:test` when the change also affects app flow or UI behavior.
+- If UI or navigation behavior is added or changed, confirm accessibility labels, traits, touch targets, and stable identifiers are still correct before close-out.
+- If shared UI in `UI/Common/` is added or changed, include `#Preview` coverage that applies the shared theme tokens where applicable.
+- If storage, file access, user defaults, or a new third-party SDK is introduced, review privacy manifest guidance and update `PrivacyInfo.xcprivacy` when the project starts using covered APIs.
+- If `project.yml` structure may be affected, rerun `task mobile-ios:generate-project` before close-out.
+- If actors, `@Observable` ViewModels, or async/await boundaries are touched, confirm no `@unchecked Sendable` or `nonisolated` workarounds were introduced without explicit justification.
 - Run at least `task mobile-ios:build` on Mac, plus stronger targeted verification when the change crosses logic or integration boundaries.
 - Update any affected docs in the same session.

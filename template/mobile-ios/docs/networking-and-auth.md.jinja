@@ -35,4 +35,10 @@
 - That return-to-login transition should be driven by the app-level auth gate in `AppRouter`, not by ad hoc per-screen navigation logic.
 - `AuthRepository.refreshToken()` exists as an extension point, but `APIClient` does not perform automatic refresh-and-retry orchestration by default.
 - If a project later adds refresh-and-retry, keep that behavior centralized at the transport boundary instead of scattering retry logic across features.
+- A correct refresh implementation must coordinate concurrent 401 responses so only one refresh is in flight at a time and peer requests await that result instead of starting their own refresh attempts.
 - Client error flow should stay consistent: `APIClient` maps transport and HTTP failures, repositories translate only when needed, ViewModels map errors into view state, and views render shared loading or error patterns.
+
+## Privacy Manifest Reminder
+
+- The minimal scaffold does not include `PrivacyInfo.xcprivacy` yet.
+- If the app starts using covered required-reason APIs, persistent storage patterns such as `UserDefaults`, file-system access, or third-party SDKs with privacy declarations, add or update the privacy manifest as part of the same change.

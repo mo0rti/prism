@@ -30,3 +30,5 @@ Reusable UI currently lives in:
 - Promote reusable SwiftUI pieces into `UI/Common/` instead of copying them into feature folders.
 - Keep feature views focused on composition and screen-specific behavior.
 - Default to `ContentUnavailableView` for empty states on iOS 17 unless the feature needs a clearly differentiated branded alternative.
+- Shared components in `UI/Common/` should include `#Preview` coverage using the shared theme tokens where applicable.
+- Non-obvious actions should expose explicit accessibility labels, and custom tappable surfaces should keep button semantics and readable Dynamic Type behavior.

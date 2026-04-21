@@ -7,6 +7,11 @@ description: Backend contract alignment rules for DTOs, endpoints, APIClient usa
 
 Use this skill when backend-facing iOS code changes.
 
+## Role boundary
+
+- Own request and response shapes, endpoint mapping, repository-to-model translation, and auth-boundary wiring.
+- Defer screen structure and general workflow to companion iOS skills.
+
 ## Rules
 
 - Keep API-aligned models in `Domain/Model/`.
@@ -18,7 +23,16 @@ Use this skill when backend-facing iOS code changes.
 - The default baseline for `APIError.unauthorized` is: clear `TokenStorage` and route the app back to login.
 - `AuthRepository.refreshToken()` exists as a named extension point, but automatic refresh-and-retry is not scaffolded into `APIClient` by default.
 - If a project adds refresh-and-retry later, centralize that behavior in `APIClient` or another transport-boundary abstraction rather than scattering retry logic across features.
+- Coordinate refresh-and-retry so concurrent 401 responses await one in-flight refresh operation instead of triggering parallel refresh attempts.
+- If the project starts using covered required-reason APIs or adds third-party SDKs that declare privacy usage, update `PrivacyInfo.xcprivacy` rather than hiding that work inside feature code.
 - Keep client error flow consistent: `APIClient` maps transport failures, repositories translate only when needed, ViewModels map errors into view state, and views render shared loading or error patterns.
+
+## Reference files
+
+Load only the reference file the task needs:
+
+- `references/token-refresh-patterns.md` for actor-safe refresh coordination, retry boundaries, and the simultaneous-401 race
+- `references/privacy-manifest.md` for required-reason API categories, third-party SDK checks, and `PrivacyInfo.xcprivacy` update guidance
 
 ## Cross-check sources
 
