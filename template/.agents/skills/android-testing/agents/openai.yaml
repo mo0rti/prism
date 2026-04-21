@@ -1,0 +1,6 @@
+interface:
+  display_name: "Android Testing"
+  short_description: "Choose and write the right Android tests"
+  default_prompt: "Use $android-testing when adding or refining Android unit or instrumentation tests."
+policy:
+  allow_implicit_invocation: false

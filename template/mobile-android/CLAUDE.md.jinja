@@ -72,11 +72,20 @@ manually check the parent generated-project root when it is available.
 # Fast compile check
 ./gradlew compileDebugKotlin
 
+# Compile instrumentation / Compose UI tests
+./gradlew compileDebugAndroidTestKotlin
+
 # Unit tests
 ./gradlew testDebugUnitTest
 
+# Android lint checks
+./gradlew lintDebug
+
 # Instrumentation / Compose UI tests
 ./gradlew connectedDebugAndroidTest
+
+# Release APK / shrinker validation
+./gradlew assembleRelease
 
 # Install on device
 ./gradlew installDebug
@@ -108,8 +117,8 @@ MVVM in a single `:app` module. See **docs/architecture.md** for full detail.
 - `AppResult<T>` instead of `kotlin.Result` to avoid naming collision.
 - ViewModels map repository errors into `UiText` before exposing them.
 - Dispatchers: Use `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` qualifiers from DispatcherModule.
-- Tests: MockK + Turbine for unit tests, Compose UI tests under `app/src/androidTest/`.
-- Emulator baseline: API 35 phone for normal UI verification; add API 29 phone when changes touch auth, insets, storage, or device behavior.
+- Tests: MockK + Turbine for unit tests, Compose UI tests under `app/src/androidTest/`, and Hilt Android testing for instrumentation when DI overrides are needed.
+- Emulator baseline: API 36 phone for normal UI verification; add API 29 phone when changes touch auth, insets, storage, or device behavior.
 
 ## Keep documentation in sync
 
@@ -134,7 +143,7 @@ Documentation style rule:
 2. Verify API/data contract with the OpenAPI spec in `shared/api-contracts/openapi.yml`.
 3. Plan DTO/API/repository/ViewModel/screen/navigation/DI changes.
 4. Implement using existing MVVM and conventions.
-5. Validate with `./gradlew compileDebugKotlin`, `./gradlew testDebugUnitTest`, and `./gradlew connectedDebugAndroidTest` on an emulator when UI behavior changes.
+5. Validate with `./gradlew compileDebugKotlin`, targeted tests, `./gradlew lintDebug` when resources or manifests change, and `./gradlew connectedDebugAndroidTest` on an emulator when UI behavior changes.
 6. **Update any affected docs** (see "Keep documentation in sync" above).
 
 ## Local Claude Skills
@@ -152,5 +161,6 @@ Use `/android-feature-delivery <feature-description>` when you want the full res
 - @.claude/skills/android-build-verify/SKILL.md - choose the smallest sufficient Gradle compile, test, or assemble task
 - @.claude/skills/android-feature-delivery/SKILL.md - coordinate multi-layer feature work and pull in companion skills
 - @.claude/skills/android-contract-alignment/SKILL.md - own backend-facing DTO, enum, Retrofit, and service-alignment decisions
+- @.claude/skills/android-testing/SKILL.md - own unit-test, Compose UI test, and Hilt-aware instrumentation patterns
 - @.claude/skills/compose-design-system/SKILL.md - own shared Compose UI language, reusable components, and screen-pattern reuse
 - @.claude/skills/deploy-device/SKILL.md - build, install, and launch on a connected Android device

@@ -40,7 +40,7 @@ jobs:
 
       - name: Run tests
         working-directory: mobile-android
-        run: ./gradlew compileDebugKotlin testDebugUnitTest
+        run: ./gradlew compileDebugKotlin compileDebugAndroidTestKotlin testDebugUnitTest
 
   lint:
     name: Lint
@@ -95,7 +95,7 @@ jobs:
       - name: Run instrumentation / Compose UI tests on emulator
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 36
           target: default
           arch: x86_64
           profile: pixel_6

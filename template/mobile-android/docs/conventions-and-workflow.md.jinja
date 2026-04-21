@@ -44,6 +44,9 @@
 - Test file structure mirrors source structure under `app/src/test/`.
 - Test ViewModel state transitions with Turbine's `test {}` block.
 - Use `@IoDispatcher` qualifier with `TestDispatcher` in tests.
+- Compose UI and instrumentation tests live under `app/src/androidTest/`.
+- Use `createAndroidComposeRule<MainActivity>()` for screen-level Compose tests that need the real activity and navigation host.
+- Hilt Android testing is scaffolded for instrumentation. Use `@HiltAndroidTest` with `HiltAndroidRule` when DI overrides are needed.
 
 ## Workflow: Implementing a new feature
 
@@ -58,7 +61,7 @@
    e. Route + Screen composables in `feature/<name>/ui/`.
    f. Navigation route in `Screen.kt` and destination in `NavGraph.kt`.
    g. Strings in `strings.xml`.
-5. Validate with `./gradlew compileDebugKotlin` and targeted tests.
+5. Validate with `./gradlew compileDebugKotlin` and targeted tests. Add `lintDebug` when resources, manifests, or accessibility-sensitive UI change.
 6. Update any affected docs in `docs/`.
 
 ## Keep documentation in sync

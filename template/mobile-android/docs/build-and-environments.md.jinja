@@ -8,9 +8,13 @@ From the `mobile-android/` directory:
 |---------|---------|
 | `./gradlew assembleDebug` | Build debug APK. |
 | `./gradlew compileDebugKotlin` | Fast Kotlin compile check (no full APK). |
+| `./gradlew compileDebugAndroidTestKotlin` | Compile instrumentation and Compose UI test sources without launching a device. |
 | `./gradlew testDebugUnitTest` | Run unit tests. |
+| `./gradlew lintDebug` | Run Android lint checks for resources, manifests, and platform rules. |
 | `./gradlew installDebug` | Build and install on connected device. |
 | `./gradlew connectedDebugAndroidTest` | Run instrumentation tests (device/emulator required). |
+| `./gradlew assembleRelease` | Build the release APK and exercise shrinker or release-only packaging logic. |
+| `./gradlew bundleRelease` | Build the Play-distribution app bundle used by the Fastlane release lane. |
 | `adb devices` | List connected devices/emulators before install or instrumentation runs. |
 
 On Windows, use `gradlew.bat` instead of `./gradlew`.
@@ -28,12 +32,13 @@ On Windows, use `gradlew.bat` instead of `./gradlew`.
 | Build type | Description |
 |------------|-------------|
 | **Debug** | Development builds with debuggable flag. Default for local development. |
-
-Additional build types (QA, Release) can be added in `app/build.gradle.kts` as needed.
+| **Release** | Minified production build using the default optimized ProGuard configuration plus `proguard-rules.pro`. |
 
 ## APK Output
 
 - Debug: `app/build/outputs/apk/debug/app-debug.apk`
+- Release APK: `app/build/outputs/apk/release/app-release.apk`
+- Release bundle: `app/build/outputs/bundle/release/app-release.aab`
 
 ## Runtime Configuration
 
@@ -64,7 +69,8 @@ For most Android changes, run the smallest reliable checks in this order:
 1. `./gradlew compileDebugKotlin`
 2. `./gradlew testDebugUnitTest`
 3. `./gradlew compileDebugAndroidTestKotlin` when screen APIs or Compose test fixtures changed
-4. `./gradlew connectedDebugAndroidTest` when UI behavior, navigation, auth flow, insets, or screen state rendering changes
+4. `./gradlew lintDebug` when resources, manifests, or accessibility-sensitive UI changed
+5. `./gradlew connectedDebugAndroidTest` when UI behavior, navigation, auth flow, insets, or screen state rendering changes
 
 ## Minimum Emulator Matrix
 

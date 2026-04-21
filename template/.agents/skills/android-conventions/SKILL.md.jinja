@@ -10,8 +10,7 @@ Use this skill for repository-wide Android guardrails.
 ## Scope
 
 - Apply these rules when changing code under `mobile-android/`.
-- Defer multi-layer feature coordination to the wiki lifecycle (`feature-status`,
-  `$prep-sprint`, and `knowledge/wiki/platform-requirements/`).
+- Defer multi-layer feature coordination to `$android-feature-delivery`.
 - Defer backend-facing request and response shaping to `$android-contract-alignment`.
 - Defer validation task selection to `$android-build-verify`.
 
@@ -35,18 +34,22 @@ Use this skill for repository-wide Android guardrails.
 - Use `SessionManager` for auth state and logout flows; keep token reads and refresh wiring inside `TokenStorage`, `AuthInterceptor`, and `TokenAuthenticator`.
 - Put user-facing strings in `app/src/main/res/values/strings.xml`.
 - Move reusable Compose components, modifiers, and drawing helpers into `designsystem/` instead of duplicating them in feature packages.
+- Treat AGP, Kotlin, Compose BOM, Hilt, Room, and KSP version changes as coordinated toolchain work. Update `gradle/libs.versions.toml`, preserve KSP-first annotation processing, and re-run stronger verification when compatibility changes.
 
 ## Read Only What You Need
 
 - `mobile-android/docs/architecture.md`
+- `mobile-android/docs/build-and-environments.md`
 - `mobile-android/docs/file-structure.md`
 - `mobile-android/docs/networking-and-di.md`
 - `mobile-android/docs/navigation-and-screens.md`
 - `mobile-android/docs/design-system-and-theme.md`
+- `mobile-android/docs/testing.md`
 - `mobile-android/docs/conventions-and-workflow.md`
 
 ## Minimum Verification
 
 - Run `./gradlew compileDebugKotlin` or `gradlew.bat compileDebugKotlin` after architecture-sensitive changes.
 - Add a targeted test or stronger build step when navigation, networking, session, packaging, or resources change.
+- If AGP, Kotlin, Compose BOM, or shrinker-related build configuration changes, escalate to release validation instead of stopping at debug-only tasks.
 - If implementation changes docs-described behavior, update the relevant file in `mobile-android/docs/` in the same session.

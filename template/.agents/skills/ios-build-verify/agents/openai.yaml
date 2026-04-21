@@ -3,4 +3,4 @@ interface:
   short_description: "Pick the right iOS validation step"
   default_prompt: "Use $ios-build-verify to choose the right iOS validation task for this change."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

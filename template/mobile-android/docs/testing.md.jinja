@@ -8,6 +8,7 @@ Use a layered approach so fast checks run often and slower checks run when they 
 |------|---------|---------|
 | Compile | `./gradlew compileDebugKotlin` | Fast confidence for Kotlin, Compose, DI, and navigation changes. |
 | Unit tests | `./gradlew testDebugUnitTest` | ViewModel, repository, session, mapper, and helper behavior. |
+| Android test compile | `./gradlew compileDebugAndroidTestKotlin` | Cheap signal for screen APIs, Compose test fixtures, and instrumentation-only dependencies. |
 | Instrumentation / Compose UI tests | `./gradlew connectedDebugAndroidTest` | Baseline auth-gate and key screen-state verification on a device or emulator. |
 | Lint | `./gradlew lintDebug` | Android resource, manifest, and platform lint checks. |
 
@@ -20,8 +21,9 @@ Use this default sequence for most Android changes:
 1. `./gradlew compileDebugKotlin`
 2. `./gradlew testDebugUnitTest`
 3. `./gradlew compileDebugAndroidTestKotlin` when screen APIs or Compose test fixtures changed
-4. Start an API 36 phone emulator
-5. `./gradlew connectedDebugAndroidTest` when the change affects UI, navigation, auth flow, insets, or device-facing behavior
+4. `./gradlew lintDebug` when resources, manifests, or accessibility-sensitive UI changed
+5. Start an API 36 phone emulator
+6. `./gradlew connectedDebugAndroidTest` when the change affects UI, navigation, auth flow, insets, or device-facing behavior
 
 Add an API 35 or API 29 phone emulator spot-check when the change touches auth, storage, permissions, or inset behavior that may differ on older devices.
 
@@ -37,6 +39,16 @@ The generated template scaffolds a small baseline instrumentation suite. Today i
 - retry wiring from the example error state
 
 Extend that baseline when a project adds richer navigation flows, submit flows, or device-specific UI behavior. Keep instrumentation tests focused. Prefer unit tests for ViewModel logic and repository mapping.
+
+## Hilt-aware instrumentation
+
+The generated template includes Hilt Android testing support for instrumentation:
+
+- `dagger.hilt.android.testing.HiltTestRunner`
+- `hilt-android-testing`
+- `kspAndroidTest(libs.hilt.compiler)`
+
+Use `@HiltAndroidTest` plus `HiltAndroidRule` when a Compose UI or instrumentation test needs DI overrides. Use `@UninstallModules` only when a test truly needs to replace an app binding.
 
 ## CI Verification
 

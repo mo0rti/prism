@@ -33,18 +33,22 @@ Apply these rules whenever you change Android app code in this repository.
 - Use `SessionManager` for auth state and logout flows; keep token reads and refresh wiring inside `TokenStorage`, `AuthInterceptor`, and `TokenAuthenticator`.
 - Put user-facing strings in `app/src/main/res/values/strings.xml`.
 - Move reusable Compose components, modifiers, and drawing helpers into `designsystem/` instead of duplicating them in features.
+- Treat AGP, Kotlin, Compose BOM, Hilt, Room, and KSP version changes as coordinated toolchain work. Update `gradle/libs.versions.toml`, preserve KSP-first annotation processing, and re-run stronger verification when compatibility changes.
 
 ## Read these docs only when needed
 
 - `mobile-android/docs/architecture.md` for layer rules and repository conventions
+- `mobile-android/docs/build-and-environments.md` for Gradle tasks, SDK levels, and toolchain expectations
 - `mobile-android/docs/file-structure.md` for package locations
 - `mobile-android/docs/networking-and-di.md` for Retrofit, auth, and DI wiring
 - `mobile-android/docs/navigation-and-screens.md` for route and host patterns
 - `mobile-android/docs/design-system-and-theme.md` for shared Compose components
+- `mobile-android/docs/testing.md` for unit test, instrumentation test, and Hilt Android testing patterns
 - `mobile-android/docs/conventions-and-workflow.md` for strings, workflow, and doc-sync rules
 
 ## Minimum verification
 
 - Run `./gradlew compileDebugKotlin` (or `gradlew.bat` on Windows) after architecture-sensitive changes.
 - Add a targeted test or build task when navigation, networking, session, packaging, or resources change.
+- If AGP, Kotlin, Compose BOM, or shrinker-related build configuration changes, escalate to release validation instead of stopping at debug-only tasks.
 - If implementation changes docs-described behavior, update the relevant file in `mobile-android/docs/` in the same session.

@@ -67,7 +67,9 @@ See [file-structure.md](file-structure.md) for the full package map.
 ```bash
 ./gradlew assembleDebug          # Build APK (or gradlew.bat on Windows)
 ./gradlew compileDebugKotlin     # Fast compile check
+./gradlew compileDebugAndroidTestKotlin  # Compile instrumentation / Compose UI tests
 ./gradlew testDebugUnitTest      # Unit tests
+./gradlew lintDebug              # Android lint checks
 ./gradlew connectedDebugAndroidTest  # Instrumentation / Compose UI tests
 ./gradlew installDebug           # Install on device
 adb devices                      # List connected devices/emulators
@@ -77,7 +79,9 @@ For UI or navigation changes, the default local verification path is:
 
 1. `./gradlew compileDebugKotlin`
 2. `./gradlew testDebugUnitTest`
-3. Start a phone emulator on API 35
-4. `./gradlew connectedDebugAndroidTest`
+3. `./gradlew compileDebugAndroidTestKotlin` when screen APIs or Compose test fixtures changed
+4. `./gradlew lintDebug` when resources, manifests, or accessibility-sensitive UI changed
+5. Start a phone emulator on API 36
+6. `./gradlew connectedDebugAndroidTest`
 
 Use an API 29 phone emulator as a compatibility spot-check when the change touches auth, insets, storage, or device-integration behavior.

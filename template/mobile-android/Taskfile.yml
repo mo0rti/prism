@@ -19,10 +19,20 @@ tasks:
     cmds:
       - "{{.GRADLEW}} assembleRelease"
 
+  bundle-release:
+    desc: Build release app bundle
+    cmds:
+      - "{{.GRADLEW}} bundleRelease"
+
   test:
     desc: Run unit tests
     cmds:
       - "{{.GRADLEW}} testDebugUnitTest"
+
+  test-compile-ui:
+    desc: Compile instrumentation and Compose UI test sources
+    cmds:
+      - "{{.GRADLEW}} compileDebugAndroidTestKotlin"
 
   test-ui:
     desc: Run instrumentation and Compose UI tests on a connected device/emulator

@@ -66,8 +66,11 @@ manually check the parent generated-project root when it is available.
 ```bash
 ./gradlew assembleDebug          # Build APK (or gradlew.bat on Windows)
 ./gradlew compileDebugKotlin     # Fast compile check
+./gradlew compileDebugAndroidTestKotlin  # Compile instrumentation / Compose UI tests
 ./gradlew testDebugUnitTest      # Unit tests
+./gradlew lintDebug              # Android lint checks
 ./gradlew connectedDebugAndroidTest  # Instrumentation / Compose UI tests
+./gradlew assembleRelease        # Release APK / shrinker validation
 ./gradlew installDebug           # Install on device
 adb devices                      # List connected devices/emulators
 ```
@@ -95,8 +98,8 @@ MVVM in a single `:app` module.
 - `AppResult<T>` instead of `kotlin.Result`
 - ViewModels map repository errors into `UiText` before exposing them
 - Dispatchers: Use `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` qualifiers
-- Tests: MockK + Turbine for unit tests, Compose UI tests under `app/src/androidTest/`
-- Emulator baseline: API 35 phone for standard UI verification; add API 29 phone when changes touch auth, insets, storage, or device behavior
+- Tests: MockK + Turbine for unit tests, Compose UI tests under `app/src/androidTest/`, and Hilt Android testing for instrumentation when DI overrides are needed
+- Emulator baseline: API 36 phone for standard UI verification; add API 29 phone when changes touch auth, insets, storage, or device behavior
 
 ## Doc-Sync Rule
 
@@ -108,7 +111,7 @@ When you change code, update the relevant documentation in `docs/` in the same s
 2. Verify API contract in `shared/api-contracts/openapi.yml`
 3. Plan DTO/API/repository/ViewModel/screen/navigation changes
 4. Implement using MVVM conventions
-5. Validate with `./gradlew compileDebugKotlin`, `./gradlew testDebugUnitTest`, and `./gradlew connectedDebugAndroidTest` on an emulator when UI behavior changes
+5. Validate with `./gradlew compileDebugKotlin`, targeted tests, `./gradlew lintDebug` when resources or manifests change, and `./gradlew connectedDebugAndroidTest` on an emulator when UI behavior changes
 6. Update affected docs
 
 ## Local Codex Skills
@@ -124,4 +127,5 @@ inside `mobile-android/`. From this folder, the expected location is:
 - `$android-build-verify` - pick the smallest trustworthy Gradle validation for Android changes
 - `$android-contract-alignment` - own DTO, Retrofit, enum, mapper, and auth-boundary contract decisions
 - `$android-feature-delivery` - coordinate larger feature work across docs, contracts, and platform code
+- `$android-testing` - own unit-test, Compose UI test, and Hilt-aware instrumentation patterns
 - `$compose-design-system` - own shared Compose UI language, reusable components, and screen-pattern reuse

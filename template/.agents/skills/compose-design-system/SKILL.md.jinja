@@ -21,6 +21,10 @@ Use this skill when Compose work should stay aligned with the app's shared UI la
 - Prefer shared tokens like `Spacing` plus `MaterialTheme.colorScheme`, `typography`, and `shapes` before introducing raw `dp`, hardcoded colors, or one-off text styles.
 - Put reusable components, modifiers, and drawing helpers in `designsystem/`; keep feature files focused on composition.
 - Keep user-facing text in `strings.xml` and resolve it with `stringResource(...)` or `UiText`.
+- Every owning activity for full-screen Compose content must call `enableEdgeToEdge()` before `setContent`. Preserve existing calls and add one when creating a new activity unless a platform-specific migration explicitly replaces that baseline.
+- Keep `android:windowSoftInputMode="adjustResize"` on form activities unless the IME behavior is intentionally redesigned and revalidated.
+- When using `Scaffold`, treat its `PaddingValues` as the first source of content insets. Do not stack competing inset strategies on the same container without a clear ownership reason.
+- Interactive custom surfaces must expose meaningful accessibility semantics, adequate touch targets, and must not rely on color alone to convey important state.
 
 ## Existing patterns to reuse
 

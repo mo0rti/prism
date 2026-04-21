@@ -48,11 +48,15 @@ Cover only the layers the feature truly needs:
 - Use `android-conventions` for repository-wide MVVM, DI, navigation, string, and doc-sync rules.
 - Use `android-contract-alignment` for DTO, enum, Retrofit, and auth-boundary decisions.
 - Use `compose-design-system` for shared UI language, reusable Compose primitives, and screen-level pattern reuse.
+- Use `android-testing` for Compose UI test patterns, ViewModel coroutine testing, and Hilt-aware instrumentation setup.
 - Use `android-build-verify` to choose the smallest trustworthy Gradle validation.
 
 ## 5. Execute and close out
 
 - Implement only the layers the feature actually touches.
+- If ViewModel or repository logic is added or changed, add at least one targeted unit test and confirm it passes with `./gradlew testDebugUnitTest` (or `gradlew.bat testDebugUnitTest` on Windows) before close-out.
+- If UI or a new Activity is added or changed, confirm `enableEdgeToEdge()` is called in the owning activity, `Scaffold` insets are handled through its `PaddingValues`, and accessibility semantics, touch targets, and text-scale resilience are still correct before close-out.
+- If resources, manifests, or accessibility-sensitive UI change, include `lintDebug` or a stronger validation task from `android-build-verify`.
 - Run at least `./gradlew compileDebugKotlin` (or `gradlew.bat` on Windows), plus stronger targeted verification when the change crosses logic, packaging, or integration boundaries.
 - Update any affected docs in `mobile-android/docs/` in the same session.
 
@@ -61,4 +65,5 @@ Cover only the layers the feature truly needs:
 - `android-conventions`
 - `android-contract-alignment`
 - `compose-design-system`
+- `android-testing`
 - `android-build-verify`

@@ -3,4 +3,4 @@ interface:
   short_description: "Pick the right Android Gradle validation step"
   default_prompt: "Use $android-build-verify to choose the right Android validation task for this change."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false
