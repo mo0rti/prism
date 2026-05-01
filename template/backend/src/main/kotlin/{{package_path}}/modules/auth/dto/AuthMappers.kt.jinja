@@ -1,0 +1,12 @@
+package {{ package_identifier }}.modules.auth.dto
+
+import {{ package_identifier }}.modules.auth.model.User
+
+fun User.toResponse() = UserResponse(
+    id = id,
+    email = email,
+    displayName = displayName,
+    avatarUrl = avatarUrl,
+    authProvider = authProvider,
+    role = role
+)

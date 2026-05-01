@@ -4,6 +4,7 @@ import {{ package_identifier }}.shared.model.ApiErrorResponse
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -27,6 +28,14 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(ApiErrorResponse(code = "VALIDATION_ERROR", message = "Validation failed", details = details))
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleUnreadableMessage(ex: HttpMessageNotReadableException): ResponseEntity<ApiErrorResponse> {
+        log.debug("Request body could not be read", ex)
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ApiErrorResponse(code = "INVALID_REQUEST", message = "Request body is invalid or incomplete"))
     }
 
     @ExceptionHandler(Exception::class)

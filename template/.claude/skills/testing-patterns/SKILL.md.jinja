@@ -137,6 +137,17 @@ class ExampleServiceIntegrationTest {
 | **Repository** | Custom queries | Integration test (real DB) |
 | **Controller** | Request mapping, validation, response codes | `@WebMvcTest` or integration test |
 
+## DTO Assertion Rules
+
+- Assert typed DTO fields using their real Kotlin types rather than their eventual serialized JSON representation
+- When a response DTO exposes enums, assert the enum values directly in service tests
+- Keep serialization-shape assertions in controller or integration tests, not in pure service tests
+
+## OAuth Client Testing
+
+- For code that calls external OAuth providers, prefer a mock web server or `MockRestServiceServer` to verify token exchange and user-info requests without hitting real providers
+- In higher-level auth service tests, mock or stub the OAuth client or service boundary instead of coupling every test to remote provider payload details
+
 ## Anti-Patterns
 
 - **Do NOT use Mockito** - use MockK for Kotlin (null-safety, extension functions)

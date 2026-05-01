@@ -6,13 +6,12 @@ spring:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/{{ project_slug | replace('-', '_') }}}
     driver-class-name: org.postgresql.Driver
     username: ${DATABASE_USERNAME:{{ project_slug | replace('-', '_') }}}
-    password: ${DATABASE_PASSWORD:{{ project_slug | replace('-', '_') }}}
+    password: ${DATABASE_PASSWORD:localdev}
 
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
 
   flyway:
     enabled: true
@@ -37,29 +36,29 @@ app:
     refresh-token-expiry: ${JWT_REFRESH_TOKEN_EXPIRY:604800}
 
   oauth:
-{% if "google" in auth_methods %}
+{% if "google" in auth_methods -%}
     google:
       client-id: ${GOOGLE_CLIENT_ID:}
       client-secret: ${GOOGLE_CLIENT_SECRET:}
       token-uri: https://oauth2.googleapis.com/token
       user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
-{% endif %}
-{% if "apple" in auth_methods %}
+{% endif -%}
+{% if "apple" in auth_methods -%}
     apple:
       client-id: ${APPLE_CLIENT_ID:}
       team-id: ${APPLE_TEAM_ID:}
       key-id: ${APPLE_KEY_ID:}
       private-key: ${APPLE_PRIVATE_KEY:}
       token-uri: https://appleid.apple.com/auth/token
-{% endif %}
-{% if "facebook" in auth_methods %}
+{% endif -%}
+{% if "facebook" in auth_methods -%}
     facebook:
       client-id: ${FACEBOOK_CLIENT_ID:}
       client-secret: ${FACEBOOK_CLIENT_SECRET:}
       token-uri: https://graph.facebook.com/v18.0/oauth/access_token
       user-info-uri: https://graph.facebook.com/v18.0/me?fields=id,name,email,picture
-{% endif %}
-{% if "microsoft" in auth_methods %}
+{% endif -%}
+{% if "microsoft" in auth_methods -%}
     microsoft:
       client-id: ${MICROSOFT_CLIENT_ID:}
       client-secret: ${MICROSOFT_CLIENT_SECRET:}

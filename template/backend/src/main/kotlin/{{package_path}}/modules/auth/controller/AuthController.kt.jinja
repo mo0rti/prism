@@ -1,36 +1,56 @@
 package {{ package_identifier }}.modules.auth.controller
 
-import {{ package_identifier }}.modules.auth.dto.*
+import {{ package_identifier }}.modules.auth.dto.AuthResponse
+{% if "password" in auth_methods %}
+import {{ package_identifier }}.modules.auth.dto.LoginRequest
+{% endif %}
+{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+import {{ package_identifier }}.modules.auth.dto.OAuthCallbackRequest
+{% endif %}
+import {{ package_identifier }}.modules.auth.dto.RefreshTokenRequest
+{% if "password" in auth_methods %}
+import {{ package_identifier }}.modules.auth.dto.RegisterRequest
+{% endif %}
+import {{ package_identifier }}.modules.auth.dto.UserResponse
 import {{ package_identifier }}.modules.auth.model.User
 import {{ package_identifier }}.modules.auth.service.AuthService
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
-import org.springframework.web.bind.annotation.*
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/v1/auth")
+@Tag(name = "Auth")
 class AuthController(
     private val authService: AuthService
 ) {
+{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
 
-{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
     @PostMapping("/oauth/callback")
+    @Operation(summary = "Authenticate with an OAuth provider callback")
     fun oauthCallback(@Valid @RequestBody request: OAuthCallbackRequest): ResponseEntity<AuthResponse> {
         val response = authService.oauthCallback(request)
         return ResponseEntity.ok(response)
     }
-{% endif %}
+{% endif %}{% if "password" in auth_methods %}
 
-{% if "password" in auth_methods %}
     @PostMapping("/register")
+    @Operation(summary = "Register a local user account")
     fun register(@Valid @RequestBody request: RegisterRequest): ResponseEntity<AuthResponse> {
         val response = authService.register(request)
         return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 
     @PostMapping("/login")
+    @Operation(summary = "Authenticate with email and password")
     fun login(@Valid @RequestBody request: LoginRequest): ResponseEntity<AuthResponse> {
         val response = authService.login(request)
         return ResponseEntity.ok(response)
@@ -38,12 +58,14 @@ class AuthController(
 {% endif %}
 
     @PostMapping("/refresh")
+    @Operation(summary = "Refresh access and refresh tokens")
     fun refreshToken(@Valid @RequestBody request: RefreshTokenRequest): ResponseEntity<AuthResponse> {
         val response = authService.refreshToken(request)
         return ResponseEntity.ok(response)
     }
 
     @GetMapping("/me")
+    @Operation(summary = "Get the current authenticated user")
     fun getCurrentUser(@AuthenticationPrincipal user: User): ResponseEntity<UserResponse> {
         val response = authService.getCurrentUser(user)
         return ResponseEntity.ok(response)

@@ -25,11 +25,9 @@ class SecurityConfig(
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
-                auth
-{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+                auth{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
                     .requestMatchers("/api/v1/auth/oauth/callback").permitAll()
-{% endif %}
-{% if "password" in auth_methods %}
+{% endif %}{% if "password" in auth_methods %}
                     .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login").permitAll()
 {% endif %}
                     .requestMatchers("/api/v1/auth/refresh").permitAll()
@@ -41,8 +39,8 @@ class SecurityConfig(
 
         return http.build()
     }
-
 {% if "password" in auth_methods %}
+
     @Bean
     fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
 {% endif %}

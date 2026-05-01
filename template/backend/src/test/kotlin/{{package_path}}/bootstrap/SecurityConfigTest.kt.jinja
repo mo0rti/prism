@@ -1,8 +1,12 @@
 package {{ package_identifier }}.bootstrap
 
+import {{ package_identifier }}.bootstrap.security.JwtTokenProvider
+import {{ package_identifier }}.modules.auth.model.AuthProvider
+import {{ package_identifier }}.modules.auth.model.User
+import {{ package_identifier }}.modules.auth.repository.UserRepository
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
@@ -19,6 +23,12 @@ class SecurityConfigTest {
     @Autowired
     private lateinit var mockMvc: MockMvc
 
+    @Autowired
+    private lateinit var userRepository: UserRepository
+
+    @Autowired
+    private lateinit var jwtTokenProvider: JwtTokenProvider
+
     @Test
     fun `me endpoint is not public`() {
         mockMvc.perform(get("/api/v1/auth/me"))
@@ -33,5 +43,21 @@ class SecurityConfigTest {
                 .content("{}")
         )
             .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `me endpoint rejects refresh token bearer authentication`() {
+        val user = userRepository.save(User(
+            email = "refresh@example.com",
+            displayName = "Refresh Token User",
+            authProvider = AuthProvider.LOCAL
+        ))
+        val refreshToken = jwtTokenProvider.generateRefreshToken(user)
+
+        mockMvc.perform(
+            get("/api/v1/auth/me")
+                .header("Authorization", "Bearer $refreshToken")
+        )
+            .andExpect(status().is4xxClientError)
     }
 }

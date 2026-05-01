@@ -1,5 +1,7 @@
+name: {{ project_slug }}
+
 services:
-{% if "backend" in platforms %}
+{% if "backend" in platforms -%}
   backend:
     build:
       context: ./backend
@@ -9,40 +11,40 @@ services:
     env_file:
       - .env
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DATABASE_NAME:-{{ project_slug | replace('-', '_') }}}
       SPRING_DATASOURCE_USERNAME: ${DATABASE_USERNAME:-{{ project_slug | replace('-', '_') }}}
       SPRING_DATASOURCE_PASSWORD: ${DATABASE_PASSWORD:-localdev}
-{% if "redis" in supporting_services %}
+{% if "redis" in supporting_services -%}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
-{% endif %}
+{% endif -%}
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-do-not-use-in-production}
       JWT_ACCESS_TOKEN_EXPIRY: ${JWT_ACCESS_TOKEN_EXPIRY:-3600}
       JWT_REFRESH_TOKEN_EXPIRY: ${JWT_REFRESH_TOKEN_EXPIRY:-604800}
-{% if "google" in auth_methods %}
+{% if "google" in auth_methods -%}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-{% endif %}
-{% if "apple" in auth_methods %}
+{% endif -%}
+{% if "apple" in auth_methods -%}
       APPLE_CLIENT_ID: ${APPLE_CLIENT_ID}
       APPLE_TEAM_ID: ${APPLE_TEAM_ID}
       APPLE_KEY_ID: ${APPLE_KEY_ID}
       APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY}
-{% endif %}
-{% if "facebook" in auth_methods %}
+{% endif -%}
+{% if "facebook" in auth_methods -%}
       FACEBOOK_CLIENT_ID: ${FACEBOOK_CLIENT_ID}
       FACEBOOK_CLIENT_SECRET: ${FACEBOOK_CLIENT_SECRET}
-{% endif %}
-{% if "microsoft" in auth_methods %}
+{% endif -%}
+{% if "microsoft" in auth_methods -%}
       MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID}
       MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET}
       MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID}
-{% endif %}
+{% endif -%}
     depends_on:
       db:
         condition: service_healthy
-{% if "redis" in supporting_services %}
+{% if "redis" in supporting_services -%}
       redis:
         condition: service_healthy
 {% endif %}

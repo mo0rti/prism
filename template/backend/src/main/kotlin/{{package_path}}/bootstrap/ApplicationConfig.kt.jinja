@@ -1,0 +1,48 @@
+package {{ package_identifier }}.bootstrap
+
+import java.net.InetAddress
+import org.springframework.boot.CommandLineRunner
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import org.springframework.core.env.Environment
+
+@Configuration
+class ApplicationConfig {
+
+    @Bean
+    fun applicationUrlPrinter(environment: Environment): CommandLineRunner = CommandLineRunner {
+        val port = environment.getProperty("local.server.port")
+            ?: environment.getProperty("server.port")
+            ?: "8080"
+        val contextPath = normalizeContextPath(environment.getProperty("server.servlet.context-path", "/"))
+        val protocol = if (environment.getProperty("server.ssl.enabled", "false").toBoolean()) "https" else "http"
+        val profiles = environment.activeProfiles.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "default"
+        val swaggerPath = environment.getProperty("springdoc.swagger-ui.path", "/swagger-ui.html")
+        val healthPath = "/actuator/health"
+        val localBaseUrl = "$protocol://localhost:$port$contextPath"
+
+        println("\n------------------------------------------------------------")
+        println("Prism backend is running! Access URLs:")
+        println("Local:      $localBaseUrl")
+        println("Swagger:    $localBaseUrl${normalizeRelativePath(swaggerPath)}")
+        println("Health:     $localBaseUrl$healthPath")
+        try {
+            val hostAddress = InetAddress.getLocalHost().hostAddress
+            println("External:   $protocol://$hostAddress:$port$contextPath")
+        } catch (_: Exception) {
+            // Ignore if we can't determine the host address on this machine.
+        }
+        println("Profiles:   $profiles")
+        println("------------------------------------------------------------\n")
+    }
+
+    private fun normalizeContextPath(contextPath: String): String =
+        when {
+            contextPath.isBlank() || contextPath == "/" -> ""
+            contextPath.startsWith("/") -> contextPath.removeSuffix("/")
+            else -> "/${contextPath.removeSuffix("/")}"
+        }
+
+    private fun normalizeRelativePath(path: String): String =
+        if (path.startsWith("/")) path else "/$path"
+}

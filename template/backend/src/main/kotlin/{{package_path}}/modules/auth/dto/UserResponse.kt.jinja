@@ -1,0 +1,14 @@
+package {{ package_identifier }}.modules.auth.dto
+
+import {{ package_identifier }}.modules.auth.model.AuthProvider
+import {{ package_identifier }}.modules.auth.model.UserRole
+import java.util.UUID
+
+data class UserResponse(
+    val id: UUID,
+    val email: String,
+    val displayName: String,
+    val avatarUrl: String?,
+    val authProvider: AuthProvider,
+    val role: UserRole
+)

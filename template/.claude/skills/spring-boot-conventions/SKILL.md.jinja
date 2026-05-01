@@ -66,29 +66,29 @@ class SomeService(
 ```
 
 - Use `@Transactional` on write methods, `@Transactional(readOnly = true)` on read methods
+- Keep database transactions narrow; do NOT hold them open across outbound HTTP, OAuth, or other network calls
 - Services are the only layer that converts between entities and DTOs
 - Throw exceptions for error cases - `GlobalExceptionHandler` converts them to HTTP responses
 - Never call `@Transactional` methods from the same class (proxy bypass)
+- Do NOT rely on `@Transactional` on private methods; Spring proxy-based transaction management will not intercept them
 
 ## DTO Conventions
 
 Two mapping patterns are used:
 
-### 1. Extension functions (preferred for simple mappings)
+### 1. Extension functions (default for pure mappings)
 
 ```kotlin
-// In the DTO file or a dedicated mapper file
+// In a dedicated mapper file
 fun SomeEntity.toDto() = SomeDto(
     id = this.id,
     name = this.name
 )
 
-fun CreateSomethingRequest.toEntity() = SomeEntity(
-    name = this.name
-)
+fun CreateSomethingRequest.toEntity() = SomeEntity(name = this.name)
 ```
 
-### 2. @Component mapper classes (for complex mappings with dependencies)
+### 2. @Component mapper classes (only when mapping needs dependencies)
 
 ```kotlin
 @Component
@@ -98,9 +98,33 @@ class SomeMapper(private val otherService: OtherService) {
 ```
 
 - DTOs are data classes in the `dto/` package
+- Keep each DTO class in its own Kotlin file so type ownership, reuse, navigation, and refactoring remain predictable as modules grow
 - Entities are NEVER serialized directly to JSON - always map to DTOs
 - Request DTOs are separate from response DTOs when shapes differ
 - Use summary DTOs for list views, full DTOs for detail views (don't over-fetch)
+- Default to manual mapping functions for pure entity/DTO transformations
+- Keep mapper logic pure: no repository access, permission checks, state transitions, or other business rules
+- Use Spring-managed mapper classes only when mapping genuinely needs injected collaborators
+- Preserve domain enums in response DTOs when the API contract owns those enums; avoid flattening them to raw strings without a concrete contract reason
+
+## Internal Models
+
+- Put reusable non-entity domain value objects and normalized integration models in `model/` unless a dedicated subpackage makes the boundary clearer
+- Do NOT use `service/` as a catch-all for helper data classes
+- Prefer explicit names such as `*Profile`, `*Details`, or `*State` so internal models are not confused with API DTOs or entities
+
+## Configuration Conventions
+
+- Prefer typed `@ConfigurationProperties` classes for medium-to-large backend configuration
+- Group config classes under a package such as `bootstrap/properties`
+- Inject typed config objects into services and bootstrap components rather than scattering repeated property keys with `@Value`
+- Reserve `@Value` for small one-off wiring cases only
+
+## File Organization Conventions
+
+- Keep each entity, enum, DTO, and reusable value object in its own Kotlin file
+- Do NOT group multiple DTO classes into a single `*Dtos.kt` file
+- Do NOT keep reusable enums inside an entity file; place them in dedicated files under `model/`
 
 ## Repository Conventions
 

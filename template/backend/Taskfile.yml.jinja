@@ -5,10 +5,12 @@ vars:
 
 tasks:
   run:
-    desc: Run the backend server
+    desc: Run the backend server with the local profile
     dotenv:
       - ../.env
       - ../.env.example
+    env:
+      SPRING_PROFILES_ACTIVE: local
     cmds:
       - "{{'{{'}}.GRADLEW{{'}}'}} bootRun"
 

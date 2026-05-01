@@ -1,0 +1,15 @@
+package {{ package_identifier }}.modules.transactions.dto
+
+import {{ package_identifier }}.modules.transactions.model.TransactionType
+import jakarta.validation.constraints.DecimalMin
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Size
+import java.math.BigDecimal
+
+data class CreateTransactionRequest(
+    @field:DecimalMin("0.01") val amount: BigDecimal,
+    @field:NotBlank @field:Pattern(regexp = "^[A-Z]{3}$") val currency: String,
+    @field:Size(max = 2000) val description: String? = null,
+    val type: TransactionType
+)

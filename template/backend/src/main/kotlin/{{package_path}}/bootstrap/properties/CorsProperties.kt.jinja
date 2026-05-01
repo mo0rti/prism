@@ -1,0 +1,12 @@
+package {{ package_identifier }}.bootstrap.properties
+
+import jakarta.validation.constraints.NotEmpty
+import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.validation.annotation.Validated
+
+@Validated
+@ConfigurationProperties(prefix = "app.cors")
+data class CorsProperties(
+    @field:NotEmpty
+    val allowedOrigins: List<String> = listOf("http://localhost:3000", "http://localhost:3001")
+)

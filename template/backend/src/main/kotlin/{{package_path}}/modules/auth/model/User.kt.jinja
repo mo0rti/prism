@@ -1,7 +1,12 @@
 package {{ package_identifier }}.modules.auth.model
 
 import {{ package_identifier }}.shared.audit.AuditableEntity
-import jakarta.persistence.*
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
+import jakarta.persistence.Id
+import jakarta.persistence.Table
 import java.util.UUID
 
 @Entity
@@ -33,11 +38,3 @@ class User(
     @Enumerated(EnumType.STRING)
     var role: UserRole = UserRole.USER
 ) : AuditableEntity()
-
-enum class AuthProvider {
-    LOCAL, GOOGLE, APPLE, FACEBOOK, MICROSOFT
-}
-
-enum class UserRole {
-    USER, ADMIN
-}

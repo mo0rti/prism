@@ -1,0 +1,16 @@
+package {{ package_identifier }}.modules.transactions.dto
+
+import {{ package_identifier }}.modules.transactions.model.Transaction
+
+fun Transaction.toResponse() = TransactionResponse(
+    id = id,
+    reference = reference,
+    amount = amount,
+    currency = currency,
+    description = description,
+    type = type,
+    status = status,
+    createdBy = createdBy.id,
+    createdAt = createdAt,
+    updatedAt = updatedAt
+)

@@ -1,10 +1,10 @@
 package {{ package_identifier }}.bootstrap.security
 
+import {{ package_identifier }}.bootstrap.properties.JwtProperties
 import {{ package_identifier }}.modules.auth.model.User
 import io.jsonwebtoken.Claims
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.util.Date
 import java.util.UUID
@@ -12,29 +12,35 @@ import javax.crypto.SecretKey
 
 @Component
 class JwtTokenProvider(
-    @Value("\${app.jwt.secret}") private val jwtSecret: String,
-    @Value("\${app.jwt.access-token-expiry:3600}") private val accessTokenExpiry: Long,
-    @Value("\${app.jwt.refresh-token-expiry:604800}") private val refreshTokenExpiry: Long
+    private val jwtProperties: JwtProperties
 ) {
+    private companion object {
+        const val TOKEN_TYPE_CLAIM = "type"
+        const val ACCESS_TOKEN_TYPE = "access"
+        const val REFRESH_TOKEN_TYPE = "refresh"
+    }
+
     private val key: SecretKey by lazy {
-        Keys.hmacShaKeyFor(jwtSecret.toByteArray())
+        Keys.hmacShaKeyFor(jwtProperties.secret.toByteArray())
     }
 
     fun generateAccessToken(user: User): String = generateToken(
         userId = user.id,
         email = user.email,
         role = user.role.name,
-        expirySeconds = accessTokenExpiry
+        expirySeconds = jwtProperties.accessTokenExpiry,
+        tokenType = ACCESS_TOKEN_TYPE
     )
 
     fun generateRefreshToken(user: User): String = generateToken(
         userId = user.id,
         email = user.email,
         role = user.role.name,
-        expirySeconds = refreshTokenExpiry
+        expirySeconds = jwtProperties.refreshTokenExpiry,
+        tokenType = REFRESH_TOKEN_TYPE
     )
 
-    fun getAccessTokenExpiry(): Long = accessTokenExpiry
+    fun getAccessTokenExpiry(): Long = jwtProperties.accessTokenExpiry
 
     fun validateToken(token: String): Boolean = try {
         val claims = parseToken(token)
@@ -43,10 +49,20 @@ class JwtTokenProvider(
         false
     }
 
+    fun validateAccessToken(token: String): Boolean = validateTokenType(token, ACCESS_TOKEN_TYPE)
+
+    fun validateRefreshToken(token: String): Boolean = validateTokenType(token, REFRESH_TOKEN_TYPE)
+
     fun getUserIdFromToken(token: String): UUID =
         UUID.fromString(parseToken(token).subject)
 
-    private fun generateToken(userId: UUID, email: String, role: String, expirySeconds: Long): String {
+    private fun generateToken(
+        userId: UUID,
+        email: String,
+        role: String,
+        expirySeconds: Long,
+        tokenType: String
+    ): String {
         val now = Date()
         val expiry = Date(now.time + expirySeconds * 1000)
 
@@ -54,10 +70,18 @@ class JwtTokenProvider(
             .subject(userId.toString())
             .claim("email", email)
             .claim("role", role)
+            .claim(TOKEN_TYPE_CLAIM, tokenType)
             .issuedAt(now)
             .expiration(expiry)
             .signWith(key)
             .compact()
+    }
+
+    private fun validateTokenType(token: String, expectedType: String): Boolean = try {
+        val claims = parseToken(token)
+        !claims.expiration.before(Date()) && claims[TOKEN_TYPE_CLAIM] == expectedType
+    } catch (_: Exception) {
+        false
     }
 
     private fun parseToken(token: String): Claims =

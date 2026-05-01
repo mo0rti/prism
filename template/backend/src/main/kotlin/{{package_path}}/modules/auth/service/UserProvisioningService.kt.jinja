@@ -1,0 +1,47 @@
+package {{ package_identifier }}.modules.auth.service
+
+import {{ package_identifier }}.modules.auth.model.AuthProvider
+import {{ package_identifier }}.modules.auth.model.OAuthUserProfile
+import {{ package_identifier }}.modules.auth.model.User
+import {{ package_identifier }}.modules.auth.repository.UserRepository
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+
+@Service
+class UserProvisioningService(
+    private val userRepository: UserRepository
+) {
+
+    @Transactional
+    fun provisionOAuthUser(provider: AuthProvider, userProfile: OAuthUserProfile): User {
+        val existing = userRepository.findByAuthProviderAndProviderId(provider, userProfile.providerId)
+        if (existing != null) {
+            existing.displayName = userProfile.displayName
+            existing.avatarUrl = userProfile.avatarUrl
+            return userRepository.save(existing)
+        }
+
+        val byEmail = userRepository.findByEmail(userProfile.email)
+        if (byEmail != null) {
+            byEmail.authProvider = provider
+            byEmail.providerId = userProfile.providerId
+            byEmail.avatarUrl = userProfile.avatarUrl
+            return userRepository.save(byEmail)
+        }
+
+        return userRepository.save(
+            User(
+                email = userProfile.email,
+                displayName = userProfile.displayName,
+                avatarUrl = userProfile.avatarUrl,
+                authProvider = provider,
+                providerId = userProfile.providerId
+            )
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun findExistingOAuthUser(provider: AuthProvider, userProfile: OAuthUserProfile): User? =
+        userRepository.findByAuthProviderAndProviderId(provider, userProfile.providerId)
+            ?: userRepository.findByEmail(userProfile.email)
+}

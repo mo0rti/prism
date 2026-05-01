@@ -5,9 +5,9 @@ import {{ package_identifier }}.modules.auth.model.*
 import {{ package_identifier }}.modules.auth.repository.UserRepository
 import {{ package_identifier }}.modules.auth.service.AuthService
 import {{ package_identifier }}.bootstrap.security.JwtTokenProvider
+import {{ package_identifier }}.shared.exception.UnauthorizedException
 {% if "password" in auth_methods %}
 import {{ package_identifier }}.shared.exception.ConflictException
-import {{ package_identifier }}.shared.exception.UnauthorizedException
 {% endif %}
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -48,7 +48,8 @@ class AuthServiceTest {
         assertNotNull(response.refreshToken)
         assertEquals("test@example.com", response.user.email)
         assertEquals("Test User", response.user.displayName)
-        assertTrue(jwtTokenProvider.validateToken(response.accessToken))
+        assertTrue(jwtTokenProvider.validateAccessToken(response.accessToken))
+        assertTrue(jwtTokenProvider.validateRefreshToken(response.refreshToken))
     }
 
     @Test
@@ -112,6 +113,21 @@ class AuthServiceTest {
 
         assertNotNull(response.accessToken)
         assertNotNull(response.refreshToken)
+    }
+
+    @Test
+    fun `refresh rejects access token`() {
+        val user = userRepository.save(User(
+            email = "test@example.com",
+            displayName = "Test User",
+            authProvider = AuthProvider.LOCAL
+        ))
+
+        val accessToken = jwtTokenProvider.generateAccessToken(user)
+
+        assertThrows(UnauthorizedException::class.java) {
+            authService.refreshToken(RefreshTokenRequest(accessToken))
+        }
     }
 
     @Test

@@ -31,6 +31,16 @@ command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
 - **Test**: `./gradlew test`
 - **Port**: 8080 (configurable via `PORT` env var)
 
+### Local Run Prerequisites
+
+Before running the backend locally:
+
+1. Start PostgreSQL with `docker compose up -d db` from the generated project root.
+2. Use the `local` Spring profile for IDE runs.
+3. If you want real OAuth locally, replace the placeholder provider values from `application-local.yml` with real credentials through your IDE environment variables or local overrides.
+
+The `local` profile exists to make first startup succeed without immediately requiring real OAuth credentials. OAuth callbacks will not work with the placeholder values.
+
 ## Critical Rules
 
 ### Forbidden Patterns
@@ -45,6 +55,7 @@ command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
 - **Jackson 3.x split namespace**: core annotations stay at `com.fasterxml.jackson.annotation.*`, runtime classes moved to `tools.jackson.*`. There is NO `tools.jackson.annotation` package.
 - **Entity IDs**: always `lateinit var id: UUID` in the class body - never make it nullable (`UUID? = null`) as that causes cascading compile errors. Use `!::id.isInitialized` in equals/hashCode.
 - **Inject ObjectMapper**: Spring beans must inject `tools.jackson.databind.ObjectMapper`, never create standalone `jacksonObjectMapper()`.
+- **File granularity**: keep each DTO, entity, enum, and reusable value object in its own Kotlin file. Avoid `*Dtos.kt` aggregator files and avoid nesting reusable enums inside entity files.
 
 ## Architecture
 
@@ -63,12 +74,12 @@ src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
       model/         - User entity + enums
       repository/    - JPA repository
       service/       - Auth + OAuth2 business logic
-    example/         - Example CRUD feature (template for new features)
+    transactions/    - Transaction workflow example (template for new features)
       controller/    - REST endpoints
       dto/           - Request/response data classes
-      model/         - Example entity + enums
+      model/         - Transaction entity + enums
       repository/    - JPA repository
-      service/       - Business logic + permission checks
+      service/       - Business logic + visibility rules
 ```
 
 ## Conventions

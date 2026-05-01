@@ -15,17 +15,30 @@ CREATE TABLE users (
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_provider ON users(auth_provider, provider_id);
 
--- Examples table (placeholder CRUD)
-CREATE TABLE examples (
-    id UUID PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
+-- Transactions table
+CREATE TABLE transactions (
+    id UUID NOT NULL,
+    reference VARCHAR(40) NOT NULL UNIQUE,
+    amount DECIMAL(19, 2) NOT NULL,
+    currency VARCHAR(3) NOT NULL,
     description VARCHAR(2000),
-    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
-    created_by UUID NOT NULL REFERENCES users(id),
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    type VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    created_by UUID NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_transactions PRIMARY KEY (id),
+    CONSTRAINT fk_transactions_users
+        FOREIGN KEY (created_by) REFERENCES users(id),
+    CONSTRAINT chk_transactions_type
+        CHECK (type = ANY (ARRAY['CHARGE', 'REFUND', 'PAYOUT'])),
+    CONSTRAINT chk_transactions_status
+        CHECK (status = ANY (ARRAY['PENDING', 'SETTLED', 'FAILED', 'CANCELLED'])),
+    CONSTRAINT chk_transactions_currency
+        CHECK (char_length(currency) = 3)
 );
 
-CREATE INDEX idx_examples_status ON examples(status);
-CREATE INDEX idx_examples_created_by ON examples(created_by);
-CREATE INDEX idx_examples_created_at ON examples(created_at DESC);
+CREATE INDEX idx_transactions_status ON transactions(status);
+CREATE INDEX idx_transactions_created_by ON transactions(created_by);
+CREATE INDEX idx_transactions_created_at ON transactions(created_at DESC);
+CREATE INDEX idx_transactions_reference ON transactions(reference);

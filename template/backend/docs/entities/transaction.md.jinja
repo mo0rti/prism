@@ -1,0 +1,61 @@
+# Entity: Transaction
+
+## Description
+A business transaction representing a charge, refund, or payout initiated by an authenticated user.
+
+## Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| id | UUID | Yes | Primary key |
+| reference | String | Yes | Human-friendly unique transaction reference |
+| amount | Decimal | Yes | Monetary amount for the transaction |
+| currency | String | Yes | ISO 4217 currency code such as EUR or USD |
+| description | String | No | Optional note describing the transaction |
+| type | Enum | Yes | Type: CHARGE, REFUND, PAYOUT |
+| status | Enum | Yes | Status: PENDING, SETTLED, FAILED, CANCELLED |
+| createdBy | UUID | Yes | FK to User who created this transaction |
+| createdAt | DateTime | Yes | Creation timestamp |
+| updatedAt | DateTime | Yes | Last update timestamp |
+
+## Relationships
+
+- **belongs to** [User](user.md) - the operator who created this transaction
+
+## Validation Rules
+
+- `reference`: generated automatically and unique
+- `amount`: must be greater than zero
+- `currency`: must be a 3-letter uppercase code
+- `description`: max 2000 characters
+- `status`: defaults to PENDING
+
+## Business Logic
+
+- Only the creator or admins can update/delete a transaction
+- Only pending transactions can change status or be deleted
+- Settled transactions are visible to all authenticated users
+- Pending, failed, and cancelled transactions are visible only to the creator or admins
+
+## Database
+
+- **Table name**: `transactions`
+- **Indexes**: indexes on `reference`, `created_by`, `status`, `created_at`
+- **Migration**: `V1__init.sql`
+
+## API Representation
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "reference": "TX-8F4C2B19",
+  "amount": 149.99,
+  "currency": "EUR",
+  "description": "Pro subscription renewal",
+  "type": "CHARGE",
+  "status": "SETTLED",
+  "createdBy": "550e8400-e29b-41d4-a716-446655440001",
+  "createdAt": "2024-01-01T00:00:00Z",
+  "updatedAt": "2024-01-01T00:00:00Z"
+}
+```

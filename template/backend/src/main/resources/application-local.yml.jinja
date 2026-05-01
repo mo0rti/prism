@@ -1,0 +1,32 @@
+app:
+  oauth:
+{% if "google" in auth_methods -%}
+    google:
+      client-id: local-google-client-id
+      client-secret: local-google-client-secret
+      token-uri: https://oauth2.googleapis.com/token
+      user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+{% endif -%}
+{% if "apple" in auth_methods -%}
+    apple:
+      client-id: local-apple-client-id
+      team-id: local-apple-team-id
+      key-id: local-apple-key-id
+      private-key: local-apple-private-key
+      token-uri: https://appleid.apple.com/auth/token
+{% endif -%}
+{% if "facebook" in auth_methods -%}
+    facebook:
+      client-id: local-facebook-client-id
+      client-secret: local-facebook-client-secret
+      token-uri: https://graph.facebook.com/v18.0/oauth/access_token
+      user-info-uri: https://graph.facebook.com/v18.0/me?fields=id,name,email,picture
+{% endif -%}
+{% if "microsoft" in auth_methods -%}
+    microsoft:
+      client-id: local-microsoft-client-id
+      client-secret: local-microsoft-client-secret
+      tenant-id: local-tenant-id
+      token-uri: https://login.microsoftonline.com/local-tenant-id/oauth2/v2.0/token
+      user-info-uri: https://graph.microsoft.com/v1.0/me
+{% endif %}

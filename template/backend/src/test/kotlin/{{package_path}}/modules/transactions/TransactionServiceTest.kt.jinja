@@ -1,0 +1,248 @@
+package {{ package_identifier }}.modules.transactions
+
+import {{ package_identifier }}.modules.auth.model.AuthProvider
+import {{ package_identifier }}.modules.auth.model.User
+import {{ package_identifier }}.modules.auth.model.UserRole
+import {{ package_identifier }}.modules.transactions.dto.CreateTransactionRequest
+import {{ package_identifier }}.modules.transactions.dto.UpdateTransactionRequest
+import {{ package_identifier }}.modules.transactions.model.Transaction
+import {{ package_identifier }}.modules.transactions.model.TransactionStatus
+import {{ package_identifier }}.modules.transactions.model.TransactionType
+import {{ package_identifier }}.modules.transactions.repository.TransactionRepository
+import {{ package_identifier }}.modules.transactions.service.TransactionService
+import {{ package_identifier }}.shared.exception.BadRequestException
+import {{ package_identifier }}.shared.exception.ForbiddenException
+import {{ package_identifier }}.shared.exception.NotFoundException
+import io.mockk.clearAllMocks
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockk
+import io.mockk.runs
+import io.mockk.slot
+import io.mockk.verify
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.Test
+import java.math.BigDecimal
+import java.util.Optional
+import java.util.UUID
+
+@DisplayName("TransactionService")
+class TransactionServiceTest {
+
+    private val transactionRepository = mockk<TransactionRepository>()
+
+    private lateinit var transactionService: TransactionService
+    private lateinit var testUser: User
+    private lateinit var otherUser: User
+    private lateinit var adminUser: User
+
+    @BeforeEach
+    fun setup() {
+        transactionService = TransactionService(transactionRepository)
+
+        testUser = User(
+            id = UUID.fromString("11111111-1111-1111-1111-111111111111"),
+            email = "test@example.com",
+            displayName = "Test User",
+            authProvider = AuthProvider.LOCAL
+        )
+        otherUser = User(
+            id = UUID.fromString("22222222-2222-2222-2222-222222222222"),
+            email = "other@example.com",
+            displayName = "Other User",
+            authProvider = AuthProvider.LOCAL
+        )
+        adminUser = User(
+            id = UUID.fromString("33333333-3333-3333-3333-333333333333"),
+            email = "admin@example.com",
+            displayName = "Admin User",
+            authProvider = AuthProvider.LOCAL,
+            role = UserRole.ADMIN
+        )
+    }
+
+    @AfterEach
+    fun tearDown() {
+        clearAllMocks()
+    }
+
+    @Nested
+    @DisplayName("create")
+    inner class Create {
+        @Test
+        fun `returns a pending transaction response with generated reference`() {
+            val captured = slot<Transaction>()
+            every { transactionRepository.save(capture(captured)) } answers {
+                captured.captured.apply {
+                    id = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+                }
+            }
+
+            val response = transactionService.create(testUser, CreateTransactionRequest(
+                amount = BigDecimal("149.99"),
+                currency = "EUR",
+                description = "Pro subscription renewal",
+                type = TransactionType.CHARGE
+            ))
+
+            assertTrue(response.reference.startsWith("TX-"))
+            assertEquals(0, response.amount.compareTo(BigDecimal("149.99")))
+            assertEquals("EUR", response.currency)
+            assertEquals("Pro subscription renewal", response.description)
+            assertEquals(TransactionType.CHARGE, response.type)
+            assertEquals(TransactionStatus.PENDING, response.status)
+            assertEquals(testUser.id, response.createdBy)
+            verify(exactly = 1) { transactionRepository.save(any()) }
+        }
+    }
+
+    @Nested
+    @DisplayName("getById")
+    inner class GetById {
+        @Test
+        fun `returns response when transaction is visible to current user`() {
+            val transaction = transaction(
+                owner = testUser,
+                status = TransactionStatus.PENDING,
+                id = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+            )
+            every { transactionRepository.findById(transaction.id) } returns Optional.of(transaction)
+
+            val response = transactionService.getById(testUser, transaction.id)
+
+            assertEquals(transaction.id, response.id)
+            assertEquals("EUR", response.currency)
+        }
+
+        @Test
+        fun `throws transaction not found when id is missing`() {
+            val missingId = UUID.randomUUID()
+            every { transactionRepository.findById(missingId) } returns Optional.empty()
+
+            val exception = assertThrows(NotFoundException::class.java) {
+                transactionService.getById(testUser, missingId)
+            }
+
+            assertEquals("TRANSACTION_NOT_FOUND", exception.code)
+        }
+
+        @Test
+        fun `hides non settled transactions from other non admin users`() {
+            val transaction = transaction(owner = testUser, status = TransactionStatus.PENDING)
+            every { transactionRepository.findById(transaction.id) } returns Optional.of(transaction)
+
+            val exception = assertThrows(NotFoundException::class.java) {
+                transactionService.getById(otherUser, transaction.id)
+            }
+
+            assertEquals("TRANSACTION_NOT_FOUND", exception.code)
+        }
+    }
+
+    @Nested
+    @DisplayName("update")
+    inner class Update {
+        @Test
+        fun `updates own transaction`() {
+            val transaction = transaction(owner = testUser, status = TransactionStatus.PENDING)
+            every { transactionRepository.findById(transaction.id) } returns Optional.of(transaction)
+            every { transactionRepository.save(transaction) } returns transaction
+
+            val updated = transactionService.update(testUser, transaction.id, UpdateTransactionRequest(
+                description = "Settlement completed",
+                status = TransactionStatus.SETTLED
+            ))
+
+            assertEquals("Settlement completed", updated.description)
+            assertEquals(TransactionStatus.SETTLED, updated.status)
+        }
+
+        @Test
+        fun `throws forbidden when another user updates transaction`() {
+            val transaction = transaction(owner = testUser)
+            every { transactionRepository.findById(transaction.id) } returns Optional.of(transaction)
+
+            val exception = assertThrows(ForbiddenException::class.java) {
+                transactionService.update(otherUser, transaction.id, UpdateTransactionRequest(description = "Tampered"))
+            }
+
+            assertEquals("TRANSACTION_MODIFICATION_FORBIDDEN", exception.code)
+        }
+
+        @Test
+        fun `throws bad request when changing status from non pending transaction`() {
+            val transaction = transaction(owner = testUser, status = TransactionStatus.SETTLED)
+            every { transactionRepository.findById(transaction.id) } returns Optional.of(transaction)
+
+            val exception = assertThrows(BadRequestException::class.java) {
+                transactionService.update(testUser, transaction.id, UpdateTransactionRequest(status = TransactionStatus.FAILED))
+            }
+
+            assertEquals("TRANSACTION_STATUS_TRANSITION_NOT_ALLOWED", exception.code)
+        }
+    }
+
+    @Nested
+    @DisplayName("delete")
+    inner class Delete {
+        @Test
+        fun `deletes own pending transaction`() {
+            val transaction = transaction(owner = testUser, status = TransactionStatus.PENDING)
+            every { transactionRepository.findById(transaction.id) } returns Optional.of(transaction)
+            every { transactionRepository.delete(transaction) } just runs
+
+            transactionService.delete(testUser, transaction.id)
+
+            verify(exactly = 1) { transactionRepository.delete(transaction) }
+        }
+
+        @Test
+        fun `throws bad request when deleting non pending transaction`() {
+            val transaction = transaction(owner = testUser, status = TransactionStatus.SETTLED)
+            every { transactionRepository.findById(transaction.id) } returns Optional.of(transaction)
+
+            val exception = assertThrows(BadRequestException::class.java) {
+                transactionService.delete(testUser, transaction.id)
+            }
+
+            assertEquals("TRANSACTION_DELETE_NOT_ALLOWED", exception.code)
+        }
+    }
+
+    @Nested
+    @DisplayName("list")
+    inner class List {
+        @Test
+        fun `throws bad request when sort field is unsupported`() {
+            val exception = assertThrows(BadRequestException::class.java) {
+                transactionService.list(testUser, page = 0, size = 20, sort = "unknown,desc")
+            }
+
+            assertEquals("INVALID_SORT_FIELD", exception.code)
+        }
+    }
+
+    private fun transaction(
+        owner: User,
+        status: TransactionStatus = TransactionStatus.PENDING,
+        id: UUID = UUID.randomUUID()
+    ): Transaction {
+        val transaction = Transaction(
+            reference = "TX-1234ABCD",
+            amount = BigDecimal("49.99"),
+            currency = "EUR",
+            description = "Demo transaction",
+            type = TransactionType.CHARGE,
+            status = status,
+            createdBy = owner
+        )
+        transaction.id = id
+        return transaction
+    }
+}

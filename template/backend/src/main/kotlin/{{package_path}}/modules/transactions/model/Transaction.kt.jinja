@@ -1,0 +1,61 @@
+package {{ package_identifier }}.modules.transactions.model
+
+import {{ package_identifier }}.modules.auth.model.User
+import {{ package_identifier }}.shared.audit.AuditableEntity
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
+import jakarta.persistence.FetchType
+import jakarta.persistence.GeneratedValue
+import jakarta.persistence.GenerationType
+import jakarta.persistence.Id
+import jakarta.persistence.JoinColumn
+import jakarta.persistence.ManyToOne
+import jakarta.persistence.Table
+import java.math.BigDecimal
+import java.util.UUID
+
+@Entity
+@Table(name = "transactions")
+class Transaction(
+    @Column(nullable = false, unique = true, length = 40)
+    val reference: String,
+
+    @Column(nullable = false, precision = 19, scale = 2)
+    var amount: BigDecimal,
+
+    @Column(nullable = false, length = 3)
+    var currency: String,
+
+    @Column(length = 2000)
+    var description: String? = null,
+
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    var type: TransactionType,
+
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    var status: TransactionStatus = TransactionStatus.PENDING,
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by", nullable = false)
+    var createdBy: User
+) : AuditableEntity() {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(columnDefinition = "uuid")
+    lateinit var id: UUID
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is Transaction) return false
+        return if (!::id.isInitialized) false else id == other.id
+    }
+
+    override fun hashCode(): Int {
+        return if (!::id.isInitialized) javaClass.hashCode() else id.hashCode()
+    }
+}

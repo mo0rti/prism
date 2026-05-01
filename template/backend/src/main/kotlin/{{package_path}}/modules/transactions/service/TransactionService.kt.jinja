@@ -1,0 +1,158 @@
+package {{ package_identifier }}.modules.transactions.service
+
+import {{ package_identifier }}.modules.auth.model.User
+import {{ package_identifier }}.modules.auth.model.UserRole
+import {{ package_identifier }}.modules.transactions.dto.CreateTransactionRequest
+import {{ package_identifier }}.modules.transactions.dto.TransactionResponse
+import {{ package_identifier }}.modules.transactions.dto.UpdateTransactionRequest
+import {{ package_identifier }}.modules.transactions.dto.toResponse
+import {{ package_identifier }}.modules.transactions.model.Transaction
+import {{ package_identifier }}.modules.transactions.model.TransactionStatus
+import {{ package_identifier }}.modules.transactions.repository.TransactionRepository
+import {{ package_identifier }}.shared.exception.BadRequestException
+import {{ package_identifier }}.shared.exception.ForbiddenException
+import {{ package_identifier }}.shared.exception.NotFoundException
+import {{ package_identifier }}.shared.model.PagedResponse
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
+
+@Service
+class TransactionService(
+    private val transactionRepository: TransactionRepository
+) {
+
+    private val supportedSortFields = setOf("createdAt", "amount", "reference", "status")
+
+    @Transactional(readOnly = true)
+    fun list(user: User, page: Int, size: Int, sort: String): PagedResponse<TransactionResponse> {
+        val (sortField, sortDir) = parseSortParam(sort)
+        val pageable = PageRequest.of(page, size, Sort.by(sortDir, sortField))
+        val results = if (user.role == UserRole.ADMIN) {
+            transactionRepository.findAll(pageable)
+        } else {
+            transactionRepository.findVisibleByUser(user.id, pageable)
+        }
+        return PagedResponse.from(results) { it.toResponse() }
+    }
+
+    @Transactional
+    fun create(user: User, request: CreateTransactionRequest): TransactionResponse {
+        val transaction = transactionRepository.save(
+            Transaction(
+                reference = generateReference(),
+                amount = request.amount,
+                currency = request.currency,
+                description = request.description,
+                type = request.type,
+                createdBy = user
+            )
+        )
+        return transaction.toResponse()
+    }
+
+    @Transactional(readOnly = true)
+    fun getById(user: User, id: UUID): TransactionResponse {
+        val transaction = findOrThrow(id)
+        checkVisible(user, transaction)
+        return transaction.toResponse()
+    }
+
+    @Transactional
+    fun update(user: User, id: UUID, request: UpdateTransactionRequest): TransactionResponse {
+        val transaction = findOrThrow(id)
+        checkOwnerOrAdmin(user, transaction)
+
+        request.description?.let { transaction.description = it }
+        request.status?.let { transaction.status = transitionStatus(transaction.status, it) }
+
+        return transactionRepository.save(transaction).toResponse()
+    }
+
+    @Transactional
+    fun delete(user: User, id: UUID) {
+        val transaction = findOrThrow(id)
+        checkOwnerOrAdmin(user, transaction)
+        if (transaction.status != TransactionStatus.PENDING) {
+            throw BadRequestException(
+                message = "Only pending transactions can be deleted",
+                code = "TRANSACTION_DELETE_NOT_ALLOWED",
+                details = mapOf("status" to transaction.status.name)
+            )
+        }
+        transactionRepository.delete(transaction)
+    }
+
+    private fun findOrThrow(id: UUID): Transaction =
+        transactionRepository.findById(id)
+            .orElseThrow {
+                NotFoundException(
+                    message = "Transaction not found with id: $id",
+                    code = "TRANSACTION_NOT_FOUND",
+                    details = mapOf("transactionId" to id.toString())
+                )
+            }
+
+    private fun checkOwnerOrAdmin(user: User, transaction: Transaction) {
+        if (transaction.createdBy.id != user.id && user.role != UserRole.ADMIN) {
+            throw ForbiddenException(
+                message = "Only the creator or admins can modify this transaction",
+                code = "TRANSACTION_MODIFICATION_FORBIDDEN",
+                details = mapOf("transactionId" to transaction.id.toString())
+            )
+        }
+    }
+
+    private fun checkVisible(user: User, transaction: Transaction) {
+        if (user.role == UserRole.ADMIN) {
+            return
+        }
+        if (transaction.createdBy.id != user.id && transaction.status != TransactionStatus.SETTLED) {
+            throw NotFoundException(
+                message = "Transaction not found with id: ${transaction.id}",
+                code = "TRANSACTION_NOT_FOUND",
+                details = mapOf("transactionId" to transaction.id.toString())
+            )
+        }
+    }
+
+    private fun transitionStatus(current: TransactionStatus, requested: TransactionStatus): TransactionStatus {
+        if (current == requested) {
+            return current
+        }
+        if (current != TransactionStatus.PENDING) {
+            throw BadRequestException(
+                message = "Only pending transactions can change status",
+                code = "TRANSACTION_STATUS_TRANSITION_NOT_ALLOWED",
+                details = mapOf(
+                    "currentStatus" to current.name,
+                    "requestedStatus" to requested.name
+                )
+            )
+        }
+        return requested
+    }
+
+    private fun generateReference(): String =
+        "TX-${UUID.randomUUID().toString().substring(0, 8).uppercase()}"
+
+    private fun parseSortParam(sort: String): Pair<String, Sort.Direction> {
+        val parts = sort.split(",")
+        val field = parts.getOrElse(0) { "createdAt" }
+        if (field !in supportedSortFields) {
+            throw BadRequestException(
+                message = "Unsupported sort field: $field",
+                code = "INVALID_SORT_FIELD",
+                details = mapOf(
+                    "field" to field,
+                    "supportedFields" to supportedSortFields.sorted()
+                )
+            )
+        }
+        val direction = if (parts.getOrElse(1) { "desc" }.equals("asc", ignoreCase = true))
+            Sort.Direction.ASC else Sort.Direction.DESC
+        return field to direction
+    }
+}

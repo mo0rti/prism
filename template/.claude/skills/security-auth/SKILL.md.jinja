@@ -16,8 +16,10 @@ Apply this skill when a backend change affects route exposure, JWT handling, or 
 ## Current Security Model
 
 - Stateless JWT: `SessionCreationPolicy.STATELESS`
-{% if "password" in auth_methods %}- Password auth uses `BCryptPasswordEncoder`
-{% endif %}- `JwtAuthenticationFilter` runs before `UsernamePasswordAuthenticationFilter`
+{% if "password" in auth_methods %}
+- Password auth uses `BCryptPasswordEncoder`
+{% endif %}
+- `JwtAuthenticationFilter` runs before `UsernamePasswordAuthenticationFilter`
 - CORS allowed origins come from `app.cors.allowed-origins`
 - Route access is controlled in `bootstrap/SecurityConfig.kt`
 - Method-security annotations are not enabled by default in this template
@@ -25,10 +27,14 @@ Apply this skill when a backend change affects route exposure, JWT handling, or 
 ## Public Endpoints
 
 Defined explicitly in `SecurityConfig.securityFilterChain()`:
-{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `/api/v1/auth/oauth/callback`
-{% endif %}{% if "password" in auth_methods %}- `/api/v1/auth/register`
+{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+- `/api/v1/auth/oauth/callback`
+{% endif %}
+{% if "password" in auth_methods %}
+- `/api/v1/auth/register`
 - `/api/v1/auth/login`
-{% endif %}- `/api/v1/auth/refresh`
+{% endif %}
+- `/api/v1/auth/refresh`
 - `/actuator/health`
 - `/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs/**`
 
@@ -57,12 +63,33 @@ Use `SecurityContextHolder` only when controller-level injection is not practica
 - Use `@AuthenticationPrincipal` in controllers when possible.
 - Keep secrets in environment-backed config, never hardcoded Kotlin values.
 - Align backend route security with `shared/api-contracts/openapi.yml`.
+- Access and refresh tokens must carry an explicit token-type claim, and each usage path must validate the expected type before accepting the token.
+
+## Auth-Specific Modeling
+
+- Follow `spring-boot-conventions` for DTO splitting, mapper placement, enum files, and general module layout
+- Keep normalized OAuth provider data as an internal model such as `OAuthUserProfile`, not as an API DTO and not as a helper class buried in `service`
+- Keep provider-specific HTTP exchange and payload normalization out of controllers
+
+## Security Configuration
+
+- Bind JWT, CORS, and OAuth provider settings with typed `@ConfigurationProperties`
+- Group auth-related config under `bootstrap/properties`
+- When adding a provider, update config properties, OAuth flow handling, and public route exposure together
+- Do not wrap outbound OAuth HTTP calls in long-lived database transactions; fetch remote provider data first, then persist within a narrower transaction boundary if needed
+- For first startup after generation, a local profile may provide placeholder OAuth values so the backend can boot before real provider credentials are configured
+- Treat placeholder OAuth values as a bootstrap convenience only; real OAuth flows still require real credentials supplied through IDE environment variables or local overrides
 
 ## Key Files
 
 - `bootstrap/SecurityConfig.kt` - filter chain, route exposure rules, CORS
-{% if auth_methods | length > 1 or "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `bootstrap/OAuth2Config.kt` - OAuth provider credentials and configuration
-{% endif %}- `bootstrap/security/JwtTokenProvider.kt` - token generation and validation
+{% if auth_methods | length > 1 or "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+- `bootstrap/OAuth2Config.kt` - infrastructure beans for OAuth support
+{% endif %}
+- `bootstrap/security/JwtTokenProvider.kt` - token generation and validation
+- `bootstrap/properties/OAuthProperties.kt` - OAuth provider configuration
+- `bootstrap/properties/JwtProperties.kt` - JWT configuration
+- `bootstrap/properties/CorsProperties.kt` - CORS configuration
 - `bootstrap/security/JwtAuthenticationFilter.kt` - request filter that validates JWT
 - `application.yml` - JWT secret, token expiry, OAuth client IDs
 
@@ -70,4 +97,5 @@ Use `SecurityContextHolder` only when controller-level injection is not practica
 
 - Re-check unauthenticated access to any route whose matcher changed.
 - Re-check intended public auth endpoints after auth-surface changes.
+- Verify that `/api/v1/auth/refresh` accepts only refresh tokens and that protected routes reject refresh tokens as bearer credentials.
 - Update the OpenAPI contract if endpoint security changed.

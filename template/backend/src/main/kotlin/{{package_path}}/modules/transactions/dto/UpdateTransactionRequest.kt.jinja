@@ -1,0 +1,9 @@
+package {{ package_identifier }}.modules.transactions.dto
+
+import {{ package_identifier }}.modules.transactions.model.TransactionStatus
+import jakarta.validation.constraints.Size
+
+data class UpdateTransactionRequest(
+    @field:Size(max = 2000) val description: String? = null,
+    val status: TransactionStatus? = null
+)

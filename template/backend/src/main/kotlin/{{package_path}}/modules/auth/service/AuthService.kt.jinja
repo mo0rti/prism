@@ -1,16 +1,29 @@
 package {{ package_identifier }}.modules.auth.service
 
-import {{ package_identifier }}.modules.auth.dto.*
+import {{ package_identifier }}.bootstrap.security.JwtTokenProvider
+import {{ package_identifier }}.modules.auth.dto.AuthResponse
+{% if "password" in auth_methods %}
+import {{ package_identifier }}.modules.auth.dto.LoginRequest
+{% endif %}
+{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+import {{ package_identifier }}.modules.auth.dto.OAuthCallbackRequest
+{% endif %}
+import {{ package_identifier }}.modules.auth.dto.RefreshTokenRequest
+{% if "password" in auth_methods %}
+import {{ package_identifier }}.modules.auth.dto.RegisterRequest
+{% endif %}
+import {{ package_identifier }}.modules.auth.dto.UserResponse
+import {{ package_identifier }}.modules.auth.dto.toResponse
 import {{ package_identifier }}.modules.auth.model.AuthProvider
 import {{ package_identifier }}.modules.auth.model.User
 import {{ package_identifier }}.modules.auth.repository.UserRepository
-import {{ package_identifier }}.bootstrap.security.JwtTokenProvider
 import {{ package_identifier }}.shared.exception.ConflictException
 import {{ package_identifier }}.shared.exception.UnauthorizedException
 {% if "password" in auth_methods %}
 import org.springframework.security.crypto.password.PasswordEncoder
 {% endif %}
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 
 @Service
 class AuthService(
@@ -18,22 +31,25 @@ class AuthService(
     private val jwtTokenProvider: JwtTokenProvider,
     private val oAuth2UserService: OAuth2UserService,
 {% if "password" in auth_methods %}
-    private val passwordEncoder: PasswordEncoder,
+    private val passwordEncoder: PasswordEncoder
 {% endif %}
 ) {
-
-{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+{% if "password" in auth_methods %}
+    private val dummyPasswordHash = passwordEncoder.encode("timing-attack-placeholder")
+{% endif %}
+{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
     fun oauthCallback(request: OAuthCallbackRequest): AuthResponse {
         val user = oAuth2UserService.processOAuthCallback(request.provider, request.code, request.redirectUri)
         return createAuthResponse(user)
     }
-{% endif %}
+{% endif %}{% if "password" in auth_methods %}
 
-{% if "password" in auth_methods %}
+    @Transactional
     fun register(request: RegisterRequest): AuthResponse {
         if (userRepository.existsByEmail(request.email)) {
             throw ConflictException("Email already registered")
         }
+
         val user = userRepository.save(
             User(
                 email = request.email,
@@ -42,35 +58,43 @@ class AuthService(
                 authProvider = AuthProvider.LOCAL
             )
         )
+
         return createAuthResponse(user)
     }
 
+    @Transactional(readOnly = true)
     fun login(request: LoginRequest): AuthResponse {
         val user = userRepository.findByEmail(request.email)
-            ?: throw UnauthorizedException("Invalid credentials")
-        if (user.passwordHash == null || !passwordEncoder.matches(request.password, user.passwordHash)) {
+        val passwordHash = user?.passwordHash ?: dummyPasswordHash
+        val passwordMatches = passwordEncoder.matches(request.password, passwordHash)
+        if (user == null || user.passwordHash == null || !passwordMatches) {
             throw UnauthorizedException("Invalid credentials")
         }
+
         return createAuthResponse(user)
     }
 {% endif %}
 
+    @Transactional(readOnly = true)
     fun refreshToken(request: RefreshTokenRequest): AuthResponse {
-        if (!jwtTokenProvider.validateToken(request.refreshToken)) {
+        if (!jwtTokenProvider.validateRefreshToken(request.refreshToken)) {
             throw UnauthorizedException("Invalid or expired refresh token")
         }
+
         val userId = jwtTokenProvider.getUserIdFromToken(request.refreshToken)
         val user = userRepository.findById(userId)
             .orElseThrow { UnauthorizedException("User not found") }
+
         return createAuthResponse(user)
     }
 
-    fun getCurrentUser(user: User): UserResponse = UserResponse.from(user)
+    @Transactional(readOnly = true)
+    fun getCurrentUser(user: User): UserResponse = user.toResponse()
 
     private fun createAuthResponse(user: User) = AuthResponse(
         accessToken = jwtTokenProvider.generateAccessToken(user),
         refreshToken = jwtTokenProvider.generateRefreshToken(user),
         expiresIn = jwtTokenProvider.getAccessTokenExpiry(),
-        user = UserResponse.from(user)
+        user = user.toResponse()
     )
 }

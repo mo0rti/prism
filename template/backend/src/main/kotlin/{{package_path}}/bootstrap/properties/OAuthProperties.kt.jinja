@@ -1,0 +1,59 @@
+package {{ package_identifier }}.bootstrap.properties
+
+import jakarta.validation.Valid
+import jakarta.validation.constraints.NotBlank
+import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.validation.annotation.Validated
+
+@Validated
+@ConfigurationProperties(prefix = "app.oauth")
+data class OAuthProperties(
+    @field:Valid
+    val google: GoogleProperties? = null,
+    @field:Valid
+    val apple: AppleProperties? = null,
+    @field:Valid
+    val facebook: FacebookProperties? = null,
+    @field:Valid
+    val microsoft: MicrosoftProperties? = null
+)
+
+data class GoogleProperties(
+    @field:NotBlank
+    val clientId: String = "",
+    @field:NotBlank
+    val clientSecret: String = "",
+    val tokenUri: String = "https://oauth2.googleapis.com/token",
+    val userInfoUri: String = "https://www.googleapis.com/oauth2/v3/userinfo"
+)
+
+data class AppleProperties(
+    @field:NotBlank
+    val clientId: String = "",
+    @field:NotBlank
+    val teamId: String = "",
+    @field:NotBlank
+    val keyId: String = "",
+    @field:NotBlank
+    val privateKey: String = "",
+    val tokenUri: String = "https://appleid.apple.com/auth/token"
+)
+
+data class FacebookProperties(
+    @field:NotBlank
+    val clientId: String = "",
+    @field:NotBlank
+    val clientSecret: String = "",
+    val tokenUri: String = "https://graph.facebook.com/v18.0/oauth/access_token",
+    val userInfoUri: String = "https://graph.facebook.com/v18.0/me?fields=id,name,email,picture"
+)
+
+data class MicrosoftProperties(
+    @field:NotBlank
+    val clientId: String = "",
+    @field:NotBlank
+    val clientSecret: String = "",
+    val tenantId: String = "common",
+    val tokenUri: String = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+    val userInfoUri: String = "https://graph.microsoft.com/v1.0/me"
+)
