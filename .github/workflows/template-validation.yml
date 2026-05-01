@@ -30,7 +30,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Copier
-        run: python -m pip install --upgrade pip copier
+        run: python -m pip install --upgrade pip copier jinja2-time
 
       - name: Run Contract Validation
         shell: pwsh
@@ -55,7 +55,7 @@ jobs:
           java-version: "21"
 
       - name: Install Copier
-        run: python -m pip install --upgrade pip copier
+        run: python -m pip install --upgrade pip copier jinja2-time
 
       - name: Run Backend Smoke Validation
         shell: pwsh
@@ -79,7 +79,7 @@ jobs:
           node-version: "22"
 
       - name: Install Copier
-        run: python -m pip install --upgrade pip copier
+        run: python -m pip install --upgrade pip copier jinja2-time
 
       - name: Generate Web Validation Sample
         shell: bash
