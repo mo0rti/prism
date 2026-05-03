@@ -9,7 +9,7 @@ input to implementation across multiple AI-assisted roles and platform slices.
 
 Each generated project combines:
 
-- one monorepo
+- one shared workspace
 - one shared product wiki under `knowledge/wiki/`
 - one lifecycle that moves work from intake to design to development
 - one advisory-board layer for domain-sensitive features

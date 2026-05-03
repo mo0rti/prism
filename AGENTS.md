@@ -67,8 +67,6 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 - `template/AGENTS.md.jinja` for generated-project Codex guidance
 - `template/CLAUDE.md.jinja` for generated-project Claude guidance
 
-Use `plans/` for planning references.
-
 ## Common Commands
 
 ```bash

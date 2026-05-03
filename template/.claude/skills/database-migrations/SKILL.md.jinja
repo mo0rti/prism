@@ -29,9 +29,9 @@ V{N}__{snake_case_description}.sql
 {% if database == 'postgres' %}
 | Concept | PostgreSQL Type |
 |---------|----------------|
-| Primary key | `UUID NOT NULL DEFAULT gen_random_uuid()` |
+| Primary key | `UUID NOT NULL` or `UUID NOT NULL DEFAULT gen_random_uuid()` depending on whether the application or database assigns IDs |
 | Foreign key | `UUID NOT NULL` (or nullable if optional) |
-| Timestamps | `TIMESTAMP WITH TIME ZONE` (never `TIMESTAMP` alone) |
+| Timestamps | Prefer `TIMESTAMP WITH TIME ZONE`; keep existing table style consistent unless the migration explicitly normalizes time storage |
 | JSON data | `JSONB` (never `JSON`) |
 | Booleans | `BOOLEAN NOT NULL DEFAULT false` |
 | Enums | `VARCHAR` + `CHECK` constraint (see below) |
@@ -79,11 +79,11 @@ ALTER TABLE some_table
 {% if database == 'postgres' %}
 ```sql
 CREATE TABLE some_table (
-    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    id UUID NOT NULL,
     name VARCHAR(255) NOT NULL,
     owner_id UUID NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     CONSTRAINT pk_some_table PRIMARY KEY (id),
     CONSTRAINT fk_some_table_owner
         FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
@@ -98,7 +98,7 @@ CREATE TABLE some_table (
     name VARCHAR(255) NOT NULL,
     owner_id BINARY(16) NOT NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at TIMESTAMP(6) NULL ON UPDATE CURRENT_TIMESTAMP(6),
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     CONSTRAINT pk_some_table PRIMARY KEY (id),
     CONSTRAINT fk_some_table_owner
         FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
@@ -127,21 +127,21 @@ When a migration has multiple dependent changes, order them correctly:
 
 ## Audit Columns
 
-All tables managed by `AuditableEntity` must have:
+Tables managed by `AuditableEntity` should match the entity mapping used in this repo:
 {% if database == 'postgres' %}
 ```sql
 created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-updated_at TIMESTAMP WITH TIME ZONE
+updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 ```
 {% else %}
 ```sql
 created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-updated_at TIMESTAMP(6) NULL ON UPDATE CURRENT_TIMESTAMP(6)
+updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
 ```
 {% endif %}
 
 - `created_at` is `NOT NULL` with a default
-- `updated_at` is nullable (null until first update)
+- `updated_at` is also initialized on insert and updated on every write
 
 ## Foreign Key Cascades
 

@@ -104,6 +104,16 @@ every { repo.save(capture(slot)) } returns entity
 assertEquals("expected", slot.captured.name)
 ```
 
+## Current Scaffold Baseline
+
+The generated backend currently favors:
+
+- MockK-heavy unit tests for service and domain logic
+- `@SpringBootTest` integration tests for Spring-managed auth flows
+- `@SpringBootTest` + `@AutoConfigureMockMvc` when security filters or endpoint exposure rules must be verified end to end
+
+Do not assume `@WebMvcTest` or `@DataJpaTest` are the default style just because they are available.
+
 ## Integration Tests
 
 Use `@SpringBootTest` + `@ActiveProfiles("test")` for tests that need a Spring context.
@@ -128,14 +138,43 @@ class ExampleServiceIntegrationTest {
 }
 ```
 
+Add `@AutoConfigureMockMvc` when the test needs real request routing, validation, security filters, or exception-to-response mapping:
+
+```kotlin
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class SecurityConfigTest {
+    @Autowired
+    lateinit var mockMvc: MockMvc
+}
+```
+
+## Slice Tests
+
+Use test slices selectively when they make the target behavior clearer and cheaper to verify.
+
+### `@WebMvcTest`
+
+- Good for controller request mapping, JSON binding, validation, and status code checks
+- Prefer it when the controller layer is the subject and full JWT/security filter behavior is not
+- If the behavior depends on the real security chain, prefer `@SpringBootTest` + `MockMvc`
+
+### `@DataJpaTest`
+
+- Good for repository custom queries, entity mappings, and persistence behavior
+- Prefer it when the repository layer is the subject and service/business wiring is irrelevant
+- Use a fuller integration test when the persistence behavior depends on broader application configuration
+
 ## What to Test per Layer
 
 | Layer | What to Test | Approach |
 |-------|-------------|----------|
 | **Service** | Business logic, validation, exception paths | Unit test with MockK |
 | **Domain** | Entity behavior, helper methods, equals/hashCode | Unit test, no mocks needed |
-| **Repository** | Custom queries | Integration test (real DB) |
+| **Repository** | Custom queries, entity mapping behavior | `@DataJpaTest` or integration test |
 | **Controller** | Request mapping, validation, response codes | `@WebMvcTest` or integration test |
+| **Security / Filter Chain** | JWT filters, public vs authenticated routes, exception mapping | `@SpringBootTest` + `MockMvc` |
 
 ## DTO Assertion Rules
 
@@ -153,4 +192,5 @@ class ExampleServiceIntegrationTest {
 - **Do NOT use Mockito** - use MockK for Kotlin (null-safety, extension functions)
 - **Do NOT use `@SpringBootTest` for unit tests** - only for integration tests that need the full context
 - **Do NOT use `@MockBean` in unit tests** - use constructor injection with MockK mocks instead
+- **Do NOT default to `@WebMvcTest` when the real JWT/security chain is the subject** - that belongs in a fuller integration test
 - **Do NOT test private methods** - test through public API

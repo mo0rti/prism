@@ -23,13 +23,29 @@ Keep tests mirroring the main source structure under `src/test/kotlin/`.
 
 - Use `@SpringBootTest` only when the test genuinely needs a Spring context.
 - Use the test profile for integration scenarios.
-- Prefer narrower test slices over full-context tests when possible.
+- Use `@AutoConfigureMockMvc` with `MockMvc` when the test must exercise route exposure, JWT filters, validation wiring, or exception mapping.
+- Prefer narrower test slices over full-context tests when possible, but not when the real security/filter chain is the thing under test.
+
+## Current Scaffold Baseline
+
+- Service and domain behavior: MockK-heavy unit tests
+- Security and auth exposure rules: `@SpringBootTest` integration tests
+- Endpoint security/filter behavior: `@SpringBootTest` + `MockMvc`
+
+Do not assume MVC or JPA slice tests are the default scaffold style.
+
+## Slice Test Rules
+
+- Use `@WebMvcTest` for focused controller mapping, request binding, and validation checks when the full security chain is not the target behavior.
+- Use `@DataJpaTest` for custom repository queries, entity mappings, and persistence-specific behavior.
+- Escalate to a fuller integration test when slices would hide the wiring you actually need confidence in.
 
 ## What to Test
 
 - Service logic, validation, and exception paths with unit tests.
-- Repository custom queries with integration tests.
+- Repository custom queries and entity mappings with `@DataJpaTest` or integration tests.
 - Controller mapping and response behavior with MVC-slice or integration tests.
+- Security, JWT filter, and public-route behavior with `@SpringBootTest` + `MockMvc`.
 - Domain logic without mocks when possible.
 
 ## DTO Assertion Rules
@@ -48,4 +64,5 @@ Keep tests mirroring the main source structure under `src/test/kotlin/`.
 - Mockito in Kotlin-first backend tests
 - `@SpringBootTest` for pure unit tests
 - `@MockBean` when plain constructor-injected mocks are enough
+- `@WebMvcTest` when the real security chain is the behavior under test
 - tests that target private methods instead of public behavior

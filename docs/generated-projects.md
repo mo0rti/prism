@@ -66,6 +66,14 @@ tree.
 If you are trying to understand the generated implementation surface, read the generated
 docs and platform slices together.
 
+If the generated project includes the backend, the first successful local startup usually
+looks like this:
+
+- start only the database container with `docker compose up -d db`
+- run the backend locally with the `local` Spring profile
+- in IntelliJ IDEA, configure the backend run to activate the `local` Spring profile,
+  either through a run configuration or the active profiles field
+
 ## AI Agent Surfaces
 
 Generated projects include agent context for Claude, Codex, and Cursor.

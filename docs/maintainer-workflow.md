@@ -30,7 +30,6 @@ template/             # Files copied into generated projects
 README.md             # Short repository entrypoint
 AGENTS.md             # Codex maintainer guidance for this repo
 CLAUDE.md             # Claude maintainer guidance for this repo
-plans/                # Maintainer planning and review docs tracked in this repo
 ```
 
 ## Recommended Maintainer Flow

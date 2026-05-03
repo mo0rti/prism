@@ -14,28 +14,42 @@
 ```
 backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
   Application.kt                  # @SpringBootApplication entry point
-  config/
+  bootstrap/
     SecurityConfig.kt             # Spring Security + JWT filter
     WebConfig.kt                  # CORS configuration
-    OAuth2Config.kt               # OAuth2 provider registration
-  common/
+    OAuth2Config.kt               # RestTemplate for OAuth provider exchange
+    OpenApiConfig.kt              # Swagger / OpenAPI wiring
+    properties/                   # Typed config properties
+  shared/
     exception/
       ApiException.kt             # Custom exception with HTTP status + error code
       GlobalExceptionHandler.kt   # @ControllerAdvice -> ApiError JSON
     model/
-      ApiError.kt                 # { code, message, details }
+      ApiErrorResponse.kt         # { code, message, details }
       PagedResponse.kt            # Generic paginated response wrapper
-  auth/
-    controller/                   # Auth endpoints
-    service/                      # Auth + OAuth2 business logic
-    security/                     # JWT provider + filter
-  features/
+    audit/
+      AuditableEntity.kt          # Shared createdAt / updatedAt base class
+  modules/
+    auth/                         # Auth endpoints and user persistence
+      controller/
+      dto/
+      model/
+      repository/
+      service/
     transactions/                 # Transaction workflow module
       controller/
+      dto/
       service/
       repository/
-      model/                      # Entity + DTOs
+      model/
 ```
+
+## Local Run Prerequisites
+
+1. Start PostgreSQL from the generated project root with `docker compose up -d db`
+2. Run the backend with the `local` Spring profile
+3. For IntelliJ IDEA, set the active profile to `local`
+4. Real OAuth flows require replacing the placeholder provider credentials from `application-local.yml`
 
 ## Conventions
 
@@ -55,7 +69,7 @@ backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 ### DTOs
 - Separate request and response DTOs
 - Use Kotlin data classes
-- Keep in `model/` package alongside entity
+- Keep in the module `dto/` package, not alongside JPA entities
 
 ### Migrations
 - Flyway SQL migrations in `resources/db/migration/`
@@ -63,9 +77,14 @@ backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 - Never modify existing migrations - create new ones
 
 ### Testing
-- `@WebMvcTest` for controller tests
-- `@DataJpaTest` for repository tests
-- JUnit Jupiter 6 assertions
+- Use MockK-based unit tests as the default for service logic, domain rules, validation branches, and exception paths
+- Prefer constructor-injected mocks over Spring-backed unit test setup for pure business logic
+- Use `@SpringBootTest` + `@ActiveProfiles("test")` when the test genuinely needs the Spring context
+- Add `@AutoConfigureMockMvc` and `MockMvc` when verifying endpoint security, JWT filters, validation wiring, or exception-to-HTTP mapping
+- Use `@WebMvcTest` selectively for focused controller mapping or request-validation tests when the full security/filter chain is not the behavior under test
+- Use `@DataJpaTest` selectively for custom repository queries, entity mappings, and persistence behavior that should run against the real JPA slice
+- The current generated scaffold primarily uses MockK service tests and full Spring/MockMvc integration tests rather than MVC or JPA slice tests
+- Keep JUnit Jupiter 6 assertions throughout
 
 ## Commands
 

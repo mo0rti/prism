@@ -2,16 +2,16 @@
 
 ![Prism](docs/media/prism.png)
 
-Prism is a multi-platform project generator and workflow model for AI-assisted product
+Prism is a multi-platform workspace generator and workflow model for AI-assisted product
 development.
 
-It helps you:
+It helps product and engineering teams:
 
-- generate a backend, web, Android, and iOS monorepo from one guided entry point
-- give Claude, Codex, and Cursor the same shared product context
-- run product work through one living wiki instead of scattered prompts and local memory
+- generate a shared foundation for backend, web, Android, and iOS from one guided starting point
+- keep Claude, Codex, and Cursor aligned on the same product and technical context
+- run delivery through a living wiki instead of scattered prompts, tribal knowledge, and local memory
 
-This repository is the Prism template and CLI. It is not a generated project.
+This repository contains the Prism template and CLI. It is not a generated workspace.
 
 ![Prism home screen](docs/media/prism-menu.png)
 

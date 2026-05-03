@@ -4,13 +4,17 @@
 
 ## Architecture
 
-This is a multi-platform monorepo containing:
+This generated workspace currently includes:
 
 {% if "backend" in platforms %}- **backend/** - Spring Boot 4 (Kotlin) REST API -> Azure Container Apps
 {% endif %}{% if "web-user-app" in platforms %}- **web-user-app/** - Next.js user-facing web app (TypeScript) -> Cloudflare via OpenNext
 {% endif %}{% if "web-admin-portal" in platforms %}- **web-admin-portal/** - Next.js admin web portal (TypeScript) -> Cloudflare via OpenNext
 {% endif %}{% if "mobile-android" in platforms %}- **mobile-android/** - Android app (Kotlin/Jetpack Compose, MVVM)
 {% endif %}{% if "mobile-ios" in platforms %}- **mobile-ios/** - iOS app (Swift/SwiftUI, MVVM)
+{% endif %}- **shared/** - OpenAPI contract and shared design tokens
+- **knowledge/** - Product wiki and delivery workflow metadata
+- **docs/** - Human-readable architecture and operations docs
+{% if "backend" in platforms %}- **infra/** - Azure deployment scripts
 {% endif %}
 
 ## First-Time Setup
@@ -28,34 +32,34 @@ This setup step interviews the team about domain risks, creates
 ## Quick Start
 
 ```bash
-# 1. Review local configuration
+# Review local configuration
 {% if "backend" in platforms %}# Backend and local infrastructure defaults are already generated in `.env`
 {% endif %}{% if "mobile-android" in platforms %}# Android API config is already generated in `mobile-android/local.config.properties`
 {% endif %}{% if "mobile-ios" in platforms %}# iOS API config is already generated in `mobile-ios/Config/Debug.xcconfig`
 # Update `mobile-ios/Config/Release.xcconfig` before production or TestFlight builds
 {% endif %}{% if "web-user-app" in platforms %}cp web-user-app/.env.example web-user-app/.env.local
 {% endif %}{% if "web-admin-portal" in platforms %}cp web-admin-portal/.env.example web-admin-portal/.env.local
-{% endif %}
-# Edit the local config files as needed for your machine and credentials
+{% endif %}# Edit the local config files as needed for your machine and credentials
 
-# 2. Install the OpenAPI generator CLI if needed
-# npm install -g @openapitools/openapi-generator-cli
+{% if use_docker and "backend" in platforms %}# Start the local database first
+docker compose up -d db
 
-# 3. Generate API clients from OpenAPI spec
-task generate-clients
-{% if use_docker %}
-# 4. Start local services
-docker compose up -d
-{% endif %}{% if "backend" in platforms %}
-# 5. Start backend
+{% endif %}{% if "backend" in platforms %}# Start the backend locally
+# task backend:run sets SPRING_PROFILES_ACTIVE=local
 task backend:run
-{% endif %}{% if "web-user-app" in platforms %}
-# 6. Start the user web app
+
+# If you are running from IntelliJ IDEA, use the `local` profile
+# and keep real OAuth credentials in local overrides or IDE env vars
+
+{% endif %}{% if "web-user-app" in platforms %}# Start the user web app
 task web-user-app:dev
-{% endif %}{% if "web-admin-portal" in platforms %}
-# 7. Start the admin web portal
+
+{% endif %}{% if "web-admin-portal" in platforms %}# Start the admin web portal
 task web-admin-portal:dev
-{% endif %}
+
+{% endif %}# Generate clients after any OpenAPI contract change
+# npm install -g @openapitools/openapi-generator-cli
+task generate-clients
 ```
 
 ## Documentation
