@@ -1,0 +1,33 @@
+package {{ package_identifier }}.modules.auth.error
+
+import {{ package_identifier }}.shared.error.ErrorCode
+import org.springframework.http.HttpStatus
+
+/**
+ * Error codes owned by the auth module.
+ *
+ * Keeping provider, credential, and session failures here makes auth behavior
+ * explicit without overloading the shared common error set.
+ */
+enum class AuthErrorCode(
+    override val httpStatus: HttpStatus,
+    override val defaultMessage: String
+) : ErrorCode {
+    EMAIL_ALREADY_REGISTERED(HttpStatus.CONFLICT, "Email already registered"),
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid credentials"),
+    INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "Invalid or expired refresh token"),
+    USER_NOT_FOUND(HttpStatus.UNAUTHORIZED, "User not found"),
+    INVALID_OAUTH_PROVIDER(HttpStatus.UNAUTHORIZED, "Unsupported OAuth provider"),
+    OAUTH_PROVIDER_NOT_ENABLED(HttpStatus.UNAUTHORIZED, "OAuth provider is not enabled"),
+    OAUTH_PROVIDER_NOT_CONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "OAuth provider is not configured"),
+    OAUTH_TOKEN_EXCHANGE_FAILED(HttpStatus.UNAUTHORIZED, "Token exchange failed"),
+    OAUTH_ACCESS_TOKEN_MISSING(HttpStatus.UNAUTHORIZED, "Failed to get OAuth access token"),
+    OAUTH_USER_INFO_FAILED(HttpStatus.BAD_GATEWAY, "Failed to get OAuth user info"),
+    OAUTH_PROVIDER_ID_MISSING(HttpStatus.BAD_GATEWAY, "Missing OAuth subject in user info"),
+    OAUTH_EMAIL_UNAVAILABLE(HttpStatus.UNAUTHORIZED, "OAuth account email is unavailable"),
+    OAUTH_EMAIL_NOT_VERIFIED(HttpStatus.UNAUTHORIZED, "OAuth account email is not verified"),
+    OAUTH_ACCOUNT_LINK_REQUIRED(HttpStatus.CONFLICT, "An account with this email already exists. Sign in with the original method before linking OAuth."),
+    OAUTH_ID_TOKEN_INVALID(HttpStatus.BAD_GATEWAY, "Invalid OAuth ID token");
+
+    override val code: String = name
+}

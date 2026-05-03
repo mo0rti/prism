@@ -37,9 +37,11 @@ Before running the backend locally:
 
 1. Start PostgreSQL with `docker compose up -d db` from the generated project root.
 2. Use the `local` Spring profile for IDE runs, including IntelliJ IDEA run configurations.
+{% if auth_methods | reject("equalto", "password") | list | length > 0 %}
 3. If you want real OAuth locally, replace the placeholder provider values from `application-local.yml` with real credentials through your IDE environment variables or local overrides.
 
 The `local` profile exists to make first startup succeed without immediately requiring real OAuth credentials. OAuth callbacks will not work with the placeholder values.
+{% endif %}
 
 ## Critical Rules
 
@@ -65,18 +67,21 @@ src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
     security/        - JWT token provider and authentication filter
   shared/            - Cross-cutting concerns (exceptions, models, audit)
     audit/           - AuditableEntity base class (createdAt/updatedAt)
+    error/           - Typed ErrorCode abstractions and shared/common API error codes
     exception/       - ApiException hierarchy + GlobalExceptionHandler
     model/           - Shared DTOs (ApiErrorResponse, PagedResponse)
   modules/           - Feature modules
-    auth/            - Authentication (OAuth + {% if "password" in auth_methods %}password + {% endif %}JWT)
+    auth/            - Authentication (password{% if auth_methods | reject("equalto", "password") | list | length > 0 %} + OAuth{% endif %} + JWT)
       controller/    - REST endpoints
       dto/           - Request/response data classes
+      error/         - Auth-specific error codes
       model/         - User entity + enums
       repository/    - JPA repository
       service/       - Auth + OAuth2 business logic
     transactions/    - Transaction CRUD, visibility, and ownership rules
       controller/    - REST endpoints
       dto/           - Request/response data classes
+      error/         - Transaction-specific error codes
       model/         - Transaction entity + enums
       repository/    - JPA repository
       service/       - Business logic + permission checks
@@ -97,13 +102,14 @@ Detailed conventions are documented in skills - Claude loads these automatically
 ## Key Files
 
 - `bootstrap/SecurityConfig.kt` - endpoint security rules, JWT filter
-{% if auth_methods | length > 1 or "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `bootstrap/OAuth2Config.kt` - OAuth provider credentials
+{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `bootstrap/OAuth2Config.kt` - OAuth provider credentials
 {% endif %}- `bootstrap/security/JwtTokenProvider.kt` - token generation/validation
 - `shared/audit/AuditableEntity.kt` - base entity with timestamps
-- `shared/exception/ApiException.kt` - exception hierarchy
-- `shared/exception/GlobalExceptionHandler.kt` - maps exceptions to JSON
+- `shared/error/` - typed ErrorCode abstractions and shared/common API error codes
+- `shared/exception/` - ApiException base type, built-in exception files, and global exception mapping
 - `application.yml` - all configuration (DB, JWT, OAuth, CORS)
-- `resources/db/migration/V1__init.sql` - initial schema
+- `resources/db/migration/V1__users.sql` - user and auth baseline schema
+- `resources/db/migration/V2__transactions.sql` - transaction domain schema
 
 ## API
 

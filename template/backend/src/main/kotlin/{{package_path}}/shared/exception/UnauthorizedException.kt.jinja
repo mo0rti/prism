@@ -1,0 +1,23 @@
+package {{ package_identifier }}.shared.exception
+
+import {{ package_identifier }}.shared.error.CommonErrorCode
+import {{ package_identifier }}.shared.error.ErrorCode
+import org.springframework.http.HttpStatus
+
+/**
+ * HTTP 401 wrapper around a typed [ErrorCode].
+ *
+ * The guard keeps the wrapper type and supplied error code aligned so callers
+ * cannot accidentally return a non-401 error through this exception.
+ */
+class UnauthorizedException(
+    errorCode: ErrorCode = CommonErrorCode.UNAUTHORIZED,
+    message: String = errorCode.defaultMessage,
+    details: Map<String, Any>? = null
+) : ApiException(errorCode, message, details) {
+    init {
+        require(errorCode.httpStatus == HttpStatus.UNAUTHORIZED) {
+            "UnauthorizedException requires an UNAUTHORIZED error code, got ${errorCode.code} (${errorCode.httpStatus})"
+        }
+    }
+}

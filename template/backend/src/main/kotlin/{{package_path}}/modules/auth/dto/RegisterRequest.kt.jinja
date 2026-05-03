@@ -1,5 +1,4 @@
 package {{ package_identifier }}.modules.auth.dto
-{% if "password" in auth_methods %}
 
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
@@ -7,7 +6,6 @@ import jakarta.validation.constraints.Size
 
 data class RegisterRequest(
     @field:Email @field:NotBlank val email: String,
-    @field:Size(min = 8) @field:NotBlank val password: String,
+    @field:Size(min = 8, max = 72) @field:NotBlank val password: String,
     @field:NotBlank @field:Size(max = 100) val displayName: String
 )
-{% endif %}

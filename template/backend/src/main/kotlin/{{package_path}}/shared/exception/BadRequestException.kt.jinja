@@ -1,0 +1,23 @@
+package {{ package_identifier }}.shared.exception
+
+import {{ package_identifier }}.shared.error.CommonErrorCode
+import {{ package_identifier }}.shared.error.ErrorCode
+import org.springframework.http.HttpStatus
+
+/**
+ * HTTP 400 wrapper around a typed [ErrorCode].
+ *
+ * The guard keeps the wrapper type and supplied error code aligned so callers
+ * cannot accidentally return a non-400 error through this exception.
+ */
+class BadRequestException(
+    errorCode: ErrorCode = CommonErrorCode.BAD_REQUEST,
+    message: String = errorCode.defaultMessage,
+    details: Map<String, Any>? = null
+) : ApiException(errorCode, message, details) {
+    init {
+        require(errorCode.httpStatus == HttpStatus.BAD_REQUEST) {
+            "BadRequestException requires a BAD_REQUEST error code, got ${errorCode.code} (${errorCode.httpStatus})"
+        }
+    }
+}

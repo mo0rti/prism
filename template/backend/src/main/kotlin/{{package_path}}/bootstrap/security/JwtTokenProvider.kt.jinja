@@ -10,12 +10,19 @@ import java.util.Date
 import java.util.UUID
 import javax.crypto.SecretKey
 
+/**
+ * Issues and validates JWT access and refresh tokens.
+ *
+ * Refresh tokens carry a version claim so refresh and logout can invalidate
+ * previously issued refresh tokens without maintaining a separate token store.
+ */
 @Component
 class JwtTokenProvider(
     private val jwtProperties: JwtProperties
 ) {
     private companion object {
         const val TOKEN_TYPE_CLAIM = "type"
+        const val REFRESH_TOKEN_VERSION_CLAIM = "rtv"
         const val ACCESS_TOKEN_TYPE = "access"
         const val REFRESH_TOKEN_TYPE = "refresh"
     }
@@ -37,7 +44,8 @@ class JwtTokenProvider(
         email = user.email,
         role = user.role.name,
         expirySeconds = jwtProperties.refreshTokenExpiry,
-        tokenType = REFRESH_TOKEN_TYPE
+        tokenType = REFRESH_TOKEN_TYPE,
+        refreshTokenVersion = user.refreshTokenVersion
     )
 
     fun getAccessTokenExpiry(): Long = jwtProperties.accessTokenExpiry
@@ -56,17 +64,27 @@ class JwtTokenProvider(
     fun getUserIdFromToken(token: String): UUID =
         UUID.fromString(parseToken(token).subject)
 
+    fun matchesRefreshTokenVersion(token: String, expectedVersion: Int): Boolean = try {
+        val claims = parseToken(token)
+        claims[TOKEN_TYPE_CLAIM] == REFRESH_TOKEN_TYPE &&
+            !claims.expiration.before(Date()) &&
+            claims[REFRESH_TOKEN_VERSION_CLAIM] == expectedVersion
+    } catch (_: Exception) {
+        false
+    }
+
     private fun generateToken(
         userId: UUID,
         email: String,
         role: String,
         expirySeconds: Long,
-        tokenType: String
+        tokenType: String,
+        refreshTokenVersion: Int? = null
     ): String {
         val now = Date()
         val expiry = Date(now.time + expirySeconds * 1000)
 
-        return Jwts.builder()
+        val builder = Jwts.builder()
             .subject(userId.toString())
             .claim("email", email)
             .claim("role", role)
@@ -74,7 +92,12 @@ class JwtTokenProvider(
             .issuedAt(now)
             .expiration(expiry)
             .signWith(key)
-            .compact()
+
+        if (refreshTokenVersion != null) {
+            builder.claim(REFRESH_TOKEN_VERSION_CLAIM, refreshTokenVersion)
+        }
+
+        return builder.compact()
     }
 
     private fun validateTokenType(token: String, expectedType: String): Boolean = try {

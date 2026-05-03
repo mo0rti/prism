@@ -9,7 +9,7 @@ Copier will walk you through these inputs:
 | **Package identifier** | Reverse-domain ID (e.g., `com.example.myawesomeapp`) | derived from slug |
 | **Description** | One-line project description | `A multi-platform application` |
 | **Platforms** | Which platform slices to include (multi-select) | backend, web-user-app, web-admin-portal, mobile-android, mobile-ios |
-| **Auth methods** | Google, Apple, Facebook, Microsoft, Password (multi-select) | Google, Password |
+| **Auth methods** | Username + Password plus optional Google, Apple, Facebook, or Microsoft sign-in | Google, Password |
 | **Database** | Which database to target | PostgreSQL |
 | **Supporting services** | Optional backend-side supporting services | *(none selected)* |
 | **Docker Compose** | Include local dev services? | yes |
@@ -20,9 +20,7 @@ Copier will walk you through these inputs:
 ## Current Notes Per Input
 
 - `Platforms`: backend, Android, and iOS remain the more proven paths; `web-user-app` and `web-admin-portal` now generate initial setup and pass install/build/OpenNext/Wrangler dry-run checks, but they still need live Cloudflare deployment validation.
-- `Auth methods`: Google and password are the safer defaults. Apple remains selectable but still needs more hardening.
-- `Admin Web Portal`: currently requires `password` auth when selected.
-- `User Web App`: currently requires at least one auth method when selected.
+- `Auth methods`: Username + Password is the baseline sign-in method in the current Prism model. OAuth providers are additive. Google remains the safest secondary default; Apple remains selectable but still needs more hardening.
 - `Database`, `Backend deployment`, and `Web deployment`: implemented as questionnaire inputs, with one available option each for now.
 - `Supporting services`: Redis is optional and is modeled separately from the primary database choice.
 

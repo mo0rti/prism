@@ -53,13 +53,17 @@ class ValidateAnswersTests(unittest.TestCase):
         self.assertIn("At least one platform must be selected.", errors)
         self.assertEqual([], warnings)
 
-    def test_requires_auth_for_user_web(self) -> None:
+    def test_requires_password_auth_globally(self) -> None:
         errors, _warnings = validate_answers({"platforms": ["web-user-app"], "auth_methods": []})
-        self.assertIn("User Web App currently requires at least one auth method.", errors)
+        self.assertIn("Prism currently requires Username + Password auth as the baseline sign-in method.", errors)
 
     def test_requires_password_for_admin_portal(self) -> None:
         errors, _warnings = validate_answers({"platforms": ["web-admin-portal"], "auth_methods": ["google"]})
-        self.assertIn("Admin Web Portal currently requires Username + Password auth.", errors)
+        self.assertIn("Prism currently requires Username + Password auth as the baseline sign-in method.", errors)
+
+    def test_requires_password_for_backend_only_projects(self) -> None:
+        errors, _warnings = validate_answers({"platforms": ["backend"], "auth_methods": ["google"]})
+        self.assertIn("Prism currently requires Username + Password auth as the baseline sign-in method.", errors)
 
     def test_emits_expected_warnings(self) -> None:
         errors, warnings = validate_answers(

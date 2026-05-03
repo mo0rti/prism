@@ -1,7 +1,7 @@
 # Entity: User
 
 ## Description
-Represents a registered user in the system. Users can{% if "password" in auth_methods %} register with email and password{% endif %}{% if "password" in auth_methods and auth_methods | reject("equalto", "password") | list | length > 0 %} or{% endif %}{% if auth_methods | reject("equalto", "password") | list | length > 0 %} be provisioned through {% for method in auth_methods if method != "password" %}{{ method | capitalize }}{% if not loop.last %}, {% endif %}{% endfor %} OAuth{% endif %}, then authenticate with JWT-backed sessions.
+Represents a registered user in the system. Users can always register with email and password{% if auth_methods | reject("equalto", "password") | list | length > 0 %}, and may also be provisioned through {% for method in auth_methods if method != "password" %}{{ method | capitalize }}{% if not loop.last %}, {% endif %}{% endfor %} OAuth{% endif %}, then authenticate with JWT-backed sessions.
 
 ## Fields
 
@@ -15,6 +15,7 @@ Represents a registered user in the system. Users can{% if "password" in auth_me
 | providerId | String | No | Provider-specific subject/identity value for OAuth users |
 | passwordHash | String | No | BCrypt hash (only for password auth) |
 | role | Enum | Yes | User role: USER, ADMIN |
+| refreshTokenVersion | Integer | Yes | Session version counter used to rotate and invalidate refresh tokens |
 | createdAt | DateTime | Yes | Account creation timestamp |
 | updatedAt | DateTime | Yes | Last update timestamp |
 
@@ -26,28 +27,29 @@ Represents a registered user in the system. Users can{% if "password" in auth_me
 
 - `email`: must be valid email format, unique across all users
 - `displayName`: 1-100 characters
-- `authProvider`: defaults to `LOCAL`
+- `authProvider`: defaults to `LOCAL` for password-based accounts
 - `passwordHash`: required for locally registered users and absent for pure OAuth users
 - `role`: defaults to USER, can only be changed by admins
 
 ## Business Logic
 
 - Users are created on first successful authentication
-- If a user logs in with a new OAuth provider but same email, accounts are linked
+- OAuth login is rejected when the email already belongs to an existing account created through another sign-in method
 - Locally registered users authenticate with email/password and receive JWTs
-- The generated backend currently enables{% if "password" in auth_methods %} local password auth{% endif %}{% if "password" in auth_methods and auth_methods | reject("equalto", "password") | list | length > 0 %} and{% endif %}{% if auth_methods | reject("equalto", "password") | list | length > 0 %} {% for method in auth_methods if method != "password" %}{{ method | capitalize }}{% if not loop.last %}, {% endif %}{% endfor %} OAuth callback exchange{% endif %}
+- Every successful login or refresh rotates the user's refresh-token version so older refresh tokens cannot be reused
+- The generated backend always enables local password auth{% if auth_methods | reject("equalto", "password") | list | length > 0 %} and also supports {% for method in auth_methods if method != "password" %}{{ method | capitalize }}{% if not loop.last %}, {% endif %}{% endfor %} OAuth callback exchange{% endif %}
 
 ## Database
 
 - **Table name**: `users`
 - **Indexes**: unique on `email`, index on `auth_provider`
-- **Migration**: `V1__init.sql`
+- **Migrations**: `V1__users.sql`
 
 ## API Exposure
 
-- `createdAt` and `updatedAt` are persisted audit fields on the entity
+- `refreshTokenVersion`, `createdAt`, and `updatedAt` are persisted internal fields on the entity
 - `UserResponse` intentionally exposes only identity, profile, provider, and role fields
-- Do not add `createdAt` or `updatedAt` to the public user DTO unless the API contract is updated first
+- Do not add internal auth/session fields or audit timestamps to the public user DTO unless the API contract is updated first
 
 ## API Representation
 

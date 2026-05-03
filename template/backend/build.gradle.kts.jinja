@@ -45,10 +45,8 @@ dependencies {
     // API Documentation
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.4")
 
-{% if "password" in auth_methods %}
     // Password encoding
     implementation("org.springframework.security:spring-security-crypto")
-{% endif %}
 
     // Test
     testImplementation("io.mockk:mockk:1.14.5")

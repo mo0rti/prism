@@ -17,6 +17,7 @@ class ApplicationConfig {
         val contextPath = normalizeContextPath(environment.getProperty("server.servlet.context-path", "/"))
         val protocol = if (environment.getProperty("server.ssl.enabled", "false").toBoolean()) "https" else "http"
         val profiles = environment.activeProfiles.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "default"
+        val swaggerEnabled = environment.getProperty("springdoc.swagger-ui.enabled", Boolean::class.java, false)
         val swaggerPath = environment.getProperty("springdoc.swagger-ui.path", "/swagger-ui.html")
         val healthPath = "/actuator/health"
         val localBaseUrl = "$protocol://localhost:$port$contextPath"
@@ -24,7 +25,9 @@ class ApplicationConfig {
         println("\n------------------------------------------------------------")
         println("Prism backend is running! Access URLs:")
         println("Local:      $localBaseUrl")
-        println("Swagger:    $localBaseUrl${normalizeRelativePath(swaggerPath)}")
+        if (swaggerEnabled) {
+            println("Swagger:    $localBaseUrl${normalizeRelativePath(swaggerPath)}")
+        }
         println("Health:     $localBaseUrl$healthPath")
         try {
             val hostAddress = InetAddress.getLocalHost().hostAddress

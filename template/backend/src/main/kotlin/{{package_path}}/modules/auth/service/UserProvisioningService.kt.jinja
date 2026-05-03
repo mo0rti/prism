@@ -4,6 +4,8 @@ import {{ package_identifier }}.modules.auth.model.AuthProvider
 import {{ package_identifier }}.modules.auth.model.OAuthUserProfile
 import {{ package_identifier }}.modules.auth.model.User
 import {{ package_identifier }}.modules.auth.repository.UserRepository
+import {{ package_identifier }}.modules.auth.error.AuthErrorCode
+import {{ package_identifier }}.shared.exception.ConflictException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -23,10 +25,10 @@ class UserProvisioningService(
 
         val byEmail = userRepository.findByEmail(userProfile.email)
         if (byEmail != null) {
-            byEmail.authProvider = provider
-            byEmail.providerId = userProfile.providerId
-            byEmail.avatarUrl = userProfile.avatarUrl
-            return userRepository.save(byEmail)
+            throw ConflictException(
+                AuthErrorCode.OAUTH_ACCOUNT_LINK_REQUIRED,
+                message = "An account with email ${userProfile.email} already exists. Sign in with the original method before linking $provider."
+            )
         }
 
         return userRepository.save(

@@ -59,11 +59,11 @@ ALL_PLATFORM_CHOICES: tuple[tuple[str, str], ...] = (
 )
 
 ALL_AUTH_CHOICES: tuple[tuple[str, str], ...] = (
+    ("password", "Username + Password (required)"),
     ("google", "Google OAuth"),
     ("apple", "Apple Sign-In"),
     ("facebook", "Facebook Login"),
     ("microsoft", "Microsoft Account"),
-    ("password", "Username + Password"),
 )
 
 DEFAULT_ANSWERS: dict[str, Any] = {

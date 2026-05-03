@@ -36,5 +36,8 @@ class User(
 
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
-    var role: UserRole = UserRole.USER
+    var role: UserRole = UserRole.USER,
+
+    @Column(name = "refresh_token_version", nullable = false)
+    var refreshTokenVersion: Int = 0
 ) : AuditableEntity()

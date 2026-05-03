@@ -1,0 +1,25 @@
+package {{ package_identifier }}.shared.error
+
+import org.springframework.http.HttpStatus
+
+/**
+ * Cross-cutting error codes shared across modules.
+ *
+ * Prefer a module-specific enum when the error only belongs to one bounded
+ * context such as auth or transactions.
+ */
+enum class CommonErrorCode(
+    override val httpStatus: HttpStatus,
+    override val defaultMessage: String
+) : ErrorCode {
+    BAD_REQUEST(HttpStatus.BAD_REQUEST, "Bad request"),
+    VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "Validation failed"),
+    INVALID_REQUEST(HttpStatus.BAD_REQUEST, "Request body is invalid or incomplete"),
+    UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "Authentication required"),
+    FORBIDDEN(HttpStatus.FORBIDDEN, "Insufficient permissions"),
+    NOT_FOUND(HttpStatus.NOT_FOUND, "Resource not found"),
+    CONFLICT(HttpStatus.CONFLICT, "Resource already exists"),
+    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
+
+    override val code: String = name
+}

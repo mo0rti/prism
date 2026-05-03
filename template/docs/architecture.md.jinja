@@ -52,7 +52,7 @@ All platform API clients are **generated** from this spec. Never manually edit g
 
 ### Authentication
 
-Auth methods: {% for method in auth_methods %}{{ method }}{% if not loop.last %}, {% endif %}{% endfor %}
+Local email/password auth is always included.{% if auth_methods | reject("equalto", "password") | list | length > 0 %} Selected OAuth providers: {% for method in auth_methods if method != "password" %}{{ method }}{% if not loop.last %}, {% endif %}{% endfor %}.{% endif %}
 
 Flow: Client -> OAuth provider (or login form) -> Backend validates -> Issues JWT -> Client stores token -> Attaches to all API requests.
 

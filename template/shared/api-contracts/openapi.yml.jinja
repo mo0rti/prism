@@ -39,9 +39,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
 {% endif %}
 
-{% if "password" in auth_methods %}
   /auth/register:
     post:
       operationId: register
@@ -89,14 +90,14 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-{% endif %}
 
   /auth/refresh:
     post:
       operationId: refreshToken
       tags: [auth]
       security: []
-      summary: Refresh access token
+      summary: Refresh access and refresh tokens
+      description: The submitted refresh token is rotated on success and cannot be reused afterward.
       requestBody:
         required: true
         content:
@@ -112,6 +113,17 @@ paths:
                 $ref: '#/components/schemas/AuthResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Invalidate refresh tokens for the current user
+      responses:
+        '204':
+          description: Refresh tokens invalidated
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -291,7 +303,6 @@ components:
           description: Redirect URI used in the OAuth flow
 {% endif %}
 
-{% if "password" in auth_methods %}
     RegisterRequest:
       type: object
       required: [email, password, displayName]
@@ -303,6 +314,7 @@ components:
           type: string
           format: password
           minLength: 8
+          maxLength: 72
         displayName:
           type: string
           minLength: 1
@@ -318,7 +330,6 @@ components:
         password:
           type: string
           format: password
-{% endif %}
 
     RefreshTokenRequest:
       type: object
@@ -357,7 +368,7 @@ components:
         authProvider:
           type: string
           enum: [LOCAL, GOOGLE, APPLE, FACEBOOK, MICROSOFT]
-          description: Only LOCAL and the selected OAuth providers are enabled in this generated backend.
+          description: `LOCAL` is always available for password-based accounts, and selected OAuth providers may also be used for sign-in.
         role:
           type: string
           enum: [USER, ADMIN]

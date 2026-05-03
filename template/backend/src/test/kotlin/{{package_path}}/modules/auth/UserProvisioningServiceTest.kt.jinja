@@ -1,0 +1,102 @@
+package {{ package_identifier }}.modules.auth
+
+import {{ package_identifier }}.modules.auth.error.AuthErrorCode
+import {{ package_identifier }}.modules.auth.model.AuthProvider
+import {{ package_identifier }}.modules.auth.model.OAuthUserProfile
+import {{ package_identifier }}.modules.auth.model.User
+import {{ package_identifier }}.modules.auth.repository.UserRepository
+import {{ package_identifier }}.modules.auth.service.UserProvisioningService
+import {{ package_identifier }}.shared.exception.ConflictException
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.test.context.ActiveProfiles
+
+@SpringBootTest
+@ActiveProfiles("test")
+class UserProvisioningServiceTest {
+
+    @Autowired
+    private lateinit var userProvisioningService: UserProvisioningService
+
+    @Autowired
+    private lateinit var userRepository: UserRepository
+
+    @BeforeEach
+    fun setup() {
+        userRepository.deleteAll()
+    }
+
+    @Test
+    fun `oauth provisioning rejects silent linking to an existing local account`() {
+        userRepository.save(
+            User(
+                email = "existing@example.com",
+                displayName = "Existing User",
+                passwordHash = "stored-password-hash",
+                authProvider = AuthProvider.LOCAL
+            )
+        )
+
+        val exception = assertThrows(ConflictException::class.java) {
+            userProvisioningService.provisionOAuthUser(
+                AuthProvider.GOOGLE,
+                OAuthUserProfile(
+                    providerId = "google-subject",
+                    email = "existing@example.com",
+                    displayName = "Google User",
+                    avatarUrl = "https://example.com/avatar.png"
+                )
+            )
+        }
+
+        assertEquals(AuthErrorCode.OAUTH_ACCOUNT_LINK_REQUIRED.code, exception.code)
+    }
+
+    @Test
+    fun `oauth provisioning updates an existing user matched by provider id`() {
+        val existing = userRepository.save(
+            User(
+                email = "oauth@example.com",
+                displayName = "Old Name",
+                authProvider = AuthProvider.GOOGLE,
+                providerId = "google-subject"
+            )
+        )
+
+        val updated = userProvisioningService.provisionOAuthUser(
+            AuthProvider.GOOGLE,
+            OAuthUserProfile(
+                providerId = "google-subject",
+                email = "oauth@example.com",
+                displayName = "New Name",
+                avatarUrl = "https://example.com/avatar.png"
+            )
+        )
+
+        assertEquals(existing.id, updated.id)
+        assertEquals("New Name", updated.displayName)
+        assertEquals("https://example.com/avatar.png", updated.avatarUrl)
+    }
+
+    @Test
+    fun `oauth provisioning creates a new user when no matching account exists`() {
+        val created = userProvisioningService.provisionOAuthUser(
+            AuthProvider.GOOGLE,
+            OAuthUserProfile(
+                providerId = "new-google-subject",
+                email = "new-oauth@example.com",
+                displayName = "New OAuth User",
+                avatarUrl = "https://example.com/new-avatar.png"
+            )
+        )
+
+        assertEquals("new-oauth@example.com", created.email)
+        assertEquals("New OAuth User", created.displayName)
+        assertEquals(AuthProvider.GOOGLE, created.authProvider)
+        assertEquals("new-google-subject", created.providerId)
+    }
+}

@@ -1,0 +1,15 @@
+package {{ package_identifier }}.shared.error
+
+import org.springframework.http.HttpStatus
+
+/**
+ * Typed contract for API-facing errors.
+ *
+ * Keeping the wire code, default message, and HTTP status together helps the
+ * exception layer and global error handler stay aligned.
+ */
+interface ErrorCode {
+    val httpStatus: HttpStatus
+    val code: String
+    val defaultMessage: String
+}

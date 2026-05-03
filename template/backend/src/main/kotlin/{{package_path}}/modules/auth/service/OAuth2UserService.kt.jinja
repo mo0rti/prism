@@ -1,6 +1,7 @@
 package {{ package_identifier }}.modules.auth.service
 
 import {{ package_identifier }}.bootstrap.properties.OAuthProperties
+import {{ package_identifier }}.modules.auth.error.AuthErrorCode
 import {{ package_identifier }}.modules.auth.model.AuthProvider
 import {{ package_identifier }}.modules.auth.model.OAuthUserProfile
 import {{ package_identifier }}.modules.auth.model.User
@@ -31,7 +32,10 @@ class OAuth2UserService(
         val authProvider = try {
             AuthProvider.valueOf(provider.uppercase())
         } catch (_: Exception) {
-            throw UnauthorizedException("Unsupported OAuth provider: $provider")
+            throw UnauthorizedException(
+                AuthErrorCode.INVALID_OAUTH_PROVIDER,
+                message = "Unsupported OAuth provider: $provider"
+            )
         }
 
         val userProfile = when (authProvider) {
@@ -47,14 +51,16 @@ class OAuth2UserService(
 {% if "microsoft" in auth_methods %}
             AuthProvider.MICROSOFT -> exchangeMicrosoftCode(code, redirectUri)
 {% endif %}
-            else -> throw UnauthorizedException("OAuth provider $provider is not enabled")
+            else -> throw UnauthorizedException(
+                AuthErrorCode.OAUTH_PROVIDER_NOT_ENABLED,
+                message = "OAuth provider $provider is not enabled"
+            )
         }
 
         return try {
             userProvisioningService.provisionOAuthUser(authProvider, userProfile)
         } catch (ex: DataIntegrityViolationException) {
             userProvisioningService.findExistingOAuthUser(authProvider, userProfile)
-                ?.let { userProvisioningService.provisionOAuthUser(authProvider, userProfile) }
                 ?: throw ex
         }
     }
@@ -62,7 +68,10 @@ class OAuth2UserService(
 
     private fun exchangeGoogleCode(code: String, redirectUri: String): OAuthUserProfile {
         val googleProperties = oAuthProperties.google
-            ?: throw UnauthorizedException("Google OAuth is not configured")
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_PROVIDER_NOT_CONFIGURED,
+                message = "Google OAuth is not configured"
+            )
 
         val tokenResponse = exchangeCodeForToken(
             tokenUri = googleProperties.tokenUri,
@@ -72,7 +81,10 @@ class OAuth2UserService(
             redirectUri = redirectUri
         )
         val accessToken = tokenResponse["access_token"] as? String
-            ?: throw UnauthorizedException("Failed to get Google access token")
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_ACCESS_TOKEN_MISSING,
+                message = "Failed to get Google access token"
+            )
 
         val headers = HttpHeaders().apply { setBearerAuth(accessToken) }
         val userInfo = restTemplate.exchange(
@@ -80,15 +92,27 @@ class OAuth2UserService(
             HttpMethod.GET,
             HttpEntity<Void>(headers),
             Map::class.java
-        ).body ?: throw UnauthorizedException("Failed to get Google user info")
+        ).body ?: throw UnauthorizedException(
+            AuthErrorCode.OAUTH_USER_INFO_FAILED,
+            message = "Failed to get Google user info"
+        )
 
         val providerId = userInfo["sub"] as? String
-            ?: throw UnauthorizedException("Missing Google subject in user info")
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_PROVIDER_ID_MISSING,
+                message = "Missing Google subject in user info"
+            )
         val email = userInfo["email"] as? String
-            ?: throw UnauthorizedException("Google account email is unavailable")
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_EMAIL_UNAVAILABLE,
+                message = "Google account email is unavailable"
+            )
         val emailVerified = userInfo["email_verified"] as? Boolean
-        if (emailVerified == false) {
-            throw UnauthorizedException("Google account email is not verified")
+        if (emailVerified != true) {
+            throw UnauthorizedException(
+                AuthErrorCode.OAUTH_EMAIL_NOT_VERIFIED,
+                message = "Google account email is not verified"
+            )
         }
 
         return OAuthUserProfile(
@@ -102,7 +126,10 @@ class OAuth2UserService(
 
     private fun exchangeAppleCode(code: String, redirectUri: String): OAuthUserProfile {
         val appleProperties = oAuthProperties.apple
-            ?: throw UnauthorizedException("Apple OAuth is not configured")
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_PROVIDER_NOT_CONFIGURED,
+                message = "Apple OAuth is not configured"
+            )
 
         val tokenResponse = exchangeCodeForToken(
             tokenUri = appleProperties.tokenUri,
@@ -112,13 +139,26 @@ class OAuth2UserService(
             redirectUri = redirectUri
         )
         val idToken = tokenResponse["id_token"] as? String
-            ?: throw UnauthorizedException("Failed to get Apple ID token")
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_ACCESS_TOKEN_MISSING,
+                message = "Failed to get Apple ID token"
+            )
 
         val payload = decodeJwtPayload(idToken)
+        val providerId = payload["sub"] as? String
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_PROVIDER_ID_MISSING,
+                message = "Missing Apple subject in ID token"
+            )
+        val email = payload["email"] as? String
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_EMAIL_UNAVAILABLE,
+                message = "Apple account email is unavailable"
+            )
         return OAuthUserProfile(
-            providerId = payload["sub"] as String,
-            email = payload["email"] as String,
-            displayName = payload["email"] as String,
+            providerId = providerId,
+            email = email,
+            displayName = email,
             avatarUrl = null
         )
     }
@@ -130,7 +170,12 @@ class OAuth2UserService(
 
     private fun decodeJwtPayload(jwt: String): Map<String, Any> {
         val parts = jwt.split(".")
-        if (parts.size != 3) throw UnauthorizedException("Invalid ID token format")
+        if (parts.size != 3) {
+            throw UnauthorizedException(
+                AuthErrorCode.OAUTH_ID_TOKEN_INVALID,
+                message = "Invalid ID token format"
+            )
+        }
         val payload = String(java.util.Base64.getUrlDecoder().decode(parts[1]))
         @Suppress("UNCHECKED_CAST")
         return com.fasterxml.jackson.databind.ObjectMapper().readValue(payload, Map::class.java) as Map<String, Any>
@@ -139,7 +184,10 @@ class OAuth2UserService(
 
     private fun exchangeFacebookCode(code: String, redirectUri: String): OAuthUserProfile {
         val facebookProperties = oAuthProperties.facebook
-            ?: throw UnauthorizedException("Facebook OAuth is not configured")
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_PROVIDER_NOT_CONFIGURED,
+                message = "Facebook OAuth is not configured"
+            )
 
         val tokenResponse = exchangeCodeForToken(
             tokenUri = facebookProperties.tokenUri,
@@ -149,11 +197,17 @@ class OAuth2UserService(
             redirectUri = redirectUri
         )
         val accessToken = tokenResponse["access_token"] as? String
-            ?: throw UnauthorizedException("Failed to get Facebook access token")
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_ACCESS_TOKEN_MISSING,
+                message = "Failed to get Facebook access token"
+            )
 
         val userInfoUrl = "${facebookProperties.userInfoUri}&access_token=$accessToken"
         val userInfo = restTemplate.getForObject(userInfoUrl, Map::class.java)
-            ?: throw UnauthorizedException("Failed to get Facebook user info")
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_USER_INFO_FAILED,
+                message = "Failed to get Facebook user info"
+            )
 
         val picture = (userInfo["picture"] as? Map<*, *>)?.let { pic ->
             (pic["data"] as? Map<*, *>)?.get("url") as? String
@@ -170,7 +224,10 @@ class OAuth2UserService(
 
     private fun exchangeMicrosoftCode(code: String, redirectUri: String): OAuthUserProfile {
         val microsoftProperties = oAuthProperties.microsoft
-            ?: throw UnauthorizedException("Microsoft OAuth is not configured")
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_PROVIDER_NOT_CONFIGURED,
+                message = "Microsoft OAuth is not configured"
+            )
 
         val tokenResponse = exchangeCodeForToken(
             tokenUri = microsoftProperties.tokenUri,
@@ -180,7 +237,10 @@ class OAuth2UserService(
             redirectUri = redirectUri
         )
         val accessToken = tokenResponse["access_token"] as? String
-            ?: throw UnauthorizedException("Failed to get Microsoft access token")
+            ?: throw UnauthorizedException(
+                AuthErrorCode.OAUTH_ACCESS_TOKEN_MISSING,
+                message = "Failed to get Microsoft access token"
+            )
 
         val headers = HttpHeaders().apply { setBearerAuth(accessToken) }
         val userInfo = restTemplate.exchange(
@@ -188,7 +248,10 @@ class OAuth2UserService(
             HttpMethod.GET,
             HttpEntity<Void>(headers),
             Map::class.java
-        ).body ?: throw UnauthorizedException("Failed to get Microsoft user info")
+        ).body ?: throw UnauthorizedException(
+            AuthErrorCode.OAUTH_USER_INFO_FAILED,
+            message = "Failed to get Microsoft user info"
+        )
 
         return OAuthUserProfile(
             providerId = userInfo["id"] as String,
@@ -216,7 +279,7 @@ class OAuth2UserService(
         }
         val headers = HttpHeaders().apply { contentType = MediaType.APPLICATION_FORM_URLENCODED }
         val response = restTemplate.postForObject(tokenUri, HttpEntity(params, headers), Map::class.java)
-            ?: throw UnauthorizedException("Token exchange failed")
+            ?: throw UnauthorizedException(AuthErrorCode.OAUTH_TOKEN_EXCHANGE_FAILED)
         return response as Map<String, Any>
     }
 }

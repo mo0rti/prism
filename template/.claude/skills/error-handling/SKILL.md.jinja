@@ -15,7 +15,10 @@ Use this skill when backend work affects exception types, API error codes, or va
 
 ## Current Error Model
 
-- `ApiException(status, code, message, details)` is the shared base type.
+- `ErrorCode` is the shared typed contract for machine-readable API error codes.
+- `CommonErrorCode` holds cross-cutting HTTP-level error codes.
+- Domain modules can define their own `*ErrorCode` enums and pass them through built-in exceptions.
+- `ApiException(errorCode, message, details)` is the shared base type.
 - `GlobalExceptionHandler` maps `ApiException`, `MethodArgumentNotValidException`, and unhandled `Exception`.
 - `ApiErrorResponse` exposes `code`, `message`, and optional `details`.
 
@@ -33,7 +36,11 @@ Use this skill when backend work affects exception types, API error codes, or va
 
 - Use a built-in exception plus a domain-specific code for one-off cases.
 - Reuse or name a domain exception class only when the case is common enough to deserve one.
+- Prefer typed `ErrorCode` enums over raw string literals inside backend code.
+- Prefer module-local `error/` packages for domain-specific error-code enums such as `AuthErrorCode` or `TransactionErrorCode`.
+- Ensure the wrapped error code's HTTP status matches the exception wrapper; a mismatch throws a runtime guard error and surfaces as a 500 through the generic handler.
 - Built-in exceptions support optional `details`; use them for structured client context.
+- Keep `ApiException` as the shared base class and keep each reusable built-in exception in its own Kotlin file under `shared/exception/`.
 - Let exceptions propagate to `GlobalExceptionHandler`; do not catch them in controllers just to map HTTP.
 - Do not throw raw `RuntimeException` or `ResponseStatusException` for expected API failures.
 - Keep `code` stable and machine-readable; keep `message` human-readable.
@@ -41,7 +48,10 @@ Use this skill when backend work affects exception types, API error codes, or va
 
 ## Key Files
 
+- `shared/error/ErrorCode.kt`
+- `shared/error/CommonErrorCode.kt`
 - `shared/exception/ApiException.kt`
+- `shared/exception/*Exception.kt`
 - `shared/exception/GlobalExceptionHandler.kt`
 - `shared/model/ApiErrorResponse.kt`
 - `shared/api-contracts/openapi.yml`

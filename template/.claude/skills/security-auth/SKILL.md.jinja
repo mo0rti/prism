@@ -16,13 +16,15 @@ Apply this skill when a backend change affects route exposure, JWT handling, or 
 ## Current Security Model
 
 - Stateless JWT: `SessionCreationPolicy.STATELESS`
-{% if "password" in auth_methods %}
 - Password auth uses `BCryptPasswordEncoder`
-{% endif %}
+- Password inputs are bounded to BCrypt's 72-byte effective limit
 - `JwtAuthenticationFilter` runs before `UsernamePasswordAuthenticationFilter`
 - CORS allowed origins come from `app.cors.allowed-origins`
 - Route access is controlled in `bootstrap/SecurityConfig.kt`
 - Method-security annotations are not enabled by default in this template
+- Refresh tokens carry a version claim and are rotated on every successful login, OAuth callback, and refresh
+- Local email/password registration does not include a full email-verification workflow by default
+- Auth endpoints are not rate-limited by a distributed/shared store in this scaffold
 
 ## Public Endpoints
 
@@ -30,17 +32,16 @@ Defined explicitly in `SecurityConfig.securityFilterChain()`:
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
 - `/api/v1/auth/oauth/callback`
 {% endif %}
-{% if "password" in auth_methods %}
 - `/api/v1/auth/register`
 - `/api/v1/auth/login`
-{% endif %}
 - `/api/v1/auth/refresh`
 - `/actuator/health`
-- `/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs/**`
+- `/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs/**` only when SpringDoc is explicitly enabled
 
 ## Authenticated Endpoints
 
 - `/api/v1/auth/me`
+- `/api/v1/auth/logout`
 - Every other backend route that is not explicitly permitted
 
 ## Current User Access
@@ -64,6 +65,8 @@ Use `SecurityContextHolder` only when controller-level injection is not practica
 - Keep secrets in environment-backed config, never hardcoded Kotlin values.
 - Align backend route security with `shared/api-contracts/openapi.yml`.
 - Access and refresh tokens must carry an explicit token-type claim, and each usage path must validate the expected type before accepting the token.
+- Rotate refresh tokens on every successful refresh and reject reused refresh tokens.
+- Do not silently link an OAuth sign-in to an existing account that shares only an email address; require an explicit account-linking flow instead.
 
 ## Auth-Specific Modeling
 
@@ -77,13 +80,19 @@ Use `SecurityContextHolder` only when controller-level injection is not practica
 - Group auth-related config under `bootstrap/properties`
 - When adding a provider, update config properties, OAuth flow handling, and public route exposure together
 - Do not wrap outbound OAuth HTTP calls in long-lived database transactions; fetch remote provider data first, then persist within a narrower transaction boundary if needed
+{% if auth_methods | reject("equalto", "password") | list | length > 0 %}
 - For first startup after generation, a local profile may provide placeholder OAuth values so the backend can boot before real provider credentials are configured
+- The local profile may also provide a bootstrap-only JWT secret so first startup works without exporting `JWT_SECRET`
 - Treat placeholder OAuth values as a bootstrap convenience only; real OAuth flows still require real credentials supplied through IDE environment variables or local overrides
+{% else %}
+- The local profile may provide a bootstrap-only JWT secret so first startup works without exporting `JWT_SECRET`
+{% endif %}
+- Remove global fallback secrets from shared config and require environment-backed secrets outside the local/test profiles
 
 ## Key Files
 
 - `bootstrap/SecurityConfig.kt` - filter chain, route exposure rules, CORS
-{% if auth_methods | length > 1 or "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
 - `bootstrap/OAuth2Config.kt` - infrastructure beans for OAuth support
 {% endif %}
 - `bootstrap/security/JwtTokenProvider.kt` - token generation and validation
@@ -98,4 +107,5 @@ Use `SecurityContextHolder` only when controller-level injection is not practica
 - Re-check unauthenticated access to any route whose matcher changed.
 - Re-check intended public auth endpoints after auth-surface changes.
 - Verify that `/api/v1/auth/refresh` accepts only refresh tokens and that protected routes reject refresh tokens as bearer credentials.
+- Verify that refresh-token reuse fails after a successful refresh or logout.
 - Update the OpenAPI contract if endpoint security changed.

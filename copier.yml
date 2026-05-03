@@ -116,14 +116,14 @@ platforms:
 auth_methods:
   type: yaml
   multiselect: true
-  help: "Which authentication methods do you want to support?"
-  validator: "{% if 'web-user-app' in platforms and not auth_methods %}User Web App currently requires at least one auth method{% elif 'web-admin-portal' in platforms and 'password' not in auth_methods %}Admin Web Portal currently requires Username + Password auth{% endif %}"
+  help: "Which authentication methods do you want to support? Keep Username + Password selected; OAuth providers are additive."
+  validator: "{% if 'password' not in auth_methods %}Prism currently requires Username + Password auth as the baseline sign-in method{% endif %}"
   choices:
+    Username + Password (required): password
     Google OAuth: google
     Apple Sign-In: apple
     Facebook Login: facebook
     Microsoft Account: microsoft
-    Username + Password: password
   default: "[google, password]"
 
 # =============================================================================

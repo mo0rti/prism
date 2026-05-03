@@ -391,7 +391,7 @@ function Validate-BackendOnly {
     Assert-FileContains -Path (Join-Path $Root "backend\Dockerfile") -Needle 'RUN sed -i ''s/\r$//'' gradlew && chmod +x gradlew' -Message "Backend Dockerfile should normalize gradlew for Linux builds."
 
     Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/oauth/callback:" -Message "Backend-only sample should generate the OAuth callback path when Google and Apple are selected."
-    Assert-FileContains -Path (Join-Path $Root "backend\docs\entities\user.md") -Needle "google, apple, facebook, microsoft, password" -Message "User entity doc should reflect selected auth providers."
+    Assert-FileContains -Path (Join-Path $Root "backend\docs\entities\user.md") -Needle "local password auth and also supports Google, Apple, Facebook, Microsoft OAuth callback exchange" -Message "User entity doc should reflect the baseline password auth plus selected OAuth providers."
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "Implement backend -> web-user-app -> web-admin-portal -> Android -> iOS as applicable" -Message "Root AGENTS guidance should not assume absent platform slices."
     Assert-PathMissing -Path (Join-Path $Root "docs\advisory-board.md") -Message "Generated project must not contain legacy docs/advisory-board.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\auth.md") -Message "Generated project must not contain legacy docs/features/auth.md."
@@ -449,6 +449,46 @@ function Validate-BackendOnly {
     }
     else {
         Write-Host "Skipping backend Docker smoke test because it is disabled for this mode or Docker is not available on PATH."
+    }
+}
+
+function Validate-BackendPasswordOnly {
+    param(
+        [string]$Root,
+        [bool]$RunSmoke = $false
+    )
+
+    Assert-NoCopierPlaceholders -Root $Root
+
+    Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@PostMapping("/register")' -Message "Password-only backend sample must expose the register endpoint."
+    Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@PostMapping("/login")' -Message "Password-only backend sample must expose the login endpoint."
+    Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@PostMapping("/refresh")' -Message "Password-only backend sample must expose the refresh endpoint."
+    Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@PostMapping("/logout")' -Message "Password-only backend sample must expose the logout endpoint."
+    Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@GetMapping("/me")' -Message "Password-only backend sample must expose the current-user endpoint."
+    Assert-FileNotContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '/oauth/callback' -Message "Password-only backend sample must not render the OAuth callback endpoint."
+
+    Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/register:" -Message "Password-only backend sample must expose register in OpenAPI."
+    Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/login:" -Message "Password-only backend sample must expose login in OpenAPI."
+    Assert-FileNotContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/oauth/callback:" -Message "Password-only backend sample must not expose OAuth callback in OpenAPI."
+
+    if ($RunSmoke) {
+        $javaCommand = Get-Command java -ErrorAction SilentlyContinue
+        if ($null -ne $javaCommand) {
+            Push-Location (Join-Path $Root "backend")
+            try {
+                Write-Host "Running password-only backend Gradle packaging smoke test..."
+                & .\gradlew.bat bootJar --no-daemon -x test | Out-Host
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Generated password-only backend sample failed 'gradlew.bat bootJar --no-daemon -x test'."
+                }
+            }
+            finally {
+                Pop-Location
+            }
+        }
+        else {
+            Write-Host "Skipping password-only backend Gradle smoke test because Java is not available on PATH."
+        }
     }
 }
 
@@ -606,6 +646,13 @@ switch ($Mode) {
             "auth_methods=[google, apple, facebook, microsoft, password]"
         )
         Validate-BackendOnly -Root $backendRoot -RunSmoke $true
+
+        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -DataArgs @(
+            "project_name=Review Backend",
+            "platforms=[backend]",
+            "auth_methods=[password]"
+        )
+        Validate-BackendPasswordOnly -Root $passwordOnlyRoot -RunSmoke $true
     }
     "contract" {
         $backendRoot = New-GeneratedProject -Name "backend" -DataArgs @(
@@ -614,6 +661,13 @@ switch ($Mode) {
             "auth_methods=[google, apple, facebook, microsoft, password]"
         )
         Validate-BackendOnly -Root $backendRoot -RunSmoke $false
+
+        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -DataArgs @(
+            "project_name=Review Backend",
+            "platforms=[backend]",
+            "auth_methods=[password]"
+        )
+        Validate-BackendPasswordOnly -Root $passwordOnlyRoot -RunSmoke $false
 
         $webRoot = New-GeneratedProject -Name "web" -DataArgs @(
             "project_name=Review Web",
@@ -640,6 +694,13 @@ switch ($Mode) {
             "auth_methods=[google, apple, facebook, microsoft, password]"
         )
         Validate-BackendOnly -Root $backendRoot -RunSmoke $true
+
+        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -DataArgs @(
+            "project_name=Review Backend",
+            "platforms=[backend]",
+            "auth_methods=[password]"
+        )
+        Validate-BackendPasswordOnly -Root $passwordOnlyRoot -RunSmoke $true
 
         $webRoot = New-GeneratedProject -Name "web" -DataArgs @(
             "project_name=Review Web",

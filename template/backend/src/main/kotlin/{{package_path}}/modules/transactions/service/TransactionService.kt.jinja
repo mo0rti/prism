@@ -6,6 +6,7 @@ import {{ package_identifier }}.modules.transactions.dto.CreateTransactionReques
 import {{ package_identifier }}.modules.transactions.dto.TransactionResponse
 import {{ package_identifier }}.modules.transactions.dto.UpdateTransactionRequest
 import {{ package_identifier }}.modules.transactions.dto.toResponse
+import {{ package_identifier }}.modules.transactions.error.TransactionErrorCode
 import {{ package_identifier }}.modules.transactions.model.Transaction
 import {{ package_identifier }}.modules.transactions.model.TransactionStatus
 import {{ package_identifier }}.modules.transactions.repository.TransactionRepository
@@ -77,8 +78,8 @@ class TransactionService(
         checkOwnerOrAdmin(user, transaction)
         if (transaction.status != TransactionStatus.PENDING) {
             throw BadRequestException(
+                errorCode = TransactionErrorCode.TRANSACTION_DELETE_NOT_ALLOWED,
                 message = "Only pending transactions can be deleted",
-                code = "TRANSACTION_DELETE_NOT_ALLOWED",
                 details = mapOf("status" to transaction.status.name)
             )
         }
@@ -89,8 +90,8 @@ class TransactionService(
         transactionRepository.findById(id)
             .orElseThrow {
                 NotFoundException(
+                    errorCode = TransactionErrorCode.TRANSACTION_NOT_FOUND,
                     message = "Transaction not found with id: $id",
-                    code = "TRANSACTION_NOT_FOUND",
                     details = mapOf("transactionId" to id.toString())
                 )
             }
@@ -98,8 +99,8 @@ class TransactionService(
     private fun checkOwnerOrAdmin(user: User, transaction: Transaction) {
         if (transaction.createdBy.id != user.id && user.role != UserRole.ADMIN) {
             throw ForbiddenException(
+                errorCode = TransactionErrorCode.TRANSACTION_MODIFICATION_FORBIDDEN,
                 message = "Only the creator or admins can modify this transaction",
-                code = "TRANSACTION_MODIFICATION_FORBIDDEN",
                 details = mapOf("transactionId" to transaction.id.toString())
             )
         }
@@ -111,8 +112,8 @@ class TransactionService(
         }
         if (transaction.createdBy.id != user.id && transaction.status != TransactionStatus.SETTLED) {
             throw NotFoundException(
+                errorCode = TransactionErrorCode.TRANSACTION_NOT_FOUND,
                 message = "Transaction not found with id: ${transaction.id}",
-                code = "TRANSACTION_NOT_FOUND",
                 details = mapOf("transactionId" to transaction.id.toString())
             )
         }
@@ -124,8 +125,8 @@ class TransactionService(
         }
         if (current != TransactionStatus.PENDING) {
             throw BadRequestException(
+                errorCode = TransactionErrorCode.TRANSACTION_STATUS_TRANSITION_NOT_ALLOWED,
                 message = "Only pending transactions can change status",
-                code = "TRANSACTION_STATUS_TRANSITION_NOT_ALLOWED",
                 details = mapOf(
                     "currentStatus" to current.name,
                     "requestedStatus" to requested.name
@@ -143,8 +144,8 @@ class TransactionService(
         val field = parts.getOrElse(0) { "createdAt" }
         if (field !in supportedSortFields) {
             throw BadRequestException(
+                errorCode = TransactionErrorCode.INVALID_SORT_FIELD,
                 message = "Unsupported sort field: $field",
-                code = "INVALID_SORT_FIELD",
                 details = mapOf(
                     "field" to field,
                     "supportedFields" to supportedSortFields.sorted()

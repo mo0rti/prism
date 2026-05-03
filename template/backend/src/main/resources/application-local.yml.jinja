@@ -1,4 +1,6 @@
 app:
+  jwt:
+    secret: local-jwt-secret-for-first-run-only-keep-real-secrets-in-env
   oauth:
 {% if "google" in auth_methods -%}
     google:
@@ -30,3 +32,9 @@ app:
       token-uri: https://login.microsoftonline.com/local-tenant-id/oauth2/v2.0/token
       user-info-uri: https://graph.microsoft.com/v1.0/me
 {% endif %}
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

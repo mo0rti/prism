@@ -88,14 +88,14 @@ Read `knowledge/wiki/WIKI_REPORT.md` first when present. If it is absent, run
 
 ### Lifecycle / write
 
-- `/setup-project`
-- `/po-intake [folder]`
-- `/po-clarify`
-- `/po-handoff [F-XXX]`
-- `/design-intake [F-XXX] [folder]`
-- `/design-clarify`
-- `/design-handoff [F-XXX]`
-- `/dev-done [F-XXX]`
+- `/setup-project` - interactive project initialization (run once after scaffolding)
+- `/po-intake [folder]` - process raw PO notes into feature specs
+- `/po-clarify` - answer open questions assigned to PO
+- `/po-handoff [F-XXX]` - move feature to ready-for-design
+- `/design-intake [F-XXX] [folder]` - attach design artifacts to a feature
+- `/design-clarify` - answer open questions assigned to Designer
+- `/design-handoff [F-XXX]` - move feature to ready-for-dev
+- `/dev-done [F-XXX]` - mark a feature as shipped
 
 ### Audit / review
 
@@ -134,22 +134,34 @@ Backend issues JWT after successful auth. Clients store token and send as `Autho
 
 ## Conventions
 
+Workspace-level conventions list only the slices present in the generated workspace.
+
 - **API-first**: Define endpoints in OpenAPI -> generate clients -> implement
 {% if "backend" in platforms %}- **Backend module structure**: `bootstrap/`, `shared/`, and `modules/<domain>/`
 - **Security**: JWT-protected routes with explicit public auth endpoints
-{% endif %}{% if "mobile-android" in platforms or "mobile-ios" in platforms %}- **MVVM**: ViewModel + UiState/ViewState on the generated mobile platforms
+- **Backend testing**: JUnit Jupiter 6 + MockK for service logic, plus Spring integration coverage for security and request-path behavior
+{% endif %}{% if "mobile-android" in platforms or "mobile-ios" in platforms %}- **Mobile MVVM**: ViewModel + UiState/ViewState on the generated mobile platforms
 {% endif %}{% if "mobile-android" in platforms %}- **Android DI**: Hilt-backed feature and network wiring
+- **Android testing**: use the platform guide for JUnit, Compose/UI, and integration coverage
 {% endif %}{% if "mobile-ios" in platforms %}- **iOS DI**: protocol-based container with async/await flows
-{% endif %}- **Tests**: platform-native test stacks for the selected slices
+- **iOS testing**: use the platform guide for XCTest, async flows, and feature-level coverage
+{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}- **Web platform structure**: keep route, auth, and client-generation rules aligned with the selected web platform guides
+{% endif %}
 
 Generated-workspace assumption:
 
 - Open the **generated repository root** as the workspace when using Claude Code.
 - The generated repo keeps shared Claude skills at `.claude/skills/` in the repo root.
 - Open root-first even when you plan to work in only one platform folder.
-{% if "mobile-android" in platforms or "mobile-ios" in platforms %}- Platform folders like `mobile-android/` and `mobile-ios/` are subfolders of that repo,
-  not separate skill roots.
+{% if platforms | length == 1 %}{% if "backend" in platforms %}- This particular generated workspace currently includes `backend/` only as an app platform.
+{% elif "web-user-app" in platforms %}- This particular generated workspace currently includes `web-user-app/` only as an app platform.
+{% elif "web-admin-portal" in platforms %}- This particular generated workspace currently includes `web-admin-portal/` only as an app platform.
+{% elif "mobile-android" in platforms %}- This particular generated workspace currently includes `mobile-android/` only as an app platform.
+{% elif "mobile-ios" in platforms %}- This particular generated workspace currently includes `mobile-ios/` only as an app platform.
+{% endif %}- Other generations may also include additional web, mobile, or backend platform folders with their own local guidance.
+{% else %}- This generated workspace includes multiple platform folders. Read the root guidance first, then defer to the platform-local files for the slices you touch.
 {% endif %}
+- Platform folders in the generated repo are subfolders of that workspace, not separate skill roots.
 
 ## Platform-Specific Context
 
@@ -160,3 +172,12 @@ Each platform has its own `CLAUDE.md` with detailed patterns:
 {% endif %}{% if "mobile-android" in platforms %}- `mobile-android/CLAUDE.md` - Compose, Hilt, Retrofit 3, Room, MVVM skills, mobile-android/docs/ references
 {% endif %}{% if "mobile-ios" in platforms %}- `mobile-ios/CLAUDE.md` - SwiftUI, async/await, Keychain, SwiftData, local iOS skills, mobile-ios/docs/ references
 {% endif %}
+
+## Adding Features
+
+1. Read `knowledge/wiki/WIKI_REPORT.md` if present, or run `/feature-status` first.
+2. If no feature page exists, run `/po-intake [folder]` to create one from raw notes.
+3. After design is complete, run `/design-handoff [F-XXX]` to generate platform-requirements.
+4. Add endpoints to `shared/api-contracts/openapi.yml` and run `task generate-clients`.
+5. Implement the selected platform slices per `knowledge/wiki/platform-requirements/`.
+6. When shipped, run `/dev-done [F-XXX]`.
