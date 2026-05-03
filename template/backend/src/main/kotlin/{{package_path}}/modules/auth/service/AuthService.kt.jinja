@@ -2,26 +2,21 @@ package {{ package_identifier }}.modules.auth.service
 
 import {{ package_identifier }}.bootstrap.security.JwtTokenProvider
 import {{ package_identifier }}.modules.auth.dto.AuthResponse
-{% if "password" in auth_methods %}
 import {{ package_identifier }}.modules.auth.dto.LoginRequest
-{% endif %}
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
 import {{ package_identifier }}.modules.auth.dto.OAuthCallbackRequest
 {% endif %}
 import {{ package_identifier }}.modules.auth.dto.RefreshTokenRequest
-{% if "password" in auth_methods %}
 import {{ package_identifier }}.modules.auth.dto.RegisterRequest
-{% endif %}
 import {{ package_identifier }}.modules.auth.dto.UserResponse
 import {{ package_identifier }}.modules.auth.dto.toResponse
+import {{ package_identifier }}.modules.auth.error.AuthErrorCode
 import {{ package_identifier }}.modules.auth.model.AuthProvider
 import {{ package_identifier }}.modules.auth.model.User
 import {{ package_identifier }}.modules.auth.repository.UserRepository
 import {{ package_identifier }}.shared.exception.ConflictException
 import {{ package_identifier }}.shared.exception.UnauthorizedException
-{% if "password" in auth_methods %}
 import org.springframework.security.crypto.password.PasswordEncoder
-{% endif %}
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -30,24 +25,21 @@ class AuthService(
     private val userRepository: UserRepository,
     private val jwtTokenProvider: JwtTokenProvider,
     private val oAuth2UserService: OAuth2UserService,
-{% if "password" in auth_methods %}
     private val passwordEncoder: PasswordEncoder
-{% endif %}
 ) {
-{% if "password" in auth_methods %}
     private val dummyPasswordHash = passwordEncoder.encode("timing-attack-placeholder")
-{% endif %}
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+    @Transactional
     fun oauthCallback(request: OAuthCallbackRequest): AuthResponse {
         val user = oAuth2UserService.processOAuthCallback(request.provider, request.code, request.redirectUri)
-        return createAuthResponse(user)
+        return createFreshSession(user)
     }
-{% endif %}{% if "password" in auth_methods %}
+{% endif %}
 
     @Transactional
     fun register(request: RegisterRequest): AuthResponse {
         if (userRepository.existsByEmail(request.email)) {
-            throw ConflictException("Email already registered")
+            throw ConflictException(AuthErrorCode.EMAIL_ALREADY_REGISTERED)
         }
 
         val user = userRepository.save(
@@ -59,42 +51,56 @@ class AuthService(
             )
         )
 
-        return createAuthResponse(user)
+        return createFreshSession(user)
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     fun login(request: LoginRequest): AuthResponse {
         val user = userRepository.findByEmail(request.email)
         val passwordHash = user?.passwordHash ?: dummyPasswordHash
         val passwordMatches = passwordEncoder.matches(request.password, passwordHash)
         if (user == null || user.passwordHash == null || !passwordMatches) {
-            throw UnauthorizedException("Invalid credentials")
+            throw UnauthorizedException(AuthErrorCode.INVALID_CREDENTIALS)
         }
 
-        return createAuthResponse(user)
+        return createFreshSession(user)
     }
-{% endif %}
 
-    @Transactional(readOnly = true)
+    @Transactional
     fun refreshToken(request: RefreshTokenRequest): AuthResponse {
         if (!jwtTokenProvider.validateRefreshToken(request.refreshToken)) {
-            throw UnauthorizedException("Invalid or expired refresh token")
+            throw UnauthorizedException(AuthErrorCode.INVALID_REFRESH_TOKEN)
         }
 
         val userId = jwtTokenProvider.getUserIdFromToken(request.refreshToken)
         val user = userRepository.findById(userId)
-            .orElseThrow { UnauthorizedException("User not found") }
+            .orElseThrow { UnauthorizedException(AuthErrorCode.USER_NOT_FOUND) }
 
-        return createAuthResponse(user)
+        if (!jwtTokenProvider.matchesRefreshTokenVersion(request.refreshToken, user.refreshTokenVersion)) {
+            throw UnauthorizedException(AuthErrorCode.INVALID_REFRESH_TOKEN)
+        }
+
+        return createFreshSession(user)
+    }
+
+    @Transactional
+    fun logout(user: User) {
+        user.refreshTokenVersion += 1
+        userRepository.save(user)
     }
 
     @Transactional(readOnly = true)
     fun getCurrentUser(user: User): UserResponse = user.toResponse()
 
-    private fun createAuthResponse(user: User) = AuthResponse(
-        accessToken = jwtTokenProvider.generateAccessToken(user),
-        refreshToken = jwtTokenProvider.generateRefreshToken(user),
-        expiresIn = jwtTokenProvider.getAccessTokenExpiry(),
-        user = user.toResponse()
-    )
+    private fun createFreshSession(user: User): AuthResponse {
+        user.refreshTokenVersion += 1
+        val persistedUser = userRepository.save(user)
+
+        return AuthResponse(
+            accessToken = jwtTokenProvider.generateAccessToken(persistedUser),
+            refreshToken = jwtTokenProvider.generateRefreshToken(persistedUser),
+            expiresIn = jwtTokenProvider.getAccessTokenExpiry(),
+            user = persistedUser.toResponse()
+        )
+    }
 }

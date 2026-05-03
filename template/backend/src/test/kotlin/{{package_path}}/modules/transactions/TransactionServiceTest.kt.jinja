@@ -5,6 +5,7 @@ import {{ package_identifier }}.modules.auth.model.User
 import {{ package_identifier }}.modules.auth.model.UserRole
 import {{ package_identifier }}.modules.transactions.dto.CreateTransactionRequest
 import {{ package_identifier }}.modules.transactions.dto.UpdateTransactionRequest
+import {{ package_identifier }}.modules.transactions.error.TransactionErrorCode
 import {{ package_identifier }}.modules.transactions.model.Transaction
 import {{ package_identifier }}.modules.transactions.model.TransactionStatus
 import {{ package_identifier }}.modules.transactions.model.TransactionType
@@ -129,7 +130,7 @@ class TransactionServiceTest {
                 transactionService.getById(testUser, missingId)
             }
 
-            assertEquals("TRANSACTION_NOT_FOUND", exception.code)
+            assertEquals(TransactionErrorCode.TRANSACTION_NOT_FOUND.code, exception.code)
         }
 
         @Test
@@ -141,7 +142,7 @@ class TransactionServiceTest {
                 transactionService.getById(otherUser, transaction.id)
             }
 
-            assertEquals("TRANSACTION_NOT_FOUND", exception.code)
+            assertEquals(TransactionErrorCode.TRANSACTION_NOT_FOUND.code, exception.code)
         }
     }
 
@@ -172,7 +173,7 @@ class TransactionServiceTest {
                 transactionService.update(otherUser, transaction.id, UpdateTransactionRequest(description = "Tampered"))
             }
 
-            assertEquals("TRANSACTION_MODIFICATION_FORBIDDEN", exception.code)
+            assertEquals(TransactionErrorCode.TRANSACTION_MODIFICATION_FORBIDDEN.code, exception.code)
         }
 
         @Test
@@ -184,7 +185,7 @@ class TransactionServiceTest {
                 transactionService.update(testUser, transaction.id, UpdateTransactionRequest(status = TransactionStatus.FAILED))
             }
 
-            assertEquals("TRANSACTION_STATUS_TRANSITION_NOT_ALLOWED", exception.code)
+            assertEquals(TransactionErrorCode.TRANSACTION_STATUS_TRANSITION_NOT_ALLOWED.code, exception.code)
         }
     }
 
@@ -203,6 +204,29 @@ class TransactionServiceTest {
         }
 
         @Test
+        fun `throws forbidden when another user deletes transaction`() {
+            val transaction = transaction(owner = testUser, status = TransactionStatus.PENDING)
+            every { transactionRepository.findById(transaction.id) } returns Optional.of(transaction)
+
+            val exception = assertThrows(ForbiddenException::class.java) {
+                transactionService.delete(otherUser, transaction.id)
+            }
+
+            assertEquals(TransactionErrorCode.TRANSACTION_MODIFICATION_FORBIDDEN.code, exception.code)
+        }
+
+        @Test
+        fun `allows admin to delete another users pending transaction`() {
+            val transaction = transaction(owner = testUser, status = TransactionStatus.PENDING)
+            every { transactionRepository.findById(transaction.id) } returns Optional.of(transaction)
+            every { transactionRepository.delete(transaction) } just runs
+
+            transactionService.delete(adminUser, transaction.id)
+
+            verify(exactly = 1) { transactionRepository.delete(transaction) }
+        }
+
+        @Test
         fun `throws bad request when deleting non pending transaction`() {
             val transaction = transaction(owner = testUser, status = TransactionStatus.SETTLED)
             every { transactionRepository.findById(transaction.id) } returns Optional.of(transaction)
@@ -211,7 +235,7 @@ class TransactionServiceTest {
                 transactionService.delete(testUser, transaction.id)
             }
 
-            assertEquals("TRANSACTION_DELETE_NOT_ALLOWED", exception.code)
+            assertEquals(TransactionErrorCode.TRANSACTION_DELETE_NOT_ALLOWED.code, exception.code)
         }
     }
 
@@ -224,7 +248,7 @@ class TransactionServiceTest {
                 transactionService.list(testUser, page = 0, size = 20, sort = "unknown,desc")
             }
 
-            assertEquals("INVALID_SORT_FIELD", exception.code)
+            assertEquals(TransactionErrorCode.INVALID_SORT_FIELD.code, exception.code)
         }
     }
 

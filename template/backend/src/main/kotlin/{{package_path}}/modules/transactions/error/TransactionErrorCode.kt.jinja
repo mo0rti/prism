@@ -1,0 +1,23 @@
+package {{ package_identifier }}.modules.transactions.error
+
+import {{ package_identifier }}.shared.error.ErrorCode
+import org.springframework.http.HttpStatus
+
+/**
+ * Error codes owned by the transactions module.
+ *
+ * These codes describe domain rules and visibility constraints that should stay
+ * separate from shared infrastructure errors.
+ */
+enum class TransactionErrorCode(
+    override val httpStatus: HttpStatus,
+    override val defaultMessage: String
+) : ErrorCode {
+    TRANSACTION_NOT_FOUND(HttpStatus.NOT_FOUND, "Transaction not found"),
+    TRANSACTION_MODIFICATION_FORBIDDEN(HttpStatus.FORBIDDEN, "Only the creator or admins can modify this transaction"),
+    TRANSACTION_DELETE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "Only pending transactions can be deleted"),
+    TRANSACTION_STATUS_TRANSITION_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "Only pending transactions can change status"),
+    INVALID_SORT_FIELD(HttpStatus.BAD_REQUEST, "Unsupported sort field");
+
+    override val code: String = name
+}

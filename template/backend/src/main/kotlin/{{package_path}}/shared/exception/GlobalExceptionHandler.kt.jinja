@@ -1,8 +1,8 @@
 package {{ package_identifier }}.shared.exception
 
+import {{ package_identifier }}.shared.error.CommonErrorCode
 import {{ package_identifier }}.shared.model.ApiErrorResponse
 import org.slf4j.LoggerFactory
-import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -26,23 +26,33 @@ class GlobalExceptionHandler {
     fun handleValidation(ex: MethodArgumentNotValidException): ResponseEntity<ApiErrorResponse> {
         val details = ex.bindingResult.fieldErrors.associate { it.field to (it.defaultMessage ?: "invalid") }
         return ResponseEntity
-            .status(HttpStatus.BAD_REQUEST)
-            .body(ApiErrorResponse(code = "VALIDATION_ERROR", message = "Validation failed", details = details))
+            .status(CommonErrorCode.VALIDATION_ERROR.httpStatus)
+            .body(ApiErrorResponse(
+                code = CommonErrorCode.VALIDATION_ERROR.code,
+                message = CommonErrorCode.VALIDATION_ERROR.defaultMessage,
+                details = details
+            ))
     }
 
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleUnreadableMessage(ex: HttpMessageNotReadableException): ResponseEntity<ApiErrorResponse> {
         log.debug("Request body could not be read", ex)
         return ResponseEntity
-            .status(HttpStatus.BAD_REQUEST)
-            .body(ApiErrorResponse(code = "INVALID_REQUEST", message = "Request body is invalid or incomplete"))
+            .status(CommonErrorCode.INVALID_REQUEST.httpStatus)
+            .body(ApiErrorResponse(
+                code = CommonErrorCode.INVALID_REQUEST.code,
+                message = CommonErrorCode.INVALID_REQUEST.defaultMessage
+            ))
     }
 
     @ExceptionHandler(Exception::class)
     fun handleGeneric(ex: Exception): ResponseEntity<ApiErrorResponse> {
         log.error("Unhandled exception", ex)
         return ResponseEntity
-            .status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(ApiErrorResponse(code = "INTERNAL_ERROR", message = "An unexpected error occurred"))
+            .status(CommonErrorCode.INTERNAL_ERROR.httpStatus)
+            .body(ApiErrorResponse(
+                code = CommonErrorCode.INTERNAL_ERROR.code,
+                message = CommonErrorCode.INTERNAL_ERROR.defaultMessage
+            ))
     }
 }

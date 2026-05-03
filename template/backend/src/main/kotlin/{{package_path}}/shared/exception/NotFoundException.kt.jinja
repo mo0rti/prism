@@ -1,0 +1,23 @@
+package {{ package_identifier }}.shared.exception
+
+import {{ package_identifier }}.shared.error.CommonErrorCode
+import {{ package_identifier }}.shared.error.ErrorCode
+import org.springframework.http.HttpStatus
+
+/**
+ * HTTP 404 wrapper around a typed [ErrorCode].
+ *
+ * The guard keeps the wrapper type and supplied error code aligned so callers
+ * cannot accidentally return a non-404 error through this exception.
+ */
+class NotFoundException(
+    errorCode: ErrorCode = CommonErrorCode.NOT_FOUND,
+    message: String = errorCode.defaultMessage,
+    details: Map<String, Any>? = null
+) : ApiException(errorCode, message, details) {
+    init {
+        require(errorCode.httpStatus == HttpStatus.NOT_FOUND) {
+            "NotFoundException requires a NOT_FOUND error code, got ${errorCode.code} (${errorCode.httpStatus})"
+        }
+    }
+}

@@ -34,6 +34,7 @@ docs/              # Human-readable architecture and operations docs
 {% endif %}```
 
 This generated repository includes the platform slices selected during generation.
+Read the root agent file first, then defer to the platform-local guidance inside the folders that are present.
 
 ## The product wiki
 
@@ -64,7 +65,9 @@ Designer: `/design-intake [F-XXX] [folder]`, `/design-clarify`, `/design-handoff
 Developer: `/prep-sprint`, `/dev-done [F-XXX]`
 Board: `/board-review [F-XXX]`
 Shared: `/feature-status`, `/ask [F-XXX] "question" --to po|designer|dev`,
-        `/audit-feature [F-XXX]`, `/lint-wiki`
+        `/audit-feature [F-XXX]`, `/lint-wiki`, `/wiki-show F-XXX`,
+        `/wiki-blockers`, `/wiki-query "text"`, `/wiki-owner po|designer|dev`,
+        `/wiki-platform <platform-id>`
 
 **Codex** (use `$skill` syntax for structured project operations):
 

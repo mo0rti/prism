@@ -46,6 +46,12 @@ class SecurityConfigTest {
     }
 
     @Test
+    fun `logout endpoint is not public`() {
+        mockMvc.perform(post("/api/v1/auth/logout"))
+            .andExpect(status().is4xxClientError)
+    }
+
+    @Test
     fun `me endpoint rejects refresh token bearer authentication`() {
         val user = userRepository.save(User(
             email = "refresh@example.com",
@@ -59,5 +65,27 @@ class SecurityConfigTest {
                 .header("Authorization", "Bearer $refreshToken")
         )
             .andExpect(status().is4xxClientError)
+    }
+
+    @Test
+    fun `swagger ui is not exposed in the test profile`() {
+        mockMvc.perform(get("/swagger-ui.html"))
+            .andExpect(status().is4xxClientError)
+    }
+
+    @Test
+    fun `logout endpoint accepts authenticated access token`() {
+        val user = userRepository.save(User(
+            email = "logout@example.com",
+            displayName = "Logout User",
+            authProvider = AuthProvider.LOCAL
+        ))
+        val accessToken = jwtTokenProvider.generateAccessToken(user)
+
+        mockMvc.perform(
+            post("/api/v1/auth/logout")
+                .header("Authorization", "Bearer $accessToken")
+        )
+            .andExpect(status().isNoContent)
     }
 }

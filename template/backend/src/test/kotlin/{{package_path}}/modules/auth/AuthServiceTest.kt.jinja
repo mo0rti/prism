@@ -5,10 +5,8 @@ import {{ package_identifier }}.modules.auth.model.*
 import {{ package_identifier }}.modules.auth.repository.UserRepository
 import {{ package_identifier }}.modules.auth.service.AuthService
 import {{ package_identifier }}.bootstrap.security.JwtTokenProvider
-import {{ package_identifier }}.shared.exception.UnauthorizedException
-{% if "password" in auth_methods %}
 import {{ package_identifier }}.shared.exception.ConflictException
-{% endif %}
+import {{ package_identifier }}.shared.exception.UnauthorizedException
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -34,7 +32,6 @@ class AuthServiceTest {
         userRepository.deleteAll()
     }
 
-{% if "password" in auth_methods %}
     @Test
     fun `register creates user and returns tokens`() {
         val request = RegisterRequest(
@@ -98,7 +95,6 @@ class AuthServiceTest {
             ))
         }
     }
-{% endif %}
 
     @Test
     fun `refresh token returns new tokens`() {
@@ -113,6 +109,26 @@ class AuthServiceTest {
 
         assertNotNull(response.accessToken)
         assertNotNull(response.refreshToken)
+
+        assertThrows(UnauthorizedException::class.java) {
+            authService.refreshToken(RefreshTokenRequest(refreshToken))
+        }
+    }
+
+    @Test
+    fun `logout invalidates existing refresh tokens`() {
+        val response = authService.register(RegisterRequest(
+            email = "logout@example.com",
+            password = "password123",
+            displayName = "Logout User"
+        ))
+        val user = userRepository.findByEmail("logout@example.com")!!
+
+        authService.logout(user)
+
+        assertThrows(UnauthorizedException::class.java) {
+            authService.refreshToken(RefreshTokenRequest(response.refreshToken))
+        }
     }
 
     @Test

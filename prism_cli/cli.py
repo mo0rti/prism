@@ -1018,8 +1018,13 @@ def prompt_advanced_answers() -> dict[str, Any]:
     package_identifier = prompt_text("Package identifier", f"com.example.{slugify(project_name).replace('-', '')}")
     github_org = prompt_text("GitHub organization or username", "")
     platforms = prompt_multiselect("Select platforms", ALL_PLATFORM_CHOICES, default_values=["backend", "mobile-android"])
-    auth_default = DEFAULT_ANSWERS["auth_methods"] if any(p in platforms for p in ("web-user-app", "web-admin-portal")) else []
-    auth_methods = prompt_multiselect("Select auth methods", ALL_AUTH_CHOICES, default_values=auth_default, allow_empty=True)
+    auth_default = DEFAULT_ANSWERS["auth_methods"]
+    auth_methods = prompt_multiselect(
+        "Select auth methods (keep Username + Password selected)",
+        ALL_AUTH_CHOICES,
+        default_values=auth_default,
+        allow_empty=False,
+    )
     use_docker = prompt_bool("Include Docker Compose?", True)
 
     return {
@@ -1151,10 +1156,8 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
 
     if not platforms:
         errors.append("At least one platform must be selected.")
-    if "web-user-app" in platforms and not auth_methods:
-        errors.append("User Web App currently requires at least one auth method.")
-    if "web-admin-portal" in platforms and "password" not in auth_methods:
-        errors.append("Admin Web Portal currently requires Username + Password auth.")
+    if platforms and "password" not in auth_methods:
+        errors.append("Prism currently requires Username + Password auth as the baseline sign-in method.")
     if "apple" in auth_methods:
         warnings.append("Apple Sign-In remains experimental.")
     if "mobile-ios" in platforms:

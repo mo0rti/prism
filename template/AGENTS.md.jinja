@@ -133,13 +133,19 @@ Backend issues JWT after successful auth. Clients store token and send as `Autho
 
 ## Conventions
 
+Workspace-level conventions list only the slices present in the generated workspace.
+
 - **API-first**: Define endpoints in OpenAPI -> generate clients -> implement
 {% if "backend" in platforms %}- **Backend module structure**: `bootstrap/`, `shared/`, and `modules/<domain>/`
 - **Security**: JWT-protected routes with explicit public auth endpoints
-{% endif %}{% if "mobile-android" in platforms or "mobile-ios" in platforms %}- **MVVM**: ViewModel + UiState/ViewState on the generated mobile platforms
+- **Backend testing**: JUnit Jupiter 6 + MockK for service logic, plus Spring integration coverage for security and request-path behavior
+{% endif %}{% if "mobile-android" in platforms or "mobile-ios" in platforms %}- **Mobile MVVM**: ViewModel + UiState/ViewState on the generated mobile platforms
 {% endif %}{% if "mobile-android" in platforms %}- **Android DI**: Hilt-backed feature and network wiring
+- **Android testing**: use the platform guide for JUnit, Compose/UI, and integration coverage
 {% endif %}{% if "mobile-ios" in platforms %}- **iOS DI**: protocol-based container with async/await flows
-{% endif %}- **Tests**: platform-native test stacks for the selected slices
+- **iOS testing**: use the platform guide for XCTest, async flows, and feature-level coverage
+{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}- **Web platform structure**: keep route, auth, and client-generation rules aligned with the selected web platform guides
+{% endif %}
 
 Codex reads `AGENTS.md` from repo root down to the working directory, so defer to the
 platform-level file when working inside a specific platform folder.
@@ -149,9 +155,15 @@ Generated-workspace assumption:
 - Open the **generated repository root** as the workspace when using Codex.
 - The generated repo keeps shared Codex skills at `.agents/skills/` in the repo root.
 - Open root-first even when you plan to work in only one platform folder.
-{% if "mobile-android" in platforms or "mobile-ios" in platforms %}- Platform folders like `mobile-android/` and `mobile-ios/` are subfolders of that repo,
-  not separate skill roots.
+{% if platforms | length == 1 %}{% if "backend" in platforms %}- This particular generated workspace currently includes `backend/` only as an app platform.
+{% elif "web-user-app" in platforms %}- This particular generated workspace currently includes `web-user-app/` only as an app platform.
+{% elif "web-admin-portal" in platforms %}- This particular generated workspace currently includes `web-admin-portal/` only as an app platform.
+{% elif "mobile-android" in platforms %}- This particular generated workspace currently includes `mobile-android/` only as an app platform.
+{% elif "mobile-ios" in platforms %}- This particular generated workspace currently includes `mobile-ios/` only as an app platform.
+{% endif %}- Other generations may also include additional web, mobile, or backend platform folders with their own local guidance.
+{% else %}- This generated workspace includes multiple platform folders. Read the root guidance first, then defer to the platform-local files for the slices you touch.
 {% endif %}
+- Platform folders in the generated repo are subfolders of that workspace, not separate skill roots.
 
 ## Platform-Specific Context
 
