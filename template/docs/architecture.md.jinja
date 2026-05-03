@@ -35,6 +35,14 @@ View (UI)  ->  ViewModel (State + Logic)  ->  Repository  ->  Data Source (API/L
 | Local Storage | DataStore | Keychain |
 | DI | Hilt | Protocol-based container |
 
+{% elif "backend" in platforms and platforms | length == 1 %}
+This generation is backend-only. The backend is organized into:
+
+- `bootstrap/` for framework wiring such as security, OpenAPI, CORS, and typed properties
+- `shared/` for cross-cutting concerns such as error handling, paging DTOs, and auditing
+- `modules/auth/` for registration, login, OAuth callback exchange, JWT refresh, and current-user endpoints
+- `modules/transactions/` for transaction CRUD, visibility rules, and ownership checks
+
 {% endif %}
 ### API Contract
 
@@ -58,6 +66,6 @@ Colors, spacing, typography, and border-radius values consumed by all platforms.
 
 1. **API contract first** - define endpoints in OpenAPI before implementing
 2. **Documentation first** - create feature/entity docs before coding
-3. **Feature modules** - each feature is a self-contained module in every platform
-4. **Consistent naming** - same feature name across all platforms (e.g., `examples/` everywhere)
+3. **Feature modules** - backend domains live under `modules/<domain>/`
+4. **Consistent naming** - docs, contract, and code should refer to the same feature names (for example, `transactions`)
 5. **Never edit generated code** - modify the OpenAPI spec and regenerate

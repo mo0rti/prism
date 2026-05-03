@@ -40,18 +40,21 @@ update and ask for confirmation before writing, or route a question using
 
 ## Architecture
 
-Monorepo with MVVM across all platforms. API-first: OpenAPI spec drives typed clients.
+Generated workspace with the selected platform slices. API-first:
+`shared/api-contracts/openapi.yml` drives typed clients and should stay aligned with
+the implemented platform routes.
 
 ```text
-{% if "backend" in platforms %}backend/       -> Spring Boot 4 (Kotlin 2.2+, Java 21) - Azure Container Apps{% endif %}
-{% if "web-user-app" in platforms %}web-user-app/  -> Next.js + TypeScript user-facing web app - Cloudflare via OpenNext{% endif %}
-{% if "web-admin-portal" in platforms %}web-admin-portal/  -> Next.js + TypeScript admin web portal - Cloudflare via OpenNext{% endif %}
-{% if "mobile-android" in platforms %}mobile-android/       -> Kotlin + Jetpack Compose (MVVM, Hilt, Room){% endif %}
-{% if "mobile-ios" in platforms %}mobile-ios/           -> Swift 6 + SwiftUI (MVVM, SwiftData) - Mac/Xcode only{% endif %}
-shared/        -> OpenAPI spec + design tokens
+{% if "backend" in platforms %}backend/       -> Spring Boot 4 (Kotlin 2.2+, Java 21) - Azure Container Apps
+{% endif %}{% if "web-user-app" in platforms %}web-user-app/  -> Next.js + TypeScript user-facing web app - Cloudflare via OpenNext
+{% endif %}{% if "web-admin-portal" in platforms %}web-admin-portal/  -> Next.js + TypeScript admin web portal - Cloudflare via OpenNext
+{% endif %}{% if "mobile-android" in platforms %}mobile-android/ -> Kotlin + Jetpack Compose (MVVM, Hilt, Room)
+{% endif %}{% if "mobile-ios" in platforms %}mobile-ios/     -> Swift 6 + SwiftUI (MVVM, SwiftData) - Mac/Xcode only
+{% endif %}shared/        -> OpenAPI spec + design tokens
 knowledge/     -> Living product wiki (single source of truth for features)
 docs/          -> Human-readable reference documentation
-```
+{% if "backend" in platforms %}infra/         -> Azure setup and deployment scripts
+{% endif %}```
 
 ## Common Commands
 
@@ -132,17 +135,21 @@ Backend issues JWT after successful auth. Clients store token and send as `Autho
 ## Conventions
 
 - **API-first**: Define endpoints in OpenAPI -> generate clients -> implement
-- **MVVM**: ViewModel + UiState/ViewState on both Android and iOS
-- **DI**: Hilt (Android), protocol-based container (iOS), Spring (backend)
-- **Tests**: MockK + Turbine (Android), XCTest (iOS), JUnit Jupiter 6 (backend)
-- **One ViewModel per screen**, concrete repositories (no interface + impl boilerplate)
+{% if "backend" in platforms %}- **Backend module structure**: `bootstrap/`, `shared/`, and `modules/<domain>/`
+- **Security**: JWT-protected routes with explicit public auth endpoints
+{% endif %}{% if "mobile-android" in platforms or "mobile-ios" in platforms %}- **MVVM**: ViewModel + UiState/ViewState on the generated mobile platforms
+{% endif %}{% if "mobile-android" in platforms %}- **Android DI**: Hilt-backed feature and network wiring
+{% endif %}{% if "mobile-ios" in platforms %}- **iOS DI**: protocol-based container with async/await flows
+{% endif %}- **Tests**: platform-native test stacks for the selected slices
 
 Generated-workspace assumption:
 
 - Open the **generated repository root** as the workspace when using Claude Code.
 - The generated repo keeps shared Claude skills at `.claude/skills/` in the repo root.
-- Platform folders like `mobile-android/` and `mobile-ios/` are subfolders of that repo,
+- Open root-first even when you plan to work in only one platform folder.
+{% if "mobile-android" in platforms or "mobile-ios" in platforms %}- Platform folders like `mobile-android/` and `mobile-ios/` are subfolders of that repo,
   not separate skill roots.
+{% endif %}
 
 ## Platform-Specific Context
 

@@ -36,7 +36,7 @@ command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
 Before running the backend locally:
 
 1. Start PostgreSQL with `docker compose up -d db` from the generated project root.
-2. Use the `local` Spring profile for IDE runs.
+2. Use the `local` Spring profile for IDE runs, including IntelliJ IDEA run configurations.
 3. If you want real OAuth locally, replace the placeholder provider values from `application-local.yml` with real credentials through your IDE environment variables or local overrides.
 
 The `local` profile exists to make first startup succeed without immediately requiring real OAuth credentials. OAuth callbacks will not work with the placeholder values.
@@ -53,7 +53,7 @@ The `local` profile exists to make first startup succeed without immediately req
 ### Gotchas
 
 - **Jackson 3.x split namespace**: core annotations stay at `com.fasterxml.jackson.annotation.*`, runtime classes moved to `tools.jackson.*`. There is NO `tools.jackson.annotation` package.
-- **Entity IDs**: always `lateinit var id: UUID` in the class body - never make it nullable (`UUID? = null`) as that causes cascading compile errors. Use `!::id.isInitialized` in equals/hashCode.
+- **Entity IDs**: generated entities use `lateinit var id: UUID` in the class body. Application-assigned identity entities such as `User` may use a constructor-backed non-null `UUID`. Do not make IDs nullable unless you are explicitly using `@MapsId`. Use `!::id.isInitialized` in equals/hashCode for `lateinit` IDs.
 - **Inject ObjectMapper**: Spring beans must inject `tools.jackson.databind.ObjectMapper`, never create standalone `jacksonObjectMapper()`.
 - **File granularity**: keep each DTO, entity, enum, and reusable value object in its own Kotlin file. Avoid `*Dtos.kt` aggregator files and avoid nesting reusable enums inside entity files.
 
@@ -74,12 +74,12 @@ src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
       model/         - User entity + enums
       repository/    - JPA repository
       service/       - Auth + OAuth2 business logic
-    transactions/    - Transaction workflow example (template for new features)
+    transactions/    - Transaction CRUD, visibility, and ownership rules
       controller/    - REST endpoints
       dto/           - Request/response data classes
       model/         - Transaction entity + enums
       repository/    - JPA repository
-      service/       - Business logic + visibility rules
+      service/       - Business logic + permission checks
 ```
 
 ## Conventions

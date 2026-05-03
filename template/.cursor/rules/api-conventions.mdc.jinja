@@ -10,9 +10,9 @@ globs: "shared/api-contracts/**"
 - Generate clients: `task generate-clients`
 
 ## Naming
-- Paths: plural nouns, kebab-case (`/auth/oauth-callback`, `/examples`)
+- Paths: plural nouns, kebab-case (`/auth/oauth-callback`, `/transactions`)
 - JSON fields: camelCase (`createdAt`, `totalElements`)
-- Path params: camelCase (`{exampleId}`)
+- Path params: camelCase (`{transactionId}`)
 
 ## Pagination
 All list endpoints use query params `page` (0-based) and `size` (default 20).

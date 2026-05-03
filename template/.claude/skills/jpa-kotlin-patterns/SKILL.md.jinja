@@ -7,9 +7,26 @@ description: JPA / Kotlin Entity Patterns. Use when creating or modifying entiti
 
 Entity, repository, and Hibernate patterns for this **Spring Boot 4 + Kotlin + {% if database == 'postgres' %}PostgreSQL{% else %}MySQL{% endif %}** project.
 
-## Standard Entity Pattern
+## Standard Entity Patterns
 
-Business fields in the **constructor**, `@Id lateinit var id: UUID` in the **class body**. Extend `AuditableEntity()`.
+Business fields live in the **constructor** and entities extend `AuditableEntity()`.
+
+Use one of these two ID patterns consistently:
+
+1. **Generated ID entities**: `@Id lateinit var id: UUID` in the class body
+2. **Application-assigned ID entities**: `@Id val id: UUID = UUID.randomUUID()` in the constructor when the application owns identity creation, such as the generated `User` entity
+
+Application-assigned IDs should look like this:
+
+```kotlin
+@Entity
+@Table(name = "users")
+class User(
+    @Id
+    val id: UUID = UUID.randomUUID(),
+    var email: String,
+) : AuditableEntity()
+```
 
 ```kotlin
 @Entity
@@ -32,23 +49,26 @@ class SomeEntity(
 
 ### Critical Rules
 
-- **`lateinit var id: UUID`** - NEVER make it nullable (`UUID? = null`). Nullable IDs cause cascading compile errors across services/controllers/mappers.
-- **`@Column(columnDefinition = "uuid")`** on the `@Id` field - ensures the database uses native UUID type.
-- **`AuditableEntity()`** provides `createdAt` (`lateinit var Instant`) and `updatedAt` (`var Instant? = null`). Does NOT contain `@Id` - each entity defines its own.
+- Use a **non-null UUID ID** pattern. For generated IDs, prefer `lateinit var id: UUID`. For application-assigned IDs, use a constructor-backed non-null `UUID`.
+- Never use `UUID? = null` for normal entity IDs. Nullable IDs are reserved for explicit `@MapsId` shared-primary-key cases.
+- `@Column(columnDefinition = "uuid")` remains the preferred choice for generated UUID IDs in class bodies.
+- `AuditableEntity()` provides constructor-backed `createdAt` and `updatedAt` fields and does not contain `@Id` - each entity defines its own ID strategy.
 
 ## AuditableEntity Base Class
 
 ```kotlin
 @MappedSuperclass
-@EntityListeners(AuditingEntityListener::class)
-abstract class AuditableEntity {
-    @CreatedDate
+abstract class AuditableEntity(
     @Column(name = "created_at", nullable = false, updatable = false)
-    lateinit var createdAt: Instant
+    val createdAt: Instant = Instant.now(),
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
-    var updatedAt: Instant? = null
+    @Column(name = "updated_at", nullable = false)
+    var updatedAt: Instant = Instant.now()
+) {
+    @PreUpdate
+    fun onUpdate() {
+        updatedAt = Instant.now()
+    }
 }
 ```
 
@@ -96,7 +116,7 @@ class UserProfile(
 ) : AuditableEntity()
 ```
 
-This is the **only** case where `@Id` is nullable - because `@MapsId` fills it from the parent.
+This is the **only** normal case where `@Id` is nullable - because `@MapsId` fills it from the parent.
 
 ## @ElementCollection for Enum Sets
 

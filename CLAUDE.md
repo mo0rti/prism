@@ -1,6 +1,6 @@
 # Multi-Platform Project Template
 
-Copier template that scaffolds monorepo projects with Backend (Spring Boot 4), User Web App (Next.js), Admin Web Portal (Next.js), Android (Kotlin/Compose), and iOS (Swift/SwiftUI).
+Copier template that scaffolds multi-platform workspaces with Backend (Spring Boot 4), User Web App (Next.js), Admin Web Portal (Next.js), Android (Kotlin/Compose), and iOS (Swift/SwiftUI).
 
 The questionnaire keeps roadmap-facing options visible. Backend, Android, and iOS are the primary implemented slices today; the user web app, admin web portal, and some auth/deployment choices remain intentionally visible while their end-to-end support continues to evolve.
 
@@ -64,5 +64,3 @@ cd /path/to/generated-project && copier update --trust
 - `copier.yml` - template configuration and questionnaire
 - `template/CLAUDE.md.jinja` - Claude context template for generated projects
 - `template/AGENTS.md.jinja` - Codex context template for generated projects
-
-Use `plans/` for planning references.

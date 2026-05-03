@@ -35,6 +35,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
 {% endif %}
@@ -59,6 +61,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '409':
           $ref: '#/components/responses/Conflict'
 
@@ -81,6 +85,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
 {% endif %}
@@ -104,6 +110,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -123,13 +131,13 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
   # ===========================================================================
-  # Examples (Placeholder CRUD)
+  # Transactions
   # ===========================================================================
-  /examples:
+  /transactions:
     get:
-      operationId: listExamples
-      tags: [examples]
-      summary: List examples with pagination
+      operationId: listTransactions
+      tags: [transactions]
+      summary: List transactions visible to the current user
       parameters:
         - name: page
           in: query
@@ -149,35 +157,42 @@ paths:
             default: "createdAt,desc"
       responses:
         '200':
-          description: Paginated list of examples
+          description: Paginated list of visible transactions
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExampleListResponse'
+                $ref: '#/components/schemas/TransactionListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
     post:
-      operationId: createExample
-      tags: [examples]
-      summary: Create a new example
+      operationId: createTransaction
+      tags: [transactions]
+      summary: Create a new transaction
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateExampleRequest'
+              $ref: '#/components/schemas/CreateTransactionRequest'
       responses:
         '201':
-          description: Example created
+          description: Transaction created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExampleResponse'
+                $ref: '#/components/schemas/TransactionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
-  /examples/{id}:
+  /transactions/{id}:
     get:
-      operationId: getExample
-      tags: [examples]
-      summary: Get a single example by ID
+      operationId: getTransaction
+      tags: [transactions]
+      summary: Get a single transaction by ID
+      description: Returns `404` when the transaction does not exist or is not visible to the current user.
       parameters:
         - name: id
           in: path
@@ -187,18 +202,20 @@ paths:
             format: uuid
       responses:
         '200':
-          description: Example details
+          description: Transaction details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExampleResponse'
+                $ref: '#/components/schemas/TransactionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
 
     put:
-      operationId: updateExample
-      tags: [examples]
-      summary: Update an example
+      operationId: updateTransaction
+      tags: [transactions]
+      summary: Update a transaction
       parameters:
         - name: id
           in: path
@@ -211,21 +228,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateExampleRequest'
+              $ref: '#/components/schemas/UpdateTransactionRequest'
       responses:
         '200':
-          description: Example updated
+          description: Transaction updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExampleResponse'
+                $ref: '#/components/schemas/TransactionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
     delete:
-      operationId: deleteExample
-      tags: [examples]
-      summary: Delete an example
+      operationId: deleteTransaction
+      tags: [transactions]
+      summary: Delete a pending transaction
       parameters:
         - name: id
           in: path
@@ -235,7 +258,13 @@ paths:
             format: uuid
       responses:
         '204':
-          description: Example deleted
+          description: Transaction deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -245,7 +274,7 @@ paths:
 components:
   schemas:
     # --- Auth ---
-{% if "google" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
     OAuthCallbackRequest:
       type: object
       required: [provider, code, redirectUri]
@@ -253,6 +282,7 @@ components:
         provider:
           type: string
           enum: [{% for method in auth_methods if method != "password" %}{{ method }}{% if not loop.last %}, {% endif %}{% endfor %}]
+          description: Lowercase provider slug accepted by the OAuth callback endpoint and mapped to the backend AuthProvider enum.
         code:
           type: string
           description: Authorization code from OAuth provider
@@ -326,26 +356,35 @@ components:
           nullable: true
         authProvider:
           type: string
-          enum: [LOCAL{% for method in auth_methods if method != "password" %}, {{ method | upper }}{% endfor %}]
+          enum: [LOCAL, GOOGLE, APPLE, FACEBOOK, MICROSOFT]
+          description: Only LOCAL and the selected OAuth providers are enabled in this generated backend.
         role:
           type: string
           enum: [USER, ADMIN]
 
-    # --- Examples ---
-    ExampleResponse:
+    # --- Transactions ---
+    TransactionResponse:
       type: object
       properties:
         id:
           type: string
           format: uuid
-        title:
+        reference:
+          type: string
+          description: Server-generated transaction reference assigned during creation.
+        amount:
+          type: number
+        currency:
           type: string
         description:
           type: string
           nullable: true
+        type:
+          type: string
+          enum: [CHARGE, REFUND, PAYOUT]
         status:
           type: string
-          enum: [DRAFT, PUBLISHED, ARCHIVED]
+          enum: [PENDING, SETTLED, FAILED, CANCELLED]
         createdBy:
           type: string
           format: uuid
@@ -356,13 +395,13 @@ components:
           type: string
           format: date-time
 
-    ExampleListResponse:
+    TransactionListResponse:
       type: object
       properties:
         content:
           type: array
           items:
-            $ref: '#/components/schemas/ExampleResponse'
+            $ref: '#/components/schemas/TransactionResponse'
         page:
           type: integer
         size:
@@ -372,31 +411,32 @@ components:
         totalPages:
           type: integer
 
-    CreateExampleRequest:
+    CreateTransactionRequest:
       type: object
-      required: [title]
+      required: [amount, currency, type]
       properties:
-        title:
+        amount:
+          type: number
+          minimum: 0.01
+        currency:
           type: string
-          minLength: 1
-          maxLength: 255
+          pattern: '^[A-Z]{3}$'
         description:
           type: string
           maxLength: 2000
+        type:
+          type: string
+          enum: [CHARGE, REFUND, PAYOUT]
 
-    UpdateExampleRequest:
+    UpdateTransactionRequest:
       type: object
       properties:
-        title:
-          type: string
-          minLength: 1
-          maxLength: 255
         description:
           type: string
           maxLength: 2000
         status:
           type: string
-          enum: [DRAFT, PUBLISHED, ARCHIVED]
+          enum: [PENDING, SETTLED, FAILED, CANCELLED]
 
     # --- Common ---
     ApiError:
@@ -411,6 +451,13 @@ components:
           additionalProperties: true
 
   responses:
+    BadRequest:
+      description: Request is malformed or violates a business rule
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
     Unauthorized:
       description: Authentication required or invalid token
       content:

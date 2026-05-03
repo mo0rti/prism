@@ -1,4 +1,4 @@
-# {{ project_name }} — Product context
+# {{ project_name }} - Product context
 
 This file is the master context anchor for all AI agents working in this repository.
 Read this before working in any platform directory.
@@ -12,11 +12,11 @@ Read this before working in any platform directory.
 
 If this is a newly scaffolded project, run the setup command before anything else.
 It initializes the wiki, interviews you about your domain, and generates the advisory
-board configuration. It takes 15–20 minutes and runs once.
+board configuration. It takes 15-20 minutes and runs once.
 
 - **Claude Code:** `/setup-project`
 - **Codex:** `$setup-project`
-- **Cursor:** ask the agent: "run setup-project" — it will follow the steps in
+- **Cursor:** ask the agent: "run setup-project" - it will follow the steps in
   `knowledge/wiki/SCHEMA.md` and `.claude/commands/setup-project.md`
 
 ## Repository structure
@@ -28,16 +28,20 @@ board configuration. It takes 15–20 minutes and runs once.
 {% endif %}{% if "mobile-android" in platforms %}mobile-android/    # Kotlin + Jetpack Compose (MVVM)
 {% endif %}{% if "mobile-ios" in platforms %}mobile-ios/        # Swift 6 + SwiftUI (MVVM)
 {% endif %}shared/            # OpenAPI 3.1 spec + design tokens
-knowledge/         # Living product wiki — single source of truth for all features
-```
+knowledge/         # Living product wiki - single source of truth for all features
+docs/              # Human-readable architecture and operations docs
+{% if "backend" in platforms %}infra/             # Azure deployment scripts
+{% endif %}```
+
+This generated repository includes the platform slices selected during generation.
 
 ## The product wiki
 
 All product knowledge lives in `knowledge/wiki/`. Before implementing any feature:
 
-1. Read `knowledge/wiki/index.md` — confirm the feature is in `ready-for-dev` or `in-dev`
+1. Read `knowledge/wiki/index.md` - confirm the feature is in `ready-for-dev` or `in-dev`
    status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
-   stop and inform the human — a board review should happen before implementation.
+   stop and inform the human - a board review should happen before implementation.
 2. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context
 3. Read `knowledge/wiki/platform-requirements/[feature-id]-[THIS_PLATFORM].md` for your
    specific implementation requirements
