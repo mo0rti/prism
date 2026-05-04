@@ -178,9 +178,9 @@ So this is a scope difference, not just a naming mismatch.
 The remaining smaller question set is around Claude-only deep technical skills such as:
 
 - `test-endpoint`
-- `database-migrations`
+- `migration-conventions`
 - `jpa-kotlin-patterns`
-- `migration`
+- `create-migration` (Claude command)
 - `code-review`
 
 These are not necessarily bugs, but they should be treated as conscious product decisions:

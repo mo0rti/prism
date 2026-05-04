@@ -1,0 +1,227 @@
+# AI Agents
+
+This workspace includes a layered AI guidance system so Claude Code, Codex, Cursor,
+and humans can all work from the same product and technical context.
+
+## Purpose
+
+The agent system in this workspace does four jobs:
+
+1. give every agent a shared starting point
+2. keep product work anchored to the living wiki in `knowledge/wiki/`
+3. provide platform-specific implementation rules close to each codebase
+4. package repeatable workflows into commands and reusable skills
+
+## How The Layers Fit Together
+
+| Layer | Where | Purpose |
+|------|-------|---------|
+| Shared context | [`CONTEXT.md`](../CONTEXT.md) | First file to read for project identity, commands, repository layout, and wiki workflow |
+| Root agent guidance | [`AGENTS.md`](../AGENTS.md), [`CLAUDE.md`](../CLAUDE.md) | Workspace-wide operating rules for Codex and Claude |
+| Product wiki | [`knowledge/wiki/SCHEMA.md`](../knowledge/wiki/SCHEMA.md) | Source of truth for features, platform requirements, contracts, rules, and advisory reviews |
+| Claude commands | [`.claude/commands/`](../.claude/commands/) | Structured project operations such as setup, PO intake, review, handoff, and wiki maintenance |
+| Claude skills | [`.claude/skills/`](../.claude/skills/) | Reusable Claude Code guidance for implementation, conventions, testing, and platform work |
+| Codex skills | [`.agents/skills/`](../.agents/skills/) | Reusable Codex guidance for shared workflows and supported platform work |
+{% if "backend" in platforms %}| Backend guidance | [`backend/AGENTS.md`](../backend/AGENTS.md), [`backend/CLAUDE.md`](../backend/CLAUDE.md), [`backend/docs/guide.md`](../backend/docs/guide.md) | Backend-specific architecture, conventions, and delivery rules |
+{% endif %}{% if "web-user-app" in platforms %}| User web guidance | [`web-user-app/AGENTS.md`](../web-user-app/AGENTS.md), [`web-user-app/CLAUDE.md`](../web-user-app/CLAUDE.md), [`web-user-app/docs/guide.md`](../web-user-app/docs/guide.md) | User web implementation rules and workflow expectations |
+{% endif %}{% if "web-admin-portal" in platforms %}| Admin web guidance | [`web-admin-portal/AGENTS.md`](../web-admin-portal/AGENTS.md), [`web-admin-portal/CLAUDE.md`](../web-admin-portal/CLAUDE.md), [`web-admin-portal/docs/guide.md`](../web-admin-portal/docs/guide.md) | Admin portal implementation rules and workflow expectations |
+{% endif %}{% if "mobile-android" in platforms %}| Android guidance | [`mobile-android/AGENTS.md`](../mobile-android/AGENTS.md), [`mobile-android/CLAUDE.md`](../mobile-android/CLAUDE.md), [`mobile-android/docs/guide.md`](../mobile-android/docs/guide.md) | Android-specific architecture, testing, and delivery rules |
+{% endif %}{% if "mobile-ios" in platforms %}| iOS guidance | [`mobile-ios/AGENTS.md`](../mobile-ios/AGENTS.md), [`mobile-ios/CLAUDE.md`](../mobile-ios/CLAUDE.md), [`mobile-ios/docs/guide.md`](../mobile-ios/docs/guide.md) | iOS-specific architecture, testing, and delivery rules |
+{% endif %}
+
+## Agent File Map
+
+<pre>
+{{ project_slug }}/
+├── CONTEXT.md
+├── AGENTS.md
+├── CLAUDE.md
+├── knowledge/
+│   └── wiki/
+│       ├── SCHEMA.md
+│       ├── index.md
+│       └── advisory/BOARD.md
+├── .claude/
+│   ├── commands/
+│   └── skills/
+├── .agents/
+│   └── skills/
+{% if "backend" in platforms %}├── backend/
+│   ├── AGENTS.md
+│   ├── CLAUDE.md
+│   └── docs/guide.md
+{% endif %}{% if "web-user-app" in platforms %}├── web-user-app/
+│   ├── AGENTS.md
+│   ├── CLAUDE.md
+│   └── docs/guide.md
+{% endif %}{% if "web-admin-portal" in platforms %}├── web-admin-portal/
+│   ├── AGENTS.md
+│   ├── CLAUDE.md
+│   └── docs/guide.md
+{% endif %}{% if "mobile-android" in platforms %}├── mobile-android/
+│   ├── AGENTS.md
+│   ├── CLAUDE.md
+│   └── docs/guide.md
+{% endif %}{% if "mobile-ios" in platforms %}├── mobile-ios/
+│   ├── AGENTS.md
+│   ├── CLAUDE.md
+│   └── docs/guide.md
+{% endif %}└── docs/
+    ├── ai-agents.md
+    ├── architecture.md
+    └── ... selective examples; see docs/README.md for the full docs map
+</pre>
+
+## Commands Vs Skills
+
+Commands and skills are related, but they are not the same thing:
+
+- **Commands** are explicit operations invoked by name, mainly through Claude Code using `/command-name`.
+- **Skills** are reusable guidance bundles that agents load when the work matches a workflow or platform need.
+
+Surface split:
+
+- [`.claude/commands/`](../.claude/commands/) powers Claude Code slash commands
+- [`.claude/skills/`](../.claude/skills/) holds Claude Code skills
+- [`.agents/skills/`](../.agents/skills/) holds Codex skills
+
+Many lifecycle workflows appear in both places:
+
+- as a Claude command for direct invocation
+- as a Codex skill so the same workflow can be executed from Codex
+
+## Command Surface
+
+The command layer is mainly exposed through [`.claude/commands/`](../.claude/commands/).
+These commands drive the Prism workflow around product intake, advisory review,
+design handoff, delivery prep, and wiki maintenance.
+
+Key command groups:
+
+- setup: `setup-project`
+- product workflow: `po-intake`, `po-clarify`, `po-handoff`
+- design workflow: `design-intake`, `design-clarify`, `design-handoff`
+- development helpers: `add-endpoint`, `document-entity`, `generate-clients`, `create-migration`
+- delivery workflow: `prep-sprint`, `dev-done`
+- governance and support: `board-review`, `feature-status`, `ask`, `audit-feature`, `lint-wiki`, `wiki-*`
+
+Read [`CONTEXT.md`](../CONTEXT.md) for the command list by tool surface.
+
+## Skill Map
+
+The sections below describe the real skill sets on disk and what each one helps with.
+
+### Codex Workflow Skills
+
+These are the shared delivery skills under [`.agents/skills/`](../.agents/skills/) that
+mirror much of the Claude command surface for Codex:
+
+| Skill | Purpose |
+|------|---------|
+| `setup-project` | Initializes the workspace wiki and advisory-board setup flow |
+| `po-intake` | Converts raw product input into structured feature intake |
+| `po-clarify` | Resolves product ambiguity before implementation starts |
+| `po-handoff` | Finalizes product handoff into ready-for-design or ready-for-dev form |
+| `design-intake` | Turns design input into structured workspace-ready design context |
+| `design-clarify` | Resolves unclear design requirements and interaction decisions |
+| `design-handoff` | Finalizes design guidance for development |
+| `prep-sprint` | Read-only session view showing what is ready to build, blocked, or awaiting board review |
+| `dev-done` | Wraps up delivery and updates project state |
+| `board-review` | Runs a structured advisory-board review for domain-sensitive work; not for CRUD, auth, settings, or infrastructure |
+| `ask` | Routes focused questions to the right delivery role |
+| `audit-feature` | Reviews a feature against the workspace process and expectations |
+| `feature-status` | Shows the full feature pipeline and refreshes `WIKI_REPORT.md` from current wiki state |
+| `lint-wiki` | Checks the wiki for structure or consistency problems |
+| `wiki-blockers` | Surfaces unresolved blockers from the wiki |
+| `wiki-owner` | Read-only owner dashboard showing open questions, waiting work, and stale items for `po`, `designer`, or `dev` |
+| `wiki-platform` | Focuses a feature view by platform |
+| `wiki-query` | Searches and summarizes wiki content |
+| `wiki-show` | Opens a specific feature or wiki record |
+| `document-entity` | Updates or creates backend entity documentation |
+| `generate-clients` | Regenerates API clients from the shared OpenAPI contract |
+
+{% if "backend" in platforms %}
+### Backend Skills
+
+These skills support backend implementation. The `Surface` column shows whether the
+skill is available to Claude Code, Codex, or both.
+
+| Skill | Surface | Purpose |
+|------|---------|---------|
+| `spring-boot-conventions` | Claude, Codex | Core backend structure, layering, and framework usage rules |
+| `security-auth` | Claude, Codex | Authentication, authorization, session, and security guidance |
+| `migration-conventions` | Claude | Reference skill for Flyway naming, SQL style, column types, constraints, and cascade guidance |
+| `jpa-kotlin-patterns` | Claude | Entity modeling, persistence patterns, and Kotlin/JPA pitfalls |
+| `jackson-spring-boot4` | Claude | Spring Boot 4 JSON serialization/deserialization guidance |
+| `endpoint` | Claude, Codex | Add or evolve backend endpoints and align them with the API contract |
+| `test-endpoint` | Claude | Endpoint-focused backend testing guidance |
+| `error-handling` | Claude, Codex | Error-code, exception, and API error-response patterns |
+| `testing-patterns` | Claude, Codex | Unit and integration testing strategy for the backend |
+| `code-review` | Claude | Multi-perspective review across correctness, architecture, security, performance, and maintainability across platforms |
+{% endif %}
+
+{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}
+### Web Skills
+
+The current web slices rely more on platform-local docs and agent files than on a large
+dedicated web-only skill catalog.
+
+Start with:
+
+- [`CONTEXT.md`](../CONTEXT.md) for workspace-level workflow and command context
+- [`docs/api/conventions.md`](api/conventions.md) for API usage rules
+- [`shared/api-contracts/openapi.yml`](../shared/api-contracts/openapi.yml) for the source contract
+{% if "web-user-app" in platforms %}- [`web-user-app/docs/guide.md`](../web-user-app/docs/guide.md) for the user web slice
+{% endif %}{% if "web-admin-portal" in platforms %}- [`web-admin-portal/docs/guide.md`](../web-admin-portal/docs/guide.md) for the admin web slice
+{% endif %}- the local `AGENTS.md` and `CLAUDE.md` files inside each web slice
+{% endif %}
+
+{% if "mobile-android" in platforms %}
+### Android Skills
+
+| Skill | Surface | Purpose |
+|------|---------|---------|
+| `android-conventions` | Claude, Codex | Architecture, naming, folder layout, and state-management rules |
+| `android-feature-delivery` | Claude, Codex | End-to-end Android feature implementation workflow |
+| `android-testing` | Claude, Codex | Unit, UI, and verification testing guidance |
+| `android-build-verify` | Claude, Codex | Local build and verification checklist before handoff |
+| `android-contract-alignment` | Claude, Codex | Keep Android models and networking aligned with the OpenAPI contract |
+| `deploy-device` | Claude | Build, install, and launch the app on a connected Android device or emulator via `adb` |
+| `compose-design-system` | Claude, Codex | Jetpack Compose design-system and UI composition guidance |
+{% endif %}
+
+{% if "mobile-ios" in platforms %}
+### iOS Skills
+
+| Skill | Surface | Purpose |
+|------|---------|---------|
+| `ios-conventions` | Claude, Codex | iOS architecture, naming, file placement, and state-management rules |
+| `ios-feature-delivery` | Claude, Codex | End-to-end iOS feature implementation workflow |
+| `ios-testing` | Claude, Codex | Unit, UI, and verification testing guidance |
+| `ios-build-verify` | Claude, Codex | Local build and verification checklist before handoff |
+| `ios-contract-alignment` | Claude, Codex | Keep iOS models and networking aligned with the OpenAPI contract |
+| `swiftui-design-system` | Claude, Codex | SwiftUI design-system and view-composition guidance |
+{% endif %}
+
+## How To Work With The Agents
+
+1. Start with [`CONTEXT.md`](../CONTEXT.md).
+2. Read [`knowledge/wiki/index.md`](../knowledge/wiki/index.md) and the relevant feature page.
+3. Read the platform-local `AGENTS.md`, `CLAUDE.md`, and `docs/guide.md` files for the slice you are changing.
+4. Use the command layer for lifecycle work such as setup, intake, review, and completion.
+5. Use the skill folders as implementation guidance, not as a replacement for the wiki.
+
+## When Humans Should Read This
+
+This document is especially useful for:
+
+- product managers who want to understand how Prism structures AI-assisted delivery
+- tech leads who want to understand where rules live and how agents stay aligned
+- senior engineers who want a quick map before editing commands, skills, or guidance files
+
+## Related Docs
+
+- [README.md](../README.md) for workspace setup and top-level navigation
+- [CONTEXT.md](../CONTEXT.md) for the shared AI entry point
+- [docs/architecture.md](architecture.md) for platform boundaries and system design
+- [knowledge/wiki/SCHEMA.md](../knowledge/wiki/SCHEMA.md) for wiki structure and operational rules
