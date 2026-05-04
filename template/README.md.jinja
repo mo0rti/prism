@@ -2,6 +2,16 @@
 
 {{ description }}
 
+![Generated With Prism](https://img.shields.io/badge/generated%20with-Prism-5B4BFF)
+![Status](https://img.shields.io/badge/status-generated%20workspace-1f6feb)
+![Workflow](https://img.shields.io/badge/workflow-wiki--driven-0A7EA4)
+![API](https://img.shields.io/badge/API-OpenAPI--first-6BA539)
+{% if "backend" in platforms %}![Backend](https://img.shields.io/badge/backend-Spring%20Boot%204%20%2B%20Kotlin-6DB33F?logo=springboot&logoColor=white)
+{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}![Web](https://img.shields.io/badge/web-Next.js-000000?logo=nextdotjs&logoColor=white)
+{% endif %}{% if "mobile-android" in platforms %}![Android](https://img.shields.io/badge/android-Compose-3DDC84?logo=android&logoColor=white)
+{% endif %}{% if "mobile-ios" in platforms %}![iOS](https://img.shields.io/badge/iOS-SwiftUI-F05138?logo=swift&logoColor=white)
+{% endif %}
+
 ## Built With Prism
 
 This workspace was generated with [Prism](https://github.com/mo0rti/prism), a
