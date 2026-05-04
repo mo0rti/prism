@@ -413,18 +413,9 @@ function Validate-BackendOnly {
 
     $javaCommand = Get-Command java -ErrorAction SilentlyContinue
     if ($RunSmoke -and $null -ne $javaCommand) {
-        Push-Location (Join-Path $Root "backend")
-        try {
-            Write-Host "Running backend Gradle packaging smoke test..."
-            & .\gradlew.bat bootJar --no-daemon -x test | Out-Host
-            if ($LASTEXITCODE -ne 0) {
-                throw "Generated backend sample failed 'gradlew.bat bootJar --no-daemon -x test'."
-            }
-            Assert-PathExists -Path (Join-Path $Root "backend\build\libs") -Message "Generated backend sample did not produce a bootJar output directory."
-        }
-        finally {
-            Pop-Location
-        }
+        Write-Host "Running backend Gradle packaging smoke test..."
+        Invoke-BackendBootJarSmoke -BackendRoot (Join-Path $Root "backend") -FailureMessage "Generated backend sample failed the Gradle bootJar smoke test."
+        Assert-PathExists -Path (Join-Path $Root "backend\build\libs") -Message "Generated backend sample did not produce a bootJar output directory."
     }
     else {
         Write-Host "Skipping backend Gradle smoke test because it is disabled for this mode or Java is not available on PATH."
@@ -447,6 +438,31 @@ function Validate-BackendOnly {
     }
     else {
         Write-Host "Skipping backend Docker smoke test because it is disabled for this mode or Docker is not available on PATH."
+    }
+}
+
+function Invoke-BackendBootJarSmoke {
+    param(
+        [string]$BackendRoot,
+        [string]$FailureMessage
+    )
+
+    Push-Location $BackendRoot
+    try {
+        if ($env:OS -eq "Windows_NT") {
+            & .\gradlew.bat bootJar --no-daemon -x test | Out-Host
+        }
+        else {
+            & chmod +x ./gradlew | Out-Null
+            & ./gradlew bootJar --no-daemon -x test | Out-Host
+        }
+
+        if ($LASTEXITCODE -ne 0) {
+            throw $FailureMessage
+        }
+    }
+    finally {
+        Pop-Location
     }
 }
 
@@ -502,17 +518,8 @@ function Validate-BackendPasswordOnly {
     if ($RunSmoke) {
         $javaCommand = Get-Command java -ErrorAction SilentlyContinue
         if ($null -ne $javaCommand) {
-            Push-Location (Join-Path $Root "backend")
-            try {
-                Write-Host "Running password-only backend Gradle packaging smoke test..."
-                & .\gradlew.bat bootJar --no-daemon -x test | Out-Host
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Generated password-only backend sample failed 'gradlew.bat bootJar --no-daemon -x test'."
-                }
-            }
-            finally {
-                Pop-Location
-            }
+            Write-Host "Running password-only backend Gradle packaging smoke test..."
+            Invoke-BackendBootJarSmoke -BackendRoot (Join-Path $Root "backend") -FailureMessage "Generated password-only backend sample failed the Gradle bootJar smoke test."
         }
         else {
             Write-Host "Skipping password-only backend Gradle smoke test because Java is not available on PATH."

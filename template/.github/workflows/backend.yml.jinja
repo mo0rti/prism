@@ -52,7 +52,7 @@ jobs:
   build-and-push:
     name: Build & Push Image
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.AZURE_CONTAINER_REGISTRY != '' && secrets.ACR_USERNAME != '' && secrets.ACR_PASSWORD != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +75,7 @@ jobs:
   deploy:
     name: Deploy to Azure
     needs: build-and-push
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.AZURE_CREDENTIALS != '' && secrets.AZURE_CONTAINER_REGISTRY != '' && secrets.AZURE_RESOURCE_GROUP != '' && secrets.AZURE_CONTAINER_APP_NAME != ''
     runs-on: ubuntu-latest
     environment: production
     steps:
