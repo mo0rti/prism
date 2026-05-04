@@ -8,5 +8,5 @@ This file is maintained by the AI agent. Do not edit directly.
 ## Other wiki pages
 | Page | Type | Summary | Date |
 |------|------|---------|------|
-| [SCHEMA.md](SCHEMA.md) | meta | Wiki conventions and operational rules | — |
-| [BOARD.md](advisory/BOARD.md) | config | Advisory board composition | — |
+| [SCHEMA.md](SCHEMA.md) | meta | Wiki conventions and operational rules | n/a |
+| [BOARD.md](advisory/BOARD.md) | config | Advisory board composition | n/a |

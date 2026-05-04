@@ -1,4 +1,4 @@
-# PO intake — process raw notes into feature specs
+# PO intake - process raw notes into feature specs
 
 Process a raw input document from intake/pending/ into structured wiki entries.
 
@@ -11,8 +11,8 @@ Example: /po-intake meeting-client-2026-04-01
 
 1. Read `knowledge/wiki/SCHEMA.md` in full
 2. Read `knowledge/wiki/index.md` to understand existing features
-3. Read `knowledge/wiki/personas/` — understand who the current users are
-4. Read `knowledge/wiki/business-rules/` — understand existing constraints
+3. Read `knowledge/wiki/personas/` - understand who the current users are
+4. Read `knowledge/wiki/business-rules/` - understand existing constraints
 5. Read all files in `knowledge/intake/pending/[folder-name]/`
 6. **STOP. Conflict check (before any writes):**
    Check whether anything in the input conflicts with existing wiki content.
@@ -24,7 +24,7 @@ Example: /po-intake meeting-client-2026-04-01
      `knowledge/intake/quarantined/[folder-name]/`, write a `CONFLICT.md` in the quarantined
      folder explaining what the new input claims, what the existing wiki says, which
      files are in conflict, and what decision the human needs to make. Inform the user.
-     **Stop — do not write or modify any wiki files.** The human resolves the conflict,
+     **Stop - do not write or modify any wiki files.** The human resolves the conflict,
      then re-runs `/po-intake` on the corrected input.
    - If no conflicts: proceed to step 7.
 7. **STOP. Show the user a summary of your interpretation:**

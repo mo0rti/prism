@@ -2,7 +2,7 @@
 
 Use this format for board review output files in `wiki/advisory/`. Filename: `F-XXX-review.md`.
 
-This is intentionally short — one page maximum. The purpose is to give the team something
+This is intentionally short, one page maximum. The purpose is to give the team something
 they can read together in 15 minutes and act on.
 
 ```markdown
@@ -14,7 +14,7 @@ board-members-consulted: [list of board member names from BOARD.md]
 
 ## 1. Conflicts
 Does this feature conflict with anything already built or decided?
-Named conflicts only — reference specific feature IDs, ADR IDs, or business rule IDs.
+Named conflicts only. Reference specific feature IDs, ADR IDs, or business rule IDs.
 If none: "No conflicts identified."
 
 ## 2. Gaps
@@ -34,7 +34,7 @@ take significantly longer than expected?
 [Only include members with something substantive to say.]
 
 ## Actions required before dev starts
-- [ ] [Specific action with owner — po / designer / dev]
+- [ ] [Specific action with owner - po / designer / dev]
 
 ## Actions that can be deferred
 - [Action that can be addressed post-ship with acceptable risk]

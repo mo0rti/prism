@@ -7,9 +7,9 @@ Next.js App Router project for internal operations and back-office workflows.
 This project uses a shared product wiki at `knowledge/wiki/` as the single source of
 truth for what to build. Before implementing any feature:
 
-1. Read `knowledge/wiki/index.md` — confirm the feature is in `ready-for-dev` or `in-dev`
+1. Read `knowledge/wiki/index.md` - confirm the feature is in `ready-for-dev` or `in-dev`
    status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
-   stop and inform the human — a board review should happen before implementation.
+   stop and inform the human. A board review should happen before implementation.
 2. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context
 3. Read `knowledge/wiki/platform-requirements/[feature-id]-web-admin-portal.md` for
    admin portal-specific implementation requirements

@@ -1,4 +1,4 @@
-# PO Brief — [Feature name]
+# PO Brief - [Feature name]
 
 You do not need to fill in every section. Partial information is fine.
 The AI will ask clarifying questions for anything missing.
@@ -13,7 +13,7 @@ Which type of user/customer is asking for this?
 What is the user currently doing instead? What frustrates them?
 
 ## Why does this matter to the business?
-Revenue impact, retention, competitive pressure, legal requirement — pick one or more.
+Revenue impact, retention, competitive pressure, legal requirement - pick one or more.
 
 ## What does "done" look like?
 How will we know the feature is working?
