@@ -1,11 +1,11 @@
-# Intake — dropping raw inputs into the wiki
+# Intake - dropping raw inputs into the wiki
 
 This is where raw, unprocessed inputs live before the AI organizes them.
 
 ## Who drops what here
 
 **Product Owner:** meeting transcripts, client feedback summaries, user research notes,
-feature request descriptions. Use PO_BRIEF_TEMPLATE.md as a guide. Raw notes are fine —
+feature request descriptions. Use PO_BRIEF_TEMPLATE.md as a guide. Raw notes are fine -
 the more structured your input, the more accurate the output.
 
 **Designer:** design spec notes, Figma annotations, interaction descriptions, component
@@ -44,5 +44,5 @@ Examples:
 - Design handoff shows a flow explicitly rejected in ADR-002
 - New feature request duplicates an existing feature with different acceptance criteria
 
-Conflicts are not errors — they are important signals. The quarantine mechanism ensures
+Conflicts are not errors. They are important signals. The quarantine mechanism ensures
 they surface for human resolution rather than silently overwriting agreed decisions.

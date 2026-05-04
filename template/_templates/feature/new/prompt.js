@@ -16,7 +16,7 @@ module.exports = {
       {
         type: 'input',
         name: 'entity',
-        message: 'Primary entity name (e.g., "Restaurant") — leave empty to skip',
+        message: 'Primary entity name (e.g., "Restaurant") - leave empty to skip',
         default: '',
       },
     ]

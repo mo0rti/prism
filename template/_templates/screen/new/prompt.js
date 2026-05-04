@@ -16,7 +16,7 @@ module.exports = {
       {
         type: 'input',
         name: 'feature',
-        message: 'Feature folder (e.g., "favorites") — used for package/directory',
+        message: 'Feature folder (e.g., "favorites") - used for package/directory',
         validate: (v) => v.length > 0 || 'Feature folder is required',
       },
     ]

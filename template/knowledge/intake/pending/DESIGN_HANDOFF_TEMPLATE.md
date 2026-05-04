@@ -1,7 +1,7 @@
-# Design Handoff — [Feature name / F-XXX]
+# Design Handoff - [Feature name / F-XXX]
 
 ## Feature ID
-F-XXX (or "new feature — no ID yet")
+F-XXX (or "new feature - no ID yet")
 
 ## Figma link
 [Paste Figma URL here, or "not available"]
@@ -14,7 +14,7 @@ Decisions not obvious from visuals alone.
 Examples:
 - "The confirmation step is a full-screen modal, not an inline dialog"
 - "Errors appear inline below the field, not in a toast"
-- "This list is paginated, not infinite scroll — 20 items per page"
+- "This list is paginated, not infinite scroll - 20 items per page"
 
 ## States designed
 - [ ] Empty state
