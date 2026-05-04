@@ -101,7 +101,8 @@ Key command groups:
 - setup: `setup-project`
 - product workflow: `po-intake`, `po-clarify`, `po-handoff`
 - design workflow: `design-intake`, `design-clarify`, `design-handoff`
-- development helpers: `add-endpoint`, `document-entity`, `generate-clients`, `create-migration`
+- development helpers: `add-endpoint`, `add-integration`, `document-entity`, `generate-clients`, `create-migration`
+- backend review and debugging: `review-query`, `review-security-surface`, `debug-prod-issue`
 - delivery workflow: `prep-sprint`, `dev-done`
 - governance and support: `board-review`, `feature-status`, `ask`, `audit-feature`, `lint-wiki`, `wiki-*`
 
@@ -152,12 +153,16 @@ skill is available to Claude Code, Codex, or both.
 | `security-auth` | Claude, Codex | Authentication, authorization, session, and security guidance |
 | `authorization-rules` | Claude | Method-level authorization, ownership checks, and business-policy access rules beyond route security |
 | `observability-and-telemetry` | Claude | Production observability guidance for logs, metrics, traces, Actuator exposure, and context propagation |
+| `external-integrations-and-resilience` | Claude | Outbound client, timeout, retry, idempotency, and remote error-translation guidance |
+| `auditing-and-actor-context` | Claude | Entity timestamps, actor attribution, and domain audit-trail guidance |
+| `performance-and-query-shaping` | Claude | Fetch strategy, projections, specifications, pagination, and N+1 review expectations |
+| `caching-strategy` | Claude | Cache suitability, TTL, invalidation, and local versus shared cache tradeoffs |
 | `migration-conventions` | Claude | Reference skill for Flyway naming, SQL style, column types, constraints, and cascade guidance |
 | `jpa-kotlin-patterns` | Claude | Entity modeling, persistence patterns, and Kotlin/JPA pitfalls |
 | `jackson-spring-boot4` | Claude | Spring Boot 4 JSON serialization/deserialization guidance |
 | `backend-feature-delivery` | Claude | Reference guidance for contract-first backend feature delivery across OpenAPI, DTOs, services, persistence, validation, and schema changes |
 | `endpoint` | Codex | Add or evolve backend endpoints and align them with the API contract |
-| `test-endpoint` | Claude | Endpoint-focused backend testing guidance |
+| `test-endpoint` | Claude | Generate curl and Postman requests for manual endpoint exercise; complements `testing-patterns` rather than replacing test-code guidance |
 | `error-handling` | Claude, Codex | Error-code, exception, and API error-response patterns |
 | `testing-patterns` | Claude, Codex | Unit and integration testing strategy for the backend |
 | `code-review` | Claude | Multi-perspective review across correctness, architecture, security, performance, and maintainability across platforms |

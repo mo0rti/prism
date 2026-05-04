@@ -17,7 +17,9 @@ Ask me for the endpoint details if I haven't provided them: HTTP method, path, d
    - Service method with business logic
    - Repository method if data access is needed
    - DTOs for request/response
-   - Add Flyway migration if schema changes are needed and follow `@.claude/skills/migration-conventions/SKILL.md`{% endif %}
+   - Add Flyway migration if schema changes are needed and follow `@.claude/skills/migration-conventions/SKILL.md`
+   - Re-check route exposure in `SecurityConfig` against `@.claude/skills/security-auth/SKILL.md`
+   - Re-check ownership, visibility, and role or policy behavior against `@.claude/skills/authorization-rules/SKILL.md` when the endpoint affects who may access or mutate a resource{% endif %}
 
 4. **Verify** - Run `task backend:test` to ensure nothing is broken.
 
@@ -26,5 +28,6 @@ Ask me for the endpoint details if I haven't provided them: HTTP method, path, d
 - GET for reads, POST for creates, PUT for full updates, PATCH for partial, DELETE for removal
 - Return 201 for creates, 200 for updates/reads, 204 for deletes
 - All list endpoints support pagination
-- Auth endpoints are public; all others require Bearer token
+- Keep public versus authenticated route exposure explicit in `SecurityConfig`;
+  do not assume only auth endpoints are public
 - Keep the flow OpenAPI-first, then generated clients, then backend implementation

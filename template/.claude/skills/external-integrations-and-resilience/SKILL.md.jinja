@@ -1,0 +1,140 @@
+---
+name: external-integrations-and-resilience
+description: Production guidance for outbound integrations in this Spring Boot backend. Use when adding or reviewing HTTP clients, provider callbacks, retries, timeouts, idempotency, remote error translation, or transaction boundaries around external systems.
+---
+
+# External Integrations & Resilience ({{ project_name }} Backend)
+
+Use this skill when backend work calls external systems or depends on provider
+callbacks, webhooks, or other non-local boundaries.
+
+## Role Boundary
+
+- Use this skill for outbound client design, timeout and retry policy,
+  idempotency, remote error translation, and transaction boundaries around
+  remote calls.
+- Use `spring-boot-conventions` for controller and service structure.
+- Use `security-auth` for OAuth login mechanics and route exposure.
+- Use `error-handling` for API-facing exception and error-code shape.
+- Use `observability-and-telemetry` for logging, metrics, traces, and
+  correlation around remote flows.
+
+## Current Platform Reality
+
+- The generated backend already makes outbound OAuth calls through dedicated
+  Spring beans rather than through controllers.
+- The same separation should hold for future banking, payout, ledger, or vendor
+  integrations.
+- The exact HTTP client can vary over time; the resilience rules in this skill
+  apply regardless of whether the implementation uses `RestTemplate`,
+  `RestClient`, `WebClient`, or a provider SDK.
+
+## Client Boundary Rules
+
+- Keep remote protocol details behind a dedicated collaborator such as:
+  - `FooProviderClient`
+  - `FooGateway`
+  - `FooIntegrationService`
+- Controllers never call external systems directly.
+- Keep request signing, auth headers, provider DTOs, and status-code handling
+  out of business services when a dedicated client boundary would keep the code
+  clearer.
+- Normalize remote payloads into explicit internal models before business logic
+  consumes them.
+
+## Timeout Rules
+
+- Every outbound call must have explicit timeout behavior.
+- Do not rely on library defaults or infinite waits.
+- Configure connect and read/response timeouts through typed backend config,
+  not scattered literals.
+- Use shorter timeouts for interactive request paths than for deliberate
+  back-office batch or reconciliation work.
+- If a remote dependency is optional for the current request, fail fast and
+  degrade intentionally instead of blocking a request thread indefinitely.
+
+## Retry Rules
+
+- Retry only for transient failures such as:
+  - connection resets
+  - timeouts
+  - bounded `5xx` responses when the provider contract allows it
+- Do not blindly retry:
+  - validation failures
+  - auth failures
+  - semantic conflicts
+  - duplicate-submission responses that are already business answers
+- Keep retries bounded.
+- Add backoff and jitter when repeated attempts are possible.
+- Prefer retries only on idempotent operations or on operations that include an
+  idempotency key and a provider contract that supports safe replay.
+
+## Idempotency Rules
+
+- For create, submit, payout, or settlement-style remote operations, define the
+  idempotency story before writing the happy path.
+- Prefer one of these patterns:
+  - provider-supported idempotency key
+  - stable business operation key stored locally
+  - durable external-reference mapping that lets the backend detect replay
+- Treat duplicate side effects as a correctness bug, not just an availability
+  issue.
+- If a provider callback can arrive more than once, make callback handling
+  replay-safe.
+
+## Error Translation Rules
+
+- Translate remote failures into explicit backend exceptions or result types.
+- Do not leak raw provider SDK exceptions, low-level HTTP exceptions, or remote
+  payload shapes into controllers.
+- Separate these cases clearly:
+  - remote unavailable / timeout
+  - remote rejected request
+  - remote auth misconfiguration
+  - duplicate or already-processed request
+  - malformed or unexpected provider response
+- Keep provider wording out of public API messages unless product requirements
+  explicitly want that language surfaced.
+
+## Transaction Boundary Rules
+
+- Do not hold a database transaction open across outbound HTTP calls.
+- For request-response flows:
+  1. prepare local state
+  2. perform remote call outside a long-lived DB transaction
+  3. persist the resulting state transition inside a narrower transaction
+- If the workflow needs durable handoff between local state and later remote
+  completion, prefer an asynchronous pattern such as a queued follow-up or
+  outbox-style design instead of a single oversized transaction.
+- Treat network calls inside `@Transactional` write methods as a code smell that
+  requires an explicit reason.
+
+## Remote Model And Mapping Rules
+
+- Keep provider DTOs or raw JSON models local to the integration boundary.
+- Map them into normalized internal models before business services use them.
+- Do not reuse external payload DTOs as API response DTOs.
+- Keep provider enum drift isolated at the boundary so domain code does not
+  become a mirror of a vendor API.
+
+## Testing Expectations
+
+- Unit-test business services with a mocked integration boundary.
+- Use `MockRestServiceServer`, a mock web server, or equivalent HTTP doubles for
+  the integration client itself.
+- Test retry behavior, timeout mapping, and duplicate callback handling
+  deliberately.
+- Keep representative provider payload samples near the tests so parsing and
+  translation drift is visible in review.
+- For critical financial flows, test both the success path and the "remote call
+  succeeded but local persistence follow-up failed" path.
+
+## Review Checklist
+
+- Remote protocol details stay out of controllers
+- Outbound calls have explicit timeout behavior
+- Retries are bounded and only applied where replay is safe
+- Idempotency is defined for side-effecting remote operations
+- Remote failures are translated into backend-owned exceptions or result types
+- Database transactions are not held open across network calls
+- Integration tests cover timeout, rejection, and replay/duplicate scenarios

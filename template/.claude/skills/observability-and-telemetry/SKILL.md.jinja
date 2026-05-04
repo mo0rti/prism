@@ -14,7 +14,6 @@ exposure, async execution, or operational debugging expectations.
   logging, and context propagation.
 - Use `spring-boot-conventions` for controller/service structure.
 - Use `security-auth` for auth mechanics and route exposure.
-- Use `authorization-rules` for business access policy and ownership checks.
 - Use `error-handling` for API error payload shape and exception modeling.
 
 ## Current Platform Assumptions
@@ -23,8 +22,8 @@ exposure, async execution, or operational debugging expectations.
 - Micrometer / Actuator conventions are the baseline
 - Built-in framework instrumentation should be preferred before adding custom
   instrumentation
-- TreasuryFlow is a finance operations product, so important flows must be
-  diagnosable after deployment
+- Important business and operational flows should be diagnosable after
+  deployment
 
 ## Core Rules
 

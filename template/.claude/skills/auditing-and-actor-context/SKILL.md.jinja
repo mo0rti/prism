@@ -1,0 +1,169 @@
+---
+name: auditing-and-actor-context
+description: Backend auditing guidance for timestamps, actor context, and domain audit trails. Use when adding or reviewing created/updated metadata, `AuditorAware`, actor attribution, or domain-level audit history in this Spring Boot backend.
+---
+
+# Auditing & Actor Context ({{ project_name }} Backend)
+
+Use this skill when backend work changes how the system records who acted, when
+they acted, or what history must remain reviewable later.
+
+## Role Boundary
+
+- Use this skill for timestamp ownership, actor attribution, audit-trail design,
+  and the boundary between entity auditing and business-event history.
+- Use `jpa-kotlin-patterns` for entity modeling basics.
+- Use `migration-conventions` when audit fields or audit tables require schema
+  changes.
+- Use `authorization-rules` when actor context affects who may perform an
+  operation.
+- Use `observability-and-telemetry` for logs, metrics, and traces; telemetry is
+  not a substitute for durable audit data.
+
+## Current Template Reality
+
+- The generated backend currently uses `AuditableEntity` with constructor-backed
+  `createdAt` and `updatedAt` fields plus `@PreUpdate`.
+- `@EnableJpaAuditing` is not enabled by default.
+- `@CreatedBy`, `@LastModifiedBy`, and `AuditorAware` are not scaffolded by
+  default.
+
+This means the current baseline already covers **entity timestamps**, but it
+does not automatically provide **actor attribution** or a **durable business
+audit trail**.
+
+## Three Different Audit Layers
+
+Keep these layers distinct:
+
+1. **Entity timestamps**
+   - `createdAt`
+   - `updatedAt`
+   - useful for operational recency and ordering
+2. **Actor attribution**
+   - who created or last changed a record
+   - useful when ownership or review history matters
+3. **Domain audit trail**
+   - what business action happened
+   - who triggered it
+   - from which prior state to which new state
+   - why it happened when reason capture is required
+
+Do not expect one field pair on an entity to satisfy all three concerns.
+
+## Current Baseline Rules
+
+- Keep normal entities on the shared `AuditableEntity` base unless the entity has
+  a concrete reason not to.
+- Treat `createdAt` / `updatedAt` as technical metadata, not as a full domain
+  history.
+- If a business flow needs to know the acting user right now, pass explicit
+  actor context into the service method rather than relying on hidden static
+  lookups everywhere.
+- Prefer durable actor IDs or stable internal identities over display names or
+  email addresses when persisting actor references.
+
+## When Entity Timestamps Are Enough
+
+The current `AuditableEntity` baseline is usually enough for:
+
+- CRUD-oriented records where "when was this last changed?" is sufficient
+- low-risk reference data maintenance
+- operational ordering and stale-data detection
+
+Do not over-engineer actor attribution on every table if the product and audit
+requirements do not actually need it.
+
+## When To Add Actor Attribution
+
+Reach for actor attribution when:
+
+- multiple authenticated users change the same records
+- compliance or reviewer expectations require knowing who changed something
+- staff actions must be distinguishable from system-initiated actions
+- admin overrides or approvals need a clear trail
+
+Typical patterns:
+
+- explicit `createdByUserId` / `updatedByUserId` fields when only a few
+  aggregates need it
+- Spring Data auditing with `@CreatedBy` / `@LastModifiedBy` and
+  `AuditorAware` when the pattern needs to be broad and consistent
+
+## Upgrade Path To Spring Data Auditing
+
+If the backend needs broad actor attribution, migrate intentionally rather than
+mixing patterns ad hoc.
+
+The upgrade path is:
+
+- enable `@EnableJpaAuditing`
+- add `AuditingEntityListener`
+- replace timestamp ownership in the entity base with `@CreatedDate` and
+  `@LastModifiedDate`
+- add an `AuditorAware` implementation that resolves the current actor context
+- decide how background jobs, reconciliation flows, and migration scripts
+  identify system actors
+
+Do not partially adopt Spring Data auditing on a few entities while leaving the
+rest of the model semantically unclear.
+
+## System Actors Vs Human Actors
+
+- Define how non-human actions are represented.
+- Typical options:
+  - a dedicated system user identity
+  - a bounded actor type enum plus actor reference
+  - a structured audit entry that distinguishes `USER`, `SYSTEM`, and
+    `INTEGRATION`
+- Keep background jobs, webhook processors, and administrative scripts from
+  being falsely attributed to the last interactive user.
+
+## Domain Audit Trail Rules
+
+Entity timestamps are not enough when the product needs to answer questions
+like:
+
+- who approved this payout?
+- who changed this settlement status?
+- what was the previous value?
+- was this action manual, scheduled, or provider-driven?
+
+For those cases:
+
+- create an explicit audit/history model
+- store the action name and meaningful state transition
+- store actor context
+- store the event time
+- store any durable external reference required for review
+
+Keep domain audit records append-only unless a concrete compliance policy says
+otherwise.
+
+## Migration And Schema Considerations
+
+- Add audit columns or audit tables through Flyway migrations.
+- Backfill actor fields only when the source of truth for old records is
+  trustworthy enough to justify it.
+- If historical actor information is unknown, prefer an explicit sentinel such
+  as `system-migrated` or a nullable historical field with a documented meaning
+  over made-up precision.
+
+## Testing Expectations
+
+- Test timestamp behavior only where custom behavior exists; do not write noisy
+  tests for framework defaults alone.
+- Test actor attribution for both authenticated and system-driven flows.
+- Test approval or state-transition audit entries as domain behavior, not as a
+  side note.
+- If `AuditorAware` is introduced, test how it behaves with missing or
+  unexpected security context.
+
+## Review Checklist
+
+- Entity timestamps, actor attribution, and domain history are not conflated
+- The current `AuditableEntity` baseline is used intentionally where sufficient
+- Actor IDs are stable and product-meaningful
+- Background or system actions are not misattributed to human users
+- Domain-critical actions use explicit audit/history records when needed
+- Any migration to Spring Data auditing is done coherently rather than partially

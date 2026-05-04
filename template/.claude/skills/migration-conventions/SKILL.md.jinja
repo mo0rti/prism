@@ -117,6 +117,20 @@ CREATE INDEX idx_some_table_owner_id ON some_table(owner_id);
   ```
 - When modifying constraints: drop old constraint first, then add new one
 
+## Expand-Contract Strategy
+
+For non-trivial live-schema changes, prefer expand-contract over one-shot
+destructive change:
+
+1. **Expand** - add new nullable columns, new tables, or additive structures
+2. **Backfill** - migrate existing data safely
+3. **Adopt** - update application code to read/write the new shape
+4. **Contract** - remove old columns or constraints only after the old shape is
+   no longer needed
+
+Do not combine a risky destructive schema cutover with the first application
+deploy unless the dataset is tiny and the blast radius is genuinely low.
+
 ## Multi-Statement Ordering
 
 When a migration has multiple dependent changes, order them correctly:
@@ -124,6 +138,16 @@ When a migration has multiple dependent changes, order them correctly:
 1. Drop dependent constraints/indexes
 2. Alter columns / update data
 3. Add new constraints/indexes
+
+## Backfill Guidance
+
+- Keep backfills explicit inside the migration or in a deliberately paired
+  migration sequence
+- For large datasets, avoid a single giant rewrite when a staged approach is
+  safer
+- Make backfill logic deterministic and rerunnable where practical
+- If historical values are unknown, use an explicit sentinel or documented null
+  strategy instead of inventing false precision
 
 ## Audit Columns
 
@@ -148,3 +172,14 @@ updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_
 - Use `ON DELETE CASCADE` when child records have no meaning without the parent
 - Use `ON DELETE SET NULL` when the child can exist independently
 - Default to `ON DELETE CASCADE` for junction/collection tables
+
+## Index Expectations
+
+- Add indexes for foreign-key columns that drive common lookups
+- Add indexes for repeated filter + sort paths that appear in list endpoints or
+  operational review screens
+- Re-check unique constraints when business identity is being enforced at the
+  database level
+- For large existing tables, treat expensive index creation as an operational
+  event that may need a dedicated migration strategy instead of being bundled
+  casually with unrelated DDL

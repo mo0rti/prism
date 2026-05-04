@@ -95,12 +95,28 @@ Detailed conventions are documented in skills - Claude loads these automatically
 - @.claude/skills/backend-feature-delivery/SKILL.md - contract-first backend feature delivery across OpenAPI, DTOs, services, persistence, and schema changes
 - @.claude/skills/observability-and-telemetry/SKILL.md - logs, metrics, traces, Actuator exposure, and async context-propagation guidance
 - @.claude/skills/authorization-rules/SKILL.md - method security, ownership checks, and business-policy access rules
+- @.claude/skills/external-integrations-and-resilience/SKILL.md - timeouts, retries, idempotency, remote error translation, and transaction boundaries around external systems
+- @.claude/skills/auditing-and-actor-context/SKILL.md - entity timestamps, actor attribution, and domain audit trail guidance
+- @.claude/skills/performance-and-query-shaping/SKILL.md - query authoring, fetch strategy, specifications, pagination, and N+1 review expectations
+- @.claude/skills/caching-strategy/SKILL.md - cache suitability, TTL, invalidation, and local versus shared cache tradeoffs
 - @.claude/skills/migration-conventions/SKILL.md - Flyway naming, SQL style, and database migration conventions
 - @.claude/skills/jackson-spring-boot4/SKILL.md - Jackson 3.x split namespace, ObjectMapper injection
 - @.claude/skills/jpa-kotlin-patterns/SKILL.md - entity patterns, AuditableEntity, relationships, N+1 prevention
 - @.claude/skills/error-handling/SKILL.md - ApiException, GlobalExceptionHandler, error codes
 - @.claude/skills/security-auth/SKILL.md - JWT, endpoint security, OAuth2, public vs authenticated
 - @.claude/skills/testing-patterns/SKILL.md - JUnit 5, MockK, unit vs integration test conventions
+- @.claude/skills/test-endpoint/SKILL.md - generate curl and Postman requests for manual endpoint checks; complements `testing-patterns`
+
+## Backend Claude Commands
+
+- `/add-endpoint` - add or evolve a backend API endpoint using the OpenAPI-first flow
+- `/create-migration` - create a Flyway migration for schema work
+- `/add-integration` - add a typed outbound or callback integration with resilience rules
+- `/document-entity` - create or update backend entity documentation
+- `/generate-clients` - regenerate API clients from the shared contract
+- `/review-query` - review fetch plans, pagination, specifications, and N+1 risk
+- `/review-security-surface` - review route exposure, token handling, and authorization boundaries
+- `/debug-prod-issue` - guide production issue diagnosis across logs, metrics, traces, config, and migrations
 
 ## Key Files
 

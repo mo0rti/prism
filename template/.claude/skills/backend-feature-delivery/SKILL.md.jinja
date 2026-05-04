@@ -60,6 +60,11 @@ Depending on the scope, backend delivery may involve:
   authorization, ownership checks, and service-level policy design
 - `@.claude/skills/error-handling/SKILL.md` for API exceptions, error codes,
   and validation response conventions
+- `@.claude/skills/observability-and-telemetry/SKILL.md` for logs, metrics,
+  traces, and diagnosability expectations on important backend flows
+- `@.claude/skills/external-integrations-and-resilience/SKILL.md` for timeout,
+  retry, idempotency, and remote error-translation rules when the feature calls
+  external systems
 - `@.claude/skills/jpa-kotlin-patterns/SKILL.md` for entity and repository
   modeling
 - `@.claude/skills/migration-conventions/SKILL.md` for Flyway naming and SQL
@@ -76,5 +81,8 @@ Depending on the scope, backend delivery may involve:
 - Public vs authenticated route behavior re-checked
 - Ownership, visibility, or role-based access reviewed against
   `authorization-rules` if behavior affects who can act on a resource
+- Important flows expose enough logs, metrics, or traces to debug failures
+- New outbound or callback-based remote behavior has an explicit timeout, retry,
+  and idempotency story
 - Validation and error payloads aligned with `docs/api/conventions.md`
 - Schema changes migrated and documented when needed

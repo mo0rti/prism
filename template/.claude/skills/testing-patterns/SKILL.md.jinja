@@ -150,6 +150,16 @@ class SecurityConfigTest {
 }
 ```
 
+## Testcontainers Strategy
+
+- Prefer Testcontainers for repository or integration tests that depend on real
+  database behavior, migration ordering, or dialect-specific SQL
+- Do not assume an in-memory replacement is good enough when the production
+  path depends on PostgreSQL or MySQL behavior
+- Keep container-backed tests focused on behavior that actually needs the real
+  dependency
+- Use lighter unit or slice tests for logic that does not need container cost
+
 ## Slice Tests
 
 Use test slices selectively when they make the target behavior clearer and cheaper to verify.
@@ -165,6 +175,14 @@ Use test slices selectively when they make the target behavior clearer and cheap
 - Good for repository custom queries, entity mappings, and persistence behavior
 - Prefer it when the repository layer is the subject and service/business wiring is irrelevant
 - Use a fuller integration test when the persistence behavior depends on broader application configuration
+
+## Integration Test Data Rules
+
+- Keep fixtures small and explicit
+- Prefer builders or focused setup helpers over giant shared fixture blobs
+- Make each test responsible for the records it needs to reason about
+- Avoid cross-test hidden state and mutation coupling
+- Assert on the business-relevant records and transitions, not just row counts
 
 ## What to Test per Layer
 
@@ -186,6 +204,17 @@ Use test slices selectively when they make the target behavior clearer and cheap
 
 - For code that calls external OAuth providers, prefer a mock web server or `MockRestServiceServer` to verify token exchange and user-info requests without hitting real providers
 - In higher-level auth service tests, mock or stub the OAuth client or service boundary instead of coupling every test to remote provider payload details
+
+## External Integration Contract Tests
+
+- For outbound integrations beyond OAuth, keep representative remote payload
+  samples near the integration tests
+- Test timeout mapping, retry behavior, duplicate callback handling, and remote
+  error translation explicitly
+- Prefer a mock web server, `MockRestServiceServer`, or equivalent HTTP double
+  over real provider dependencies
+- Treat provider payload drift as something tests should catch early, not only a
+  production discovery
 
 ## Anti-Patterns
 

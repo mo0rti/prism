@@ -1,0 +1,46 @@
+Review backend query behavior in {{ project_name }} for performance and fetch-shaping risk.
+
+Ask me for the target if I have not provided it clearly:
+
+- PR diff, file, repository, or feature
+- whether this is a read-path review, write-path review, or both
+
+## Review Focus
+
+1. **Query shape**
+   - Is the repository method still understandable?
+   - Should a derived query become a projection, explicit query, or
+     specification?
+
+2. **Fetch plan**
+   - Check for N+1 risk in service mapping or iteration.
+   - Review `@EntityGraph`, join fetches, projections, and lazy-load behavior.
+
+3. **Pagination and sorting**
+   - Verify stable bounded sort rules.
+   - Flag paginated fetch joins that are likely to duplicate rows or break page
+     semantics.
+
+4. **Filtering strategy**
+   - Review dynamic filtering for readability and bounded API behavior.
+   - Check whether `JpaSpecificationExecutor`, `PredicateSpecification`, or a
+     simpler explicit query is the better fit.
+
+5. **Index implications**
+   - Flag new filter or sort paths that likely need index support.
+
+6. **Correctness guardrails**
+   - Check that performance shortcuts do not bypass visibility rules,
+     transactional expectations, or optimistic-locking needs.
+
+## Output
+
+Provide:
+
+- prioritized findings first
+- why each issue matters
+- suggested fix direction
+- any missing verification or test coverage
+
+Cross-reference `@.claude/skills/performance-and-query-shaping/SKILL.md` and
+`@.claude/skills/jpa-kotlin-patterns/SKILL.md`.

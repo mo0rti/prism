@@ -1,0 +1,163 @@
+---
+name: performance-and-query-shaping
+description: Backend query and persistence performance guidance for this Spring Boot backend. Use when authoring or reviewing repositories, fetch plans, filtering, pagination, projections, `Specification` usage, or N+1-sensitive service flows.
+---
+
+# Performance & Query Shaping ({{ project_name }} Backend)
+
+Use this skill while authoring complex repository/query behavior and again while
+reviewing backend work for fetch strategy, pagination, and data-access risk.
+
+## Role Boundary
+
+- Use this skill for query shaping, fetch strategy, projection choices,
+  pagination, dynamic filtering, and performance review of repository-backed
+  flows.
+- Use `jpa-kotlin-patterns` for base entity and relationship modeling.
+- Use `caching-strategy` when performance pressure suggests caching.
+- Use `migration-conventions` when index changes are required.
+- Use `observability-and-telemetry` when query behavior needs operational
+  measurement.
+
+## Core Rule
+
+Prefer query behavior that is explicit, reviewable, and proportional to the
+read/write use case.
+
+The goal is not to use the fanciest JPA feature. The goal is to avoid hidden
+N+1 behavior, over-fetching, unstable pagination, and repository code that
+nobody can reason about later.
+
+## When To Leave Derived Queries Behind
+
+Derived repository methods are fine for:
+
+- simple lookups by ID or unique fields
+- small bounded predicates
+- obvious ordering rules
+
+Move to a more explicit strategy when you need:
+
+- multiple optional filters
+- fetch-plan control
+- list/read models with partial field selection
+- repeated query logic shared across multiple entry points
+- a query whose behavior is no longer obvious from the method name
+
+## N+1 Review Checklist
+
+Before merging a repository-backed list or detail flow, ask:
+
+- does this service touch lazy relationships inside a loop?
+- does DTO mapping trigger extra lazy loads?
+- does the controller serialize something that was not fetched intentionally?
+- is a paginated list accidentally loading children for every row?
+
+If the answer is yes, shape the fetch plan deliberately instead of hoping
+Hibernate will be kind.
+
+## Fetch Strategy Rules
+
+### `@EntityGraph`
+
+Use `@EntityGraph` when:
+
+- the fetch plan is stable
+- the query itself is otherwise simple
+- you want declarative eager loading without rewriting the whole query
+
+### `JOIN FETCH`
+
+Use `JOIN FETCH` when:
+
+- the association set is small and well-understood
+- you need one explicit query with known eager associations
+- the result is not a paginated collection that will explode row counts
+
+Be careful with fetch joins on paginated to-many relationships; they often
+create duplicate-row and page-boundary problems.
+
+### Projections
+
+Prefer projections when:
+
+- a list or dashboard needs only a subset of fields
+- you do not need a fully managed entity graph
+- the response is read-oriented rather than mutation-oriented
+
+For read-heavy list views, projections are often safer than loading a full
+aggregate and then mapping it down.
+
+## Pagination Rules
+
+- Paginated endpoints should page on a stable sort order.
+- Avoid pagination without a deterministic sort.
+- Keep sort options bounded; do not expose arbitrary field names from the API
+  without an explicit whitelist.
+- For large datasets, prefer indexed filter and sort paths.
+- Re-check whether a total count is actually needed on every read path.
+
+## Sorting And Filtering Rules
+
+- Keep public filter and sort parameters explicit and bounded.
+- Do not let repository method names become a combinatorial explosion of filter
+  permutations.
+- When filter combinations grow, use composable query logic instead of adding
+  one more giant derived query name.
+
+## Specifications And Spring Data 4 APIs
+
+- Use `JpaSpecificationExecutor<T>` when dynamic filtering needs composition.
+- Prefer small reusable predicate builders over one monolithic specification.
+- Spring Data 4 also supports `PredicateSpecification<T>` for lighter-weight,
+  query-type-agnostic predicate composition where that reads more clearly.
+- Use the fluent `findBy(...)` API from `JpaSpecificationExecutor` when the call
+  site benefits from explicit `.page()`, `.first()`, `.count()`, or `.exists()`
+  composition.
+
+Keep specifications readable. If the team needs a whiteboard to understand one,
+the abstraction has likely gone too far.
+
+## Batch Fetching
+
+- Use Hibernate batch fetching to reduce query chatter for repeated lazy loads
+  when the association access pattern is known and bounded.
+- Treat global batch size as a tuning tool, not a substitute for query design.
+- Re-check memory impact when batch sizes grow.
+
+## Index Expectations
+
+- Foreign-key columns that drive common lookups usually need indexes.
+- Repeated filter + sort paths usually need deliberate index support.
+- If a query only becomes fast after loading the world and filtering in memory,
+  the problem is the query design, not the JVM.
+
+## Concurrency Cross-Reference
+
+- Performance tuning must not break correctness.
+- For contested aggregates, review `@Version` and optimistic-locking guidance in
+  `jpa-kotlin-patterns`.
+- Do not replace correctness with a faster-looking query that bypasses the
+  concurrency model silently.
+
+## Review Mode
+
+When reviewing a PR, look specifically for:
+
+- DTO mapping that hides lazy loads
+- fetch joins on paginated to-many relationships
+- missing indexes for new filter paths
+- projections that should replace entity loading
+- specifications that became harder to reason about than the query they replaced
+- repository methods that embed authorization rules so deeply that the service
+  layer no longer explains visibility policy
+
+## Review Checklist
+
+- Query shape matches the read/write use case
+- N+1 risk was checked explicitly
+- Fetch plan is intentional and understandable
+- Pagination uses stable bounded sort behavior
+- Dynamic filtering uses readable composition
+- Index implications were considered for new lookup paths
+- Query optimizations do not bypass concurrency or visibility semantics
