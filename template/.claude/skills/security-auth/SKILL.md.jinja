@@ -10,6 +10,7 @@ Apply this skill when a backend change affects route exposure, JWT handling, or 
 ## Role Boundary
 
 - Use this skill for public/private route decisions, JWT flow, auth configuration, and current-user access.
+- Use `authorization-rules` for method-level authorization, ownership checks, and business-policy access decisions inside authenticated flows.
 - Use `spring-boot-conventions` for general controller and service structure.
 - Use `error-handling` for auth-related exception codes and API error responses.
 
@@ -22,6 +23,7 @@ Apply this skill when a backend change affects route exposure, JWT handling, or 
 - CORS allowed origins come from `app.cors.allowed-origins`
 - Route access is controlled in `bootstrap/SecurityConfig.kt`
 - Method-security annotations are not enabled by default in this template
+- When business authorization grows beyond route exposure, enable and model it intentionally through `authorization-rules` rather than widening route rules alone
 - Refresh tokens carry a version claim and are rotated on every successful login, OAuth callback, and refresh
 - Local email/password registration does not include a full email-verification workflow by default
 - Auth endpoints are not rate-limited by a distributed/shared store in this scaffold

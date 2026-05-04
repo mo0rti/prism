@@ -159,16 +159,19 @@ invoke them in each tool.
 
 Some concepts exist at different abstraction levels across tools.
 
-The clearest example is endpoint work:
+The clearest example is backend endpoint work:
 
 - Claude command: `add-endpoint`
+- Claude reference skill: `backend-feature-delivery`
 - Codex skill: `endpoint`
 
 These are not clean one-to-one equivalents.
 
 - `add-endpoint` is a broader workflow command spanning OpenAPI, client generation,
   backend implementation, and downstream consumers
-- `endpoint` is a backend-oriented implementation skill that follows the same
+- `backend-feature-delivery` is Claude-side reference guidance for the
+  contract-first backend delivery flow
+- `endpoint` is a Codex backend implementation skill that follows the same
   contract-first order for backend endpoint changes
 
 So this is a scope difference, not just a naming mismatch.
@@ -178,6 +181,8 @@ So this is a scope difference, not just a naming mismatch.
 The remaining smaller question set is around Claude-only deep technical skills such as:
 
 - `test-endpoint`
+- `observability-and-telemetry`
+- `authorization-rules`
 - `migration-conventions`
 - `jpa-kotlin-patterns`
 - `create-migration` (Claude command)

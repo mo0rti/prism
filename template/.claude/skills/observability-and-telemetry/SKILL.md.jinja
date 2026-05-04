@@ -1,0 +1,147 @@
+---
+name: observability-and-telemetry
+description: Production observability guidance for this Spring Boot backend. Use when adding or reviewing logging, metrics, traces, async execution, Actuator exposure, or business telemetry for important backend flows.
+---
+
+# Observability & Telemetry ({{ project_name }} Backend)
+
+Use this skill when backend work affects logging, metrics, traces, Actuator
+exposure, async execution, or operational debugging expectations.
+
+## Role Boundary
+
+- Use this skill for telemetry design, instrumentation decisions, structured
+  logging, and context propagation.
+- Use `spring-boot-conventions` for controller/service structure.
+- Use `security-auth` for auth mechanics and route exposure.
+- Use `authorization-rules` for business access policy and ownership checks.
+- Use `error-handling` for API error payload shape and exception modeling.
+
+## Current Platform Assumptions
+
+- Spring Boot 4.x on the servlet stack
+- Micrometer / Actuator conventions are the baseline
+- Built-in framework instrumentation should be preferred before adding custom
+  instrumentation
+- TreasuryFlow is a finance operations product, so important flows must be
+  diagnosable after deployment
+
+## Core Rules
+
+- Instrument important business flows intentionally; do not rely only on
+  framework defaults for domain-critical visibility.
+- Prefer one structured logging format per environment rather than ad-hoc JSON
+  logging in application code.
+- Keep telemetry low-noise: every metric, span tag, and log field should help
+  answer a production question.
+- Do not emit sensitive tokens, raw credentials, or full PII into logs,
+  metrics, or trace tags.
+- Avoid double-instrumenting the same flow with overlapping timers or counters.
+
+## Metrics And Trace Tags
+
+- Use **low-cardinality** tags for dimensions that are safe to aggregate in
+  metrics and traces:
+  - operation name
+  - bounded outcome values such as `success`, `failure`, `validation_error`
+  - provider names when the set is bounded
+- Use **high-cardinality** values only in traces or logs, not metrics:
+  - user IDs
+  - transaction IDs
+  - email addresses
+  - request IDs
+  - free-form external references
+- Treat metric-cardinality explosion as a production bug. If a value can grow
+  unbounded, it does not belong as a metric tag.
+
+## Logging Rules
+
+- Prefer Spring Boot native structured logging formats when logs need to be
+  machine-readable.
+- Current Spring Boot formats include:
+  - ECS
+  - GELF
+  - Logstash
+- Structured logging is disabled by default and must be enabled explicitly per
+  output target.
+- Typical enablement looks like:
+  - `logging.structured.format.console=ecs`
+  - `logging.structured.format.file=logstash`
+- Typical configuration lives under:
+  - `logging.structured.format.console`
+  - `logging.structured.format.file`
+- ECS uses `spring.application.name` as the default `service.name` value.
+- Use consistent field names and correlation IDs across logs and traces.
+- Log business events at meaningful boundaries, not every internal helper call.
+- Use warn/error logs for actionable operational failures, not expected
+  validation outcomes that are already modeled in API responses.
+
+## Business Metrics
+
+Add business metrics when a flow is operationally important, such as:
+
+- auth login success/failure split
+- token refresh failures
+- payout or transaction submission outcomes
+- settlement success/failure counts
+- provider callback failures
+
+Prefer:
+
+- counters for occurrence tracking
+- timers for latency
+- distribution summaries only when raw-size distributions matter
+
+Before adding a metric, be able to answer:
+
+1. What production question will this metric answer?
+2. What action will the team take if it changes?
+
+## Observation And Tracing Rules
+
+- Prefer built-in Spring / Micrometer instrumentation first.
+- Use `ObservationRegistry` when a business flow needs a traceable unit that is
+  not already covered clearly enough by framework instrumentation.
+- Spring Boot auto-configures `ObservationRegistry`; inject it directly and do
+  not create a second registry manually.
+- `@Observed` is the annotation-based alternative for creating observations.
+  Do not use both `@Observed` and programmatic `ObservationRegistry`
+  instrumentation on the same code path or you will create duplicate metrics
+  and traces.
+- `@Observed` requires observation annotations to be enabled and
+  `org.aspectj:aspectjweaver`, typically via `spring-boot-starter-aspectj`.
+- Name observations consistently and keep names stable.
+- Add bounded, meaningful low-cardinality key-values for aggregation.
+- Put per-request or per-entity identifiers into logs or high-cardinality trace
+  fields only when genuinely needed for debugging.
+
+## Async And Context Propagation
+
+- **Servlet + `@Async`**:
+  - register a `ContextPropagatingTaskDecorator` bean
+  - class:
+    `org.springframework.core.task.support.ContextPropagatingTaskDecorator`
+  - apply it to the executor used for async work
+  - do not assume Spring Boot auto-configures this for you
+- **Reactive pipelines**:
+  - use `spring.reactor.context-propagation=auto`
+  - the task-decorator approach does not apply to reactive chains
+- If a flow crosses threads and loses correlation data, treat that as an
+  observability defect.
+
+## Actuator Expectations
+
+- Keep `/actuator/health` available for platform checks.
+- Be intentional about which additional Actuator endpoints are exposed in each
+  environment.
+- Use Actuator as operational support, not as a substitute for domain metrics.
+
+## Review Checklist
+
+- Important flows expose enough logs, metrics, or traces to debug failures
+- Metric tags are bounded and aggregation-safe
+- High-cardinality values are not used as metric tags
+- Structured logging format is consistent with the target environment
+- No sensitive data is emitted into telemetry
+- Async or background execution preserves context where required
+- New operational behavior is reflected in config or docs when needed
