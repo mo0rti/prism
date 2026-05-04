@@ -37,7 +37,7 @@ jobs:
         run: ./scripts/validate-template.ps1 -Mode contract
 
   backend-smoke:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout

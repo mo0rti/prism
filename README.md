@@ -1,7 +1,7 @@
 # Prism: One spec. Every platform.
 
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
-![Status](https://img.shields.io/badge/status-incubating-orange)
+![Status](https://img.shields.io/badge/status-beta-2ea44f)
 ![Template Validation](https://github.com/mo0rti/prism/actions/workflows/template-validation.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-3776AB?logo=python&logoColor=white)
 ![Repo Type](https://img.shields.io/badge/repo-template%20%2B%20CLI-6f42c1)

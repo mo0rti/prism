@@ -14,6 +14,7 @@ on:
     paths:
       - 'mobile-ios/**'
       - 'shared/**'
+  workflow_dispatch:
 
 jobs:
   test:
@@ -51,7 +52,7 @@ jobs:
   release:
     name: Release to TestFlight
     needs: test
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.ASC_KEY_CONTENT != '' && secrets.MATCH_PASSWORD != '' && secrets.MATCH_GIT_URL != ''
     runs-on: macos-latest
     environment: production
     steps:
