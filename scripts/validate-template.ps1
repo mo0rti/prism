@@ -1,5 +1,5 @@
 param(
-    [string]$OutputRoot = (Join-Path $env:TEMP ("template-validation-" + [System.Guid]::NewGuid().ToString("N"))),
+    [string]$OutputRoot = (Join-Path ([System.IO.Path]::GetTempPath()) ("template-validation-" + [System.Guid]::NewGuid().ToString("N"))),
     [ValidateSet("full", "contract", "backend-smoke")]
     [string]$Mode = "full"
 )
