@@ -22,6 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Make Gradle wrapper executable
+        run: chmod +x mobile-android/gradlew
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -47,6 +50,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x mobile-android/gradlew
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -75,6 +81,9 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x mobile-android/gradlew
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -121,6 +130,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Make Gradle wrapper executable
+        run: chmod +x mobile-android/gradlew
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -157,6 +169,9 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x mobile-android/gradlew
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
