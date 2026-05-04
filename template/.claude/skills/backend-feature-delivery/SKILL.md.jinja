@@ -1,0 +1,80 @@
+---
+name: backend-feature-delivery
+description: Reference guidance for end-to-end backend feature delivery. Use when implementing or reviewing backend API work that spans OpenAPI, controllers, DTOs, services, persistence, validation, security, and schema changes.
+---
+
+# Backend Feature Delivery ({{ project_name }})
+
+Use this skill when a backend feature or endpoint change spans multiple layers
+and you need the contract-first delivery flow for the Spring Boot backend.
+
+This is a reference skill, not an executable command.
+
+For direct Claude workflow execution, use:
+
+- `/add-endpoint` for API endpoint work
+- `/create-migration` for schema changes
+
+## Delivery Order
+
+1. Confirm the feature context from the wiki and the local backend docs.
+2. Update the source contract first in `shared/api-contracts/openapi.yml`.
+3. Regenerate clients so downstream surfaces stay aligned.
+4. Implement backend DTOs, controller, service, and persistence changes.
+5. Add or update a Flyway migration if the schema changes.
+6. Re-check security, validation, errors, and tests before handoff.
+
+## What To Touch
+
+Depending on the scope, backend delivery may involve:
+
+- `shared/api-contracts/openapi.yml`
+- `backend/src/main/kotlin/.../modules/<domain>/controller/`
+- `backend/src/main/kotlin/.../modules/<domain>/dto/`
+- `backend/src/main/kotlin/.../modules/<domain>/service/`
+- `backend/src/main/kotlin/.../modules/<domain>/repository/`
+- `backend/src/main/kotlin/.../modules/<domain>/model/`
+- `backend/src/main/resources/db/migration/`
+- `backend/docs/entities/` when the domain model meaning changes
+
+## Core Rules
+
+- Keep the flow contract-first: OpenAPI before controller and DTO code.
+- Controllers call services, never repositories directly.
+- Entities never become the JSON boundary; API responses use DTOs.
+- Schema changes use Flyway migrations and follow `migration-conventions`.
+- Route exposure changes must be reflected in `SecurityConfig` and checked
+  against `security-auth`.
+- Business authorization changes must be checked against
+  `authorization-rules`.
+- Validation and error responses must align with the typed error model:
+  `code`, `message`, and optional `details`.
+
+## Cross-References
+
+- `@.claude/skills/spring-boot-conventions/SKILL.md` for module structure and
+  controller/service patterns
+- `@.claude/skills/security-auth/SKILL.md` for route exposure, JWT behavior,
+  and current-user access
+- `@.claude/skills/authorization-rules/SKILL.md` for method-level
+  authorization, ownership checks, and service-level policy design
+- `@.claude/skills/error-handling/SKILL.md` for API exceptions, error codes,
+  and validation response conventions
+- `@.claude/skills/jpa-kotlin-patterns/SKILL.md` for entity and repository
+  modeling
+- `@.claude/skills/migration-conventions/SKILL.md` for Flyway naming and SQL
+  rules
+- `@.claude/skills/testing-patterns/SKILL.md` for unit and integration test
+  expectations
+
+## Review Checklist
+
+- Contract updated before implementation
+- Generated clients refreshed where needed
+- DTOs separated cleanly from entities
+- Controller/service/repository layering preserved
+- Public vs authenticated route behavior re-checked
+- Ownership, visibility, or role-based access reviewed against
+  `authorization-rules` if behavior affects who can act on a resource
+- Validation and error payloads aligned with `docs/api/conventions.md`
+- Schema changes migrated and documented when needed

@@ -150,10 +150,13 @@ skill is available to Claude Code, Codex, or both.
 |------|---------|---------|
 | `spring-boot-conventions` | Claude, Codex | Core backend structure, layering, and framework usage rules |
 | `security-auth` | Claude, Codex | Authentication, authorization, session, and security guidance |
+| `authorization-rules` | Claude | Method-level authorization, ownership checks, and business-policy access rules beyond route security |
+| `observability-and-telemetry` | Claude | Production observability guidance for logs, metrics, traces, Actuator exposure, and context propagation |
 | `migration-conventions` | Claude | Reference skill for Flyway naming, SQL style, column types, constraints, and cascade guidance |
 | `jpa-kotlin-patterns` | Claude | Entity modeling, persistence patterns, and Kotlin/JPA pitfalls |
 | `jackson-spring-boot4` | Claude | Spring Boot 4 JSON serialization/deserialization guidance |
-| `endpoint` | Claude, Codex | Add or evolve backend endpoints and align them with the API contract |
+| `backend-feature-delivery` | Claude | Reference guidance for contract-first backend feature delivery across OpenAPI, DTOs, services, persistence, validation, and schema changes |
+| `endpoint` | Codex | Add or evolve backend endpoints and align them with the API contract |
 | `test-endpoint` | Claude | Endpoint-focused backend testing guidance |
 | `error-handling` | Claude, Codex | Error-code, exception, and API error-response patterns |
 | `testing-patterns` | Claude, Codex | Unit and integration testing strategy for the backend |

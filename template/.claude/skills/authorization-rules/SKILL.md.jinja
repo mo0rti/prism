@@ -1,0 +1,139 @@
+---
+name: authorization-rules
+description: Authorization policy guidance for this Spring Boot backend. Use when implementing or reviewing ownership checks, role checks, method security, visibility rules, or business access policy beyond route-level authentication.
+---
+
+# Authorization Rules ({{ project_name }} Backend)
+
+Use this skill when a backend change affects who is allowed to act on a
+resource, view a record, or perform a business operation after authentication
+has already succeeded.
+
+## Role Boundary
+
+- Use `security-auth` for:
+  - filter chain configuration
+  - public vs authenticated routes
+  - JWT and token lifecycle behavior
+  - auth bootstrap configuration
+- Use this skill for:
+  - method-level authorization
+  - ownership checks
+  - visibility rules
+  - role vs policy distinctions inside business flows
+- Use `error-handling` for the exception and error-code shape when access is
+  denied.
+
+## Current Template Reality
+
+- The template does **not** enable method security by default.
+- Route-level protection exists already through `SecurityConfig`.
+- As the backend grows, request matchers alone are not enough; business access
+  decisions belong closer to service methods and domain rules.
+
+## Bootstrap Rule
+
+When method-level authorization is required:
+
+- enable `@EnableMethodSecurity`
+- do **not** use `@EnableGlobalMethodSecurity`; it is deprecated
+
+Use method security only when it improves clarity. Do not scatter it
+thoughtlessly across every method.
+
+## Where Authorization Lives
+
+- **Request matchers** answer:
+  - is this route public or authenticated?
+- **Method security** answers:
+  - does this caller have the required role or policy to execute this action?
+- **Imperative service checks** answer:
+  - does this caller own or have visibility into this specific record?
+  - does a multi-step business rule allow this transition right now?
+
+Do not force all authorization into annotations if the rule depends on loaded
+entity state, cross-record evaluation, or nuanced domain transitions.
+
+## Preferred Patterns
+
+### 1. Broad gate with method security
+
+Use `@PreAuthorize` for broad policy gates that must block execution before the
+method runs, such as:
+
+- admin-only actions
+- finance-admin settlement operations
+- manager-only approval actions
+- role-gated maintenance endpoints
+
+Use `@PostAuthorize` only for read operations where the returned result must be
+validated after retrieval.
+
+- Do **not** use `@PostAuthorize` on methods that write to the database.
+- The method executes before the check runs, so a denied `@PostAuthorize`
+  cannot safely prevent a committed write.
+- Treat `@PostAuthorize` as a read-result validation tool, not a write-safety
+  mechanism.
+
+### 2. Fine-grained rule in the service
+
+Use service-level imperative checks for:
+
+- resource ownership
+- visibility rules
+- tenant/account scoping
+- state-dependent transitions
+- combinations of role + resource state + actor relationship
+
+### 3. Keep controllers thin
+
+- Controllers should not grow custom permission trees.
+- Controllers may pass the current authenticated principal or actor context into
+  services, but business authorization should stay in service-level policy code.
+
+## Ownership And Visibility Rules
+
+- Prefer explicit methods such as:
+  - `requireCanViewResource(actor, resource)`
+  - `requireCanApproveAction(actor, target)`
+  - `requireCanTransitionState(actor, aggregate)`
+- Keep ownership and visibility rules readable and centralized.
+- Do not spread the same access rule across controller, repository, and service
+  layers in slightly different forms.
+
+## Role Checks Vs Policy Checks
+
+- Use role checks when the permission is truly static and organization-wide.
+- Use policy checks when access depends on the actor, the resource, and its
+  current state.
+- Prefer naming by action and business meaning over raw role-only naming.
+
+Example:
+
+- weaker: `isAdmin(user)`
+- stronger: `canSettleTransaction(actor, transaction)`
+
+## Repository And Query Boundaries
+
+- Repositories should not become ad-hoc permission engines.
+- Query-level scoping is useful, but do not hide all authorization in
+  repository method names alone.
+- If the database query must pre-filter visible records, keep the policy rule
+  understandable at the service layer as well.
+
+## Testing Expectations
+
+- Test both allowed and denied paths.
+- Test owner vs non-owner behavior explicitly.
+- Test role overrides intentionally.
+- Test state-sensitive authorization transitions, not just happy-path access.
+
+## Review Checklist
+
+- Route authentication and business authorization are not conflated
+- `@EnableMethodSecurity` is enabled only when the code actually uses it
+- Deprecated `@EnableGlobalMethodSecurity` is not introduced
+- `@PostAuthorize` is not used on write methods
+- Controllers stay thin and avoid permission sprawl
+- Ownership and visibility checks live in readable service-level policy code
+- Access-denied outcomes map cleanly into the backend error model
