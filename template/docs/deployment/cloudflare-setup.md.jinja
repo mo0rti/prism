@@ -79,17 +79,10 @@ Create secrets once per Worker using Wrangler or the Cloudflare dashboard.
 ```bash
 cd web-user-app
 npx wrangler secret put AUTH_SECRET
-{% if "google" in auth_methods %}
-npx wrangler secret put AUTH_GOOGLE_SECRET
-{% endif %}
-{% if "apple" in auth_methods %}
-npx wrangler secret put AUTH_APPLE_SECRET
-{% endif %}
-{% if "facebook" in auth_methods %}
-npx wrangler secret put AUTH_FACEBOOK_SECRET
-{% endif %}
-{% if "microsoft" in auth_methods %}
-npx wrangler secret put AUTH_MICROSOFT_SECRET
+{% if "google" in auth_methods %}npx wrangler secret put AUTH_GOOGLE_SECRET
+{% endif %}{% if "apple" in auth_methods %}npx wrangler secret put AUTH_APPLE_SECRET
+{% endif %}{% if "facebook" in auth_methods %}npx wrangler secret put AUTH_FACEBOOK_SECRET
+{% endif %}{% if "microsoft" in auth_methods %}npx wrangler secret put AUTH_MICROSOFT_SECRET
 {% endif %}
 ```
 {% endif %}
@@ -145,3 +138,10 @@ GitHub Actions deploys on push to `main`:
 - Cloudflare Next.js on Workers guide: https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/
 - Cloudflare Wrangler configuration reference: https://developers.cloudflare.com/workers/wrangler/configuration/
 - OpenNext Cloudflare docs: https://opennext.js.org/cloudflare
+
+## Related Docs
+
+- [Architecture Overview](../architecture.md) for hosting layout and platform map
+{% if "web-user-app" in platforms %}- [User Web App Guide](../../web-user-app/docs/guide.md) for app-local commands and structure
+{% endif %}{% if "web-admin-portal" in platforms %}- [Admin Web Portal Guide](../../web-admin-portal/docs/guide.md) for portal-local commands and structure
+{% endif %}- [CI/CD](ci-cd.md) for deploy automation and required secrets

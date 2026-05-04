@@ -2,6 +2,16 @@
 
 {{ description }}
 
+## Built With Prism
+
+This workspace was generated with [Prism](https://github.com/mo0rti/prism), a
+multi-platform workspace generator and workflow model for AI-assisted product
+development.
+
+If you want to understand how this project is structured, why the docs and AI
+context files are laid out this way, or how to generate a similar workspace,
+start with the Prism repository.
+
 ## Architecture
 
 This generated workspace currently includes:
@@ -64,19 +74,19 @@ task generate-clients
 
 ## Documentation
 
-- [Product Context](CONTEXT.md)
-- [Product Wiki Schema](knowledge/wiki/SCHEMA.md)
-- [Architecture Overview](docs/architecture.md)
-- [API Conventions](docs/api/conventions.md)
-{% if "backend" in platforms %}- [Backend Guide](backend/docs/guide.md)
-- [Backend Entities](backend/docs/entities/)
-- [Azure Deployment](backend/docs/azure-setup.md)
-{% endif %}{% if "web-user-app" in platforms %}- [User Web App Guide](web-user-app/docs/guide.md)
-{% endif %}{% if "web-admin-portal" in platforms %}- [Admin Web Portal Guide](web-admin-portal/docs/guide.md)
-{% endif %}{% if "mobile-android" in platforms %}- [Android Guide](mobile-android/docs/guide.md)
-{% endif %}{% if "mobile-ios" in platforms %}- [iOS Guide](mobile-ios/docs/guide.md)
-{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}- [Cloudflare Deployment](docs/deployment/cloudflare-setup.md)
-{% endif %}- [CI/CD](docs/deployment/ci-cd.md)
+- [Product Context](CONTEXT.md) for AI entry points, command surfaces, and workflow expectations
+- [Product Wiki Schema](knowledge/wiki/SCHEMA.md) for the structure and rules of the living product wiki
+- [Architecture Overview](docs/architecture.md) for system boundaries, platform map, and auth flow
+- [API Conventions](docs/api/conventions.md) for URL structure, versioning, auth headers, and error responses
+{% if "backend" in platforms %}- [Backend Guide](backend/docs/guide.md) for backend structure, conventions, commands, and local run guidance
+- [Backend Entities](backend/docs/entities/README.md) for user and transaction data-model documentation
+- [Azure Deployment](backend/docs/azure-setup.md) for backend infrastructure setup and deployment steps
+{% endif %}{% if "web-user-app" in platforms %}- [User Web App Guide](web-user-app/docs/guide.md) for web-user-app structure, conventions, and commands
+{% endif %}{% if "web-admin-portal" in platforms %}- [Admin Web Portal Guide](web-admin-portal/docs/guide.md) for internal web structure, conventions, and commands
+{% endif %}{% if "mobile-android" in platforms %}- [Android Guide](mobile-android/docs/guide.md) for Android architecture, setup, and verification workflow
+{% endif %}{% if "mobile-ios" in platforms %}- [iOS Guide](mobile-ios/docs/guide.md) for iOS structure, build setup, and verification workflow
+{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}- [Cloudflare Deployment](docs/deployment/cloudflare-setup.md) for preview and production deployment setup for web slices
+{% endif %}- [CI/CD](docs/deployment/ci-cd.md) for the generated GitHub Actions workflow layout and deployment pipeline
 
 ## Common Tasks
 

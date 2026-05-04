@@ -19,7 +19,7 @@ dist/
 
 # Test output
 /tmp/
-/generated/
+/workspaces/
 
 # Claude local settings (machine-specific, not for version control)
 .claude/settings.local.json

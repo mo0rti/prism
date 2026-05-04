@@ -9,7 +9,7 @@
 - logged-in dashboard/product workflows
 - profile, billing, and user-settings journeys
 
-## Patterns Borrowed from Ingredish
+## Scaffold Patterns
 
 - Next.js App Router with locale-aware routes
 - `next-intl` for URL-level locale handling
@@ -21,25 +21,25 @@
 
 ```text
 app/
-  [locale]/
-    page.tsx
-    (public)/
-      login/page.tsx
-    dashboard/
-      layout.tsx
-      home/page.tsx
-      examples/page.tsx
-      profile/page.tsx
-  api/
-    auth/[...nextauth]/route.ts
-    v1/[...path]/route.ts
-components/
-  layout/
-  providers/
-lib/
-  api/
-  config/
-  i18n/
+├── [locale]/
+│   ├── page.tsx
+│   ├── (public)/
+│   │   └── login/page.tsx
+│   └── dashboard/
+│       ├── layout.tsx
+│       ├── home/page.tsx
+│       ├── examples/page.tsx
+│       └── profile/page.tsx
+├── api/
+│   ├── auth/[...nextauth]/route.ts
+│   └── v1/[...path]/route.ts
+├── components/
+│   ├── layout/
+│   └── providers/
+└── lib/
+    ├── api/
+    ├── config/
+    └── i18n/
 ```
 
 ## Current Maturity
@@ -58,3 +58,9 @@ task web-user-app:typecheck
 task web-user-app:build
 task web-user-app:deploy
 ```
+
+## Related Docs
+
+- [Architecture Overview](../../docs/architecture.md) for platform map and auth flow
+- [API Conventions](../../docs/api/conventions.md) for proxy and backend contract expectations
+- [Cloudflare Deployment](../../docs/deployment/cloudflare-setup.md) for preview and deploy setup

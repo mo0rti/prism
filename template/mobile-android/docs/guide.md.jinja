@@ -22,29 +22,29 @@ See [architecture.md](architecture.md) for full architectural detail.
 
 ```
 app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  app/             -> Application + MainActivity
-  core/
-    common/        -> AppResult
-    session/       -> SessionManager (concrete class)
-    network/       -> ApiService, AuthInterceptor, TokenAuthenticator
-    datastore/     -> TokenStorage (DataStore)
-    database/      -> AppDatabase, Converters (shared only)
-    di/            -> NetworkModule, DatabaseModule, DispatcherModule, AppModule
-    model/         -> Cross-feature models: User, Session (AuthState), Paging
-  navigation/      -> Screen routes, NavGraph
-  feature/
-    auth/
-      domain/      -> AuthCredentials model
-      data/        -> AuthRepository, AuthDtos
-      ui/          -> SignInRoute, SignInScreen, SignInViewModel
-    example/
-      domain/      -> Example model
-      data/        -> ExampleRepository, ExampleDtos, ExampleEntity, ExampleDao, Mappers
-      ui/          -> ExampleListRoute, ExampleListScreen, ExampleListViewModel, components/
-  designsystem/
-    theme/         -> Color, Type, Shape, Dimensions, Theme
-    text/          -> UiText (framework-light string wrapper)
-    components/    -> LoadingIndicator, ErrorView
+├── app/             # Application + MainActivity
+├── core/
+│   ├── common/      # AppResult
+│   ├── session/     # SessionManager (concrete class)
+│   ├── network/     # ApiService, AuthInterceptor, TokenAuthenticator
+│   ├── datastore/   # TokenStorage (DataStore)
+│   ├── database/    # AppDatabase, Converters (shared only)
+│   ├── di/          # NetworkModule, DatabaseModule, DispatcherModule, AppModule
+│   └── model/       # Cross-feature models: User, Session (AuthState), Paging
+├── navigation/      # Screen routes, NavGraph
+├── feature/
+│   ├── auth/
+│   │   ├── domain/  # AuthCredentials model
+│   │   ├── data/    # AuthRepository, AuthDtos
+│   │   └── ui/      # SignInRoute, SignInScreen, SignInViewModel
+│   └── example/
+│       ├── domain/  # Example model
+│       ├── data/    # ExampleRepository, ExampleDtos, ExampleEntity, ExampleDao, Mappers
+│       └── ui/      # ExampleListRoute, ExampleListScreen, ExampleListViewModel, components/
+└── designsystem/
+    ├── theme/       # Color, Type, Shape, Dimensions, Theme
+    ├── text/        # UiText (framework-light string wrapper)
+    └── components/  # LoadingIndicator, ErrorView
 ```
 
 See [file-structure.md](file-structure.md) for the full package map.
