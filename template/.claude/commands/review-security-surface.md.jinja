@@ -1,0 +1,50 @@
+Review the backend security surface in {{ project_name }}.
+
+Ask me for the target if I have not provided it clearly:
+
+- PR diff, file, feature, or module
+- whether the review should focus on route exposure, JWT/auth behavior,
+  authorization policy, or the full backend surface
+
+## Review Focus
+
+1. **Route exposure**
+   - Re-check public vs authenticated routes in `SecurityConfig`.
+   - Flag widened matchers or unintentionally public paths.
+
+2. **Token behavior**
+   - Check token-type validation, refresh-token rotation, and protected-route
+     handling.
+   - Verify refresh tokens are not accepted as bearer access tokens.
+
+3. **Current-user access**
+   - Prefer `@AuthenticationPrincipal` where practical.
+   - Flag hidden security-context usage when it makes behavior harder to reason
+     about.
+
+4. **Authorization boundary**
+   - Distinguish route authentication from business authorization.
+   - Review ownership, visibility, and role/policy checks against
+     `authorization-rules`.
+
+5. **Integration and secret handling**
+   - Check auth-related provider config, environment-backed secrets, and remote
+     auth boundary design.
+
+6. **Verification**
+   - Check whether tests cover the changed exposure or authorization paths.
+
+## Output
+
+Provide:
+
+- prioritized findings first
+- route/auth versus business-policy separation notes
+- concrete files or rules that need follow-up
+- missing test or verification gaps
+
+Cross-reference:
+
+- `@.claude/skills/security-auth/SKILL.md`
+- `@.claude/skills/authorization-rules/SKILL.md`
+- `@.claude/skills/error-handling/SKILL.md`

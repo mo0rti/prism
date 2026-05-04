@@ -1,0 +1,61 @@
+Add a new external integration to {{ project_name }}.
+
+Ask me for the integration details if I have not provided them clearly:
+
+- provider or system name
+- direction (`outbound client`, `callback/webhook`, or both)
+- auth style
+- key operations or endpoints
+- failure or retry expectations
+
+## Steps
+
+1. **Confirm the product scope**
+   - Read the relevant wiki feature and backend requirements.
+   - Clarify whether this is a synchronous request-path dependency, an async
+     callback flow, or both.
+
+2. **Define the backend boundary**
+   - Choose the owning module and where the integration client or gateway lives.
+   - Keep remote protocol details out of controllers.
+
+3. **Add typed configuration**
+   - Add or update `@ConfigurationProperties` for provider URLs, credentials,
+     timeout settings, and any feature flags.
+   - Keep secrets environment-backed, never hardcoded.
+
+4. **Implement the integration boundary**
+   - Add the client, gateway, or provider service.
+   - Normalize provider payloads into internal models before business logic uses
+     them.
+   - Translate remote errors into backend-owned exceptions or result types.
+
+5. **Set resilience rules**
+   - Define explicit timeout behavior.
+   - Add bounded retry behavior only where replay is safe.
+   - Define idempotency for side-effecting outbound operations or replayable
+     callbacks.
+   - Do not hold long-lived database transactions open across outbound calls.
+
+6. **Wire observability**
+   - Add only the logs, metrics, and traces needed to diagnose provider
+     failures, retries, and callback outcomes.
+
+7. **Test the boundary**
+   - Add unit tests for business behavior.
+   - Add integration-boundary tests with a mock server or
+     `MockRestServiceServer`.
+   - Cover timeout, rejection, duplicate/replay, and malformed-response paths.
+
+8. **Verify downstream impact**
+   - Update OpenAPI and generated clients if public API behavior changed.
+   - Update docs when the integration meaning or operational expectations
+     changed.
+
+## Cross-References
+
+- `@.claude/skills/external-integrations-and-resilience/SKILL.md`
+- `@.claude/skills/security-auth/SKILL.md`
+- `@.claude/skills/error-handling/SKILL.md`
+- `@.claude/skills/observability-and-telemetry/SKILL.md`
+- `@.claude/skills/testing-patterns/SKILL.md`

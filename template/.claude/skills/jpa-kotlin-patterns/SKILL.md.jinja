@@ -219,6 +219,54 @@ interface SomeRepository : JpaRepository<SomeEntity, UUID> {
 - Use `@Query` with JPQL for complex queries
 - Add `JpaSpecificationExecutor<T>` when dynamic filtering is needed
 
+## Optimistic Locking
+
+Use optimistic locking with `@Version` when an aggregate is likely to be edited
+concurrently and lost updates would be business bugs.
+
+```kotlin
+@Entity
+@Table(name = "some_table")
+class SomeEntity(
+    var name: String,
+) : AuditableEntity() {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(columnDefinition = "uuid")
+    lateinit var id: UUID
+
+    @Version
+    var version: Long? = null
+}
+```
+
+- Prefer `Long?` for the JPA-managed version field
+- Use optimistic locking for contested business records, not every table by reflex
+- Translate lock failures into backend-owned error semantics when they can reach
+  an API boundary
+- Re-check whether a command should retry, surface a conflict, or ask the user
+  to reload current state
+
+## Projections And Read Models
+
+- Prefer projections for read-heavy list or dashboard paths that do not need a
+  fully managed entity graph
+- Use entities when the flow needs domain mutation, aggregate invariants, or
+  relationship traversal that is genuinely part of the business operation
+- Do not load a full aggregate only to map a tiny read model if a projection is
+  clearer and cheaper
+
+## Specifications
+
+- Add `JpaSpecificationExecutor<T>` when filtering logic must compose across
+  multiple optional predicates
+- Keep specifications small and reusable
+- Reach for `findBy(specification) { ... }` when Spring Data's fluent query API
+  makes page/first/count/exists intent clearer at the call site
+- If a specification becomes harder to understand than a named query or
+  dedicated repository method, simplify it
+
 ## N+1 Prevention
 
 ### JOIN FETCH for known associations
@@ -247,3 +295,13 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: 25
 - `@Transactional` on write methods
 - `@Transactional(readOnly = true)` on read methods - optimizes dirty checking
 - Never call `@Transactional` methods from the same class (proxy bypass)
+
+## Bulk Update And Delete Cautions
+
+- Bulk JPQL or SQL updates bypass the normal persistence-context lifecycle
+- They do not trigger entity listeners the same way normal managed-entity writes do
+- They can bypass optimistic-locking expectations if used carelessly
+- Re-check cache invalidation, audit expectations, and stale in-memory entities
+  after any bulk operation
+- Prefer explicit domain operations over bulk writes when business invariants or
+  side effects matter

@@ -1,0 +1,50 @@
+Debug a backend production issue in {{ project_name }}.
+
+Ask me for the incident details if I have not provided them clearly:
+
+- failing feature or endpoint
+- user-visible symptom
+- first-known time window
+- whether logs, metrics, traces, or request IDs are available
+
+## Steps
+
+1. **Frame the incident**
+   - Identify the failing capability, expected behavior, and observed failure.
+   - Pin the likely modules, routes, jobs, or integrations involved.
+
+2. **Check recent change surface**
+   - Review recent contract, config, migration, security, or integration changes
+     near the failure.
+
+3. **Inspect telemetry**
+   - Use logs, metrics, and traces to identify where the failure starts.
+   - Look for timeout patterns, retries, auth failures, validation spikes, and
+     callback anomalies.
+
+4. **Check data and migration state**
+   - Review whether schema drift, bad backfill data, or index changes could
+     explain the issue.
+
+5. **Check auth and authorization paths**
+   - Re-check route exposure, token type, current-user resolution, and business
+     authorization if the symptom could be permission-related.
+
+6. **Check external dependencies**
+   - Re-check provider health, timeout behavior, remote payload drift, retry
+     storms, and idempotency assumptions if an integration is involved.
+
+7. **Produce a hypothesis set**
+   - List the most likely causes in priority order.
+   - For each one, note the next confirming check or the safest fix direction.
+
+8. **Close with operational guidance**
+   - Separate immediate mitigation from root-cause fix and from follow-up hardening.
+
+## Cross-References
+
+- `@.claude/skills/observability-and-telemetry/SKILL.md`
+- `@.claude/skills/external-integrations-and-resilience/SKILL.md`
+- `@.claude/skills/security-auth/SKILL.md`
+- `@.claude/skills/performance-and-query-shaping/SKILL.md`
+- `@.claude/skills/migration-conventions/SKILL.md`

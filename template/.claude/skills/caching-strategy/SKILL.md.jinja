@@ -1,0 +1,116 @@
+---
+name: caching-strategy
+description: Backend caching guidance for medium-scale Spring Boot behavior. Use when deciding whether to cache, what to cache, TTL and invalidation rules, or how to review cache correctness risks for mutable backend data.
+---
+
+# Caching Strategy ({{ project_name }} Backend)
+
+Use this skill when backend performance work introduces caching or when a review
+needs to decide whether caching is appropriate at all.
+
+## Role Boundary
+
+- Use this skill for cache suitability, cache-aside patterns, TTL selection,
+  invalidation, and local-versus-shared cache tradeoffs.
+- Use `performance-and-query-shaping` first when the real problem may be query
+  design rather than missing cache.
+- Use `observability-and-telemetry` for cache hit/miss instrumentation.
+- Use `security-auth` for token/session correctness; do not improvise auth
+  caching rules here.
+
+## Core Rule
+
+Caching is optional performance infrastructure, not a correctness shortcut.
+
+If the team cannot explain how stale data is tolerated or invalidated, the
+backend is not ready to cache that path.
+
+## Good Candidates For Caching
+
+- bounded reference data
+- rarely changing configuration or metadata
+- expensive read models whose staleness window is acceptable
+- provider metadata or discovery data with a clear refresh policy
+
+## Dangerous Candidates For Caching
+
+- mutable transactional state that drives approvals, settlements, or balances
+- permission or ownership decisions unless staleness is explicitly acceptable
+- write-after-read flows where stale values create business mistakes
+- anything with no clear invalidation story
+
+For finance operations work, treat caching of approval, settlement, and
+money-adjacent state as high risk by default.
+
+## Cache-Aside Pattern
+
+Default to cache-aside when caching is appropriate:
+
+1. read from cache
+2. on miss, load from source
+3. write result into cache
+4. on mutation, invalidate or refresh deliberately
+
+Do not let controllers or random helpers each implement their own ad hoc cache
+logic.
+
+## TTL Rules
+
+- Pick TTLs based on business tolerance for staleness, not guesswork.
+- Short TTLs reduce stale risk but may not justify cache complexity.
+- Long TTLs are acceptable only when the underlying data truly changes slowly or
+  invalidation is strong.
+- Document why a TTL was chosen when the cached data matters operationally.
+
+## Invalidation Rules
+
+- Every cached mutable read path needs an invalidation story tied to writes.
+- Prefer explicit invalidation on mutation over hoping the TTL expires soon
+  enough.
+- If invalidation cannot be made reliable, reconsider whether the data should be
+  cached at all.
+
+## Reference Data Vs Transactional Data
+
+- **Reference data** is usually the safest cache target.
+- **Transactional state** needs stronger scrutiny because stale reads can create
+  incorrect business actions.
+- If a piece of data participates directly in financial decisions, approvals, or
+  reconciliation, assume correctness beats cache hit rate.
+
+## Local Vs Shared Cache
+
+### Local cache
+
+Use when:
+
+- the data is small and bounded
+- per-instance duplication is acceptable
+- cross-instance coherence is not critical
+
+### Shared cache
+
+Use when:
+
+- the cache must be coherent across instances
+- warm-up cost is high enough to justify shared infrastructure
+- the operational team accepts the added complexity and failure modes
+
+Do not introduce shared-cache infrastructure for a weak or unclear use case.
+
+## Key Design Rules
+
+- Keep keys explicit and stable.
+- Do not build keys from free-form unbounded input when cardinality can explode.
+- Include versioning or namespacing when cached representation changes are
+  likely over time.
+
+## Review Checklist
+
+- Query or fetch-plan improvements were considered before caching
+- The cached data is actually safe to serve stale
+- TTL has a concrete business rationale
+- Mutation paths invalidate or refresh cached reads intentionally
+- Cache keys are bounded and understandable
+- Local versus shared cache tradeoffs were chosen deliberately
+- Money-adjacent or permission-critical state is not cached casually

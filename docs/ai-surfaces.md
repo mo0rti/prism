@@ -12,7 +12,9 @@ The practical status is:
 
 - wiki usability parity is shipped in both tools
 - core lifecycle parity is shipped in both tools
-- the main remaining smaller review area is the set of Claude-only deep technical skills
+- the backend production guidance surface is now materially deeper on the
+  Claude side, while Codex remains intentionally narrower and more
+  implementation-focused
 
 The important framing is:
 
@@ -178,14 +180,22 @@ So this is a scope difference, not just a naming mismatch.
 
 ## What Still Needs Deliberate Review
 
-The remaining smaller question set is around Claude-only deep technical skills such as:
+The remaining deliberate packaging question set is around Claude-only deep technical skills such as:
 
 - `test-endpoint`
 - `observability-and-telemetry`
 - `authorization-rules`
+- `external-integrations-and-resilience`
+- `auditing-and-actor-context`
+- `performance-and-query-shaping`
+- `caching-strategy`
 - `migration-conventions`
 - `jpa-kotlin-patterns`
 - `create-migration` (Claude command)
+- `add-integration` (Claude command)
+- `review-query` (Claude command)
+- `review-security-surface` (Claude command)
+- `debug-prod-issue` (Claude command)
 - `code-review`
 
 These are not necessarily bugs, but they should be treated as conscious product decisions:
