@@ -6,16 +6,16 @@ This generated iOS app uses Swift 6, SwiftUI, Observation-based ViewModels, asyn
 
 | Doc | Purpose |
 |-----|---------|
-| `docs/repo-orientation.md` | Quickest path to the right files when starting work |
-| `docs/architecture.md` | Layers, DI, state flow, and architectural boundaries |
-| `docs/file-structure.md` | Directory map and where new files belong |
-| `docs/build-and-environments.md` | Taskfile, XcodeGen, build commands, and runtime config |
-| `docs/networking-and-auth.md` | `APIClient`, auth flow, and contract usage |
-| `docs/session-and-token-storage.md` | Keychain storage and auth bootstrap behavior |
-| `docs/navigation-and-screens.md` | Routes, auth gating, and screen inventory |
-| `docs/design-system-and-theme.md` | Shared theme primitives and reusable UI |
-| `docs/naming-conventions.md` | File, type, and directory naming guardrails |
-| `docs/conventions-and-workflow.md` | Daily coding rules and feature-delivery workflow |
+| [repo-orientation.md](repo-orientation.md) | Quickest path to the right files when starting work |
+| [architecture.md](architecture.md) | Layers, DI, state flow, and architectural boundaries |
+| [file-structure.md](file-structure.md) | Directory map and where new files belong |
+| [build-and-environments.md](build-and-environments.md) | Taskfile, XcodeGen, build commands, and runtime config |
+| [networking-and-auth.md](networking-and-auth.md) | `APIClient`, auth flow, and contract usage |
+| [session-and-token-storage.md](session-and-token-storage.md) | Keychain storage and auth bootstrap behavior |
+| [navigation-and-screens.md](navigation-and-screens.md) | Routes, auth gating, and screen inventory |
+| [design-system-and-theme.md](design-system-and-theme.md) | Shared theme primitives and reusable UI |
+| [naming-conventions.md](naming-conventions.md) | File, type, and directory naming guardrails |
+| [conventions-and-workflow.md](conventions-and-workflow.md) | Daily coding rules and feature-delivery workflow |
 
 ## Quick Reference
 
@@ -27,6 +27,30 @@ This generated iOS app uses Swift 6, SwiftUI, Observation-based ViewModels, asyn
 - Min iOS: 17.0
 - Swift: 6.0
 - Xcode: 26
+
+## Project Structure
+
+```text
+mobile-ios/
+├── project.yml               # XcodeGen source of truth
+├── Config/                   # xcconfig files and per-environment settings
+├── docs/                     # iOS slice documentation
+├── fastlane/                 # automation lanes and metadata
+├── {{ project_slug }}/
+│   ├── App.swift             # app entry point
+│   ├── DI/                   # DependencyContainer and test hooks
+│   ├── Navigation/           # AppRouter and Route definitions
+│   ├── Data/
+│   │   ├── Network/          # APIClient, endpoints, transport helpers
+│   │   ├── Repository/       # protocol + implementation repository files
+│   │   └── Storage/          # token and local persistence
+│   ├── Domain/               # shared app models
+│   └── UI/                   # feature screens, common UI, and theme
+├── {{ project_slug }}Tests/  # unit and integration-style tests
+└── {{ project_slug }}UITests/ # XCUITest coverage
+```
+
+See [file-structure.md](file-structure.md) for the deeper directory map and placement rules.
 
 ## Generated Feature Areas
 

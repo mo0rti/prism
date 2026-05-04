@@ -1,5 +1,5 @@
 param(
-    [string]$OutputRoot = (Join-Path $env:TEMP "template-validation"),
+    [string]$OutputRoot = (Join-Path $env:TEMP ("template-validation-" + [System.Guid]::NewGuid().ToString("N"))),
     [ValidateSet("full", "contract", "backend-smoke")]
     [string]$Mode = "full"
 )
@@ -206,9 +206,7 @@ function New-GeneratedProject {
     )
 
     $target = Join-Path $OutputRoot $Name
-    if (Test-Path -LiteralPath $target) {
-        Remove-Item -LiteralPath $target -Recurse -Force
-    }
+    Remove-TreeIfExists -Path $target
 
     $arguments = @("copy", "--trust", "--defaults")
     foreach ($dataArg in $DataArgs) {
@@ -452,6 +450,36 @@ function Validate-BackendOnly {
     }
 }
 
+function Remove-TreeIfExists {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $lastError = $null
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        }
+        catch [System.IO.DirectoryNotFoundException] {
+            return
+        }
+        catch [System.IO.FileNotFoundException] {
+            return
+        }
+        catch {
+            $lastError = $_
+            Start-Sleep -Milliseconds 200
+        }
+    }
+
+    if (Test-Path -LiteralPath $Path) {
+        throw $lastError
+    }
+}
+
 function Validate-BackendPasswordOnly {
     param(
         [string]$Root,
@@ -633,9 +661,7 @@ function Validate-IosSample {
     Assert-FileNotContains -Path (Join-Path $Root "mobile-ios\review-appTests\LoginViewModelTests.swift") -Needle "@testable import review-app" -Message "iOS tests should not import slug-based invalid module names."
 }
 
-if (Test-Path -LiteralPath $OutputRoot) {
-    Remove-Item -LiteralPath $OutputRoot -Recurse -Force
-}
+Remove-TreeIfExists -Path $OutputRoot
 New-Item -ItemType Directory -Path $OutputRoot | Out-Null
 
 switch ($Mode) {

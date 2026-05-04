@@ -9,10 +9,10 @@
 | Platform | Tech Stack | Hosting | Purpose |
 |----------|-----------|---------|---------|
 {% if "backend" in platforms %}| Backend | Spring Boot 4, Kotlin 2.2+, Java 21 | Azure Container Apps | REST API, business logic, auth |
-{% endif %}{% if "web-user-app" in platforms %}| User Web App | Next.js, TypeScript, Tailwind CSS, next-intl, NextAuth | Cloudflare via OpenNext | User-facing marketing and authenticated dashboard |
-{% endif %}{% if "web-admin-portal" in platforms %}| Admin Web Portal | Next.js, TypeScript, Tailwind CSS, NextAuth | Cloudflare via OpenNext | Internal admin operations and management UI |
-{% endif %}{% if "mobile-android" in platforms %}| Android | Kotlin, Jetpack Compose, Hilt | Google Play | Native Android app |
-{% endif %}{% if "mobile-ios" in platforms %}| iOS | Swift, SwiftUI | App Store | Native iOS app |
+{% endif %}{% if "web-user-app" in platforms %}| User Web App | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5, next-intl 4 | Cloudflare via OpenNext | User-facing marketing and authenticated dashboard |
+{% endif %}{% if "web-admin-portal" in platforms %}| Admin Web Portal | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5 | Cloudflare via OpenNext | Internal admin operations and management UI |
+{% endif %}{% if "mobile-android" in platforms %}| Android | Kotlin 2.2+, Java 21, Jetpack Compose, Hilt, Retrofit 3 | Google Play | Native Android app |
+{% endif %}{% if "mobile-ios" in platforms %}| iOS | Swift 6, SwiftUI, iOS 17+, XcodeGen | App Store | Native iOS app |
 {% endif %}| Database | PostgreSQL 16 | Azure Database | Data persistence |
 
 ## Architecture Pattern
@@ -30,10 +30,10 @@ View (UI)  ->  ViewModel (State + Logic)  ->  Repository  ->  Data Source (API/L
 |-------|---------|-----|
 | View | `@Composable` functions | SwiftUI `View` structs |
 | ViewModel | `@HiltViewModel` + `StateFlow<UiState>` | `@Observable` + `ViewState` enum |
-| Repository | Interface + Impl (Hilt-injected) | Protocol + Impl (container-injected) |
-| API Client | Retrofit + Kotlinx Serialization | URLSession + `async/await` |
+| Repository | Concrete repository classes (`@Inject` + Hilt) | Protocol + implementation (`DependencyContainer`) |
+| API Client | Retrofit 3 + OkHttp + Kotlinx Serialization | `APIClient` actor over URLSession + `async/await` |
 | Local Storage | DataStore | Keychain |
-| DI | Hilt | Protocol-based container |
+| DI | Hilt | `DependencyContainer` via SwiftUI environment |
 
 {% elif "backend" in platforms and platforms | length == 1 %}
 This generation is backend-only. The backend is organized into:
@@ -46,7 +46,7 @@ This generation is backend-only. The backend is organized into:
 {% endif %}
 ### API Contract
 
-Single source of truth: `shared/api-contracts/openapi.yml`
+Single source of truth: [shared/api-contracts/openapi.yml](../shared/api-contracts/openapi.yml)
 
 All platform API clients are **generated** from this spec. Never manually edit generated client code. Run `task generate-clients` after any spec change.
 
@@ -54,11 +54,17 @@ All platform API clients are **generated** from this spec. Never manually edit g
 
 Local email/password auth is always included.{% if auth_methods | reject("equalto", "password") | list | length > 0 %} Selected OAuth providers: {% for method in auth_methods if method != "password" %}{{ method }}{% if not loop.last %}, {% endif %}{% endfor %}.{% endif %}
 
-Flow: Client -> OAuth provider (or login form) -> Backend validates -> Issues JWT -> Client stores token -> Attaches to all API requests.
+Flow:
+
+1. Client submits login credentials or completes the OAuth provider callback
+2. Backend validates credentials or exchanges the OAuth authorization code
+3. Backend issues JWT access and refresh tokens
+4. Client stores the tokens locally
+5. Client attaches the access token to authenticated API requests
 
 ### Design Tokens
 
-Shared visual language: `shared/design-tokens/tokens.json`
+Shared visual language: [shared/design-tokens/tokens.json](../shared/design-tokens/tokens.json)
 
 Colors, spacing, typography, and border-radius values consumed by all platforms.
 
@@ -69,3 +75,9 @@ Colors, spacing, typography, and border-radius values consumed by all platforms.
 3. **Feature modules** - backend domains live under `modules/<domain>/`
 4. **Consistent naming** - docs, contract, and code should refer to the same feature names (for example, `transactions`)
 5. **Never edit generated code** - modify the OpenAPI spec and regenerate
+
+## Related Docs
+
+- [API Conventions](api/conventions.md) for path versioning, auth headers, and error payloads
+{% if "backend" in platforms %}- [Backend Guide](../backend/docs/guide.md) for backend package layout and coding conventions
+{% endif %}- [Product Context](../CONTEXT.md) for command surfaces and workflow expectations

@@ -13,6 +13,10 @@ It helps product and engineering teams:
 
 This repository contains the Prism template and CLI. It is not a generated workspace.
 
+If you want to see Prism applied to a concrete product demo, take a look at
+[TreasuryFlow](https://github.com/mo0rti/treasury-flow), a sample finance
+operations workspace generated and evolved with Prism.
+
 ![Prism home screen](docs/media/prism-menu.png)
 
 The Prism launcher is the main entry point for generation, validation, and orientation.

@@ -21,17 +21,30 @@ board configuration. It takes 15-20 minutes and runs once.
 
 ## Repository structure
 
+```text
+{{ project_slug }}/
+{% if "backend" in platforms -%}
+   ├── backend/           # Spring Boot 4 (Kotlin 2.2+, Java 21)
+{% endif -%}
+{% if "web-user-app" in platforms -%}
+   ├── web-user-app/      # Next.js + TypeScript user-facing web app
+{% endif -%}
+{% if "web-admin-portal" in platforms -%}
+   ├── web-admin-portal/  # Next.js + TypeScript admin web portal
+{% endif -%}
+{% if "mobile-android" in platforms -%}
+   ├── mobile-android/    # Kotlin + Jetpack Compose (MVVM)
+{% endif -%}
+{% if "mobile-ios" in platforms -%}
+   ├── mobile-ios/        # Swift 6 + SwiftUI (MVVM)
+{% endif -%}
+   ├── shared/            # OpenAPI 3.1 spec + design tokens
+├── knowledge/         # Living product wiki - single source of truth for all features
+{% if "backend" in platforms -%}
+   ├── infra/             # Azure deployment scripts
+{% endif -%}
+   └── docs/              # Human-readable architecture and operations docs
 ```
-{% if "backend" in platforms %}backend/           # Spring Boot 4 (Kotlin 2.2+, Java 21)
-{% endif %}{% if "web-user-app" in platforms %}web-user-app/      # Next.js + TypeScript user-facing web app
-{% endif %}{% if "web-admin-portal" in platforms %}web-admin-portal/  # Next.js + TypeScript admin web portal
-{% endif %}{% if "mobile-android" in platforms %}mobile-android/    # Kotlin + Jetpack Compose (MVVM)
-{% endif %}{% if "mobile-ios" in platforms %}mobile-ios/        # Swift 6 + SwiftUI (MVVM)
-{% endif %}shared/            # OpenAPI 3.1 spec + design tokens
-knowledge/         # Living product wiki - single source of truth for all features
-docs/              # Human-readable architecture and operations docs
-{% if "backend" in platforms %}infra/             # Azure deployment scripts
-{% endif %}```
 
 This generated repository includes the platform slices selected during generation.
 Read the root agent file first, then defer to the platform-local guidance inside the folders that are present.
@@ -57,36 +70,40 @@ Cursor: ask the agent to "run po-intake on [folder]").
 
 ## Available commands
 
-**Claude Code slash commands** (use `/command` syntax):
+### Claude Code
 
-Setup: `/setup-project`
-PO: `/po-intake [folder]`, `/po-clarify`, `/po-handoff [F-XXX]`
-Designer: `/design-intake [F-XXX] [folder]`, `/design-clarify`, `/design-handoff [F-XXX]`
-Developer: `/prep-sprint`, `/dev-done [F-XXX]`
-Board: `/board-review [F-XXX]`
-Shared: `/feature-status`, `/ask [F-XXX] "question" --to po|designer|dev`,
-        `/audit-feature [F-XXX]`, `/lint-wiki`, `/wiki-show F-XXX`,
-        `/wiki-blockers`, `/wiki-query "text"`, `/wiki-owner po|designer|dev`,
-        `/wiki-platform <platform-id>`
+| Category | Commands |
+|----------|----------|
+| Setup | `/setup-project` |
+| PO | `/po-intake [folder]`, `/po-clarify`, `/po-handoff [F-XXX]` |
+| Designer | `/design-intake [F-XXX] [folder]`, `/design-clarify`, `/design-handoff [F-XXX]` |
+| Developer | `/prep-sprint`, `/dev-done [F-XXX]` |
+| Board | `/board-review [F-XXX]` |
+| Shared | `/feature-status`, `/ask [F-XXX] "question" --to po\|designer\|dev`, `/audit-feature [F-XXX]`, `/lint-wiki`, `/wiki-show F-XXX`, `/wiki-blockers`, `/wiki-query "text"`, `/wiki-owner po\|designer\|dev`, `/wiki-platform <platform-id>` |
 
-**Codex** (use `$skill` syntax for structured project operations):
+### Codex
 
-Setup: `$setup-project`
-PO: `$po-intake [folder]`, `$po-clarify`, `$po-handoff [F-XXX]`
-Designer: `$design-intake [F-XXX] [folder]`, `$design-clarify`, `$design-handoff [F-XXX]`
-Developer: `$prep-sprint`, `$dev-done [F-XXX]`
-Board: `$board-review [F-XXX]`
-Shared: `$feature-status`, `$ask [F-XXX] "question" --to po|designer|dev`,
-        `$audit-feature [F-XXX]`, `$lint-wiki`, `$wiki-show F-XXX`,
-        `$wiki-blockers`, `$wiki-query "text"`, `$wiki-owner po|designer|dev`,
-        `$wiki-platform <platform-id>`
+| Category | Commands |
+|----------|----------|
+| Setup | `$setup-project` |
+| PO | `$po-intake [folder]`, `$po-clarify`, `$po-handoff [F-XXX]` |
+| Designer | `$design-intake [F-XXX] [folder]`, `$design-clarify`, `$design-handoff [F-XXX]` |
+| Developer | `$prep-sprint`, `$dev-done [F-XXX]` |
+| Board | `$board-review [F-XXX]` |
+| Shared | `$feature-status`, `$ask [F-XXX] "question" --to po\|designer\|dev`, `$audit-feature [F-XXX]`, `$lint-wiki`, `$wiki-show F-XXX`, `$wiki-blockers`, `$wiki-query "text"`, `$wiki-owner po\|designer\|dev`, `$wiki-platform <platform-id>` |
 
-**Cursor**: ask the agent by operation name, e.g. "run setup-project" or "run po-intake
-on the folder meeting-notes-2026-04-07". The agent will follow the steps in
-`.claude/commands/[command].md` and `knowledge/wiki/SCHEMA.md`.
+### Cursor
+
+Ask the agent by operation name, for example `run setup-project` or `run po-intake on the folder meeting-notes-2026-04-07`. The agent will follow `.claude/commands/[command].md` and `knowledge/wiki/SCHEMA.md`.
 
 ## Tech stack and architectural constraints
 
-See `knowledge/wiki/decisions/` for Architecture Decision Records.
-See `shared/api-contracts/openapi.yml` for the API contract.
-See `docs/architecture.md` for the system overview.
+See [Architecture Decision Records](knowledge/wiki/decisions/) for long-lived technical decisions.
+See [OpenAPI contract](shared/api-contracts/openapi.yml) for the API surface.
+See [Architecture Overview](docs/architecture.md) for the system map and platform boundaries.
+
+## Related Docs
+
+- [README.md](README.md) for setup and common commands
+- [Architecture Overview](docs/architecture.md) for the system map and platform boundaries
+- [API Conventions](docs/api/conventions.md) for URL, auth, versioning, and error-response rules

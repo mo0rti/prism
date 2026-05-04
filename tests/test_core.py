@@ -13,6 +13,7 @@ from prism_cli import ui as ui_module
 from prism_cli.cli import (
     DEFAULT_GENERATED_DIR,
     build_home_actions,
+    build_default_destination,
     build_parser,
     build_doctor_checks,
     choose_next_doctor_result,
@@ -20,12 +21,14 @@ from prism_cli.cli import (
     detect_validation_target,
     detect_launch_context,
     dispatch_home_action,
+    derive_project_slug,
     doctor_install_command,
     doctor_install_reference,
     evaluate_doctor_checks,
     ensure_copier_answers_file,
     format_data_value,
     inspect_git_worktree,
+    is_direct_git_worktree,
     is_incubating_checkout,
     load_answers_file,
     load_copier_answers,
@@ -34,6 +37,7 @@ from prism_cli.cli import (
     parse_multiselect_response,
     parse_preset_selection,
     format_copier_progress_line,
+    is_generation_safe_existing_destination,
     prepare_generation_destination,
     render_doctor_result,
     resolve_update_strategy,
@@ -294,7 +298,13 @@ class NormalizeTemplatePathTests(unittest.TestCase):
 
 class DefaultsTests(unittest.TestCase):
     def test_default_generated_directory_name(self) -> None:
-        self.assertEqual("generated", DEFAULT_GENERATED_DIR)
+        self.assertEqual("workspaces", DEFAULT_GENERATED_DIR)
+
+    def test_derives_project_slug_for_workspace_destinations(self) -> None:
+        self.assertEqual("treasury-flow", derive_project_slug("Treasury Flow"))
+
+    def test_builds_default_destination_under_workspaces(self) -> None:
+        self.assertEqual(str(Path("workspaces") / "treasury-flow"), build_default_destination("Treasury Flow"))
 
 
 class MainTests(unittest.TestCase):
@@ -401,6 +411,61 @@ class DestinationPreparationTests(unittest.TestCase):
             self.assertEqual(cli_module.EXIT_VALIDATION, result)
             self.assertTrue((root / "old.txt").exists())
 
+    def test_prepare_generation_destination_refuses_existing_generated_project(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "README.md").write_text("", encoding="utf-8")
+            (root / "CONTEXT.md").write_text("", encoding="utf-8")
+            (root / "knowledge" / "wiki").mkdir(parents=True)
+            (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
+
+            with patch("sys.stderr"):
+                result = prepare_generation_destination(root)
+
+            self.assertEqual(cli_module.EXIT_VALIDATION, result)
+
+    def test_prepare_generation_destination_refuses_existing_git_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / ".git").mkdir()
+            (root / "README.txt").write_text("existing repo", encoding="utf-8")
+
+            with patch("sys.stderr"):
+                result = prepare_generation_destination(root)
+
+            self.assertEqual(cli_module.EXIT_VALIDATION, result)
+
+    def test_prepare_generation_destination_allows_empty_git_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / ".git").mkdir()
+
+            result = prepare_generation_destination(root)
+
+            self.assertIsNone(result)
+
+    def test_generation_safe_existing_destination_only_allows_single_git_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            git_dir = root / ".git"
+            git_dir.mkdir()
+
+            self.assertTrue(is_generation_safe_existing_destination([git_dir]))
+
+            readme = root / "README.md"
+            readme.write_text("", encoding="utf-8")
+            self.assertFalse(is_generation_safe_existing_destination([git_dir, readme]))
+
+    def test_generation_safe_existing_destination_allows_standard_repo_boilerplate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            git_dir = root / ".git"
+            git_dir.mkdir()
+            gitignore = root / ".gitignore"
+            gitignore.write_text("node_modules/\n", encoding="utf-8")
+
+            self.assertTrue(is_generation_safe_existing_destination([git_dir, gitignore]))
+
 
 class UpdateStrategyTests(unittest.TestCase):
     def test_auto_uses_recopy_without_commit(self) -> None:
@@ -422,11 +487,13 @@ class GitHelpersTests(unittest.TestCase):
             state = inspect_git_worktree(Path(temp_dir))
         self.assertFalse(state["is_repo"])
         self.assertFalse(state["is_dirty"])
+        self.assertIsNone(state["repo_root"])
 
     @patch("prism_cli.cli.subprocess.run")
     def test_inspect_git_worktree_handles_status_failure(self, mocked_run: object) -> None:
         mocked_run.side_effect = [
             unittest.mock.Mock(stdout="true\n"),
+            unittest.mock.Mock(stdout="C:/fake\n"),
             subprocess.CalledProcessError(1, ["git", "status", "--porcelain"]),
         ]
 
@@ -434,6 +501,11 @@ class GitHelpersTests(unittest.TestCase):
 
         self.assertTrue(state["is_repo"])
         self.assertFalse(state["is_dirty"])
+        self.assertEqual("C:/fake", state["repo_root"])
+
+    def test_is_direct_git_worktree_rejects_parent_repo_false_positive(self) -> None:
+        repo_state = {"is_repo": True, "is_dirty": False, "repo_root": str(Path("C:/parent").resolve())}
+        self.assertFalse(is_direct_git_worktree(Path("C:/parent/child"), repo_state))
 
 
 class DoctorCommandTests(unittest.TestCase):

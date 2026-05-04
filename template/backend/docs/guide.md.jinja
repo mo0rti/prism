@@ -13,43 +13,41 @@
 
 ```
 backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  Application.kt                  # @SpringBootApplication entry point
-  bootstrap/
-    SecurityConfig.kt             # Spring Security + JWT filter
-    WebConfig.kt                  # CORS configuration
-{% if auth_methods | reject("equalto", "password") | list | length > 0 %}
-    OAuth2Config.kt               # RestTemplate for OAuth provider exchange
-{% endif %}
-    OpenApiConfig.kt              # Swagger / OpenAPI wiring
-    properties/                   # Typed config properties
-  shared/
-    error/
-      ErrorCode.kt               # Typed backend error-code contract
-      CommonErrorCode.kt         # Shared HTTP-level error codes
-    exception/
-      ApiException.kt             # Shared API exception base type
-      NotFoundException.kt        # Reusable built-in HTTP exception types
-      GlobalExceptionHandler.kt   # @ControllerAdvice -> ApiError JSON
-    model/
-      ApiErrorResponse.kt         # { code, message, details }
-      PagedResponse.kt            # Generic paginated response wrapper
-    audit/
-      AuditableEntity.kt          # Shared createdAt / updatedAt base class
-  modules/
-    auth/                         # Auth endpoints and user persistence
-      controller/
-      dto/
-      error/
-      model/
-      repository/
-      service/
-    transactions/                 # Transaction workflow module
-      controller/
-      dto/
-      error/
-      service/
-      repository/
-      model/
+├── Application.kt                # @SpringBootApplication entry point
+├── bootstrap/
+│   ├── SecurityConfig.kt         # Spring Security + JWT filter
+│   ├── WebConfig.kt              # CORS configuration
+{% if auth_methods | reject("equalto", "password") | list | length > 0 %}│   ├── OAuth2Config.kt           # RestTemplate for OAuth provider exchange
+{% endif %}│   ├── OpenApiConfig.kt          # Swagger / OpenAPI wiring
+│   └── properties/               # Typed config properties
+├── shared/
+│   ├── error/
+│   │   ├── ErrorCode.kt          # Typed backend error-code contract
+│   │   └── CommonErrorCode.kt    # Shared HTTP-level error codes
+│   ├── exception/
+│   │   ├── ApiException.kt       # Shared API exception base type
+│   │   ├── NotFoundException.kt  # Reusable built-in HTTP exception types
+│   │   └── GlobalExceptionHandler.kt
+│   ├── model/
+│   │   ├── ApiErrorResponse.kt   # { code, message, details }
+│   │   └── PagedResponse.kt      # Generic paginated response wrapper
+│   └── audit/
+│       └── AuditableEntity.kt    # Shared createdAt / updatedAt base class
+└── modules/
+    ├── auth/                     # Auth endpoints and user persistence
+    │   ├── controller/
+    │   ├── dto/
+    │   ├── error/
+    │   ├── model/
+    │   ├── repository/
+    │   └── service/
+    └── transactions/             # Transaction workflow module
+        ├── controller/
+        ├── dto/
+        ├── error/
+        ├── service/
+        ├── repository/
+        └── model/
 ```
 
 ## Local Run Prerequisites
@@ -105,3 +103,9 @@ task backend:build      # ./gradlew build
 task backend:test       # ./gradlew test
 task backend:lint       # ./gradlew check -x test
 ```
+
+## Related Docs
+
+- [Architecture Overview](../../docs/architecture.md) for system-wide constraints and auth flow
+- [API Conventions](../../docs/api/conventions.md) for URL, error, and versioning rules
+- [Backend Entities](entities/README.md) for domain-level data documentation

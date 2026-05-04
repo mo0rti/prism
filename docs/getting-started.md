@@ -95,7 +95,7 @@ If you run `prism new` with no extra flags, Prism starts the guided interactive 
 - lets you choose a preset or advanced mode
 - asks for missing project details
 - uses interactive selectors for platform and auth choices
-- defaults the destination folder to `generated`
+- defaults the destination folder to `workspaces/<project-slug>`
 - shows a final review screen before generation
 
 ![Preset selection during guided project creation](media/prism-new-project.png)

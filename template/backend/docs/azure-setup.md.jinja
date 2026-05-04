@@ -8,10 +8,8 @@
 | Container Registry | Azure Container Registry | `01-setup-foundation.sh` | Docker image storage |
 | Log Analytics | Log Analytics Workspace | `01-setup-foundation.sh` | Container monitoring |
 | Database | PostgreSQL Flexible Server | `02-setup-database.sh` | Data persistence |
-{% if "redis" in supporting_services %}
-| Cache | Azure Cache for Redis | `02-setup-database.sh` | Session/cache storage |
-{% endif %}
-| Container Environment | Container Apps Environment | `03-setup-container-apps-env.sh` | Networking for containers |
+{% if "redis" in supporting_services %}| Cache | Azure Cache for Redis | `02-setup-database.sh` | Session/cache storage |
+{% endif %}| Container Environment | Container Apps Environment | `03-setup-container-apps-env.sh` | Networking for containers |
 | File Storage | Azure Blob Storage | `04-setup-storage.sh` | File uploads |
 | Backend API | Azure Container Apps | `06-deploy-backend.sh` | Hosts Spring Boot 4 application |
 
@@ -150,3 +148,9 @@ bash infra/azure/cleanup.sh
 | `task infra:check-secrets` | Validate secrets |
 | `bash infra/azure/show-database-credentials.sh` | Show database{% if "redis" in supporting_services %}/Redis{% endif %} credentials |
 | `bash infra/azure/test-database-connection.sh` | Test DB connectivity |
+
+## Related Docs
+
+- [Backend Guide](guide.md) for local backend structure and runtime conventions
+- [Architecture Overview](../../docs/architecture.md) for system-wide hosting context
+- [CI/CD](../../docs/deployment/ci-cd.md) for deployment automation and secrets flow

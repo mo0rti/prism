@@ -61,8 +61,18 @@ EXIT_COPIER = 5
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COPIER_ANSWERS_FILE = ".copier-answers.yml"
-DEFAULT_GENERATED_DIR = "generated"
+DEFAULT_GENERATED_DIR = "workspaces"
 COPIER_PROGRESS_PATTERN = re.compile(r"^\s*(create|identical|overwrite|conflict|skip|remove)\s+(.+?)\s*$")
+
+
+def derive_project_slug(project_name: str) -> str:
+    normalized = project_name.strip().lower().replace("_", "-").replace(" ", "-")
+    normalized = re.sub(r"-{2,}", "-", normalized)
+    return normalized or "generated-project"
+
+
+def build_default_destination(project_name: str) -> str:
+    return str(Path(DEFAULT_GENERATED_DIR) / derive_project_slug(project_name))
 
 
 @dataclass(frozen=True)
@@ -658,8 +668,8 @@ def cmd_update(args: argparse.Namespace) -> int:
         return EXIT_VALIDATION
 
     repo_state = inspect_git_worktree(project_path)
-    if not repo_state["is_repo"]:
-        print(error("`prism update` requires the generated project to be under git version control."), file=sys.stderr)
+    if not is_direct_git_worktree(project_path, repo_state):
+        print(error("`prism update` requires the generated project to have its own git repository."), file=sys.stderr)
         print(info("Initialize a git repository and commit the current generated state before updating."), file=sys.stderr)
         return EXIT_VALIDATION
     if repo_state["is_dirty"]:
@@ -740,7 +750,7 @@ def cmd_new(args: argparse.Namespace) -> int:
         if sys.stdin.isatty():
             destination = prompt_text(
                 "Where should Prism create the project?",
-                DEFAULT_GENERATED_DIR,
+                build_default_destination(merged_answers["project_name"]),
             )
         else:
             print(error("Destination is required in non-interactive mode. Use `--dest` or an answers file."), file=sys.stderr)
@@ -1121,8 +1131,23 @@ def prepare_generation_destination(dest_path: Path) -> int | None:
     if dest_path.is_file():
         print(error(f"Destination already exists as a file: {dest_path}"), file=sys.stderr)
         return EXIT_VALIDATION
-    if not any(dest_path.iterdir()):
+    entries = list(dest_path.iterdir())
+    if not entries or is_generation_safe_existing_destination(entries):
         return None
+
+    target_kind = detect_validation_target(dest_path)
+    if target_kind == "generated-project":
+        print(error(f"Destination already contains a generated Prism project: {dest_path}"), file=sys.stderr)
+        print(info("Use `prism update` to refresh that workspace from its template."), file=sys.stderr)
+        print(info("Or choose a different destination such as `workspaces/<project-slug>`."), file=sys.stderr)
+        return EXIT_VALIDATION
+
+    repo_state = inspect_git_worktree(dest_path)
+    if is_direct_git_worktree(dest_path, repo_state):
+        print(error(f"Destination is already under git version control: {dest_path}"), file=sys.stderr)
+        print(info("Choose a new destination for `prism new`, or remove/archive the existing repository first."), file=sys.stderr)
+        print(info("If this is an existing Prism workspace, prefer `prism update` instead of overwriting it."), file=sys.stderr)
+        return EXIT_VALIDATION
 
     print(warn(f"Destination already exists and is not empty: {dest_path}"))
     if not sys.stdin.isatty():
@@ -1134,7 +1159,17 @@ def prepare_generation_destination(dest_path: Path) -> int | None:
         print(warn("Generation cancelled."))
         return 0
 
-    clear_directory_contents(dest_path)
+    try:
+        clear_directory_contents(dest_path)
+    except PermissionError as exc:
+        print(error(f"Could not clear the destination because a file is in use: {exc}"), file=sys.stderr)
+        print(info("Close any editor, terminal, or process using that folder, then retry."), file=sys.stderr)
+        print(info("If this directory is an existing Prism workspace, use `prism update` instead."), file=sys.stderr)
+        return EXIT_VALIDATION
+    except OSError as exc:
+        print(error(f"Could not clear the destination: {exc}"), file=sys.stderr)
+        print(info("Choose a different destination or remove the existing contents manually, then retry."), file=sys.stderr)
+        return EXIT_VALIDATION
     print(info(f"Cleared existing contents in `{dest_path}`."))
     print()
     return None
@@ -1146,6 +1181,19 @@ def clear_directory_contents(path: Path) -> None:
             shutil.rmtree(child)
         else:
             child.unlink()
+
+
+def is_generation_safe_existing_destination(entries: list[Path]) -> bool:
+    allowed_root_files = {".gitignore", ".gitattributes", ".editorconfig"}
+    has_git_dir = False
+    for entry in entries:
+        if entry.name == ".git" and entry.is_dir():
+            has_git_dir = True
+            continue
+        if entry.is_file() and entry.name in allowed_root_files:
+            continue
+        return False
+    return has_git_dir
 
 
 def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -1227,9 +1275,11 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any]) -> 
     if dest_path.exists() and dest_path.is_file():
         print(error(f"Destination already exists as a file: {dest_path}"), file=sys.stderr)
         return EXIT_VALIDATION
-    if dest_path.exists() and any(dest_path.iterdir()):
-        print(error(f"Destination already exists and is not empty: {dest_path}"), file=sys.stderr)
-        return EXIT_VALIDATION
+    if dest_path.exists():
+        entries = list(dest_path.iterdir())
+        if entries and not is_generation_safe_existing_destination(entries):
+            print(error(f"Destination already exists and is not empty: {dest_path}"), file=sys.stderr)
+            return EXIT_VALIDATION
 
     print(section("Generating"))
     print(info("Running Copier with the resolved Prism configuration..."))
@@ -1459,6 +1509,7 @@ def staged_template_path(template_path: str):
                     "build",
                     "dist",
                     "*.egg-info",
+                    "workspaces",
                 ),
             )
             yield staged_root
@@ -1527,7 +1578,7 @@ def is_incubating_checkout() -> bool:
     return (REPO_ROOT / ".git").exists() and (REPO_ROOT / "copier.yml").exists()
 
 
-def inspect_git_worktree(path: Path) -> dict[str, bool]:
+def inspect_git_worktree(path: Path) -> dict[str, bool | str | None]:
     try:
         inside = subprocess.run(
             ["git", "-C", str(path), "rev-parse", "--is-inside-work-tree"],
@@ -1536,10 +1587,20 @@ def inspect_git_worktree(path: Path) -> dict[str, bool]:
             text=True,
         )
     except (OSError, subprocess.CalledProcessError):
-        return {"is_repo": False, "is_dirty": False}
+        return {"is_repo": False, "is_dirty": False, "repo_root": None}
 
     if inside.stdout.strip() != "true":
-        return {"is_repo": False, "is_dirty": False}
+        return {"is_repo": False, "is_dirty": False, "repo_root": None}
+
+    try:
+        repo_root = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            check=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        repo_root = None
 
     try:
         status = subprocess.run(
@@ -1549,8 +1610,18 @@ def inspect_git_worktree(path: Path) -> dict[str, bool]:
             text=True,
         )
     except (OSError, subprocess.CalledProcessError):
-        return {"is_repo": True, "is_dirty": False}
-    return {"is_repo": True, "is_dirty": bool(status.stdout.strip())}
+        return {"is_repo": True, "is_dirty": False, "repo_root": repo_root}
+    return {"is_repo": True, "is_dirty": bool(status.stdout.strip()), "repo_root": repo_root}
+
+
+def is_direct_git_worktree(path: Path, repo_state: dict[str, bool | str | None] | None = None) -> bool:
+    repo_state = repo_state or inspect_git_worktree(path)
+    if not repo_state["is_repo"]:
+        return False
+    repo_root = repo_state.get("repo_root")
+    if not repo_root:
+        return False
+    return Path(str(repo_root)).resolve() == path.resolve()
 
 
 def confirm(prompt: str, default: bool) -> bool:
