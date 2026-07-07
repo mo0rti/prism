@@ -50,6 +50,19 @@ Initialize the wiki with:
 That setup flow creates the advisory board in `knowledge/wiki/advisory/BOARD.md` and
 prepares the wiki for `po-intake`, `design-intake`, and the rest of the lifecycle.
 
+## Dashboard View
+
+Generated projects can be explored through the wiki graph dashboard:
+
+- `prism wiki graph --open` opens the interactive dashboard in the browser
+- `prism wiki graph --serve` keeps it live-updating as wiki files change
+
+The dashboard is derived from the wiki and stays read-only. It is meant for orientation:
+feature counts, lifecycle state, intake visibility, graph relationships, and first-run
+guidance before the wiki has been initialized.
+
+![Generated-project dashboard empty state](media/wiki-graph-dashboard-empty-state.png)
+
 ## How To Read The Generated Repo
 
 The most important generated areas are:
