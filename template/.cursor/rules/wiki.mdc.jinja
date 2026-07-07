@@ -9,6 +9,22 @@ alwaysApply: true
 This project uses a shared product wiki at `knowledge/wiki/` as the single source of
 truth for what to build.
 
+## CLI read surfaces
+
+For read/query operations, prefer Prism CLI JSON when available:
+
+- `prism status --json`
+- `prism wiki show F-XXX --json`
+- `prism wiki blockers --json`
+- `prism wiki owner po|designer|dev|none --json`
+- `prism wiki platform backend|mobile-android|mobile-ios|web-user-app|web-admin-portal --json`
+- `prism wiki search "text" --json`
+- `prism wiki lint --json`
+
+If `prism` is missing, too old, or lacks the needed subcommand, say the CLI read
+surface is unavailable and fall back to direct wiki reads. This generated project
+must not hard-depend on an installed Prism CLI.
+
 ## Before implementing any feature
 
 1. Read `knowledge/wiki/index.md` — confirm the feature is in `ready-for-dev` or `in-dev`

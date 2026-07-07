@@ -17,3 +17,6 @@ prism = "prism_cli.cli:main"
 
 [tool.setuptools]
 packages = ["prism_cli"]
+
+[tool.setuptools.package-data]
+prism_cli = ["assets/*"]

@@ -1,40 +1,43 @@
 ---
 name: wiki-show
-description: Read-only feature context bundle for one feature ID. Pulls together feature state, linked context, blockers, and suggested next action.
+description: Read-only feature facts for one feature ID. Prefer Prism CLI JSON; fall back to direct wiki reads when the CLI is unavailable.
 ---
 
 # Wiki Show
 
 Read-only feature drill-down for one feature.
 
-## Usage
+## Primary path
 
-`$wiki-show F-XXX`
+Run:
 
-## Workflow
+```bash
+prism wiki show F-XXX --json
+```
 
-1. Read `knowledge/wiki/index.md`
-2. Read `knowledge/wiki/features/[F-XXX]-[slug].md`
-3. Read matching linked files if present:
-   - `knowledge/wiki/design/[F-XXX]-[slug].md`
-   - `knowledge/wiki/api-contracts/[F-XXX].md`
-   - `knowledge/wiki/platform-requirements/[F-XXX]-*.md`
-   - `knowledge/wiki/advisory/[F-XXX]-review.md`
-   - business-rule files that reference the feature ID
-4. Assemble a focused context bundle
+Summarize `facts.feature`, `blocker_facts`, `required_obligations`, `diagnostics`, and `sources`.
+
+## Fallback path
+
+If `prism` is unavailable, too old, or lacks `wiki show`, say the CLI read surface is unavailable and read:
+
+- `knowledge/wiki/index.md`
+- `knowledge/wiki/features/[F-XXX]-[slug].md`
+- matching `knowledge/wiki/platform-requirements/[F-XXX]-*.md`
+- `knowledge/wiki/design/[F-XXX]-[slug].md` if present
+- `knowledge/wiki/api-contracts/[F-XXX].md` if present
+- `knowledge/wiki/advisory/[F-XXX]-review.md` if present
+- business-rule, persona, and decision files that reference the feature ID
+
+Assemble only facts that are present in those files. Treat missing optional linked files as partial context, not as a hard error.
 
 ## Rules
 
 - read-only skill
-- do not write any wiki files
+- do not write wiki files
 - do not refresh `WIKI_REPORT.md`
-- treat missing optional linked files as partial context, not as a hard error
-
-## Canonical format reference
-
-Mirror the detailed output contract from:
-
-- `/.claude/commands/wiki-show.md`
+- do not invent missing facts
+- separate facts from advice: render facts first, then optionally close with clearly labeled suggested next steps
 
 ## Output shape
 
@@ -48,10 +51,12 @@ Return:
 - open questions
 - linked context
 - platform requirement status
+- API contract status when relevant
 - current blockers
-- suggested next action
+- source paths used
 
 ## Error and partial-state behavior
 
 - if no feature file matches the requested ID, return a clean missing-feature response
 - if optional linked files are absent, return a partial-state response that names the missing files
+- if multiple feature files match the requested ID, report the ambiguity and do not merge them

@@ -1,45 +1,45 @@
 ---
 name: wiki-query
-description: Read-only retrieval-assisted search across the wiki. Finds compact, typed matches without inventing ranking scores.
+description: Read-only conservative wiki search. Prefer Prism CLI JSON; fall back to direct text search when the CLI is unavailable.
 ---
 
 # Wiki Query
 
-Read-only wiki search for compact navigation across features, rules, design pages,
-platform requirements, personas, API contracts, and decisions.
+Read-only wiki search for compact navigation across features, rules, design pages, platform requirements, personas, API contracts, and decisions.
 
-## Usage
+## Primary path
 
-`$wiki-query "text"`
+Run:
 
-## Workflow
+```bash
+prism wiki search "text" --json
+```
 
-1. Use tool-level text search across:
-   - `knowledge/wiki/features/`
-   - `knowledge/wiki/personas/`
-   - `knowledge/wiki/business-rules/`
-   - `knowledge/wiki/design/`
-   - `knowledge/wiki/platform-requirements/`
-   - `knowledge/wiki/api-contracts/`
-   - `knowledge/wiki/decisions/`
-2. Collect candidate pages and matching lines
-3. Group matches by coarse match class
-4. Synthesize a compact result set from the retrieved candidates
+Summarize `facts.results`, `diagnostics`, and `sources`.
+
+## Fallback path
+
+If `prism` is unavailable, too old, or lacks `wiki search`, say the CLI read surface is unavailable, then run literal text search over:
+
+- `knowledge/wiki/features/`
+- `knowledge/wiki/personas/`
+- `knowledge/wiki/business-rules/`
+- `knowledge/wiki/design/`
+- `knowledge/wiki/platform-requirements/`
+- `knowledge/wiki/api-contracts/`
+- `knowledge/wiki/decisions/`
+
+Collect candidate pages and matching lines, group matches by coarse match class, and synthesize a compact result set from the retrieved candidates.
 
 ## Rules
 
 - read-only skill
-- do not write any wiki files
+- do not write wiki files
 - do not refresh `WIKI_REPORT.md`
-- do not invent numeric scores or fake search precision
+- use conservative substring matching
+- do not invent numeric scores or semantic ranking
 - explain why each candidate matched
 - keep the default result set small, for example top 8 candidates
-
-## Canonical format reference
-
-Mirror the detailed output contract from:
-
-- `/.claude/commands/wiki-query.md`
 
 ## Match classes
 
@@ -58,6 +58,7 @@ Return:
 - feature status when relevant
 - match class
 - relevant headings or sections when available
+- source paths used
 
 ## Error and partial-state behavior
 

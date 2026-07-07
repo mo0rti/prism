@@ -1,40 +1,51 @@
 ---
 name: wiki-owner
-description: Read-only owner dashboard for po, designer, or dev. Shows open questions, waiting work, and stale items.
+description: Read-only owner facts for po, designer, dev, or none. Prefer Prism CLI JSON; fall back to direct wiki reads when the CLI is unavailable.
 ---
 
 # Wiki Owner
 
 Read-only role dashboard for one explicit owner value.
 
-## Usage
+## Primary path
 
-`$wiki-owner po|designer|dev`
+Run:
 
-## Workflow
+```bash
+prism wiki owner <owner> --json
+```
 
-1. Read `knowledge/wiki/SETTINGS.md` if present
-2. Read all feature files
-3. Read all platform-requirement files
-4. Optionally read `knowledge/wiki/index.md` for lifecycle grouping confirmation
-5. Assemble open questions, waiting work, and stale items for the requested owner
+Summarize `facts.features`, `facts.open_questions`, `diagnostics`, and `sources`.
+
+The CLI returns owner-matched features and open questions. To include waiting-work and staleness sections, read `knowledge/wiki/SETTINGS.md`, feature pages, and platform requirements directly and compute those sections from wiki files.
+
+## Fallback path
+
+If `prism` is unavailable, too old, or lacks `wiki owner`, say the CLI read surface is unavailable, then inspect the wiki directly.
+
+Read:
+
+1. `knowledge/wiki/SETTINGS.md` if present
+2. all feature files
+3. all platform-requirement files
+4. `knowledge/wiki/index.md` when lifecycle grouping needs confirmation
+
+Assemble open questions, waiting work, and stale items for the requested owner:
+
+- `po`: PO-owned open questions or intake conflicts needing clarification
+- `designer`: features in `ready-for-design` or `in-design`, plus design-owned open questions
+- `dev`: features in `ready-for-dev` or `in-dev`, plus dev-owned open questions
+
+If `knowledge/wiki/SETTINGS.md` is absent or the key is missing, use `wiki-stale-after-days: 14` and say so. If the setting is malformed, report it and still fall back to `14`.
 
 ## Rules
 
 - read-only skill
-- do not write any wiki files
+- do not write wiki files
 - do not refresh `WIKI_REPORT.md`
 - do not infer the caller's role automatically
-- supported owner values are exactly `po`, `designer`, and `dev`
-- read `wiki-stale-after-days` from `knowledge/wiki/SETTINGS.md`
-- if the settings file or key is absent, fall back to `wiki-stale-after-days: 14`
-- if the settings value is malformed, report it and still fall back to `14`
-
-## Canonical format reference
-
-Mirror the detailed output contract from:
-
-- `/.claude/commands/wiki-owner.md`
+- supported owner values are exactly `po`, `designer`, `dev`, and `none`
+- separate facts from advice: render owner facts first, then optionally close with clearly labeled suggested next steps
 
 ## Output shape
 
@@ -44,9 +55,10 @@ Return:
 - open questions assigned to that owner
 - features currently waiting on that owner
 - potentially stale items using the configured threshold
-- suggested next actions
+- source paths used
 
 ## Error behavior
 
 - if no current work matches the selected owner, return a clean empty-state response
 - if the owner value is unsupported, return a clean invalid-owner response
+- if malformed wiki pages prevent reliable owner computation, return a clean malformed-pages response
