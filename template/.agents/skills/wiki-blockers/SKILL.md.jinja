@@ -1,38 +1,39 @@
 ---
 name: wiki-blockers
-description: Read-only blockers view across the wiki using the canonical blocker categories from SCHEMA.md.
+description: Read-only project blocker facts. Prefer Prism CLI JSON; fall back to direct wiki reads when the CLI is unavailable.
 ---
 
 # Wiki Blockers
 
 Read-only blockers view for the project wiki.
 
-## Usage
+## Primary path
 
-`$wiki-blockers`
+Run:
 
-## Workflow
+```bash
+prism wiki blockers --json
+```
 
-1. Read `knowledge/wiki/index.md`
-2. Read all feature files
-3. Read all design files
-4. Read all platform-requirement files
-5. Read all api-contract files
-6. Read advisory review outputs except `BOARD.md`
-7. Compute blockers using the canonical categories in `knowledge/wiki/SCHEMA.md`
+Summarize `facts.blockers`, `blocker_facts`, `required_obligations`, `diagnostics`, and `sources`.
 
-## Rules
+The CLI blocker surface may be narrower than the canonical blocker vocabulary. Before answering, read `knowledge/wiki/SCHEMA.md` and supplement with any additional canonical blocker categories you can prove directly from wiki files; state plainly if a category was not checked.
 
-- read-only skill
-- do not write any wiki files
-- do not refresh `WIKI_REPORT.md`
-- use the canonical blocker vocabulary from `SCHEMA.md`
+## Fallback path
 
-## Canonical format reference
+If `prism` is unavailable, too old, or lacks `wiki blockers`, say the CLI read surface is unavailable, then inspect the wiki directly.
 
-Mirror the detailed output contract from:
+Read:
 
-- `/.claude/commands/wiki-blockers.md`
+1. `knowledge/wiki/SCHEMA.md`
+2. `knowledge/wiki/index.md`
+3. all feature files
+4. all design files
+5. all platform-requirement files
+6. all API contract files
+7. advisory review outputs except `BOARD.md`
+
+Compute blockers using the canonical categories in `knowledge/wiki/SCHEMA.md`. Report only blocker facts you can prove from the files.
 
 ## Canonical blocker categories
 
@@ -43,6 +44,15 @@ Mirror the detailed output contract from:
 - `api-contract-not-ready`
 - `cross-platform-dependency`
 
+## Rules
+
+- read-only skill
+- do not write wiki files
+- do not refresh `WIKI_REPORT.md`
+- use the canonical blocker vocabulary from `SCHEMA.md`
+- do not silently skip malformed pages
+- separate facts from advice: render blocker facts first, then optionally close with clearly labeled suggested next steps
+
 ## Output shape
 
 Return:
@@ -50,9 +60,9 @@ Return:
 - blocker counts by category
 - blocked features grouped or listed by category
 - why each feature is blocked
-- suggested next step for each blocked feature
+- source paths used
 
 ## Error behavior
 
 - if malformed wiki pages prevent reliable blocker computation, return a clean malformed-pages response
-- do not silently skip malformed pages
+- if no blockers are found, return a clean empty-state response

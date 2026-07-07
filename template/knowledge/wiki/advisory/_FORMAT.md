@@ -1,4 +1,63 @@
-# Pre-dev review format
+# Advisory file formats
+
+`wiki/advisory/` contains:
+
+- `BOARD.md` - the active advisory board definition
+- `PROJECT_FOUNDATION.md` - setup-project interview answers, risk framing, and board rationale
+- `F-XXX-review.md` - board review output for one feature
+
+## PROJECT_FOUNDATION.md
+
+Use this format for the setup-project foundation artifact:
+
+```markdown
+# Project Foundation
+
+Initialized by `setup-project` on YYYY-MM-DD for [Project Name].
+
+## Project identity
+- Name: [project name]
+- Description: [one-sentence summary]
+- Platforms: [backend, web-user-app, ...]
+- Auth methods: [if known]
+- Infrastructure choices: [if known]
+- Important correction or note: [optional]
+
+## Setup interview
+
+### 1. Primary users and trust
+**Question:** Who are your primary users, and what do they trust this app to get right?
+**Answer:** [confirmed answer]
+
+### 2. Core decision or calculation
+**Question:** What is the most important decision or calculation this app makes on behalf of users?
+**Answer:** [confirmed answer]
+
+### 3. Failure consequences
+**Question:** What could go wrong if the app gets that wrong?
+**Answer:** [confirmed answer]
+
+### 4. Vulnerable groups
+**Question:** Are there any user groups who might be especially vulnerable to a mistake?
+**Answer:** [confirmed answer]
+
+## Risk summary
+- Core trust surface: [bullets]
+- Primary failure modes: [bullets]
+- Business impact: [bullets]
+- Vulnerable groups: [bullets]
+- Expertise gaps: [bullets]
+
+## Why this board
+Short paragraph explaining why the selected advisory board composition fits the
+project's domain risks.
+
+## Seed artifacts from setup
+- [BOARD.md](BOARD.md)
+- [persona or rule links created during setup]
+```
+
+## F-XXX-review.md
 
 Use this format for board review output files in `wiki/advisory/`. Filename: `F-XXX-review.md`.
 

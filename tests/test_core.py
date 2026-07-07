@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import re
 import subprocess
 import tempfile
 import unittest
+import json
 from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
@@ -48,7 +51,12 @@ from prism_cli.cli import (
 )
 from prism_cli.presets import merge_answers
 from prism_cli.presets import PRESETS, get_preset
+from prism_cli.status import build_status
 from prism_cli.ui import SelectOption, colorize, filter_select_options, panel, review_key_value, truncate_visible, visible_length
+from prism_cli.wiki_graph import build_graph, render_mermaid
+from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
+from prism_cli.wiki_lint import lint_wiki
+from prism_cli.workspace import MANIFEST_FILE, load_workspace
 
 
 class ValidateAnswersTests(unittest.TestCase):
@@ -341,6 +349,7 @@ class HomeLauncherTests(unittest.TestCase):
     def test_build_home_actions_includes_update_only_for_generated_projects(self) -> None:
         generated_values = [action.value for action in build_home_actions("generated-project")]
         directory_values = [action.value for action in build_home_actions("directory")]
+        self.assertIn("status", generated_values)
         self.assertIn("update", generated_values)
         self.assertNotIn("update", directory_values)
 
@@ -671,3 +680,972 @@ class GeneratedProjectStructureTests(unittest.TestCase):
 
         self.assertIn("web-user-app", platforms)
         self.assertIn("Web slices were detected but docs/deployment/cloudflare-setup.md is missing.", errors)
+
+
+class WorkspaceManifestTests(unittest.TestCase):
+    def test_load_workspace_reports_missing_manifest_without_failing_detection(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = load_workspace(Path(temp_dir))
+
+        self.assertIsNone(result.manifest)
+        self.assertEqual("missing-workspace-manifest", result.diagnostics[0].code)
+        self.assertEqual("warning", result.diagnostics[0].severity)
+
+    def test_load_workspace_reads_valid_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / MANIFEST_FILE).write_text(
+                "schema_version: 1\nproject:\n  name: Prism App\n  platforms:\n    - backend\n",
+                encoding="utf-8",
+            )
+
+            result = load_workspace(root)
+
+        assert result.manifest is not None
+        self.assertEqual(1, result.manifest.schema_version)
+        self.assertEqual("Prism App", result.manifest.project_name)
+        self.assertEqual(["backend"], result.manifest.platforms)
+
+
+class WorkspaceStatusTests(unittest.TestCase):
+    def test_build_parser_exposes_status_command(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "--json"])
+
+        self.assertEqual(cli_module.cmd_status, args.func)
+        self.assertTrue(args.json)
+
+    def test_fresh_workspace_reports_setup_not_initialized(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_manifest(root, platforms=["backend"])
+            (root / "backend").mkdir()
+            write_board_placeholder(root)
+
+            result = build_status(root)
+            data = result.to_dict()
+
+        self.assertEqual("not-initialized", result.setup_state)
+        self.assertEqual("high", result.confidence)
+        self.assertEqual(0, data["facts"]["intake"]["pending"])
+        self.assertEqual(0, data["facts"]["intake"]["quarantined"])
+
+    def test_status_counts_pending_and_quarantined_intake(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_manifest(root, platforms=["backend"])
+            (root / "backend").mkdir()
+            (root / "knowledge" / "intake" / "pending" / "PO_BRIEF_TEMPLATE.md").write_text("", encoding="utf-8")
+            (root / "knowledge" / "intake" / "pending" / "meeting-notes").mkdir()
+            (root / "knowledge" / "intake" / "quarantined" / "conflicting-brief").mkdir()
+
+            result = build_status(root)
+
+        self.assertEqual(1, result.intake.pending)
+        self.assertEqual(1, result.intake.quarantined)
+
+    def test_legacy_generated_workspace_without_manifest_is_degraded_not_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "README.md").write_text("", encoding="utf-8")
+            (root / "CONTEXT.md").write_text("", encoding="utf-8")
+            create_wiki_skeleton(root)
+
+            result = build_status(root)
+            data = result.to_dict()
+
+        self.assertEqual("generated-project", result.workspace_kind)
+        self.assertEqual("degraded", result.confidence)
+        self.assertEqual("degraded", data["confidence"])
+        self.assertEqual(["missing-workspace-manifest"], [diagnostic["code"] for diagnostic in data["diagnostics"]])
+        self.assertEqual("warning", data["diagnostics"][0]["severity"])
+
+    def test_status_reports_malformed_wiki_schema_issues(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_manifest(root, platforms=["backend"])
+            (root / "backend").mkdir()
+            write_feature(root, status="unknown", owner="qa", advisory_review="pending", platforms=["ios"])
+
+            result = build_status(root)
+            codes = {diagnostic["code"] for diagnostic in result.to_dict()["diagnostics"]}
+
+        self.assertEqual("error", result.confidence)
+        self.assertIn("invalid-feature-status", codes)
+        self.assertIn("invalid-feature-owner", codes)
+        self.assertIn("invalid-platform-id", codes)
+
+    def test_status_reports_manifest_filesystem_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_manifest(root, platforms=["backend", "mobile-ios"])
+            (root / "backend").mkdir()
+
+            result = build_status(root)
+            diagnostics = result.to_dict()["diagnostics"]
+
+        self.assertEqual("error", result.confidence)
+        self.assertTrue(any(diagnostic["code"] == "manifest-filesystem-drift" for diagnostic in diagnostics))
+        self.assertTrue(any("mobile-ios" in diagnostic["message"] for diagnostic in diagnostics))
+
+    def test_status_keeps_plain_directory_unknown_without_generated_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "README.md").write_text("# Plain repo\n", encoding="utf-8")
+
+            result = build_status(root)
+
+        self.assertEqual("unknown", result.workspace_kind)
+        self.assertEqual("unknown", result.setup_state)
+
+    def test_status_tracks_lifecycle_and_open_question_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_manifest(root, platforms=["backend"])
+            (root / "backend").mkdir()
+            write_feature(
+                root,
+                status="specified",
+                owner="po",
+                extra_body=(
+                    "## Open questions\n"
+                    "| # | Question | Owner | Status |\n"
+                    "|---|----------|-------|--------|\n"
+                    "| 1 | What happens offline? | designer | open |\n"
+                    "| 2 | Should admins approve it? | po | resolved: not needed |\n"
+                ),
+            )
+
+            result = build_status(root)
+
+        self.assertEqual(1, result.feature_status_counts["specified"])
+        self.assertEqual(1, result.feature_owner_counts["po"])
+        self.assertEqual({"designer": 1}, result.open_questions_by_owner)
+
+    def test_status_json_exposes_phase_three_envelope_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_manifest(root, platforms=["backend"])
+            (root / "backend").mkdir()
+
+            data = build_status(root).to_dict()
+
+        self.assertIn("confidence", data)
+        self.assertIn("facts", data)
+        self.assertIn("blocker_facts", data)
+        self.assertIn("required_obligations", data)
+        self.assertIn("sources", data)
+        self.assertTrue(data["experimental"])
+        self.assertNotIn("intake", data)
+        self.assertNotIn("wiki", data)
+        self.assertNotIn("confidence", data["workspace"])
+
+
+class WikiQueryTests(unittest.TestCase):
+    def test_build_parser_exposes_phase_three_wiki_commands(self) -> None:
+        parser = build_parser()
+
+        self.assertEqual(cli_module.cmd_wiki_show, parser.parse_args(["wiki", "show", "F-001"]).func)
+        self.assertEqual(cli_module.cmd_wiki_blockers, parser.parse_args(["wiki", "blockers"]).func)
+        self.assertEqual(cli_module.cmd_wiki_owner, parser.parse_args(["wiki", "owner", "po"]).func)
+        self.assertEqual(cli_module.cmd_wiki_platform, parser.parse_args(["wiki", "platform", "backend"]).func)
+        self.assertEqual(cli_module.cmd_wiki_search, parser.parse_args(["wiki", "search", "checkout"]).func)
+
+    def test_wiki_show_returns_feature_and_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root)
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+            write_platform_requirement(root, feature_id="F-001", platform="backend")
+            write_wiki_page(root, "design", "F-001-checkout.md", "feature-id: F-001\n", "## Summary\nCheckout design.\n")
+
+            data = wiki_show(root, "F-001")
+
+        self.assertEqual("wiki show", data["command"])
+        self.assertEqual("Checkout", data["facts"]["feature"]["title"])
+        self.assertEqual(1, len(data["facts"]["feature"]["platform_requirements"]))
+        self.assertEqual(1, len(data["facts"]["feature"]["linked_context"]["design"]))
+        self.assertIn("facts", data)
+        self.assertNotIn("wiki", data)
+        json.dumps(data)
+
+    def test_wiki_show_degrades_when_manifest_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root)
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+
+            data = wiki_show(root, "F-001")
+
+        self.assertEqual("degraded", data["confidence"])
+        self.assertIn("missing-workspace-manifest", {diagnostic["code"] for diagnostic in data["diagnostics"]})
+
+    def test_wiki_blockers_returns_blocker_facts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root, status="in-dev", owner="dev", advisory_review="pending", platforms=["backend"])
+            write_index(root, "| F-001 | Checkout | in-dev | dev | pending | 2026-01-01 |\n")
+            write_platform_requirement(root, feature_id="F-001", platform="backend")
+
+            data = wiki_blockers(root)
+            blocker_codes = {blocker["code"] for blocker in data["blocker_facts"]}
+
+        self.assertIn("pending-board-review", blocker_codes)
+        self.assertEqual(data["blocker_facts"], data["facts"]["blockers"])
+
+    def test_wiki_owner_returns_features_and_open_questions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(
+                root,
+                owner="po",
+                extra_body=(
+                    "## Open questions\n"
+                    "| # | Question | Owner | Status |\n"
+                    "|---|----------|-------|--------|\n"
+                    "| 1 | Who approves refunds? | po | open |\n"
+                ),
+            )
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+
+            data = wiki_owner(root, "po")
+
+        self.assertEqual(1, data["facts"]["feature_count"])
+        self.assertEqual(1, data["facts"]["open_question_count"])
+
+    def test_wiki_platform_returns_features_and_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root, status="ready-for-dev", owner="dev", advisory_review="done", platforms=["backend"])
+            write_index(root, "| F-001 | Checkout | ready-for-dev | dev | done | 2026-01-01 |\n")
+            write_platform_requirement(root, feature_id="F-001", platform="backend")
+
+            data = wiki_platform(root, "backend")
+
+        self.assertEqual(1, data["facts"]["feature_count"])
+        self.assertEqual(1, data["facts"]["platform_requirement_count"])
+
+    def test_wiki_platform_excludes_raw_features_from_active_queue(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root, status="raw", owner="po", platforms=["backend"])
+            write_index(root, "| F-001 | Checkout | raw | po | not-needed | 2026-01-01 |\n")
+
+            data = wiki_platform(root, "backend")
+
+        self.assertEqual(0, data["facts"]["feature_count"])
+
+    def test_wiki_search_uses_conservative_substring_matching(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root, extra_body="## Summary\nCheckout supports refunds.\n")
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+
+            data = wiki_search(root, "refund")
+
+        self.assertEqual(1, data["facts"]["result_count"])
+        self.assertEqual(["body"], data["facts"]["results"][0]["matched_fields"])
+
+    def test_wiki_search_covers_non_feature_wiki_pages(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_wiki_page(root, "business-rules", "BR-001-refunds.md", "id: BR-001\ntitle: Refunds\n", "## Rule\nRefunds require approval.\n")
+            write_wiki_page(root, "decisions", "ADR-001-refunds.md", "id: ADR-001\ntitle: Refund policy\n", "## Decision\nRefunds stay auditable.\n")
+
+            data = wiki_search(root, "refund")
+            result_types = {result["type"] for result in data["facts"]["results"]}
+
+        self.assertIn("business-rule", result_types)
+        self.assertIn("decision", result_types)
+
+
+class GeneratedPromptContractTests(unittest.TestCase):
+    def test_docker_compose_template_avoids_yaml_breaking_whitespace_trim(self) -> None:
+        text = (cli_module.REPO_ROOT / "template" / "docker-compose.yml.jinja").read_text(encoding="utf-8")
+
+        self.assertNotIn("{% if \"backend\" in platforms -%}", text)
+        self.assertNotIn("{% endif -%}", text)
+        self.assertIn("  backend:", text)
+        self.assertIn("    depends_on:", text)
+
+    def test_generated_read_prompts_prefer_cli_with_fallback(self) -> None:
+        command_files = [
+            "wiki-show.md.jinja",
+            "wiki-blockers.md.jinja",
+            "wiki-owner.md.jinja",
+            "wiki-platform.md.jinja",
+            "wiki-query.md.jinja",
+            "lint-wiki.md.jinja",
+        ]
+        for filename in command_files:
+            text = (cli_module.REPO_ROOT / "template" / ".claude" / "commands" / filename).read_text(encoding="utf-8")
+            self.assertIn("Primary path: Prism CLI", text)
+            self.assertIn("--json", text)
+            self.assertIn("Fallback path", text)
+            self.assertIn("read-only", text)
+
+    def test_generated_codex_skills_prefer_cli_with_fallback(self) -> None:
+        skill_names = ["wiki-show", "wiki-blockers", "wiki-owner", "wiki-platform", "wiki-query", "lint-wiki"]
+        for skill_name in skill_names:
+            text = (cli_module.REPO_ROOT / "template" / ".agents" / "skills" / skill_name / "SKILL.md.jinja").read_text(encoding="utf-8")
+            self.assertIn("Primary path", text)
+            self.assertIn("--json", text)
+            self.assertIn("Fallback path", text)
+            self.assertIn("read-only", text)
+
+    def test_generated_read_prompts_preserve_direct_read_fallback_detail(self) -> None:
+        checks = {
+            ("commands", "wiki-show.md.jinja"): [
+                "knowledge/wiki/design/[F-XXX]-[slug].md",
+                "knowledge/wiki/api-contracts/[F-XXX].md",
+                "business-rule",
+            ],
+            ("commands", "wiki-blockers.md.jinja"): [
+                "Canonical blocker categories",
+                "missing-design",
+                "api-contract-not-ready",
+            ],
+            ("commands", "wiki-query.md.jinja"): [
+                "knowledge/wiki/business-rules/",
+                "Match classes",
+                "exact feature ID",
+            ],
+            ("commands", "lint-wiki.md.jinja"): [
+                "knowledge/wiki/SETTINGS.md",
+                "wiki-stale-after-days",
+                "do not create lint report files unless the user explicitly asks",
+            ],
+            ("skills/wiki-show", "SKILL.md.jinja"): [
+                "knowledge/wiki/design/[F-XXX]-[slug].md",
+                "knowledge/wiki/api-contracts/[F-XXX].md",
+                "business-rule",
+            ],
+            ("skills/wiki-blockers", "SKILL.md.jinja"): [
+                "Canonical blocker categories",
+                "missing-design",
+                "api-contract-not-ready",
+            ],
+            ("skills/wiki-query", "SKILL.md.jinja"): [
+                "knowledge/wiki/business-rules/",
+                "Match classes",
+                "exact feature ID",
+            ],
+            ("skills/lint-wiki", "SKILL.md.jinja"): [
+                "knowledge/wiki/SETTINGS.md",
+                "wiki-stale-after-days",
+                "do not create lint report files unless the user explicitly asks",
+            ],
+        }
+        base_paths = {
+            "commands": cli_module.REPO_ROOT / "template" / ".claude" / "commands",
+            "skills": cli_module.REPO_ROOT / "template" / ".agents",
+        }
+        for (kind, filename), expected_fragments in checks.items():
+            if kind.startswith("skills/"):
+                relative_skill = kind.split("/", 1)[1]
+                path = base_paths["skills"] / "skills" / relative_skill / filename
+            else:
+                path = base_paths[kind] / filename
+            text = path.read_text(encoding="utf-8")
+            for fragment in expected_fragments:
+                self.assertIn(fragment, text)
+
+    def test_generated_read_prompts_keep_agent_advice_layer(self) -> None:
+        prompt_paths = [
+            cli_module.REPO_ROOT / "template" / ".claude" / "commands" / "wiki-show.md.jinja",
+            cli_module.REPO_ROOT / "template" / ".claude" / "commands" / "wiki-blockers.md.jinja",
+            cli_module.REPO_ROOT / "template" / ".claude" / "commands" / "wiki-owner.md.jinja",
+            cli_module.REPO_ROOT / "template" / ".claude" / "commands" / "wiki-platform.md.jinja",
+            cli_module.REPO_ROOT / "template" / ".claude" / "commands" / "lint-wiki.md.jinja",
+            cli_module.REPO_ROOT / "template" / ".agents" / "skills" / "wiki-show" / "SKILL.md.jinja",
+            cli_module.REPO_ROOT / "template" / ".agents" / "skills" / "wiki-blockers" / "SKILL.md.jinja",
+            cli_module.REPO_ROOT / "template" / ".agents" / "skills" / "wiki-owner" / "SKILL.md.jinja",
+            cli_module.REPO_ROOT / "template" / ".agents" / "skills" / "wiki-platform" / "SKILL.md.jinja",
+            cli_module.REPO_ROOT / "template" / ".agents" / "skills" / "lint-wiki" / "SKILL.md.jinja",
+        ]
+        for path in prompt_paths:
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("separate facts from advice", text)
+            self.assertNotIn("do not recommend next workflow steps unless", text)
+            self.assertNotIn("do not recommend workflow steps unless", text)
+
+    def test_schema_defines_canonical_blocker_semantics(self) -> None:
+        text = (cli_module.REPO_ROOT / "template" / "knowledge" / "wiki" / "SCHEMA.md").read_text(encoding="utf-8")
+
+        self.assertIn("`missing-design`: any UI-platform feature", text)
+        self.assertIn("`api-contract-not-ready`: any feature", text)
+        self.assertIn("`cross-platform-dependency`: any platform-requirement page", text)
+
+    def test_wiki_workflow_documents_read_only_lint_default(self) -> None:
+        text = (cli_module.REPO_ROOT / "docs" / "wiki-workflow.md").read_text(encoding="utf-8")
+
+        self.assertIn("reports deterministic wiki diagnostics in the response by default", text)
+        self.assertIn("only when explicitly requested", text)
+
+    def test_generated_cursor_rules_describe_optional_cli_read_surface(self) -> None:
+        text = (cli_module.REPO_ROOT / "template" / ".cursor" / "rules" / "wiki.mdc.jinja").read_text(encoding="utf-8")
+        self.assertIn("CLI read surfaces", text)
+        self.assertIn("prism wiki show F-XXX --json", text)
+        self.assertIn("must not hard-depend on an installed Prism CLI", text)
+
+
+class WikiLintTests(unittest.TestCase):
+    def test_lint_accepts_empty_fresh_wiki(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+
+            result = lint_wiki(root)
+
+        self.assertTrue(result.is_clean)
+        self.assertEqual(0, result.feature_count)
+
+    def test_lint_reports_malformed_feature_frontmatter(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            feature_path = root / "knowledge" / "wiki" / "features" / "F-001-broken.md"
+            feature_path.write_text(
+                "---\nid: F-001\nstatus: unknown\nowner: qa\nadvisory-review: pending\nplatforms: [ios]\n---\n\n## Summary\nBroken.\n",
+                encoding="utf-8",
+            )
+
+            result = lint_wiki(root)
+            codes = {diagnostic.code for diagnostic in result.diagnostics}
+
+        self.assertFalse(result.is_clean)
+        self.assertIn("missing-feature-frontmatter", codes)
+        self.assertIn("invalid-feature-status", codes)
+        self.assertIn("invalid-feature-owner", codes)
+        self.assertIn("invalid-platform-id", codes)
+
+    def test_lint_uses_full_feature_id_from_filename_when_frontmatter_id_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            features = root / "knowledge" / "wiki" / "features"
+            (features / "F-001-login.md").write_text(
+                "---\n"
+                "title: Login\n"
+                "status: specified\n"
+                "owner: po\n"
+                "introduced: 2026-01-01\n"
+                "last-updated: 2026-01-01\n"
+                "platforms: [backend]\n"
+                "sources: []\n"
+                "advisory-review: not-needed\n"
+                "---\n",
+                encoding="utf-8",
+            )
+            (features / "F-002-search.md").write_text(
+                "---\n"
+                "title: Search\n"
+                "status: specified\n"
+                "owner: po\n"
+                "introduced: 2026-01-01\n"
+                "last-updated: 2026-01-01\n"
+                "platforms: [backend]\n"
+                "sources: []\n"
+                "advisory-review: not-needed\n"
+                "---\n",
+                encoding="utf-8",
+            )
+
+            result = lint_wiki(root)
+            duplicate_codes = [diagnostic for diagnostic in result.diagnostics if diagnostic.code == "duplicate-feature-id"]
+
+        self.assertEqual([], duplicate_codes)
+
+    def test_lint_reports_feature_missing_from_index(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root)
+
+            result = lint_wiki(root)
+            codes = {diagnostic.code for diagnostic in result.diagnostics}
+
+        self.assertIn("feature-missing-from-index", codes)
+
+    def test_lint_reports_index_frontmatter_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root, status="ready-for-design", owner="designer", advisory_review="done")
+            write_index(
+                root,
+                "| F-001 | Checkout | specified | po | pending | 2026-01-01 |\n",
+            )
+
+            result = lint_wiki(root)
+            drift_messages = [diagnostic.message for diagnostic in result.diagnostics if diagnostic.code == "index-frontmatter-drift"]
+
+        self.assertEqual(3, len(drift_messages))
+        self.assertTrue(any("status" in message for message in drift_messages))
+        self.assertTrue(any("owner" in message for message in drift_messages))
+        self.assertTrue(any("board review" in message for message in drift_messages))
+
+    def test_lint_accepts_gfm_alignment_separator_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root)
+            write_index(
+                root,
+                "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n",
+                separator="|:---|:---:|---:|:---|:---|:---|\n",
+            )
+
+            result = lint_wiki(root)
+            codes = {diagnostic.code for diagnostic in result.diagnostics}
+
+        self.assertNotIn("index-missing-feature", codes)
+        self.assertNotIn("malformed-index", codes)
+
+    def test_lint_accepts_utf8_bom_frontmatter(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+            feature_path = root / "knowledge" / "wiki" / "features" / "F-001-checkout.md"
+            feature_path.write_text(
+                "\ufeff---\n"
+                "id: F-001\n"
+                "title: Checkout\n"
+                "status: specified\n"
+                "owner: po\n"
+                "introduced: 2026-01-01\n"
+                "last-updated: 2026-01-01\n"
+                "platforms: [backend]\n"
+                "sources: []\n"
+                "advisory-review: not-needed\n"
+                "---\n",
+                encoding="utf-8",
+            )
+
+            result = lint_wiki(root)
+            codes = {diagnostic.code for diagnostic in result.diagnostics}
+
+        self.assertNotIn("malformed-frontmatter", codes)
+        self.assertNotIn("missing-feature-frontmatter", codes)
+
+    def test_lint_reports_missing_platform_requirements_for_ready_feature(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root, status="ready-for-dev", owner="dev", advisory_review="done", platforms=["backend", "mobile-ios"])
+            write_platform_requirement(root, feature_id="F-001", platform="backend")
+
+            result = lint_wiki(root)
+            diagnostics = [diagnostic for diagnostic in result.diagnostics if diagnostic.code == "missing-platform-requirements"]
+
+        self.assertEqual(1, len(diagnostics))
+        self.assertIn("mobile-ios", diagnostics[0].message)
+
+    def test_lint_reports_pending_board_review_in_dev(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root, status="in-dev", owner="dev", advisory_review="pending", platforms=["backend"])
+            write_platform_requirement(root, feature_id="F-001", platform="backend")
+
+            result = lint_wiki(root)
+            codes = {diagnostic.code for diagnostic in result.diagnostics}
+
+        self.assertIn("pending-board-review", codes)
+
+    def test_lint_reports_malformed_open_question_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(
+                root,
+                extra_body=(
+                    "## Open questions\n"
+                    "| # | Question | Owner | Status |\n"
+                    "|---|----------|-------|--------|\n"
+                    "| 1 | What happens offline? | qa | maybe |\n"
+                ),
+            )
+
+            result = lint_wiki(root)
+            codes = {diagnostic.code for diagnostic in result.diagnostics}
+
+        self.assertIn("invalid-open-question-owner", codes)
+        self.assertIn("invalid-open-question-status", codes)
+
+    def test_lint_reports_missing_advisory_skip_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root, advisory_review="skipped")
+
+            result = lint_wiki(root)
+            codes = {diagnostic.code for diagnostic in result.diagnostics}
+
+        self.assertIn("missing-advisory-skip-reason", codes)
+
+    def test_lint_reports_invalid_status_owner_pairing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root, status="done", owner="dev", advisory_review="done")
+
+            result = lint_wiki(root)
+            codes = {diagnostic.code for diagnostic in result.diagnostics}
+
+        self.assertIn("invalid-status-owner-pairing", codes)
+
+
+class WikiGraphTests(unittest.TestCase):
+    def _rich_workspace(self, root: Path) -> None:
+        create_wiki_skeleton(root)
+        write_feature(root, status="ready-for-dev", owner="dev", platforms=["backend"])
+        (root / "knowledge" / "wiki" / "features" / "F-002-refunds.md").write_text(
+            "---\nid: F-002\ntitle: Refunds\nstatus: raw\nowner: po\nintroduced: 2026-01-01\n"
+            "last-updated: 2026-01-01\nplatforms: [backend]\nsources: []\nadvisory-review: not-needed\n---\n\n"
+            "## Summary\nRefund handling.\n\n## Related features\n- [F-001](F-001-checkout.md) - refunds follow checkout\n- F-999 does not exist\n",
+            encoding="utf-8",
+        )
+        write_index(
+            root,
+            "| F-001 | Checkout | ready-for-dev | dev | not-needed | 2026-01-01 |\n"
+            "| F-002 | Refunds | raw | po | not-needed | 2026-01-01 |\n",
+        )
+        write_platform_requirement(root, feature_id="F-001", platform="backend")
+        write_wiki_page(root, "design", "F-001-checkout.md", "feature-id: F-001\ntitle: Checkout design\n", "## Summary\nDesign.\n")
+        write_wiki_page(root, "api-contracts", "F-001.md", "feature-id: F-001\nversion: 1\nstatus: draft\n", "## Endpoints\nPOST /checkout\n")
+        write_wiki_page(root, "advisory", "F-001-review.md", "feature-id: F-001\nreviewed: 2026-01-02\n", "## 1. Conflicts\nNone.\n")
+        write_wiki_page(root, "business-rules", "BR-001-refund-window.md", "id: BR-001\ntitle: Refund window\n", "## Affected features\nF-001 must respect the window.\n")
+        write_wiki_page(root, "personas", "shopper.md", "id: P-001\nname: Shopper\n", "## Who they are\nUses F-001 daily.\n")
+        write_wiki_page(root, "decisions", "ADR-001-payments.md", "id: ADR-001\ntitle: Payments\nstatus: accepted\n", "## Context\nSee [shopper](../personas/shopper.md).\n")
+
+    def test_build_parser_exposes_graph_command(self) -> None:
+        parser = build_parser()
+        self.assertEqual(cli_module.cmd_wiki_graph, parser.parse_args(["wiki", "graph"]).func)
+
+    def test_edge_rules_carry_expected_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._rich_workspace(root)
+            data = build_graph(root)
+
+        edges = {(edge["source"], edge["target"], edge["kind"]): edge["evidence"] for edge in data["facts"]["edges"]}
+        self.assertEqual("frontmatter-platforms", edges[("F-001", "platform:backend", "targets")])
+        self.assertEqual("frontmatter-feature-id", edges[("F-001", "preq:F-001-backend", "has-requirement")])
+        self.assertEqual("frontmatter-feature-id", edges[("F-001", "design:F-001-checkout", "has-design")])
+        self.assertEqual("frontmatter-feature-id", edges[("F-001", "api:F-001", "has-contract")])
+        self.assertEqual("frontmatter-feature-id", edges[("F-001", "review:F-001-review", "has-review")])
+        self.assertEqual("body-reference", edges[("F-001", "BR-001", "constrained-by")])
+        self.assertEqual("body-reference", edges[("P-001", "F-001", "serves")])
+        self.assertEqual("related-features-section", edges[("F-002", "F-001", "related")])
+        self.assertEqual("markdown-link", edges[("ADR-001", "P-001", "links-to")])
+
+    def test_node_ids_and_platform_nodes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._rich_workspace(root)
+            data = build_graph(root)
+
+        node_ids = {node["id"] for node in data["facts"]["nodes"]}
+        self.assertIn("design:F-001-checkout", node_ids)
+        self.assertIn("preq:F-001-backend", node_ids)
+        self.assertIn("platform:backend", node_ids)
+        self.assertNotIn("platform:mobile-ios", node_ids)
+
+    def test_malformed_page_appears_with_error_health(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            (root / "knowledge" / "wiki" / "features" / "F-003-broken.md").write_text(
+                "---\ntitle: Broken\nstatus: raw\nowner: po\n---\n\n## Summary\nBroken.\n",
+                encoding="utf-8",
+            )
+            data = build_graph(root)
+
+        broken = [node for node in data["facts"]["nodes"] if node["id"] == "F-003"]
+        self.assertEqual(1, len(broken))
+        self.assertEqual("error", broken[0]["health"])
+        self.assertEqual("error", data["confidence"])
+
+    def test_dangling_reference_reported_not_fabricated(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._rich_workspace(root)
+            data = build_graph(root)
+
+        references = {item["reference"] for item in data["facts"]["dangling_references"]}
+        node_ids = {node["id"] for node in data["facts"]["nodes"]}
+        self.assertIn("F-999", references)
+        self.assertNotIn("F-999", node_ids)
+
+    def test_links_to_suppressed_when_specific_edge_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._rich_workspace(root)
+            data = build_graph(root)
+
+        pair_kinds = [edge["kind"] for edge in data["facts"]["edges"] if {edge["source"], edge["target"]} == {"F-001", "F-002"}]
+        self.assertEqual(["related"], pair_kinds)
+
+    def test_graph_is_deterministic_and_envelope_matches_query_family(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._rich_workspace(root)
+            first = build_graph(root)
+            second = build_graph(root)
+            show = wiki_show(root, "F-001")
+
+        self.assertEqual(json.dumps(first, sort_keys=True), json.dumps(second, sort_keys=True))
+        self.assertEqual(sorted(show.keys()), sorted(first.keys()))
+
+    def test_mermaid_lifecycle_sanitizes_and_marks_blockers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(root, status="in-dev", owner="dev", advisory_review="pending", platforms=["backend"])
+            write_index(root, "| F-001 | Checkout | in-dev | dev | pending | 2026-01-01 |\n")
+            write_platform_requirement(root, feature_id="F-001", platform="backend")
+            data = build_graph(root)
+            mermaid = render_mermaid(data, "lifecycle")
+
+        self.assertIn("flowchart LR", mermaid)
+        self.assertIn('subgraph s_in_dev["in-dev"]', mermaid)
+        self.assertIn("class n_F_001 blocked", mermaid)
+        self.assertNotIn('"F-001"|', mermaid)
+
+    def test_mermaid_ego_reports_missing_feature(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            data = build_graph(root)
+            mermaid = render_mermaid(data, "ego", feature_id="F-404")
+
+        self.assertIn("No feature page found for F-404", mermaid)
+
+    def test_graph_facts_include_setup_state_and_intake_items(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            (root / "knowledge" / "intake" / "pending" / "payment-alerts-brief.md").write_text("idea", encoding="utf-8")
+            (root / "knowledge" / "intake" / "pending" / "PO_BRIEF_TEMPLATE.md").write_text("template", encoding="utf-8")
+            (root / "knowledge" / "intake" / "quarantined" / "conflicting-brief").mkdir()
+            data = build_graph(root)
+
+        self.assertEqual("not-initialized", data["facts"]["setup_state"])
+        self.assertEqual(["payment-alerts-brief.md"], data["facts"]["intake"]["pending"])
+        self.assertEqual(["conflicting-brief"], data["facts"]["intake"]["quarantined"])
+
+    def test_feature_nodes_carry_open_questions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            write_feature(
+                root,
+                extra_body="## Summary\nCheckout.\n\n## Open questions\n"
+                "| # | Question | Owner | Status |\n|---|----------|-------|--------|\n"
+                "| 1 | What is the offline story? | po | open |\n"
+                "| 2 | Empty state? | designer | resolved: minimal |\n",
+            )
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+            data = build_graph(root)
+
+        feature = next(node for node in data["facts"]["nodes"] if node["id"] == "F-001")
+        self.assertEqual(2, len(feature["open_questions"]))
+        self.assertEqual("po", feature["open_questions"][0]["owner"])
+        self.assertEqual("open", feature["open_questions"][0]["status"])
+
+    def test_launcher_offers_dashboard_for_generated_projects(self) -> None:
+        generated_values = [action.value for action in build_home_actions("generated-project")]
+        directory_values = [action.value for action in build_home_actions("directory")]
+        self.assertIn("dashboard", generated_values)
+        self.assertNotIn("dashboard", directory_values)
+
+
+class WikiGraphHtmlTests(unittest.TestCase):
+    def _graph_envelope(self, root: Path) -> dict:
+        create_wiki_skeleton(root)
+        write_feature(root, status="in-dev", owner="dev", platforms=["backend"])
+        write_index(root, "| F-001 | Checkout | in-dev | dev | not-needed | 2026-01-01 |\n")
+        write_platform_requirement(root, feature_id="F-001", platform="backend")
+        return build_graph(root)
+
+    def test_render_html_resolves_all_placeholders(self) -> None:
+        from prism_cli.wiki_graph_html import render_html
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            envelope = self._graph_envelope(Path(temp_dir))
+            html = render_html(envelope, mode="snapshot", generated_at="2026-06-12T10:00:00")
+
+        self.assertNotIn("__PRISM_GRAPH_DATA__", html)
+        self.assertNotIn("__PRISM_CONFIG__", html)
+        self.assertNotIn("__PRISM_VENDOR_JS__", html)
+        self.assertIn('"command": "wiki graph"'.replace(" ", ""), html.replace(" ", ""))
+        self.assertIn("force-graph", html)
+        self.assertIn('"mode":"snapshot"'.replace(" ", ""), html.replace(" ", ""))
+
+    def test_render_html_escapes_script_terminators(self) -> None:
+        from prism_cli.wiki_graph_html import _embed_json
+
+        embedded = _embed_json({"text": "</script><b>bad</b>"})
+        self.assertNotIn("</script>", embedded)
+
+    def test_cmd_wiki_graph_refuses_output_inside_knowledge(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            args = Namespace(
+                path=str(root), json=False, mermaid=False, view="lifecycle", feature=None,
+                platform=None, html=str(root / "knowledge" / "evil.html"), open=False, serve=False, port=8321,
+            )
+            with contextlib.redirect_stderr(io.StringIO()):
+                exit_code = cli_module.cmd_wiki_graph(args)
+
+        self.assertEqual(cli_module.EXIT_VALIDATION, exit_code)
+        self.assertFalse((root / "knowledge" / "evil.html").exists())
+
+    def test_cmd_wiki_graph_open_writes_temp_and_opens_browser(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            create_wiki_skeleton(root)
+            args = Namespace(
+                path=str(root), json=False, mermaid=False, view="lifecycle", feature=None,
+                platform=None, html=None, open=True, serve=False, port=8321,
+            )
+            with patch.object(cli_module.webbrowser, "open") as mocked_open:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    exit_code = cli_module.cmd_wiki_graph(args)
+
+        self.assertEqual(0, exit_code)
+        mocked_open.assert_called_once()
+        self.assertTrue(mocked_open.call_args[0][0].startswith("file://"))
+
+    def test_assets_are_packaged(self) -> None:
+        from importlib import resources
+
+        assets = resources.files("prism_cli") / "assets"
+        self.assertTrue((assets / "graph_template.html").is_file())
+        self.assertTrue((assets / "force-graph.min.js").is_file())
+
+    def test_dashboard_script_declares_graph_before_theme_boot(self) -> None:
+        # Regression guard for the boot TDZ crash: setTheme() touches `graph`
+        # and runs from the theme initializer, so the declaration must precede it.
+        # Full runtime coverage: node scripts/dashboard-boot-check.js <export.html>
+        from importlib import resources
+
+        template = (resources.files("prism_cli") / "assets" / "graph_template.html").read_text(encoding="utf-8")
+        declaration = template.index("let graph = null;")
+        theme_boot = template.index("(function initTheme()")
+        self.assertLess(declaration, theme_boot)
+
+
+def create_wiki_skeleton(root: Path) -> None:
+    wiki = root / "knowledge" / "wiki"
+    (wiki / "features").mkdir(parents=True)
+    (wiki / "platform-requirements").mkdir()
+    (wiki / "advisory").mkdir()
+    for directory in ("personas", "business-rules", "design", "api-contracts", "decisions"):
+        (wiki / directory).mkdir()
+    (root / "knowledge" / "intake" / "pending").mkdir(parents=True)
+    (root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
+    (wiki / "SCHEMA.md").write_text("# Schema\n", encoding="utf-8")
+    (wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 14\n---\n", encoding="utf-8")
+    write_index(root)
+
+
+def write_manifest(root: Path, project_name: str = "Prism App", platforms: list[str] | None = None) -> None:
+    platforms = platforms or ["backend"]
+    platform_lines = "\n".join(f"    - {platform}" for platform in platforms)
+    (root / MANIFEST_FILE).write_text(
+        "schema_version: 1\n"
+        "project:\n"
+        f"  name: {project_name}\n"
+        "  slug: prism-app\n"
+        "  platforms:\n"
+        f"{platform_lines}\n",
+        encoding="utf-8",
+    )
+
+
+def write_board_placeholder(root: Path) -> None:
+    (root / "knowledge" / "wiki" / "advisory" / "BOARD.md").write_text(
+        "# Advisory Board\n\n"
+        "This file will be generated by /setup-project. Run that command first.\n",
+        encoding="utf-8",
+    )
+
+
+def write_index(root: Path, rows: str = "", separator: str = "|----|---------|--------|-------|--------------|------------|\n") -> None:
+    (root / "knowledge" / "wiki" / "index.md").write_text(
+        "# Feature Status Board\n\n"
+        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
+        f"{separator}"
+        f"{rows}"
+        "\n## Other wiki pages\n",
+        encoding="utf-8",
+    )
+
+
+def write_feature(
+    root: Path,
+    status: str = "specified",
+    owner: str = "po",
+    advisory_review: str = "not-needed",
+    platforms: list[str] | None = None,
+    extra_body: str = "## Summary\nCheckout.\n",
+) -> None:
+    platforms = platforms or ["backend"]
+    platform_yaml = "[" + ", ".join(platforms) + "]"
+    (root / "knowledge" / "wiki" / "features" / "F-001-checkout.md").write_text(
+        "---\n"
+        "id: F-001\n"
+        "title: Checkout\n"
+        f"status: {status}\n"
+        f"owner: {owner}\n"
+        "introduced: 2026-01-01\n"
+        "last-updated: 2026-01-01\n"
+        f"platforms: {platform_yaml}\n"
+        "sources: []\n"
+        f"advisory-review: {advisory_review}\n"
+        "---\n\n"
+        f"{extra_body}\n",
+        encoding="utf-8",
+    )
+
+
+def write_platform_requirement(root: Path, feature_id: str, platform: str, status: str = "pending") -> None:
+    (root / "knowledge" / "wiki" / "platform-requirements" / f"{feature_id}-{platform}.md").write_text(
+        "---\n"
+        f"feature-id: {feature_id}\n"
+        f"platform: {platform}\n"
+        f"status: {status}\n"
+        "---\n\n"
+        "## What to build\nImplement it.\n",
+        encoding="utf-8",
+    )
+
+
+def write_wiki_page(root: Path, directory: str, filename: str, frontmatter: str, body: str) -> None:
+    target_dir = root / "knowledge" / "wiki" / directory
+    target_dir.mkdir(parents=True, exist_ok=True)
+    (target_dir / filename).write_text(
+        "---\n"
+        f"{frontmatter}"
+        "---\n\n"
+        f"{body}",
+        encoding="utf-8",
+    )

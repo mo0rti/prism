@@ -239,6 +239,7 @@ function Validate-WikiStructure {
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\index.md") -Message "Generated project missing knowledge/wiki/index.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\log.md") -Message "Generated project missing knowledge/wiki/log.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\advisory\BOARD.md") -Message "Generated project missing knowledge/wiki/advisory/BOARD.md."
+    Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\advisory\PROJECT_FOUNDATION.md") -Message "Generated project missing knowledge/wiki/advisory/PROJECT_FOUNDATION.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\features\_FORMAT.md") -Message "Generated project missing knowledge/wiki/features/_FORMAT.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\personas\_FORMAT.md") -Message "Generated project missing knowledge/wiki/personas/_FORMAT.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\business-rules\_FORMAT.md") -Message "Generated project missing knowledge/wiki/business-rules/_FORMAT.md."
@@ -294,6 +295,10 @@ function Validate-WikiStructure {
     Assert-PathExists -Path (Join-Path $Root "docs\README.md") -Message "Generated project missing docs/README.md."
 
     # Current wiki usability artifacts
+    Assert-PathExists -Path (Join-Path $Root "prism.workspace.yml") -Message "Generated project missing prism.workspace.yml."
+    Assert-FileContains -Path (Join-Path $Root "prism.workspace.yml") -Needle "schema_version: 1" -Message "prism.workspace.yml must declare schema_version: 1."
+    Assert-FileContains -Path (Join-Path $Root "prism.workspace.yml") -Needle "min_prism_cli_version:" -Message "prism.workspace.yml must declare min_prism_cli_version."
+    Assert-FileContains -Path (Join-Path $Root "prism.workspace.yml") -Needle "wiki_root: knowledge/wiki" -Message "prism.workspace.yml must point to knowledge/wiki."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\SETTINGS.md") -Message "Generated project missing knowledge/wiki/SETTINGS.md."
     Assert-FileContains -Path (Join-Path $Root ".gitignore") -Needle "knowledge/wiki/WIKI_REPORT.md" -Message "Generated project .gitignore must ignore knowledge/wiki/WIKI_REPORT.md."
     Assert-PathMissing -Path (Join-Path $Root "knowledge\wiki\WIKI_REPORT.md") -Message "Generated project should not include a committed knowledge/wiki/WIKI_REPORT.md on first render."
@@ -318,8 +323,9 @@ function Validate-WikiStructure {
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## 4. Biggest risk" -Message "SCHEMA.md must include the four-question pre-dev review format (section 4)."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "Confirm before committing" -Message "SCHEMA.md must include the confirm-before-committing operational rule."
 
-    # BOARD.md placeholder must contain setup-project instruction
+    # Advisory placeholders must contain setup-project instruction
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\advisory\BOARD.md") -Needle "setup-project" -Message "advisory/BOARD.md placeholder must reference setup-project."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\advisory\PROJECT_FOUNDATION.md") -Needle "setup-project" -Message "advisory/PROJECT_FOUNDATION.md placeholder must reference setup-project."
 
     # index.md must have Board Review column
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "Board Review" -Message "wiki/index.md must include a Board Review column."

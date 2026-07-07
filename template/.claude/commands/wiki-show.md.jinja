@@ -5,95 +5,51 @@
 
 ## Purpose
 
-Assemble a focused feature context bundle for one feature.
+Assemble a focused feature context bundle for one feature. Prefer the Prism CLI JSON surface, but preserve a direct-read fallback for generated repos that do not have the CLI installed.
 
-## Read-only rules
+## Primary path: Prism CLI
+
+1. Run:
+
+```bash
+prism wiki show F-XXX --json
+```
+
+2. Read the JSON fields:
+   - `confidence`
+   - `facts.feature`
+   - `blocker_facts`
+   - `required_obligations`
+   - `diagnostics`
+   - `sources`
+3. Render a concise human response from those facts.
+
+## Fallback path
+
+If `prism` is unavailable, too old, or the `wiki show` subcommand is missing:
+
+1. Say: `Prism CLI read surface unavailable; falling back to direct wiki reads.`
+2. Read only the relevant files:
+   - `knowledge/wiki/index.md`
+   - `knowledge/wiki/features/[F-XXX]-[slug].md`
+   - `knowledge/wiki/design/[F-XXX]-[slug].md` if present
+   - `knowledge/wiki/api-contracts/[F-XXX].md` if present
+   - all matching `knowledge/wiki/platform-requirements/[F-XXX]-*.md`
+   - `knowledge/wiki/advisory/[F-XXX]-review.md` if present
+   - business-rule, persona, and decision files that reference the feature ID
+3. Use the feature page frontmatter as the authority for status, owner, platforms, and advisory-review.
+4. Treat missing optional linked files as partial context, not as a hard error.
+
+## Rules
 
 - read-only command
-- do not write any wiki files
+- do not write wiki files
 - do not refresh `WIKI_REPORT.md`
-- if `WIKI_REPORT.md` is missing, tell the user to run `/feature-status` for an updated orientation summary
+- do not invent missing facts; report absent files as absent
+- separate facts from advice: render facts first, then optionally close with clearly labeled suggested next steps
 
-## Files to read
+## Output
 
-- `knowledge/wiki/index.md`
-- `knowledge/wiki/features/[F-XXX]-[slug].md`
-- `knowledge/wiki/design/[F-XXX]-[slug].md` if present
-- `knowledge/wiki/api-contracts/[F-XXX].md` if present
-- all matching `knowledge/wiki/platform-requirements/[F-XXX]-*.md`
-- any files in `knowledge/wiki/business-rules/` that reference the feature ID
-- `knowledge/wiki/advisory/[F-XXX]-review.md` if present
+Return feature ID/title, status, owner, advisory-review, platforms, summary, open questions, linked context, platform requirements, API contract status when relevant, blocker facts, diagnostics, and source paths.
 
-## Assembly rules
-
-- Resolve the feature slug from the feature file name, not from guesswork
-- Use the feature file frontmatter as the authority for `status`, `owner`, and `advisory-review`
-- Treat missing optional linked files as informative absence, not as an error
-- Compute blockers from current wiki state instead of relying on a handwritten summary field
-
-## Recommended output shape
-
-```text
-Feature: F-012 - Saved Checkout
-Status: ready-for-dev
-Owner: dev
-Advisory review: done
-
-Summary:
-Customers can reuse a saved shipping address and payment preference during checkout.
-
-Open questions:
-- Designer: What does the invalid saved address state look like? [open]
-- Dev: Should guest checkout support saved addresses later? [resolved: no, account only]
-
-Linked context:
-- Design: knowledge/wiki/design/F-012-saved-checkout.md
-- API contract: knowledge/wiki/api-contracts/F-012.md
-- Board review: knowledge/wiki/advisory/F-012-review.md
-- Business rules:
-  - BR-004-checkout-address-validation.md
-  - BR-011-payment-method-eligibility.md
-
-Platform requirements:
-- backend: in-progress
-- mobile-ios: pending
-- mobile-android: pending
-- web-user-app: pending
-
-Current blockers:
-- api-contract-not-ready: mobile-ios platform requirements depend on the API contract status changing from draft to agreed
-- missing-design: design page does not define the expired payment-method state
-
-Suggested next action:
-Run design-clarify or update the design page before active implementation begins.
-```
-
-## Partial/error-state examples
-
-```text
-Feature: F-099
-Status: error
-
-Problem:
-No feature file matching F-099 was found in knowledge/wiki/features/.
-
-Next step:
-Check the feature ID or run /feature-status to inspect the current board.
-```
-
-```text
-Feature: F-012 - Saved Checkout
-Status: partial
-Owner: dev
-Advisory review: done
-
-Summary:
-Feature file found, but linked implementation context is incomplete.
-
-Missing linked context:
-- No design page found
-- No platform requirements found for mobile-ios
-
-Next step:
-Create the missing linked files before treating this feature as fully implementation-ready.
-```
+If no feature file matches the requested ID, return a clean missing-feature response. If multiple feature files match, report the ambiguity and do not merge them.

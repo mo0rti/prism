@@ -7,5 +7,5 @@ Format: ## YYYY-MM-DD [operation] | [subject]
 
 ## [project-creation-date] init | Wiki initialized
 
-Wiki created from Prism template. Run /setup-project to initialize the advisory board
-and complete project setup.
+Wiki created from Prism template. Run setup-project to initialize the advisory board,
+record the setup interview in advisory/PROJECT_FOUNDATION.md, and complete project setup.

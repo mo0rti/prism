@@ -185,8 +185,9 @@ Purpose:
 
 It:
 
-- writes a dated lint report to the wiki directory (`knowledge/wiki/lint-YYYY-MM-DD.md`)
-- appends to `knowledge/wiki/log.md`
+- reports deterministic wiki diagnostics in the response by default
+- writes a dated lint report to the wiki directory (`knowledge/wiki/lint-YYYY-MM-DD.md`) only when explicitly requested
+- appends to `knowledge/wiki/log.md` only when explicitly requested
 - never writes or refreshes `WIKI_REPORT.md`
 
 If `WIKI_REPORT.md` is missing or stale, `lint-wiki` should tell the user to rerun

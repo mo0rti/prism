@@ -72,6 +72,10 @@ The agent system in this workspace does four jobs:
     └── ... selective examples; see docs/README.md for the full docs map
 </pre>
 
+After `setup-project`, the advisory area should contain both `BOARD.md` and
+`PROJECT_FOUNDATION.md`, which preserves the setup interview, risk framing, and
+initial board rationale.
+
 ## Commands Vs Skills
 
 Commands and skills are related, but they are not the same thing:
@@ -108,6 +112,11 @@ Key command groups:
 
 Read [`CONTEXT.md`](../CONTEXT.md) for the command list by tool surface.
 
+When the optional Prism CLI is installed, `prism wiki graph --open` renders an
+interactive dashboard of the wiki (features, lifecycle board, platform lanes),
+and `prism wiki graph --serve` keeps it live-updating as wiki files change.
+The dashboard is read-only and derived; the wiki files remain the source of truth.
+
 ## Skill Map
 
 The sections below describe the real skill sets on disk and what each one helps with.
@@ -119,7 +128,7 @@ mirror much of the Claude command surface for Codex:
 
 | Skill | Purpose |
 |------|---------|
-| `setup-project` | Initializes the workspace wiki and advisory-board setup flow |
+| `setup-project` | Initializes the workspace wiki, records the setup interview, and generates the advisory board |
 | `po-intake` | Converts raw product input into structured feature intake |
 | `po-clarify` | Resolves product ambiguity before implementation starts |
 | `po-handoff` | Finalizes product handoff into ready-for-design or ready-for-dev form |

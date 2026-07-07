@@ -1,0 +1,73 @@
+schema_version: 1
+min_prism_cli_version: "0.1.0"
+generated_by:
+  tool: prism-cli
+  prism_cli_version: "0.1.0"
+  template_version: "unknown"
+  template_commit: "unknown"
+  generated_at: "unknown"
+project:
+  name: "{{ project_name }}"
+  slug: "{{ project_slug }}"
+  package_identifier: "{{ package_identifier }}"
+  description: "{{ description }}"
+  platforms:
+{% for platform in platforms %}
+    - {{ platform }}
+{% endfor %}
+  auth_methods:
+{% for auth_method in auth_methods %}
+    - {{ auth_method }}
+{% endfor %}
+  database: "{{ database }}"
+  supporting_services: [{% for service in supporting_services | default([]) %}{{ service }}{% if not loop.last %}, {% endif %}{% endfor %}]
+  use_docker: {{ "true" if use_docker else "false" }}
+  cloud_provider: "{{ cloud_provider }}"
+{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}
+  web_hosting: "{{ web_hosting }}"
+{% endif %}
+platform_maturity:
+{% for platform in platforms %}
+  {{ platform }}:
+{% if platform == "mobile-ios" %}
+    level: experimental
+    caveat: "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven."
+{% elif platform == "web-user-app" or platform == "web-admin-portal" %}
+    level: provisional
+    caveat: "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven."
+{% else %}
+    level: baseline
+    caveat: ""
+{% endif %}
+{% endfor %}
+paths:
+  wiki_root: knowledge/wiki
+  intake_root: knowledge/intake
+  advisory_board: knowledge/wiki/advisory/BOARD.md
+expected_surfaces:
+  ai:
+    - AGENTS.md
+    - CLAUDE.md
+    - .agents/skills
+    - .claude/commands
+    - .cursor/rules
+  docs:
+    - README.md
+    - CONTEXT.md
+    - docs/
+  workflows:
+{% if "backend" in platforms %}
+    - .github/workflows/backend.yml
+{% endif %}
+{% if "web-user-app" in platforms %}
+    - .github/workflows/web-user-app.yml
+{% endif %}
+{% if "web-admin-portal" in platforms %}
+    - .github/workflows/web-admin-portal.yml
+{% endif %}
+{% if "mobile-android" in platforms %}
+    - .github/workflows/mobile-android.yml
+{% endif %}
+{% if "mobile-ios" in platforms %}
+    - .github/workflows/mobile-ios.yml
+{% endif %}

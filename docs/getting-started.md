@@ -36,9 +36,15 @@ Required to generate a project:
 - `pip install copier`
 - `pip install -e .`
 
+The current V2 install path is local/editable from this repository. The package
+already exposes the `prism` console script through `pyproject.toml`; a published
+package or remote `pipx` install path should not be treated as available until it
+is explicitly released.
+
 Useful first commands after install:
 
 ```bash
+prism --version
 prism doctor
 prism doctor --preset backend-mobile
 prism presets

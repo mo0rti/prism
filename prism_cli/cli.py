@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import os
 import platform
 import re
@@ -11,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import webbrowser
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +30,12 @@ from prism_cli.presets import (
     get_preset,
     merge_answers,
 )
+from prism_cli.status import WorkspaceStatus, build_status
+from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind
+from prism_cli.wiki_model import VALID_FEATURE_OWNERS, VALID_PLATFORM_IDS
+from prism_cli.wiki_graph import build_graph, render_mermaid
+from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
+from prism_cli.wiki_lint import WikiLintResult, lint_wiki
 from prism_cli.ui import (
     ANSI_PATTERN,
     PALETTE_SIGNAL,
@@ -130,7 +138,19 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[preset.slug for preset in PRESETS],
         help="Evaluate readiness for a recommended Prism preset path.",
     )
+    doctor_parser.add_argument(
+        "--workspace",
+        nargs="?",
+        const=".",
+        help="Include generated-project workspace status for the given path. Defaults to the current directory.",
+    )
     doctor_parser.set_defaults(func=cmd_doctor)
+
+    status_parser = subparsers.add_parser("status", help="Show generated-project workspace status.")
+    status_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
+    status_parser.add_argument("--full", action="store_true", help="Show full diagnostics and detailed counts.")
+    status_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable status output.")
+    status_parser.set_defaults(func=cmd_status)
 
     validate_parser = subparsers.add_parser("validate", help="Validate the template repo or a generated Prism project.")
     validate_parser.add_argument("path", nargs="?", default=".", help="Path to validate. Defaults to the current directory.")
@@ -147,6 +167,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validation mode when validating the template repository.",
     )
     validate_parser.set_defaults(func=cmd_validate)
+
+    wiki_parser = subparsers.add_parser("wiki", help="Inspect and validate generated-project wiki state.")
+    wiki_subparsers = wiki_parser.add_subparsers(dest="wiki_command")
+    wiki_lint_parser = wiki_subparsers.add_parser("lint", help="Validate generated-project wiki schema and consistency.")
+    wiki_lint_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
+    wiki_lint_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable lint output.")
+    wiki_lint_parser.set_defaults(func=cmd_wiki_lint)
+    wiki_show_parser = wiki_subparsers.add_parser("show", help="Show one feature and its platform requirements.")
+    wiki_show_parser.add_argument("feature_id", help="Feature id to show, for example F-001.")
+    wiki_show_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
+    wiki_show_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable output.")
+    wiki_show_parser.set_defaults(func=cmd_wiki_show)
+    wiki_blockers_parser = wiki_subparsers.add_parser("blockers", help="Show implementation blockers detected in the wiki.")
+    wiki_blockers_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
+    wiki_blockers_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable output.")
+    wiki_blockers_parser.set_defaults(func=cmd_wiki_blockers)
+    wiki_owner_parser = wiki_subparsers.add_parser("owner", help="Show feature and open-question facts for one owner.")
+    wiki_owner_parser.add_argument("owner", choices=sorted(VALID_FEATURE_OWNERS), help="Owner role to inspect.")
+    wiki_owner_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
+    wiki_owner_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable output.")
+    wiki_owner_parser.set_defaults(func=cmd_wiki_owner)
+    wiki_platform_parser = wiki_subparsers.add_parser("platform", help="Show feature and requirement facts for one platform.")
+    wiki_platform_parser.add_argument("platform", choices=sorted(VALID_PLATFORM_IDS), help="Platform id to inspect.")
+    wiki_platform_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
+    wiki_platform_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable output.")
+    wiki_platform_parser.set_defaults(func=cmd_wiki_platform)
+    wiki_search_parser = wiki_subparsers.add_parser("search", help="Run conservative substring search across wiki feature facts.")
+    wiki_search_parser.add_argument("query", help="Literal substring to search for.")
+    wiki_search_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
+    wiki_search_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable output.")
+    wiki_search_parser.set_defaults(func=cmd_wiki_search)
+    wiki_graph_parser = wiki_subparsers.add_parser("graph", help="Render wiki relationship facts as JSON, Mermaid, or an interactive HTML dashboard.")
+    wiki_graph_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
+    wiki_graph_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable graph facts.")
+    wiki_graph_parser.add_argument("--mermaid", action="store_true", help="Emit a Mermaid diagram (see --view).")
+    wiki_graph_parser.add_argument("--view", choices=["lifecycle", "ego", "platform"], default="lifecycle", help="Mermaid view. Defaults to lifecycle.")
+    wiki_graph_parser.add_argument("--feature", help="Feature id for --view ego, for example F-001.")
+    wiki_graph_parser.add_argument("--platform", choices=sorted(VALID_PLATFORM_IDS), help="Platform id for --view platform.")
+    wiki_graph_parser.add_argument("--html", nargs="?", const="", metavar="OUT", help="Write the interactive dashboard. Defaults to prism-graph.html in the workspace root.")
+    wiki_graph_parser.add_argument("--open", action="store_true", help="Write the dashboard to a temporary file and open it in the browser.")
+    wiki_graph_parser.add_argument("--serve", action="store_true", help="Serve the dashboard locally with live updates as wiki files change.")
+    wiki_graph_parser.add_argument("--port", type=int, default=8321, help="Port for --serve. Defaults to 8321.")
+    wiki_graph_parser.set_defaults(func=cmd_wiki_graph)
+    wiki_parser.set_defaults(func=cmd_wiki_help, parser=wiki_parser)
 
     update_parser = subparsers.add_parser("update", help="Update a generated Prism project from its original template.")
     update_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
@@ -183,6 +247,10 @@ def cmd_home(args: argparse.Namespace) -> int:
     print(session_panel(__version__, str(current_dir), context_label))
     print()
 
+    if context_kind == "generated-project":
+        render_status_result(build_status(current_dir), full=False)
+        print()
+
     actions = build_home_actions(context_kind)
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         print(section("Available commands"))
@@ -211,43 +279,25 @@ def detect_launch_context(path: Path) -> tuple[str, str]:
 
 
 def build_home_actions(context_kind: str) -> list[SelectOption]:
-    actions = [
-        SelectOption(
-            value="new",
-            label="New Project",
-            meta="[new]",
-            description="Create a new Prism project with guided defaults.",
-            accent="action",
-        ),
-        SelectOption(
-            value="presets",
-            label="Browse Presets",
-            meta="[presets]",
-            description="See recommended starting paths and maturity guidance.",
-            accent="action",
-        ),
-        SelectOption(
-            value="doctor",
-            label="Doctor",
-            meta="[doctor]",
-            description="Check the local tools Prism expects for generation and workflows.",
-            accent="action",
-        ),
-    ]
+    actions: list[SelectOption] = []
 
-    if context_kind == "template":
-        actions.append(
-            SelectOption(
-                value="validate",
-                label="Validate Template Repo",
-                meta="[validate]",
-                description="Run validation for the current Prism template repository.",
-                accent="action",
-            )
-        )
-    elif context_kind == "generated-project":
+    if context_kind == "generated-project":
         actions.extend(
             [
+                SelectOption(
+                    value="status",
+                    label="Workspace Status",
+                    meta="[status]",
+                    description="Show project identity, queues, blockers, and schema issues.",
+                    accent="action",
+                ),
+                SelectOption(
+                    value="dashboard",
+                    label="Open Dashboard",
+                    meta="[wiki graph]",
+                    description="Interactive product-truth dashboard: pipeline, graph, blockers, platforms.",
+                    accent="action",
+                ),
                 SelectOption(
                     value="validate",
                     label="Validate Generated Project",
@@ -265,6 +315,43 @@ def build_home_actions(context_kind: str) -> list[SelectOption]:
             ]
         )
     else:
+        actions.extend(
+            [
+                SelectOption(
+                    value="new",
+                    label="New Project",
+                    meta="[new]",
+                    description="Create a new Prism project with guided defaults.",
+                    accent="action",
+                ),
+                SelectOption(
+                    value="presets",
+                    label="Browse Presets",
+                    meta="[presets]",
+                    description="See recommended starting paths and maturity guidance.",
+                    accent="action",
+                ),
+                SelectOption(
+                    value="doctor",
+                    label="Doctor",
+                    meta="[doctor]",
+                    description="Check the local tools Prism expects for generation and workflows.",
+                    accent="action",
+                ),
+            ]
+        )
+
+    if context_kind == "template":
+        actions.append(
+            SelectOption(
+                value="validate",
+                label="Validate Template Repo",
+                meta="[validate]",
+                description="Run validation for the current Prism template repository.",
+                accent="action",
+            )
+        )
+    elif context_kind != "generated-project":
         actions.append(
             SelectOption(
                 value="validate",
@@ -273,6 +360,33 @@ def build_home_actions(context_kind: str) -> list[SelectOption]:
                 description="Try to validate the current directory as a template repo or generated project.",
                 accent="action",
             )
+        )
+
+    if context_kind == "generated-project":
+        actions.extend(
+            [
+                SelectOption(
+                    value="doctor",
+                    label="Doctor",
+                    meta="[doctor]",
+                    description="Check local tools and generated-project workspace status.",
+                    accent="action",
+                ),
+                SelectOption(
+                    value="new",
+                    label="New Project",
+                    meta="[new]",
+                    description="Create a new Prism project with guided defaults.",
+                    accent="action",
+                ),
+                SelectOption(
+                    value="presets",
+                    label="Browse Presets",
+                    meta="[presets]",
+                    description="See recommended starting paths and maturity guidance.",
+                    accent="action",
+                ),
+            ]
         )
 
     actions.extend(
@@ -302,6 +416,10 @@ def dispatch_home_action(selected: str, parser: argparse.ArgumentParser) -> int:
     if selected == "help":
         parser.print_help()
         return 0
+    if selected == "dashboard":
+        parsed = parser.parse_args(["wiki", "graph", "--open"])
+        parsed.from_launcher = True
+        return parsed.func(parsed)
 
     parsed = parser.parse_args([selected])
     parsed.from_launcher = True
@@ -333,8 +451,14 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     system = platform.system()
     incubation_mode = is_incubating_checkout()
     selected_preset = get_preset(_args.preset) if _args.preset else None
-    target_platforms = set(selected_preset.answers.get("platforms", [])) if selected_preset else set()
-    target_label = selected_preset.label if selected_preset else "General Prism readiness"
+    workspace_status = build_status(Path(_args.workspace)) if getattr(_args, "workspace", None) else None
+    if selected_preset:
+        target_platforms = set(selected_preset.answers.get("platforms", []))
+    elif workspace_status:
+        target_platforms = set(workspace_status.platforms)
+    else:
+        target_platforms = set()
+    target_label = selected_preset.label if selected_preset else "Workspace Prism readiness" if workspace_status else "General Prism readiness"
 
     body = [
         f"OS: {system}",
@@ -351,6 +475,11 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     core_missing = any(result.status == "missing" and result.check.blocking for result in results)
     print(panel("Summary", summary))
     print()
+
+    if getattr(_args, "workspace", None):
+        assert workspace_status is not None
+        render_status_result(workspace_status, full=False)
+        print()
 
     for title, category_key in (
         ("Core", "core"),
@@ -643,6 +772,18 @@ def render_doctor_result(result: DoctorResult) -> list[str]:
     return lines
 
 
+def cmd_status(args: argparse.Namespace) -> int:
+    target_path = Path(args.path).expanduser().resolve()
+    result = build_status(target_path)
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2))
+        return 0
+
+    show_command_intro(args, "Generated-project workspace status")
+    render_status_result(result, full=args.full)
+    return 0
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     target_path = Path(args.path).expanduser().resolve()
     kind = args.kind if args.kind != "auto" else detect_validation_target(target_path)
@@ -659,6 +800,390 @@ def cmd_validate(args: argparse.Namespace) -> int:
     print(error("Could not determine whether the target is the template repo or a generated Prism project."), file=sys.stderr)
     print(info("Tip: pass `--kind template` or `--kind generated-project` explicitly."), file=sys.stderr)
     return EXIT_VALIDATION
+
+
+def cmd_wiki_help(args: argparse.Namespace) -> int:
+    args.parser.print_help()
+    return 0
+
+
+def cmd_wiki_lint(args: argparse.Namespace) -> int:
+    target_path = Path(args.path).expanduser().resolve()
+    result = lint_wiki(target_path)
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2))
+        return 0 if result.is_clean else EXIT_VALIDATION
+
+    show_command_intro(args, "Validate generated-project wiki contract")
+    render_wiki_lint_result(result)
+    return 0 if result.is_clean else EXIT_VALIDATION
+
+
+def cmd_wiki_show(args: argparse.Namespace) -> int:
+    result = wiki_show(Path(args.path), args.feature_id)
+    return render_or_print_wiki_query(args, "Show wiki feature facts", result)
+
+
+def cmd_wiki_blockers(args: argparse.Namespace) -> int:
+    result = wiki_blockers(Path(args.path))
+    return render_or_print_wiki_query(args, "Show wiki blockers", result)
+
+
+def cmd_wiki_owner(args: argparse.Namespace) -> int:
+    result = wiki_owner(Path(args.path), args.owner)
+    return render_or_print_wiki_query(args, "Show wiki owner facts", result)
+
+
+def cmd_wiki_platform(args: argparse.Namespace) -> int:
+    result = wiki_platform(Path(args.path), args.platform)
+    return render_or_print_wiki_query(args, "Show wiki platform facts", result)
+
+
+def cmd_wiki_search(args: argparse.Namespace) -> int:
+    result = wiki_search(Path(args.path), args.query)
+    return render_or_print_wiki_query(args, "Search wiki facts", result)
+
+
+def cmd_wiki_graph(args: argparse.Namespace) -> int:
+    target_path = Path(args.path).expanduser().resolve()
+
+    if args.serve:
+        from prism_cli.graph_server import serve_graph
+
+        return serve_graph(target_path, args.port)
+
+    result = build_graph(target_path)
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if args.mermaid:
+        if args.view == "ego" and not args.feature:
+            print(error("--view ego requires --feature F-XXX."), file=sys.stderr)
+            return EXIT_VALIDATION
+        if args.view == "platform" and not args.platform:
+            print(error("--view platform requires --platform <platform-id>."), file=sys.stderr)
+            return EXIT_VALIDATION
+        print(render_mermaid(result, args.view, feature_id=args.feature, platform_id=args.platform))
+        return 0
+
+    if args.open or args.html is not None:
+        from prism_cli.wiki_graph_html import render_html, write_dashboard
+
+        if args.open:
+            out_path = Path(tempfile.mkdtemp(prefix="prism-graph-")) / "prism-graph.html"
+        else:
+            out_path = Path(args.html) if args.html else target_path / "prism-graph.html"
+        out_path = out_path.expanduser().resolve()
+        knowledge_root = (target_path / "knowledge").resolve()
+        if str(out_path).startswith(str(knowledge_root)):
+            print(error("Refusing to write the dashboard inside knowledge/ — that directory is product truth."), file=sys.stderr)
+            return EXIT_VALIDATION
+        write_dashboard(result, out_path)
+        print(success(f"Dashboard written: {out_path}"))
+        if args.open:
+            webbrowser.open(out_path.as_uri())
+        return 0
+
+    show_command_intro(args, "Wiki graph facts")
+    facts = result["facts"]
+    type_counts: dict[str, int] = {}
+    for node in facts["nodes"]:
+        type_counts[node["type"]] = type_counts.get(node["type"], 0) + 1
+    summary_lines = [
+        f"Nodes: {facts['node_count']}",
+        f"Edges: {facts['edge_count']}",
+        f"Dangling references: {len(facts['dangling_references'])}",
+        f"Confidence: {result['confidence']}",
+    ]
+    summary_lines.extend(f"{node_type}: {count}" for node_type, count in sorted(type_counts.items()))
+    print(panel("Graph", summary_lines))
+    print()
+    print(info("Use --json, --mermaid, --html, --open, or --serve for full output."))
+    return 0
+
+
+def render_or_print_wiki_query(args: argparse.Namespace, title: str, result: dict[str, Any]) -> int:
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+
+    show_command_intro(args, title)
+    render_wiki_query_result(result)
+    return 0
+
+
+def render_wiki_lint_result(result: WikiLintResult) -> None:
+    summary = [
+        f"Workspace: {result.root}",
+        f"Features: {result.feature_count}",
+        f"Errors: {result.error_count}",
+        f"Warnings: {result.warning_count}",
+    ]
+    print(panel("Wiki lint", summary))
+    print()
+    if result.is_clean:
+        print(success("Wiki contract checks passed."))
+        return
+
+    print(section("Diagnostics"))
+    for diagnostic in result.diagnostics:
+        formatter = error if diagnostic.severity == "error" else warn
+        location = diagnostic.path
+        if diagnostic.feature_id:
+            location += f" [{diagnostic.feature_id}]"
+        print(f"- {formatter(diagnostic.code)}: {diagnostic.message}")
+        print(f"  {colorize(location, STYLE.dim)}")
+
+
+def render_wiki_query_result(result: dict[str, Any]) -> None:
+    workspace = result.get("workspace", {})
+    facts = result.get("facts", {})
+    print(
+        panel(
+            "Wiki query",
+            [
+                f"Command: {result.get('command')}",
+                f"Workspace: {workspace.get('kind', 'unknown')}",
+                f"Confidence: {format_confidence(str(result.get('confidence', 'unknown')))}",
+            ],
+        )
+    )
+    print()
+
+    command = result.get("command")
+    if command == "wiki show":
+        render_wiki_show_facts(facts)
+    elif command == "wiki blockers":
+        render_wiki_blocker_facts(facts)
+    elif command == "wiki owner":
+        render_wiki_owner_facts(facts)
+    elif command == "wiki platform":
+        render_wiki_platform_facts(facts)
+    elif command == "wiki search":
+        render_wiki_search_facts(facts)
+    else:
+        print(json.dumps(facts, indent=2))
+
+    diagnostics = result.get("diagnostics", [])
+    if diagnostics:
+        print()
+        print(section("Diagnostics"))
+        for diagnostic in diagnostics[:8]:
+            formatter = error if diagnostic.get("severity") == "error" else warn
+            print(f"- {formatter(diagnostic.get('code', 'diagnostic'))}: {diagnostic.get('message', '')}")
+            print(f"  {colorize(str(diagnostic.get('path', '')), STYLE.dim)}")
+        hidden_count = len(diagnostics) - 8
+        if hidden_count > 0:
+            print(info(f"{hidden_count} more diagnostics hidden. Use `--json` for the complete list."))
+
+
+def render_wiki_show_facts(facts: dict[str, Any]) -> None:
+    feature = facts.get("feature")
+    if not feature:
+        print(warn("No feature facts available."))
+        return
+    print(
+        panel(
+            "Feature",
+            [
+                f"ID: {feature.get('id')}",
+                f"Title: {feature.get('title')}",
+                f"Status: {feature.get('status')}",
+                f"Owner: {feature.get('owner')}",
+                f"Board review: {feature.get('advisory_review')}",
+                f"Platforms: {', '.join(feature.get('platforms', [])) or 'none'}",
+                f"Path: {feature.get('path')}",
+            ],
+        )
+    )
+    questions = feature.get("open_questions", [])
+    requirements = feature.get("platform_requirements", [])
+    print()
+    print(section("Open questions"))
+    if questions:
+        for question in questions:
+            print(f"- {question.get('number')}: {question.get('question')} [{question.get('owner')}, {question.get('status')}]")
+    else:
+        print("- none")
+    print()
+    print(section("Platform requirements"))
+    if requirements:
+        for requirement in requirements:
+            print(f"- {requirement.get('platform')}: {requirement.get('status')} ({requirement.get('path')})")
+    else:
+        print("- none")
+
+
+def render_wiki_blocker_facts(facts: dict[str, Any]) -> None:
+    blockers = facts.get("blockers", [])
+    print(panel("Blockers", [f"Count: {facts.get('blocker_count', 0)}"]))
+    if not blockers:
+        print()
+        print(success("No blocker facts detected."))
+        return
+    print()
+    for blocker in blockers:
+        print(f"- {error(blocker.get('code', 'blocker'))}: {blocker.get('message', '')}")
+        print(f"  {colorize(str(blocker.get('path', '')), STYLE.dim)}")
+
+
+def render_wiki_owner_facts(facts: dict[str, Any]) -> None:
+    print(panel("Owner", [f"Owner: {facts.get('owner')}", f"Features: {facts.get('feature_count', 0)}", f"Open questions: {facts.get('open_question_count', 0)}"]))
+    print()
+    print(section("Features"))
+    render_feature_summaries(facts.get("features", []))
+    print()
+    print(section("Open questions"))
+    questions = facts.get("open_questions", [])
+    if questions:
+        for question in questions:
+            print(f"- {question.get('feature_id')} #{question.get('number')}: {question.get('question')}")
+    else:
+        print("- none")
+
+
+def render_wiki_platform_facts(facts: dict[str, Any]) -> None:
+    print(panel("Platform", [f"Platform: {facts.get('platform')}", f"Features: {facts.get('feature_count', 0)}", f"Requirements: {facts.get('platform_requirement_count', 0)}"]))
+    print()
+    print(section("Features"))
+    render_feature_summaries(facts.get("features", []))
+    print()
+    print(section("Platform requirements"))
+    requirements = facts.get("platform_requirements", [])
+    if requirements:
+        for requirement in requirements:
+            print(f"- {requirement.get('feature_id')}: {requirement.get('status')} ({requirement.get('path')})")
+    else:
+        print("- none")
+
+
+def render_wiki_search_facts(facts: dict[str, Any]) -> None:
+    print(panel("Search", [f"Query: {facts.get('query')}", f"Results: {facts.get('result_count', 0)}"]))
+    print()
+    results = facts.get("results", [])
+    if not results:
+        print("- none")
+        return
+    for item in results:
+        label = item.get("id") or item.get("feature_id") or item.get("type")
+        print(f"- {item.get('type')}: {label}")
+        print(f"  {colorize(str(item.get('path', '')), STYLE.dim)}")
+        print(f"  matched: {', '.join(item.get('matched_fields', []))}")
+
+
+def render_feature_summaries(features: list[dict[str, Any]]) -> None:
+    if not features:
+        print("- none")
+        return
+    for feature in features:
+        print(f"- {feature.get('id')}: {feature.get('title')} [{feature.get('status')}, {feature.get('owner')}]")
+        print(f"  {colorize(str(feature.get('path', '')), STYLE.dim)}")
+
+
+def render_status_result(result: WorkspaceStatus, full: bool) -> None:
+    workspace_lines = [
+        f"Project: {result.project_name or 'unknown'}",
+        f"Kind: {result.workspace_kind}",
+        f"Platforms: {', '.join(result.platforms) if result.platforms else 'none detected'}",
+        f"Setup: {format_setup_state(result.setup_state)}",
+        f"Confidence: {format_confidence(result.confidence)}",
+    ]
+    print(panel("Workspace", workspace_lines))
+    print()
+
+    queue_lines = [
+        f"Pending intake: {result.intake.pending}",
+        f"Quarantined intake: {result.intake.quarantined}",
+        f"Features: {result.wiki_lint.feature_count}",
+        f"Blockers: {result.blocker_count}",
+        f"Wiki errors: {result.wiki_lint.error_count}",
+        f"Wiki warnings: {result.wiki_lint.warning_count}",
+    ]
+    print(panel("Queues and wiki", queue_lines))
+
+    if result.setup_state == "not-initialized":
+        print()
+        print(warn("setup-project has not initialized the wiki yet."))
+
+    caveats = [
+        (platform_id, data.get("caveat", ""))
+        for platform_id, data in result.platform_maturity.items()
+        if data.get("caveat")
+    ]
+    if caveats:
+        print()
+        print(section("Platform maturity"))
+        for platform_id, caveat in caveats:
+            print(f"- {platform_id}: {warn(caveat)}")
+
+    print()
+    print(section("Feature lifecycle"))
+    lifecycle_counts = compact_count_lines(result.feature_status_counts)
+    if lifecycle_counts:
+        for key, value in lifecycle_counts:
+            print(f"- {key}: {value}")
+    else:
+        print("- none")
+
+    if full:
+        print()
+        print(section("Owner queues"))
+        owner_counts = compact_count_lines(result.feature_owner_counts)
+        if owner_counts:
+            for key, value in owner_counts:
+                print(f"- {key}: {value}")
+        else:
+            print("- none")
+        if result.open_questions_by_owner:
+            print()
+            print(section("Open questions"))
+            for key, value in compact_count_lines(result.open_questions_by_owner):
+                print(f"- {key}: {value}")
+        if result.platform_requirement_status_counts:
+            print()
+            print(section("Platform requirements"))
+            for key, value in compact_count_lines(result.platform_requirement_status_counts):
+                print(f"- {key}: {value}")
+
+    diagnostics = result.to_dict()["diagnostics"]
+    if not diagnostics:
+        print()
+        print(success("Workspace status is clean."))
+        return
+
+    print()
+    print(section("Attention"))
+    visible_diagnostics = diagnostics if full else diagnostics[:8]
+    for diagnostic in visible_diagnostics:
+        formatter = error if diagnostic["severity"] == "error" else warn
+        print(f"- {formatter(diagnostic['code'])}: {diagnostic['message']}")
+        print(f"  {colorize(diagnostic['path'], STYLE.dim)}")
+    hidden_count = len(diagnostics) - len(visible_diagnostics)
+    if hidden_count > 0:
+        print()
+        print(info(f"{hidden_count} more diagnostics hidden. Run `prism status --full` or `prism wiki lint` for details."))
+
+
+def format_setup_state(setup_state: str) -> str:
+    if setup_state == "initialized":
+        return success("initialized")
+    if setup_state == "not-initialized":
+        return warn("not initialized")
+    return warn(setup_state)
+
+
+def format_confidence(confidence: str) -> str:
+    if confidence == "high":
+        return success("high")
+    if confidence == "degraded":
+        return warn("degraded")
+    return error(confidence)
+
+
+def compact_count_lines(counts: dict[str, int]) -> list[tuple[str, int]]:
+    return [(key, value) for key, value in counts.items() if value]
 
 
 def cmd_update(args: argparse.Namespace) -> int:
@@ -782,9 +1307,10 @@ def cmd_new(args: argparse.Namespace) -> int:
 
 
 def detect_validation_target(path: Path) -> str:
-    if (path / "copier.yml").exists() and (path / "template").exists():
+    kind = detect_workspace_kind(path)
+    if kind == "template":
         return "template"
-    if (path / "README.md").exists() and (path / "CONTEXT.md").exists() and (path / "knowledge" / "wiki" / "SCHEMA.md").exists():
+    if kind == "generated-project":
         return "generated-project"
     return "unknown"
 
@@ -840,11 +1366,18 @@ def validate_generated_project(path: Path) -> int:
             print(f"- {error(error_message)}")
         return EXIT_VALIDATION
 
+    wiki_result = lint_wiki(path)
+    if not wiki_result.is_clean:
+        print(section("Wiki lint"))
+        render_wiki_lint_result(wiki_result)
+        return EXIT_VALIDATION
+
     checks = [
         "README.md present",
         "CONTEXT.md present",
         "knowledge/wiki/SCHEMA.md present",
         "Taskfile.yml present",
+        "wiki contract checks passed",
         "platform directories and key workflows present",
     ]
     print(panel("Validation passed", checks))
@@ -1143,7 +1676,7 @@ def prepare_generation_destination(dest_path: Path) -> int | None:
         return EXIT_VALIDATION
 
     repo_state = inspect_git_worktree(dest_path)
-    if is_direct_git_worktree(dest_path, repo_state):
+    if is_direct_git_worktree(dest_path, repo_state) or (dest_path / ".git").exists():
         print(error(f"Destination is already under git version control: {dest_path}"), file=sys.stderr)
         print(info("Choose a new destination for `prism new`, or remove/archive the existing repository first."), file=sys.stderr)
         print(info("If this is an existing Prism workspace, prefer `prism update` instead of overwriting it."), file=sys.stderr)
@@ -1309,6 +1842,7 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any]) -> 
         f"Open the generated repo: {dest_path}",
         "Read README.md and CONTEXT.md",
         "Run setup-project inside the generated repository",
+        "Watch your product truth take shape: prism wiki graph --serve",
         "Validate the selected platform slices before treating them as settled",
     ]
     print(panel("Success", next_steps))

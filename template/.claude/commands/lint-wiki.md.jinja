@@ -3,113 +3,52 @@
 ## Usage
 /lint-wiki
 
-## What this command does
+## Purpose
 
-1. Read `knowledge/wiki/SCHEMA.md`
-2. Read `knowledge/wiki/SETTINGS.md` if present
-3. Read `knowledge/wiki/index.md`
-4. Read all files in all wiki subdirectories
-5. Check for and report:
-   - **missing-platform-requirements**
-   - **missing-design**
-   - **api-contract-not-ready**
-   - contradictions across platform requirements, feature specs, and business rules
-   - **pending-board-review**
-   - skipped board reviews with their recorded reason
-   - orphan pages
-   - index drift
-   - stale status using `wiki-stale-after-days`
-   - quarantine backlog
-   - **unresolved-open-questions**
-   - **cross-platform-dependency**
-   - missing ADRs for significant technical choices
-6. Output a lint report as `knowledge/wiki/lint-[YYYY-MM-DD].md`
-7. Append to `knowledge/wiki/log.md`
+Report deterministic wiki contract diagnostics. Prefer the Prism CLI JSON surface, but preserve a direct-read fallback for generated repos that do not have the CLI installed.
 
-## WIKI_REPORT boundary
+## Primary path: Prism CLI
 
-- never write `knowledge/wiki/WIKI_REPORT.md`
+Run:
+
+```bash
+prism wiki lint --json
+```
+
+Render from `confidence`, `facts`, `blocker_facts`, `required_obligations`, `diagnostics`, and `sources`.
+
+The CLI lint surface is intentionally conservative. For a full workflow lint, also read `knowledge/wiki/SCHEMA.md` and directly check any canonical blocker categories or workflow-level issues that are not present in CLI diagnostics; state plainly if a category was not checked.
+
+## Fallback path
+
+If `prism` is unavailable, too old, or the `wiki lint` subcommand is missing:
+
+1. Say: `Prism CLI lint unavailable; falling back to direct wiki reads.`
+2. Read:
+   - `knowledge/wiki/SCHEMA.md`
+   - `knowledge/wiki/SETTINGS.md` if present
+   - `knowledge/wiki/index.md`
+   - all files in `knowledge/wiki/features/`
+   - all files in `knowledge/wiki/platform-requirements/`
+   - related design, API contract, advisory, business-rule, persona, and decision files only when needed to prove an issue
+3. Check for malformed frontmatter, invalid enum values, duplicate feature IDs, orphan pages, index drift, stale status, quarantine backlog, skipped board reviews without reasons, contradictions, and canonical blocker categories.
+4. Report only structural issues you can prove from those files.
+5. If `knowledge/wiki/SETTINGS.md` is absent or invalid, fall back to `wiki-stale-after-days: 14` and say so.
+
+## Rules
+
+- read-only command
+- do not write wiki files
 - do not refresh `WIKI_REPORT.md`
-- if `WIKI_REPORT.md` is missing or stale, tell the user to rerun `/feature-status`
-- `lint-wiki` is the authoritative structural-health command
-- `WIKI_REPORT.md` is only a summary artifact and must not be treated as the lint report
+- do not create lint report files unless the user explicitly asks for a persisted report
+- do not append to `knowledge/wiki/log.md` unless the user explicitly asks for logging
+- do not silently skip malformed pages
+- use the canonical blocker vocabulary from `knowledge/wiki/SCHEMA.md`
+- keep skipped board reviews visible for team awareness, but do not report them as a hard error
+- separate facts from advice: render findings first, then optionally close with clearly labeled suggested next steps
 
-If `knowledge/wiki/SETTINGS.md` is absent or invalid, fall back to
-`wiki-stale-after-days: 14` and tell the user.
+## Output
 
-## Recommended output shape
+Return lint summary, issue counts by category, affected file paths, blocker category when applicable, concise problem statement, source evidence, and a WIKI_REPORT note stating that `knowledge/wiki/WIKI_REPORT.md` was not modified.
 
-```text
-## Lint Summary
-
-- missing-platform-requirements: 2
-- missing-design: 1
-- api-contract-not-ready: 1
-- pending-board-review: 1
-- unresolved-open-questions: 2
-- cross-platform-dependency: 1
-
-## Issues
-
-1. F-012 - Saved Checkout
-   Category: missing-platform-requirements
-   Files:
-   - knowledge/wiki/features/F-012-saved-checkout.md
-   Problem:
-   - Feature is ready-for-dev but no platform requirements exist for mobile-ios.
-   Suggested remediation:
-   - Run /design-handoff F-012 after the missing platform requirement is specified.
-
-2. F-014 - Nutrition Goal Alerts
-   Category: pending-board-review
-   Files:
-   - knowledge/wiki/features/F-014-nutrition-goal-alerts.md
-   Problem:
-   - Feature is in-design but advisory-review is still pending.
-   Suggested remediation:
-   - Run /board-review F-014 or explicitly skip with a documented reason.
-
-## WIKI_REPORT note
-
-knowledge/wiki/WIKI_REPORT.md was not modified.
-If it is missing or stale, rerun /feature-status after addressing the relevant issues.
-```
-
-## Partial/error-state examples
-
-```text
-## Lint Summary
-
-Wiki is consistent. No issues found.
-
-## WIKI_REPORT note
-
-knowledge/wiki/WIKI_REPORT.md was not modified.
-If you want a refreshed orientation summary, rerun /feature-status.
-```
-
-```text
-## Lint Summary
-
-Malformed wiki pages detected.
-
-## Issues
-
-1. knowledge/wiki/features/F-099-broken.md
-   Category: malformed-page
-   Problem:
-   - Required frontmatter field `status` is missing.
-   Suggested remediation:
-   - Repair the feature frontmatter before treating this page as valid project state.
-
-## WIKI_REPORT note
-
-knowledge/wiki/WIKI_REPORT.md was not modified.
-Rerun /feature-status after the malformed pages are fixed.
-```
-
-## Notes for the agent
-
-- Do not auto-fix anything. Report and let the human decide.
-- Use the canonical blocker vocabulary from `knowledge/wiki/SCHEMA.md`.
-- Keep skipped board reviews visible for team awareness, but do not report them as a hard error.
+If no issues are found, state explicitly: `Wiki is consistent. No issues found.`

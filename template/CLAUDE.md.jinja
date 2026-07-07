@@ -86,6 +86,13 @@ docs/          -> Human-readable reference documentation
 Read `knowledge/wiki/WIKI_REPORT.md` first when present. If it is absent, run
 `/feature-status` before deep reading.
 
+For read/query commands (`/wiki-show`, `/wiki-blockers`, `/wiki-query`,
+`/wiki-owner`, `/wiki-platform`, `/lint-wiki`), prefer the Prism CLI JSON surface
+when available, for example `prism wiki show F-XXX --json`. If `prism` is missing,
+too old, or lacks the needed subcommand, say the CLI read surface is unavailable
+and fall back to direct wiki reads. Generated projects must not hard-depend on an
+installed Prism CLI.
+
 ### Lifecycle / write
 
 - `/setup-project` - interactive project initialization (run once after scaffolding)

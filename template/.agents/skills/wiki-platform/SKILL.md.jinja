@@ -1,30 +1,40 @@
 ---
 name: wiki-platform
-description: Read-only platform queue for one Prism platform. Shows active features, platform requirement state, and blockers.
+description: Read-only platform facts for one Prism platform ID. Prefer Prism CLI JSON; fall back to direct wiki reads when the CLI is unavailable.
 ---
 
 # Wiki Platform
 
 Read-only platform queue for one exact Prism platform ID.
 
-## Usage
+## Primary path
 
-`$wiki-platform backend|mobile-android|mobile-ios|web-user-app|web-admin-portal`
+Run:
 
-## Workflow
+```bash
+prism wiki platform <platform-id> --json
+```
 
-1. Read all feature files
-2. Read all platform-requirement files
-3. Read all design files
-4. Read all api-contract files
-5. Read advisory review outputs except `BOARD.md`
-6. Filter features to the selected platform
-7. Assemble a platform-specific queue with blockers
+Summarize `facts.features`, `facts.platform_requirements`, `diagnostics`, and `sources`.
+
+## Fallback path
+
+If `prism` is unavailable, too old, or lacks `wiki platform`, say the CLI read surface is unavailable, then inspect the wiki directly.
+
+Read:
+
+1. all feature files
+2. all platform-requirement files
+3. all design files
+4. all API contract files
+5. advisory review outputs except `BOARD.md`
+
+Filter active/ready features to the selected exact platform ID and assemble platform-specific facts and blockers. Active/ready means `ready-for-design`, `in-design`, `ready-for-dev`, or `in-dev`; keep `done` out of the active queue unless the user asks for closed work. Sort active work as `in-dev`, `ready-for-dev`, `in-design`, `ready-for-design`.
 
 ## Rules
 
 - read-only skill
-- do not write any wiki files
+- do not write wiki files
 - do not refresh `WIKI_REPORT.md`
 - use exact platform IDs only:
   - `backend`
@@ -33,12 +43,7 @@ Read-only platform queue for one exact Prism platform ID.
   - `web-user-app`
   - `web-admin-portal`
 - do not infer aliases such as `ios`, `android`, or `web`
-
-## Canonical format reference
-
-Mirror the detailed output contract from:
-
-- `/.claude/commands/wiki-platform.md`
+- separate facts from advice: render platform facts first, then optionally close with clearly labeled suggested next steps
 
 ## Output shape
 
@@ -51,9 +56,10 @@ Return:
 - platform-requirement status
 - API contract status when relevant
 - blockers relevant to that platform
-- optionally a small done-recently section
+- source paths used
 
 ## Error behavior
 
 - if no active or ready features target the platform, return a clean empty-state response
 - if the platform identifier is invalid, return a clean invalid-platform response
+- if malformed wiki pages prevent reliable platform computation, return a clean malformed-pages response
