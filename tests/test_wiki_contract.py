@@ -55,12 +55,11 @@ class WikiContractLintTests(unittest.TestCase):
         self.assertEqual(WIKI_BLOCKER_CODES, blockers)
 
         pending = self.diagnostics_for(result, "pending-board-review")
-        self.assertEqual({"F-001", "F-002"}, {diagnostic.feature_id for diagnostic in pending})
+        self.assertEqual({"F-001", "F-002", "F-005"}, {diagnostic.feature_id for diagnostic in pending})
         self.assertTrue(any("ready-for-design" in diagnostic.message for diagnostic in pending))
-        self.assertFalse(any(diagnostic.feature_id == "F-005" for diagnostic in pending))
 
         missing_design = self.diagnostics_for(result, "missing-design")
-        self.assertEqual({"F-002", "F-003", "F-006"}, {diagnostic.feature_id for diagnostic in missing_design})
+        self.assertEqual({"F-003", "F-006"}, {diagnostic.feature_id for diagnostic in missing_design})
         self.assertFalse(any(diagnostic.feature_id == "F-001" for diagnostic in missing_design))
 
         missing_requirements = self.diagnostics_for(result, "missing-platform-requirements")
@@ -111,6 +110,107 @@ class WikiContractLintTests(unittest.TestCase):
         nodes = [node for node in graph["facts"]["nodes"] if node["id"] == "api:F-007-bad"]
         self.assertEqual(1, len(nodes))
         self.assertEqual("error", nodes[0]["health"])
+
+    def test_design_exemption_is_required_and_applies_to_downstream_stages(self) -> None:
+        for status, owner in (("ready-for-dev", "dev"), ("in-dev", "dev"), ("done", "none")):
+            with self.subTest(status=status):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    workspace = Path(temp_dir)
+                    target_wiki = workspace / "knowledge" / "wiki"
+                    target_wiki.parent.mkdir(parents=True)
+                    shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+                    feature = target_wiki / "features" / "F-001-checkout.md"
+                    body = feature.read_text(encoding="utf-8")
+                    body = body.replace(
+                        "status: specified\nowner: po\n",
+                        f"status: {status}\nowner: {owner}\n",
+                    ).replace(
+                        "platforms: [backend]\n",
+                        "platforms: [mobile-ios]\n",
+                    ).replace(
+                        "advisory-review: not-needed\n",
+                        "advisory-review: not-needed\n"
+                        "design: not-applicable\n"
+                        "design-exemption-reason: Confirmed backend-only workflow with no visual surface.\n",
+                    )
+                    feature.write_text(body, encoding="utf-8")
+                    result = lint_wiki(workspace, today=CHECK_DATE)
+                    self.assertFalse(
+                        any(
+                            diagnostic.code == "missing-design" and diagnostic.feature_id == "F-001"
+                            for diagnostic in result.diagnostics
+                        )
+                    )
+
+        for reason_line in ("", "design-exemption-reason:   "):
+            with self.subTest(reason_line=reason_line):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    workspace = Path(temp_dir)
+                    target_wiki = workspace / "knowledge" / "wiki"
+                    target_wiki.parent.mkdir(parents=True)
+                    shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+                    feature = target_wiki / "features" / "F-001-checkout.md"
+                    body = feature.read_text(encoding="utf-8").replace(
+                        "status: specified\nowner: po\n",
+                        "status: ready-for-dev\nowner: dev\n",
+                    ).replace(
+                        "platforms: [backend]\n",
+                        "platforms: [mobile-ios]\n",
+                    ).replace(
+                        "advisory-review: not-needed\n",
+                        "advisory-review: not-needed\n"
+                        "design: not-applicable\n"
+                        f"{reason_line}\n",
+                    )
+                    feature.write_text(body, encoding="utf-8")
+                    result = lint_wiki(workspace, today=CHECK_DATE)
+                    self.assertTrue(
+                        any(
+                            diagnostic.code == "missing-design" and diagnostic.feature_id == "F-001"
+                            for diagnostic in result.diagnostics
+                        )
+                    )
+
+    def test_done_requires_resolved_advisory_and_open_questions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            target_wiki = workspace / "knowledge" / "wiki"
+            target_wiki.parent.mkdir(parents=True)
+            shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+            feature = target_wiki / "features" / "F-001-checkout.md"
+            body = feature.read_text(encoding="utf-8").replace(
+                "status: specified\nowner: po\n",
+                "status: done\nowner: none\n",
+            ).replace(
+                "advisory-review: not-needed\n",
+                "advisory-review: pending\n",
+            ).replace(
+                "## Summary\nCustomers can complete a checkout.\n",
+                "## Summary\nCustomers can complete a checkout.\n\n"
+                "## Open questions\n\n"
+                "| # | Question | Owner | Status |\n"
+                "|---|----------|-------|--------|\n"
+                "| 1 | Which settlement rule applies? | po | open |\n\n"
+                "## Delivery evidence\n"
+                "| Platform | Implementation | Tests | Release |\n"
+                "|---|---|---|---|\n"
+                "| backend | Synthetic implementation evidence | Synthetic test evidence | Synthetic release evidence |\n",
+            )
+            feature.write_text(body, encoding="utf-8")
+            requirement = target_wiki / "platform-requirements" / "F-001-backend.md"
+            requirement.parent.mkdir(parents=True, exist_ok=True)
+            requirement.write_text(
+                "---\nfeature-id: F-001\nplatform: backend\nstatus: done\n---\n",
+                encoding="utf-8",
+            )
+
+            result = lint_wiki(workspace, today=CHECK_DATE)
+            self.assertTrue(
+                any(diagnostic.code == "pending-board-review" and diagnostic.feature_id == "F-001" for diagnostic in result.diagnostics)
+            )
+            self.assertTrue(
+                any(diagnostic.code == "unresolved-open-questions" and diagnostic.feature_id == "F-001" for diagnostic in result.diagnostics)
+            )
 
     def test_index_drift_fixture_reports_source_of_truth_differences(self) -> None:
         result = self.lint_fixture("drifted")

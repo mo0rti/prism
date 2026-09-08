@@ -1,0 +1,6 @@
+interface:
+  display_name: "Feature Reopen"
+  short_description: "Reopen shipped work through an impact-reviewed route"
+  default_prompt: "Use $feature-reopen F-XXX specified|in-design|in-dev to review impact and reopen one shipped feature."
+policy:
+  allow_implicit_invocation: false

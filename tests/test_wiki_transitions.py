@@ -1,0 +1,754 @@
+from __future__ import annotations
+
+import json
+import tempfile
+import unittest
+from collections import OrderedDict
+from contextlib import redirect_stdout
+from datetime import datetime, timezone
+from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
+
+from prism_cli.wiki_model import parse_advisory_required_actions, parse_delivery_evidence, read_feature_pages
+from prism_cli.wiki_graph import build_graph
+from prism_cli.cli import build_parser
+from prism_cli.wiki_lint import lint_wiki
+from prism_cli.wiki_transitions import (
+    ACTION_SPECS,
+    CAPABILITY_FILES,
+    _OBSERVED_AT_CACHE_LIMIT,
+    build_transition_preflight,
+    fingerprint_digest,
+    workspace_fingerprint,
+)
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+FEATURE_TEMPLATE = """---
+id: {feature_id}
+title: {title}
+status: {status}
+owner: {owner}
+introduced: 2026-09-01
+last-updated: 2026-09-08
+platforms: [{platforms}]
+sources: []
+advisory-review: {advisory}
+{advisory_reason}---
+
+## Summary
+Customers can prepare a clear payout summary before review.
+
+## User story
+As a finance operator, I want a payout summary, so that I can review it before handoff.
+
+## Acceptance criteria
+- [ ] The summary includes the selected payout period.
+- [ ] The summary can be reviewed before it is handed off.
+
+## Open questions
+
+| # | Question | Owner | Status |
+|---|----------|-------|--------|
+
+## Platform scope
+- **backend**: The backend prepares the summary data.
+
+"""
+
+
+class WikiTransitionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self._create_workspace()
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    @property
+    def wiki_root(self) -> Path:
+        return self.root / "knowledge" / "wiki"
+
+    @property
+    def feature_path(self) -> Path:
+        return self.wiki_root / "features" / "F-001-payout-summary.md"
+
+    def _create_workspace(self) -> None:
+        (self.wiki_root / "features").mkdir(parents=True)
+        (self.root / "backend").mkdir()
+        (self.root / "knowledge" / "intake" / "pending").mkdir(parents=True)
+        (self.root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
+        (self.wiki_root / "SCHEMA.md").write_text("# Wiki schema\n", encoding="utf-8")
+        (self.wiki_root / "SETTINGS.md").write_text(
+            "---\nwiki-stale-after-days: 14\n---\n",
+            encoding="utf-8",
+        )
+        (self.wiki_root / "index.md").write_text(
+            "# Feature Status Board\n\n"
+            "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
+            "|----|---------|--------|-------|--------------|------------|\n"
+            "| F-001 | Payout summary | specified | po | not-needed | 2026-09-01 |\n",
+            encoding="utf-8",
+        )
+        (self.root / "prism.workspace.yml").write_text(
+            "schema_version: 1\n"
+            "project:\n"
+            "  name: Transition test\n"
+            "  slug: transition-test\n"
+            "  platforms:\n"
+            "    - backend\n",
+            encoding="utf-8",
+        )
+        self._write_feature()
+        self._write_capabilities()
+
+    def _write_feature(
+        self,
+        *,
+        feature_id: str = "F-001",
+        filename: str = "F-001-payout-summary.md",
+        status: str = "specified",
+        owner: str = "po",
+        platforms: str = "backend",
+        advisory: str = "not-needed",
+        advisory_reason: str = "",
+        body: str | None = None,
+    ) -> Path:
+        path = self.wiki_root / "features" / filename
+        if body is None:
+            body = FEATURE_TEMPLATE.format(
+                feature_id=feature_id,
+                title="Payout summary",
+                status=status,
+                owner=owner,
+                platforms=platforms,
+                advisory=advisory,
+                advisory_reason=advisory_reason,
+            )
+        path.write_text(body, encoding="utf-8")
+        index_path = self.wiki_root / "index.md"
+        lines = index_path.read_text(encoding="utf-8").splitlines()
+        lines = [
+            (
+                f"| F-001 | Payout summary | {status} | {owner} | {advisory} | 2026-09-01 |"
+                if line.startswith("| F-001 |")
+                else line
+            )
+            for line in lines
+        ]
+        index_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    def _write_capabilities(self) -> None:
+        for role, relative in CAPABILITY_FILES.items():
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            invocation = "$po-handoff F-XXX" if role == "codex" else "/po-handoff F-XXX"
+            path.write_text(
+                f"<!-- prism:po-handoff-contract:v1 -->\n"
+                f"Use {invocation}.\n",
+                encoding="utf-8",
+            )
+
+    def _write_all_capabilities(self) -> None:
+        """Render every lifecycle instruction surface from repository templates."""
+
+        for spec in ACTION_SPECS:
+            for role, relative in {
+                "codex": Path(f".agents/skills/{spec.command}/SKILL.md"),
+                "claude": Path(f".claude/commands/{spec.command}.md"),
+            }.items():
+                template_path = REPO_ROOT / "template" / Path(f"{relative.as_posix()}.jinja")
+                generated_path = self.root / relative
+                generated_path.parent.mkdir(parents=True, exist_ok=True)
+                generated_path.write_text(template_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    def _write_completed_advisory_review(self) -> None:
+        review = self.wiki_root / "advisory" / "F-001-review.md"
+        review.parent.mkdir(parents=True, exist_ok=True)
+        review.write_text(
+            "---\nfeature-id: F-001\nreviewed: 2026-09-08\n"
+            "board-members-consulted: [Reviewer]\n---\n\n"
+            "## Actions required before dev starts\n"
+            "None required.\n",
+            encoding="utf-8",
+        )
+
+    def test_action_registry_supports_raw_and_concrete_reopen_invocations(self) -> None:
+        self._write_all_capabilities()
+        self._write_feature(status="raw", owner="po")
+
+        raw = build_transition_preflight(self.root, "F-001", action="po-specify")
+        raw_transition = raw["facts"]["transition"]
+        self.assertEqual("po-specify", raw_transition["action"])
+        self.assertEqual("specified", raw_transition["target_status"])
+        self.assertEqual("po", raw_transition["target_owner"])
+        self.assertEqual("ready", raw_transition["classification"])
+
+        self._write_feature(status="done", owner="none")
+        reopen = build_transition_preflight(self.root, "F-001", action="reopen-design")
+        transition = reopen["facts"]["transition"]
+        self.assertEqual("reopen-design", transition["action"])
+        self.assertEqual("in-design", transition["target_status"])
+        self.assertEqual("designer", transition["target_owner"])
+        self.assertEqual("ready", transition["classification"])
+        self.assertEqual("$feature-reopen F-001 in-design", transition["invocations"]["codex"])
+        self.assertEqual("/feature-reopen F-001 in-design", transition["invocations"]["claude"])
+        self.assertNotIn("specified|in-design|in-dev", json.dumps(transition))
+
+        graph = build_graph(self.root)
+        node = next(node for node in graph["facts"]["nodes"] if node["type"] == "feature")
+        self.assertIsNone(node["transition"]["action"])
+        self.assertEqual(
+            {"reopen-spec", "reopen-design", "reopen-dev"},
+            {record["action"] for record in node["transitions"]},
+        )
+
+    def test_design_start_allows_design_work_and_designer_questions(self) -> None:
+        self._write_all_capabilities()
+        body = FEATURE_TEMPLATE.format(
+            feature_id="F-001",
+            title="Payout summary",
+            status="ready-for-design",
+            owner="designer",
+            platforms="backend",
+            advisory="not-needed",
+            advisory_reason="",
+        ).replace(
+            "|---|----------|-------|--------|\n\n## Platform scope",
+            "|---|----------|-------|--------|\n| 1 | Which interaction needs review? | designer | open |\n\n## Platform scope",
+        )
+        self._write_feature(status="ready-for-design", owner="designer", body=body)
+
+        transition = build_transition_preflight(self.root, "F-001", action="design-start")["facts"]["transition"]
+
+        self.assertEqual("design-start", transition["action"])
+        self.assertEqual("ready", transition["classification"])
+        self.assertTrue(transition["supported"])
+        self.assertNotIn("design", {check["code"] for check in transition["checks"]})
+
+    def test_valid_design_exemption_reaches_downstream_dev_start(self) -> None:
+        self._write_all_capabilities()
+        (self.root / "mobile-ios").mkdir()
+        manifest = self.root / "prism.workspace.yml"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace("    - backend\n", "    - backend\n    - mobile-ios\n"),
+            encoding="utf-8",
+        )
+        body = FEATURE_TEMPLATE.format(
+            feature_id="F-001",
+            title="Payout summary",
+            status="ready-for-dev",
+            owner="dev",
+            platforms="mobile-ios",
+            advisory="not-needed",
+            advisory_reason="",
+        ).replace(
+            "advisory-review: not-needed\n---",
+            "advisory-review: not-needed\n"
+            "design: not-applicable\n"
+            "design-exemption-reason: Confirmed backend-only workflow with no visual surface.\n---",
+        )
+        self._write_feature(status="ready-for-dev", owner="dev", platforms="mobile-ios", body=body)
+        requirements = self.wiki_root / "platform-requirements" / "F-001-mobile-ios.md"
+        requirements.parent.mkdir(parents=True, exist_ok=True)
+        requirements.write_text(
+            "---\nfeature-id: F-001\nplatform: mobile-ios\nstatus: pending\n---\n\n"
+            "## Acceptance criteria\n- The flow is inspectable.\n",
+            encoding="utf-8",
+        )
+
+        lint_result = lint_wiki(self.root)
+        self.assertFalse(any(diagnostic.code == "missing-design" for diagnostic in lint_result.diagnostics))
+        transition = build_transition_preflight(self.root, "F-001", action="dev-start")["facts"]["transition"]
+        self.assertEqual("pass", next(check for check in transition["checks"] if check["code"] == "platform-scope")["status"])
+        self.assertEqual("ready", transition["classification"])
+
+    def test_done_requires_current_evidence_requirements_api_and_revalidation(self) -> None:
+        self._write_all_capabilities()
+        self._write_completed_advisory_review()
+        body = FEATURE_TEMPLATE.format(
+            feature_id="F-001",
+            title="Payout summary",
+            status="in-dev",
+            owner="dev",
+            platforms="backend",
+            advisory="done",
+            advisory_reason="",
+        ) + (
+            "## API surface\n"
+            "- The payout summary endpoint is implemented by the backend.\n\n"
+            "## Delivery evidence\n"
+            "| Platform | Implementation | Tests | Release |\n"
+            "|---|---|---|---|\n"
+            "| backend | `backend/src/payouts.kt` implemented | `tests/payouts` passed | `release/2026-09-08` deployed |\n"
+        )
+        self._write_feature(status="in-dev", owner="dev", advisory="done", body=body)
+        requirements = self.wiki_root / "platform-requirements" / "F-001-backend.md"
+        requirements.parent.mkdir(parents=True, exist_ok=True)
+        requirements.write_text(
+            "---\nfeature-id: F-001\nplatform: backend\nstatus: done\n---\n\n## Acceptance criteria\n- Data is prepared.\n",
+            encoding="utf-8",
+        )
+        api = self.wiki_root / "api-contracts" / "F-001.md"
+        api.parent.mkdir(parents=True, exist_ok=True)
+        api.write_text(
+            "---\nfeature-id: F-001\nversion: 1\nstatus: implemented\n---\n\n## Endpoints\nGET /payouts\n",
+            encoding="utf-8",
+        )
+
+        ready = build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]
+        self.assertEqual("ready", ready["classification"])
+        self.assertTrue(ready["supported"])
+
+        current = self.feature_path.read_text(encoding="utf-8")
+        self.feature_path.write_text(current.replace("advisory-review: done", "advisory-review: done\nrevalidation: [tests]"), encoding="utf-8")
+        reopened_work = build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]
+        self.assertEqual("ready", reopened_work["classification"])
+        self.assertEqual("pass", next(check for check in reopened_work["checks"] if check["code"] == "revalidation")["status"])
+
+    def test_api_gate_uses_feature_scope_and_explicit_links_only(self) -> None:
+        self._write_all_capabilities()
+        self._write_completed_advisory_review()
+        body = FEATURE_TEMPLATE.format(
+            feature_id="F-001",
+            title="Payout summary",
+            status="ready-for-dev",
+            owner="dev",
+            platforms="backend",
+            advisory="done",
+            advisory_reason="",
+        ) + "\nSee [the persona](../personas/operator.md) for context.\n"
+        self._write_feature(status="ready-for-dev", owner="dev", advisory="done", body=body)
+        requirements_dir = self.wiki_root / "platform-requirements"
+        requirements_dir.mkdir(parents=True, exist_ok=True)
+        (requirements_dir / "F-001-backend.md").write_text(
+            "---\nfeature-id: F-001\nplatform: backend\nstatus: pending\n---\n\n## Acceptance criteria\n- Data is prepared.\n",
+            encoding="utf-8",
+        )
+        (requirements_dir / "F-001-mobile-ios.md").write_text(
+            "---\nfeature-id: F-001\nplatform: mobile-ios\nstatus: pending\n---\n\n## API surface\nSee [shared](../api-contracts/SHARED.md).\n",
+            encoding="utf-8",
+        )
+        api = self.wiki_root / "api-contracts" / "SHARED.md"
+        api.parent.mkdir(parents=True, exist_ok=True)
+        api.write_text(
+            "---\nfeature-id: F-999\nversion: 1\nstatus: draft\n---\n\n## Endpoints\nGET /shared\n",
+            encoding="utf-8",
+        )
+        (self.wiki_root / "personas").mkdir(parents=True, exist_ok=True)
+        (self.wiki_root / "personas" / "operator.md").write_text(
+            "---\nid: P-001\nname: Operator\nintroduced: 2026-09-01\nsources: []\n---\n",
+            encoding="utf-8",
+        )
+
+        no_api = build_transition_preflight(self.root, "F-001", action="dev-start")["facts"]["transition"]
+        self.assertEqual("ready", no_api["classification"])
+        self.assertEqual("pass", next(check for check in no_api["checks"] if check["code"] == "api-contract")["status"])
+
+        feature_with_api = body.replace(
+            "See [the persona](../personas/operator.md) for context.",
+            "## API surface\nSee [shared](../api-contracts/SHARED.md) for the endpoint.\n\nSee [the persona](../personas/operator.md) for context.",
+        )
+        self._write_feature(status="ready-for-dev", owner="dev", advisory="done", body=feature_with_api)
+        linked = build_transition_preflight(self.root, "F-001", action="dev-start")["facts"]["transition"]
+        self.assertEqual("blocked", linked["classification"])
+        self.assertEqual("blocked", next(check for check in linked["checks"] if check["code"] == "api-contract")["status"])
+
+    def test_advisory_required_actions_block_development_but_deferred_actions_do_not(self) -> None:
+        self._write_all_capabilities()
+        body = FEATURE_TEMPLATE.format(
+            feature_id="F-001",
+            title="Payout summary",
+            status="in-design",
+            owner="designer",
+            platforms="backend",
+            advisory="done",
+            advisory_reason="",
+        )
+        self._write_feature(status="in-design", owner="designer", advisory="done", body=body)
+        advisory = self.wiki_root / "advisory" / "F-001-review.md"
+        advisory.parent.mkdir(parents=True, exist_ok=True)
+        advisory.write_text(
+            "---\nfeature-id: F-001\nreviewed: 2026-09-08\nboard-members-consulted: [Reviewer]\n---\n\n"
+            "## Actions required before dev starts\n"
+            "- [ ] Confirm the settlement threshold with PO.\n\n"
+            "## Actions that can be deferred\n"
+            "- Add metrics after launch.\n",
+            encoding="utf-8",
+        )
+        blocked = build_transition_preflight(self.root, "F-001", action="design-handoff")["facts"]["transition"]
+        self.assertEqual("blocked", blocked["classification"])
+        self.assertEqual("blocked", next(check for check in blocked["checks"] if check["code"] == "advisory-actions")["status"])
+
+        advisory.write_text(
+            advisory.read_text(encoding="utf-8").replace("- [ ] Confirm", "- [x] Confirm"),
+            encoding="utf-8",
+        )
+        ready = build_transition_preflight(self.root, "F-001", action="design-handoff")["facts"]["transition"]
+        self.assertEqual("ready", ready["classification"])
+        self.assertEqual("pass", next(check for check in ready["checks"] if check["code"] == "advisory-actions")["status"])
+
+    def test_advisory_examples_in_comments_or_fences_cannot_satisfy_required_actions(self) -> None:
+        examples = [
+            """## Actions required before dev starts
+<!--
+- [x] Example action from a review template.
+-->""",
+            """## Actions required before dev starts
+```markdown
+- [x] Example action from a review template.
+```""",
+        ]
+        for body in examples:
+            with self.subTest(body=body):
+                pending, errors = parse_advisory_required_actions(body)
+                self.assertEqual([], pending)
+                self.assertTrue(errors)
+
+        pending, errors = parse_advisory_required_actions(
+            """## Actions required before dev starts
+- [x] Confirm the visible action.
+<!--
+- [ ] Ignore this commented example.
+-->"""
+        )
+        self.assertEqual([], pending)
+        self.assertEqual([], errors)
+
+    def test_delivery_evidence_ignores_examples_and_rejects_ambiguous_tables(self) -> None:
+        cases = [
+            """## Delivery evidence
+```markdown
+| Platform | Implementation | Tests | Release |
+|---|---|---|---|
+| backend | src | passed | deployed |
+```""",
+            """## Delivery evidence
+<!--
+| Platform | Implementation | Tests | Release |
+|---|---|---|---|
+| backend | src | passed | deployed |
+-->""",
+            """## Delivery evidence
+| Platform | Implementation | Tests | Release |
+|---|---|---|---|
+| backend | src | passed | deployed | extra |""",
+            """## Delivery evidence
+| Platform | Implementation | Tests | Release | Release |
+|---|---|---|---|---|
+| backend | src | passed | deployed | pending |""",
+        ]
+        for body in cases:
+            with self.subTest(body=body):
+                _rows, errors = parse_delivery_evidence(body, ["backend"])
+                self.assertTrue(errors)
+
+    def test_ready_preflight_is_copy_only_and_uses_canonical_id(self) -> None:
+        before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+
+        envelope = build_transition_preflight(self.root, "F-001")
+
+        transition = envelope["facts"]["transition"]
+        self.assertEqual("po-handoff", envelope["facts"]["requested_action"])
+        self.assertEqual("ready", transition["classification"])
+        self.assertTrue(transition["supported"])
+        self.assertEqual("ready-for-design", transition["target_status"])
+        self.assertEqual("$po-handoff F-001", transition["invocations"]["codex"])
+        self.assertEqual("/po-handoff F-001", transition["invocations"]["claude"])
+        self.assertEqual(["po-handoff"], envelope["facts"]["transition_capability"]["supported_actions"])
+        after = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+        self.assertEqual(before, after)
+
+    def test_repository_capability_templates_are_detected_on_both_surfaces(self) -> None:
+        for relative in CAPABILITY_FILES.values():
+            template_path = REPO_ROOT / "template" / Path(f"{relative.as_posix()}.jinja")
+            generated_path = self.root / relative
+            generated_path.write_text(template_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+        envelope = build_transition_preflight(self.root, "F-001")
+        capability = envelope["facts"]["transition_capability"]
+        surfaces = {surface["role"]: surface for surface in capability["surfaces"]}
+
+        self.assertTrue(surfaces["codex"]["available"])
+        self.assertTrue(surfaces["claude"]["available"])
+        self.assertEqual({"codex", "claude"}, set(envelope["facts"]["transition"]["invocations"]))
+
+    def test_missing_optional_capability_surface_does_not_block_available_surface(self) -> None:
+        (self.root / CAPABILITY_FILES["claude"]).unlink()
+
+        envelope = build_transition_preflight(self.root, "F-001")
+
+        transition = envelope["facts"]["transition"]
+        self.assertEqual("ready", transition["classification"])
+        self.assertTrue(transition["supported"])
+        self.assertEqual({"codex"}, set(transition["invocations"]))
+        surfaces = {surface["role"]: surface for surface in envelope["facts"]["transition_capability"]["surfaces"]}
+        self.assertTrue(surfaces["codex"]["available"])
+        self.assertFalse(surfaces["claude"]["available"])
+
+    def test_pending_advisory_and_open_po_question_block_without_losing_action_mapping(self) -> None:
+        body = FEATURE_TEMPLATE.format(
+            feature_id="F-001",
+            title="Payout summary",
+            status="specified",
+            owner="po",
+            platforms="backend",
+            advisory="pending",
+            advisory_reason="",
+        ).replace(
+            "|---|----------|-------|--------|\n\n## Platform scope",
+            "|---|----------|-------|--------|\n| 1 | Which period is authoritative? | po | open |\n\n## Platform scope",
+        )
+        self._write_feature(body=body, advisory="pending")
+
+        transition = build_transition_preflight(self.root, "F-001")["facts"]["transition"]
+
+        self.assertEqual("blocked", transition["classification"])
+        self.assertTrue(transition["supported"])
+        self.assertEqual("po-handoff", transition["action"])
+        statuses = {check["code"]: check["status"] for check in transition["checks"]}
+        self.assertEqual("blocked", statuses["open-questions"])
+        self.assertEqual("review", statuses["advisory-review"])
+
+    def test_empty_acceptance_and_mismatched_platform_scope_are_blocked(self) -> None:
+        body = FEATURE_TEMPLATE.format(
+            feature_id="F-001",
+            title="Payout summary",
+            status="specified",
+            owner="po",
+            platforms="backend",
+            advisory="not-needed",
+            advisory_reason="",
+        ).replace(
+            "- [ ] The summary includes the selected payout period.\n- [ ] The summary can be reviewed before it is handed off.",
+            "",
+        ).replace(
+            "- **backend**: The backend prepares the summary data.",
+            "- **mobile-ios**: The iOS app prepares the summary.",
+        )
+        self._write_feature(body=body)
+
+        transition = build_transition_preflight(self.root, "F-001")["facts"]["transition"]
+
+        self.assertEqual("blocked", transition["classification"])
+        statuses = {check["code"]: check["status"] for check in transition["checks"]}
+        self.assertEqual("blocked", statuses["acceptance-criteria"])
+        self.assertEqual("blocked", statuses["platform-section"])
+
+    def test_invalid_frontmatter_values_are_unknown_and_feature_is_retained(self) -> None:
+        body = FEATURE_TEMPLATE.format(
+            feature_id="F-001",
+            title="Payout summary",
+            status="null",
+            owner="[]",
+            platforms="backend",
+            advisory="not-needed",
+            advisory_reason="",
+        ).replace("status: null", "status: null").replace("owner: []", "owner: []")
+        self._write_feature(body=body, status="null", owner="[]")
+
+        envelope = build_transition_preflight(self.root, "F-001")
+        transition = envelope["facts"]["transition"]
+
+        self.assertEqual("unknown", transition["classification"])
+        self.assertFalse(transition["supported"])
+        self.assertIsNone(transition["action"])
+        self.assertIsNotNone(envelope["facts"]["feature"])
+
+    def test_unsupported_stage_has_explicit_gap_without_fabricated_completeness_checks(self) -> None:
+        self._write_feature(status="ready-for-design", owner="designer")
+
+        transition = build_transition_preflight(self.root, "F-001")["facts"]["transition"]
+
+        self.assertEqual("unknown", transition["classification"])
+        self.assertFalse(transition["supported"])
+        self.assertIsNone(transition["action"])
+        self.assertEqual(
+            {"feature-id", "unsupported-source-stage", "source-owner", "workspace-identity"},
+            {check["code"] for check in transition["checks"]},
+        )
+
+    def test_feature_scope_is_subset_of_workspace_scope(self) -> None:
+        (self.root / "mobile-ios").mkdir()
+        manifest = self.root / "prism.workspace.yml"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace("    - backend\n", "    - backend\n    - mobile-ios\n"),
+            encoding="utf-8",
+        )
+        self._write_feature(platforms="backend")
+        ready = build_transition_preflight(self.root, "F-001")["facts"]["transition"]
+        self.assertEqual("ready", ready["classification"])
+
+        self._write_feature(platforms="web-user-app")
+        blocked = build_transition_preflight(self.root, "F-001")["facts"]["transition"]
+        self.assertEqual("blocked", blocked["classification"])
+        self.assertTrue(any(check["code"] == "platform-scope" and check["status"] == "blocked" for check in blocked["checks"]))
+
+    def test_duplicate_canonical_ids_are_unknown(self) -> None:
+        self._write_feature(filename="F-001-another.md")
+
+        envelope = build_transition_preflight(self.root, "F-001")
+
+        self.assertEqual("unknown", envelope["facts"]["transition"]["classification"])
+        self.assertIn("duplicate-feature-id", {diagnostic["code"] for diagnostic in envelope["diagnostics"]})
+
+    def test_mixed_case_duplicate_id_blocks_graph_and_preflight(self) -> None:
+        self._write_feature(feature_id="f-001", filename="F-001-alias.md")
+
+        preflight = build_transition_preflight(self.root, "F-001")
+        self.assertEqual("unknown", preflight["facts"]["transition"]["classification"])
+
+        graph = build_graph(self.root)
+        canonical_node = next(
+            node
+            for node in graph["facts"]["nodes"]
+            if node["type"] == "feature" and node["transition"]["feature_id"] == "F-001"
+        )
+        self.assertEqual("unknown", canonical_node["transition"]["classification"])
+        self.assertFalse(canonical_node["transition"]["supported"])
+
+    def test_codex_capability_requires_real_dollar_invocation(self) -> None:
+        codex_path = self.root / CAPABILITY_FILES["codex"]
+        codex_path.write_text(
+            "<!-- prism:po-handoff-contract:v1 -->\n"
+            "The argument shape is F-XXX, but no command invocation is provided.\n",
+            encoding="utf-8",
+        )
+
+        envelope = build_transition_preflight(self.root, "F-001")
+        transition = envelope["facts"]["transition"]
+        surfaces = {surface["role"]: surface for surface in envelope["facts"]["transition_capability"]["surfaces"]}
+
+        self.assertFalse(surfaces["codex"]["available"])
+        self.assertEqual("unknown", next(check for check in transition["checks"] if check["code"] == "capability-codex")["status"])
+        self.assertNotIn("codex", transition.get("invocations", {}))
+        self.assertEqual({"claude"}, set(transition["invocations"]))
+
+    def test_observed_at_cache_is_stable_and_bounded(self) -> None:
+        from prism_cli import wiki_transitions
+
+        replacement: OrderedDict[str, str] = OrderedDict()
+        entries = (("snapshot", "stable"),)
+        key = fingerprint_digest(entries)
+        with patch.object(wiki_transitions, "_OBSERVED_AT_BY_FINGERPRINT", replacement):
+            with patch.object(wiki_transitions, "datetime") as mocked_datetime:
+                mocked_datetime.now.side_effect = [
+                    datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc),
+                    datetime(2026, 9, 8, 12, 1, tzinfo=timezone.utc),
+                ]
+                first = wiki_transitions._observed_at(entries)
+                second = wiki_transitions._observed_at(entries)
+                mocked_datetime.now.assert_called_once_with()
+            self.assertEqual(first, second)
+            self.assertEqual(1, len(replacement))
+
+            for index in range(_OBSERVED_AT_CACHE_LIMIT + 1):
+                wiki_transitions._observed_at((("eviction", str(index)),))
+
+            self.assertLessEqual(len(replacement), _OBSERVED_AT_CACHE_LIMIT)
+            self.assertNotIn(key, replacement)
+
+    def test_missing_schema_or_index_is_relevant_to_the_selected_feature(self) -> None:
+        (self.wiki_root / "SCHEMA.md").unlink()
+
+        transition = build_transition_preflight(self.root, "F-001")["facts"]["transition"]
+
+        self.assertEqual("unknown", transition["classification"])
+        self.assertTrue(any(check["code"] == "source-integrity" or check["code"].startswith("source-integrity:") for check in transition["checks"]))
+
+    def test_source_change_during_outer_read_marks_snapshot_inconsistent(self) -> None:
+        original_reader = read_feature_pages
+        changed = False
+
+        def reader(path: Path):
+            nonlocal changed
+            pages = original_reader(path)
+            if not changed:
+                changed = True
+                self.feature_path.write_text(
+                    self.feature_path.read_text(encoding="utf-8").replace("payout summary", "changed payout summary"),
+                    encoding="utf-8",
+                )
+            return pages
+
+        with patch("prism_cli.wiki_transitions.read_feature_pages", side_effect=reader):
+            envelope = build_transition_preflight(self.root, "F-001")
+
+        self.assertFalse(envelope["facts"]["transition_capability"]["snapshot"]["consistent"])
+        self.assertEqual("unknown", envelope["facts"]["transition"]["classification"])
+        self.assertIn("transition-source-changed", {diagnostic["code"] for diagnostic in envelope["diagnostics"]})
+
+    def test_source_change_during_envelope_assembly_invalidates_preflight(self) -> None:
+        from prism_cli import wiki_transitions
+
+        original_builder = wiki_transitions.build_envelope
+        changed = False
+
+        def builder(*args, **kwargs):
+            nonlocal changed
+            envelope = original_builder(*args, **kwargs)
+            if not changed:
+                changed = True
+                self.feature_path.write_text(
+                    self.feature_path.read_text(encoding="utf-8").replace("payout summary", "late payout summary"),
+                    encoding="utf-8",
+                )
+            return envelope
+
+        with patch("prism_cli.wiki_transitions.build_envelope", side_effect=builder):
+            envelope = build_transition_preflight(self.root, "F-001")
+
+        self.assertFalse(envelope["facts"]["transition_capability"]["snapshot"]["consistent"])
+        self.assertEqual("unknown", envelope["facts"]["transition"]["classification"])
+        self.assertIn("transition-source-changed", {diagnostic["code"] for diagnostic in envelope["diagnostics"]})
+
+    def test_source_change_during_graph_edge_read_invalidates_graph_transition(self) -> None:
+        from prism_cli import wiki_graph
+
+        original_collector = wiki_graph._collect_edges
+        changed = False
+
+        def collector(*args, **kwargs):
+            nonlocal changed
+            result = original_collector(*args, **kwargs)
+            if not changed:
+                changed = True
+                self.feature_path.write_text(
+                    self.feature_path.read_text(encoding="utf-8").replace("payout summary", "late payout summary"),
+                    encoding="utf-8",
+                )
+            return result
+
+        with patch("prism_cli.wiki_graph._collect_edges", side_effect=collector):
+            envelope = build_graph(self.root)
+
+        feature_nodes = [node for node in envelope["facts"]["nodes"] if node["type"] == "feature"]
+        self.assertEqual(1, len(feature_nodes))
+        self.assertEqual("unknown", feature_nodes[0]["transition"]["classification"])
+        self.assertFalse(envelope["facts"]["transition_capability"]["snapshot"]["consistent"])
+
+    def test_fingerprint_includes_capability_files(self) -> None:
+        before = workspace_fingerprint(self.root)
+        path = self.root / CAPABILITY_FILES["codex"]
+        path.write_text(path.read_text(encoding="utf-8") + "revision\n", encoding="utf-8")
+
+        self.assertNotEqual(before, workspace_fingerprint(self.root))
+
+    def test_cli_exposes_read_only_transition_preflight_json(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["wiki", "transition-preflight", "F-001", str(self.root), "--json"])
+        output = StringIO()
+        with redirect_stdout(output):
+            exit_code = args.func(args)
+
+        self.assertEqual(0, exit_code)
+        payload = json.loads(output.getvalue())
+        self.assertEqual("wiki transition-preflight", payload["command"])
+        self.assertEqual("F-001", payload["facts"]["transition"]["feature_id"])
+
+
+if __name__ == "__main__":
+    unittest.main()

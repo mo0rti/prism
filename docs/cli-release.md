@@ -54,8 +54,9 @@ python -m build --sdist --wheel
 python -m twine check dist/*
 ```
 
-The latest local results and artifact hashes are recorded in
-[cli-v2-acceptance.md](cli-v2-acceptance.md).
+The current handoff delivery's local checks and artifact hashes are recorded in
+[board-transitions-acceptance.md](board-transitions-acceptance.md). The earlier
+[CLI V2 acceptance](cli-v2-acceptance.md) remains a historical milestone record.
 
 Run a broad Copier render outside the repository and inspect the generated
 `prism.workspace.yml`. It should parse as YAML, carry `min_prism_cli_version: "0.2.0"`,

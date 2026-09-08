@@ -17,8 +17,15 @@ from prism_cli.wiki_model import (
     read_feature_pages,
     read_markdown_page,
     read_platform_requirement_pages,
+    read_wiki_pages,
 )
 from prism_cli.wiki_query import build_envelope
+from prism_cli.wiki_transitions import (
+    evaluate_transition_summaries,
+    finalize_transition_envelope,
+    workspace_fingerprint,
+)
+from prism_cli.workspace import inspect_workspace
 
 
 LIFECYCLE_STAGES = ["raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done"]
@@ -74,6 +81,8 @@ class GraphNode:
     advisory_review: str | None = None
     health: str = "ok"
     open_questions: tuple[tuple[str, str, str, str], ...] | None = None  # (number, question, owner, status)
+    transition: dict[str, Any] | None = None
+    transitions: tuple[dict[str, Any], ...] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {"id": self.id, "type": self.type, "title": self.title, "path": self.path, "health": self.health}
@@ -88,6 +97,10 @@ class GraphNode:
                 {"number": number, "question": question, "owner": owner, "status": status}
                 for number, question, owner, status in self.open_questions
             ]
+        if self.transition is not None:
+            data["transition"] = self.transition
+        if self.transitions is not None:
+            data["transitions"] = list(self.transitions)
         return data
 
 
@@ -104,10 +117,24 @@ class GraphEdge:
 
 def build_graph(root: Path) -> dict[str, Any]:
     workspace_root = root.expanduser().resolve()
+    initial_fingerprint = workspace_fingerprint(workspace_root)
     wiki_root = workspace_root / "knowledge" / "wiki"
     lint_result = lint_wiki(workspace_root)
+    feature_pages = read_feature_pages(wiki_root)
+    requirement_pages = read_platform_requirement_pages(wiki_root)
+    wiki_pages = read_wiki_pages(wiki_root)
+    inspection = inspect_workspace(workspace_root)
+    transition_evaluation = evaluate_transition_summaries(
+        workspace_root,
+        features=feature_pages,
+        lint_result=lint_result,
+        inspection=inspection,
+        requirement_pages=requirement_pages,
+        wiki_pages=wiki_pages,
+        initial_fingerprint=initial_fingerprint,
+    )
 
-    nodes, pages_by_id, path_to_id = _collect_nodes(wiki_root)
+    nodes, pages_by_id, path_to_id = _collect_nodes(wiki_root, feature_pages=feature_pages)
     edges, dangling = _collect_edges(wiki_root, nodes, pages_by_id, path_to_id)
 
     edged_platforms = {edge.target for edge in edges if edge.target.startswith("platform:")}
@@ -141,6 +168,12 @@ def build_graph(root: Path) -> dict[str, Any]:
             advisory_review=node.advisory_review,
             health=health_by_path.get(node.path or "", "ok"),
             open_questions=node.open_questions,
+            transition=transition_evaluation.transitions_by_path.get(node.path or ""),
+            transitions=(
+                tuple(transition_evaluation.transitions_list_by_path.get(node.path or "", []))
+                if node.path in transition_evaluation.transitions_list_by_path
+                else None
+            ),
         )
         for node in nodes.values()
     ]
@@ -160,12 +193,19 @@ def build_graph(root: Path) -> dict[str, Any]:
             "pending": list_queue_items(intake_root / "pending"),
             "quarantined": list_queue_items(intake_root / "quarantined"),
         },
+        "transition_capability": transition_evaluation.capability,
     }
-    sources = [str(wiki_root)] + sorted(node.path for node in sorted_nodes if node.path)
-    return build_envelope(workspace_root, "wiki graph", lint_result.diagnostics, facts, sources)
+    sources = [str(wiki_root), *transition_evaluation.sources] + sorted(node.path for node in sorted_nodes if node.path)
+    diagnostics = [*lint_result.diagnostics, *transition_evaluation.diagnostics]
+    envelope = build_envelope(workspace_root, "wiki graph", diagnostics, facts, sources)
+    return finalize_transition_envelope(workspace_root, envelope)
 
 
-def _collect_nodes(wiki_root: Path) -> tuple[dict[str, GraphNode], dict[str, Any], dict[str, str]]:
+def _collect_nodes(
+    wiki_root: Path,
+    *,
+    feature_pages: list[Any] | None = None,
+) -> tuple[dict[str, GraphNode], dict[str, Any], dict[str, str]]:
     nodes: dict[str, GraphNode] = {}
     pages_by_id: dict[str, Any] = {}
     path_to_id: dict[str, str] = {}
@@ -177,7 +217,7 @@ def _collect_nodes(wiki_root: Path) -> tuple[dict[str, GraphNode], dict[str, Any
         node_id = f"platform:{platform_id}"
         nodes[node_id] = GraphNode(id=node_id, type="platform", title=platform_id, path=None)
 
-    for feature in read_feature_pages(wiki_root):
+    for feature in feature_pages if feature_pages is not None else read_feature_pages(wiki_root):
         question_rows, _question_errors = parse_open_question_rows(feature.page.body)
         node_id = _unique_node_id(nodes, feature.feature_id, feature.page.path)
         node = GraphNode(

@@ -50,8 +50,8 @@ These are the best pages for understanding Prism quickly.
 | [getting-started.md](getting-started.md) | Builders and evaluators | Install Prism, generate a first sample, validate it, and enter the generated workflow |
 | [generated-projects.md](generated-projects.md) | Generated-project users | What a generated repo contains and what is safe to do first |
 | [prism-model.md](prism-model.md) | Evaluators and role leads | What Prism is, what problem it solves, and how the wiki-driven lifecycle works |
-| [wiki-workflow.md](wiki-workflow.md) | PO, design, and dev | How the wiki lifecycle, read/query layer, and handoff flow behave |
-| [wiki-visualization.md](wiki-visualization.md) | Evaluators and generated-project users | Run the synthetic TreasuryFlow demo and understand Graph, Board, Platforms, and Guide |
+| [wiki-workflow.md](wiki-workflow.md) | PO, design, and dev | How the wiki lifecycle actions, read/query layer, evidence, and handoff flow behave |
+| [wiki-visualization.md](wiki-visualization.md) | Evaluators and generated-project users | Run the synthetic TreasuryFlow demo and inspect the copy-only PO handoff preview across Graph, Board, Platforms, and Guide |
 
 ## Supporting Reference Docs
 
@@ -75,6 +75,7 @@ inside a generated project.
 | [questionnaire.md](questionnaire.md) | Generation inputs, defaults, and the current option-specific caveats maintainers need to track |
 | [cli-release.md](cli-release.md) | Local CLI release preparation, wheel checks, and publication boundary |
 | [cli-v2-acceptance.md](cli-v2-acceptance.md) | CLI v2 acceptance evidence and the remaining release review boundary |
+| [board-transitions-acceptance.md](board-transitions-acceptance.md) | Local evidence and acceptance boundaries for Board transition implementation |
 
 ## Related Root Files
 

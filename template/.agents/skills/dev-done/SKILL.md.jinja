@@ -5,21 +5,58 @@ description: Mark a feature as shipped. Use when implementation is complete and 
 
 # Dev Done
 
+<!-- prism:dev-done-contract:v1 -->
+
 Use this skill to mark one feature as shipped and close out its implementation state.
 
 ## Usage
 
 `$dev-done [F-XXX]`
 
+When available, probe the read-only transition contract:
+
+```text
+prism wiki transition-preflight F-XXX [path] --action dev-done --json
+```
+
+Accept the probe only when it has common envelope schema 1, command facts,
+capability version 2 with an action-specific `dev-done` surface, transition
+version 1, target owner `none`, and a consistent snapshot. A Prism version
+string alone is insufficient; use the direct-file fallback when a required
+fact, schema, action, capability, or snapshot is missing or fails. The
+preflight is copy-only and never authorizes a write.
+
 ## Workflow
 
-1. Read the feature file
-2. Ask the user for deviations, lessons learned, or board-review outcomes worth recording
-3. If needed, add `## Post-ship notes`
-4. Update the feature status to `done` and owner to `none`
-5. Update matching platform-requirements pages to `done`
-6. Update the API contract page to `implemented` if one exists
-7. Update `index.md` and append to `log.md`
+1. Resolve exactly one feature file and require the source pair `in-dev` + `dev`.
+2. Read SCHEMA, `index.md`, the feature, every declared platform requirement,
+   applicable API contract, linked context, workspace identity, delivery evidence,
+   advisory state, and active revalidation.
+3. For every declared platform, verify the actual implementation artifact, test
+   result, and release artifact or target that the current `## Delivery evidence`
+   table names. A substantive table cell, file presence, or clean lint result is
+   not verification. If `revalidation` includes `implementation`, `tests`, or
+   `release`, offer to perform fresh checks and prepare a proposal clearing only
+   the domains supported by that fresh evidence. Evaluate that proposal while
+   the current source is unchanged.
+4. Require applicable platform requirements to be `done`, applicable API
+   contracts to be `implemented`, and no unresolved revalidation or
+   open-question blocker after the proposed fresh evidence is evaluated. Pending
+   or `in-progress` requirement pages and an `agreed` API contract may be
+   proposed as complete only when the verified delivery evidence supports that
+   exact change; a draft API contract blocks. Show exact affected requirement/API
+   changes; preserve statuses already complete and never apply a blanket update.
+5. Ask the user for deviations, lessons learned, and board-review outcomes. Keep
+   any notes as proposed `## Post-ship notes` content until final confirmation.
+6. Show the full proposed write set and wait for explicit confirmation. Reread the
+   source and context immediately before confirmation and once again after it.
+7. After confirmation, write the confirmed notes and evidence, update only the
+   exact verified requirement/API pages proposed, update the feature to `done`
+   with owner `none`, update `index.md`, and append to `log.md`.
+
+Any CLI preflight or copied request is copy-only and never authorizes a write.
+Decline or cancel means no mutation. If a multi-file write is partial, report the
+exact observed changes and recover from a fresh reread; no transaction is implied.
 
 ## Rules
 
@@ -27,6 +64,10 @@ Use this skill to mark one feature as shipped and close out its implementation s
 - ask for post-ship notes before changing the final status
 - record meaningful deviations from the spec instead of silently dropping them
 - if a board review happened, ask whether any concerns materialized or proved unfounded
+- partial platform delivery remains `in-dev`; do not mark a feature `done` until
+  every declared platform has current evidence
+- if a multi-file write is partial, report exact observed changes and recover from
+  a fresh reread; no transaction is implied
 
 ## Canonical format reference
 

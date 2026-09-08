@@ -1,0 +1,118 @@
+---
+name: po-specify
+description: Promote one raw feature page to a structured specified draft after source checks and explicit confirmation. Use when raw wiki content is ready to become a PO-owned specification.
+---
+
+# PO Specify
+
+<!-- prism:po-specify-contract:v1 -->
+
+Read one raw feature page, prepare a canonical structured specification draft,
+and, after explicit confirmation, write one feature-only transition:
+
+`raw` + `po` -> `specified` + `po`
+
+## Usage
+
+`$po-specify [F-XXX]`
+
+## Scope and source guard
+
+- Resolve `[F-XXX]` to exactly one existing file at
+  `knowledge/wiki/features/[F-XXX]-[slug].md`.
+- Accept only the exact source pair `status: raw` and `owner: po`.
+- This action processes one feature page. It does not process, move, or rename
+  anything under `knowledge/intake/pending/`, `processed/`, or `quarantined/`.
+- Preserve the existing `advisory-review`, `sources`, `platforms`, and valid
+  tracked questions. Keep `owner: po`.
+- Raw input is an authoring source. If it already has the canonical structured
+  sections and substantive values required for `specified`, verify and preserve
+  that body; otherwise author the missing structure from supported facts. In
+  either case, show the body and metadata in the preview rather than performing
+  an unverified status-only write.
+
+## Read, preview, and confirmation
+
+Read `knowledge/wiki/SCHEMA.md`, `index.md`, the complete feature, linked context,
+and the workspace identity before preparing the preview. If the optional CLI is
+available, use:
+
+```text
+prism wiki transition-preflight F-XXX [path] --action po-specify --json
+```
+
+Accept a preflight only when it reports envelope schema 1, command facts,
+capability version 2 with an action-specific `po-specify` surface, transition
+version 1, the exact source pair, and a consistent current snapshot. A Prism
+version alone is insufficient. Missing or unsupported capability falls back to
+the direct-file protocol in `SCHEMA.md`.
+
+Show the observed source fields, structural checks, proposed destination, and
+the complete write set before asking for confirmation. The preview is copy-only;
+it does not authorize a write. Immediately before confirmation, reread the
+source, index, identity, and linked context and compare the recorded path,
+identity, status, owner, advisory state, and fingerprint.
+
+## Structured draft preparation
+
+Read the complete raw body and prepare a proposed canonical feature body. Carry
+forward facts that are present in the raw page or linked workspace context and
+do not invent product substance. The draft must show proposed values for all
+required feature sections, including:
+
+- `## Summary`
+- `## User story`
+- `## Acceptance criteria`
+- `## Platform scope`
+- `## Open questions`
+- `## Design`
+- `## Related features`
+- `## API surface`
+- `## Board review summary`
+- `## Post-ship notes`
+
+Unknown facts remain explicit owned questions for `po`, `designer`, or `dev`.
+An open question is valid structured output; `TODO`, `TBD`, copied template
+filler, and empty placeholder requirements are not. Show the complete proposed
+body diff together with the frontmatter, index, and log metadata before asking
+for confirmation. When structure or content is missing, the confirmed write set
+includes the authored body. When the raw page already meets the structured draft
+contract, preserve that valid body and show that no body rewrite is proposed;
+the confirmed write set may then contain only the status/metadata, index, and log
+updates. In both cases, never perform an unverified status-only write.
+
+## Specification checks
+
+- The feature ID and filename resolve to one canonical page.
+- Required feature frontmatter and the feature page shape are valid.
+- The declared platform list is valid and its `## Platform scope` section is
+  present and limited to the feature's platforms.
+- The proposed body (which may be unchanged when the raw body is verified as
+  complete) supplies every required section with either supported content or an
+  explicit owned question.
+- Missing product facts are represented as explicit open questions owned by
+  `po`, `designer`, or `dev`; do not invent requirements or silently delete
+  questions. Tracked questions, including open PO questions, are allowed at
+  `specified`.
+- Preserve the existing advisory state. A pending review remains pending and is
+  still a blocker for later actions that require advisory completion.
+
+These are observable structure checks. They do not claim semantic completeness
+or authorize the next handoff.
+
+## Write order and recovery
+
+After a second confirmation-gated reread, write the confirmed structured body
+and metadata, update the feature status to `specified`, keep `owner: po`,
+update the matching `index.md` row, and append the required `log.md` entry.
+Update `last-updated` as part of the feature change.
+Do not move intake folders or write unrelated wiki files. If the user declines
+or cancels, make no feature, index, or log change. If a multi-file write is
+partially applied, report every file and observed field that changed, stop, and
+require a fresh read before recovery; do not claim the update was transactional.
+
+## Output
+
+Return the exact source and destination fields, structural evidence, preserved
+advisory/question state, proposed writes, and the final observed result. Never
+claim that this action proves design, implementation, testing, or shipment.

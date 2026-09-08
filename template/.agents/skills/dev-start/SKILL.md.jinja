@@ -1,0 +1,48 @@
+---
+name: dev-start
+description: Start implementation for one feature after design handoff. Use when a feature is ready-for-dev and the developer is taking ownership.
+---
+
+# Dev Start
+
+<!-- prism:dev-start-contract:v1 -->
+
+Prepare, preview, and, after explicit confirmation, write one feature-only
+transition:
+
+`ready-for-dev` + `dev` -> `in-dev` + `dev`
+
+## Usage
+
+`$dev-start [F-XXX]`
+
+Resolve `[F-XXX]` to exactly one existing feature file and accept only the exact
+source pair above. Read SCHEMA, index, the complete feature, every declared
+platform-requirement page, any applicable API contract, linked design/context,
+and workspace identity.
+
+Use the optional read-only probe when available:
+
+```text
+prism wiki transition-preflight F-XXX [path] --action dev-start --json
+```
+
+Require envelope schema 1, command facts, capability version 2 with an
+action-specific `dev-start` surface, transition version 1, target owner `dev`,
+and a consistent snapshot. A version string alone is insufficient. Use direct
+file checks when the probe is missing or unsupported. The preflight is copy-only
+and never authorizes a write.
+
+Check that required design/advisory prerequisites are met and inspect active
+`revalidation`. An active `specification` or `design` domain blocks this
+downstream start until the owning handoff verifies it. Other active delivery
+domains identify work for the developer and may remain while implementation
+starts. Report actual platform/API evidence; a present file does not prove
+implementation or shipment. Show the exact source, destination, evidence, and
+feature/index/log write set. Reread immediately before confirmation and once
+after it. On confirmation, update the feature to `in-dev` with `owner: dev`,
+update the index row, and append the log entry.
+
+Decline or cancel means no writes. If a multi-file write is partial, report each
+observed change and stop for fresh recovery; no transaction is implied. This
+action starts implementation and does not mark any platform shipped.

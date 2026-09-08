@@ -20,6 +20,14 @@ VALID_PLATFORM_IDS = {"backend", "mobile-android", "mobile-ios", "web-user-app",
 VALID_PLATFORM_REQUIREMENT_STATUSES = {"pending", "in-progress", "done"}
 UI_PLATFORM_IDS = {"mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"}
 DEFAULT_WIKI_STALE_AFTER_DAYS = 14
+REVALIDATION_DOMAINS = {
+    "specification",
+    "design",
+    "implementation",
+    "tests",
+    "release",
+}
+DELIVERY_EVIDENCE_COLUMNS = ("platform", "implementation", "tests", "release")
 
 
 @dataclass(frozen=True)
@@ -296,6 +304,197 @@ def section_text(body: str, heading: str) -> str:
             end = index
             break
     return "".join(lines[start:end]) if start is not None else ""
+
+
+def parse_revalidation(value: Any) -> tuple[list[str], list[str]]:
+    """Parse the optional current-work revalidation domain list.
+
+    The list is deliberately strict: unknown domains would otherwise make a
+    reopened feature appear current while the evaluator has no way to know
+    which downstream evidence is pending.
+    """
+
+    if value is None:
+        return [], []
+    if not isinstance(value, list):
+        return [], ["`revalidation` must be a list of lifecycle domains."]
+    domains: list[str] = []
+    errors: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            errors.append("Every `revalidation` entry must be a non-empty domain string.")
+            continue
+        domain = item.strip().lower()
+        if domain not in REVALIDATION_DOMAINS:
+            errors.append(
+                f"`revalidation` contains unsupported domain `{item}`; expected one of {sorted(REVALIDATION_DOMAINS)}."
+            )
+            continue
+        if domain in domains:
+            errors.append(f"`revalidation` contains duplicate domain `{domain}`.")
+            continue
+        domains.append(domain)
+    return domains, errors
+
+
+def parse_delivery_evidence(
+    body: str,
+    declared_platforms: list[str],
+) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """Parse the canonical per-platform delivery evidence table.
+
+    This validates only observable structure and substantive cells.  It does
+    not claim that referenced implementation, test, or release artifacts exist;
+    the responsible agent must verify those references before writing Done.
+    """
+
+    section = section_text(body, "Delivery evidence")
+    if not section.strip():
+        return {}, ["Required `Delivery evidence` section is missing or empty."]
+
+    table_lines = _visible_evidence_table_lines(section)
+    if not table_lines:
+        return {}, ["Delivery evidence must contain a markdown table."]
+
+    header: list[str] | None = None
+    header_indexes: dict[str, int] = {}
+    rows: dict[str, dict[str, str]] = {}
+    errors: list[str] = []
+    for line in table_lines:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        normalized = [re.sub(r"[*_`]+", "", cell).strip().lower() for cell in cells]
+        if header is None:
+            if len(normalized) == len(DELIVERY_EVIDENCE_COLUMNS) and set(normalized) == set(DELIVERY_EVIDENCE_COLUMNS):
+                header = cells
+                header_indexes = {column: normalized.index(column) for column in DELIVERY_EVIDENCE_COLUMNS}
+                continue
+            if _is_separator_row(cells):
+                continue
+            errors.append("Delivery evidence table is missing the Platform/Implementation/Tests/Release header.")
+            continue
+        if len(normalized) == len(DELIVERY_EVIDENCE_COLUMNS) and set(normalized) == set(DELIVERY_EVIDENCE_COLUMNS):
+            errors.append("Delivery evidence contains more than one header/table.")
+            continue
+        if _is_separator_row(cells):
+            continue
+        if len(cells) != len(DELIVERY_EVIDENCE_COLUMNS):
+            errors.append("Delivery evidence table rows must contain exactly Platform, Implementation, Tests, and Release cells.")
+            continue
+        platform = cells[header_indexes["platform"]].strip().lower()
+        if not platform:
+            errors.append("Every delivery evidence row must name a platform.")
+            continue
+        if platform in rows:
+            errors.append(f"Delivery evidence contains duplicate platform `{platform}` rows.")
+            continue
+        row = {
+            column: cells[index].strip()
+            for column, index in header_indexes.items()
+        }
+        rows[platform] = row
+        for column in DELIVERY_EVIDENCE_COLUMNS[1:]:
+            if not _substantive_evidence_cell(row[column]):
+                errors.append(f"Delivery evidence `{column}` for `{platform}` is empty or still a placeholder.")
+
+    if header is None:
+        errors.append("Delivery evidence table has no usable header row.")
+
+    declared = {platform.strip().lower() for platform in declared_platforms if isinstance(platform, str) and platform.strip()}
+    missing = sorted(declared - set(rows))
+    extra = sorted(set(rows) - declared)
+    if missing:
+        errors.append("Delivery evidence is missing declared platform(s): " + ", ".join(missing) + ".")
+    if extra:
+        errors.append("Delivery evidence contains undeclared platform(s): " + ", ".join(extra) + ".")
+    return rows, errors
+
+
+def parse_advisory_required_actions(body: str) -> tuple[list[str], list[str]]:
+    """Return unchecked pre-development advisory actions and parse errors."""
+
+    section = section_text(body, "Actions required before dev starts")
+    if not section.strip():
+        return [], ["Advisory review is missing `Actions required before dev starts`."]
+    pending: list[str] = []
+    errors: list[str] = []
+    visible_lines = _visible_markdown_lines(section)
+    if len(visible_lines) == 1 and re.sub(r"[.\s]+$", "", visible_lines[0]).lower() in {
+        "none",
+        "none required",
+        "no actions required",
+    }:
+        return [], []
+    for line in visible_lines:
+        if line.startswith("<!--") or line.endswith("-->"):
+            continue
+        match = re.match(r"^[-*+]\s+\[([ xX])\]\s+(.*)$", line)
+        if match:
+            action = match.group(2).strip()
+            if not action:
+                errors.append("Advisory required-action checklist contains an empty item.")
+            elif match.group(1) == " ":
+                pending.append(action)
+            continue
+        if re.match(r"^[-*+]\s+", line):
+            errors.append("Advisory required actions must use checked or unchecked checklist items.")
+            continue
+        if line.startswith("|"):
+            errors.append("Advisory required actions must be a checklist, not a table row.")
+            continue
+        errors.append("Advisory required-action section contains an unstructured line.")
+    if not pending and not errors and not any(re.match(r"^[-*+]\s+", line) for line in visible_lines):
+        errors.append("Advisory required-action section has no checklist items or explicit `None`.")
+    return pending, errors
+
+
+def _visible_evidence_table_lines(section: str) -> list[str]:
+    """Return table lines outside fenced code and HTML comments."""
+
+    return [line for line in _visible_markdown_lines(section) if line.startswith("|")]
+
+
+def _visible_markdown_lines(text: str) -> list[str]:
+    """Return non-empty Markdown lines outside fences and HTML comments."""
+
+    visible: list[str] = []
+    fenced = False
+    in_comment = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("```") or line.startswith("~~~"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if in_comment:
+            if "-->" in line:
+                in_comment = False
+                line = line.split("-->", 1)[1].strip()
+            else:
+                continue
+        while "<!--" in line:
+            before, remainder = line.split("<!--", 1)
+            if "-->" in remainder:
+                line = before + remainder.split("-->", 1)[1]
+            else:
+                line = before
+                in_comment = True
+                break
+        line = line.strip()
+        if line:
+            visible.append(line)
+    return visible
+
+
+def _substantive_evidence_cell(value: str) -> bool:
+    normalized = re.sub(r"\s+", " ", value).strip().lower()
+    if not normalized or normalized.startswith("<!--") or normalized.endswith("-->"):
+        return False
+    if normalized in {"-", "—", "todo", "tbd", "pending", "n/a", "na", "none", "not supplied"}:
+        return False
+    if re.fullmatch(r"\[[^\]]+\]", normalized):
+        return False
+    return True
 
 
 def feature_id_from_path(path: Path) -> str | None:

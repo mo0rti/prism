@@ -5,31 +5,63 @@ description: Move a feature from design to development readiness. Use when valid
 
 # Design Handoff
 
+<!-- prism:design-handoff-contract:v1 -->
+
 Use this skill to move one feature into `ready-for-dev` and generate platform requirements.
 
 ## Usage
 
 `$design-handoff [F-XXX]`
 
+When available, probe the read-only transition contract:
+
+```text
+prism wiki transition-preflight F-XXX [path] --action design-handoff --json
+```
+
+Accept the probe only when it has common envelope schema 1, command facts,
+capability version 2 with an action-specific `design-handoff` surface,
+transition version 1, target owner `dev`, and a consistent snapshot. A Prism
+version string alone is insufficient; use the direct-file fallback when a
+required fact, schema, action, capability, or snapshot is missing or fails.
+The preflight is copy-only and never authorizes a write.
+
 ## Workflow
 
-1. Read the feature file
-2. Read the linked design file if one exists
-3. Determine whether UI platforms are in scope
-4. Run the completeness check for design coverage, open questions, and current status
-5. Check the `advisory-review` state and stop or branch as required
-6. If the feature is incomplete, report what is missing and stop
-7. If complete, show the proposed status and owner change and wait for confirmation
-8. After confirmation, update the feature file, generate platform-requirements pages, update `index.md`, and append to `log.md`
+1. Resolve exactly one feature file and require the source pair
+   `in-design` + `designer`.
+2. Read `knowledge/wiki/SCHEMA.md`, `index.md`, the feature, linked design/context,
+   workspace identity, and current platform/API/advisory evidence.
+3. Determine whether UI platforms are in scope and run the design completeness
+   checks defined in SCHEMA.
+4. Check advisory state and active `revalidation` domains. An active
+   `specification` domain blocks this handoff. If `design` is active, prepare a
+   fresh design verification and a proposal clearing only that domain; evaluate
+   it while the source remains unchanged. Pending advisory review remains an
+   unresolved blocker; use only the existing board-review or explicit skip policy.
+5. If incomplete, show the missing evidence and stop. If complete, show the full
+   proposed status/owner change, generated platform-requirement pages, and write set.
+6. Reread immediately before asking for confirmation and once again after it.
+   After confirmation, update the feature, generate requirements, update `index.md`,
+   and append to `log.md`.
+
+Any CLI preflight or copied request is copy-only and never authorizes a write.
+Decline or cancel means no mutation. If a multi-file write is partial, report the
+exact observed changes and recover from a fresh reread; no transaction is implied.
 
 ## Rules
 
 - write-capable skill
 - do not hand off an incomplete feature
-- if UI platforms are in scope, a design decision or explicit `design: not-applicable` reason must exist
+- if UI platforms are in scope, a design page must cover the feature unless the
+  feature frontmatter contains `design: not-applicable` and a non-empty
+  `design-exemption-reason`; the user must explicitly confirm that exemption
+- if no UI platforms are in scope, visual design is not required
 - if `advisory-review: pending`, stop and route through board review or require an explicit skip reason
 - if board review actions required before development remain open, list them before proceeding
 - do not write status changes or platform requirements until the user confirms the handoff
+- a partial multi-file write must be reported with the exact observed changes and
+  recovered from a fresh reread; no transaction is implied
 
 ## Canonical format reference
 

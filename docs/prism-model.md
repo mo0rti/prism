@@ -156,19 +156,30 @@ This setup flow:
 - drop raw notes into `knowledge/intake/pending/`
 - run `po-intake`
 - answer PO-owned open questions with `po-clarify`
-- move a feature forward with `po-handoff`
+- author a raw feature as a structured draft with `po-specify`
+- move a verified feature forward with `po-handoff`
 
 ### Designer
 
 - attach design artifacts with `design-intake`
 - resolve design questions with `design-clarify`
+- start confirmed work with `design-start`
 - move the feature to dev readiness with `design-handoff`
 
 ### Developer
 
 - inspect readiness with `prep-sprint`
+- start confirmed implementation with `dev-start`
 - read feature and platform requirement context before implementing
 - mark shipped work with `dev-done`
+
+### Reopening shipped work
+
+`feature-reopen F-XXX [specified|in-design|in-dev]` starts one impact-reviewed
+revalidation route. It preserves the prior completion record, removes old active
+delivery evidence from readiness, and marks only the affected domains and
+requirements for fresh evidence. Reopening does not reset unrelated features or
+shared API contracts.
 
 ### Shared coordination
 
@@ -177,6 +188,13 @@ This setup flow:
 - `ask` routes questions to PO, Designer, or Developer
 - `audit-feature` cross-checks a feature against source intake
 - the wiki read/query layer provides targeted drill-down tools
+
+Every write-capable lifecycle action is confirmation-gated and source-backed.
+`po-specify` authors the required structured body from raw facts; `dev-done`
+requires verifiable implementation, test, and release evidence for every
+declared platform. The canonical action table, UI design exemption, active
+revalidation, delivery evidence, and reopen history formats live in
+`template/knowledge/wiki/SCHEMA.md`.
 
 ## Advisory Board Model
 

@@ -1,24 +1,78 @@
-# Dev done — mark a feature as shipped
+# Dev done - mark a feature as shipped
+
+<!-- prism:dev-done-contract:v1 -->
 
 ## Usage
-/dev-done [F-XXX]
 
-## What this command does
+`/dev-done [F-XXX]`
 
-1. Read `knowledge/wiki/features/[F-XXX]-[slug].md`
-2. Show the user what will change and ask:
-   "Any deviations from the spec to record? Any board review concerns that turned out
-   differently in implementation than expected? Any lessons learned?"
-3. If the user provides notes, append a `## Post-ship notes` section to the feature file
-4. Update feature file: status → `done`, owner → `none`
-5. Update all platform-requirements pages: status → `done`
-6. Update api-contracts page if it exists: status → `implemented`
-7. Update `index.md` status board
-8. Append to `log.md`
+## Read-only preflight
 
-## Notes for the agent
+When available, use:
 
-- If a board review was done for this feature, ask specifically: "Did any of the board's
-  concerns materialize? Were any concerns unfounded? This helps calibrate future reviews."
-- Deviations from spec are valuable wiki content. If the developer built something
-  different from what was specified, that difference belongs in post-ship notes.
+```text
+prism wiki transition-preflight F-XXX [path] --action dev-done --json
+```
+
+Accept it only with common envelope schema 1, command facts, capability version
+2 and an action-specific `dev-done` surface, transition version 1, target owner
+`none`, and a consistent snapshot. The Prism version alone does not prove
+support. If any required fact, schema, action, capability, or snapshot is
+missing or fails, fall back to direct-file checks. The preflight is copy-only
+and never authorizes a write.
+
+## Supported action
+
+`in-dev` + `dev` -> `done` + `none`
+
+Resolve exactly one `knowledge/wiki/features/[F-XXX]-[slug].md` source file and
+require `status: in-dev` with `owner: dev`. A missing, invalid, ambiguous, or
+different source pair is a stop condition.
+
+## Evidence and confirmation
+
+Read `knowledge/wiki/SCHEMA.md`, `index.md`, the complete feature, every declared
+platform-requirement page, any applicable API contract, linked context, workspace
+identity, advisory state, delivery evidence, and active `revalidation` domains.
+
+For every declared platform, verify the actual implementation artifact, test
+result, and release artifact or target named by the current `## Delivery
+evidence` table. A substantive table cell, file presence, or clean lint result
+is not verification. If `revalidation` includes `implementation`, `tests`, or
+`release`, offer to perform fresh checks and prepare a proposal clearing only
+the domains supported by that fresh evidence. Evaluate that proposal while the
+current source remains unchanged.
+
+Require a current `## Delivery evidence` table with exactly one substantive
+Implementation, Tests, and Release entry for every declared platform. Require
+applicable platform requirements to be `done`, applicable API contracts to be
+`implemented`, and no unresolved revalidation or open-question blocker after
+the proposed fresh evidence is evaluated. Pending or `in-progress` requirement
+pages and an `agreed` API contract may be proposed as complete only when the
+verified delivery evidence supports that exact change; a draft API contract
+blocks. Show exact affected requirement/API changes; preserve statuses already
+complete and never apply a blanket update.
+
+Ask the user:
+
+"Any deviations from the spec to record? Any board review concerns that turned
+out differently in implementation than expected? Any lessons learned?"
+
+If the user provides notes, keep them as proposed `## Post-ship notes` content
+until final confirmation. Show the complete feature, exact requirements/API,
+index, and log write set. Reread the source and context immediately before
+confirmation and once again after it. Only after explicit confirmation may the
+confirmed notes and evidence be written, the feature become `done`/`none`,
+exact verified requirements become `done`, an applicable API contract become
+`implemented`, and the index/log be updated.
+
+Partial platform delivery remains `in-dev`; do not mark a feature done until all
+declared platforms have current delivery evidence. If a multi-file write is
+partial, report the exact observed changes and stop for fresh recovery; no
+transaction is implied. The preflight and any copied request are copy-only and
+never authorize a write. Decline or cancel means no mutation.
+
+If a board review happened, ask whether any concerns materialized or proved
+unfounded. Record meaningful deviations rather than silently dropping them. This
+action records shipment; it does not prove a future release or deployment beyond
+the evidence the user and agent recorded.

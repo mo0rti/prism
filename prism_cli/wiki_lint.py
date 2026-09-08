@@ -26,6 +26,9 @@ from prism_cli.wiki_model import (
     parse_index_feature_rows,
     parse_iso_date,
     parse_open_question_rows,
+    parse_delivery_evidence,
+    parse_advisory_required_actions,
+    parse_revalidation,
     read_feature_pages,
     read_platform_requirement_pages,
     read_wiki_settings,
@@ -37,7 +40,7 @@ from prism_cli.workspace import detect_workspace_kind, inspect_workspace
 
 DEFAULT_WIKI_STALE_AFTER_DAYS = 14
 PENDING_BOARD_REVIEW_STATUSES = {"ready-for-design", "in-design", "ready-for-dev", "in-dev"}
-DESIGN_REQUIRED_STATUSES = {"ready-for-dev", "in-design"}
+DESIGN_REQUIRED_STATUSES = {"ready-for-dev", "in-dev", "done"}
 PLATFORM_REQUIREMENTS_REQUIRED_STATUSES = {"ready-for-dev", "in-dev"}
 API_CONTRACT_DOWNSTREAM_STATUSES = {"ready-for-dev", "in-dev"}
 
@@ -66,6 +69,7 @@ _FEATURE_ID_PATTERN = re.compile(r"\bF-\d+\b")
 _FEATURE_FILE_PATTERN = re.compile(r"\bF-\d+(?:-[A-Za-z0-9][A-Za-z0-9_-]*)?\.md\b")
 _MARKDOWN_LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]*\]\([^)]*\)")
 _WIKI_PATH_PATTERN = r"(?P<path>(?:(?:knowledge/)?wiki/)?(?:\.\.?/)*(?:{directory})/[A-Za-z0-9][A-Za-z0-9_-]*\.md\b)"
+_EXTERNAL_URL_PATTERN = re.compile(r"(?i)(?:(?:https?|ftp):|//)[^\s<>()]+")
 _NON_SOURCE_FILENAMES = {
     "BOARD.md",
     "PROJECT_FOUNDATION.md",
@@ -204,6 +208,10 @@ def lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRes
             )
         features_by_id[feature_id] = feature
 
+    for feature in feature_pages:
+        if feature.status == "done":
+            diagnostics.extend(_lint_done_completion(feature, requirement_pages, all_pages, wiki_root))
+
     # Auxiliary pages have their own frontmatter formats. Surface parse errors
     # so a malformed design, contract, or decision cannot silently disappear
     # from the read surface.
@@ -309,6 +317,171 @@ def _read_stale_after_days(wiki_root: Path) -> tuple[int, list[WikiDiagnostic]]:
     return settings.stale_after_days, diagnostics
 
 
+def _lint_done_completion(
+    feature: FeaturePage,
+    requirement_pages: list[PlatformRequirementPage],
+    pages: list[MarkdownPage],
+    wiki_root: Path,
+) -> list[WikiDiagnostic]:
+    """Apply the post-write Done invariants to a completed feature."""
+
+    diagnostics: list[WikiDiagnostic] = []
+    feature_id = feature.feature_id.strip().lower()
+    if feature.advisory_review == "pending":
+        diagnostics.append(
+            _diag(
+                "pending-board-review",
+                "error",
+                feature.page.path,
+                f"Done feature `{feature.feature_id}` cannot retain `advisory-review: pending`.",
+                feature.feature_id,
+            )
+        )
+    open_questions, _question_errors = parse_open_question_rows(feature.page.body)
+    for row in open_questions:
+        if row["status"] == "open" and row["owner"] in VALID_OPEN_QUESTION_OWNERS:
+            diagnostics.append(
+                _diag(
+                    "unresolved-open-questions",
+                    "error",
+                    feature.page.path,
+                    f"Done feature `{feature.feature_id}` has an open question assigned to `{row['owner']}` (#{row['number']}).",
+                    feature.feature_id,
+                )
+            )
+    requirements = {
+        (requirement.feature_id.strip().lower(), requirement.platform.strip().lower()): requirement
+        for requirement in requirement_pages
+        if isinstance(requirement.feature_id, str) and isinstance(requirement.platform, str)
+    }
+    for platform in feature.platforms:
+        requirement = requirements.get((feature_id, platform.strip().lower()))
+        if requirement is None:
+            diagnostics.append(
+                _diag(
+                    "done-platform-requirement",
+                    "error",
+                    feature.page.path,
+                    f"Done feature `{feature.feature_id}` requires a completed platform requirement for `{platform}`.",
+                    feature.feature_id,
+                )
+            )
+        elif requirement.status != "done":
+            diagnostics.append(
+                _diag(
+                    "done-platform-requirement",
+                    "error",
+                    requirement.page.path,
+                    f"Done feature `{feature.feature_id}` has `{platform}` requirement status `{requirement.status}`; expected `done`.",
+                    feature.feature_id,
+                )
+            )
+
+    api_pages = _api_contract_pages_for_feature(feature, requirement_pages, pages, wiki_root)
+    api_section = re.sub(r"\s+", " ", section_text(feature.page.body, "API surface")).strip().lower()
+    api_applicable = bool(api_section) and api_section not in {"none", "no api", "not applicable", "n/a"}
+    if api_applicable and not api_pages:
+        diagnostics.append(
+            _diag(
+                "done-api-contract",
+                "error",
+                feature.page.path,
+                f"Done feature `{feature.feature_id}` declares an API surface but has no applicable API contract.",
+                feature.feature_id,
+            )
+        )
+    for page in api_pages:
+        if page.frontmatter.get("status") != "implemented":
+            diagnostics.append(
+                _diag(
+                    "done-api-contract",
+                    "error",
+                    page.path,
+                    f"Done feature `{feature.feature_id}` requires applicable API contract `{page.path.name}` to be `implemented`.",
+                    feature.feature_id,
+                )
+            )
+    if feature.advisory_review == "done":
+        advisory_root = (wiki_root / "advisory").resolve()
+        reviews: list[MarkdownPage] = []
+        for page in pages:
+            if not _is_under(page.path, advisory_root):
+                continue
+            page_feature_id = page.frontmatter.get("feature-id")
+            if not isinstance(page_feature_id, str) or not page_feature_id.strip():
+                page_feature_id = feature_id_from_path(page.path)
+            if isinstance(page_feature_id, str) and page_feature_id.strip().lower() == feature_id:
+                reviews.append(page)
+        if len(reviews) != 1:
+            diagnostics.append(
+                _diag(
+                    "done-advisory-actions",
+                    "error",
+                    feature.page.path,
+                    f"Done feature `{feature.feature_id}` requires one advisory review page with a checkable required-action section.",
+                    feature.feature_id,
+                )
+            )
+        else:
+            pending, action_errors = parse_advisory_required_actions(reviews[0].body)
+            for message in action_errors:
+                diagnostics.append(_diag("done-advisory-actions", "error", reviews[0].path, message, feature.feature_id))
+            if pending:
+                diagnostics.append(
+                    _diag(
+                        "done-advisory-actions",
+                        "error",
+                        reviews[0].path,
+                        f"Done feature `{feature.feature_id}` retains unchecked advisory actions: " + "; ".join(pending) + ".",
+                        feature.feature_id,
+                    )
+                )
+    return diagnostics
+
+
+def _api_contract_pages_for_feature(
+    feature: FeaturePage,
+    requirement_pages: list[PlatformRequirementPage],
+    pages: list[MarkdownPage],
+    wiki_root: Path,
+) -> list[MarkdownPage]:
+    api_root = (wiki_root / "api-contracts").resolve()
+    by_path = {page.path.resolve(): page for page in pages if _is_under(page.path, api_root)}
+    feature_id = feature.feature_id.strip().lower()
+    result: list[MarkdownPage] = []
+    for page in by_path.values():
+        page_feature_id = page.frontmatter.get("feature-id")
+        if not isinstance(page_feature_id, str) or not page_feature_id.strip():
+            page_feature_id = feature_id_from_path(page.path)
+        if isinstance(page_feature_id, str) and page_feature_id.strip().lower() == feature_id:
+            result.append(page)
+    sources = [feature.page] + [
+        requirement.page
+        for requirement in requirement_pages
+        if isinstance(requirement.feature_id, str)
+        and requirement.feature_id.strip().lower() == feature_id
+        and requirement.platform in feature.platforms
+    ]
+    for source in sources:
+        for raw_target in extract_markdown_links(source.body):
+            target = _reference_path(source.path, raw_target, wiki_root, "api-contracts")
+            if target is not None and target in by_path and by_path[target] not in result:
+                result.append(by_path[target])
+        for raw_target in _wiki_path_references(source.body, "api-contracts"):
+            target = _reference_path(source.path, raw_target, wiki_root, "api-contracts")
+            if target is not None and target in by_path and by_path[target] not in result:
+                result.append(by_path[target])
+    return sorted(result, key=lambda page: page.path.as_posix())
+
+
+def _is_under(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return True
+
+
 def _lint_feature_blockers(
     feature_pages: list[FeaturePage],
     requirements_by_feature_platform: dict[tuple[str | None, str | None], PlatformRequirementPage],
@@ -333,14 +506,28 @@ def _lint_feature_blockers(
             missing_design_platforms = sorted(
                 {platform_id for platform_id in feature.platforms if platform_id in UI_PLATFORM_IDS}
             )
-            if missing_design_platforms and feature_id not in designs_by_feature:
+            if (
+                missing_design_platforms
+                and feature_id not in designs_by_feature
+                and not _has_valid_design_exemption(feature)
+            ):
                 platforms = ", ".join(missing_design_platforms)
+                if feature.page.frontmatter.get("design") == "not-applicable":
+                    message = (
+                        f"Feature `{feature_id}` declares `design: not-applicable` for UI platform(s) "
+                        f"{platforms}, but `design-exemption-reason` is missing or blank."
+                    )
+                else:
+                    message = (
+                        f"Feature `{feature_id}` is {feature.status} for UI platform(s) {platforms} "
+                        "but has no matching design page or valid confirmed design exemption."
+                    )
                 diagnostics.append(
                     _diag(
                         "missing-design",
                         "error",
                         path,
-                        f"Feature `{feature_id}` is {feature.status} for UI platform(s) {platforms} but has no matching design page.",
+                        message,
                         feature_id,
                     )
                 )
@@ -375,6 +562,15 @@ def _lint_feature_blockers(
                         )
                     )
     return diagnostics
+
+
+def _has_valid_design_exemption(feature: FeaturePage) -> bool:
+    """Return whether the feature records the documented design exemption."""
+
+    if feature.page.frontmatter.get("design") != "not-applicable":
+        return False
+    reason = feature.page.frontmatter.get("design-exemption-reason")
+    return isinstance(reason, str) and bool(reason.strip())
 
 
 def _design_pages_by_feature(pages: list[MarkdownPage], wiki_root: Path) -> dict[str, list[MarkdownPage]]:
@@ -420,8 +616,15 @@ def _lint_api_contract_blockers(
         if feature.status not in API_CONTRACT_DOWNSTREAM_STATUSES:
             continue
         references: list[MarkdownPage] = []
+        feature_id = feature.feature_id.strip().lower()
+        declared_platforms = {platform.strip().lower() for platform in feature.platforms}
         source_pages = [feature.page] + [
-            requirement.page for requirement in requirement_pages if requirement.feature_id == feature.feature_id
+            requirement.page
+            for requirement in requirement_pages
+            if isinstance(requirement.feature_id, str)
+            and requirement.feature_id.strip().lower() == feature_id
+            and isinstance(requirement.platform, str)
+            and requirement.platform.strip().lower() in declared_platforms
         ]
         for source in source_pages:
             for raw_target in extract_markdown_links(source.body):
@@ -460,7 +663,7 @@ def _lint_cross_platform_dependencies(
     wiki_root: Path,
 ) -> list[WikiDiagnostic]:
     features_by_path = {feature.page.path.resolve(): feature for feature in feature_pages}
-    features_by_id = {feature.feature_id: feature for feature in feature_pages}
+    features_by_id = {feature.feature_id.strip().lower(): feature for feature in feature_pages}
     requirements_by_path = {requirement.page.path.resolve(): requirement for requirement in requirement_pages}
     diagnostics: list[WikiDiagnostic] = []
 
@@ -478,7 +681,7 @@ def _lint_cross_platform_dependencies(
             if target_feature is not None and _is_unfinished_feature(target_feature):
                 unfinished.add(("feature", target_feature.feature_id))
             target_requirement = requirements_by_path.get(target)
-            if target_requirement is not None and _is_unfinished_requirement(target_requirement):
+            if target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id):
                 unfinished.add(("platform requirement", _requirement_label(target_requirement)))
 
         for directory, kind in (("features", "feature"), ("platform-requirements", "platform requirement")):
@@ -490,7 +693,7 @@ def _lint_cross_platform_dependencies(
                 if kind == "feature" and target_feature is not None and _is_unfinished_feature(target_feature):
                     unfinished.add(("feature", target_feature.feature_id))
                 target_requirement = requirements_by_path.get(target)
-                if kind == "platform requirement" and target_requirement is not None and _is_unfinished_requirement(target_requirement):
+                if kind == "platform requirement" and target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id):
                     unfinished.add(("platform requirement", _requirement_label(target_requirement)))
 
         feature_by_name = {feature.page.path.name: feature for feature in feature_pages}
@@ -500,13 +703,13 @@ def _lint_cross_platform_dependencies(
             if target_feature is not None and _is_unfinished_feature(target_feature):
                 unfinished.add(("feature", target_feature.feature_id))
             target_requirement = requirement_by_name.get(filename)
-            if target_requirement is not None and _is_unfinished_requirement(target_requirement):
+            if target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id):
                 unfinished.add(("platform requirement", _requirement_label(target_requirement)))
 
         plain_body = _MARKDOWN_LINK_PATTERN.sub(" ", dependency_body)
         plain_body = _FEATURE_FILE_PATTERN.sub(" ", plain_body)
         for feature_id in _FEATURE_ID_PATTERN.findall(plain_body):
-            target_feature = features_by_id.get(feature_id)
+            target_feature = features_by_id.get(feature_id.strip().lower())
             if target_feature is not None and _is_unfinished_feature(target_feature):
                 unfinished.add(("feature", feature_id))
 
@@ -527,8 +730,19 @@ def _is_unfinished_feature(feature: FeaturePage) -> bool:
     return feature.status in VALID_FEATURE_STATUSES and feature.status != "done"
 
 
-def _is_unfinished_requirement(requirement: PlatformRequirementPage) -> bool:
-    return requirement.status in VALID_PLATFORM_REQUIREMENT_STATUSES and requirement.status != "done"
+def _is_unfinished_requirement(
+    requirement: PlatformRequirementPage,
+    features_by_id: dict[str, FeaturePage] | None = None,
+) -> bool:
+    if requirement.status in VALID_PLATFORM_REQUIREMENT_STATUSES and requirement.status != "done":
+        return True
+    if requirement.status != "done" or features_by_id is None or not isinstance(requirement.feature_id, str):
+        return False
+    parent = features_by_id.get(requirement.feature_id.strip().lower())
+    if parent is None:
+        return False
+    domains, errors = parse_revalidation(parent.page.frontmatter.get("revalidation"))
+    return bool(errors or domains)
 
 
 def _requirement_label(requirement: PlatformRequirementPage) -> str:
@@ -640,6 +854,10 @@ def _candidate_relative_link(source_path: Path, raw_target: str) -> Path | None:
 
 
 def _wiki_path_references(body: str, directory: str) -> list[str]:
+    # A local-looking path embedded in an external URL is not a wiki
+    # reference. Remove URL spans before matching plain local paths so an
+    # external ``.../api-contracts/SHARED.md`` cannot become a local contract.
+    body = _EXTERNAL_URL_PATTERN.sub(" ", body)
     pattern = re.compile(_WIKI_PATH_PATTERN.format(directory=re.escape(directory)), re.IGNORECASE)
     return [match.group("path") for match in pattern.finditer(body)]
 
@@ -922,6 +1140,25 @@ def _lint_feature(feature: FeaturePage) -> list[WikiDiagnostic]:
                 feature_id,
             )
         )
+
+    _revalidation, revalidation_errors = parse_revalidation(frontmatter.get("revalidation"))
+    for message in revalidation_errors:
+        diagnostics.append(_diag("invalid-revalidation", "error", path, message, feature_id))
+    if feature.status == "done" and _revalidation:
+        diagnostics.append(
+            _diag(
+                "pending-revalidation",
+                "error",
+                path,
+                "A Done feature cannot retain pending revalidation domains: " + ", ".join(_revalidation) + ".",
+                feature_id,
+            )
+        )
+
+    if feature.status == "done":
+        _delivery_evidence, delivery_errors = parse_delivery_evidence(feature.page.body, feature.platforms)
+        for message in delivery_errors:
+            diagnostics.append(_diag("done-delivery-evidence", "error", path, message, feature_id))
 
     for field_name in ("introduced", "last-updated"):
         if field_name in frontmatter and parse_iso_date(frontmatter[field_name]) is None:

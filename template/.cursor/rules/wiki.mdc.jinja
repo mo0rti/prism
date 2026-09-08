@@ -18,7 +18,8 @@ prism --version
 ```
 
 Use the CLI only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract) and
-the requested command response has `"schema_version": 1`. The command is
+the requested command response has `"schema_version": 1`. A version probe alone
+does not prove that a particular command or capability exists. The command is
 `prism`:
 
 - `prism status --json`
@@ -46,6 +47,50 @@ compute only categories proved by files; the canonical blocker categories are
 `unresolved-open-questions`, `api-contract-not-ready`, and
 `cross-platform-dependency`. Read `SETTINGS.md` for staleness and use
 `wiki-stale-after-days: 14` when absent or invalid. All reads are read-only.
+
+## Feature lifecycle transition preview
+
+The supported action mappings are exact: `po-specify` (`raw` + `po` to
+`specified` + `po`), `po-handoff` (`specified` + `po` to `ready-for-design` +
+`designer`), `design-start` (`ready-for-design` + `designer` to `in-design` +
+`designer`), `design-handoff` (`in-design` + `designer` to `ready-for-dev` +
+`dev`), `dev-start` (`ready-for-dev` + `dev` to `in-dev` + `dev`), and
+`dev-done` (`in-dev` + `dev` to `done` + `none`). Reopen one shipped feature
+with `feature-reopen F-XXX [specified|in-design|in-dev]`, which selects the
+matching `reopen-spec`, `reopen-design`, or `reopen-dev` route. `po-specify`
+authors a structured body from raw facts; no action is a generic status setter.
+
+Use the canonical instructions for the selected surface and shared contract:
+
+- Codex: `.agents/skills/<action>/SKILL.md`
+- Claude: `.claude/commands/<action>.md`
+- Shared protocol: `knowledge/wiki/SCHEMA.md`
+
+When present, use the read-only probe:
+
+```bash
+prism wiki transition-preflight F-XXX [path] --action po-handoff --json
+```
+
+Accept a preflight only when it identifies the common envelope schema 1, command
+facts for the requested action, transition capability version 2 with that
+action's surface, transition version 1, and a consistent snapshot. A version
+string alone is insufficient. Missing, unsupported, or failed probes fall back
+to direct file reads and must be reported. The selected generated instruction
+file must contain its matching `prism:<command>-contract:v1` marker; the other
+surface is optional. Refresh old instructions before acting.
+
+Before copying or acting on a request, reread the selected instructions,
+`knowledge/wiki/SCHEMA.md`, `index.md`, the feature, linked context, and workspace
+identity. Compare the path, identity, feature ID, status, owner, advisory state,
+and fingerprint with current files. Use **Copy request** only for a ready result
+on the selected invocation; blocked or unknown results require review or repair.
+Every write action shows a complete proposal and waits for final confirmation.
+The preview is not an "Approve move" action, does not execute an agent, move a
+card, or mutate the wiki. The Board derives columns from current source fields
+and cannot prove which human or agent changed them or whether confirmation
+happened. Delivery evidence, design exemptions, and reopen revalidation follow
+the shared schema.
 
 ## Before implementing any feature
 

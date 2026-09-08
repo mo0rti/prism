@@ -36,6 +36,7 @@ from prism_cli.wiki_model import VALID_FEATURE_OWNERS, VALID_PLATFORM_IDS
 from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
 from prism_cli.wiki_lint import lint_wiki
+from prism_cli.wiki_transitions import SUPPORTED_ACTION, SUPPORTED_ACTIONS, build_transition_preflight
 from prism_cli.ui import (
     ANSI_PATTERN,
     PALETTE_SIGNAL,
@@ -207,6 +208,20 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_search_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
     wiki_search_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable output.")
     wiki_search_parser.set_defaults(func=cmd_wiki_search)
+    wiki_transition_parser = wiki_subparsers.add_parser(
+        "transition-preflight",
+        help="Evaluate a read-only lifecycle transition request against current wiki evidence.",
+    )
+    wiki_transition_parser.add_argument("feature_id", help="Feature id to evaluate, for example F-001.")
+    wiki_transition_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
+    wiki_transition_parser.add_argument(
+        "--action",
+        choices=list(SUPPORTED_ACTIONS),
+        default=SUPPORTED_ACTION,
+        help="Transition action to evaluate. Defaults to po-handoff.",
+    )
+    wiki_transition_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable output.")
+    wiki_transition_parser.set_defaults(func=cmd_wiki_transition_preflight)
     wiki_graph_parser = wiki_subparsers.add_parser("graph", help="Render wiki relationship facts as JSON, Mermaid, or an interactive HTML dashboard.")
     wiki_graph_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
     wiki_graph_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable graph facts.")
@@ -862,6 +877,11 @@ def cmd_wiki_platform(args: argparse.Namespace) -> int:
 def cmd_wiki_search(args: argparse.Namespace) -> int:
     result = wiki_search(Path(args.path), args.query)
     return render_or_print_wiki_query(args, "Search wiki facts", result)
+
+
+def cmd_wiki_transition_preflight(args: argparse.Namespace) -> int:
+    result = build_transition_preflight(Path(args.path), args.feature_id, args.action)
+    return render_or_print_wiki_query(args, "Preflight wiki transition", result)
 
 
 def cmd_wiki_graph(args: argparse.Namespace) -> int:

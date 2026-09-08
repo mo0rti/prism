@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from prism_cli.graph_server import _GraphState, _make_handler, _workspace_fingerprint
+from prism_cli.wiki_transitions import CAPABILITY_FILES
 
 
 def _create_workspace(root: Path) -> None:
@@ -68,6 +69,12 @@ class GraphFingerprintTests(unittest.TestCase):
             (root / ".copier-answers.yml").write_text("_src_path: test\nproject_name: Demo\n", encoding="utf-8")
             fifth = _workspace_fingerprint(root)
             self.assertNotEqual(fourth, fifth)
+
+            capability_path = root / CAPABILITY_FILES["codex"]
+            capability_path.parent.mkdir(parents=True)
+            capability_path.write_text("<!-- prism:po-handoff-contract:v1 -->\n", encoding="utf-8")
+            sixth = _workspace_fingerprint(root)
+            self.assertNotEqual(fifth, sixth)
 
 
 class GraphServerEndpointTests(unittest.TestCase):
@@ -153,6 +160,23 @@ class GraphServerEndpointTests(unittest.TestCase):
                             break
                     self.assertIn(b"data: 2\n", lines)
                     connection.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_post_is_refused_by_read_only_server(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _create_workspace(root)
+            server, thread = self._server(root)
+            try:
+                connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=3)
+                connection.request("POST", "/data.json")
+                response = connection.getresponse()
+                self.assertEqual(501, response.status)
+                response.read()
+                connection.close()
             finally:
                 server.shutdown()
                 server.server_close()

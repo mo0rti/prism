@@ -198,6 +198,40 @@ Then move into the generated project workflow:
 4. run `feature-status` if you want an orientation report
 5. use the read/query layer before mutating lifecycle state
 
+The feature lifecycle has separate confirmation-gated actions. Use
+`$po-specify F-XXX` in Codex or `/po-specify F-XXX` in Claude Code to read one
+`raw` + `po` feature and prepare its complete structured draft. It carries
+supported facts forward and keeps unknowns as owned questions. A well-structured
+raw body may be verified and preserved; an incomplete one is authored before
+the status changes. After factual completeness, use `po-handoff` for
+`specified` + `po` -> `ready-for-design` + `designer`, then use `design-start`,
+`design-handoff`, `dev-start`, and `dev-done` for the confirmed downstream
+routes. Reopen shipped work with `feature-reopen F-XXX [specified|in-design|in-dev]`
+after impact review. Each action reads one exact source pair and leaves the
+feature, index, and log unchanged when declined or cancelled.
+
+The optional read-only preflight is:
+
+```bash
+prism wiki transition-preflight F-XXX /path/to/generated-project --action po-handoff --json
+```
+
+Use it only when its response explicitly identifies common envelope schema 1,
+the transition-preflight command facts, capability version 2 with the requested
+action's surface, transition version 1, and a consistent snapshot. A `0.2.0`
+version string alone does not prove that surface; missing or unsupported
+capability falls back to direct wiki reads. The preflight and dashboard are
+copy-only, and the agent must reread the source before any confirmed write. The
+selected generated action file must contain its matching
+`<!-- prism:<command>-contract:v1 -->` marker; the other surface is optional.
+Refresh a selected file with a missing marker before using that action.
+
+For a shipped feature, `dev-done` requires a current Delivery evidence row for
+each declared platform with verifiable implementation, tests, and release
+references. A confirmed reopen archives the previous evidence, removes it from
+active readiness, and sets route-specific `revalidation` domains as described in
+the generated `knowledge/wiki/SCHEMA.md`.
+
 If you want the conceptual reason Prism works this way, read
 [prism-model.md](prism-model.md) before going deeper into the generated workflow.
 

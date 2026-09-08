@@ -1,0 +1,60 @@
+# Feature reopen - reopen one shipped feature through an impact-reviewed route
+
+<!-- prism:feature-reopen-contract:v1 -->
+
+## Usage
+
+`/feature-reopen [F-XXX] [specified|in-design|in-dev]`
+
+The route selects one exact action:
+
+| Route | Action | Source | Destination | Pending revalidation |
+|---|---|---|---|---|
+| `specified` | `reopen-spec` | `done` + `none` | `specified` + `po` | specification, design, implementation, tests, release |
+| `in-design` | `reopen-design` | `done` + `none` | `in-design` + `designer` | design, implementation, tests, release |
+| `in-dev` | `reopen-dev` | `done` + `none` | `in-dev` + `dev` | implementation, tests, release |
+
+Resolve exactly one source file at
+`knowledge/wiki/features/[F-XXX]-[slug].md`. A missing, invalid, ambiguous, or
+non-`done`/`none` source is a stop condition. Do not invent another route or a
+generic status setter.
+
+## Read-only preflight and impact review
+
+Read SCHEMA, index, the complete feature, linked design, platform requirements,
+applicable API contract, delivery evidence, and workspace identity. When available,
+probe the matching action:
+
+```text
+prism wiki transition-preflight F-XXX [path] --action reopen-dev --json
+```
+
+Replace `reopen-dev` with `reopen-spec` or `reopen-design` for the selected route.
+Accept the response only with envelope schema 1, command facts, capability version
+2 and a matching action-specific surface, transition version 1, exact target owner,
+and a consistent snapshot. A version string alone is not capability evidence. If
+the probe is missing or unsupported, report the direct-file fallback; the preflight
+is copy-only and never authorizes a write.
+
+A ready Copy request may initiate the impact review; no review record needs to
+exist in the wiki before this action is requestable. The request remains
+copy-only until the review and final confirmation are complete. Before any
+proposed write, obtain a confirmed impact review recording the reason, selected
+route, affected platforms, affected artifacts, and any additional revalidation
+domains. Archive the prior `## Delivery evidence` table in the append-only reopen
+history and remove it from the active section on confirmation. Existing evidence
+cannot automatically satisfy a new Done check; unaffected evidence must be
+explicitly reaffirmed after impact review. Show exact affected platform-
+requirement and API pages with their proposed invalidated statuses, preserve
+prior statuses in history, and never reset unrelated shared contracts.
+
+Show the current and destination fields, active `revalidation` list, archived
+evidence, and every feature/index/log write. Reread the source, index, identity,
+and linked context immediately before confirmation and once again after it. Only
+then write the selected status/owner pair, active revalidation domains, history,
+index, and log. Decline or cancel means no mutation. If a multi-file write is
+partial, report exact changes and stop for fresh recovery; no transaction is
+implied.
+
+Reopening records a route and review; it does not prove that the feature is ready,
+implemented, tested, or shipped again.

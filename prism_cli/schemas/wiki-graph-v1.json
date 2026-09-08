@@ -116,7 +116,8 @@
             "quarantined": { "type": "array", "items": { "type": "string" } }
           },
           "additionalProperties": true
-        }
+        },
+        "transition_capability": { "$ref": "#/$defs/transition_capability" }
       },
       "additionalProperties": true
     },
@@ -157,6 +158,11 @@
             },
             "additionalProperties": true
           }
+        },
+        "transition": { "$ref": "#/$defs/transition" },
+        "transitions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/transition" }
         }
       },
       "additionalProperties": true
@@ -179,6 +185,159 @@
         "from": { "type": "string", "minLength": 1 },
         "reference": { "type": "string", "minLength": 1 },
         "path": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "capability_surface": {
+      "type": "object",
+      "required": ["action", "role", "path", "available", "check"],
+      "properties": {
+        "action": {
+          "enum": [
+            "po-specify",
+            "po-handoff",
+            "design-start",
+            "design-handoff",
+            "dev-start",
+            "dev-done",
+            "reopen-spec",
+            "reopen-design",
+            "reopen-dev"
+          ]
+        },
+        "role": { "enum": ["codex", "claude"] },
+        "path": { "type": "string", "minLength": 1 },
+        "available": { "type": "boolean" },
+        "check": { "enum": ["pass", "unknown"] },
+        "invocation_template": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "transition_snapshot": {
+      "type": "object",
+      "required": ["fingerprint", "observed_at", "consistent"],
+      "properties": {
+        "fingerprint": { "type": "string", "minLength": 1 },
+        "observed_at": {
+          "type": "string",
+          "minLength": 1,
+          "description": "First observation time for this cached content fingerprint; unchanged snapshots may reuse this timestamp across reads. It is the first observation of a cached content snapshot, not every read."
+        },
+        "consistent": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "transition_capability": {
+      "type": "object",
+      "required": ["version", "mode", "supported_actions", "snapshot", "sources", "surfaces"],
+      "properties": {
+        "version": { "const": 2 },
+        "mode": { "const": "copy-only" },
+        "supported_actions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "po-specify",
+              "po-handoff",
+              "design-start",
+              "design-handoff",
+              "dev-start",
+              "dev-done",
+              "reopen-spec",
+              "reopen-design",
+              "reopen-dev"
+            ]
+          }
+        },
+        "snapshot": { "$ref": "#/$defs/transition_snapshot" },
+        "sources": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "surfaces": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/capability_surface" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "transition_check": {
+      "type": "object",
+      "required": ["code", "status", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["pass", "blocked", "unknown", "review"] },
+        "message": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "transition": {
+      "type": "object",
+      "required": [
+        "version",
+        "feature_id",
+        "source_status",
+        "source_owner",
+        "source_path",
+        "target_status",
+        "target_owner",
+        "action",
+        "classification",
+        "supported",
+        "checks",
+        "sources",
+        "reason"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "feature_id": { "type": "string", "minLength": 1 },
+        "source_status": { "type": ["string", "null"] },
+        "source_owner": { "type": ["string", "null"] },
+        "source_path": { "type": ["string", "null"] },
+        "target_status": {
+          "type": ["string", "null"],
+          "enum": ["specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done", null]
+        },
+        "target_owner": { "type": ["string", "null"] },
+        "action": {
+          "type": ["string", "null"],
+          "enum": [
+            "po-specify",
+            "po-handoff",
+            "design-start",
+            "design-handoff",
+            "dev-start",
+            "dev-done",
+            "reopen-spec",
+            "reopen-design",
+            "reopen-dev",
+            null
+          ]
+        },
+        "classification": { "enum": ["ready", "blocked", "unknown"] },
+        "supported": {
+          "type": "boolean",
+          "description": "Whether an action mapping exists for the source status and owner and the evaluator can prepare it; supported describes the action mapping and copy capability, not readiness or approval. true does not mean the feature is ready or approved."
+        },
+        "checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/transition_check" }
+        },
+        "sources": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "reason": { "type": "string", "minLength": 1 },
+        "invocations": {
+          "type": "object",
+          "properties": {
+            "codex": { "type": "string", "minLength": 1 },
+            "claude": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": true
     }

@@ -68,6 +68,15 @@ it. Ask the human to run the `po-intake` operation first
 (Claude: `/po-intake [folder]`, Codex: `$po-intake [folder]`,
 Cursor: ask the agent to "run po-intake on [folder]").
 
+Feature lifecycle actions are exact, confirmation-gated, and feature-only. The
+raw action is `$po-specify` or `/po-specify`: it authors a structured draft
+before moving `raw` + `po` to `specified` + `po`. `po-handoff` accepts only
+`specified` + `po`. Design and development use `design-start`,
+`design-handoff`, `dev-start`, and `dev-done`; reopening uses
+`feature-reopen [F-XXX] [specified|in-design|in-dev]`. Read the selected
+surface and `knowledge/wiki/SCHEMA.md` for the exact source guard, current
+evidence/revalidation rules, proposed write set, and final confirmation.
+
 ## Available commands
 
 ### Claude Code
@@ -75,9 +84,10 @@ Cursor: ask the agent to "run po-intake on [folder]").
 | Category | Commands |
 |----------|----------|
 | Setup | `/setup-project` |
-| PO | `/po-intake [folder]`, `/po-clarify`, `/po-handoff [F-XXX]` |
-| Designer | `/design-intake [F-XXX] [folder]`, `/design-clarify`, `/design-handoff [F-XXX]` |
-| Developer | `/prep-sprint`, `/dev-done [F-XXX]` |
+| PO | `/po-intake [folder]`, `/po-clarify`, `/po-specify [F-XXX]`, `/po-handoff [F-XXX]` |
+| Designer | `/design-intake [F-XXX] [folder]`, `/design-clarify`, `/design-start [F-XXX]`, `/design-handoff [F-XXX]` |
+| Developer | `/prep-sprint`, `/dev-start [F-XXX]`, `/dev-done [F-XXX]` |
+| Lifecycle | `/feature-reopen [F-XXX] [specified\|in-design\|in-dev]` |
 {% if "backend" in platforms -%}| Backend | `/add-endpoint`, `/add-integration`, `/create-migration`, `/document-entity`, `/generate-clients`, `/review-query`, `/review-security-surface`, `/debug-prod-issue` |
 {% endif -%}
 | Board | `/board-review [F-XXX]` |
@@ -88,9 +98,10 @@ Cursor: ask the agent to "run po-intake on [folder]").
 | Category | Commands |
 |----------|----------|
 | Setup | `$setup-project` |
-| PO | `$po-intake [folder]`, `$po-clarify`, `$po-handoff [F-XXX]` |
-| Designer | `$design-intake [F-XXX] [folder]`, `$design-clarify`, `$design-handoff [F-XXX]` |
-| Developer | `$prep-sprint`, `$dev-done [F-XXX]` |
+| PO | `$po-intake [folder]`, `$po-clarify`, `$po-specify [F-XXX]`, `$po-handoff [F-XXX]` |
+| Designer | `$design-intake [F-XXX] [folder]`, `$design-clarify`, `$design-start [F-XXX]`, `$design-handoff [F-XXX]` |
+| Developer | `$prep-sprint`, `$dev-start [F-XXX]`, `$dev-done [F-XXX]` |
+| Lifecycle | `$feature-reopen [F-XXX] [specified\|in-design\|in-dev]` |
 {% if "backend" in platforms -%}| Backend | `$endpoint`, `$document-entity`, `$generate-clients` |
 {% endif -%}
 | Board | `$board-review [F-XXX]` |

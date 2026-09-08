@@ -103,11 +103,11 @@ design handoff, delivery prep, and wiki maintenance.
 Key command groups:
 
 - setup: `setup-project`
-- product workflow: `po-intake`, `po-clarify`, `po-handoff`
-- design workflow: `design-intake`, `design-clarify`, `design-handoff`
+- product workflow: `po-intake`, `po-clarify`, `po-specify`, `po-handoff`
+- design workflow: `design-intake`, `design-clarify`, `design-start`, `design-handoff`
 - development helpers: `add-endpoint`, `add-integration`, `document-entity`, `generate-clients`, `create-migration`
 - backend review and debugging: `review-query`, `review-security-surface`, `debug-prod-issue`
-- delivery workflow: `prep-sprint`, `dev-done`
+- delivery workflow: `prep-sprint`, `dev-start`, `dev-done`, `feature-reopen`
 - governance and support: `board-review`, `feature-status`, `ask`, `audit-feature`, `lint-wiki`, `wiki-*`
 
 Read [`CONTEXT.md`](../CONTEXT.md) for the command list by tool surface.
@@ -121,6 +121,37 @@ inspector exposes source paths, confidence, workflow blockers, and page-health
 diagnostics so an agent can follow the evidence before changing project state.
 For a terminal fallback, use `prism wiki graph --json` or
 `prism wiki graph --mermaid --view lifecycle`.
+
+### Feature lifecycle boundary
+
+The exact feature-only actions are `po-specify` (`raw` + `po` to `specified` +
+`po`), `po-handoff` (`specified` + `po` to `ready-for-design` + `designer`),
+`design-start` (`ready-for-design` + `designer` to `in-design` + `designer`),
+`design-handoff` (`in-design` + `designer` to `ready-for-dev` + `dev`),
+`dev-start` (`ready-for-dev` + `dev` to `in-dev` + `dev`), and `dev-done`
+(`in-dev` + `dev` to `done` + `none`). `feature-reopen` selects one of
+`reopen-spec`, `reopen-design`, or `reopen-dev`. `po-specify` authors the
+canonical structured body from one raw page, so no action is a generic status
+setter.
+
+Detailed behavior is canonical in the selected `.agents/skills/<action>/SKILL.md`
+or `.claude/commands/<action>.md` plus `knowledge/wiki/SCHEMA.md`. The selected
+surface is independent; its matching `prism:<command>-contract:v1` marker is
+required, while the other surface is optional. Every write action rereads one
+feature and linked evidence, shows the complete proposed write set, and waits
+for final confirmation. Dashboard, clipboard, and CLI preflight output is
+copy-only; the Board reflects current source fields and cannot prove who made a
+change or whether confirmation happened.
+
+If the optional CLI surface is present, use
+`prism wiki transition-preflight F-XXX [path] --action <action> --json` only when
+the response identifies envelope schema 1, command facts for the requested
+action, transition capability version 2 with that action's surface, transition
+version 1, and a consistent snapshot. A version string alone is insufficient;
+missing or unsupported probes fall back to direct-file reads. Use **Copy
+request** only for a ready result. Static captures are snapshot-relative; live
+refresh observes later source changes. Delivery evidence, UI design exemptions,
+and reopen revalidation are defined in `SCHEMA.md`.
 
 ## Skill Map
 
@@ -136,16 +167,20 @@ mirror much of the Claude command surface for Codex:
 | `setup-project` | Initializes the workspace wiki, records the setup interview, and generates the advisory board |
 | `po-intake` | Converts raw product input into structured feature intake |
 | `po-clarify` | Resolves product ambiguity before implementation starts |
-| `po-handoff` | Finalizes product handoff into ready-for-design or ready-for-dev form |
+| `po-specify` | Authors one raw feature page as a structured specified draft |
+| `po-handoff` | Confirmation-gated `specified` + `po` to `ready-for-design` + `designer` handoff |
 | `design-intake` | Turns design input into structured workspace-ready design context |
 | `design-clarify` | Resolves unclear design requirements and interaction decisions |
+| `design-start` | Confirmation-gated `ready-for-design` + `designer` to `in-design` + `designer` transition |
 | `design-handoff` | Finalizes design guidance for development |
 | `prep-sprint` | Read-only session view showing what is ready to build, blocked, or awaiting board review |
+| `dev-start` | Confirmation-gated `ready-for-dev` + `dev` to `in-dev` + `dev` transition |
 | `dev-done` | Wraps up delivery and updates project state |
+| `feature-reopen` | Reopens one shipped feature through a specified impact-review route and active revalidation |
 | `board-review` | Runs a structured advisory-board review for domain-sensitive work; not for CRUD, auth, settings, or infrastructure |
 | `ask` | Routes focused questions to the right delivery role |
 | `audit-feature` | Reviews a feature against the workspace process and expectations |
-| `feature-status` | Shows the full feature pipeline and refreshes `WIKI_REPORT.md` from current wiki state |
+| `feature-status` | Shows the full feature pipeline and may refresh only `WIKI_REPORT.md`; it does not change lifecycle state |
 | `lint-wiki` | Checks the wiki for structure or consistency problems |
 | `wiki-blockers` | Surfaces unresolved blockers from the wiki |
 | `wiki-owner` | Read-only owner dashboard showing open questions, waiting work, and stale items for `po`, `designer`, or `dev` |

@@ -1,0 +1,87 @@
+# PO specify - structure one raw feature page
+
+<!-- prism:po-specify-contract:v1 -->
+
+## Usage
+
+`/po-specify [F-XXX]`
+
+## Supported action
+
+This command reads one raw feature page, prepares a canonical structured
+specification draft, and, after explicit confirmation, writes one feature-only
+transition:
+
+`raw` + `po` -> `specified` + `po`
+
+Resolve exactly one existing source file at
+`knowledge/wiki/features/[F-XXX]-[slug].md`. A missing, invalid, or ambiguous
+ID is a stop condition. This action does not process or move any intake folder.
+It preserves the existing advisory state, sources, platforms, and valid tracked
+questions, including open PO questions.
+
+Raw input is an authoring source. If it already has the canonical structured
+sections and substantive values required for `specified`, verify and preserve
+that body; otherwise author the missing structure from supported facts. In
+either case, show the body and metadata in the preview. If the body is already
+valid, preserve it and show that no body rewrite is proposed; only the confirmed
+status/metadata, index, and log updates then remain. Never perform an unverified
+status-only write.
+
+## Read-only preflight and source freshness
+
+Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/index.md`, the complete feature,
+linked context, and workspace identity before preparing a preview. When installed,
+probe the optional CLI:
+
+```text
+prism --version
+prism wiki transition-preflight F-XXX [path] --action po-specify --json
+```
+
+Use that response only when it identifies common envelope schema 1, command facts,
+capability version 2 with an action-specific `po-specify` surface, transition
+version 1, and a consistent snapshot. The version string alone does not prove
+support. If the probe is missing, old, unsupported, or fails, state the direct-file
+fallback and follow `SCHEMA.md`. The preflight is copy-only and never authorizes a
+write.
+
+Before using copied facts, reread this command, the Codex skill when available,
+SCHEMA, index, feature, linked context, and identity. Compare the unique path,
+identity, status, owner, advisory, and fingerprint. A mismatch or unavailable
+comparison requires a fresh preview.
+
+## What this command does
+
+1. Enforce the exact source guard: `status: raw` and `owner: po`.
+2. Read the raw body and prepare a proposed canonical structured body with
+   `## Summary`, `## User story`, `## Acceptance criteria`, `## Platform scope`,
+   `## Open questions`, `## Design`, `## Related features`, `## API surface`,
+   `## Board review summary`, and `## Post-ship notes`. Carry forward supported
+   facts from the raw page and linked context. Keep unknowns as explicit owned
+   questions for `po`, `designer`, or `dev`; do not invent substance. `TODO`,
+   `TBD`, template filler, and empty placeholder requirements are invalid.
+3. If the raw page already satisfies the complete structured-output gate, the
+   proposed body may preserve it unchanged after verification. Otherwise fill
+   the missing required sections from supported facts and explicit owned
+   questions. Do not invent substance or placeholder requirements. If the raw
+   body is already valid, preserve it instead of rewriting it.
+4. Validate the proposed frontmatter and body, including a nonempty platform
+   scope matching the feature's declared platforms. Open tracked questions are
+   allowed at `specified`.
+5. Preserve the current `advisory-review` value. A pending review remains a
+   blocker for later actions that require advisory completion.
+6. Show the observed fields, complete body diff, metadata diff, destination, and
+   every feature, index, and log write that would occur. This preview is not
+   approval.
+7. Reread all sources immediately before confirmation and once again before
+   writing. Ask the user to confirm the complete write set, including the body.
+8. After confirmation, write the confirmed body and metadata, update the feature
+   to `specified` with `owner: po`, update the matching index row, append the log
+   entry, and update `last-updated`. Do not move intake folders or write
+   unrelated files.
+
+If the user declines or cancels, make no feature, index, or log mutation. If a
+multi-file write is partially applied, report the exact observed changes and stop
+for fresh recovery; do not claim a transaction. This action does not prove
+semantic completeness, design, implementation, testing, or shipment.

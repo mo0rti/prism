@@ -388,6 +388,15 @@ Synthetic review state is visible in the linked advisory page.
 ## Post-ship notes
 No observed post-ship history is recorded in this synthetic fixture.
 """
+        if feature["status"] == "done":
+            body += f"""
+## Delivery evidence
+| Platform | Implementation | Tests | Release |
+|---|---|---|---|
+| backend | Synthetic local demo backend surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for backend (no production test claim) | Synthetic local demo release marker for backend (no production release claim) |
+| mobile-android | Synthetic local demo Android surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for Android (no production test claim) | Synthetic local demo release marker for Android (no production release claim) |
+| mobile-ios | Synthetic local demo iOS surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for iOS (no production test claim) | Synthetic local demo release marker for iOS (no production release claim) |
+"""
         _write_page(features_root / f"{feature['id']}-{feature['slug']}.md", _feature_frontmatter(feature, today), body)
 
 
@@ -464,6 +473,7 @@ Require the role appropriate to the operation: operator, manager, or finance adm
 This is a synthetic contract summary for graph relationships; it is not an implementation promise.
 """,
         )
+        required_action = "- [x] Review the threshold question with the product owner." if feature["status"] == "done" else "- [ ] Review the threshold question with the product owner."
         _write_page(
             wiki_root / "advisory" / f"{feature_id}-review.md",
             {
@@ -471,7 +481,7 @@ This is a synthetic contract summary for graph relationships; it is not an imple
                 "reviewed": today.isoformat(),
                 "board-members-consulted": ["synthetic-domain-reviewer"],
             },
-            """## 1. Conflicts
+            f"""## 1. Conflicts
 No conflicts identified in this synthetic fixture.
 
 ## 2. Gaps
@@ -487,7 +497,7 @@ An unclear approval boundary could make settlement accountability ambiguous.
 Synthetic reviewer perspective included only to make the advisory relationship visible.
 
 ## Actions required before dev starts
-- [ ] Review the threshold question with the product owner.
+{required_action}
 
 ## Actions that can be deferred
 - Accessibility copy review can be revisited after the local demo.

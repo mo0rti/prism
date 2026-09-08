@@ -86,6 +86,10 @@ docs/          -> Human-readable reference documentation
 Read `knowledge/wiki/WIKI_REPORT.md` first when present. If it is absent, run
 `$feature-status` before deep reading.
 
+`$feature-status` is an orientation/report operation. It may write or refresh only
+`knowledge/wiki/WIKI_REPORT.md`; it does not change lifecycle state. The other
+read/query operations listed here are read-only.
+
 For read/query operations (`$wiki-show`, `$wiki-blockers`, `$wiki-query`,
 `$wiki-owner`, `$wiki-platform`, `$lint-wiki`), prefer the Prism CLI JSON surface
 when available, for example `prism wiki show F-XXX --json`. If `prism` is missing,
@@ -98,12 +102,54 @@ installed Prism CLI.
 - `$setup-project` - interactive project initialization (run once after scaffolding)
 - `$po-intake [folder]` - process raw PO notes into feature specs
 - `$po-clarify` - answer open questions assigned to PO
-- `$po-handoff [F-XXX]` - move feature to ready-for-design
+- `$po-specify [F-XXX]` - author one raw page as a structured `specified` draft
+- `$po-handoff [F-XXX]` - prepare the confirmed `specified` + `po` to `ready-for-design` + `designer` handoff
 - `$design-intake [F-XXX] [folder]` - attach design artifacts to a feature
 - `$design-clarify` - answer open questions assigned to Designer
+- `$design-start [F-XXX]` - move confirmed `ready-for-design` work to `in-design`
 - `$design-handoff [F-XXX]` - move feature to ready-for-dev
+- `$dev-start [F-XXX]` - move confirmed `ready-for-dev` work to `in-dev`
 - `$dev-done [F-XXX]` - mark a feature as shipped
+- `$feature-reopen [F-XXX] [specified|in-design|in-dev]` - reopen one shipped feature after impact review
 - `$ask [F-XXX] "question" --to po|designer|dev` - route a question
+
+### Feature lifecycle contract
+
+The supported action mappings are exact: `po-specify` (`raw` + `po` to
+`specified` + `po`), `po-handoff` (`specified` + `po` to `ready-for-design` +
+`designer`), `design-start` (`ready-for-design` + `designer` to `in-design` +
+`designer`), `design-handoff` (`in-design` + `designer` to `ready-for-dev` +
+`dev`), `dev-start` (`ready-for-dev` + `dev` to `in-dev` + `dev`), and
+`dev-done` (`in-dev` + `dev` to `done` + `none`). Reopen uses the selected
+route in `$feature-reopen` and the corresponding `reopen-spec`,
+`reopen-design`, or `reopen-dev` action. `po-specify` authors the structured
+body; no action is a generic status setter.
+
+Use the canonical selected-surface instructions and shared contract:
+
+- Codex: `.agents/skills/<action>/SKILL.md`
+- Claude: `.claude/commands/<action>.md`
+- Shared protocol, evidence, exemptions, and reopen rules: `knowledge/wiki/SCHEMA.md`
+
+Each action resolves one feature, rereads its source and context, shows a
+complete proposed write set, and waits for final confirmation. Copy, clipboard,
+dashboard, and preflight output are read-only; cancel means no mutation. The
+selected generated file must carry its matching `prism:<command>-contract:v1`
+marker. The other surface is optional.
+
+When available, the read-only preflight is:
+
+```text
+prism wiki transition-preflight F-XXX [path] --action po-handoff --json
+```
+
+Use a preflight only when its common envelope is schema 1, command facts identify
+the requested action, transition capability is version 2 with that action's
+surface, transition version is 1, and the snapshot is consistent. A version
+string alone is insufficient. Old or unsupported capabilities and generated
+instructions require the direct-file protocol after the selected surface is
+refreshed. Copy only a ready result; blocked or unknown results require review
+or repair.
 
 ### Audit / review
 
@@ -186,7 +232,12 @@ Each platform has its own `AGENTS.md` with detailed patterns:
 
 1. Read `knowledge/wiki/WIKI_REPORT.md` if present, or run `$feature-status` first.
 2. If no feature page exists, run `$po-intake [folder]` to create one from raw notes.
-3. After design is complete, run `$design-handoff [F-XXX]` to generate platform-requirements.
-4. Add endpoints to `shared/api-contracts/openapi.yml` and run `task generate-clients`.
-5. Implement the selected platform slices per `knowledge/wiki/platform-requirements/`.
-6. When shipped, run `$dev-done [F-XXX]`.
+3. For a raw feature page, run `$po-specify [F-XXX]` to prepare the structured draft,
+   then `$po-handoff [F-XXX]` after PO completeness is verified.
+4. Start design with `$design-start [F-XXX]`; after design is complete, run
+   `$design-handoff [F-XXX]` to generate platform-requirements.
+5. Start implementation with `$dev-start [F-XXX]`, add endpoints to
+   `shared/api-contracts/openapi.yml`, and run `task generate-clients` as needed.
+6. Implement the selected platform slices per `knowledge/wiki/platform-requirements/`.
+7. When shipped, verify delivery evidence and run `$dev-done [F-XXX]`. Use
+   `$feature-reopen [F-XXX] [specified|in-design|in-dev]` only after impact review.

@@ -1,0 +1,53 @@
+---
+name: design-start
+description: Start design work on one feature after the confirmed PO handoff. Use when a feature is ready-for-design and the designer is taking ownership.
+---
+
+# Design Start
+
+<!-- prism:design-start-contract:v1 -->
+
+Prepare, preview, and, after explicit confirmation, write one feature-only
+transition:
+
+`ready-for-design` + `designer` -> `in-design` + `designer`
+
+## Usage
+
+`$design-start [F-XXX]`
+
+Resolve `[F-XXX]` to exactly one existing feature file. Accept only the exact
+source pair above; do not infer a transition from another status or owner.
+Read `knowledge/wiki/SCHEMA.md`, `index.md`, the feature, linked context, and
+workspace identity. The feature's declared platforms define the design scope.
+
+When available, use the read-only probe:
+
+```text
+prism wiki transition-preflight F-XXX [path] --action design-start --json
+```
+
+Require envelope schema 1, command facts, capability version 2 with an
+action-specific `design-start` surface, transition version 1, target owner
+`designer`, and a consistent snapshot. A version string alone is insufficient;
+unsupported capability falls back to direct-file checks. The preflight is
+copy-only and never authorizes a write.
+
+Before confirmation, verify the exact feature path, source fields, platform scope,
+advisory state, and any active `revalidation` domains. An active `specification`
+domain blocks this downstream start until PO verifies it; an active `design`
+domain may be worked by the designer and does not pretend that design evidence
+already exists. Designer-owned open questions may remain while design starts.
+Pending advisory review is an unresolved blocker; use the existing board-review
+or explicit skip policy where that policy applies. Do not invent a new waiver.
+
+Show the proposed `status` change, unchanged owner, evidence, and complete write
+set. Reread the source and context immediately before asking for confirmation and
+again after confirmation. On confirmation, update the feature, matching index row,
+and log entry. Cancellation or decline leaves all files unchanged. If a multi-file
+write is partial, report exact changes and stop for fresh recovery; no transaction
+is implied.
+
+Return the observed source and destination fields and the design-scope evidence.
+This action starts work; it does not prove design completeness or development
+readiness.

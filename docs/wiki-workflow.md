@@ -35,6 +35,57 @@ The most important rule is simple:
 
 If `WIKI_REPORT.md` disagrees with the underlying wiki files, the wiki files win.
 
+## Feature Lifecycle Actions
+
+Lifecycle actions are named, feature-only workflows. They resolve one exact
+feature path, read the current source and linked context, prepare a complete
+proposal, and write only after the user confirms the full write set.
+
+| Action | Source | Destination |
+|---|---|---|
+| `po-specify` | `raw` + `po` | `specified` + `po` |
+| `po-handoff` | `specified` + `po` | `ready-for-design` + `designer` |
+| `design-start` | `ready-for-design` + `designer` | `in-design` + `designer` |
+| `design-handoff` | `in-design` + `designer` | `ready-for-dev` + `dev` |
+| `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` |
+| `dev-done` | `in-dev` + `dev` | `done` + `none` |
+| `reopen-spec` | `done` + `none` | `specified` + `po` |
+| `reopen-design` | `done` + `none` | `in-design` + `designer` |
+| `reopen-dev` | `done` + `none` | `in-dev` + `dev` |
+
+Use `feature-reopen F-XXX [specified|in-design|in-dev]` to select one reopen
+route. It is not a generic status setter. `po-specify` reads the raw body and
+authors the required structured sections, carrying supported facts forward and
+keeping unknowns as explicit questions owned by `po`, `designer`, or `dev`. If
+the raw body is already structured, it may be verified and preserved; otherwise
+the missing sections are authored. It must show and confirm the body rather than
+performing an unverified status-only write. `po-handoff` remains the stricter
+specified-to-design handoff and checks factual Summary, User story, acceptance
+criteria, matching platform scope, PO questions, and advisory outcome.
+
+`design-handoff` requires design evidence for UI platforms unless the feature
+frontmatter has `design: not-applicable` and a nonblank
+`design-exemption-reason`, with the user's explicit confirmation in the final
+handoff preview. Non-UI features do not need a design page or exemption. A
+`revalidation` list records domains invalidated by a confirmed reopen;
+downstream actions treat those domains as active until fresh evidence is
+verified and explicitly cleared.
+
+`dev-done` means shipped for every declared platform. The feature must have one
+substantive, verifiable `## Delivery evidence` row per declared platform with
+Implementation, Tests, and Release references, plus complete applicable
+requirements and API contracts. File presence and lint alone are not shipment
+evidence. A partial platform remains `in-dev`.
+
+Reopen previews record the reason, impact, route, affected platforms/artifacts,
+and prior completion/release evidence. Confirmation appends that record to
+`## Reopen history`, removes prior active Delivery evidence so it cannot satisfy
+a future Done check, sets route-specific revalidation domains, and names exact
+affected requirement/API status invalidations. Unaffected evidence is preserved
+only when explicitly reaffirmed. Shared API contracts are never reset in bulk.
+The complete protocol and formats are in
+[`knowledge/wiki/SCHEMA.md`](../template/knowledge/wiki/SCHEMA.md).
+
 ## `WIKI_REPORT.md`
 
 `knowledge/wiki/WIKI_REPORT.md` is a generated orientation summary.
@@ -83,7 +134,8 @@ Typical flow:
 2. run `po-intake`
 3. review the generated feature pages and open questions
 4. use `po-clarify` to answer PO-owned questions
-5. use `po-handoff` when the feature is ready for design
+5. use `po-specify` on a raw feature page to author its structured draft
+6. use `po-handoff` when the feature is ready for design
 
 Helpful read/query commands:
 
@@ -99,8 +151,9 @@ Typical flow:
 1. inspect the feature with `wiki-show F-XXX`
 2. attach design artifacts with `design-intake`
 3. resolve open design questions with `design-clarify`
-4. confirm platform implications in the wiki
-5. use `design-handoff` when the feature is ready for development
+4. start work with `design-start` after the PO handoff
+5. confirm platform implications in the wiki
+6. use `design-handoff` when the feature is ready for development
 
 Helpful read/query commands:
 
@@ -116,7 +169,9 @@ Typical flow:
 2. run `prep-sprint` to see what is actually ready
 3. use `wiki-show F-XXX` to assemble focused implementation context
 4. read platform requirements before implementation
-5. use `dev-done` only when implementation is truly complete
+5. use `dev-start` to take confirmed ready-for-dev work
+6. use `dev-done` only when implementation is truly complete and shipped
+7. use `feature-reopen` after impact review when shipped work needs revalidation
 
 Helpful read/query commands:
 

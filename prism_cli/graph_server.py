@@ -7,19 +7,16 @@ Server-Sent Events.
 
 from __future__ import annotations
 
-import hashlib
 import json
-import stat
 import threading
 import time
-from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from prism_cli.status import IGNORED_INTAKE_FILES
 from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_graph_html import render_html
-from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, PLATFORM_DIRS
+from prism_cli.wiki_transitions import workspace_fingerprint
+from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE
 
 
 POLL_SECONDS = 1.5
@@ -28,87 +25,10 @@ WATCH_QUEUE_DIRS = ("knowledge/intake/pending", "knowledge/intake/quarantined")
 WATCH_FILES = (MANIFEST_FILE, COPIER_ANSWERS_FILE)
 
 
-def _file_fingerprint(path: Path) -> str:
-    digest = hashlib.sha256()
-    try:
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-    except OSError:
-        return "unreadable"
-    return digest.hexdigest()
-
-
-def _path_kind(path: Path) -> str:
-    try:
-        path_stat = path.stat()
-    except FileNotFoundError:
-        return "missing"
-    except OSError:
-        return "unreadable"
-    if stat.S_ISDIR(path_stat.st_mode):
-        return "directory"
-    if stat.S_ISREG(path_stat.st_mode):
-        return "file"
-    return f"mode:{path_stat.st_mode}"
-
-
 def _workspace_fingerprint(root: Path) -> tuple[tuple[str, str], ...]:
-    """Return fingerprints for graph inputs and workspace-derived diagnostics."""
-    entries: list[tuple[str, str]] = []
-    entries.append(("today", date.today().isoformat()))
+    """Return the shared graph/transition input fingerprint."""
 
-    for relative in WATCH_FILES:
-        path = root / relative
-        file_kind = _path_kind(path)
-        if file_kind == "file":
-            entries.append((relative, _file_fingerprint(path)))
-        else:
-            entries.append((relative, file_kind))
-
-    wiki_root = root / WATCH_WIKI_DIR
-    wiki_kind = _path_kind(wiki_root)
-    entries.append((WATCH_WIKI_DIR, wiki_kind))
-    if wiki_kind == "directory":
-        try:
-            paths = sorted(wiki_root.rglob("*.md"), key=lambda path: path.as_posix())
-        except OSError:
-            paths = []
-            entries.append((WATCH_WIKI_DIR, "unreadable"))
-        for path in paths:
-            try:
-                path_stat = path.stat()
-                relative = path.relative_to(root).as_posix()
-            except (OSError, ValueError):
-                continue
-            if stat.S_ISREG(path_stat.st_mode):
-                entries.append((relative, _file_fingerprint(path)))
-            else:
-                entries.append((relative, f"mode:{path_stat.st_mode}"))
-
-    for queue_relative in WATCH_QUEUE_DIRS:
-        queue_root = root / queue_relative
-        queue_kind = _path_kind(queue_root)
-        entries.append((queue_relative, queue_kind))
-        if queue_kind != "directory":
-            continue
-        try:
-            children = sorted(queue_root.iterdir(), key=lambda path: path.name)
-        except OSError:
-            entries.append((queue_relative, "unreadable"))
-            continue
-        for child in children:
-            if child.name in IGNORED_INTAKE_FILES or child.name.startswith("_") or child.name.startswith("."):
-                continue
-            try:
-                relative = child.relative_to(root).as_posix()
-            except ValueError:
-                continue
-            entries.append((relative, _path_kind(child)))
-
-    for platform_id, relative in sorted(PLATFORM_DIRS.items()):
-        entries.append((f"platform:{platform_id}", _path_kind(root / relative)))
-    return tuple(entries)
+    return workspace_fingerprint(root)
 
 
 class _GraphState:
@@ -191,7 +111,7 @@ def serve_graph(root: Path, port: int) -> int:
     server = ThreadingHTTPServer(("127.0.0.1", port), _make_handler(state))
     url = f"http://127.0.0.1:{port}/"
     print(f"Prism graph dashboard: {url}")
-    print("Live updates: watching graph wiki, intake queues, manifest, answers, and platform directories. Read-only; press Ctrl+C to stop.")
+    print("Live updates: watching graph wiki, intake queues, manifest, answers, platform directories, and generated transition capabilities. Read-only; press Ctrl+C to stop.")
     try:
         import webbrowser
 

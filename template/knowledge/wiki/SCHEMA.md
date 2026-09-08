@@ -55,6 +55,13 @@ last-updated: YYYY-MM-DD
 platforms: [list of platforms this feature affects - use actual project platform IDs]
 sources: [paths to intake/processed/ items that produced this page]
 advisory-review: not-needed | pending | done | skipped
+# Required and non-blank when advisory-review is skipped:
+advisory-skip-reason: [reason]
+# Optional only for an explicitly confirmed UI design exemption:
+design: not-applicable
+design-exemption-reason: [non-blank reason]
+# Absent or [] until a reopen invalidates domains for revalidation:
+revalidation: [specification | design | implementation | tests | release]
 ---
 
 ## Summary
@@ -100,6 +107,28 @@ One paragraph summarizing the key concerns raised and what was resolved.
 
 ## Post-ship notes
 Notes added after shipping. Populated by /dev-done command. Empty until then.
+
+## Delivery evidence
+| Platform | Implementation | Tests | Release |
+|---|---|---|---|
+| backend | [artifact or source reference] | [test command and result] | [release artifact or target] |
+
+One row is required for every declared platform before `/dev-done`. Each cell
+must contain a substantive, current reference that an agent can verify. A file
+being present or a clean lint result does not prove implementation or shipment.
+
+## Reopen history
+Append one record for every confirmed reopen. Keep the prior completion and
+release evidence here, then remove it from the active `## Delivery evidence`
+section so it cannot satisfy a later `/dev-done` automatically.
+
+### YYYY-MM-DD - reopen-[spec|design|dev]
+- Reason: [why the feature was reopened]
+- Impact review: [what changed and what was assessed]
+- Affected platforms: [declared platform IDs]
+- Affected artifacts: [feature, design, requirement, API, implementation, test, or release paths]
+- Prior completion/release evidence: [archived evidence, or links to the archived entries]
+- Requirement/API invalidations: [exact affected pages and proposed statuses]
 ```
 
 Owner values in the open-questions table must be one of: `po`, `designer`, `dev`.
@@ -129,14 +158,188 @@ This field tracks whether domain review has been done. Only specific commands se
 - `pending` - set by `/po-intake` for features with domain complexity. A board review
   must happen before dev can start.
 - `done` - set by `/board-review` after a review is completed. Only this command sets it.
-- `skipped` - set by `/po-handoff` or `/design-handoff` when the team explicitly decides
-  to skip review. Requires a mandatory reason recorded in `advisory-skip-reason`
-  frontmatter.
+- `skipped` - set by `/po-handoff` or `/design-handoff` when the team explicitly
+  decides to skip review. It requires a non-blank reason recorded in
+  `advisory-skip-reason` frontmatter. For `/po-handoff`, the skip and reason stay
+  as a proposal until that command's final handoff confirmation.
 
 No other command touches the `advisory-review` field.
 
 The lint command flags features in `ready-for-dev` or later with `advisory-review: pending`
 as incomplete. Setting `skipped` with a reason suppresses this flag.
+
+### PO handoff transition contract
+
+The PO handoff action is a confirmation-gated transition from
+`status: specified` and `owner: po` to `status: ready-for-design` and
+`owner: designer`.
+
+- Resolve the requested ID to exactly one existing
+  `knowledge/wiki/features/[F-XXX]-[slug].md` source file. `/po-handoff`
+  accepts only `specified` + `po`; use `/po-specify` for the separate raw to
+  specified structured-draft action.
+  Do not invent a legacy adapter or a generic transition setter.
+- Read the current `SCHEMA.md`, `index.md`, feature, linked context, workspace
+  identity, and any available source fingerprint before preparing a preview.
+  Re-read them immediately before confirmation and once again before writing.
+  Compare the unique path, identity, status, owner, advisory state, and fingerprint
+  with any copied request or static snapshot; a mismatch or unavailable comparison
+  blocks the write and requires a fresh preview.
+- Factual PO completeness requires a non-empty Summary, one singular `## User
+  story` section with content, meaningful acceptance criterion entries, a non-empty
+  frontmatter `platforms` list with a non-empty matching `## Platform scope` entry
+  for every declared platform, and no open questions owned by `po`. A `skipped`
+  advisory requires a non-blank
+  `advisory-skip-reason`. Semantic sufficiency remains a human or agent judgment.
+- When advisory review is `pending`, offer an independent `/board-review F-XXX`.
+  Preserve that command's own confirmation and write rules, then reread all source
+  files and rerun the advisory and completeness checks after any board changes. If
+  the user declines, request an explicit non-blank reason and keep the skip fields
+  as a proposal until the final handoff confirmation. Evaluate that valid proposed
+  skip as the `skipped` advisory outcome for this preview while leaving the current
+  `pending` source unchanged. Never silently skip review.
+- A preview is not an approval or a status write. It must show the observed source
+  fields, advisory and completeness checks, identity/fingerprint facts, exact
+  destination fields, and every feature/advisory/index/log file that would change.
+  Decline or cancel means no feature, advisory, index, or log mutation.
+- A dashboard or clipboard request is copy-only. It must not execute an agent,
+  mutate the wiki, or move a board card. The intended process is a confirmed agent
+  workflow followed by a fresh source snapshot. The Board derives columns from
+  current source fields and cannot prove which human or agent changed them or
+  whether confirmation happened.
+- The selected generated handoff surface must contain
+  `<!-- prism:po-handoff-contract:v1 -->`: Codex checks
+  `.agents/skills/po-handoff/SKILL.md`, while Claude checks
+  `.claude/commands/po-handoff.md`. The other surface is optional. A missing marker
+  on the selected file means its instructions are older and unsupported; refresh
+  that file from the current template before using the handoff. A Prism version
+  alone cannot prove capability.
+- The optional `prism wiki transition-preflight F-XXX [path] --action po-handoff
+  --json` response uses the common envelope with `schema_version: 1` and
+  `command: "wiki transition-preflight"`. Its `facts` include
+  `requested_action`, `transition_capability` (`version: 2`, `mode: "copy-only"`,
+  the supported action list, per-action surfaces, and a consistent snapshot),
+  and a per-feature `transition` (`version: 1`, `action`, `target_owner`,
+  `supported`, `classification`, and surface `invocations`). Use
+  **Copy request** only for the selected invocation with `supported: true`,
+  `classification: "ready"`, and a consistent snapshot. Blocked or unknown
+  results are review/repair guidance.
+
+### Lifecycle action registry
+
+The generated workflow exposes these named, feature-only actions. Each action
+requires the exact source status/owner pair and writes only the proposed feature
+and the directly corresponding index/log or evidence records after final user
+confirmation.
+
+| Action | Exact source | Destination | Primary responsibility |
+|---|---|---|---|
+| `po-specify` | `raw` + `po` | `specified` + `po` | Author a canonical structured body from one raw page; preserve facts and represent unknowns as owned questions. |
+| `po-handoff` | `specified` + `po` | `ready-for-design` + `designer` | Verify factual PO completeness and hand the specification to design. |
+| `design-start` | `ready-for-design` + `designer` | `in-design` + `designer` | Start design work after rereading the assigned feature. |
+| `design-handoff` | `in-design` + `designer` | `ready-for-dev` + `dev` | Verify design evidence or the confirmed UI design exemption and prepare platform requirements. |
+| `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` | Start implementation after rereading requirements and applicable API contracts. |
+| `dev-done` | `in-dev` + `dev` | `done` + `none` | Verify current per-platform implementation, tests, release evidence, requirements, and APIs. |
+| `reopen-spec` | `done` + `none` | `specified` + `po` | Revalidate specification, design, implementation, tests, and release domains after impact review. |
+| `reopen-design` | `done` + `none` | `in-design` + `designer` | Revalidate design, implementation, tests, and release domains after impact review. |
+| `reopen-dev` | `done` + `none` | `in-dev` + `dev` | Revalidate implementation, tests, and release domains after impact review. |
+
+`/feature-reopen [F-XXX] [specified|in-design|in-dev]` selects the matching
+reopen action. It is one feature and one route per invocation; it does not
+provide a generic status setter.
+
+#### Common action protocol
+
+1. Resolve one canonical feature path and read this schema, `index.md`, the
+   feature, linked context, relevant requirements and API contracts, workspace
+   identity, and current fingerprints. Intake folders remain outside these
+   feature-only actions.
+2. If a Prism preflight is available, accept it only when the common envelope is
+   schema 1, command facts identify the requested action, transition capability
+   is version 2 with the requested action in its per-action surfaces, transition
+   version is 1, and the snapshot is consistent. Check the selected generated
+   Codex or Claude file for its matching `prism:<command>-contract:v1` marker;
+   the other surface is optional. A version string alone is insufficient. An
+   older capability or generated instruction falls back to these direct-file
+   rules after the selected instructions are refreshed.
+3. Verify the exact source pair, action-specific checks, current advisory and
+   question state, and affected platform evidence. Show observed facts and the
+   complete proposed body/metadata/write diff. Unknown or blocked checks require
+   review or repair guidance.
+4. Every proposed write must name its exact feature, requirement, API, index,
+   log, evidence, revalidation, and reopen-history paths. Preserve unrelated
+   statuses and API contracts; never reset a shared contract or all features as
+   a convenience.
+5. Reread the source and context immediately before asking for final
+   confirmation. A copied dashboard, clipboard request, or CLI preflight is
+   read-only and never approval. Decline or cancel means no mutation. If a
+   multi-file write is partial, report the exact observed changes and recover
+   from a fresh reread; no transaction is implied. After confirmation, reread
+   the same sources once more and compare the recorded identity, path, status,
+   owner, advisory, revalidation, and fingerprint before writing anything.
+
+#### Specification and handoff boundaries
+
+`po-specify` must verify or author the complete required feature body from raw
+input. It must not merely change status, index, and log without showing and
+confirming the body. When the raw page is incomplete, the confirmed write set
+includes the authored body. A raw page that already passes the complete
+structured-output gate may be preserved after verification; in that case the
+confirmed write set may contain only status/metadata, index, and log updates.
+An incomplete raw page is filled from supported facts and explicit questions
+owned by `po`, `designer`, or `dev`. No placeholder text is accepted as a
+requirement. Existing advisory state is preserved, and a pending advisory remains
+a later-action blocker.
+
+`po-handoff` remains the stricter factual handoff from specified to design. Its
+completeness checks include nonempty Summary, exactly one substantive `## User
+story`, meaningful acceptance entries, a nonempty matching platform scope, no
+open PO questions, and a nonblank skip reason when a proposed advisory skip is
+used. The proposal is evaluated without writing the pending advisory early.
+
+#### Design exemption
+
+For a UI platform, `design-handoff` requires design evidence unless the feature
+frontmatter includes `design: not-applicable` and a nonblank
+`design-exemption-reason`, and the user explicitly confirms that exemption in
+the final write preview. A non-UI feature does not need a design page or an
+exemption field. The exemption applies to the feature and declared UI scope;
+it does not silently waive other requirements.
+
+#### Delivery and revalidation
+
+`dev-done` means shipped for every declared platform. The active Delivery
+evidence table must contain substantive, verifiable Implementation, Tests, and
+Release entries per platform, and applicable requirements/API contracts must be
+complete. Pending or `in-progress` requirement pages and an `agreed` API contract
+may be proposed as complete by `dev-done` only after the exact implementation,
+test, and release evidence is verified; a draft API contract blocks. Agents
+verify actual artifacts and results; table text, file presence,
+or lint alone is insufficient. Partial delivery remains `in-dev`.
+
+An active `revalidation` list invalidates current readiness even when older
+status fields or evidence still say done. `dev-done` may perform fresh checks and
+propose clearing only the revalidated domains before final confirmation; it must
+evaluate that proposal while the source remains unchanged. Already complete
+requirement/API statuses are preserved, and only exact evidence-backed changes
+are written.
+
+#### Reopen contract
+
+Every reopen requires an impact review and a proposed route before confirmation.
+The preview records the reason, route, date, affected platforms and artifacts,
+prior completion/release evidence, and exact affected requirement/API status
+invalidations. On confirmation, append the record to `## Reopen history`, copy
+the prior active Delivery evidence into that history, remove it from the active
+Delivery evidence section, and set the route's active `revalidation` domains.
+Preserve unaffected evidence only when it is explicitly reaffirmed after the
+impact review. Affected per-feature requirement pages are invalidated with
+exact proposed statuses (`pending` for new or changed requirements/design, or
+`in-progress`/`pending` for implementation fixes according to actual work), and
+the prior status is retained in the history. Shared API contracts are marked by
+affected scope only; no blanket reset is allowed. `po-handoff` clears verified
+specification, `design-handoff` clears verified design, and `dev-done` clears
+implementation/tests/release only after fresh evidence.
 
 ---
 
@@ -485,7 +688,7 @@ Rules:
 
 Rules:
 
-- it is generated and read-only
+- it is generated; ordinary readers treat it as read-only
 - it summarizes the wiki but is not the source of truth
 - only `feature-status` writes or refreshes it
 - `lint-wiki`, `wiki-show`, `wiki-blockers`, `wiki-query`, `wiki-owner`, and
@@ -496,9 +699,11 @@ Rules:
 - `WIKI_REPORT.md` may include a short pointer telling the user to run `lint-wiki` for
   structural issues, but it must not contain full lint conclusions
 
-### Read/query operations
+`feature-status` is an orientation/report operation: it may write or refresh only
+`WIKI_REPORT.md`; it does not change feature lifecycle state. The operations below
+are read-only and must not write wiki files.
 
-These operations are read-only and must not write wiki files:
+### Read/query operations
 
 - `wiki-show`
 - `wiki-blockers`

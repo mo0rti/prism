@@ -11,6 +11,7 @@ from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_graph_html import render_html
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
+from prism_cli.wiki_transitions import build_transition_preflight
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,7 @@ class JsonContractTests(unittest.TestCase):
         graph_schema = self.load_schema("wiki-graph-v1.json")
         lint_schema = self.load_schema("wiki-lint-v1.json")
         status_schema = self.load_schema("status-v1.json")
+        transition_schema = self.load_schema("wiki-transition-preflight-v1.json")
 
         queries = {
             "show": wiki_show(root, "F-001"),
@@ -53,6 +55,7 @@ class JsonContractTests(unittest.TestCase):
         Draft202012Validator(graph_schema).validate(build_graph(root))
         Draft202012Validator(lint_schema).validate(lint_wiki(root).to_dict())
         Draft202012Validator(status_schema).validate(build_status(root).to_dict())
+        Draft202012Validator(transition_schema).validate(build_transition_preflight(root, "F-001"))
 
     def test_common_envelope_schema_rejects_wrong_version(self) -> None:
         envelope = wiki_show(FIXTURE_ROOT, "F-001")
@@ -60,6 +63,61 @@ class JsonContractTests(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             Draft202012Validator(self.load_schema("envelope-v1.json")).validate(envelope)
+
+    def test_transition_schemas_document_support_and_snapshot_observation(self) -> None:
+        expected_supported = "true does not mean the feature is ready or approved"
+        expected_observed = "unchanged snapshots may reuse this timestamp across reads"
+        for name in ("wiki-graph-v1.json", "wiki-transition-preflight-v1.json"):
+            with self.subTest(schema=name):
+                definitions = self.load_schema(name)["$defs"]
+                self.assertIn(expected_supported, definitions["transition"]["properties"]["supported"]["description"])
+                self.assertIn(expected_observed, definitions["transition_snapshot"]["properties"]["observed_at"]["description"])
+
+    def test_lifecycle_transition_schema_exposes_v2_actions_and_graph_routes(self) -> None:
+        graph = build_graph(FIXTURE_ROOT)
+        capability = graph["facts"]["transition_capability"]
+        self.assertEqual(2, capability["version"])
+        self.assertEqual(
+            {
+                "po-specify",
+                "po-handoff",
+                "design-start",
+                "design-handoff",
+                "dev-start",
+                "dev-done",
+                "reopen-spec",
+                "reopen-design",
+                "reopen-dev",
+            },
+            {surface["action"] for surface in capability["surfaces"]},
+        )
+        feature = next(node for node in graph["facts"]["nodes"] if node["type"] == "feature")
+        self.assertEqual("designer", feature["transition"]["target_owner"])
+        Draft202012Validator(self.load_schema("wiki-graph-v1.json")).validate(graph)
+
+    def test_transition_schema_retains_unknown_status_values_for_malformed_pages(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            wiki_root = workspace / "knowledge" / "wiki"
+            wiki_root.parent.mkdir(parents=True)
+            shutil.copytree(FIXTURE_ROOT / "knowledge" / "wiki", wiki_root)
+            feature_path = wiki_root / "features" / "F-001-checkout.md"
+            feature_path.write_text(
+                feature_path.read_text(encoding="utf-8").replace("status: specified", "status: future-stage"),
+                encoding="utf-8",
+            )
+            envelope = build_transition_preflight(workspace, "F-001")
+
+        Draft202012Validator(self.load_schema("wiki-transition-preflight-v1.json")).validate(envelope)
+        self.assertEqual("future-stage", envelope["facts"]["transition"]["source_status"])
+        self.assertEqual("unknown", envelope["facts"]["transition"]["classification"])
+
+    def test_transition_schema_retains_an_unsupported_requested_action(self) -> None:
+        envelope = build_transition_preflight(FIXTURE_ROOT, "F-001", action="future-action")
+
+        Draft202012Validator(self.load_schema("wiki-transition-preflight-v1.json")).validate(envelope)
+        self.assertEqual("future-action", envelope["facts"]["requested_action"])
+        self.assertEqual("unknown", envelope["facts"]["transition"]["classification"])
 
     def test_lint_envelope_includes_workspace_identity_and_matches_common_schema(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -134,6 +192,7 @@ class JsonContractTests(unittest.TestCase):
         for command, envelope in (
             ("query", wiki_show(FIXTURE_ROOT, "F-001")),
             ("graph", build_graph(FIXTURE_ROOT)),
+            ("transition", build_transition_preflight(FIXTURE_ROOT, "F-001")),
         ):
             with self.subTest(command=command):
                 Draft202012Validator(common_schema).validate(envelope)

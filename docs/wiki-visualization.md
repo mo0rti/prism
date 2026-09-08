@@ -57,15 +57,97 @@ review or open question is a workflow obligation. A malformed page or stale
 page is a source health diagnostic; stale or advisory warnings are not called
 malformed pages.
 
+## Transition requests are copy-only
+
+The dashboard's current transition controls prepare a source-valid request for
+one unique feature. For `po-handoff`, the source fields are exactly
+`status: specified` and `owner: po`, and its destination is
+`status: ready-for-design` with `owner: designer`. The other lifecycle actions
+also have source-valid browser previews backed by generated agent instructions
+and CLI preflight facts; the dashboard does not execute any of them. Raw
+features use the separate `po-specify` action, which verifies or authors the
+structured feature body before the confirmed `raw` + `po` to `specified` + `po`
+transition.
+
+On an eligible card, **Prepare request** (including **Prepare handoff** for
+`po-handoff`) opens a source-backed preview. **Copy request** copies the request
+text, and **Cancel** closes the preview. Dragging a card uses the same preview
+shortcut. The dialog is a request preview, not an **Approve move** control: it
+does not run an agent, approve a board review, change a local card, or mutate a
+feature, index, or log file.
+
+The preview identifies the feature path, observed status and owner, workspace
+identity, snapshot time and fingerprint, destination, and the selected action's
+observable checks. The agent must reread the current skill or command and source
+files before acting. For `po-handoff`, a pending advisory review offers an
+independent board review; declining it requires a non-blank reason that remains
+a proposal until the agent's final handoff confirmation. After board review
+changes, the agent rereads the source and reruns the checks. The PO handoff
+factual checks cover a non-empty frontmatter `platforms` list with a matching
+non-empty `## Platform scope` entry for every declared platform, one singular
+`## User story` section, meaningful acceptance entries, and no open PO-owned
+questions. Semantic quality and the final confirmation remain human or agent
+responsibilities.
+
+The Board columns are derived from the current source fields. When a human, agent,
+or other authorized process changes those fields and the source is refreshed, the
+Board can show the feature in a different column. The dashboard cannot prove who
+made that change or whether a confirmation happened. The intended process is for
+an agent to consume the copied request, reread the source and current skill, obtain
+the required confirmation, and write the documented files before the next refresh.
+
+Static exports and copied requests are relative to their capture time; the live
+server can observe later source changes. A changed identity, path, status, owner,
+advisory state, or fingerprint invalidates the preview and requires a fresh one.
+Snapshot time is the first observation of a cached content fingerprint, not the
+time of every later read. Unchanged content keeps that time; reverting content may
+reuse its earlier time while cached. The bounded cache and fingerprint do not
+replace the agent's fresh source checks.
+Blocked or unknown checks leave **Copy request** unavailable; review the listed
+evidence or repair the source and refresh. If the CLI preflight is missing,
+unsupported, or does not explicitly identify its common envelope, command facts,
+capability, and action, use direct file reads; a version string alone is not
+evidence of that command. If the Clipboard API is unavailable or rejects the write,
+the request remains selectable for manual copying and the UI reports that fallback.
+The selected generated handoff file must contain its matching
+`<!-- prism:<command>-contract:v1 -->` marker; a missing marker means that
+surface has an older unsupported contract and needs to be refreshed before
+copying a request. The other agent surface is optional. Blocked or unknown
+checks leave **Copy request** unavailable and provide review/repair guidance.
+
+The generated agent workflow supports these exact feature-only actions:
+
+| Action | Source | Destination |
+|---|---|---|
+| `po-specify` | `raw` + `po` | `specified` + `po` |
+| `po-handoff` | `specified` + `po` | `ready-for-design` + `designer` |
+| `design-start` | `ready-for-design` + `designer` | `in-design` + `designer` |
+| `design-handoff` | `in-design` + `designer` | `ready-for-dev` + `dev` |
+| `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` |
+| `dev-done` | `in-dev` + `dev` | `done` + `none` |
+| `feature-reopen` | `done` + `none` | `specified`, `in-design`, or `in-dev` by selected route |
+
+`dev-done` requires substantive, verifiable Implementation, Tests, and Release
+evidence for every declared platform. A confirmed `feature-reopen` archives
+prior active evidence, marks route-specific `revalidation` domains, and names
+affected requirement/API status changes before downstream readiness can be
+re-established. UI design exemptions and the full confirmation/write protocol
+are defined in the generated `knowledge/wiki/SCHEMA.md`. Browser controls for
+these action previews are implemented in the current UI first pass; integrated
+lifecycle acceptance remains pending. The controls remain copy-only and never
+execute the agent writes.
+
 ## Snapshot, live state, and confidence
 
 Graph facts are rebuilt from the current source files. The live server watches
 the markdown pages consumed by the graph, manifest and Copier answers identity
-inputs, queue entry names/types, selected platform directory presence, and the
-calendar date used for staleness checks. A relevant change refreshes the data
-endpoint and sends an update to connected browsers. A failed rebuild leaves the
-last successful snapshot available and retries on the next polling or request
-attempt.
+inputs, queue entry names/types, selected platform directory presence, all
+generated lifecycle capability files under `.agents/skills/` and
+`.claude/commands/`, and the calendar date used for staleness checks. This
+includes the selected `po-handoff` skill/command used by the browser request. A
+relevant change refreshes the data endpoint and sends an update to connected
+browsers. A failed rebuild leaves the last successful snapshot available and
+retries on the next polling or request attempt.
 
 The dashboard shows confidence and diagnostics with the facts that produced
 them. Treat confidence as a navigation aid: inspect the listed source and
@@ -102,6 +184,9 @@ The local acceptance captures are kept at:
 
 - [Board dashboard capture](media/wiki-dashboard-board.png)
 - [Graph dashboard capture](media/wiki-dashboard-graph.png)
+
+The implementation and local verification record is [Board Handoff Local
+Acceptance](board-transitions-acceptance.md).
 
 Optional PNG/SVG graph export remains deferred. Public package installation or
 release remains deferred as well; this guide describes the repository-local
