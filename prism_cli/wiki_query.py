@@ -14,7 +14,7 @@ from prism_cli.wiki_model import (
     read_markdown_page,
     read_platform_requirement_pages,
 )
-from prism_cli.workspace import detect_workspace_kind, load_workspace
+from prism_cli.workspace import detect_workspace_kind, inspect_workspace
 
 
 ACTIVE_PLATFORM_STATUSES = {"ready-for-design", "in-design", "ready-for-dev", "in-dev"}
@@ -28,7 +28,7 @@ SEARCH_DIRECTORIES = {
     "decision": "decisions",
 }
 from prism_cli.wiki_links import (  # noqa: E402  (kept here so existing imports stay stable)
-    LINKED_CONTEXT_DIRECTORIES,
+    LINKED_CONTEXT_DIRECTORIES,  # noqa: F401 (kept as a compatibility import)
     linked_context_for_feature as _shared_linked_context_for_feature,
     markdown_files as _shared_markdown_files,
     page_references_feature as _shared_page_references_feature,
@@ -169,8 +169,11 @@ def _envelope(
     sources: list[str],
     blocker_facts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    workspace = load_workspace(root)
-    all_diagnostics = [_workspace_diag_to_wiki_diag(diagnostic) for diagnostic in workspace.diagnostics]
+    inspection = inspect_workspace(root)
+    all_diagnostics = [
+        _workspace_diag_to_wiki_diag(diagnostic)
+        for diagnostic in inspection.contract_diagnostics
+    ]
     all_diagnostics.extend(diagnostics)
     confidence = "error" if any(diagnostic.severity == "error" for diagnostic in all_diagnostics) else "degraded" if all_diagnostics else "high"
     return {
@@ -181,8 +184,8 @@ def _envelope(
         "confidence": confidence,
         "workspace": {
             "kind": detect_workspace_kind(root),
-            "project_name": workspace.manifest.project_name if workspace.manifest else None,
-            "platforms": workspace.manifest.platforms if workspace.manifest else [],
+            "project_name": inspection.project_name,
+            "platforms": inspection.platforms,
         },
         "facts": facts,
         "blocker_facts": blocker_facts if blocker_facts is not None else [

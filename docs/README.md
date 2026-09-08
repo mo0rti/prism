@@ -14,6 +14,7 @@ Start here:
 1. [getting-started.md](getting-started.md)
 2. [questionnaire.md](questionnaire.md)
 3. [generated-projects.md](generated-projects.md)
+4. [wiki-visualization.md](wiki-visualization.md) for the local dashboard demo
 
 ### I already have a generated Prism project
 
@@ -50,6 +51,7 @@ These are the best pages for understanding Prism quickly.
 | [generated-projects.md](generated-projects.md) | Generated-project users | What a generated repo contains and what is safe to do first |
 | [prism-model.md](prism-model.md) | Evaluators and role leads | What Prism is, what problem it solves, and how the wiki-driven lifecycle works |
 | [wiki-workflow.md](wiki-workflow.md) | PO, design, and dev | How the wiki lifecycle, read/query layer, and handoff flow behave |
+| [wiki-visualization.md](wiki-visualization.md) | Evaluators and generated-project users | Run the synthetic TreasuryFlow demo and understand Graph, Board, Platforms, and Guide |
 
 ## Supporting Reference Docs
 
@@ -71,6 +73,8 @@ inside a generated project.
 |----------|---------|
 | [maintainer-workflow.md](maintainer-workflow.md) | Template structure, CLI/template workflow, and validation guidance |
 | [questionnaire.md](questionnaire.md) | Generation inputs, defaults, and the current option-specific caveats maintainers need to track |
+| [cli-release.md](cli-release.md) | Local CLI release preparation, wheel checks, and publication boundary |
+| [cli-v2-acceptance.md](cli-v2-acceptance.md) | CLI v2 acceptance evidence and the remaining release review boundary |
 
 ## Related Root Files
 

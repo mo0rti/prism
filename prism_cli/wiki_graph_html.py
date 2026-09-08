@@ -32,8 +32,10 @@ def render_html(envelope: dict[str, Any], mode: str = "snapshot", generated_at: 
     }
     return (
         template.replace(VENDOR_PLACEHOLDER, vendor)
-        .replace(DATA_PLACEHOLDER, _embed_json(envelope))
         .replace(CONFIG_PLACEHOLDER, _embed_json(config))
+        # Replace data last so a literal placeholder in a wiki title/body
+        # stays data and cannot be interpreted as a template directive.
+        .replace(DATA_PLACEHOLDER, _embed_json(envelope))
     )
 
 

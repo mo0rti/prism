@@ -93,9 +93,9 @@ header {
   background: conic-gradient(from 210deg, var(--po), var(--design), var(--dev), var(--platform), var(--po));
   clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
 }
-.wordmark { font-size: 12px; letter-spacing: .38em; font-weight: 700; }
+.wordmark { font-size: 12px; letter-spacing: .38em; font-weight: 700; white-space: nowrap; }
 .wordmark span { color: var(--muted); font-weight: 400; letter-spacing: .1em; text-transform: lowercase; }
-.project-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.project-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kind-chip {
   font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
   color: var(--ink-2); border: 1px solid var(--hairline); border-radius: 3px;
@@ -302,6 +302,7 @@ main { position: relative; flex: 1; overflow: hidden; }
 .lg i.hex { clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0% 50%); border-radius: 0; }
 .lg i.ring { background: transparent !important; border: 2px dashed var(--warning); }
 .lg i.err { background: transparent !important; border: 2px dashed var(--critical); }
+.lg i.warn { background: transparent !important; border: 2px dashed var(--warning); }
 .lg i.badge-i { background: var(--critical); width: 7px; height: 7px; }
 
 .empty-state { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--ink-2); pointer-events: none; }
@@ -434,6 +435,35 @@ main { position: relative; flex: 1; overflow: hidden; }
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
   .pipe-spark { display: none; }
 }
+
+@media (max-width: 700px) {
+  header { flex-wrap: wrap; padding: 10px 12px 8px; gap: 8px 10px; }
+  .project-name { flex: 1 1 90px; }
+  .header-right { flex: 1 0 100%; justify-content: flex-end; margin-left: 0; gap: 12px; }
+
+  .statrow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px 12px 4px; }
+  .stat { min-width: 0; padding: 8px 9px 9px; }
+  .stat .label { font-size: 8px; letter-spacing: .14em; white-space: nowrap; }
+  .stat .value { font-size: 22px; }
+  .stat .sub { font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stagebar { grid-column: 1 / -1; min-width: 0; padding: 7px 2px; }
+  .stagebar .legendline { gap: 8px; font-size: 7.5px; }
+
+  .toolbar { padding: 8px 12px; gap: 8px; }
+  .views { max-width: 100%; flex: 1 1 100%; }
+  .views button { flex: 1; padding: 8px 10px; letter-spacing: .1em; }
+  .chips { width: 100%; }
+  .search { flex: 1 1 100%; min-width: 0; margin-left: 0; }
+  .search input { width: 100%; min-width: 0; }
+
+  #board-view, #platform-view { padding: 12px; }
+  .board { grid-auto-flow: row; grid-auto-columns: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); min-height: auto; }
+  .column { min-height: 0; }
+  .panel { width: min(348px, 100%); }
+  .statusline { gap: 8px; padding: 0 12px; font-size: 8px; }
+  .statusline > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .statusline .right { gap: 8px; }
+}
 </style>
 </head>
 <body>
@@ -469,15 +499,15 @@ main { position: relative; flex: 1; overflow: hidden; }
     </div>
   </div>
   <main id="dashboard">
-    <section class="view" id="firstrun-view"></section>
-    <section class="view active" id="graph-view">
+    <section class="view" id="firstrun-view" inert aria-hidden="true"></section>
+    <section class="view active" id="graph-view" aria-hidden="false">
       <div id="graph-canvas"></div>
       <div class="graph-legend" id="graph-legend"></div>
       <div class="empty-state" id="empty-state" hidden></div>
     </section>
-    <section class="view" id="board-view"></section>
-    <section class="view" id="platform-view"></section>
-    <aside class="panel" id="panel"></aside>
+    <section class="view" id="board-view" inert aria-hidden="true"></section>
+    <section class="view" id="platform-view" inert aria-hidden="true"></section>
+    <aside class="panel" id="panel" inert aria-hidden="true"></aside>
   </main>
 
   <div class="diagpanel" id="diagpanel"></div>
@@ -627,7 +657,7 @@ function renderStatusline() {
       <span>${CONFIG.mode === "live" ? "UPDATED " + hh + ":" + mm + ":" + ss : "STATIC"}</span>
     </span>`;
   document.getElementById("diagpanel").innerHTML = diags.length
-    ? diags.map(d => `<div class="diag"><span class="sev ${d.severity}">${d.severity}</span><span class="code">${d.code}</span><span class="msg">${escapeHtml(d.message)}</span></div>`).join("")
+    ? diags.map(d => `<div class="diag"><span class="sev ${escapeHtml(d.severity)}">${escapeHtml(d.severity)}</span><span class="code">${escapeHtml(d.code)}</span><span class="msg">${escapeHtml(d.message)}</span></div>`).join("")
     : '<div class="diag"><span class="sev" style="color:var(--good)">clean</span><span class="msg">No diagnostics. The wiki contract holds.</span></div>';
 }
 document.getElementById("statusline").addEventListener("click", () => document.getElementById("diagpanel").classList.toggle("open"));
@@ -638,9 +668,18 @@ function renderFirstRunPage() {
   const facts = state.data.facts;
   const intake = intakeFacts();
   const setupDone = facts.setup_state === "initialized";
-  const ideaDone = intake.pending.length > 0;
-  const current = !setupDone ? 0 : !ideaDone ? 1 : 2;
-  const hereIdx = ideaDone ? 1 : 0;
+  // A processed brief leaves the pending queue, so the first feature is the
+  // durable evidence that both capture and intake have completed. Keeping
+  // these signals separate prevents live refresh from reopening step 2 after
+  // po-intake has moved the brief out of knowledge/intake/pending/.
+  const firstFeatureDone = featureNodes().length > 0;
+  const briefDone = firstFeatureDone || intake.pending.length > 0;
+  const intakeDone = firstFeatureDone;
+  const current = !setupDone ? 0 : !briefDone ? 1 : !intakeDone ? 2 : null;
+  const hereIdx = !setupDone ? 0 : !briefDone ? 0 : !intakeDone ? 1 : 2;
+  const briefEvidence = firstFeatureDone
+    ? "brief captured — first feature exists"
+    : `brief waiting: ${escapeHtml(intake.pending[0] || "")}`;
 
   const pipeline = PIPE_STAGES.map((s, i) => `
     <div class="pipe-stage${i === hereIdx ? " here" : ""}${state.pipeFocus === i ? " focus" : ""}" data-pipe="${i}" style="--stage-c:${C[s.color]};--d:${REDUCED ? 0 : i * 0.07}s">
@@ -678,15 +717,16 @@ function renderFirstRunPage() {
         "Run this in your AI agent. It confirms project identity, interviews you about domain risks, and configures the advisory board.",
         "initialized — advisory board found in knowledge/wiki/advisory/BOARD.md",
         "setup-project")}
-      ${step(1, ideaDone, current === 1,
+      ${step(1, briefDone, current === 1,
         "Add the first brief",
         `Drop a markdown brief into <code>knowledge/intake/pending/</code>. The <code>PO_BRIEF_TEMPLATE.md</code> in that folder shows the expected shape — a few honest paragraphs are enough.`,
-        `brief waiting: ${escapeHtml(intake.pending[0] || "")}`,
+        briefEvidence,
         null)}
-      ${step(2, false, current === 2,
+      ${step(2, intakeDone, current === 2,
         "Run intake",
         "Your agent reads the brief, asks for your confirmation, and writes the first feature page. It appears on this board the moment it exists.",
-        "", "po-intake")}
+        "feature page created — first feature is on the board",
+        "po-intake")}
     </div>`;
 
   document.querySelectorAll("#firstrun-view .pipe-stage").forEach(el => el.addEventListener("click", () => {
@@ -725,7 +765,7 @@ function startSpark() {
   })(t0);
 }
 function renderCmdBlock(cmd) {
-  const tabs = SURFACES.map(s => `<button data-surface="${s.id}" class="${state.surface === s.id ? "active" : ""}">${s.label}</button>`).join("");
+  const tabs = SURFACES.map(s => `<button data-surface="${escapeHtml(s.id)}" class="${state.surface === s.id ? "active" : ""}">${escapeHtml(s.label)}</button>`).join("");
   const full = surfaceCommand(cmd);
   const isProse = (SURFACES.find(s => s.id === state.surface) || {}).prefix === null;
   const shown = isProse ? escapeHtml(full) : `<span class="prompt">›</span>${escapeHtml(full)}`;
@@ -774,10 +814,11 @@ function renderStats() {
   const feats = featureNodes();
   const inFlight = feats.filter(f => ["ready-for-design", "in-design", "ready-for-dev", "in-dev"].includes(f.status)).length;
   const done = feats.filter(f => f.status === "done").length;
-  const brokenCount = state.data.facts.nodes.filter(n => n.health !== "ok").length;
+  const malformedCount = state.data.facts.nodes.filter(n => n.health === "error").length;
+  const warningCount = state.data.facts.nodes.filter(n => n.health === "warning").length;
   const intake = intakeFacts();
   const stat = (label, value, sub, alert) =>
-    `<div class="stat"><div class="label">${label}</div><div class="value${alert ? " alert" : ""}" data-tick="${value}">0</div><div class="sub">${sub || ""}</div></div>`;
+    `<div class="stat"><div class="label">${escapeHtml(label)}</div><div class="value${alert ? " alert" : ""}" data-tick="${value}">0</div><div class="sub">${escapeHtml(sub || "")}</div></div>`;
   let html = "";
   html += stat("Intake", intake.pending.length + intake.quarantined.length,
     intake.quarantined.length ? `${intake.quarantined.length} quarantined` : "ideas waiting", intake.quarantined.length > 0);
@@ -785,7 +826,8 @@ function renderStats() {
   html += stat("In flight", inFlight, "design + dev");
   html += stat("Blocked", blockedIds.size, blockedIds.size ? "needs attention" : "clear", blockedIds.size > 0);
   html += stat("Done", done, done ? "shipped" : "");
-  if (brokenCount) html += stat("Integrity", brokenCount, "malformed pages", true);
+  if (malformedCount) html += stat("Integrity", malformedCount, "malformed pages", true);
+  if (warningCount) html += stat("Warnings", warningCount, "needs review");
   const counts = STAGES.map(s => feats.filter(f => f.status === s).length);
   const total = counts.reduce((a, b) => a + b, 0);
   const denominator = Math.max(1, total);
@@ -806,7 +848,7 @@ function renderChips() {
   wrap.innerHTML = order.filter(t => counts[t]).map(t => {
     const on = state.visibleTypes.has(t);
     const color = t === "feature" ? C.po : t === "platform" ? C.platform : C.context;
-    return `<span class="chip${on ? " on" : ""}" data-type="${t}"><i style="background:${color}"></i>${TYPE_LABELS[t] || t}<span class="n">${counts[t]}</span></span>`;
+    return `<span class="chip${on ? " on" : ""}" data-type="${escapeHtml(t)}"><i style="background:${color}"></i>${escapeHtml(TYPE_LABELS[t] || t)}<span class="n">${counts[t]}</span></span>`;
   }).join("");
   wrap.querySelectorAll(".chip").forEach(chip => chip.addEventListener("click", () => {
     const t = chip.dataset.type;
@@ -1007,6 +1049,9 @@ function focusNode(id) {
 function renderBoard() {
   const feats = featureNodes();
   const intake = intakeFacts();
+  const boardStages = feats.some(f => !STAGES.includes(f.status))
+    ? [...STAGES, "unknown stage"]
+    : STAGES;
   const intakeCards =
     intake.quarantined.map(name =>
       `<div class="card intake quarantined" data-intake="quarantined" data-name="${escapeHtml(name)}">
@@ -1017,18 +1062,28 @@ function renderBoard() {
         <div class="cid">PENDING BRIEF</div><div class="ctitle">${escapeHtml(name)}</div>
         <div class="badges"><span class="badge advisory">awaiting po-intake</span></div></div>`).join("");
   const intakeCol = `<div class="column intake-col"><h3><i style="background:${C.muted}"></i>intake<span class="count">${intake.pending.length + intake.quarantined.length}</span></h3>${intakeCards || '<span style="font-size:10.5px;color:var(--muted);padding:4px 6px;line-height:1.5">Drop briefs into knowledge/intake/pending/</span>'}</div>`;
-  const cols = STAGES.map(stage => {
-    const items = feats.filter(f => f.status === stage);
+  const cols = boardStages.map(stage => {
+    const items = stage === "unknown stage"
+      ? feats.filter(f => !STAGES.includes(f.status))
+      : feats.filter(f => f.status === stage);
+    const stageColor = C[STAGE_PHASE[stage]] || C.muted;
     const cards = items.map((f, i) => {
       const badges = [];
       if (blockedIds.has(f.id)) badges.push('<span class="badge blocked">blocked</span>');
       if (f.advisory_review === "pending") badges.push('<span class="badge advisory">advisory</span>');
-      if (f.health !== "ok") badges.push('<span class="badge broken">malformed</span>');
-      return `<div class="card" data-id="${f.id}" style="--stage-color:${C[STAGE_PHASE[stage]]};--stagger:${REDUCED ? 0 : i * 0.05}s">
-        <div class="cid">${f.id}</div><div class="ctitle">${escapeHtml(f.title)}</div>
+      if (f.health === "error") badges.push('<span class="badge broken">malformed</span>');
+      else if (f.health === "warning") badges.push('<span class="badge advisory">warning</span>');
+      if (stage === "unknown stage") {
+        const originalStatus = f.status === null || f.status === undefined || f.status === ""
+          ? "missing status"
+          : `status: ${String(f.status)}`;
+        badges.push(`<span class="badge broken">${escapeHtml(originalStatus)}</span>`);
+      }
+      return `<div class="card" data-id="${escapeHtml(f.id)}" style="--stage-color:${stageColor};--stagger:${REDUCED ? 0 : i * 0.05}s">
+        <div class="cid">${escapeHtml(f.id)}</div><div class="ctitle">${escapeHtml(f.title)}</div>
         <div class="badges">${badges.join("")}</div></div>`;
     }).join("");
-    return `<div class="column"><h3><i style="background:${C[STAGE_PHASE[stage]]};opacity:${READY_STAGES.has(stage) ? .55 : 1}"></i>${stage}<span class="count">${items.length}</span></h3>${cards}</div>`;
+    return `<div class="column"><h3><i style="background:${stageColor};opacity:${READY_STAGES.has(stage) ? .55 : 1}"></i>${escapeHtml(stage)}<span class="count">${items.length}</span></h3>${cards}</div>`;
   }).join("");
   const view = document.getElementById("board-view");
   view.innerHTML = `<div class="board">${intakeCol}${cols}</div>`;
@@ -1050,10 +1105,10 @@ function renderPlatforms() {
       const req = reqEdge ? nodesById[reqEdge.target] : null;
       const reqStatus = req ? (req.status || "unknown") : "no requirement";
       const reqColor = reqStatus === "done" ? C.done : reqStatus === "in-progress" ? C.dev : C.muted;
-      return `<div class="fchip" data-id="${fid}"><i style="background:${phaseColor(f)}"></i>${fid} · ${escapeHtml(f.title)}
-        <span class="req" style="color:${reqColor}">req: ${reqStatus}</span></div>`;
+      return `<div class="fchip" data-id="${escapeHtml(fid)}"><i style="background:${phaseColor(f)}"></i>${escapeHtml(fid)} · ${escapeHtml(f.title)}
+        <span class="req" style="color:${reqColor}">req: ${escapeHtml(reqStatus)}</span></div>`;
     }).join("");
-    return `<div class="lane" style="animation-delay:${REDUCED ? 0 : i * 0.07}s"><h3><i></i>${p.title}<span class="count">${featureIds.length} FEATURE${featureIds.length === 1 ? "" : "S"}</span></h3>
+    return `<div class="lane" style="animation-delay:${REDUCED ? 0 : i * 0.07}s"><h3><i></i>${escapeHtml(p.title)}<span class="count">${featureIds.length} FEATURE${featureIds.length === 1 ? "" : "S"}</span></h3>
       <div class="features">${chips || '<span class="none">No features target this platform yet.</span>'}</div></div>`;
   }).join("");
   const view = document.getElementById("platform-view");
@@ -1067,12 +1122,18 @@ function selectNode(id) {
   const node = nodesById[id];
   if (!node) return;
   renderPanel(node);
-  document.getElementById("panel").classList.add("open");
+  const panel = document.getElementById("panel");
+  panel.classList.add("open");
+  panel.removeAttribute("inert");
+  panel.setAttribute("aria-hidden", "false");
   if (state.view === "graph") focusNode(id);
 }
 function closePanel() {
   state.selected = null;
-  document.getElementById("panel").classList.remove("open");
+  const panel = document.getElementById("panel");
+  panel.classList.remove("open");
+  panel.setAttribute("inert", "");
+  panel.setAttribute("aria-hidden", "true");
 }
 function renderPanel(node) {
   const color = phaseColor(node);
@@ -1080,17 +1141,17 @@ function renderPanel(node) {
   if (node.status) meta.push(["Stage", node.status, C[STAGE_PHASE[node.status]] || C.context]);
   if (node.owner) meta.push(["Owner", node.owner, null]);
   if (node.advisory_review) meta.push(["Advisory", node.advisory_review, node.advisory_review === "pending" ? C.warning : null]);
-  meta.push(["Health", node.health, node.health === "ok" ? C.done : C.critical]);
+  meta.push(["Health", node.health, node.health === "ok" ? C.done : node.health === "warning" ? C.warning : C.critical]);
   const metaHtml = meta.map(([k, v, c]) =>
-    `<div class="meta"><div class="k">${k}</div><div class="v">${c ? `<i style="background:${c}"></i>` : ""}${escapeHtml(String(v))}</div></div>`).join("");
+    `<div class="meta"><div class="k">${escapeHtml(k)}</div><div class="v">${c ? `<i style="background:${c}"></i>` : ""}${escapeHtml(String(v))}</div></div>`).join("");
 
   const BLOCKER_COMMANDS = { "pending-board-review": "board-review", "missing-platform-requirements": "design-handoff" };
   const blockers = blockersByFeature[node.id] || [];
   const blockerHtml = blockers.length
     ? `<div class="section"><h4>⛔ Blockers — action required</h4>${blockers.map(b => {
         const cmd = BLOCKER_COMMANDS[b.code] ? surfaceCommand(`${BLOCKER_COMMANDS[b.code]} ${node.id}`) : null;
-        return `<div class="blocker-item"><div class="code">${b.code}</div>${escapeHtml(b.message || "")}
-          ${cmd ? `<div class="unblock">unblocked by <code>${escapeHtml(cmd)}</code><button class="copy-btn" data-copy="${escapeHtml(cmd)}">Copy</button></div>` : ""}</div>`;
+        return `<div class="blocker-item"><div class="code">${escapeHtml(b.code)}</div>${escapeHtml(b.message || "")}
+          ${cmd ? `<div class="unblock">Review with <code>${escapeHtml(cmd)}</code><button class="copy-btn" data-copy="${escapeHtml(cmd)}">Copy</button></div>` : ""}</div>`;
       }).join("")}</div>`
     : "";
 
@@ -1110,20 +1171,21 @@ function renderPanel(node) {
   const conns = connEdges.map(e => {
     const otherId = e.source === node.id ? e.target : e.source;
     const other = nodesById[otherId]; if (!other) return "";
-    return `<div class="conn" data-id="${otherId}"><span class="kind">${kindLabel[e.kind] || e.kind}</span>
+    return `<div class="conn" data-id="${escapeHtml(otherId)}"><span class="kind">${escapeHtml(kindLabel[e.kind] || e.kind)}</span>
       <i style="background:${phaseColor(other)}"></i>${escapeHtml(other.title || otherId)}</div>`;
   }).join("");
 
+  const pathHref = node.path ? `vscode://file/${encodeURI(node.path.replace(/\\/g, "/"))}` : "";
   const pathHtml = node.path ? `
     <div class="section"><h4>Source of truth</h4>
       <div class="pathrow"><code title="${escapeHtml(node.path)}">${escapeHtml(node.path)}</code>
       <a href="#" id="copy-path">Copy</a>
-      <a href="vscode://file/${encodeURI(node.path.replace(/\\/g, "/"))}">VS Code</a></div></div>` : "";
+      <a href="${escapeHtml(pathHref)}">VS Code</a></div></div>` : "";
 
   document.getElementById("panel").innerHTML = `
     <div class="panel-head">
-      <div class="row"><span class="type-chip" style="border-color:${color};color:${color}">${TYPE_LABELS[node.type] || node.type}</span>
-        <span class="pid">${node.id}</span>
+      <div class="row"><span class="type-chip" style="border-color:${color};color:${color}">${escapeHtml(TYPE_LABELS[node.type] || node.type)}</span>
+        <span class="pid">${escapeHtml(node.id)}</span>
         <button class="panel-close" id="panel-close">✕</button></div>
       <h2>${escapeHtml(node.title || node.id)}</h2>
     </div>
@@ -1171,6 +1233,8 @@ function showIntakePanel(kind, name) {
         <div class="pathrow"><code>${escapeHtml(dir + name)}</code></div></div>
     </div>`;
   document.getElementById("panel").classList.add("open");
+  document.getElementById("panel").removeAttribute("inert");
+  document.getElementById("panel").setAttribute("aria-hidden", "false");
   bindPanelActions(null);
 }
 
@@ -1191,7 +1255,8 @@ function renderLegend() {
       <span class="lg"><i style="background:${C.context}"></i>Context page</span>
       <span class="lg"><i class="ring"></i>Advisory pending</span>
       <span class="lg"><i class="badge-i"></i>Blocked</span>
-      <span class="lg"><i class="err"></i>Malformed page</span>
+       <span class="lg"><i class="warn"></i>Warning / stale page</span>
+       <span class="lg"><i class="err"></i>Malformed page</span>
       <span class="lg" style="color:var(--muted)">◌ outlined = ready-for-*</span>
     </div>`;
   legend.classList.toggle("open", wasOpen);
@@ -1202,7 +1267,17 @@ function renderLegend() {
 function switchView(view) {
   state.view = view;
   document.querySelectorAll(".views button").forEach(b => b.classList.toggle("active", b.dataset.view === view));
-  document.querySelectorAll("#dashboard .view").forEach(v => v.classList.remove("active"));
+  document.querySelectorAll("#dashboard .view").forEach(v => {
+    const active = v.id === view + "-view";
+    v.classList.toggle("active", active);
+    if (active) {
+      v.removeAttribute("inert");
+      v.setAttribute("aria-hidden", "false");
+    } else {
+      v.setAttribute("inert", "");
+      v.setAttribute("aria-hidden", "true");
+    }
+  });
   document.getElementById(view + "-view").classList.add("active");
   if (view === "firstrun") renderFirstRunPage();
   if (view === "board") renderBoard();

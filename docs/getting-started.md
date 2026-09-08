@@ -33,13 +33,24 @@ workflow you want to exercise.
 Required to generate a project:
 
 - Python 3.10+
-- `pip install copier`
-- `pip install -e .`
+- `pip install -e .` from this checkout
 
-The current V2 install path is local/editable from this repository. The package
-already exposes the `prism` console script through `pyproject.toml`; a published
-package or remote `pipx` install path should not be treated as available until it
-is explicitly released.
+The editable install is distributed as `prism-kit` and exposes the `prism` command;
+the import package remains `prism_cli`. It installs the CLI's generation dependencies
+(`copier`, `jinja2-time`, and `PyYAML`) from `pyproject.toml`. A published package or
+remote `pipx` install path is still pending and should not be treated as available.
+
+To try the wheel install path locally, build and install the wheel from this checkout:
+
+```bash
+python -m pip install build
+python -m build
+python -m pip install dist/prism_kit-0.2.0-py3-none-any.whl
+```
+
+The installed CLI uses the canonical GitHub template by default. A local checkout
+uses its local template automatically. Pass `--template <path-or-url>` to choose a
+different template explicitly.
 
 Useful first commands after install:
 
@@ -74,8 +85,9 @@ Required for iOS work on macOS:
 - Xcode
 - `gem install fastlane`
 
-`copier`, `go-task`, and the generator CLIs are external dependencies. They are not
-bundled with this repository or with generated projects.
+`go-task` and the platform generator CLIs remain external dependencies for generated
+projects. They are not bundled with generated projects; use `prism doctor` to see
+which optional tools are available.
 
 ## 3. Generate Your First Project With Prism
 
@@ -144,6 +156,20 @@ Platform-specific caution:
 
 Do not assume every command, workflow, or platform combination has been fully hardened just
 because the repository generated successfully.
+
+For the generated workspace contract and current wiki queues, use the read-only status
+surface:
+
+```bash
+prism status /path/to/generated-project --full
+prism status /path/to/generated-project --full --json
+prism doctor --workspace /path/to/generated-project
+```
+
+`status --full` includes the effective `SETTINGS.md` staleness setting, advisory review
+counts, documented generation answers, and template provenance. It omits private Copier
+metadata and unknown answer keys. `doctor --workspace` returns a validation failure when
+the manifest, answers, or detected platform directories contain contract errors.
 
 If you are maintaining the Prism template repo itself, you can also run:
 
@@ -218,6 +244,13 @@ copier copy --trust . ../my-new-project
 
 The `--trust` flag is required because this template uses the `jinja2_time` Jinja
 extension.
+
+The Prism package already installs Copier and `jinja2-time`. Install those packages
+separately only when using the raw Copier path without installing Prism:
+
+```bash
+python -m pip install copier jinja2-time
+```
 
 Use the raw Copier path when:
 

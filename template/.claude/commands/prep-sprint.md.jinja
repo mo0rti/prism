@@ -3,7 +3,30 @@
 ## Usage
 /prep-sprint
 
-## What this command does
+## Primary path: Prism CLI
+
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use `prism status --json` only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract) and the response has `"schema_version": 1`. Use
+`facts.wiki`, `facts.advisory_review`, `blocker_facts`, `diagnostics`, and
+`sources` as the shared source for lifecycle counts, readiness, health, and
+canonical blockers. Treat returned diagnostics, including errors, as facts to
+surface; do not replace them with optimistic manual state. Read matching feature
+and platform-requirement pages only for the names and delivery details needed in
+the report, and do not recompute status or blocker facts.
+
+## Fallback path
+
+If the version probe or schema check fails, or `prism status --json` is missing,
+too old, fails, or returns an unsupported schema, say:
+`Prism CLI status unavailable; falling back to direct wiki reads.` Then use the
+complete workflow below and report facts proved by those files.
+
+## Fallback workflow
 
 1. Read `knowledge/wiki/WIKI_REPORT.md` first if it exists for a quick orientation summary
 2. If `knowledge/wiki/WIKI_REPORT.md` is absent, tell the user to run `/feature-status`
@@ -38,7 +61,7 @@
    - F-003 — Admin dashboard [in-design, owner: designer]
    ```
 
-8. Do not modify any wiki files. Read-only command.
+8. Do not modify any wiki files. This is a read-only command.
 
 ## Notes for the agent
 

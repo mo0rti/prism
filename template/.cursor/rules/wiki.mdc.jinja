@@ -6,55 +6,57 @@ alwaysApply: true
 
 # Read the product wiki before implementing
 
-This project uses a shared product wiki at `knowledge/wiki/` as the single source of
-truth for what to build.
+`knowledge/wiki/` is the shared source of truth for what to build.
 
 ## CLI read surfaces
 
-For read/query operations, prefer Prism CLI JSON when available:
+For read/query operations, probe the optional CLI before selecting the JSON
+path:
+
+```bash
+prism --version
+```
+
+Use the CLI only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract) and
+the requested command response has `"schema_version": 1`. The command is
+`prism`:
 
 - `prism status --json`
+- `prism wiki lint --json`
 - `prism wiki show F-XXX --json`
 - `prism wiki blockers --json`
 - `prism wiki owner po|designer|dev|none --json`
 - `prism wiki platform backend|mobile-android|mobile-ios|web-user-app|web-admin-portal --json`
 - `prism wiki search "text" --json`
-- `prism wiki lint --json`
 
-If `prism` is missing, too old, or lacks the needed subcommand, say the CLI read
-surface is unavailable and fall back to direct wiki reads. This generated project
-must not hard-depend on an installed Prism CLI.
+Use `confidence`, facts, blocker facts, obligations, diagnostics, and sources
+exactly as reported. Returned diagnostics, including errors, are facts to
+surface and must not be replaced with optimistic manual state. If the version
+probe or schema check fails, or `prism` is missing, too old, fails, or lacks a
+command, say the CLI read surface is unavailable and fall back to direct wiki
+reads. This generated project must not hard-depend on an installed Prism CLI.
+
+## Fallback path
+
+The fallback reads `knowledge/wiki/SCHEMA.md`, `index.md`, feature pages,
+platform requirements, and only the relevant design, API, advisory,
+business-rule, persona, and decision pages. Keep malformed pages visible and
+compute only categories proved by files; the canonical blocker categories are
+`pending-board-review`, `missing-design`, `missing-platform-requirements`,
+`unresolved-open-questions`, `api-contract-not-ready`, and
+`cross-platform-dependency`. Read `SETTINGS.md` for staleness and use
+`wiki-stale-after-days: 14` when absent or invalid. All reads are read-only.
 
 ## Before implementing any feature
 
-1. Read `knowledge/wiki/index.md` — confirm the feature is in `ready-for-dev` or `in-dev`
-   status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
-   stop and inform the human — a board review should happen before implementation.
-2. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context
-3. Read `knowledge/wiki/platform-requirements/[feature-id]-[THIS_PLATFORM].md` for your
-   specific implementation requirements
-4. Read `knowledge/wiki/api-contracts/[feature-id].md` if this feature has an API surface
-5. Check `knowledge/wiki/business-rules/` for rules that apply to this feature
-6. If you are a UI platform: read `knowledge/wiki/design/[feature-id]-[slug].md`
+1. Read `knowledge/wiki/index.md` and confirm the feature is in `ready-for-dev` or
+   `in-dev`; a pending advisory review requires human attention first.
+2. Read `knowledge/wiki/features/[feature-id]-[slug].md`.
+3. Read `knowledge/wiki/platform-requirements/[feature-id]-[THIS_PLATFORM].md`.
+4. Read `knowledge/wiki/api-contracts/[feature-id].md` when applicable.
+5. Check `knowledge/wiki/business-rules/` for rules that apply.
+6. If this is a UI platform, read `knowledge/wiki/design/[feature-id]-[slug].md`.
 
-**Do not implement features without a wiki page.** Ask the human to run the `po-intake`
-operation first: ask the agent to "run po-intake on [folder]" and it will follow the
-steps in `.claude/commands/po-intake.md` and `knowledge/wiki/SCHEMA.md`.
-
-If you discover information during implementation that should update the wiki, propose
-the update and ask for confirmation before writing.
-
-## Available operations (ask the agent by name)
-
-- "run setup-project" — interactive project initialization (run once after scaffolding)
-- "run po-intake on [folder]" — process raw PO notes into feature specs
-- "run po-clarify" — answer open questions assigned to PO
-- "run po-handoff F-XXX" — move a feature to ready-for-design
-- "run design-intake on F-XXX [folder]" — attach design artifacts to a feature
-- "run design-clarify" — answer open questions assigned to Designer
-- "run design-handoff F-XXX" — move a feature to ready-for-dev
-- "run board-review F-XXX" — domain expert feature review
-- "run prep-sprint" — show what is ready to build
-- "run dev-done F-XXX" — mark a feature as shipped
-- "run feature-status" — full pipeline view
-- "run lint-wiki" — health-check the knowledge base
+Do not implement a feature without a wiki page. Ask for `po-intake` first. If
+implementation reveals product information that belongs in the wiki, propose the
+update and ask before writing it. Separate facts from advice in every response.

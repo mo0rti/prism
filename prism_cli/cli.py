@@ -30,12 +30,12 @@ from prism_cli.presets import (
     get_preset,
     merge_answers,
 )
-from prism_cli.status import WorkspaceStatus, build_status
-from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind
+from prism_cli.status import build_status
+from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind, write_workspace_manifest
 from prism_cli.wiki_model import VALID_FEATURE_OWNERS, VALID_PLATFORM_IDS
 from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
-from prism_cli.wiki_lint import WikiLintResult, lint_wiki
+from prism_cli.wiki_lint import lint_wiki
 from prism_cli.ui import (
     ANSI_PATTERN,
     PALETTE_SIGNAL,
@@ -68,9 +68,18 @@ EXIT_ENVIRONMENT = 4
 EXIT_COPIER = 5
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_TEMPLATE_URL = "https://github.com/mo0rti/prism.git"
 COPIER_ANSWERS_FILE = ".copier-answers.yml"
 DEFAULT_GENERATED_DIR = "workspaces"
 COPIER_PROGRESS_PATTERN = re.compile(r"^\s*(create|identical|overwrite|conflict|skip|remove)\s+(.+?)\s*$")
+
+
+def default_template_reference() -> str:
+    """Use the checkout while developing and the canonical template when installed."""
+
+    if (REPO_ROOT / ".git").exists() and (REPO_ROOT / "copier.yml").exists():
+        return str(REPO_ROOT)
+    return DEFAULT_TEMPLATE_URL
 
 
 def derive_project_slug(project_name: str) -> str:
@@ -230,7 +239,7 @@ def build_parser() -> argparse.ArgumentParser:
     new_parser.add_argument("--package-identifier")
     new_parser.add_argument("--github-org")
     new_parser.add_argument("--dest")
-    new_parser.add_argument("--template", default=str(REPO_ROOT))
+    new_parser.add_argument("--template", default=default_template_reference())
     new_parser.add_argument("--answers", help="Path to a Prism YAML answers file.")
     new_parser.add_argument("--debug", action="store_true", help="Show raw resolved answers.")
     new_parser.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
@@ -498,6 +507,17 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
                 print(line)
         print()
 
+    workspace_errors = bool(
+        workspace_status
+        and (
+            workspace_status.confidence == "error"
+            or any(diagnostic["severity"] == "error" for diagnostic in workspace_status.to_dict()["diagnostics"])
+        )
+    )
+    if workspace_errors:
+        print(error("Workspace contract checks found errors."))
+        return EXIT_VALIDATION
+
     if core_missing:
         print(error("Install the blocking core dependencies before running `prism new`."))
         return EXIT_ENVIRONMENT
@@ -532,19 +552,18 @@ def build_doctor_checks(incubation_mode: bool) -> list[DoctorCheck]:
         DoctorCheck(
             label="Copier",
             category="core",
-            purpose="Needed to render Prism projects from the template during incubation.",
+            purpose="Needed to render Prism projects from the template.",
             impact="Prism generation is blocked until Copier is available in this Python environment.",
-            install_hint="Install Copier as an isolated CLI tool. If `uv` is not installed yet, use `pip install copier` as a fallback.",
-            next_step_hint="Install Copier before running prism new in incubation mode.",
+            install_hint="Install Copier and jinja2-time, or install this checkout in editable mode before running generation.",
+            next_step_hint="Install Copier and jinja2-time before running prism new.",
             install_commands={
-                "default": "uv tool install copier",
+                "default": "python -m pip install copier jinja2-time",
             },
             install_references={
                 "default": "https://copier.readthedocs.io/en/stable/",
             },
             resolver="copier",
             blocking=True,
-            packaged_status="bundled" if not incubation_mode else None,
         ),
         DoctorCheck(
             label="Git",
@@ -779,7 +798,8 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(json.dumps(result.to_dict(), indent=2))
         return 0
 
-    show_command_intro(args, "Generated-project workspace status")
+    title = "Generated-project workspace status" if result.workspace_kind == "generated-project" else "Workspace status"
+    show_command_intro(args, title)
     render_status_result(result, full=args.full)
     return 0
 
@@ -904,288 +924,6 @@ def cmd_wiki_graph(args: argparse.Namespace) -> int:
     return 0
 
 
-def render_or_print_wiki_query(args: argparse.Namespace, title: str, result: dict[str, Any]) -> int:
-    if args.json:
-        print(json.dumps(result, indent=2))
-        return 0
-
-    show_command_intro(args, title)
-    render_wiki_query_result(result)
-    return 0
-
-
-def render_wiki_lint_result(result: WikiLintResult) -> None:
-    summary = [
-        f"Workspace: {result.root}",
-        f"Features: {result.feature_count}",
-        f"Errors: {result.error_count}",
-        f"Warnings: {result.warning_count}",
-    ]
-    print(panel("Wiki lint", summary))
-    print()
-    if result.is_clean:
-        print(success("Wiki contract checks passed."))
-        return
-
-    print(section("Diagnostics"))
-    for diagnostic in result.diagnostics:
-        formatter = error if diagnostic.severity == "error" else warn
-        location = diagnostic.path
-        if diagnostic.feature_id:
-            location += f" [{diagnostic.feature_id}]"
-        print(f"- {formatter(diagnostic.code)}: {diagnostic.message}")
-        print(f"  {colorize(location, STYLE.dim)}")
-
-
-def render_wiki_query_result(result: dict[str, Any]) -> None:
-    workspace = result.get("workspace", {})
-    facts = result.get("facts", {})
-    print(
-        panel(
-            "Wiki query",
-            [
-                f"Command: {result.get('command')}",
-                f"Workspace: {workspace.get('kind', 'unknown')}",
-                f"Confidence: {format_confidence(str(result.get('confidence', 'unknown')))}",
-            ],
-        )
-    )
-    print()
-
-    command = result.get("command")
-    if command == "wiki show":
-        render_wiki_show_facts(facts)
-    elif command == "wiki blockers":
-        render_wiki_blocker_facts(facts)
-    elif command == "wiki owner":
-        render_wiki_owner_facts(facts)
-    elif command == "wiki platform":
-        render_wiki_platform_facts(facts)
-    elif command == "wiki search":
-        render_wiki_search_facts(facts)
-    else:
-        print(json.dumps(facts, indent=2))
-
-    diagnostics = result.get("diagnostics", [])
-    if diagnostics:
-        print()
-        print(section("Diagnostics"))
-        for diagnostic in diagnostics[:8]:
-            formatter = error if diagnostic.get("severity") == "error" else warn
-            print(f"- {formatter(diagnostic.get('code', 'diagnostic'))}: {diagnostic.get('message', '')}")
-            print(f"  {colorize(str(diagnostic.get('path', '')), STYLE.dim)}")
-        hidden_count = len(diagnostics) - 8
-        if hidden_count > 0:
-            print(info(f"{hidden_count} more diagnostics hidden. Use `--json` for the complete list."))
-
-
-def render_wiki_show_facts(facts: dict[str, Any]) -> None:
-    feature = facts.get("feature")
-    if not feature:
-        print(warn("No feature facts available."))
-        return
-    print(
-        panel(
-            "Feature",
-            [
-                f"ID: {feature.get('id')}",
-                f"Title: {feature.get('title')}",
-                f"Status: {feature.get('status')}",
-                f"Owner: {feature.get('owner')}",
-                f"Board review: {feature.get('advisory_review')}",
-                f"Platforms: {', '.join(feature.get('platforms', [])) or 'none'}",
-                f"Path: {feature.get('path')}",
-            ],
-        )
-    )
-    questions = feature.get("open_questions", [])
-    requirements = feature.get("platform_requirements", [])
-    print()
-    print(section("Open questions"))
-    if questions:
-        for question in questions:
-            print(f"- {question.get('number')}: {question.get('question')} [{question.get('owner')}, {question.get('status')}]")
-    else:
-        print("- none")
-    print()
-    print(section("Platform requirements"))
-    if requirements:
-        for requirement in requirements:
-            print(f"- {requirement.get('platform')}: {requirement.get('status')} ({requirement.get('path')})")
-    else:
-        print("- none")
-
-
-def render_wiki_blocker_facts(facts: dict[str, Any]) -> None:
-    blockers = facts.get("blockers", [])
-    print(panel("Blockers", [f"Count: {facts.get('blocker_count', 0)}"]))
-    if not blockers:
-        print()
-        print(success("No blocker facts detected."))
-        return
-    print()
-    for blocker in blockers:
-        print(f"- {error(blocker.get('code', 'blocker'))}: {blocker.get('message', '')}")
-        print(f"  {colorize(str(blocker.get('path', '')), STYLE.dim)}")
-
-
-def render_wiki_owner_facts(facts: dict[str, Any]) -> None:
-    print(panel("Owner", [f"Owner: {facts.get('owner')}", f"Features: {facts.get('feature_count', 0)}", f"Open questions: {facts.get('open_question_count', 0)}"]))
-    print()
-    print(section("Features"))
-    render_feature_summaries(facts.get("features", []))
-    print()
-    print(section("Open questions"))
-    questions = facts.get("open_questions", [])
-    if questions:
-        for question in questions:
-            print(f"- {question.get('feature_id')} #{question.get('number')}: {question.get('question')}")
-    else:
-        print("- none")
-
-
-def render_wiki_platform_facts(facts: dict[str, Any]) -> None:
-    print(panel("Platform", [f"Platform: {facts.get('platform')}", f"Features: {facts.get('feature_count', 0)}", f"Requirements: {facts.get('platform_requirement_count', 0)}"]))
-    print()
-    print(section("Features"))
-    render_feature_summaries(facts.get("features", []))
-    print()
-    print(section("Platform requirements"))
-    requirements = facts.get("platform_requirements", [])
-    if requirements:
-        for requirement in requirements:
-            print(f"- {requirement.get('feature_id')}: {requirement.get('status')} ({requirement.get('path')})")
-    else:
-        print("- none")
-
-
-def render_wiki_search_facts(facts: dict[str, Any]) -> None:
-    print(panel("Search", [f"Query: {facts.get('query')}", f"Results: {facts.get('result_count', 0)}"]))
-    print()
-    results = facts.get("results", [])
-    if not results:
-        print("- none")
-        return
-    for item in results:
-        label = item.get("id") or item.get("feature_id") or item.get("type")
-        print(f"- {item.get('type')}: {label}")
-        print(f"  {colorize(str(item.get('path', '')), STYLE.dim)}")
-        print(f"  matched: {', '.join(item.get('matched_fields', []))}")
-
-
-def render_feature_summaries(features: list[dict[str, Any]]) -> None:
-    if not features:
-        print("- none")
-        return
-    for feature in features:
-        print(f"- {feature.get('id')}: {feature.get('title')} [{feature.get('status')}, {feature.get('owner')}]")
-        print(f"  {colorize(str(feature.get('path', '')), STYLE.dim)}")
-
-
-def render_status_result(result: WorkspaceStatus, full: bool) -> None:
-    workspace_lines = [
-        f"Project: {result.project_name or 'unknown'}",
-        f"Kind: {result.workspace_kind}",
-        f"Platforms: {', '.join(result.platforms) if result.platforms else 'none detected'}",
-        f"Setup: {format_setup_state(result.setup_state)}",
-        f"Confidence: {format_confidence(result.confidence)}",
-    ]
-    print(panel("Workspace", workspace_lines))
-    print()
-
-    queue_lines = [
-        f"Pending intake: {result.intake.pending}",
-        f"Quarantined intake: {result.intake.quarantined}",
-        f"Features: {result.wiki_lint.feature_count}",
-        f"Blockers: {result.blocker_count}",
-        f"Wiki errors: {result.wiki_lint.error_count}",
-        f"Wiki warnings: {result.wiki_lint.warning_count}",
-    ]
-    print(panel("Queues and wiki", queue_lines))
-
-    if result.setup_state == "not-initialized":
-        print()
-        print(warn("setup-project has not initialized the wiki yet."))
-
-    caveats = [
-        (platform_id, data.get("caveat", ""))
-        for platform_id, data in result.platform_maturity.items()
-        if data.get("caveat")
-    ]
-    if caveats:
-        print()
-        print(section("Platform maturity"))
-        for platform_id, caveat in caveats:
-            print(f"- {platform_id}: {warn(caveat)}")
-
-    print()
-    print(section("Feature lifecycle"))
-    lifecycle_counts = compact_count_lines(result.feature_status_counts)
-    if lifecycle_counts:
-        for key, value in lifecycle_counts:
-            print(f"- {key}: {value}")
-    else:
-        print("- none")
-
-    if full:
-        print()
-        print(section("Owner queues"))
-        owner_counts = compact_count_lines(result.feature_owner_counts)
-        if owner_counts:
-            for key, value in owner_counts:
-                print(f"- {key}: {value}")
-        else:
-            print("- none")
-        if result.open_questions_by_owner:
-            print()
-            print(section("Open questions"))
-            for key, value in compact_count_lines(result.open_questions_by_owner):
-                print(f"- {key}: {value}")
-        if result.platform_requirement_status_counts:
-            print()
-            print(section("Platform requirements"))
-            for key, value in compact_count_lines(result.platform_requirement_status_counts):
-                print(f"- {key}: {value}")
-
-    diagnostics = result.to_dict()["diagnostics"]
-    if not diagnostics:
-        print()
-        print(success("Workspace status is clean."))
-        return
-
-    print()
-    print(section("Attention"))
-    visible_diagnostics = diagnostics if full else diagnostics[:8]
-    for diagnostic in visible_diagnostics:
-        formatter = error if diagnostic["severity"] == "error" else warn
-        print(f"- {formatter(diagnostic['code'])}: {diagnostic['message']}")
-        print(f"  {colorize(diagnostic['path'], STYLE.dim)}")
-    hidden_count = len(diagnostics) - len(visible_diagnostics)
-    if hidden_count > 0:
-        print()
-        print(info(f"{hidden_count} more diagnostics hidden. Run `prism status --full` or `prism wiki lint` for details."))
-
-
-def format_setup_state(setup_state: str) -> str:
-    if setup_state == "initialized":
-        return success("initialized")
-    if setup_state == "not-initialized":
-        return warn("not initialized")
-    return warn(setup_state)
-
-
-def format_confidence(confidence: str) -> str:
-    if confidence == "high":
-        return success("high")
-    if confidence == "degraded":
-        return warn("degraded")
-    return error(confidence)
-
-
-def compact_count_lines(counts: dict[str, int]) -> list[tuple[str, int]]:
-    return [(key, value) for key, value in counts.items() if value]
-
-
 def cmd_update(args: argparse.Namespace) -> int:
     project_path = Path(args.path).expanduser().resolve()
     if detect_validation_target(project_path) != "generated-project":
@@ -1239,7 +977,10 @@ def cmd_new(args: argparse.Namespace) -> int:
         return EXIT_VALIDATION
 
     if args.answers:
-        template_path = args.template if args.template != str(REPO_ROOT) else answer_file_data.get("template_ref", str(REPO_ROOT))
+        default_template = default_template_reference()
+        template_path = args.template
+        if args.template == default_template:
+            template_path = answer_file_data.get("template_ref", default_template)
         destination = args.dest or answer_file_data.get("destination")
         answers = dict(answer_file_data.get("answers", {}))
     else:
@@ -1431,10 +1172,10 @@ def load_answers_file(path_str: str) -> dict[str, Any] | None:
     try:
         with path.open("r", encoding="utf-8") as handle:
             data = yaml.safe_load(handle) or {}
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         print(error(f"Unable to read answers file: {exc}"), file=sys.stderr)
         return None
-    except yaml.YAMLError as exc:
+    except (yaml.YAMLError, ValueError, OverflowError) as exc:
         print(error(f"Invalid YAML in answers file: {exc}"), file=sys.stderr)
         return None
 
@@ -1455,9 +1196,9 @@ def load_copier_answers(path: Path) -> dict[str, Any] | None:
     try:
         with path.open("r", encoding="utf-8") as handle:
             data = yaml.safe_load(handle) or {}
-    except OSError:
+    except (OSError, UnicodeError):
         return None
-    except yaml.YAMLError:
+    except (yaml.YAMLError, ValueError, OverflowError):
         return None
 
     if not isinstance(data, dict):
@@ -1825,6 +1566,9 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any]) -> 
         command = ["copier", "copy", "--trust", "--defaults", "--answers-file", COPIER_ANSWERS_FILE]
         for key, value in answers.items():
             command.extend(["--data", f"{key}={format_data_value(value)}"])
+        # This private context value lets the template carry truthful CLI
+        # provenance even when the manifest post-processing step is skipped.
+        command.extend(["--data", f"_prism_cli_version={__version__}"])
         command.extend([str(effective_template), str(dest_path)])
         result = run_copier_generation_process(command, REPO_ROOT)
         if result["returncode"] != 0:
@@ -1833,6 +1577,8 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any]) -> 
                 print(panel("Copier output", list(result["tail"])), file=sys.stderr)
             return EXIT_COPIER
         ensure_copier_answers_file(dest_path, template_path, answers)
+    if not refresh_workspace_manifest(dest_path, template_path, answers):
+        return EXIT_VALIDATION
 
     print()
     if result["event_count"]:
@@ -1985,6 +1731,8 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
 
     public_answers = {key: value for key, value in answers_data.items() if not key.startswith("_")}
     ensure_copier_answers_file(project_path, src_path, public_answers)
+    if not refresh_workspace_manifest(project_path, src_path, answers_data):
+        return EXIT_VALIDATION
 
     print()
     if strategy == "update":
@@ -1998,7 +1746,7 @@ def ensure_copier_answers_file(dest_path: Path, template_path: str, answers: dic
     answers_path = dest_path / COPIER_ANSWERS_FILE
     remembered_answers: dict[str, Any] = {}
     if answers_path.exists():
-        with contextlib.suppress(OSError, yaml.YAMLError):
+        with contextlib.suppress(OSError, UnicodeError, yaml.YAMLError, ValueError, OverflowError):
             existing_data = yaml.safe_load(answers_path.read_text(encoding="utf-8")) or {}
             if isinstance(existing_data, dict):
                 remembered_answers.update(existing_data)
@@ -2010,6 +1758,33 @@ def ensure_copier_answers_file(dest_path: Path, template_path: str, answers: dic
     remembered_answers.update(answers)
     with answers_path.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(remembered_answers, handle, sort_keys=False)
+
+
+def refresh_workspace_manifest(destination: Path, template_path: str, answers: dict[str, Any]) -> bool:
+    """Record known generation metadata after an explicit copy/update."""
+
+    effective_answers = dict(answers)
+    recorded_answers = load_copier_answers(destination / COPIER_ANSWERS_FILE)
+    if recorded_answers:
+        effective_answers.update(recorded_answers)
+    template_commit = get_template_commit(template_path)
+    if not template_commit:
+        candidate = effective_answers.get("_commit")
+        template_commit = candidate if isinstance(candidate, str) and candidate else None
+    template_version = get_template_version(template_path) or template_commit
+    try:
+        write_workspace_manifest(
+            destination,
+            effective_answers,
+            prism_cli_version=__version__,
+            template_source=normalize_template_path(template_path),
+            template_version=template_version,
+            template_commit=template_commit,
+        )
+    except (OSError, ValueError) as exc:
+        print(error(f"Unable to write {MANIFEST_FILE}: {exc}"), file=sys.stderr)
+        return False
+    return True
 
 
 def should_stage_template_path(template_path: str) -> bool:
@@ -2081,6 +1856,26 @@ def get_template_commit(template_path: str) -> str | None:
     try:
         result = subprocess.run(
             ["git", "-C", str(path), "rev-parse", "HEAD"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return result.stdout.strip() or None
+
+
+def get_template_version(template_path: str) -> str | None:
+    """Return a tag/ref description when the local template exposes one."""
+
+    if "://" in template_path:
+        return None
+    path = Path(template_path).expanduser().resolve()
+    if not (path / ".git").exists():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "describe", "--tags", "--always", "--dirty"],
             capture_output=True,
             check=True,
             text=True,
@@ -2174,3 +1969,22 @@ def confirm(prompt: str, default: bool) -> bool:
         if raw in {"n", "no"}:
             return False
         print(warn("Enter y or n."))
+
+
+# Read-surface renderers live in ``prism_cli.render``.  Keep these names on
+# the CLI module for callers that imported them from V1.
+from prism_cli import render as _read_render
+
+render_or_print_wiki_query = _read_render.render_or_print_wiki_query
+render_wiki_lint_result = _read_render.render_wiki_lint_result
+render_wiki_query_result = _read_render.render_wiki_query_result
+render_wiki_show_facts = _read_render.render_wiki_show_facts
+render_wiki_blocker_facts = _read_render.render_wiki_blocker_facts
+render_wiki_owner_facts = _read_render.render_wiki_owner_facts
+render_wiki_platform_facts = _read_render.render_wiki_platform_facts
+render_wiki_search_facts = _read_render.render_wiki_search_facts
+render_feature_summaries = _read_render.render_feature_summaries
+render_status_result = _read_render.render_status_result
+format_setup_state = _read_render.format_setup_state
+format_confidence = _read_render.format_confidence
+compact_count_lines = _read_render.compact_count_lines

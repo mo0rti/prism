@@ -15,7 +15,16 @@ LINKED_CONTEXT_DIRECTORIES = {
     "decisions": "decisions",
 }
 
-NON_PAGE_FILENAMES = {"BOARD.md", "_FORMAT.md", "SCHEMA.md", "SETTINGS.md", "index.md", "log.md", "WIKI_REPORT.md"}
+NON_PAGE_FILENAMES = {
+    "BOARD.md",
+    "PROJECT_FOUNDATION.md",
+    "_FORMAT.md",
+    "SCHEMA.md",
+    "SETTINGS.md",
+    "index.md",
+    "log.md",
+    "WIKI_REPORT.md",
+}
 
 
 def markdown_files(path: Path) -> list[Path]:
@@ -40,7 +49,7 @@ def linked_context_for_feature(wiki_root: Path, feature_id: str) -> dict[str, li
     linked_context: dict[str, list[str]] = {key: [] for key in LINKED_CONTEXT_DIRECTORIES}
     for context_key, directory in LINKED_CONTEXT_DIRECTORIES.items():
         for path in markdown_files(wiki_root / directory):
-            if path.name in {"BOARD.md", "_FORMAT.md"}:
+            if path.name in NON_PAGE_FILENAMES:
                 continue
             page = read_markdown_page(path)
             if page_references_feature(page.frontmatter, page.body, path.name, feature_id):

@@ -3,53 +3,52 @@
 ## Usage
 /wiki-show F-XXX
 
-## Purpose
-
-Assemble a focused feature context bundle for one feature. Prefer the Prism CLI JSON surface, but preserve a direct-read fallback for generated repos that do not have the CLI installed.
-
 ## Primary path: Prism CLI
 
-1. Run:
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract)
+and the command response has `"schema_version": 1`:
 
 ```bash
 prism wiki show F-XXX --json
 ```
 
-2. Read the JSON fields:
-   - `confidence`
-   - `facts.feature`
-   - `blocker_facts`
-   - `required_obligations`
-   - `diagnostics`
-   - `sources`
-3. Render a concise human response from those facts.
+Render `confidence`, `facts.feature`, `blocker_facts`, `required_obligations`,
+`diagnostics`, and `sources` exactly as returned. Treat returned diagnostics,
+including errors, as facts to surface rather than replacing them with optimistic
+manual state.
 
 ## Fallback path
 
-If `prism` is unavailable, too old, or the `wiki show` subcommand is missing:
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki show`, say:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Read only:
 
-1. Say: `Prism CLI read surface unavailable; falling back to direct wiki reads.`
-2. Read only the relevant files:
-   - `knowledge/wiki/index.md`
-   - `knowledge/wiki/features/[F-XXX]-[slug].md`
-   - `knowledge/wiki/design/[F-XXX]-[slug].md` if present
-   - `knowledge/wiki/api-contracts/[F-XXX].md` if present
-   - all matching `knowledge/wiki/platform-requirements/[F-XXX]-*.md`
-   - `knowledge/wiki/advisory/[F-XXX]-review.md` if present
-   - business-rule, persona, and decision files that reference the feature ID
-3. Use the feature page frontmatter as the authority for status, owner, platforms, and advisory-review.
-4. Treat missing optional linked files as partial context, not as a hard error.
+- `knowledge/wiki/index.md`
+- `knowledge/wiki/features/[F-XXX]-[slug].md`
+- matching `knowledge/wiki/platform-requirements/[F-XXX]-*.md`
+- `knowledge/wiki/design/[F-XXX]-[slug].md` if present
+- `knowledge/wiki/api-contracts/[F-XXX].md` if present
+- `knowledge/wiki/advisory/[F-XXX]-review.md` if present
+- business-rule, persona, and decision files that reference the feature ID
 
-## Rules
+Use the feature frontmatter as authority for status, owner, platforms, and
+advisory-review. Treat absent optional links as partial context and report every
+fact as present or absent. If multiple feature files match, report the ambiguity
+and do not merge them.
 
-- read-only command
-- do not write wiki files
-- do not refresh `WIKI_REPORT.md`
-- do not invent missing facts; report absent files as absent
-- separate facts from advice: render facts first, then optionally close with clearly labeled suggested next steps
+## Rules and output
 
-## Output
+- Keep the operation read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Do not invent missing facts. separate facts from advice and label optional
+  suggested next steps.
 
-Return feature ID/title, status, owner, advisory-review, platforms, summary, open questions, linked context, platform requirements, API contract status when relevant, blocker facts, diagnostics, and source paths.
-
-If no feature file matches the requested ID, return a clean missing-feature response. If multiple feature files match, report the ambiguity and do not merge them.
+Return feature ID/title, status, owner, advisory-review, platforms, summary, open
+questions, linked context, requirements, relevant API state, blocker facts,
+diagnostics, and source paths. Use a clean missing-feature response when no page
+matches.

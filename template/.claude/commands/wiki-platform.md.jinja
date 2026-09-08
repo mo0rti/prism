@@ -3,56 +3,45 @@
 ## Usage
 /wiki-platform backend|mobile-android|mobile-ios|web-user-app|web-admin-portal
 
-## Purpose
-
-Show all active and ready features affecting one exact Prism platform ID. Prefer the Prism CLI JSON surface, but preserve a direct-read fallback for generated repos that do not have the CLI installed.
-
 ## Primary path: Prism CLI
 
-Run:
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract)
+and the command response has `"schema_version": 1`:
 
 ```bash
 prism wiki platform <platform-id> --json
 ```
 
-Render from `facts.platform`, `facts.features`, `facts.platform_requirements`, `diagnostics`, and `sources`.
+Render `facts.platform`, `facts.features`, `facts.platform_requirements`,
+`diagnostics`, and `sources` exactly as returned. Treat returned diagnostics,
+including errors, as facts to surface rather than replacing them with optimistic
+manual state.
 
 ## Fallback path
 
-If `prism` is unavailable, too old, or the `wiki platform` subcommand is missing:
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki platform`, say:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Then read
+all files in `knowledge/wiki/features/`, `platform-requirements/`, `design/`,
+`api-contracts/`, and `advisory/` except `BOARD.md` and `PROJECT_FOUNDATION.md`. Filter exact platform IDs
+and active statuses (`ready-for-design`, `in-design`, `ready-for-dev`, `in-dev`),
+attach matching requirements, and compute only blockers proved by the files.
+Sort active work `in-dev`, `ready-for-dev`, `in-design`, `ready-for-design`;
+keep `done` out unless closed work is requested.
 
-1. Say: `Prism CLI read surface unavailable; falling back to direct wiki reads.`
-2. Read:
-   - all files in `knowledge/wiki/features/`
-   - all files in `knowledge/wiki/platform-requirements/`
-   - all files in `knowledge/wiki/design/`
-   - all files in `knowledge/wiki/api-contracts/`
-   - all files in `knowledge/wiki/advisory/` except `BOARD.md`
-3. Include active/ready features whose `platforms` frontmatter contains the selected exact platform ID:
-   - `ready-for-design`
-   - `in-design`
-   - `ready-for-dev`
-   - `in-dev`
-4. Attach the matching platform-requirement file if it exists.
-5. Compute blockers relevant to that platform from missing design, missing platform requirements, advisory review state, and API contract readiness.
-6. Sort active work in this order: `in-dev`, `ready-for-dev`, `in-design`, `ready-for-design`. Keep `done` out of the active queue unless the user asks for closed work.
+## Rules and output
 
-## Rules
+- Keep the operation read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Accept only `backend`, `mobile-android`, `mobile-ios`, `web-user-app`, or
+  `web-admin-portal`; do not infer aliases.
+- separate facts from advice and label optional suggested next steps.
 
-- read-only command
-- do not write wiki files
-- do not refresh `WIKI_REPORT.md`
-- use exact platform IDs only:
-  - `backend`
-  - `mobile-android`
-  - `mobile-ios`
-  - `web-user-app`
-  - `web-admin-portal`
-- do not infer aliases such as `ios`, `android`, or `web`
-- separate facts from advice: render platform facts first, then optionally close with clearly labeled suggested next steps
-
-## Output
-
-Return platform view heading, active features targeting that platform, feature status, advisory-review state, platform-requirement status, API contract status when relevant, blockers relevant to that platform, diagnostics, and source paths.
-
-If no active or ready features target the platform, return a clean empty-state response. If the platform identifier is invalid, return a clean invalid-platform response.
+Return active features, status, advisory-review and requirement state, relevant
+blockers, diagnostics, and source paths. Use a clean empty state for no matches
+and a clean invalid-platform response for unsupported IDs.

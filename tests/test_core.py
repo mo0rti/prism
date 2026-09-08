@@ -518,10 +518,14 @@ class GitHelpersTests(unittest.TestCase):
 
 
 class DoctorCommandTests(unittest.TestCase):
-    def test_build_doctor_checks_marks_packaged_copier_as_bundled(self) -> None:
+    def test_packaged_copier_is_probed_as_a_required_dependency(self) -> None:
         checks = build_doctor_checks(incubation_mode=False)
         copier_check = next(check for check in checks if check.label == "Copier")
-        self.assertEqual("bundled", copier_check.packaged_status)
+        self.assertIsNone(copier_check.packaged_status)
+        with patch("prism_cli.cli.shutil.which", return_value=None):
+            results = evaluate_doctor_checks([copier_check], "Windows", set())
+        self.assertEqual("missing", results[0].status)
+        self.assertTrue(results[0].check.blocking)
 
     @patch("prism_cli.cli.shutil.which")
     def test_evaluate_doctor_checks_marks_ios_not_applicable_on_windows(self, mocked_which: object) -> None:
@@ -722,6 +726,10 @@ class WorkspaceStatusTests(unittest.TestCase):
             write_manifest(root, platforms=["backend"])
             (root / "backend").mkdir()
             write_board_placeholder(root)
+            (root / ".copier-answers.yml").write_text(
+                "_src_path: test-template\nproject_name: Prism App\nplatforms: [backend]\n",
+                encoding="utf-8",
+            )
 
             result = build_status(root)
             data = result.to_dict()
@@ -759,8 +767,11 @@ class WorkspaceStatusTests(unittest.TestCase):
         self.assertEqual("generated-project", result.workspace_kind)
         self.assertEqual("degraded", result.confidence)
         self.assertEqual("degraded", data["confidence"])
-        self.assertEqual(["missing-workspace-manifest"], [diagnostic["code"] for diagnostic in data["diagnostics"]])
-        self.assertEqual("warning", data["diagnostics"][0]["severity"])
+        self.assertEqual(
+            {"missing-workspace-manifest", "missing-copier-answers"},
+            {diagnostic["code"] for diagnostic in data["diagnostics"]},
+        )
+        self.assertTrue(all(diagnostic["severity"] == "warning" for diagnostic in data["diagnostics"]))
 
     def test_status_reports_malformed_wiki_schema_issues(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

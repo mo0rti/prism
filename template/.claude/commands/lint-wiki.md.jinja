@@ -3,52 +3,57 @@
 ## Usage
 /lint-wiki
 
-## Purpose
-
-Report deterministic wiki contract diagnostics. Prefer the Prism CLI JSON surface, but preserve a direct-read fallback for generated repos that do not have the CLI installed.
-
 ## Primary path: Prism CLI
 
-Run:
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract)
+and the command response has `"schema_version": 1`:
 
 ```bash
 prism wiki lint --json
 ```
 
-Render from `confidence`, `facts`, `blocker_facts`, `required_obligations`, `diagnostics`, and `sources`.
-
-The CLI lint surface is intentionally conservative. For a full workflow lint, also read `knowledge/wiki/SCHEMA.md` and directly check any canonical blocker categories or workflow-level issues that are not present in CLI diagnostics; state plainly if a category was not checked.
+Render `confidence`, `facts`, `blocker_facts`, `required_obligations`,
+`diagnostics`, and `sources` exactly as returned. The compatible CLI reports the
+canonical blocker categories and structural diagnostics; do not duplicate lint
+or blocker parsing on this path. Treat returned diagnostics, including errors,
+as facts to surface rather than replacing them with optimistic manual state.
 
 ## Fallback path
 
-If `prism` is unavailable, too old, or the `wiki lint` subcommand is missing:
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki lint`, say:
+`Prism CLI lint unavailable; falling back to direct wiki reads.` Then read:
 
-1. Say: `Prism CLI lint unavailable; falling back to direct wiki reads.`
-2. Read:
-   - `knowledge/wiki/SCHEMA.md`
-   - `knowledge/wiki/SETTINGS.md` if present
-   - `knowledge/wiki/index.md`
-   - all files in `knowledge/wiki/features/`
-   - all files in `knowledge/wiki/platform-requirements/`
-   - related design, API contract, advisory, business-rule, persona, and decision files only when needed to prove an issue
-3. Check for malformed frontmatter, invalid enum values, duplicate feature IDs, orphan pages, index drift, stale status, quarantine backlog, skipped board reviews without reasons, contradictions, and canonical blocker categories.
-4. Report only structural issues you can prove from those files.
-5. If `knowledge/wiki/SETTINGS.md` is absent or invalid, fall back to `wiki-stale-after-days: 14` and say so.
+- `knowledge/wiki/SCHEMA.md`
+- `knowledge/wiki/SETTINGS.md` if present
+- `knowledge/wiki/index.md`
+- all files in `knowledge/wiki/features/`
+- all files in `knowledge/wiki/platform-requirements/`
+- related design, API contract, advisory, business-rule, persona, and decision files as needed
 
-## Rules
+Check only facts provable from those files: malformed frontmatter, invalid
+enums, duplicate IDs, orphan or index drift, stale pages, quarantine backlog,
+skipped board reviews without reasons, and the six canonical categories:
+`pending-board-review`, `missing-design`, `missing-platform-requirements`,
+`unresolved-open-questions`, `api-contract-not-ready`, and
+`cross-platform-dependency`. If SETTINGS is absent or invalid, use
+`wiki-stale-after-days: 14` and say so.
 
-- read-only command
-- do not write wiki files
-- do not refresh `WIKI_REPORT.md`
-- do not create lint report files unless the user explicitly asks for a persisted report
-- do not append to `knowledge/wiki/log.md` unless the user explicitly asks for logging
-- do not silently skip malformed pages
-- use the canonical blocker vocabulary from `knowledge/wiki/SCHEMA.md`
-- keep skipped board reviews visible for team awareness, but do not report them as a hard error
-- separate facts from advice: render findings first, then optionally close with clearly labeled suggested next steps
+## Rules and output
 
-## Output
+- Keep the operation read-only. Do not write wiki files, refresh `WIKI_REPORT.md`,
+  append to `knowledge/wiki/log.md`, do not create lint report files unless the user explicitly asks for a persisted report.
+- Do not silently skip malformed pages. Keep skipped board reviews visible without
+  treating them as hard errors.
+- separate facts from advice: report findings first, then clearly label optional
+  suggested next steps.
 
-Return lint summary, issue counts by category, affected file paths, blocker category when applicable, concise problem statement, source evidence, and a WIKI_REPORT note stating that `knowledge/wiki/WIKI_REPORT.md` was not modified.
-
-If no issues are found, state explicitly: `Wiki is consistent. No issues found.`
+Return a lint summary, counts by category, affected paths, source evidence, and
+a WIKI_REPORT note stating that `knowledge/wiki/WIKI_REPORT.md` was not modified.
+If clean, state: `Wiki is consistent. No issues found.`

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+from datetime import date, datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 import yaml
 
@@ -16,6 +18,8 @@ VALID_OPEN_QUESTION_OWNERS = {"po", "designer", "dev"}
 VALID_ADVISORY_REVIEW_STATES = {"not-needed", "pending", "done", "skipped"}
 VALID_PLATFORM_IDS = {"backend", "mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"}
 VALID_PLATFORM_REQUIREMENT_STATUSES = {"pending", "in-progress", "done"}
+UI_PLATFORM_IDS = {"mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"}
+DEFAULT_WIKI_STALE_AFTER_DAYS = 14
 
 
 @dataclass(frozen=True)
@@ -27,13 +31,23 @@ class MarkdownPage:
 
 
 @dataclass(frozen=True)
+class WikiSettings:
+    """Read-only settings shared by wiki lint and other read surfaces."""
+
+    stale_after_days: int
+    path: Path
+    used_fallback: bool = False
+    diagnostics: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
 class FeaturePage:
     page: MarkdownPage
 
     @property
     def feature_id(self) -> str:
         value = self.page.frontmatter.get("id")
-        if isinstance(value, str):
+        if isinstance(value, str) and value.strip():
             return value
         match = re.match(r"^(F-\d+)(?:-|$)", self.page.path.stem)
         return match.group(1) if match else self.page.path.stem
@@ -97,12 +111,16 @@ class IndexFeatureRow:
 
 
 FRONTMATTER_PATTERN = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
+MARKDOWN_LINK_PATTERN = re.compile(
+    r"(?<!!)\[[^\]]*\]\(\s*(?:<([^>]+)>|([^\s)]+))",
+)
+FEATURE_ID_PATTERN = re.compile(r"\bF-\d+\b")
 
 
 def read_markdown_page(path: Path) -> MarkdownPage:
     try:
         text = path.read_text(encoding="utf-8-sig")
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         return MarkdownPage(path=path, frontmatter={}, body="", parse_errors=[f"Unable to read file: {exc}"])
 
     match = FRONTMATTER_PATTERN.match(text)
@@ -112,13 +130,73 @@ def read_markdown_page(path: Path) -> MarkdownPage:
     raw_frontmatter, body = match.groups()
     try:
         loaded = yaml.safe_load(raw_frontmatter) or {}
-    except yaml.YAMLError as exc:
+    except (yaml.YAMLError, TypeError, ValueError, OverflowError) as exc:
         return MarkdownPage(path=path, frontmatter={}, body=body, parse_errors=[f"Invalid YAML frontmatter: {exc}"])
 
     if not isinstance(loaded, dict):
         return MarkdownPage(path=path, frontmatter={}, body=body, parse_errors=["YAML frontmatter must be a mapping."])
 
     return MarkdownPage(path=path, frontmatter=loaded, body=body)
+
+
+def read_wiki_settings(wiki_root: Path) -> WikiSettings:
+    """Read the canonical stale-page setting with its documented fallback."""
+
+    settings_path = wiki_root / "SETTINGS.md"
+    if not settings_path.exists():
+        return WikiSettings(
+            stale_after_days=DEFAULT_WIKI_STALE_AFTER_DAYS,
+            path=settings_path,
+            used_fallback=True,
+            diagnostics=(
+                (
+                    "missing-wiki-settings",
+                    f"Missing SETTINGS.md; using wiki-stale-after-days: {DEFAULT_WIKI_STALE_AFTER_DAYS}.",
+                ),
+            ),
+        )
+
+    page = read_markdown_page(settings_path)
+    if page.parse_errors:
+        return WikiSettings(
+            stale_after_days=DEFAULT_WIKI_STALE_AFTER_DAYS,
+            path=settings_path,
+            used_fallback=True,
+            diagnostics=tuple(("invalid-wiki-settings", message) for message in page.parse_errors),
+        )
+
+    if "wiki-stale-after-days" not in page.frontmatter:
+        return WikiSettings(
+            stale_after_days=DEFAULT_WIKI_STALE_AFTER_DAYS,
+            path=settings_path,
+            used_fallback=True,
+            diagnostics=(
+                (
+                    "missing-wiki-setting",
+                    f"SETTINGS.md is missing `wiki-stale-after-days`; using {DEFAULT_WIKI_STALE_AFTER_DAYS}.",
+                ),
+            ),
+        )
+
+    value = page.frontmatter["wiki-stale-after-days"]
+    parsed: int | None = None
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        parsed = value
+    elif isinstance(value, str) and re.fullmatch(r"\d+", value.strip()):
+        parsed = int(value.strip())
+    if parsed is None:
+        return WikiSettings(
+            stale_after_days=DEFAULT_WIKI_STALE_AFTER_DAYS,
+            path=settings_path,
+            used_fallback=True,
+            diagnostics=(
+                (
+                    "invalid-wiki-stale-after-days",
+                    f"`wiki-stale-after-days` must be a non-negative integer; using {DEFAULT_WIKI_STALE_AFTER_DAYS}.",
+                ),
+            ),
+        )
+    return WikiSettings(stale_after_days=parsed, path=settings_path)
 
 
 def read_feature_pages(wiki_root: Path) -> list[FeaturePage]:
@@ -143,10 +221,118 @@ def read_platform_requirement_pages(wiki_root: Path) -> list[PlatformRequirement
     ]
 
 
+def read_markdown_pages(directory: Path) -> list[MarkdownPage]:
+    """Read non-template markdown pages in a directory in stable path order."""
+
+    if not directory.exists():
+        return []
+    return [
+        read_markdown_page(path)
+        for path in sorted(directory.glob("*.md"), key=lambda item: item.name)
+        if not path.name.startswith("_")
+    ]
+
+
+def read_wiki_pages(wiki_root: Path) -> list[MarkdownPage]:
+    """Read all markdown pages below a wiki root, including top-level index pages."""
+
+    if not wiki_root.exists():
+        return []
+    return [
+        read_markdown_page(path)
+        for path in sorted(
+            wiki_root.rglob("*.md"),
+            key=lambda item: item.relative_to(wiki_root).as_posix(),
+        )
+        if not path.name.startswith("_")
+    ]
+
+
+def extract_markdown_links(text: str) -> list[str]:
+    """Return markdown link targets without image or reference-style links."""
+
+    return [unquote(match.group(1) or match.group(2)) for match in MARKDOWN_LINK_PATTERN.finditer(text)]
+
+
+def resolve_relative_markdown_link(source_path: Path, raw_target: str, wiki_root: Path) -> Path | None:
+    """Resolve a relative markdown target when it stays inside the wiki root."""
+
+    try:
+        parsed = urlsplit(raw_target)
+    except ValueError:
+        return None
+    if parsed.scheme or parsed.netloc or "\x00" in parsed.path or not parsed.path.lower().endswith(".md"):
+        return None
+    target = Path(parsed.path)
+    if target.is_absolute():
+        return None
+    try:
+        resolved = (source_path.parent / target).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    try:
+        resolved.relative_to(wiki_root.resolve())
+    except ValueError:
+        return None
+    return resolved
+
+
+def section_text(body: str, heading: str) -> str:
+    """Return the body of a level-two markdown section, or an empty string."""
+
+    wanted = heading.strip().lower()
+    lines = body.splitlines(keepends=True)
+    start: int | None = None
+    end = len(lines)
+    for index, line in enumerate(lines):
+        match = re.match(r"^##\s+(.+?)\s*#*\s*$", line.strip())
+        if not match:
+            continue
+        current = match.group(1).strip().lower()
+        if start is None:
+            if current == wanted:
+                start = index + 1
+        else:
+            end = index
+            break
+    return "".join(lines[start:end]) if start is not None else ""
+
+
+def feature_id_from_path(path: Path) -> str | None:
+    """Extract a canonical feature ID from a feature-like filename."""
+
+    match = re.match(r"^(F-\d+)(?:-|$)", path.stem)
+    return match.group(1) if match else None
+
+
+def parse_iso_date(value: Any) -> date | None:
+    """Parse YAML date values and ISO date strings without raising."""
+
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def page_date_field(page: MarkdownPage) -> tuple[str, Any] | None:
+    """Return the first known lifecycle date field present on a page."""
+
+    for field_name in ("last-updated", "reviewed", "date", "introduced"):
+        if field_name in page.frontmatter:
+            return field_name, page.frontmatter[field_name]
+    return None
+
+
 def parse_index_feature_rows(index_path: Path) -> tuple[list[IndexFeatureRow], list[str]]:
     try:
         text = index_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         return [], [f"Unable to read index.md: {exc}"]
 
     rows: list[IndexFeatureRow] = []

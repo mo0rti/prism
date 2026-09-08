@@ -1,68 +1,54 @@
 ---
 name: wiki-blockers
-description: Read-only project blocker facts. Prefer Prism CLI JSON; fall back to direct wiki reads when the CLI is unavailable.
+description: Read-only project blocker facts. Prefer Prism CLI JSON; use direct wiki reads when it is unavailable.
 ---
 
 # Wiki Blockers
 
-Read-only blockers view for the project wiki.
+Report project blocker facts from the shared wiki.
 
 ## Primary path
 
-Run:
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract)
+and the command response has `"schema_version": 1`:
 
 ```bash
 prism wiki blockers --json
 ```
 
-Summarize `facts.blockers`, `blocker_facts`, `required_obligations`, `diagnostics`, and `sources`.
-
-The CLI blocker surface may be narrower than the canonical blocker vocabulary. Before answering, read `knowledge/wiki/SCHEMA.md` and supplement with any additional canonical blocker categories you can prove directly from wiki files; state plainly if a category was not checked.
+Summarize `facts.blockers`, `blocker_facts`, `required_obligations`,
+`diagnostics`, and `sources` exactly as returned. The compatible CLI covers all
+six canonical blocker categories; do not duplicate blocker parsing or add
+categories on this path. Treat returned diagnostics, including errors, as facts
+to surface rather than replacing them with optimistic manual state.
 
 ## Fallback path
 
-If `prism` is unavailable, too old, or lacks `wiki blockers`, say the CLI read surface is unavailable, then inspect the wiki directly.
-
-Read:
-
-1. `knowledge/wiki/SCHEMA.md`
-2. `knowledge/wiki/index.md`
-3. all feature files
-4. all design files
-5. all platform-requirement files
-6. all API contract files
-7. advisory review outputs except `BOARD.md`
-
-Compute blockers using the canonical categories in `knowledge/wiki/SCHEMA.md`. Report only blocker facts you can prove from the files.
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki blockers`, say:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Read
+`knowledge/wiki/SCHEMA.md`, `knowledge/wiki/index.md`, all feature, design,
+platform-requirement, and API contract files, and advisory outputs except
+`BOARD.md`.
 
 ## Canonical blocker categories
 
-- `pending-board-review`
-- `missing-design`
-- `missing-platform-requirements`
-- `unresolved-open-questions`
-- `api-contract-not-ready`
-- `cross-platform-dependency`
+Compute only these canonical categories: `pending-board-review`,
+`missing-design`, `missing-platform-requirements`, `unresolved-open-questions`,
+`api-contract-not-ready`, and `cross-platform-dependency`. Include malformed
+pages as diagnostics rather than silently skipping them.
 
-## Rules
+## Rules and output
 
-- read-only skill
-- do not write wiki files
-- do not refresh `WIKI_REPORT.md`
-- use the canonical blocker vocabulary from `SCHEMA.md`
-- do not silently skip malformed pages
-- separate facts from advice: render blocker facts first, then optionally close with clearly labeled suggested next steps
+- Keep the skill read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Use exact canonical codes. separate facts from advice and label optional suggested
+  next steps.
 
-## Output shape
-
-Return:
-
-- blocker counts by category
-- blocked features grouped or listed by category
-- why each feature is blocked
-- source paths used
-
-## Error behavior
-
-- if malformed wiki pages prevent reliable blocker computation, return a clean malformed-pages response
-- if no blockers are found, return a clean empty-state response
+Return counts by category, affected features, reasons, diagnostics, and source
+paths. If no blocker facts are present, use a clean empty state.

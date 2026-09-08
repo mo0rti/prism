@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:prism-kit:schema:status:v1",
+  "title": "Prism workspace status envelope v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "experimental",
+    "command",
+    "root",
+    "confidence",
+    "workspace",
+    "facts",
+    "blocker_facts",
+    "required_obligations",
+    "sources",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "experimental": { "type": "boolean" },
+    "command": { "const": "status" },
+    "root": { "type": "string", "minLength": 1 },
+    "confidence": { "enum": ["high", "degraded", "error"] },
+    "workspace": { "$ref": "#/$defs/workspace" },
+    "facts": { "type": "object" },
+    "blocker_facts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    },
+    "required_obligations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/obligation" }
+    },
+    "sources": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    }
+  },
+  "$defs": {
+    "workspace": {
+      "type": "object",
+      "required": ["kind", "project_name", "platforms"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "project_name": { "type": ["string", "null"] },
+        "platforms": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["code", "severity", "path", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["error", "warning", "info"] },
+        "path": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "feature_id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "obligation": {
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "count": { "type": "integer", "minimum": 0 }
+      },
+      "anyOf": [
+        { "required": ["path"] },
+        { "required": ["count"] }
+      ],
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

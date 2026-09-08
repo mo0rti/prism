@@ -11,7 +11,30 @@ This skill intentionally allows implicit invocation because it only refreshes th
 generated `knowledge/wiki/WIKI_REPORT.md` orientation artifact. That report is
 regenerable, gitignored, and not the source of truth for project state.
 
-## Workflow
+## Primary path: Prism CLI
+
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use `prism status --json` only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract) and the response has `"schema_version": 1`. Use
+`facts.wiki`, `facts.advisory_review`, `facts.settings`, `blocker_facts`,
+`diagnostics`, and `sources` as the shared source for counts, health, and
+canonical blockers. Treat returned diagnostics, including errors, as facts to
+surface; do not replace them with optimistic manual state. Read linked feature
+pages only for titles, question text, or report detail that the status envelope
+does not carry, and do not recompute its counts or blockers.
+
+## Fallback path
+
+If the version probe or schema check fails, or `prism status --json` is missing,
+too old, fails, or returns an unsupported schema, say:
+`Prism CLI status unavailable; falling back to direct wiki reads.` Then use the
+complete workflow below and report facts proved by those files.
+
+## Fallback workflow
 
 1. Read `knowledge/wiki/SCHEMA.md`
 2. Read `knowledge/wiki/SETTINGS.md` if present

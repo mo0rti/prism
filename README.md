@@ -1,6 +1,6 @@
 # Prism: One spec. Every platform.
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![Status](https://img.shields.io/badge/status-beta-2ea44f)
 ![Template Validation](https://github.com/mo0rti/prism/actions/workflows/template-validation.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-3776AB?logo=python&logoColor=white)
@@ -19,9 +19,14 @@ It helps product and engineering teams:
 
 This repository contains the Prism template and CLI. It is not a generated workspace.
 
-If you want to see Prism applied to a concrete product demo, take a look at
-[TreasuryFlow](https://github.com/mo0rti/treasury-flow), a sample finance
-operations workspace generated and evolved with Prism.
+If you want to see Prism applied to a concrete product story, follow the
+[local wiki visualization guide](docs/wiki-visualization.md). It builds a
+synthetic TreasuryFlow fixture that is safe to regenerate for dashboard
+inspection.
+
+![Prism wiki visualization Graph view](docs/media/wiki-dashboard-graph.png)
+
+_Graph view from the synthetic local TreasuryFlow fixture._
 
 ![Prism home screen](docs/media/prism-menu.png)
 
@@ -49,7 +54,6 @@ Every generated repository also includes:
 If you want to try Prism from this repo:
 
 ```bash
-pip install copier
 pip install -e .
 prism
 ```

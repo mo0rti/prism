@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from prism_cli.status import detect_setup_state, list_queue_items
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, lint_wiki
@@ -169,10 +170,18 @@ def _collect_nodes(wiki_root: Path) -> tuple[dict[str, GraphNode], dict[str, Any
     pages_by_id: dict[str, Any] = {}
     path_to_id: dict[str, str] = {}
 
+    # Reserve the canonical platform ids before reading user pages.  A page
+    # with a colliding id must remain visible as a distinct node while edges
+    # still have a stable target for the real platform node.
+    for platform_id in sorted(VALID_PLATFORM_IDS):
+        node_id = f"platform:{platform_id}"
+        nodes[node_id] = GraphNode(id=node_id, type="platform", title=platform_id, path=None)
+
     for feature in read_feature_pages(wiki_root):
         question_rows, _question_errors = parse_open_question_rows(feature.page.body)
+        node_id = _unique_node_id(nodes, feature.feature_id, feature.page.path)
         node = GraphNode(
-            id=feature.feature_id,
+            id=node_id,
             type="feature",
             title=feature.title,
             path=str(feature.page.path),
@@ -193,7 +202,8 @@ def _collect_nodes(wiki_root: Path) -> tuple[dict[str, GraphNode], dict[str, Any
                 continue
             page = read_markdown_page(path)
             raw_id = page.frontmatter.get("id")
-            node_id = raw_id if isinstance(raw_id, str) else f"{prefix}:{path.stem}"
+            preferred_id = raw_id if isinstance(raw_id, str) and raw_id.strip() else f"{prefix}:{path.stem}"
+            node_id = _unique_node_id(nodes, preferred_id, path)
             title = page.frontmatter.get("title") or page.frontmatter.get("name")
             status = page.frontmatter.get("status")
             node = GraphNode(
@@ -212,7 +222,7 @@ def _collect_nodes(wiki_root: Path) -> tuple[dict[str, GraphNode], dict[str, Any
             if path.name in NON_PAGE_FILENAMES:
                 continue
             page = read_markdown_page(path)
-            node_id = f"{prefix}:{path.stem}"
+            node_id = _unique_node_id(nodes, f"{prefix}:{path.stem}", path)
             title = page.frontmatter.get("title")
             status = page.frontmatter.get("status")
             node = GraphNode(
@@ -228,7 +238,7 @@ def _collect_nodes(wiki_root: Path) -> tuple[dict[str, GraphNode], dict[str, Any
 
     for requirement in read_platform_requirement_pages(wiki_root):
         path = requirement.page.path
-        node_id = f"preq:{path.stem}"
+        node_id = _unique_node_id(nodes, f"preq:{path.stem}", path)
         node = GraphNode(
             id=node_id,
             type="platform-requirement",
@@ -240,11 +250,21 @@ def _collect_nodes(wiki_root: Path) -> tuple[dict[str, GraphNode], dict[str, Any
         pages_by_id[node.id] = requirement
         path_to_id[str(path)] = node.id
 
-    for platform_id in sorted(VALID_PLATFORM_IDS):
-        node_id = f"platform:{platform_id}"
-        nodes[node_id] = GraphNode(id=node_id, type="platform", title=platform_id, path=None)
-
     return nodes, pages_by_id, path_to_id
+
+
+def _unique_node_id(nodes: dict[str, GraphNode], preferred: str, path: Path) -> str:
+    """Keep every page addressable when malformed ids collide."""
+
+    if preferred not in nodes:
+        return preferred
+    stem = path.stem or "page"
+    candidate = f"{preferred}:duplicate:{stem}"
+    suffix = 2
+    while candidate in nodes:
+        candidate = f"{preferred}:duplicate:{stem}:{suffix}"
+        suffix += 1
+    return candidate
 
 
 def _collect_edges(
@@ -352,8 +372,14 @@ def _section_text(body: str, heading_pattern: re.Pattern[str]) -> str:
 
 def _resolve_link(base_dir: Path, raw_target: str, wiki_root: Path) -> str | None:
     try:
-        resolved = (base_dir / raw_target).resolve()
-    except (OSError, ValueError):
+        parsed = urlsplit(raw_target)
+    except ValueError:
+        return None
+    if parsed.scheme or parsed.netloc or "\x00" in parsed.path or not parsed.path.lower().endswith(".md"):
+        return None
+    try:
+        resolved = (base_dir / unquote(parsed.path)).resolve()
+    except (OSError, ValueError, RuntimeError):
         return None
     try:
         resolved.relative_to(wiki_root.resolve())
@@ -408,6 +434,7 @@ _STAGE_CLASS = {
 def _mermaid_lifecycle(nodes: list[dict[str, Any]], blocked_ids: set[str]) -> str:
     lines = ["flowchart LR"]
     class_lines: list[str] = []
+    stage_representatives: list[str] = []
     for stage in LIFECYCLE_STAGES:
         stage_features = [node for node in nodes if node["type"] == "feature" and node.get("status") == stage]
         if not stage_features:
@@ -418,13 +445,37 @@ def _mermaid_lifecycle(nodes: list[dict[str, Any]], blocked_ids: set[str]) -> st
             node_ref = _mermaid_id(node["id"])
             label = _mermaid_multiline(node["id"], str(node["title"]))
             lines.append(f'    {node_ref}["{label}"]')
-            if node.get("health") != "ok":
+            if node.get("health") == "error":
                 class_lines.append(f"  class {node_ref} broken")
             elif node["id"] in blocked_ids:
                 class_lines.append(f"  class {node_ref} blocked")
             else:
                 class_lines.append(f"  class {node_ref} {_STAGE_CLASS[stage]}")
         lines.append("  end")
+        stage_representatives.append(_mermaid_id(stage_features[0]["id"]))
+    invalid_features = [
+        node
+        for node in nodes
+        if node["type"] == "feature" and node.get("status") not in LIFECYCLE_STAGES
+    ]
+    if invalid_features:
+        lines.append('  subgraph s_invalid["invalid"]')
+        for node in invalid_features:
+            node_ref = _mermaid_id(node["id"])
+            label = _mermaid_multiline(node["id"], str(node["title"]))
+            lines.append(f'    {node_ref}["{label}"]')
+            # An invalid status is a malformed lifecycle fact. Keep it visible
+            # as broken instead of assigning it to an invented valid stage.
+            class_lines.append(f"  class {node_ref} broken")
+        lines.append("  end")
+        stage_representatives.append(_mermaid_id(invalid_features[0]["id"]))
+    # Mermaid may lay disconnected subgraphs out in reverse or arbitrary
+    # order. Invisible links constrain the pipeline order without rendering
+    # dependency edges that do not exist in the wiki facts.
+    lines.extend(
+        f"  {previous} ~~~ {current}"
+        for previous, current in zip(stage_representatives, stage_representatives[1:])
+    )
     lines.extend(class_lines)
     lines.extend(
         [

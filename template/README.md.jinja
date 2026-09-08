@@ -63,8 +63,16 @@ prism wiki graph --open    # one-off snapshot in the browser
 ```
 
 The dashboard is read-only: your agent is where you act, the dashboard is where
-you look. On a fresh workspace it walks you through setup, your first intake
-brief, and `po-intake` — your first feature appears on the board as it is born.
+you look. Its Graph, Board, Platforms, and Guide views derive their facts from
+`knowledge/wiki/`, intake queues, and workspace metadata. Source paths,
+confidence, workflow blockers, and page-health diagnostics stay inspectable.
+On a fresh workspace it walks you through setup, your first intake brief, and
+`po-intake` so your first feature appears on the board as it is born.
+
+For terminal output, use `prism wiki graph --json` or
+`prism wiki graph --mermaid --view lifecycle`. The dashboard and these
+read-oriented commands do not change wiki state; use the lifecycle commands
+above when you intend to edit it.
 
 ## Quick Start
 

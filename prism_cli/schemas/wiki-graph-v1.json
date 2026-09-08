@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:prism-kit:schema:wiki-graph:v1",
+  "title": "Prism wiki graph envelope v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "experimental",
+    "command",
+    "root",
+    "confidence",
+    "workspace",
+    "facts",
+    "blocker_facts",
+    "required_obligations",
+    "sources",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "experimental": { "type": "boolean" },
+    "command": { "const": "wiki graph" },
+    "root": { "type": "string", "minLength": 1 },
+    "confidence": { "enum": ["high", "degraded", "error"] },
+    "workspace": { "$ref": "#/$defs/workspace" },
+    "facts": { "$ref": "#/$defs/graph_facts" },
+    "blocker_facts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    },
+    "required_obligations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/obligation" }
+    },
+    "sources": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    }
+  },
+  "$defs": {
+    "workspace": {
+      "type": "object",
+      "required": ["kind", "project_name", "platforms"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "project_name": { "type": ["string", "null"] },
+        "platforms": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["code", "severity", "path", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["error", "warning", "info"] },
+        "path": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "feature_id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "obligation": {
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "count": { "type": "integer", "minimum": 0 }
+      },
+      "anyOf": [
+        { "required": ["path"] },
+        { "required": ["count"] }
+      ],
+      "additionalProperties": true
+    },
+    "graph_facts": {
+      "type": "object",
+      "required": [
+        "node_count",
+        "edge_count",
+        "nodes",
+        "edges",
+        "dangling_references",
+        "setup_state",
+        "intake"
+      ],
+      "properties": {
+        "node_count": { "type": "integer", "minimum": 0 },
+        "edge_count": { "type": "integer", "minimum": 0 },
+        "nodes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/graph_node" }
+        },
+        "edges": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/graph_edge" }
+        },
+        "dangling_references": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dangling_reference" }
+        },
+        "setup_state": { "type": "string", "minLength": 1 },
+        "intake": {
+          "type": "object",
+          "required": ["pending", "quarantined"],
+          "properties": {
+            "pending": { "type": "array", "items": { "type": "string" } },
+            "quarantined": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "graph_node": {
+      "type": "object",
+      "required": ["id", "type", "title", "path", "health"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": [
+            "feature",
+            "persona",
+            "business-rule",
+            "design",
+            "platform-requirement",
+            "api-contract",
+            "decision",
+            "advisory-review",
+            "platform"
+          ]
+        },
+        "title": { "type": "string" },
+        "path": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "owner": { "type": ["string", "null"] },
+        "advisory_review": { "type": ["string", "null"] },
+        "health": { "enum": ["ok", "warning", "error"] },
+        "open_questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["number", "question", "owner", "status"],
+            "properties": {
+              "number": { "type": "string" },
+              "question": { "type": "string" },
+              "owner": { "type": "string" },
+              "status": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "graph_edge": {
+      "type": "object",
+      "required": ["source", "target", "kind", "evidence"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "dangling_reference": {
+      "type": "object",
+      "required": ["from", "reference", "path"],
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "reference": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

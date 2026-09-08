@@ -57,9 +57,21 @@ Generated projects can be explored through the wiki graph dashboard:
 - `prism wiki graph --open` opens the interactive dashboard in the browser
 - `prism wiki graph --serve` keeps it live-updating as wiki files change
 
-The dashboard is derived from the wiki and stays read-only. It is meant for orientation:
-feature counts, lifecycle state, intake visibility, graph relationships, and first-run
-guidance before the wiki has been initialized.
+The dashboard is derived from the wiki and stays read-only. Its Graph, Board,
+Platforms, and Guide views are meant for orientation: feature counts, lifecycle
+state, intake visibility, graph relationships, platform requirements, and
+first-run guidance before the wiki has been initialized. Confidence and source
+paths remain visible so a stale or malformed source can be inspected before it
+informs a workflow decision.
+
+For a repeatable local capture, use the [wiki visualization guide](wiki-visualization.md),
+which builds a synthetic TreasuryFlow fixture in a new destination. The
+fixture demonstrates fresh, intake, and populated stages; it contains no
+production data or observed project history.
+
+![Wiki dashboard Board view](media/wiki-dashboard-board.png)
+
+![Wiki dashboard Graph view](media/wiki-dashboard-graph.png)
 
 ![Generated-project dashboard empty state](media/wiki-graph-dashboard-empty-state.png)
 

@@ -3,56 +3,49 @@
 ## Usage
 /wiki-blockers
 
-## Purpose
-
-Show what is preventing features from progressing. Prefer the Prism CLI JSON surface, but preserve a direct-read fallback for generated repos that do not have the CLI installed.
-
 ## Primary path: Prism CLI
 
-Run:
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract)
+and the command response has `"schema_version": 1`:
 
 ```bash
 prism wiki blockers --json
 ```
 
-Render from `facts.blockers`, `blocker_facts`, `required_obligations`, `diagnostics`, and `sources`.
-
-The CLI blocker surface may be narrower than the canonical blocker vocabulary. Before answering, read `knowledge/wiki/SCHEMA.md` and supplement with any additional canonical blocker categories you can prove directly from wiki files; state plainly if a category was not checked.
+Render `facts.blockers`, `blocker_facts`, `required_obligations`, `diagnostics`,
+and `sources` exactly as returned. The compatible CLI covers all six canonical
+blocker categories; do not duplicate blocker parsing or add categories on this
+path. Treat returned diagnostics, including errors, as facts to surface rather
+than replacing them with optimistic manual state.
 
 ## Fallback path
 
-If `prism` is unavailable, too old, or the `wiki blockers` subcommand is missing:
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki blockers`, say:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Then read:
 
-1. Say: `Prism CLI read surface unavailable; falling back to direct wiki reads.`
-2. Read:
-   - `knowledge/wiki/SCHEMA.md`
-   - `knowledge/wiki/index.md`
-   - all files in `knowledge/wiki/features/`
-   - all files in `knowledge/wiki/design/`
-   - all files in `knowledge/wiki/platform-requirements/`
-   - all files in `knowledge/wiki/api-contracts/`
-   - all files in `knowledge/wiki/advisory/` except `BOARD.md`
-3. Compute blockers using the canonical categories in `knowledge/wiki/SCHEMA.md`.
-4. Report only blocker facts you can prove from those files.
+- `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/index.md`
+- all files in `knowledge/wiki/features/`, `design/`, `platform-requirements/`, and `api-contracts/`
+- files in `knowledge/wiki/advisory/` except `BOARD.md` and `PROJECT_FOUNDATION.md`
 
 ## Canonical blocker categories
 
-- `pending-board-review`
-- `missing-design`
-- `missing-platform-requirements`
-- `unresolved-open-questions`
-- `api-contract-not-ready`
-- `cross-platform-dependency`
+Compute only these canonical facts: `pending-board-review`, `missing-design`,
+`missing-platform-requirements`, `unresolved-open-questions`,
+`api-contract-not-ready`, and `cross-platform-dependency`. Include malformed
+pages as diagnostics rather than silently skipping them.
 
-## Rules
+## Rules and output
 
-- read-only command
-- do not write wiki files
-- do not refresh `WIKI_REPORT.md`
-- use the canonical blocker vocabulary from `SCHEMA.md`
-- do not silently skip malformed pages; include them as diagnostics
-- separate facts from advice: render blocker facts first, then optionally close with clearly labeled suggested next steps
+- Keep the operation read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Use exact canonical codes and separate facts from advice; label optional suggested
+  next steps clearly.
 
-## Output
-
-Return blocker counts by category, blocked features grouped or listed by category, why each feature is blocked, diagnostics, and source paths. If no blocker facts are present, say so plainly.
+Return blocker counts grouped by category, affected features, reasons,
+diagnostics, and source paths. If no blocker facts are present, say so plainly.

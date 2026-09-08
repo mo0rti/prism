@@ -3,13 +3,15 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "prism-cli"
-version = "0.1.0"
-description = "Incubating Prism CLI for guided multi-platform project generation."
+name = "prism-kit"
+version = "0.2.0"
+description = "Prism CLI for guided multi-platform project generation."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "PyYAML>=6,<7",
+  "copier>=9,<10",
+  "jinja2-time>=0.2,<1",
 ]
 
 [project.scripts]
@@ -17,6 +19,7 @@ prism = "prism_cli.cli:main"
 
 [tool.setuptools]
 packages = ["prism_cli"]
+include-package-data = false
 
 [tool.setuptools.package-data]
-prism_cli = ["assets/*"]
+prism_cli = ["assets/*", "schemas/*.json"]

@@ -1,16 +1,17 @@
 schema_version: 1
-min_prism_cli_version: "0.1.0"
+min_prism_cli_version: "0.2.0"
 generated_by:
   tool: prism-cli
-  prism_cli_version: "0.1.0"
-  template_version: "unknown"
-  template_commit: "unknown"
-  generated_at: "unknown"
+  prism_cli_version: {{ (_prism_cli_version | default('unknown', true) | string) | tojson }}
+  template_source: {{ (_copier_conf.src_path | default('unknown', true) | string) | tojson }}
+  template_version: {{ (_copier_conf.vcs_ref | default('unknown', true) | string) | tojson }}
+  template_commit: {{ (_copier_conf.vcs_ref_hash | default('unknown', true) | string) | tojson }}
+  generated_at: "{% now 'utc', '%Y-%m-%dT%H:%M:%SZ' %}"
 project:
-  name: "{{ project_name }}"
-  slug: "{{ project_slug }}"
-  package_identifier: "{{ package_identifier }}"
-  description: "{{ description }}"
+  name: {{ project_name | tojson }}
+  slug: {{ project_slug | tojson }}
+  package_identifier: {{ package_identifier | tojson }}
+  description: {{ description | tojson }}
   platforms:
 {% for platform in platforms %}
     - {{ platform }}
@@ -19,13 +20,14 @@ project:
 {% for auth_method in auth_methods %}
     - {{ auth_method }}
 {% endfor %}
-  database: "{{ database }}"
-  supporting_services: [{% for service in supporting_services | default([]) %}{{ service }}{% if not loop.last %}, {% endif %}{% endfor %}]
+  database: {{ database | tojson }}
+  supporting_services: {{ supporting_services | default([]) | tojson }}
   use_docker: {{ "true" if use_docker else "false" }}
-  cloud_provider: "{{ cloud_provider }}"
+  cloud_provider: {{ cloud_provider | tojson }}
 {% if "web-user-app" in platforms or "web-admin-portal" in platforms %}
-  web_hosting: "{{ web_hosting }}"
+  web_hosting: {{ web_hosting | tojson }}
 {% endif %}
+  github_org: {{ github_org | tojson }}
 platform_maturity:
 {% for platform in platforms %}
   {{ platform }}:

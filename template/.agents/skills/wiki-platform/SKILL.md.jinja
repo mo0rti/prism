@@ -1,65 +1,51 @@
 ---
 name: wiki-platform
-description: Read-only platform facts for one Prism platform ID. Prefer Prism CLI JSON; fall back to direct wiki reads when the CLI is unavailable.
+description: Read-only platform facts for one Prism platform ID. Prefer Prism CLI JSON; use direct wiki reads when it is unavailable.
 ---
 
 # Wiki Platform
 
-Read-only platform queue for one exact Prism platform ID.
+Report facts for one exact Prism platform ID.
 
 ## Primary path
 
-Run:
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract)
+and the command response has `"schema_version": 1`:
 
 ```bash
 prism wiki platform <platform-id> --json
 ```
 
-Summarize `facts.features`, `facts.platform_requirements`, `diagnostics`, and `sources`.
+Summarize `facts.platform`, `facts.features`, `facts.platform_requirements`,
+`diagnostics`, and `sources` exactly as returned. Treat returned diagnostics,
+including errors, as facts to surface rather than replacing them with optimistic
+manual state.
 
 ## Fallback path
 
-If `prism` is unavailable, too old, or lacks `wiki platform`, say the CLI read surface is unavailable, then inspect the wiki directly.
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki platform`, say:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Read
+all files in `knowledge/wiki/features/`, `platform-requirements/`, `design/`,
+`api-contracts/`, and `advisory/` except `BOARD.md` and `PROJECT_FOUNDATION.md`. Filter the exact platform
+ID and active statuses `ready-for-design`, `in-design`, `ready-for-dev`, and
+`in-dev`; attach matching requirements and compute only provable blockers. Sort
+active work `in-dev`, `ready-for-dev`, `in-design`, `ready-for-design`; keep
+`done` out unless closed work is requested.
 
-Read:
+## Rules and output
 
-1. all feature files
-2. all platform-requirement files
-3. all design files
-4. all API contract files
-5. advisory review outputs except `BOARD.md`
+- Keep the skill read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Accept only `backend`, `mobile-android`, `mobile-ios`, `web-user-app`, or
+  `web-admin-portal`; do not infer aliases.
+- separate facts from advice and label optional suggested next steps.
 
-Filter active/ready features to the selected exact platform ID and assemble platform-specific facts and blockers. Active/ready means `ready-for-design`, `in-design`, `ready-for-dev`, or `in-dev`; keep `done` out of the active queue unless the user asks for closed work. Sort active work as `in-dev`, `ready-for-dev`, `in-design`, `ready-for-design`.
-
-## Rules
-
-- read-only skill
-- do not write wiki files
-- do not refresh `WIKI_REPORT.md`
-- use exact platform IDs only:
-  - `backend`
-  - `mobile-android`
-  - `mobile-ios`
-  - `web-user-app`
-  - `web-admin-portal`
-- do not infer aliases such as `ios`, `android`, or `web`
-- separate facts from advice: render platform facts first, then optionally close with clearly labeled suggested next steps
-
-## Output shape
-
-Return:
-
-- platform view heading
-- active features targeting that platform
-- feature status
-- advisory-review state
-- platform-requirement status
-- API contract status when relevant
-- blockers relevant to that platform
-- source paths used
-
-## Error behavior
-
-- if no active or ready features target the platform, return a clean empty-state response
-- if the platform identifier is invalid, return a clean invalid-platform response
-- if malformed wiki pages prevent reliable platform computation, return a clean malformed-pages response
+Return active features, statuses, advisory-review and requirement state,
+relevant blockers, diagnostics, and source paths. Use clean empty or invalid-
+platform responses when appropriate.

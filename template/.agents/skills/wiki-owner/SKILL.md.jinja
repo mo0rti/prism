@@ -1,64 +1,51 @@
 ---
 name: wiki-owner
-description: Read-only owner facts for po, designer, dev, or none. Prefer Prism CLI JSON; fall back to direct wiki reads when the CLI is unavailable.
+description: Read-only owner facts for po, designer, dev, or none. Prefer Prism CLI JSON; use direct wiki reads when it is unavailable.
 ---
 
 # Wiki Owner
 
-Read-only role dashboard for one explicit owner value.
+Report facts for one explicit owner value.
 
 ## Primary path
 
-Run:
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract)
+and the command response has `"schema_version": 1`:
 
 ```bash
 prism wiki owner <owner> --json
 ```
 
-Summarize `facts.features`, `facts.open_questions`, `diagnostics`, and `sources`.
-
-The CLI returns owner-matched features and open questions. To include waiting-work and staleness sections, read `knowledge/wiki/SETTINGS.md`, feature pages, and platform requirements directly and compute those sections from wiki files.
+Summarize `facts.owner`, `facts.features`, `facts.open_questions`, `diagnostics`,
+and `sources` exactly as returned. Do not compute additional waiting or stale
+state manually on this path. Treat returned diagnostics, including errors, as
+facts to surface rather than replacing them with optimistic manual state.
 
 ## Fallback path
 
-If `prism` is unavailable, too old, or lacks `wiki owner`, say the CLI read surface is unavailable, then inspect the wiki directly.
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki owner`, say:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Read
+`knowledge/wiki/SETTINGS.md` if present, all feature and platform-requirement
+files, and `knowledge/wiki/index.md` when lifecycle grouping needs confirmation.
+Collect owner-matched features and open questions. Waiting work means PO
+questions or intake conflicts for `po`, `ready-for-design` or `in-design` plus
+designer questions for `designer`, and `ready-for-dev` or `in-dev` plus dev
+questions for `dev`. Use `wiki-stale-after-days`; absent or malformed SETTINGS
+falls back to `14` and must be reported.
 
-Read:
+## Rules and output
 
-1. `knowledge/wiki/SETTINGS.md` if present
-2. all feature files
-3. all platform-requirement files
-4. `knowledge/wiki/index.md` when lifecycle grouping needs confirmation
+- Keep the skill read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Accept only `po`, `designer`, `dev`, and `none`; do not infer a caller role.
+- separate facts from advice and label optional suggested next steps.
 
-Assemble open questions, waiting work, and stale items for the requested owner:
-
-- `po`: PO-owned open questions or intake conflicts needing clarification
-- `designer`: features in `ready-for-design` or `in-design`, plus design-owned open questions
-- `dev`: features in `ready-for-dev` or `in-dev`, plus dev-owned open questions
-
-If `knowledge/wiki/SETTINGS.md` is absent or the key is missing, use `wiki-stale-after-days: 14` and say so. If the setting is malformed, report it and still fall back to `14`.
-
-## Rules
-
-- read-only skill
-- do not write wiki files
-- do not refresh `WIKI_REPORT.md`
-- do not infer the caller's role automatically
-- supported owner values are exactly `po`, `designer`, `dev`, and `none`
-- separate facts from advice: render owner facts first, then optionally close with clearly labeled suggested next steps
-
-## Output shape
-
-Return:
-
-- owner view heading
-- open questions assigned to that owner
-- features currently waiting on that owner
-- potentially stale items using the configured threshold
-- source paths used
-
-## Error behavior
-
-- if no current work matches the selected owner, return a clean empty-state response
-- if the owner value is unsupported, return a clean invalid-owner response
-- if malformed wiki pages prevent reliable owner computation, return a clean malformed-pages response
+Return the owner heading, matching features, assigned questions, waiting or stale
+items, diagnostics, and source paths. Use clean empty or invalid-owner responses
+when appropriate.

@@ -4,32 +4,56 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-import yaml
-
-from prism_cli import __version__
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, lint_wiki
 from prism_cli.wiki_model import (
     VALID_FEATURE_STATUSES,
-    VALID_PLATFORM_IDS,
     parse_open_question_rows,
     read_feature_pages,
     read_platform_requirement_pages,
+    read_wiki_settings,
 )
-from prism_cli.workspace import MANIFEST_FILE, WorkspaceDiagnostic, WorkspaceLoadResult, detect_workspace_kind, load_workspace
+from prism_cli.workspace import (
+    COPIER_ANSWERS_FILE,
+    GENERATION_ANSWER_FIELDS,
+    MANIFEST_FILE,
+    WorkspaceDiagnostic,
+    WorkspaceInspection,
+    WorkspaceLoadResult,
+    detect_workspace_kind,
+    inspect_workspace,
+)
 
 
-COPIER_ANSWERS_FILE = ".copier-answers.yml"
 IGNORED_INTAKE_FILES = {"PO_BRIEF_TEMPLATE.md", "DESIGN_HANDOFF_TEMPLATE.md", ".gitkeep", ".DS_Store", "desktop.ini", "Thumbs.db"}
-PLATFORM_DIRS = {
-    "backend": "backend",
-    "mobile-android": "mobile-android",
-    "mobile-ios": "mobile-ios",
-    "web-user-app": "web-user-app",
-    "web-admin-portal": "web-admin-portal",
-}
+DEFAULT_STALE_AFTER_DAYS = 14
+
+
+@dataclass(frozen=True)
+class SettingsHealth:
+    """The effective wiki staleness setting and its source health."""
+
+    path: Path
+    stale_after_days: int = DEFAULT_STALE_AFTER_DAYS
+    health: str = "degraded"
+    source: str = "fallback"
+    diagnostics: list[StatusDiagnostic] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path": str(self.path),
+            "stale_after_days": self.stale_after_days,
+            "health": self.health,
+            "status": self.health,
+            "source": self.source,
+            "configured": self.source == "settings",
+            "diagnostics": [diagnostic.to_dict() for diagnostic in self.diagnostics],
+        }
+
+
 @dataclass(frozen=True)
 class StatusDiagnostic:
     code: str
@@ -56,6 +80,23 @@ class IntakeCounts:
 
 
 @dataclass(frozen=True)
+class AdvisoryReviewSnapshot:
+    counts: dict[str, int] = field(default_factory=dict)
+    pending_feature_ids: list[str] = field(default_factory=list)
+
+    @property
+    def pending(self) -> int:
+        return self.counts.get("pending", 0)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "counts": dict(self.counts),
+            "pending": self.pending,
+            "pending_feature_ids": list(self.pending_feature_ids),
+        }
+
+
+@dataclass(frozen=True)
 class WorkspaceStatus:
     root: Path
     workspace_kind: str
@@ -73,6 +114,11 @@ class WorkspaceStatus:
     open_questions_by_owner: dict[str, int] = field(default_factory=dict)
     platform_requirement_status_counts: dict[str, int] = field(default_factory=dict)
     platform_maturity: dict[str, dict[str, str]] = field(default_factory=dict)
+    advisory_review_snapshot: AdvisoryReviewSnapshot = field(default_factory=AdvisoryReviewSnapshot)
+    settings_health: SettingsHealth | None = None
+    generation_answers: dict[str, Any] = field(default_factory=dict)
+    template_metadata: dict[str, Any] = field(default_factory=dict)
+    answers_present: bool = False
 
     @property
     def blocker_count(self) -> int:
@@ -119,6 +165,18 @@ class WorkspaceStatus:
                     "warning_count": self.wiki_lint.warning_count,
                     "clean": self.wiki_lint.is_clean,
                 },
+                "advisory_review": self.advisory_review_snapshot.to_dict(),
+                "settings": self.settings_health.to_dict() if self.settings_health else None,
+                "generation": {
+                    "answers_file": str(self.root / COPIER_ANSWERS_FILE),
+                    "answers_present": self.answers_present,
+                    "answers": dict(self.generation_answers),
+                    "template": dict(self.template_metadata),
+                },
+                # These direct aliases keep the detail names easy to consume
+                # without changing the stable envelope keys.
+                "generation_answers": dict(self.generation_answers),
+                "template": dict(self.template_metadata),
             },
             "blocker_facts": self.blocker_facts(),
             "required_obligations": self.required_obligations(),
@@ -148,22 +206,33 @@ class WorkspaceStatus:
         return obligations
 
     def sources(self) -> list[str]:
-        paths = [str(self.root / MANIFEST_FILE), str(self.root / "knowledge" / "wiki"), str(self.root / "knowledge" / "intake")]
-        return paths
+        paths = [
+            str(self.root / MANIFEST_FILE),
+            str(self.root / COPIER_ANSWERS_FILE),
+            str(self.root / "knowledge" / "wiki"),
+            str(self.root / "knowledge" / "intake"),
+        ]
+        if self.settings_health:
+            paths.append(str(self.settings_health.path))
+        return list(dict.fromkeys(paths))
 
 
 def build_status(root: Path) -> WorkspaceStatus:
     workspace_root = root.expanduser().resolve()
-    workspace_result = load_workspace(workspace_root)
-    answers = _load_copier_answers(workspace_root)
+    inspection = inspect_workspace(workspace_root)
+    workspace_result = inspection.load_result
+    answers = inspection.answers
     wiki_lint = lint_wiki(workspace_root)
-    status_diagnostics = _workspace_diagnostics(workspace_result, answers)
+    status_diagnostics = _status_diagnostics(inspection.diagnostics)
+    settings_health = _settings_health(workspace_root)
+    status_diagnostics.extend(settings_health.diagnostics)
 
-    project_name = _project_name(workspace_result, answers)
-    platforms = _platforms(workspace_result, answers, workspace_root)
+    project_name = inspection.project_name
+    platforms = inspection.platforms
     setup_state = _setup_state(workspace_root, wiki_lint)
     intake = _intake_counts(workspace_root)
     feature_counts, owner_counts, open_question_counts, requirement_counts = _wiki_counts(workspace_root)
+    advisory_review_snapshot = _advisory_review_snapshot(workspace_root)
     confidence = _confidence(workspace_result, status_diagnostics, wiki_lint)
 
     return WorkspaceStatus(
@@ -173,7 +242,7 @@ def build_status(root: Path) -> WorkspaceStatus:
         platforms=platforms,
         setup_state=setup_state,
         confidence=confidence,
-        manifest_present=workspace_result.manifest is not None,
+        manifest_present=workspace_result.manifest_exists,
         manifest_diagnostics=workspace_result.diagnostics,
         status_diagnostics=status_diagnostics,
         wiki_lint=wiki_lint,
@@ -183,124 +252,144 @@ def build_status(root: Path) -> WorkspaceStatus:
         open_questions_by_owner=open_question_counts,
         platform_requirement_status_counts=requirement_counts,
         platform_maturity=workspace_result.manifest.platform_maturity if workspace_result.manifest else {},
+        advisory_review_snapshot=advisory_review_snapshot,
+        settings_health=settings_health,
+        generation_answers=_safe_generation_answers(answers),
+        template_metadata=_template_metadata(inspection),
+        answers_present=inspection.answers_present,
     )
 
 
-def _load_copier_answers(root: Path) -> dict[str, Any]:
-    path = root / COPIER_ANSWERS_FILE
-    if not path.exists():
-        return {}
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
-    except (OSError, yaml.YAMLError):
-        return {}
-    return data if isinstance(data, dict) else {}
+def _status_diagnostics(diagnostics: list[WorkspaceDiagnostic]) -> list[StatusDiagnostic]:
+    return [
+        StatusDiagnostic(
+            code=diagnostic.code,
+            severity=diagnostic.severity,
+            path=diagnostic.path,
+            message=diagnostic.message,
+        )
+        for diagnostic in diagnostics
+    ]
 
 
-def _workspace_diagnostics(workspace_result: WorkspaceLoadResult, answers: dict[str, Any]) -> list[StatusDiagnostic]:
-    root = workspace_result.root
-    diagnostics: list[StatusDiagnostic] = []
-    manifest = workspace_result.manifest
+def _settings_health(root: Path) -> SettingsHealth:
+    settings_path = root / "knowledge" / "wiki" / "SETTINGS.md"
+    settings = read_wiki_settings(root / "knowledge" / "wiki")
+    diagnostics = [
+        StatusDiagnostic(
+            code=code,
+            severity="warning",
+            path=str(settings.path),
+            message=message,
+        )
+        for code, message in settings.diagnostics
+    ]
+    return SettingsHealth(
+        path=settings_path,
+        stale_after_days=settings.stale_after_days,
+        health="degraded" if settings.used_fallback else "healthy",
+        source="fallback" if settings.used_fallback else "settings",
+        diagnostics=diagnostics,
+    )
 
-    if manifest is None:
-        return diagnostics
 
-    answers_name = answers.get("project_name")
-    if isinstance(answers_name, str) and manifest.project_name and answers_name != manifest.project_name:
-        diagnostics.append(
-            StatusDiagnostic(
-                code="manifest-answers-drift",
-                severity="error",
-                path=str(manifest.path),
-                message=f"Manifest project name `{manifest.project_name}` differs from Copier answers `{answers_name}`.",
-            )
+def _advisory_review_snapshot(root: Path) -> AdvisoryReviewSnapshot:
+    counts: Counter[str] = Counter()
+    pending_feature_ids: list[str] = []
+    for feature in read_feature_pages(root / "knowledge" / "wiki"):
+        state = feature.advisory_review or "unknown"
+        counts[state] += 1
+        if state == "pending":
+            pending_feature_ids.append(feature.feature_id)
+
+    known_states = ("not-needed", "pending", "done", "skipped", "unknown")
+    for state in known_states:
+        counts.setdefault(state, 0)
+    return AdvisoryReviewSnapshot(
+        counts=dict(sorted(counts.items())),
+        pending_feature_ids=sorted(pending_feature_ids),
+    )
+
+
+def _safe_generation_answers(answers: dict[str, Any]) -> dict[str, Any]:
+    """Return only documented, non-private Copier fields for status output."""
+
+    safe_answers: dict[str, Any] = {}
+    for key in GENERATION_ANSWER_FIELDS:
+        if key not in answers:
+            continue
+        value = _safe_json_value(answers[key])
+        if value is not _UNSAFE_VALUE:
+            safe_answers[key] = value
+    return safe_answers
+
+
+_UNSAFE_VALUE = object()
+
+
+def _safe_json_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, list):
+        safe_values = [_safe_json_value(item) for item in value]
+        return safe_values if all(item is not _UNSAFE_VALUE for item in safe_values) else _UNSAFE_VALUE
+    if isinstance(value, dict):
+        safe_mapping: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                return _UNSAFE_VALUE
+            safe_item = _safe_json_value(item)
+            if safe_item is _UNSAFE_VALUE:
+                return _UNSAFE_VALUE
+            safe_mapping[key] = safe_item
+        return safe_mapping
+    return _UNSAFE_VALUE
+
+
+def _template_metadata(inspection: WorkspaceInspection) -> dict[str, Any]:
+    manifest = inspection.manifest
+    answers = inspection.answers
+    metadata: dict[str, Any] = {
+        "answers_file": str(inspection.answers_path),
+        "template_source": None,
+        "template_version": None,
+        "template_commit": None,
+        "generated_by_prism_cli_version": None,
+        "generated_at": None,
+    }
+    if manifest:
+        metadata.update(
+            {
+                "template_source": manifest.template_source,
+                "template_version": _known_metadata_value(manifest.template_version),
+                "template_commit": _known_metadata_value(manifest.template_commit),
+                "generated_by_prism_cli_version": _known_metadata_value(manifest.generated_by_prism_cli_version),
+                "generated_at": _known_metadata_value(manifest.generated_at),
+            }
         )
 
-    answer_platforms = _list_value(answers.get("platforms"))
-    if answer_platforms and sorted(answer_platforms) != sorted(manifest.platforms):
-        diagnostics.append(
-            StatusDiagnostic(
-                code="manifest-answers-drift",
-                severity="error",
-                path=str(manifest.path),
-                message="Manifest platforms differ from Copier answers.",
-            )
-        )
-
-    filesystem_platforms = _detect_platform_dirs(root)
-    manifest_platforms = set(manifest.platforms)
-    extra_dirs = sorted(set(filesystem_platforms) - manifest_platforms)
-    missing_dirs = sorted(manifest_platforms - set(filesystem_platforms))
-    for platform_id in extra_dirs:
-        diagnostics.append(
-            StatusDiagnostic(
-                code="manifest-filesystem-drift",
-                severity="warning",
-                path=str(root / PLATFORM_DIRS[platform_id]),
-                message=f"Platform directory `{platform_id}` exists but is not declared in {MANIFEST_FILE}.",
-            )
-        )
-    for platform_id in missing_dirs:
-        diagnostics.append(
-            StatusDiagnostic(
-                code="manifest-filesystem-drift",
-                severity="error",
-                path=str(root / PLATFORM_DIRS.get(platform_id, platform_id)),
-                message=f"{MANIFEST_FILE} declares `{platform_id}` but the platform directory is missing.",
-            )
-        )
-
-    invalid_platforms = sorted(platform for platform in manifest.platforms if platform not in VALID_PLATFORM_IDS)
-    for platform_id in invalid_platforms:
-        diagnostics.append(
-            StatusDiagnostic(
-                code="invalid-manifest-platform",
-                severity="error",
-                path=str(manifest.path),
-                message=f"`{platform_id}` is not a valid Prism platform id.",
-            )
-        )
-
-    min_version = manifest.min_prism_cli_version
-    if min_version and _version_tuple(__version__) < _version_tuple(min_version):
-        diagnostics.append(
-            StatusDiagnostic(
-                code="minimum-prism-cli-version-not-met",
-                severity="error",
-                path=str(manifest.path),
-                message=f"Workspace requires Prism CLI >= {min_version}; running {__version__}.",
-            )
-        )
-
-    for surface_group, surfaces in manifest.expected_surfaces.items():
-        for surface in surfaces:
-            if not _surface_exists(root, surface):
-                diagnostics.append(
-                    StatusDiagnostic(
-                        code="missing-expected-surface",
-                        severity="error",
-                        path=str(root / surface),
-                        message=f"Expected {surface_group} surface `{surface}` is missing.",
-                    )
-                )
-
-    return diagnostics
+    # Older manifests may have no provenance block.  The Copier answers file
+    # is the documented fallback for source and commit metadata only.
+    if metadata["template_source"] is None:
+        source = answers.get("_src_path")
+        if isinstance(source, str):
+            metadata["template_source"] = source
+    if metadata["template_commit"] is None:
+        commit = answers.get("_commit")
+        if isinstance(commit, str):
+            metadata["template_commit"] = commit
+    return metadata
 
 
-def _project_name(workspace_result: WorkspaceLoadResult, answers: dict[str, Any]) -> str | None:
-    if workspace_result.manifest and workspace_result.manifest.project_name:
-        return workspace_result.manifest.project_name
-    value = answers.get("project_name")
-    return value if isinstance(value, str) else None
+def _known_metadata_value(value: str | None) -> str | None:
+    if value is None or value.strip().lower() in {"", "unknown", "none", "null"}:
+        return None
+    return value
 
 
-def _platforms(workspace_result: WorkspaceLoadResult, answers: dict[str, Any], root: Path) -> list[str]:
-    if workspace_result.manifest and workspace_result.manifest.platforms:
-        return workspace_result.manifest.platforms
-    answer_platforms = _list_value(answers.get("platforms"))
-    if answer_platforms:
-        return answer_platforms
-    return _detect_platform_dirs(root)
+# Workspace contract inspection lives in prism_cli.workspace.inspect_workspace.
 
 
 def _setup_state(root: Path, wiki_lint: WikiLintResult) -> str:
@@ -397,16 +486,6 @@ def _confidence(
     return "high"
 
 
-def _detect_platform_dirs(root: Path) -> list[str]:
-    return [platform_id for platform_id, directory in PLATFORM_DIRS.items() if (root / directory).exists()]
-
-
-def _list_value(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, str)]
-
-
 def _diagnostics_to_dicts(
     manifest_diagnostics: list[WorkspaceDiagnostic],
     status_diagnostics: list[StatusDiagnostic],
@@ -417,23 +496,3 @@ def _diagnostics_to_dicts(
     data.extend(diagnostic.to_dict() for diagnostic in status_diagnostics)
     data.extend(diagnostic.to_dict() for diagnostic in wiki_diagnostics)
     return data
-
-
-def _version_tuple(value: str) -> tuple[int, int, int]:
-    parts = value.split(".")
-    numbers: list[int] = []
-    for part in parts[:3]:
-        try:
-            numbers.append(int(part))
-        except ValueError:
-            numbers.append(0)
-    while len(numbers) < 3:
-        numbers.append(0)
-    return tuple(numbers)  # type: ignore[return-value]
-
-
-def _surface_exists(root: Path, surface: str) -> bool:
-    normalized = surface.rstrip("/")
-    if not normalized:
-        return True
-    return (root / normalized).exists()

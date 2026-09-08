@@ -115,7 +115,12 @@ Read [`CONTEXT.md`](../CONTEXT.md) for the command list by tool surface.
 When the optional Prism CLI is installed, `prism wiki graph --open` renders an
 interactive dashboard of the wiki (features, lifecycle board, platform lanes),
 and `prism wiki graph --serve` keeps it live-updating as wiki files change.
-The dashboard is read-only and derived; the wiki files remain the source of truth.
+The dashboard includes Graph, Board, Platforms, and Guide views. It is
+read-only and derived; the wiki files remain the source of truth. The
+inspector exposes source paths, confidence, workflow blockers, and page-health
+diagnostics so an agent can follow the evidence before changing project state.
+For a terminal fallback, use `prism wiki graph --json` or
+`prism wiki graph --mermaid --view lifecycle`.
 
 ## Skill Map
 

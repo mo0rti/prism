@@ -3,51 +3,48 @@
 ## Usage
 /wiki-owner po|designer|dev|none
 
-## Purpose
-
-Show pending work and open questions for one explicit owner value. Prefer the Prism CLI JSON surface, but preserve a direct-read fallback for generated repos that do not have the CLI installed.
-
 ## Primary path: Prism CLI
 
-Run:
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.2.0` or newer (the `prism-kit>=0.2.0` distribution contract)
+and the command response has `"schema_version": 1`:
 
 ```bash
 prism wiki owner <owner> --json
 ```
 
-Render from `facts.owner`, `facts.features`, `facts.open_questions`, `diagnostics`, and `sources`.
-
-The CLI returns owner-matched features and open questions. To include waiting-work and staleness sections, read `knowledge/wiki/SETTINGS.md`, feature pages, and platform requirements directly and compute those sections from wiki files.
+Render `facts.owner`, `facts.features`, `facts.open_questions`, `diagnostics`,
+and `sources` exactly as returned. Do not compute additional waiting or stale
+state manually on this path. Treat returned diagnostics, including errors, as
+facts to surface rather than replacing them with optimistic manual state.
 
 ## Fallback path
 
-If `prism` is unavailable, too old, or the `wiki owner` subcommand is missing:
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki owner`, say:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Then read
+`knowledge/wiki/SETTINGS.md` if present, all feature and platform-requirement
+files, and `knowledge/wiki/index.md` when lifecycle grouping needs confirmation.
+Collect matching owner features and open questions. Waiting work is:
 
-1. Say: `Prism CLI read surface unavailable; falling back to direct wiki reads.`
-2. Read:
-   - `knowledge/wiki/SETTINGS.md` if present
-   - all files in `knowledge/wiki/features/`
-   - all files in `knowledge/wiki/platform-requirements/`
-   - `knowledge/wiki/index.md` when lifecycle grouping needs confirmation
-3. Collect features whose `owner` frontmatter matches the requested owner.
-4. Collect open questions assigned to that owner.
-5. Collect features likely waiting on that owner:
-   - `po`: PO-owned open questions or intake conflicts needing clarification
-   - `designer`: features in `ready-for-design` or `in-design`, plus design-owned open questions
-   - `dev`: features in `ready-for-dev` or `in-dev`, plus dev-owned open questions
-6. Mark stale items using `wiki-stale-after-days`; if the setting is absent or malformed, fall back to `14` and say so.
+- `po`: PO-owned open questions or intake conflicts needing clarification
+- `designer`: `ready-for-design` or `in-design`, plus designer questions
+- `dev`: `ready-for-dev` or `in-dev`, plus dev questions
 
-## Rules
+Use `wiki-stale-after-days`; if SETTINGS is absent or malformed, use `14` and say
+so. Report only facts present in the files.
 
-- read-only command
-- do not write wiki files
-- do not refresh `WIKI_REPORT.md`
-- do not infer the caller's role automatically
-- supported owner values are exactly `po`, `designer`, `dev`, and `none`
-- separate facts from advice: render owner facts first, then optionally close with clearly labeled suggested next steps
+## Rules and output
 
-## Output
+- Keep the operation read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Accept only `po`, `designer`, `dev`, and `none`; do not infer a caller role.
+- separate facts from advice and label optional suggested next steps.
 
-Return owner view heading, open questions assigned to that owner, features currently waiting on that owner, potentially stale items using the configured threshold, diagnostics, and source paths.
-
-If no current work matches the selected owner, return a clean empty-state response. If the owner value is unsupported, return a clean invalid-owner response.
+Return the owner heading, matching features, assigned open questions, waiting or
+stale items, diagnostics, and source paths. Use a clean empty state for no matches
+and a clean invalid-owner response for unsupported values.
