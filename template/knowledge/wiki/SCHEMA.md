@@ -317,6 +317,12 @@ test, and release evidence is verified; a draft API contract blocks. Agents
 verify actual artifacts and results; table text, file presence,
 or lint alone is insufficient. Partial delivery remains `in-dev`.
 
+Delivery evidence must be recorded on the feature page before invoking
+`dev-done`. Missing or incomplete evidence keeps the feature `in-dev` until it
+is recorded and verified. A confirmed `dev-done` write may include reviewed
+corrections to existing evidence, but it must not invent delivery evidence or
+implicitly satisfy an absent or incomplete table.
+
 An active `revalidation` list invalidates current readiness even when older
 status fields or evidence still say done. `dev-done` may perform fresh checks and
 propose clearing only the revalidated domains before final confirmation; it must

@@ -1892,7 +1892,7 @@ function renderBoard() {
   view.innerHTML = `<div class="board">${intakeCol}${cols}</div>`;
   view.querySelectorAll(".card[data-id]").forEach(card => {
     card.addEventListener("click", e => {
-      if (e && e.target && e.target.closest && e.target.closest("button")) return;
+      if (e && e.target && e.target.closest && e.target.closest("button, select, label")) return;
       selectNode(card.dataset.id);
     });
     card.addEventListener("keydown", e => {

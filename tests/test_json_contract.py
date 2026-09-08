@@ -95,6 +95,49 @@ class JsonContractTests(unittest.TestCase):
         self.assertEqual("designer", feature["transition"]["target_owner"])
         Draft202012Validator(self.load_schema("wiki-graph-v1.json")).validate(graph)
 
+    def test_graph_schema_covers_done_and_unmapped_feature_routes(self) -> None:
+        graph_schema = self.load_schema("wiki-graph-v1.json")
+        partial_root = FIXTURE_ROOT.parent / "partial"
+        partial_graph = build_graph(partial_root)
+        Draft202012Validator(graph_schema).validate(partial_graph)
+
+        done_node = next(
+            node
+            for node in partial_graph["facts"]["nodes"]
+            if node["type"] == "feature" and node["id"] == "F-005"
+        )
+        self.assertEqual("done", done_node["transition"]["source_status"])
+        self.assertIsNone(done_node["transition"]["target_status"])
+        self.assertIsNone(done_node["transition"]["target_owner"])
+        self.assertIsNone(done_node["transition"]["action"])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            wiki_root = workspace / "knowledge" / "wiki"
+            wiki_root.parent.mkdir(parents=True)
+            shutil.copytree(FIXTURE_ROOT / "knowledge" / "wiki", wiki_root)
+            feature_path = wiki_root / "features" / "F-001-checkout.md"
+            feature_path.write_text(
+                feature_path.read_text(encoding="utf-8")
+                .replace("status: specified", "status: future-stage")
+                .replace("owner: po", "owner: future-owner"),
+                encoding="utf-8",
+            )
+            unmapped_graph = build_graph(workspace)
+
+        Draft202012Validator(graph_schema).validate(unmapped_graph)
+        unmapped_node = next(
+            node
+            for node in unmapped_graph["facts"]["nodes"]
+            if node["type"] == "feature" and node["id"] == "F-001"
+        )
+        self.assertEqual("future-stage", unmapped_node["transition"]["source_status"])
+        self.assertEqual("future-owner", unmapped_node["transition"]["source_owner"])
+        self.assertEqual("unknown", unmapped_node["transition"]["classification"])
+        self.assertIsNone(unmapped_node["transition"]["target_status"])
+        self.assertIsNone(unmapped_node["transition"]["target_owner"])
+        self.assertIsNone(unmapped_node["transition"]["action"])
+
     def test_transition_schema_retains_unknown_status_values_for_malformed_pages(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)

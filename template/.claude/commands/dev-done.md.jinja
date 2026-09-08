@@ -35,6 +35,12 @@ Read `knowledge/wiki/SCHEMA.md`, `index.md`, the complete feature, every declare
 platform-requirement page, any applicable API contract, linked context, workspace
 identity, advisory state, delivery evidence, and active `revalidation` domains.
 
+Delivery evidence must already be recorded on the feature page before invoking
+`/dev-done`. If the current `## Delivery evidence` table is missing or
+incomplete, leave the feature `in-dev`; record and verify the evidence first,
+then rerun this command. Do not use this command to invent or implicitly
+satisfy missing delivery claims.
+
 For every declared platform, verify the actual implementation artifact, test
 result, and release artifact or target named by the current `## Delivery
 evidence` table. A substantive table cell, file presence, or clean lint result
@@ -62,7 +68,8 @@ If the user provides notes, keep them as proposed `## Post-ship notes` content
 until final confirmation. Show the complete feature, exact requirements/API,
 index, and log write set. Reread the source and context immediately before
 confirmation and once again after it. Only after explicit confirmation may the
-confirmed notes and evidence be written, the feature become `done`/`none`,
+confirmed notes and any reviewed corrections to the existing delivery evidence
+be written, the feature become `done`/`none`,
 exact verified requirements become `done`, an applicable API contract become
 `implemented`, and the index/log be updated.
 

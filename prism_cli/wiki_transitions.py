@@ -910,11 +910,24 @@ def _evaluate_action(
                 ]
             )
         elif spec.action.startswith("reopen-"):
+            _, revalidation_errors = parse_revalidation(
+                feature.page.frontmatter.get("revalidation")
+            )
+            impact_review_message = (
+                "Copy-only preparation includes an explicit impact review step; "
+                "no write is authorized until it is completed and confirmed."
+            )
+            if revalidation_errors:
+                impact_review_message += (
+                    " Existing revalidation metadata is malformed and must be "
+                    "repaired before downstream readiness can be trusted: "
+                    + "; ".join(revalidation_errors)
+                )
             checks.append(
                 _check(
                     "reopen-impact-review",
                     "pass",
-                    "Copy-only preparation includes an explicit impact review step; no write is authorized until it is completed and confirmed.",
+                    impact_review_message,
                     path,
                 )
             )
@@ -923,7 +936,7 @@ def _evaluate_action(
         # feature.  A blocker on another feature remains visible in the
         # envelope, but cannot become a false prerequisite for this action.
         if not spec.action.startswith("reopen-"):
-            checks.extend(_feature_workflow_checks(feature, lint_result, spec.action))
+            checks.extend(_feature_workflow_checks(feature, lint_result, spec.action, requirement_pages))
         ignored_integrity = {
             "done-delivery-evidence",
             "done-platform-requirement",
@@ -1039,7 +1052,7 @@ def _unsupported_source_transition(
     checks = [
         _check(
             "feature-id",
-            "pass" if feature_id_from_path(path) == feature_id and feature_id.strip().lower() not in set() else "unknown",
+            "pass" if feature_id_from_path(path) == feature_id else "unknown",
             "Feature ID and path identify one canonical feature page."
             if feature_id_from_path(path) == feature_id
             else f"Feature ID `{feature_id}` or its feature path is malformed.",
@@ -1074,6 +1087,7 @@ def _unsupported_source_transition(
         "source_owner": owner,
         "source_path": str(path),
         "target_status": None,
+        "target_owner": None,
         "action": None,
         "classification": "unknown",
         "supported": False,
@@ -1092,6 +1106,7 @@ def _done_primary_transition(feature: FeaturePage, records: list[dict[str, Any]]
         "source_owner": feature.owner,
         "source_path": str(path),
         "target_status": None,
+        "target_owner": None,
         "action": None,
         "classification": "unknown",
         "supported": False,
@@ -1198,6 +1213,7 @@ def _feature_workflow_checks(
     feature: FeaturePage,
     lint_result: WikiLintResult,
     action: str,
+    requirement_pages: list[Any],
 ) -> list[dict[str, Any]]:
     relevant_codes = {
         "po-handoff": {"pending-board-review"},
@@ -1208,9 +1224,20 @@ def _feature_workflow_checks(
     }.get(action, WIKI_BLOCKER_CODES)
     normalized_id = feature.feature_id.strip().lower()
     path = feature.page.path.resolve()
+    requirements_by_path: dict[Path, Any] = {}
+    for requirement in requirement_pages:
+        requirement_path = getattr(getattr(requirement, "page", None), "path", None)
+        if not isinstance(requirement_path, Path):
+            continue
+        try:
+            requirements_by_path[requirement_path.resolve()] = requirement
+        except (OSError, RuntimeError, ValueError):
+            continue
     checks: list[dict[str, Any]] = []
     for diagnostic in lint_result.diagnostics:
         if diagnostic.code not in relevant_codes:
+            continue
+        if _is_out_of_scope_requirement_dependency(diagnostic, feature, requirements_by_path):
             continue
         diagnostic_feature_id = diagnostic.feature_id.strip().lower() if isinstance(diagnostic.feature_id, str) else ""
         try:
@@ -1229,6 +1256,52 @@ def _feature_workflow_checks(
             )
         )
     return checks
+
+
+def _is_out_of_scope_requirement_dependency(
+    diagnostic: WikiDiagnostic,
+    feature: FeaturePage,
+    requirements_by_path: dict[Path, Any],
+) -> bool:
+    """Skip only a proven out-of-scope dependency for this action's gate.
+
+    Lint diagnostics remain global facts.  This evaluator-only exception keeps
+    an unrelated declared-platform requirement visible in the envelope while
+    preventing it from blocking an action for a feature that does not declare
+    that platform.  Missing or malformed ownership/scope evidence fails
+    closed by returning ``False``.
+    """
+
+    if diagnostic.code != "cross-platform-dependency":
+        return False
+    try:
+        requirement = requirements_by_path.get(Path(diagnostic.path).resolve())
+    except (OSError, RuntimeError, ValueError):
+        return False
+    if requirement is None:
+        return False
+
+    requirement_feature_id = getattr(requirement, "feature_id", None)
+    if (
+        not isinstance(requirement_feature_id, str)
+        or requirement_feature_id.strip().lower() != feature.feature_id.strip().lower()
+    ):
+        return False
+    requirement_platform = getattr(requirement, "platform", None)
+    if (
+        not isinstance(requirement_platform, str)
+        or not requirement_platform.strip()
+        or requirement_platform.strip().lower() not in VALID_PLATFORM_IDS
+    ):
+        return False
+    declared_platforms = {
+        platform.strip().lower()
+        for platform in feature.platforms
+        if isinstance(platform, str) and platform.strip()
+    }
+    if not declared_platforms:
+        return False
+    return requirement_platform.strip().lower() not in declared_platforms
 
 
 def _open_questions_check_for_action(feature: FeaturePage, owners: set[str]) -> dict[str, Any]:

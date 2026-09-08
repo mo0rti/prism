@@ -32,7 +32,12 @@ preflight is copy-only and never authorizes a write.
 2. Read SCHEMA, `index.md`, the feature, every declared platform requirement,
    applicable API contract, linked context, workspace identity, delivery evidence,
    advisory state, and active revalidation.
-3. For every declared platform, verify the actual implementation artifact, test
+3. Delivery evidence must already be recorded on the feature page before
+   invoking `$dev-done`. If the current `## Delivery evidence` table is missing
+   or incomplete, keep the feature `in-dev`; record and verify the evidence
+   first, then rerun this action. Do not use this action to invent or
+   implicitly satisfy missing delivery claims.
+   For every declared platform, verify the actual implementation artifact, test
    result, and release artifact or target that the current `## Delivery evidence`
    table names. A substantive table cell, file presence, or clean lint result is
    not verification. If `revalidation` includes `implementation`, `tests`, or
@@ -50,8 +55,9 @@ preflight is copy-only and never authorizes a write.
    any notes as proposed `## Post-ship notes` content until final confirmation.
 6. Show the full proposed write set and wait for explicit confirmation. Reread the
    source and context immediately before confirmation and once again after it.
-7. After confirmation, write the confirmed notes and evidence, update only the
-   exact verified requirement/API pages proposed, update the feature to `done`
+7. After confirmation, write the confirmed notes and any reviewed corrections
+   to the existing delivery evidence, update only the exact verified
+   requirement/API pages proposed, update the feature to `done`
    with owner `none`, update `index.md`, and append to `log.md`.
 
 Any CLI preflight or copied request is copy-only and never authorizes a write.

@@ -736,6 +736,10 @@ if (checkTransitions) {
   const doneAction = lifecycleAction("F-done");
   const doneSelect = lifecycleBoard.querySelectorAll("[data-transition-select]").find(item => item.dataset.transitionSelectId === "F-done");
   assert(doneCard && doneCard.hasAttribute("draggable") && doneSelect && doneAction && doneAction.hasAttribute("aria-disabled") && doneAction.dataset.transitionIndex === "", "Done did not require an explicit reopen route");
+  const selectedBeforePickerClick = state.selected;
+  doneSelect.closest = selector => selector === "button, select, label" ? doneSelect : null;
+  doneCard.__listeners.click[0]({ target: doneSelect });
+  assert(state.selected === selectedBeforePickerClick, "pointer click on the Done route picker opened the feature inspector");
   showTransitionPreview("F-done", doneAction);
   assert(!state.transitionPreview && document.getElementById("transition-dialog").hidden && document.getElementById("sr-status").textContent.includes("Choose a workflow destination"), "Done preview silently selected a reopen route");
   doneSelect.value = "1";

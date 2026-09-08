@@ -355,6 +355,150 @@ class LifecycleRegressionTests(unittest.TestCase):
         self.assertEqual("pass", self._check(transition, "api-contract")["status"])
         self.assertEqual("ready", transition["classification"])
 
+    def test_out_of_scope_requirement_dependency_stays_global_but_not_action_gate(self) -> None:
+        """A global dependency fact is filtered only after scope is proven."""
+
+        self._write_manifest_platforms(("backend", "mobile-ios"))
+        self._write_review(required_action=False, deferred_action=False)
+        self._write_feature(
+            status="ready-for-dev",
+            owner="dev",
+            platforms=("mobile-ios",),
+            advisory="done",
+            extra_frontmatter=(
+                "design: not-applicable\n"
+                "design-exemption-reason: This service flow has no visual UI."
+            ),
+        )
+        self._write_requirement(platform="mobile-ios", status="pending")
+        self._write_requirement(platform="backend", status="pending", dependencies="F-002")
+        self._write_feature(
+            feature_id="F-002",
+            filename="F-002-other-summary.md",
+            title="Other summary",
+            status="specified",
+            owner="po",
+            platforms=("backend",),
+        )
+
+        lint_result = lint_wiki(self.root, today=CHECK_DATE)
+        global_dependency = [
+            diagnostic
+            for diagnostic in lint_result.diagnostics
+            if diagnostic.code == "cross-platform-dependency"
+            and diagnostic.path.endswith("F-001-backend.md")
+        ]
+        self.assertTrue(global_dependency, lint_result.diagnostics)
+        self.assertEqual("F-001", global_dependency[0].feature_id)
+
+        envelope = build_transition_preflight(self.root, "F-001", action="dev-start")
+        transition = envelope["facts"]["transition"]
+        self.assertEqual("ready", transition["classification"])
+        self.assertNotIn(
+            "workflow:cross-platform-dependency",
+            {check["code"] for check in transition["checks"]},
+        )
+        self.assertTrue(
+            any(
+                diagnostic["code"] == "cross-platform-dependency"
+                and diagnostic.get("feature_id") == "F-001"
+                for diagnostic in envelope["diagnostics"]
+            )
+        )
+        self.assertTrue(
+            any(
+                diagnostic["code"] == "cross-platform-dependency"
+                and diagnostic.get("feature_id") == "F-001"
+                for diagnostic in envelope["blocker_facts"]
+            )
+        )
+
+    def test_declared_requirement_dependency_still_blocks_selected_action(self) -> None:
+        self._write_manifest_platforms(("backend", "mobile-ios"))
+        self._write_review(required_action=False, deferred_action=False)
+        self._write_feature(
+            status="ready-for-dev",
+            owner="dev",
+            platforms=("mobile-ios",),
+            advisory="done",
+            extra_frontmatter=(
+                "design: not-applicable\n"
+                "design-exemption-reason: This service flow has no visual UI."
+            ),
+        )
+        self._write_requirement(platform="mobile-ios", status="pending", dependencies="F-002")
+        self._write_feature(
+            feature_id="F-002",
+            filename="F-002-other-summary.md",
+            title="Other summary",
+            status="specified",
+            owner="po",
+            platforms=("backend",),
+        )
+
+        transition = self._transition("dev-start")
+
+        self.assertEqual("blocked", transition["classification"])
+        dependency_check = self._check(transition, "workflow:cross-platform-dependency")
+        self.assertEqual("blocked", dependency_check["status"])
+        self.assertIn("F-002", dependency_check["message"])
+
+    def test_unknown_requirement_scope_keeps_dependency_gate_fail_closed(self) -> None:
+        self._write_manifest_platforms(("backend", "mobile-ios"))
+        self._write_review(required_action=False, deferred_action=False)
+        self._write_feature(
+            status="ready-for-dev",
+            owner="dev",
+            platforms=("mobile-ios",),
+            advisory="done",
+            extra_frontmatter=(
+                "design: not-applicable\n"
+                "design-exemption-reason: This service flow has no visual UI."
+            ),
+        )
+        self._write_requirement(platform="mobile-ios", status="pending")
+        requirement = self._write_requirement(platform="backend", status="pending", dependencies="F-002")
+        valid_requirement = requirement.read_text(encoding="utf-8")
+        self._write_feature(
+            feature_id="F-002",
+            filename="F-002-other-summary.md",
+            title="Other summary",
+            status="specified",
+            owner="po",
+            platforms=("backend",),
+        )
+
+        for malformed_platform in ("", "unsupported-platform"):
+            with self.subTest(platform=malformed_platform or "missing"):
+                replacement = "platform:" if not malformed_platform else f"platform: {malformed_platform}"
+                requirement.write_text(
+                    valid_requirement.replace("platform: backend", replacement),
+                    encoding="utf-8",
+                )
+                transition = self._transition("dev-start")
+
+                self.assertNotEqual("ready", transition["classification"])
+                dependency_check = self._check(transition, "workflow:cross-platform-dependency")
+                self.assertEqual("blocked", dependency_check["status"])
+
+    def test_malformed_revalidation_is_visible_but_reopen_routes_remain_requestable(self) -> None:
+        self._write_review(required_action=False, deferred_action=False)
+        self._write_feature(
+            status="done",
+            owner="none",
+            advisory="done",
+            extra_frontmatter="revalidation: [unrecognized-domain]",
+        )
+
+        for action in ("reopen-spec", "reopen-design", "reopen-dev"):
+            with self.subTest(action=action):
+                transition = self._transition(action)
+                self.assertEqual("ready", transition["classification"])
+                impact_review = self._check(transition, "reopen-impact-review")
+                self.assertEqual("pass", impact_review["status"])
+                self.assertIn("malformed", impact_review["message"].lower())
+                self.assertIn("unrecognized-domain", impact_review["message"])
+
     def test_ui_design_exemption_requires_recorded_reason_and_unblocks_ready_state(self) -> None:
         """A recorded exemption covers every downstream lifecycle stage."""
 

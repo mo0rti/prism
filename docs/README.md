@@ -51,7 +51,7 @@ These are the best pages for understanding Prism quickly.
 | [generated-projects.md](generated-projects.md) | Generated-project users | What a generated repo contains and what is safe to do first |
 | [prism-model.md](prism-model.md) | Evaluators and role leads | What Prism is, what problem it solves, and how the wiki-driven lifecycle works |
 | [wiki-workflow.md](wiki-workflow.md) | PO, design, and dev | How the wiki lifecycle actions, read/query layer, evidence, and handoff flow behave |
-| [wiki-visualization.md](wiki-visualization.md) | Evaluators and generated-project users | Run the synthetic TreasuryFlow demo and inspect the copy-only PO handoff preview across Graph, Board, Platforms, and Guide |
+| [wiki-visualization.md](wiki-visualization.md) | Evaluators and generated-project users | Run the synthetic TreasuryFlow demo and inspect the read-only previews for all nine lifecycle actions across Graph, Board, Platforms, and Guide |
 
 ## Supporting Reference Docs
 
