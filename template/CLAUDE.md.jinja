@@ -166,7 +166,7 @@ or repair.
 {% elif method == "password" %}- Username + Password
 {% endif %}{% endfor %}
 
-Backend issues JWT after successful auth. Clients store token and send as `Authorization: Bearer`.
+Backend issues JWTs after successful auth. Native clients store them locally; web proxies read encrypted HttpOnly cookies. Public web sessions must not expose backend tokens. One refresh session per account supports a 10-second previous-token retry window; see the backend guide.
 
 ## Key Documentation
 

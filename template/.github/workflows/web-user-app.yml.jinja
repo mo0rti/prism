@@ -53,22 +53,28 @@ jobs:
   deploy:
     name: Deploy to Cloudflare
     needs: lint-typecheck-build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != ''
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
+    env:
+      PRISM_RELEASE_CONFIGURED: {% raw %}${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}{% endraw %}
     steps:
       - uses: actions/checkout@v4
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
 
       - name: Set up Node.js
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
       - name: Install dependencies
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
         working-directory: web-user-app
         run: npm install
 
       - name: Deploy worker
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
         working-directory: web-user-app
         run: npm run deploy
         env:

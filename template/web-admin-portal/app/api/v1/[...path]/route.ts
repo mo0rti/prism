@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { backendSession } from "@/lib/auth/backend-session"
 import { getBackendPath } from "@/lib/config/api-routes"
 
 export async function GET(
@@ -42,13 +42,21 @@ async function proxyRequest(
   pathSegments: string[],
   method: string,
 ) {
+  let persist = async (response: NextResponse) => response
   try {
     const apiBaseUrl = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL
     if (!apiBaseUrl) {
       return NextResponse.json({ error: "API_BASE_URL is not configured." }, { status: 500 })
     }
 
-    const session = await auth()
+    const session = await backendSession(request)
+    persist = session.persist
+    if (!session.token?.accessToken) {
+      return session.persist(NextResponse.json({ error: "Authentication required" }, { status: 401 }))
+    }
+    if (session.token.role !== "ADMIN") {
+      return session.persist(NextResponse.json({ error: "Administrator access required" }, { status: 403 }))
+    }
     const frontendPath = `/api/v1/${pathSegments.join("/")}`
     const backendPath = getBackendPath(frontendPath)
     const targetUrl = `${apiBaseUrl}${backendPath}${request.nextUrl.search}`
@@ -61,8 +69,8 @@ async function proxyRequest(
       headers.set("content-type", contentType)
     }
 
-    if (session?.accessToken) {
-      headers.set("authorization", `Bearer ${session.accessToken}`)
+    if (session.token?.accessToken) {
+      headers.set("authorization", `Bearer ${session.token.accessToken}`)
     }
 
     let body: BodyInit | undefined
@@ -80,28 +88,29 @@ async function proxyRequest(
       method,
       headers,
       body,
+      cache: "no-store",
+      redirect: "manual",
     })
 
     if (response.status === 204) {
-      return new NextResponse(null, { status: 204 })
+      return session.persist(new NextResponse(null, { status: 204 }))
     }
 
     const responseText = await response.text()
     const responseContentType = response.headers.get("content-type") || "application/json"
 
-    return new NextResponse(responseText, {
+    return session.persist(new NextResponse(responseText, {
       status: response.status,
       headers: {
         "Content-Type": responseContentType,
       },
-    })
-  } catch (error) {
-    return NextResponse.json(
+    }))
+  } catch {
+    return persist(NextResponse.json(
       {
         error: "Proxy Error",
-        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },
-    )
+    ))
   }
 }

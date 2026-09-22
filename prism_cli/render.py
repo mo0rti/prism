@@ -26,13 +26,21 @@ from prism_cli.wiki_lint import WikiLintResult
 
 
 def render_or_print_wiki_query(args: argparse.Namespace, title: str, result: dict[str, Any]) -> int:
+    facts = result.get("facts", {})
+    exit_code = 0
+    if result.get("command") == "wiki show" and not facts.get("feature"):
+        exit_code = 3
+    if result.get("command") == "wiki transition-preflight":
+        transition = facts.get("transition", {})
+        if transition.get("classification") != "ready" or not transition.get("supported"):
+            exit_code = 3
     if args.json:
         print(json.dumps(result, indent=2))
-        return 0
+        return exit_code
 
     show_command_intro(args, title)
     render_wiki_query_result(result)
-    return 0
+    return exit_code
 
 
 def render_wiki_lint_result(result: WikiLintResult) -> None:
@@ -84,6 +92,17 @@ def render_wiki_query_result(result: dict[str, Any]) -> None:
         render_wiki_platform_facts(facts)
     elif command == "wiki search":
         render_wiki_search_facts(facts)
+    elif command == "wiki transition-preflight":
+        transition = facts.get("transition", {})
+        print(panel("Transition preflight", [
+            f"Feature: {(facts.get('feature') or {}).get('id', 'unknown')}",
+            f"Action: {transition.get('action') or 'unavailable'}",
+            f"Result: {transition.get('classification', 'unknown')}",
+            f"Supported: {'yes' if transition.get('supported') else 'no'}",
+        ]))
+        for check in transition.get("checks", []):
+            if check.get("status") != "pass":
+                print(f"- {check.get('code')}: {check.get('message', '')}")
     else:
         print(json.dumps(facts, indent=2))
 

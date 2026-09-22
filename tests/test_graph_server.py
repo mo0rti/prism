@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import http.client
+import io
 import json
 import tempfile
 import threading
@@ -9,7 +10,7 @@ import unittest
 from datetime import date
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from prism_cli.graph_server import _GraphState, _make_handler, _workspace_fingerprint
 from prism_cli.wiki_transitions import CAPABILITY_FILES
@@ -147,6 +148,8 @@ class GraphServerEndpointTests(unittest.TestCase):
                     connection.request("GET", "/events")
                     response = connection.getresponse()
                     self.assertEqual(200, response.status)
+                    epoch_line = response.readline()
+                    self.assertTrue(epoch_line.startswith(b"id: "))
                     self.assertEqual(b"data: 1\n", response.readline())
                     self.assertEqual(b"\n", response.readline())
 
@@ -159,6 +162,7 @@ class GraphServerEndpointTests(unittest.TestCase):
                         if line == b"data: 2\n":
                             break
                     self.assertIn(b"data: 2\n", lines)
+                    self.assertIn(epoch_line.replace(b":1\n", b":2\n"), lines)
                     connection.close()
             finally:
                 server.shutdown()
@@ -181,6 +185,59 @@ class GraphServerEndpointTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=3)
+
+    def test_get_routes_reject_foreign_or_ambiguous_authorities(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _create_workspace(root)
+            server, thread = self._server(root)
+            try:
+                port = server.server_port
+                for route in ("/", "/index.html", "/data.json", "/events"):
+                    for headers in (
+                        [("Host", f"evil.example:{port}")],
+                        [("Host", f"localhost.evil.example:{port}")],
+                        [("Host", f"127.0.0.1:{port}"), ("Origin", "null")],
+                        [("Host", f"127.0.0.1:{port}"), ("Origin", "https://evil.example")],
+                        [("Host", f"127.0.0.1:{port}"), ("Sec-Fetch-Site", "cross-site")],
+                        [],
+                    ):
+                        with self.subTest(route=route, headers=headers):
+                            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+                            connection.putrequest("GET", route, skip_host=True)
+                            for name, value in headers:
+                                connection.putheader(name, value)
+                            connection.endheaders()
+                            response = connection.getresponse()
+                            self.assertEqual(403, response.status)
+                            response.read()
+                            connection.close()
+                for host in (f"localhost:{port}", f"127.0.0.1:{port}"):
+                    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+                    connection.request("GET", "/data.json", headers={"Host": host, "Origin": f"http://{host}"})
+                    response = connection.getresponse()
+                    self.assertEqual(200, response.status)
+                    self.assertTrue(json.loads(response.read())["epoch"])
+                    connection.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_raw_duplicate_authority_headers_are_rejected(self) -> None:
+        # Exercise the HTTP parser directly; intermediaries may normalize
+        # duplicate headers before a network request reaches this server.
+        for headers in (
+            "Host: localhost:8321\r\nHost: 127.0.0.1:8321\r\n",
+            "Host: localhost:8321\r\nOrigin: http://localhost:8321\r\nOrigin: null\r\n",
+        ):
+            with self.subTest(headers=headers):
+                request = Mock()
+                request.makefile.return_value = io.BytesIO(f"GET /data.json HTTP/1.1\r\n{headers}\r\n".encode())
+                output = io.BytesIO()
+                request.sendall.side_effect = output.write
+                _make_handler(Mock())(request, ("127.0.0.1", 12345), Mock(server_port=8321))
+                self.assertIn(b" 403 ", output.getvalue().split(b"\r\n", 1)[0])
 
 
 if __name__ == "__main__":

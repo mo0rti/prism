@@ -6,13 +6,14 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
 
 from prism_cli.status import detect_setup_state, list_queue_items
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, lint_wiki
 from prism_cli.wiki_links import NON_PAGE_FILENAMES, markdown_files, page_references_feature
 from prism_cli.wiki_model import (
     VALID_PLATFORM_IDS,
+    extract_markdown_links,
+    resolve_relative_markdown_link,
     parse_open_question_rows,
     read_feature_pages,
     read_markdown_page,
@@ -67,7 +68,6 @@ _PATH_ID_DIRECTORIES = {
 
 RELATED_SECTION_PATTERN = re.compile(r"^##\s+related features\s*$", re.IGNORECASE)
 FEATURE_ID_PATTERN = re.compile(r"\bF-\d+\b")
-MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]*\]\(([^)#\s]+\.md)\)")
 
 
 @dataclass(frozen=True)
@@ -379,10 +379,11 @@ def _collect_edges(
             continue
         page = pages_by_id[node_id]
         body = page.body if hasattr(page, "body") else page.page.body
-        for raw_target in MARKDOWN_LINK_PATTERN.findall(body):
-            resolved = _resolve_link(Path(node.path).parent, raw_target, wiki_root)
-            if resolved is None:
+        for raw_target in extract_markdown_links(body):
+            target = resolve_relative_markdown_link(Path(node.path), raw_target, wiki_root)
+            if target is None:
                 continue
+            resolved = str(target)
             target_id = path_to_id.get(resolved)
             if target_id is None:
                 dangling.append({"from": node_id, "reference": raw_target, "path": node.path})
@@ -408,24 +409,6 @@ def _section_text(body: str, heading_pattern: re.Pattern[str]) -> str:
         if in_section:
             collected.append(line)
     return "\n".join(collected)
-
-
-def _resolve_link(base_dir: Path, raw_target: str, wiki_root: Path) -> str | None:
-    try:
-        parsed = urlsplit(raw_target)
-    except ValueError:
-        return None
-    if parsed.scheme or parsed.netloc or "\x00" in parsed.path or not parsed.path.lower().endswith(".md"):
-        return None
-    try:
-        resolved = (base_dir / unquote(parsed.path)).resolve()
-    except (OSError, ValueError, RuntimeError):
-        return None
-    try:
-        resolved.relative_to(wiki_root.resolve())
-    except ValueError:
-        return None
-    return str(resolved)
 
 
 # ---------------------------------------------------------------------------

@@ -57,10 +57,14 @@ Local email/password auth is always included.{% if auth_methods | reject("equalt
 Flow:
 
 1. Client submits login credentials or completes the OAuth provider callback
-2. Backend validates credentials or exchanges the OAuth authorization code
+2. Backend validates credentials, exchanges the OAuth authorization code, or verifies the web provider token
 3. Backend issues JWT access and refresh tokens
-4. Client stores the tokens locally
-5. Client attaches the access token to authenticated API requests
+4. Native clients store tokens locally; web sessions keep them in encrypted HttpOnly cookies
+5. Native clients and server-side web proxies attach the access token to authenticated API requests
+
+The backend allows one active refresh session per account, with a 10-second retry window
+for the immediately previous rotating token. New login and backend logout revoke old refresh
+state; previously issued access JWTs last until expiry. Public web sessions omit credentials.
 
 ### Design Tokens
 

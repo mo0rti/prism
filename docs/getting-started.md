@@ -260,6 +260,11 @@ force that path:
 prism update /path/to/generated-project --strategy recopy
 ```
 
+Recopy overwrites customized template files. Non-interactive recopy requires `--yes`.
+Custom template sources require a separate trust confirmation or `--trust-template`;
+`--yes` does not grant code-execution trust. Raw Copier generation now saves
+`.copier-answers.yml`, including version provenance when the source is versioned.
+
 ## 7. Raw Copier Fallbacks
 
 If you need to bypass the Prism CLI and generate directly:

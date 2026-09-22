@@ -1,12 +1,15 @@
 package {{ package_identifier }}.core.network
 
 import {{ package_identifier }}.core.datastore.TokenStorage
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
 import javax.inject.Inject
 import javax.inject.Singleton
+
+// Local request metadata, never sent as a header. Prevents replay across logins.
+data class SessionIdentity(val id: String)
 
 @Singleton
 class AuthInterceptor @Inject constructor(
@@ -20,11 +23,12 @@ class AuthInterceptor @Inject constructor(
             return chain.proceed(original)
         }
 
-        val token = runBlocking { tokenStorage.accessToken.firstOrNull() }
+        val tokens = runBlocking { tokenStorage.tokens.first() }
 
-        val request = if (token != null) {
+        val request = if (tokens.accessToken != null && tokens.sessionId != null) {
             original.newBuilder()
-                .header("Authorization", "Bearer $token")
+                .header("Authorization", "Bearer ${tokens.accessToken}")
+                .tag(SessionIdentity::class.java, SessionIdentity(tokens.sessionId))
                 .build()
         } else {
             original

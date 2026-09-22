@@ -262,8 +262,13 @@ def extract_markdown_links(text: str) -> list[str]:
     return [unquote(match.group(1) or match.group(2)) for match in MARKDOWN_LINK_PATTERN.finditer(text)]
 
 
-def resolve_relative_markdown_link(source_path: Path, raw_target: str, wiki_root: Path) -> Path | None:
-    """Resolve a relative markdown target when it stays inside the wiki root."""
+def normalize_feature_id(value: str) -> str:
+    """Comparison key; preserve original IDs in displayed facts and diagnostics."""
+    return value.strip().lower()
+
+
+def candidate_relative_markdown_link(source_path: Path, raw_target: str) -> Path | None:
+    """Resolve a relative Markdown path, without assigning it to a wiki root."""
 
     try:
         parsed = urlsplit(raw_target)
@@ -275,8 +280,15 @@ def resolve_relative_markdown_link(source_path: Path, raw_target: str, wiki_root
     if target.is_absolute():
         return None
     try:
-        resolved = (source_path.parent / target).resolve()
+        return (source_path.parent / target).resolve()
     except (OSError, RuntimeError, ValueError):
+        return None
+
+
+def resolve_relative_markdown_link(source_path: Path, raw_target: str, wiki_root: Path) -> Path | None:
+    """Resolve a relative markdown target when it stays inside the wiki root."""
+    resolved = candidate_relative_markdown_link(source_path, raw_target)
+    if resolved is None:
         return None
     try:
         resolved.relative_to(wiki_root.resolve())
@@ -512,6 +524,8 @@ def parse_iso_date(value: Any) -> date | None:
     if isinstance(value, date):
         return value
     if isinstance(value, str):
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value.strip()):
+            return None
         try:
             return date.fromisoformat(value.strip())
         except ValueError:
@@ -600,7 +614,7 @@ def parse_open_question_rows(body: str) -> tuple[list[dict[str, str]], list[str]
         if not line.startswith("|"):
             continue
         cells = [cell.strip() for cell in line.strip("|").split("|")]
-        if len(cells) < 4:
+        if len(cells) != 4:
             errors.append(f"Malformed open questions table row: {line}")
             continue
         if cells[:4] == ["#", "Question", "Owner", "Status"]:
@@ -610,7 +624,7 @@ def parse_open_question_rows(body: str) -> tuple[list[dict[str, str]], list[str]
             continue
         rows.append({"number": cells[0], "question": cells[1], "owner": cells[2], "status": cells[3]})
 
-    if rows and not header_seen:
+    if any(line.strip().startswith("|") for line in section_lines) and not header_seen:
         errors.append("Open questions table is missing the expected header row.")
     return rows, errors
 

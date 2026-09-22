@@ -249,6 +249,7 @@ if (checkGuideTransition) {
   regressionChecks.push(`
 ;(() => {
   const transitioned = JSON.parse(JSON.stringify(globalThis.transitionPayload));
+  transitioned.facts.setup_state = "initialized";
   transitioned.facts.nodes = [{
     id: "F-001", type: "feature", title: "First feature", path: "knowledge/wiki/features/F-001-first-feature.md",
     health: "ok", status: "raw", owner: "po", advisory_review: "not-needed", open_questions: []
@@ -617,7 +618,7 @@ if (checkTransitions) {
   });
   const liveEnvelope = makeReady();
   liveEnvelope.facts.transition_capability.snapshot.fingerprint = "fp-live";
-  const livePayload = { version: 3, envelope: liveEnvelope };
+  let livePayload = { version: 3, epoch: "first", envelope: liveEnvelope };
   globalThis.EventSource = function () { this.onmessage = null; this.onerror = null; liveSources.push(this); };
   globalThis.setTimeout = (callback, delay) => { liveTimers.push({ callback, delay }); return liveTimers.length; };
   globalThis.setInterval = () => 1;
@@ -630,14 +631,22 @@ if (checkTransitions) {
   };
   initLive();
   assert(liveSources.length === 1, "live mode did not create an EventSource");
-  liveSources[0].onmessage({ data: "2" });
+  liveSources[0].onmessage({ data: "2", lastEventId: "first:2" });
   assert(liveFetches === 1, "first SSE event did not fetch the live snapshot");
   const retry = liveTimers.find(timer => timer.delay === 1500);
   assert(retry, "failed live fetch did not schedule a retry");
   retry.callback();
   assert(liveFetches === 2 && state.data === liveEnvelope && state.liveRefreshError === null, "scheduled live retry did not adopt the successful snapshot (fetches=" + liveFetches + ", same=" + (state.data === liveEnvelope) + ", error=" + state.liveRefreshError + ", last=" + liveLastError + ")");
-  liveSources[0].onmessage({ data: "3" });
+  liveSources[0].onmessage({ data: "3", lastEventId: "first:3" });
   assert(liveFetches === 2, "live client did not advance from payload.version and coalesce the adopted event");
+  liveSources[0].onerror();
+  assert(state.liveRefreshError, "disconnect must disable copying stale facts");
+  livePayload = { version: 1, epoch: "restarted", envelope: JSON.parse(JSON.stringify(liveEnvelope)) };
+  liveSources[0].onmessage({ data: "1", lastEventId: "restarted:1" });
+  assert(liveFetches === 3 && state.data === livePayload.envelope && !state.liveRefreshError, "server restart did not adopt its lower version");
+  livePayload = { version: 2, epoch: "restarted", envelope: JSON.parse(JSON.stringify(liveEnvelope)) };
+  liveSources[0].onmessage({ data: "2", lastEventId: "restarted:2" });
+  assert(liveFetches === 4 && state.data === livePayload.envelope, "post-restart update was ignored");
   globalThis.EventSource = priorEventSource;
   globalThis.fetch = priorFetch;
   globalThis.setTimeout = priorSetTimeout;

@@ -327,6 +327,7 @@ main { position: relative; flex: 1; overflow: hidden; }
 }
 .card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.18); }
 .card:focus-visible, .fchip:focus-visible, .conn:focus-visible { outline: 2px solid var(--po); outline-offset: 2px; }
+[role="button"]:focus-visible { outline: 2px solid var(--po); outline-offset: 2px; }
 .card.dragging { opacity: .56; transform: scale(.985); }
 .card .cid { font-size: 9px; color: var(--muted); letter-spacing: .12em; }
 .card .ctitle { font-size: 12.5px; font-weight: 650; margin: 3px 0 4px; }
@@ -1461,8 +1462,28 @@ function renderStatusline() {
     ? diags.map(d => `<div class="diag"><span class="sev ${escapeHtml(d.severity)}">${escapeHtml(d.severity)}</span><span class="code">${escapeHtml(d.code)}</span><span class="msg">${escapeHtml(d.message)}</span></div>`).join("")
     : '<div class="diag"><span class="sev" style="color:var(--good)">clean</span><span class="msg">No diagnostics. The wiki contract holds.</span></div>';
 }
-document.getElementById("statusline").addEventListener("click", () => document.getElementById("diagpanel").classList.toggle("open"));
-document.getElementById("confidence-light").addEventListener("click", () => document.getElementById("diagpanel").classList.toggle("open"));
+function bindKeyboardAction(element, action) {
+  element.setAttribute("role", "button");
+  element.setAttribute("tabindex", "0");
+  element.addEventListener("click", action);
+  element.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      action(event);
+    }
+  });
+}
+function toggleDiagnostics() {
+  const open = document.getElementById("diagpanel").classList.toggle("open");
+  for (const id of ["statusline", "confidence-light"]) document.getElementById(id).setAttribute("aria-expanded", String(open));
+}
+for (const id of ["statusline", "confidence-light"]) {
+  const element = document.getElementById(id);
+  element.setAttribute("aria-label", "Toggle wiki diagnostics");
+  element.setAttribute("aria-controls", "diagpanel");
+  element.setAttribute("aria-expanded", "false");
+  bindKeyboardAction(element, toggleDiagnostics);
+}
 
 /* ==================== first-run teaching page ==================== */
 function renderFirstRunPage() {
@@ -1530,9 +1551,10 @@ function renderFirstRunPage() {
         "po-intake")}
     </div>`;
 
-  document.querySelectorAll("#firstrun-view .pipe-stage").forEach(el => el.addEventListener("click", () => {
+  document.querySelectorAll("#firstrun-view .pipe-stage").forEach(el => bindKeyboardAction(el, () => {
     state.pipeFocus = parseInt(el.dataset.pipe, 10);
     renderFirstRunPage();
+    document.querySelector(`#firstrun-view [data-pipe="${state.pipeFocus}"]`)?.focus();
   }));
   bindCmdBlocks(document.getElementById("firstrun-view"));
   startSpark();
@@ -1650,12 +1672,13 @@ function renderChips() {
   wrap.innerHTML = order.filter(t => counts[t]).map(t => {
     const on = state.visibleTypes.has(t);
     const color = t === "feature" ? C.po : t === "platform" ? C.platform : C.context;
-    return `<span class="chip${on ? " on" : ""}" data-type="${escapeHtml(t)}"><i style="background:${color}"></i>${escapeHtml(TYPE_LABELS[t] || t)}<span class="n">${counts[t]}</span></span>`;
+    return `<span class="chip${on ? " on" : ""}" aria-pressed="${on}" data-type="${escapeHtml(t)}"><i style="background:${color}"></i>${escapeHtml(TYPE_LABELS[t] || t)}<span class="n">${counts[t]}</span></span>`;
   }).join("");
-  wrap.querySelectorAll(".chip").forEach(chip => chip.addEventListener("click", () => {
+  wrap.querySelectorAll(".chip").forEach(chip => bindKeyboardAction(chip, () => {
     const t = chip.dataset.type;
     if (state.visibleTypes.has(t)) state.visibleTypes.delete(t); else state.visibleTypes.add(t);
     renderChips(); applyGraphData(false);
+    Array.from(wrap.querySelectorAll(".chip")).find(el => el.dataset.type === t)?.focus();
   }));
 }
 
@@ -2041,7 +2064,10 @@ function renderPanel(node) {
 function bindPanelActions(node) {
   const close = document.getElementById("panel-close");
   if (close) close.addEventListener("click", closePanel);
-  document.querySelectorAll("#panel .conn").forEach(c => c.addEventListener("click", () => selectNode(c.dataset.id)));
+  document.querySelectorAll("#panel .conn").forEach(c => bindKeyboardAction(c, () => {
+    selectNode(c.dataset.id);
+    document.getElementById("panel-close")?.focus();
+  }));
   document.querySelectorAll("#panel .copy-btn").forEach(btn => btn.addEventListener("click", () => {
     copyText(btn.dataset.copy, () => {
       btn.textContent = "Copied";
@@ -2094,7 +2120,7 @@ function renderLegend() {
   const legend = document.getElementById("graph-legend");
   const wasOpen = legend.classList.contains("open");
   legend.innerHTML = `
-    <div class="legend-head"><span class="tri">▶</span> LEGEND</div>
+    <div class="legend-head" aria-expanded="${wasOpen}"><span class="tri">▶</span> LEGEND</div>
     <div class="legend-body">
       <b>Lifecycle</b>
       <span class="lg"><i style="background:${C.po}"></i>PO — raw / specified</span>
@@ -2111,7 +2137,8 @@ function renderLegend() {
       <span class="lg" style="color:var(--muted)">◌ outlined = ready-for-*</span>
     </div>`;
   legend.classList.toggle("open", wasOpen);
-  legend.querySelector(".legend-head").addEventListener("click", () => legend.classList.toggle("open"));
+  const head = legend.querySelector(".legend-head");
+  bindKeyboardAction(head, () => head.setAttribute("aria-expanded", String(legend.classList.toggle("open"))));
 }
 
 /* ==================== views, search, keys ==================== */
@@ -2211,6 +2238,7 @@ function adoptData(envelope) {
 }
 function initLive() {
   if (CONFIG.mode !== "live" || typeof EventSource === "undefined") return;
+  let epoch = null;
   let lastVersion = null;
   let latestAnnouncedVersion = null;
   let pendingVersion = null;
@@ -2235,7 +2263,7 @@ function initLive() {
     const request = { id: ++requestSequence, version: requestedVersion };
     refreshInFlight = request;
     fetch("/data.json").then(response => {
-      if (!response || typeof response.json !== "function") throw new Error("live response missing JSON");
+      if (!response || response.ok === false || typeof response.json !== "function") throw new Error("live response missing JSON");
       return response.json();
     }).then(payload => {
       if (refreshInFlight !== request) return;
@@ -2243,6 +2271,7 @@ function initLive() {
       if (!payload || !payload.envelope || !Number.isFinite(payloadVersion)) {
         throw new Error("live payload missing envelope or version");
       }
+      if (epoch !== null && payload.epoch !== epoch) throw new Error("live server changed during refresh");
       if (lastVersion !== null && payloadVersion < lastVersion) {
         throw new Error("live payload is older than the adopted snapshot");
       }
@@ -2271,6 +2300,14 @@ function initLive() {
   source.onmessage = ev => {
     const version = parseInt(ev.data, 10);
     if (Number.isNaN(version)) return;
+    const announcedEpoch = (ev.lastEventId || "").split(":")[0] || null;
+    if (announcedEpoch !== epoch) {
+      epoch = announcedEpoch;
+      lastVersion = latestAnnouncedVersion = pendingVersion = null;
+      refreshInFlight = null;
+      retryScheduled = false;
+      markLiveRefreshUnavailable(version);
+    }
     if (latestAnnouncedVersion !== null && version < latestAnnouncedVersion) return;
     latestAnnouncedVersion = maxVersion(latestAnnouncedVersion, version);
     if (lastVersion !== null && version <= lastVersion && pendingVersion === null && !refreshInFlight) return;
@@ -2278,8 +2315,7 @@ function initLive() {
     pump();
   };
   source.onerror = () => {
-    const dot = document.getElementById("live-dot");
-    if (dot) dot.classList.add("stale");
+    markLiveRefreshUnavailable("disconnected");
   };
   setInterval(renderStatusline, 30000);
 }

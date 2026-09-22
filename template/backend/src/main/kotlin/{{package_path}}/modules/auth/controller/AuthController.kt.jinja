@@ -4,6 +4,7 @@ import {{ package_identifier }}.modules.auth.dto.AuthResponse
 import {{ package_identifier }}.modules.auth.dto.LoginRequest
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
 import {{ package_identifier }}.modules.auth.dto.OAuthCallbackRequest
+import {{ package_identifier }}.modules.auth.dto.OAuthTokenRequest
 {% endif %}
 import {{ package_identifier }}.modules.auth.dto.RefreshTokenRequest
 import {{ package_identifier }}.modules.auth.dto.RegisterRequest
@@ -36,6 +37,11 @@ class AuthController(
         val response = authService.oauthCallback(request)
         return ResponseEntity.ok(response)
     }
+
+    @PostMapping("/oauth/token")
+    @Operation(summary = "Verify a provider token and create a backend session")
+    fun oauthToken(@Valid @RequestBody request: OAuthTokenRequest): ResponseEntity<AuthResponse> =
+        ResponseEntity.ok(authService.oauthToken(request))
 {% endif %}
 
     @PostMapping("/register")
@@ -58,6 +64,11 @@ class AuthController(
         val response = authService.refreshToken(request)
         return ResponseEntity.ok(response)
     }
+
+    @PostMapping("/admin/login")
+    @Operation(summary = "Authenticate an administrator with email and password")
+    fun adminLogin(@Valid @RequestBody request: LoginRequest): ResponseEntity<AuthResponse> =
+        ResponseEntity.ok(authService.login(request, requireAdmin = true))
 
     @PostMapping("/logout")
     @Operation(summary = "Invalidate refresh tokens for the current user")

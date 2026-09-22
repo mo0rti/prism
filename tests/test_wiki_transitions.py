@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+import yaml
 from collections import OrderedDict
 from contextlib import redirect_stdout
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from prism_cli.wiki_model import parse_advisory_required_actions, parse_delivery_evidence, read_feature_pages
 from prism_cli.wiki_graph import build_graph
@@ -25,6 +26,7 @@ from prism_cli.wiki_transitions import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+CHECK_DATE = date(2026, 9, 8)
 FEATURE_TEMPLATE = """---
 id: {feature_id}
 title: {title}
@@ -59,7 +61,39 @@ As a finance operator, I want a payout summary, so that I can review it before h
 
 
 class WikiTransitionTests(unittest.TestCase):
+    def test_optional_surfaces_do_not_disable_available_lifecycle_capabilities(self) -> None:
+        manifest_path = self.root / "prism.workspace.yml"
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        manifest.update({
+            "min_prism_cli_version": "0.2.0",
+            "expected_surfaces": {
+                "ai": ["AGENTS.md", "CLAUDE.md", ".agents/skills", ".claude/commands", ".cursor/rules"],
+                "docs": ["README.md", "CONTEXT.md", "docs/"],
+                "workflows": [".github/workflows/backend.yml"],
+            },
+        })
+        manifest_path.write_text(yaml.safe_dump(manifest), encoding="utf-8")
+        (self.root / CAPABILITY_FILES["claude"]).unlink()
+        result = build_transition_preflight(self.root, "F-001", action="po-handoff")
+        self.assertEqual("ready", result["facts"]["transition"]["classification"])
+        self.assertTrue(result["facts"]["transition"]["supported"])
+        # Real platform and minimum-version incompatibilities remain blocking.
+        (self.root / "backend").rmdir()
+        result = build_transition_preflight(self.root, "F-001", action="po-handoff")
+        self.assertFalse(result["facts"]["transition"]["supported"])
+        (self.root / "backend").mkdir()
+        manifest["min_prism_cli_version"] = "99.0.0"
+        manifest_path.write_text(yaml.safe_dump(manifest), encoding="utf-8")
+        result = build_transition_preflight(self.root, "F-001", action="po-handoff")
+        self.assertFalse(result["facts"]["transition"]["supported"])
+
     def setUp(self) -> None:
+        self.clock = Mock(wraps=date)
+        self.clock.today.return_value = CHECK_DATE
+        for module in ("wiki_lint", "wiki_transitions"):
+            date_patch = patch(f"prism_cli.{module}.date", self.clock)
+            date_patch.start()
+            self.addCleanup(date_patch.stop)
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
         self._create_workspace()
@@ -734,6 +768,13 @@ class WikiTransitionTests(unittest.TestCase):
         before = workspace_fingerprint(self.root)
         path = self.root / CAPABILITY_FILES["codex"]
         path.write_text(path.read_text(encoding="utf-8") + "revision\n", encoding="utf-8")
+
+        self.assertNotEqual(before, workspace_fingerprint(self.root))
+
+    def test_fingerprint_changes_when_calendar_day_rolls_over(self) -> None:
+        before = workspace_fingerprint(self.root)
+
+        self.clock.today.return_value = CHECK_DATE + timedelta(days=1)
 
         self.assertNotEqual(before, workspace_fingerprint(self.root))
 

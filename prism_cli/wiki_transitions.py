@@ -30,6 +30,7 @@ from prism_cli.wiki_model import (
     FeaturePage,
     extract_markdown_links,
     feature_id_from_path,
+    normalize_feature_id,
     parse_open_question_rows,
     parse_delivery_evidence,
     parse_advisory_required_actions,
@@ -187,7 +188,6 @@ _HARD_IDENTITY_DIAGNOSTIC_CODES = {
     "manifest-answers-drift",
     "manifest-filesystem-drift",
     "minimum-prism-cli-version-not-met",
-    "missing-expected-surface",
     "missing-manifest-path",
     "readable-workspace-manifest",
     "unreadable-copier-answers",
@@ -324,8 +324,8 @@ def build_transition_preflight(
     )
 
     requested = action.strip() if isinstance(action, str) else ""
-    normalized_id = feature_id.strip().lower() if isinstance(feature_id, str) else ""
-    matches = [feature for feature in features if feature.feature_id.strip().lower() == normalized_id]
+    normalized_id = normalize_feature_id(feature_id) if isinstance(feature_id, str) else ""
+    matches = [feature for feature in features if normalize_feature_id(feature.feature_id) == normalized_id]
     diagnostics = [*lint_result.diagnostics, *evaluation.diagnostics]
     sources = [*evaluation.sources]
 
@@ -746,7 +746,7 @@ def _evaluate_po_handoff(
             sources.append(str(linked))
 
     path_feature_id = feature_id_from_path(path)
-    normalized_feature_id = feature_id.strip().lower()
+    normalized_feature_id = normalize_feature_id(feature_id)
     if (
         not isinstance(frontmatter.get("id"), str)
         or not re.fullmatch(r"F-\d+", str(frontmatter.get("id", "")).strip())
@@ -983,7 +983,7 @@ def _base_action_checks(
     duplicate_ids: set[str],
 ) -> list[dict[str, Any]]:
     path = feature.page.path
-    normalized_feature_id = feature.feature_id.strip().lower()
+    normalized_feature_id = normalize_feature_id(feature.feature_id)
     path_feature_id = feature_id_from_path(path)
     if (
         not isinstance(feature.page.frontmatter.get("id"), str)
@@ -1188,7 +1188,7 @@ def _transition_sources(
         str(wiki_root / "index.md"),
         *[str(workspace_root / relative) for relative in _ACTION_SURFACE_PATHS[spec.action].values()],
     ]
-    feature_id = feature.feature_id.strip().lower()
+    feature_id = normalize_feature_id(feature.feature_id)
     for raw_target in extract_markdown_links(feature.page.body):
         linked = resolve_relative_markdown_link(feature.page.path, raw_target, wiki_root)
         if linked is not None:
@@ -1222,7 +1222,7 @@ def _feature_workflow_checks(
         "dev-start": WIKI_BLOCKER_CODES,
         "dev-done": WIKI_BLOCKER_CODES,
     }.get(action, WIKI_BLOCKER_CODES)
-    normalized_id = feature.feature_id.strip().lower()
+    normalized_id = normalize_feature_id(feature.feature_id)
     path = feature.page.path.resolve()
     requirements_by_path: dict[Path, Any] = {}
     for requirement in requirement_pages:
@@ -1239,9 +1239,9 @@ def _feature_workflow_checks(
             continue
         if _is_out_of_scope_requirement_dependency(diagnostic, feature, requirements_by_path):
             continue
-        diagnostic_feature_id = diagnostic.feature_id.strip().lower() if isinstance(diagnostic.feature_id, str) else ""
+        diagnostic_feature_id = normalize_feature_id(diagnostic.feature_id) if isinstance(diagnostic.feature_id, str) else ""
         try:
-            same_path = Path(diagnostic.path).resolve() == path
+            same_path = diagnostic.resolved_path == path
         except (OSError, RuntimeError, ValueError):
             same_path = False
         if diagnostic_feature_id != normalized_id and not same_path:
@@ -1275,7 +1275,7 @@ def _is_out_of_scope_requirement_dependency(
     if diagnostic.code != "cross-platform-dependency":
         return False
     try:
-        requirement = requirements_by_path.get(Path(diagnostic.path).resolve())
+        requirement = requirements_by_path.get(diagnostic.resolved_path)
     except (OSError, RuntimeError, ValueError):
         return False
     if requirement is None:
@@ -1284,7 +1284,7 @@ def _is_out_of_scope_requirement_dependency(
     requirement_feature_id = getattr(requirement, "feature_id", None)
     if (
         not isinstance(requirement_feature_id, str)
-        or requirement_feature_id.strip().lower() != feature.feature_id.strip().lower()
+        or normalize_feature_id(requirement_feature_id) != normalize_feature_id(feature.feature_id)
     ):
         return False
     requirement_platform = getattr(requirement, "platform", None)
@@ -1332,7 +1332,7 @@ def _design_completion_check(feature: FeaturePage, wiki_pages: list[Any]) -> dic
         return _check("design", "blocked", "`design: not-applicable` requires a non-empty design-exemption-reason.", path)
     if design_value is not None and not isinstance(design_value, str):
         return _check("design", "unknown", "Feature `design` must be a string when present.", path)
-    feature_id = feature.feature_id.strip().lower()
+    feature_id = normalize_feature_id(feature.feature_id)
     matching: list[Any] = []
     design_root = path.parent.parent / "design"
     for page in wiki_pages:
@@ -1343,7 +1343,7 @@ def _design_completion_check(feature: FeaturePage, wiki_pages: list[Any]) -> dic
         page_feature_id = page.frontmatter.get("feature-id")
         if not isinstance(page_feature_id, str) or not page_feature_id.strip():
             page_feature_id = feature_id_from_path(page.path)
-        if isinstance(page_feature_id, str) and page_feature_id.strip().lower() == feature_id:
+        if isinstance(page_feature_id, str) and normalize_feature_id(page_feature_id) == feature_id:
             matching.append(page)
     if not matching:
         return _check("design", "blocked", "UI platform scope requires a matching design page or an explicit confirmed exemption.", path)
@@ -1359,7 +1359,7 @@ def _requirements_check(feature: FeaturePage, requirement_pages: list[Any], *, r
     if not declared:
         return _check("platform-requirements", "unknown", "Platform requirements cannot be evaluated without a valid feature platform scope.", path)
     by_platform: dict[str, list[Any]] = {}
-    feature_id = feature.feature_id.strip().lower()
+    feature_id = normalize_feature_id(feature.feature_id)
     for requirement in requirement_pages:
         requirement_id = getattr(requirement, "feature_id", None)
         platform = getattr(requirement, "platform", None)
@@ -1400,7 +1400,7 @@ def _api_contract_check(feature: FeaturePage, wiki_pages: list[Any], *, require_
     api_section = section_text(feature.page.body, "API surface")
     normalized_section = re.sub(r"\s+", " ", api_section).strip().lower()
     section_applicable = bool(normalized_section) and normalized_section not in {"none", "no api", "not applicable", "n/a"}
-    feature_id = feature.feature_id.strip().lower()
+    feature_id = normalize_feature_id(feature.feature_id)
     wiki_root = path.parent.parent
     api_root = wiki_root / "api-contracts"
     matching: list[Any] = []
@@ -1412,7 +1412,7 @@ def _api_contract_check(feature: FeaturePage, wiki_pages: list[Any], *, require_
         page_feature_id = page.frontmatter.get("feature-id")
         if not isinstance(page_feature_id, str) or not page_feature_id.strip():
             page_feature_id = feature_id_from_path(page.path)
-        if isinstance(page_feature_id, str) and page_feature_id.strip().lower() == feature_id:
+        if isinstance(page_feature_id, str) and normalize_feature_id(page_feature_id) == feature_id:
             matching.append(page)
 
     # Include contracts explicitly referenced from the feature or any scoped
@@ -1421,7 +1421,7 @@ def _api_contract_check(feature: FeaturePage, wiki_pages: list[Any], *, require_
     source_pages = [feature.page]
     for page in wiki_pages:
         page_feature_id = page.frontmatter.get("feature-id")
-        if not isinstance(page_feature_id, str) or page_feature_id.strip().lower() != feature_id:
+        if not isinstance(page_feature_id, str) or normalize_feature_id(page_feature_id) != feature_id:
             continue
         if page.frontmatter.get("platform") not in feature.platforms:
             continue
@@ -1781,23 +1781,8 @@ def _platform_section_check(feature: FeaturePage) -> dict[str, Any]:
 
 
 def _open_questions_check(feature: FeaturePage) -> dict[str, Any]:
-    section = section_text(feature.page.body, "Open questions")
     rows, errors = parse_open_question_rows(feature.page.body)
     path = feature.page.path
-    if section.strip():
-        table_lines = [line.strip() for line in section.splitlines() if line.strip().startswith("|")]
-        header_seen = False
-        for line in table_lines:
-            cells = [cell.strip() for cell in line.strip("|").split("|")]
-            if _is_question_separator(cells):
-                continue
-            if cells[:4] == ["#", "Question", "Owner", "Status"]:
-                header_seen = True
-                continue
-            if len(cells) != 4:
-                errors.append(f"Malformed open questions table row: {line}")
-        if table_lines and not header_seen:
-            errors.append("Open questions table is missing the expected header row.")
     if errors:
         return _check("open-questions", "unknown", "; ".join(errors), path)
     malformed_rows: list[str] = []
@@ -1816,12 +1801,6 @@ def _open_questions_check(feature: FeaturePage) -> dict[str, Any]:
         numbers = ", ".join(row["number"] for row in open_po)
         return _check("open-questions", "blocked", f"Open PO-owned questions remain ({numbers}).", path)
     return _check("open-questions", "pass", "No open PO-owned questions remain.", path)
-
-
-def _is_question_separator(cells: list[str]) -> bool:
-    if not cells:
-        return False
-    return bool(cells) and all(re.fullmatch(r":?-+:?", cell) for cell in cells if cell)
 
 
 def _advisory_check(feature: FeaturePage) -> dict[str, Any]:
@@ -1846,7 +1825,7 @@ def _advisory_actions_check(feature: FeaturePage, wiki_pages: list[Any]) -> dict
         return _check("advisory-actions", "pass", "No advisory action checklist is required for this feature.", path)
     if feature.advisory_review != "done":
         return _check("advisory-actions", "review", "Advisory review is not complete; required actions cannot be evaluated yet.", path)
-    feature_id = feature.feature_id.strip().lower()
+    feature_id = normalize_feature_id(feature.feature_id)
     advisory_root = path.parent.parent / "advisory"
     reviews: list[Any] = []
     for page in wiki_pages:
@@ -1857,7 +1836,7 @@ def _advisory_actions_check(feature: FeaturePage, wiki_pages: list[Any]) -> dict
         page_feature_id = page.frontmatter.get("feature-id")
         if not isinstance(page_feature_id, str) or not page_feature_id.strip():
             page_feature_id = feature_id_from_path(page.path)
-        if isinstance(page_feature_id, str) and page_feature_id.strip().lower() == feature_id:
+        if isinstance(page_feature_id, str) and normalize_feature_id(page_feature_id) == feature_id:
             reviews.append(page)
     if len(reviews) != 1:
         return _check(
@@ -1914,7 +1893,11 @@ def _relevant_integrity_checks(
             continue
         if diagnostic.code in WIKI_BLOCKER_CODES:
             continue
-        diagnostic_path = Path(diagnostic.path).resolve()
+        if diagnostic.code == "stale-page" and diagnostic.severity == "warning":
+            # Page age remains visible in diagnostics and graph health, but does
+            # not make otherwise valid source data unsafe to use in a request.
+            continue
+        diagnostic_path = diagnostic.resolved_path
         is_global_contract = diagnostic.code in {"missing-required-wiki-file", "malformed-index"} and diagnostic_path.name in {
             "SCHEMA.md",
             "index.md",
@@ -1929,7 +1912,7 @@ def _relevant_integrity_checks(
         ):
             relevant.append(diagnostic)
     if not relevant:
-        return [_check("source-integrity", "pass", "No feature-specific integrity diagnostics were reported.", feature.page.path)]
+        return [_check("source-integrity", "pass", "No additional feature integrity issues block this request.", feature.page.path)]
     checks: list[dict[str, Any]] = []
     for diagnostic in sorted(relevant, key=lambda item: (item.path, item.code, item.message)):
         checks.append(
@@ -2010,7 +1993,7 @@ def _feature_summary(feature: FeaturePage) -> dict[str, Any]:
 def _duplicate_feature_ids(features: list[FeaturePage]) -> set[str]:
     counts: dict[str, int] = {}
     for feature in features:
-        key = feature.feature_id.strip().lower()
+        key = normalize_feature_id(feature.feature_id)
         counts[key] = counts.get(key, 0) + 1
     return {feature_id for feature_id, count in counts.items() if count > 1}
 

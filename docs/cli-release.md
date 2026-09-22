@@ -35,8 +35,11 @@ temporary environment after the check.
 
 The installed package does not depend on a template copied into `site-packages`.
 When run from the Prism checkout, `prism new` defaults to that local template.
-When run from an installed wheel, it defaults to the canonical template URL:
-`https://github.com/mo0rti/prism.git`. An explicit `--template <path-or-url>`
+When run from an installed wheel, it uses the matching release tag at the canonical
+template URL: CLI `0.2.0` requires `v0.2.0` at `https://github.com/mo0rti/prism.git`.
+A missing tag fails generation; there is no fallback to a newer template.
+Publish and validate that tag before publishing the matching wheel.
+An explicit `--template <path-or-url>`
 always takes precedence. Wheel generation therefore requires network access unless
 the caller supplies a local template path.
 

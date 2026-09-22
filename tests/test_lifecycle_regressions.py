@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import Mock, patch
 
+from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_transitions import ACTION_SPECS, build_transition_preflight
 
@@ -25,6 +27,12 @@ class LifecycleRegressionTests(unittest.TestCase):
     """Pin the source-of-truth and evidence rules used by transition requests."""
 
     def setUp(self) -> None:
+        self.clock = Mock(wraps=date)
+        self.clock.today.return_value = CHECK_DATE
+        for module in ("wiki_lint", "wiki_transitions"):
+            date_patch = patch(f"prism_cli.{module}.date", self.clock)
+            date_patch.start()
+            self.addCleanup(date_patch.stop)
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
         self._create_workspace()
@@ -295,6 +303,78 @@ class LifecycleRegressionTests(unittest.TestCase):
         if not matches:
             raise AssertionError(f"Missing {code!r} check in {transition.get('checks')!r}")
         return matches[-1]
+
+    def test_staleness_warns_without_blocking_lifecycle_actions(self) -> None:
+        self._write_requirement(status="done")
+        self._write_design()
+        self._write_review(required_action=False)
+        cases = (
+            ("po-specify", "raw", "po"),
+            ("po-handoff", "specified", "po"),
+            ("design-start", "ready-for-design", "designer"),
+            ("design-handoff", "in-design", "designer"),
+            ("dev-start", "ready-for-dev", "dev"),
+            ("dev-done", "in-dev", "dev"),
+            ("reopen-spec", "done", "none"),
+            ("reopen-design", "done", "none"),
+            ("reopen-dev", "done", "none"),
+        )
+        for action, status, owner in cases:
+            self._write_feature(
+                status=status,
+                owner=owner,
+                advisory="done",
+                delivery_rows=(("backend", "backend/src/payouts.py", "tests/payouts passed", "release/2026-09-08"),),
+            )
+            before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+            for age in (0, 14, 15, 365):
+                with self.subTest(action=action, age_days=age):
+                    self.clock.today.return_value = CHECK_DATE + timedelta(days=age)
+                    preflight = build_transition_preflight(self.root, "F-001", action=action)
+                    graph = build_graph(self.root)
+                    node = next(node for node in graph["facts"]["nodes"] if node["id"] == "F-001")
+                    graph_transition = next(item for item in node["transitions"] if item["action"] == action)
+                    for transition in (preflight["facts"]["transition"], graph_transition):
+                        self.assertEqual("ready", transition["classification"], transition["checks"])
+                        self.assertTrue(transition["supported"])
+                        self.assertEqual({"codex", "claude"}, set(transition["invocations"]))
+                    for envelope in (preflight, graph):
+                        warnings = [item for item in envelope["diagnostics"] if item["code"] == "stale-page"]
+                        self.assertEqual(age > 14, bool(warnings))
+                        self.assertTrue(all(item["severity"] == "warning" for item in warnings))
+                    self.assertEqual("warning" if age > 14 else "ok", node["health"])
+            after = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+            self.assertEqual(before, after)
+
+    def test_stale_pages_do_not_hide_source_integrity_errors(self) -> None:
+        self.clock.today.return_value = CHECK_DATE + timedelta(days=365)
+        self._write_design()
+        original = self.feature_path.read_text(encoding="utf-8")
+        cases = (
+            ("invalid-feature-date", original.replace("last-updated: 2026-09-08", "last-updated: invalid-date")),
+            ("broken-wiki-link", original + "\n[Missing design](../design/missing.md)\n"),
+        )
+        for code, body in cases:
+            with self.subTest(code=code):
+                self.feature_path.write_text(body, encoding="utf-8")
+                preflight = build_transition_preflight(self.root, "F-001")
+                graph = build_graph(self.root)
+                node = next(node for node in graph["facts"]["nodes"] if node["id"] == "F-001")
+                for transition in (preflight["facts"]["transition"], node["transition"]):
+                    self.assertEqual("unknown", transition["classification"])
+                    self.assertFalse(transition["supported"])
+                    self.assertEqual("unknown", self._check(transition, f"source-integrity:{code}")["status"])
+                for envelope in (preflight, graph):
+                    self.assertIn("stale-page", {item["code"] for item in envelope["diagnostics"]})
+
+    def test_stale_pages_do_not_hide_workflow_blockers(self) -> None:
+        self.clock.today.return_value = CHECK_DATE + timedelta(days=365)
+        self._write_feature(advisory="pending")
+
+        transition = self._transition("po-handoff")
+
+        self.assertEqual("blocked", transition["classification"])
+        self.assertEqual("review", self._check(transition, "advisory-review")["status"])
 
     def test_non_api_links_do_not_create_an_api_contract(self) -> None:
         """An external or ordinary link labelled API is not a local contract."""

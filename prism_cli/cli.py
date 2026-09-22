@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib.util
 import json
 import os
 import platform
@@ -164,6 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_parser = subparsers.add_parser("validate", help="Validate the template repo or a generated Prism project.")
     validate_parser.add_argument("path", nargs="?", default=".", help="Path to validate. Defaults to the current directory.")
+    validate_parser.add_argument("--trust-template", action="store_true", help="Allow custom template validation scripts to execute code.")
     validate_parser.add_argument(
         "--kind",
         choices=["auto", "template", "generated-project"],
@@ -230,7 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_graph_parser.add_argument("--feature", help="Feature id for --view ego, for example F-001.")
     wiki_graph_parser.add_argument("--platform", choices=sorted(VALID_PLATFORM_IDS), help="Platform id for --view platform.")
     wiki_graph_parser.add_argument("--html", nargs="?", const="", metavar="OUT", help="Write the interactive dashboard. Defaults to prism-graph.html in the workspace root.")
-    wiki_graph_parser.add_argument("--open", action="store_true", help="Write the dashboard to a temporary file and open it in the browser.")
+    wiki_graph_parser.add_argument("--open", action="store_true", help="Open the live local dashboard without saving a snapshot; Ctrl+C stops the server.")
     wiki_graph_parser.add_argument("--serve", action="store_true", help="Serve the dashboard locally with live updates as wiki files change.")
     wiki_graph_parser.add_argument("--port", type=int, default=8321, help="Port for --serve. Defaults to 8321.")
     wiki_graph_parser.set_defaults(func=cmd_wiki_graph)
@@ -245,6 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use Copier's smart update when possible, or force a recopy-based refresh.",
     )
     update_parser.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
+    update_parser.add_argument("--trust-template", action="store_true", help="Allow the saved custom template to execute code.")
     update_parser.set_defaults(func=cmd_update)
 
     new_parser = subparsers.add_parser("new", help="Create a Prism project.")
@@ -254,7 +257,8 @@ def build_parser() -> argparse.ArgumentParser:
     new_parser.add_argument("--package-identifier")
     new_parser.add_argument("--github-org")
     new_parser.add_argument("--dest")
-    new_parser.add_argument("--template", default=default_template_reference())
+    new_parser.add_argument("--template", help="Custom template path or URL. Installed defaults use the matching Prism release tag.")
+    new_parser.add_argument("--trust-template", action="store_true", help="Allow a custom template to execute code.")
     new_parser.add_argument("--answers", help="Path to a Prism YAML answers file.")
     new_parser.add_argument("--debug", action="store_true", help="Show raw resolved answers.")
     new_parser.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
@@ -692,7 +696,10 @@ def evaluate_doctor_checks(checks: list[DoctorCheck], system: str, target_platfo
             results.append(DoctorResult(check=check, status="not-applicable", detail=detail))
             continue
 
-        resolved = shutil.which(check.resolver) if check.resolver else None
+        if check.resolver == "copier":
+            resolved = f"{sys.executable} -m copier" if importlib.util.find_spec("copier") else None
+        else:
+            resolved = shutil.which(check.resolver) if check.resolver else None
         if resolved:
             results.append(DoctorResult(check=check, status="ready", detail=resolved))
         else:
@@ -828,7 +835,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     print()
 
     if kind == "template":
-        return validate_template_repo(target_path, args.template_mode)
+        return validate_template_repo(target_path, args.template_mode, getattr(args, "trust_template", False))
     if kind == "generated-project":
         return validate_generated_project(target_path)
 
@@ -887,7 +894,7 @@ def cmd_wiki_transition_preflight(args: argparse.Namespace) -> int:
 def cmd_wiki_graph(args: argparse.Namespace) -> int:
     target_path = Path(args.path).expanduser().resolve()
 
-    if args.serve:
+    if args.serve or args.open:
         from prism_cli.graph_server import serve_graph
 
         return serve_graph(target_path, args.port)
@@ -908,13 +915,10 @@ def cmd_wiki_graph(args: argparse.Namespace) -> int:
         print(render_mermaid(result, args.view, feature_id=args.feature, platform_id=args.platform))
         return 0
 
-    if args.open or args.html is not None:
-        from prism_cli.wiki_graph_html import render_html, write_dashboard
+    if args.html is not None:
+        from prism_cli.wiki_graph_html import write_dashboard
 
-        if args.open:
-            out_path = Path(tempfile.mkdtemp(prefix="prism-graph-")) / "prism-graph.html"
-        else:
-            out_path = Path(args.html) if args.html else target_path / "prism-graph.html"
+        out_path = Path(args.html) if args.html else target_path / "prism-graph.html"
         out_path = out_path.expanduser().resolve()
         knowledge_root = (target_path / "knowledge").resolve()
         if str(out_path).startswith(str(knowledge_root)):
@@ -922,8 +926,6 @@ def cmd_wiki_graph(args: argparse.Namespace) -> int:
             return EXIT_VALIDATION
         write_dashboard(result, out_path)
         print(success(f"Dashboard written: {out_path}"))
-        if args.open:
-            webbrowser.open(out_path.as_uri())
         return 0
 
     show_command_intro(args, "Wiki graph facts")
@@ -968,7 +970,12 @@ def cmd_update(args: argparse.Namespace) -> int:
         return EXIT_VALIDATION
 
     strategy = resolve_update_strategy(args.strategy, answers_data)
+    if strategy == "recopy" and not args.yes and not sys.stdin.isatty():
+        print(error("Recopy can overwrite customized files. Non-interactive recopy requires `--yes`."), file=sys.stderr)
+        return EXIT_VALIDATION
     src_path = answers_data.get("_src_path")
+    if not ensure_template_trust(str(src_path), getattr(args, "trust_template", False)):
+        return EXIT_VALIDATION
     review_lines = [
         f"Project: {project_path}",
         f"Answers file: {answers_path.name}",
@@ -979,7 +986,8 @@ def cmd_update(args: argparse.Namespace) -> int:
     print(panel("Review", review_lines))
     print()
 
-    if not args.yes and not confirm("Update this Prism project now?", default=True):
+    prompt = "Reapply the template and overwrite customized files?" if strategy == "recopy" else "Update this Prism project now?"
+    if not args.yes and not confirm(prompt, default=strategy != "recopy"):
         print(warn("Update cancelled."))
         return 0
 
@@ -999,12 +1007,12 @@ def cmd_new(args: argparse.Namespace) -> int:
     if args.answers:
         default_template = default_template_reference()
         template_path = args.template
-        if args.template == default_template:
+        if args.template is None:
             template_path = answer_file_data.get("template_ref", default_template)
         destination = args.dest or answer_file_data.get("destination")
         answers = dict(answer_file_data.get("answers", {}))
     else:
-        template_path = args.template
+        template_path = args.template or default_template_reference()
         destination = args.dest
         answers = {}
 
@@ -1042,11 +1050,14 @@ def cmd_new(args: argparse.Namespace) -> int:
             print(error("Destination is required in non-interactive mode. Use `--dest` or an answers file."), file=sys.stderr)
             return EXIT_VALIDATION
 
-    dest_path = Path(destination).expanduser()
+    dest_path = Path(destination).expanduser().resolve()
     validation_errors, validation_warnings = validate_answers(merged_answers)
     if validation_errors:
         for message in validation_errors:
             print(error(message), file=sys.stderr)
+        return EXIT_VALIDATION
+
+    if not ensure_template_trust(template_path, getattr(args, "trust_template", False)):
         return EXIT_VALIDATION
 
     render_summary(merged_answers, dest_path, template_path, validation_warnings)
@@ -1064,7 +1075,8 @@ def cmd_new(args: argparse.Namespace) -> int:
     if destination_result is not None:
         return destination_result
 
-    return run_copier(template_path, dest_path, merged_answers)
+    vcs_ref = f"v{__version__}" if args.template is None and template_path == DEFAULT_TEMPLATE_URL else None
+    return run_copier(template_path, dest_path, merged_answers, vcs_ref=vcs_ref)
 
 
 def detect_validation_target(path: Path) -> str:
@@ -1076,7 +1088,9 @@ def detect_validation_target(path: Path) -> str:
     return "unknown"
 
 
-def validate_template_repo(path: Path, mode: str) -> int:
+def validate_template_repo(path: Path, mode: str, trust_template: bool = False) -> int:
+    if not ensure_template_trust(str(path), trust_template):
+        return EXIT_VALIDATION
     shell = shutil.which("pwsh") or shutil.which("powershell")
     if not shell:
         print(error("PowerShell is required to validate the template repository."), file=sys.stderr)
@@ -1329,6 +1343,12 @@ def prompt_advanced_answers() -> dict[str, Any]:
         default_values=auth_default,
         allow_empty=False,
     )
+    supporting_services = prompt_multiselect(
+        "Select supporting services",
+        (("redis", "Redis cache"),),
+        default_values=[],
+        allow_empty=True,
+    )
     use_docker = prompt_bool("Include Docker Compose?", True)
 
     return {
@@ -1338,6 +1358,7 @@ def prompt_advanced_answers() -> dict[str, Any]:
         "github_org": github_org,
         "platforms": platforms,
         "auth_methods": auth_methods,
+        "supporting_services": supporting_services,
         "use_docker": use_docker,
     }
 
@@ -1495,6 +1516,18 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
     warnings: list[str] = []
     platforms = answers.get("platforms", [])
     auth_methods = answers.get("auth_methods", [])
+    if answers.get("project_name") or answers.get("project_slug"):
+        slug = answers.get("project_slug", derive_project_slug(answers.get("project_name", "")))
+        if not isinstance(slug, str) or not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", slug):
+            errors.append("Project slug must start with a lowercase letter and contain lowercase letters, digits, and single hyphens.")
+            slug = ""
+        package = answers.get("package_identifier", f"com.example.{slug.replace('-', '')}")
+        reserved = set("as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while abstract assert boolean byte case catch char const default double enum extends final finally float goto implements import instanceof int long native new private protected public short static strictfp switch synchronized throws transient void volatile".split())
+        if not isinstance(package, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", package) or any(part in reserved for part in package.split(".")):
+            errors.append("Package identifier must contain valid dot-separated Kotlin/Java identifiers, starting with letters and without reserved keywords.")
+        module = answers.get("ios_module_name", slug.replace("-", " ").title().replace(" ", ""))
+        if not isinstance(module, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", module):
+            errors.append("iOS module name must be a valid Swift identifier.")
 
     if not platforms:
         errors.append("At least one platform must be selected.")
@@ -1565,7 +1598,8 @@ def render_summary(answers: dict[str, Any], dest_path: Path, template_path: str,
         print()
 
 
-def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any]) -> int:
+def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, vcs_ref: str | None = None) -> int:
+    dest_path = dest_path.expanduser().resolve()
     if dest_path.exists() and dest_path.is_file():
         print(error(f"Destination already exists as a file: {dest_path}"), file=sys.stderr)
         return EXIT_VALIDATION
@@ -1577,13 +1611,17 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any]) -> 
 
     print(section("Generating"))
     print(info("Running Copier with the resolved Prism configuration..."))
+    if vcs_ref:
+        print(info(f"Default generation requires the matching template release tag `{vcs_ref}`."))
     print()
 
     using_staged_template = should_stage_template_path(template_path)
     with staged_template_path(template_path) as effective_template:
         if using_staged_template:
             print(info("Using a temporary clean copy of the local template for generation."))
-        command = ["copier", "copy", "--trust", "--defaults", "--answers-file", COPIER_ANSWERS_FILE]
+        command = [sys.executable, "-m", "copier", "copy", "--trust", "--defaults", "--answers-file", COPIER_ANSWERS_FILE]
+        if vcs_ref:
+            command.extend(["--vcs-ref", vcs_ref])
         for key, value in answers.items():
             command.extend(["--data", f"{key}={format_data_value(value)}"])
         # This private context value lets the template carry truthful CLI
@@ -1718,7 +1756,7 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
     if strategy == "update":
         temp_answers_name = None
         temp_answers_path = None
-        command = ["copier", "update", "--trust", "--defaults"]
+        command = [sys.executable, "-m", "copier", "update", "--trust", "--defaults"]
     else:
         temp_answers_name = ".copier-answers.prism-recopy.yml"
         temp_answers_path = project_path / temp_answers_name
@@ -1730,13 +1768,15 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
             updated_answers["_src_path"] = str(effective_template)
             with temp_answers_path.open("w", encoding="utf-8") as handle:
                 yaml.safe_dump(updated_answers, handle, sort_keys=False)
-            command = ["copier", "recopy", "--trust", "--defaults", "--overwrite", "--answers-file", temp_answers_name]
+            command = [sys.executable, "-m", "copier", "recopy", "--trust", "--defaults", "--overwrite", "--answers-file", temp_answers_name]
         if using_staged_template:
             print(info(f"Using a temporary clean copy of the local template for {strategy}."))
 
         try:
             command.append(str(project_path))
             result = subprocess.run(command, cwd=str(project_path))
+            if result.returncode == 0 and temp_answers_path and temp_answers_path.exists():
+                shutil.copyfile(temp_answers_path, project_path / COPIER_ANSWERS_FILE)
         finally:
             if temp_answers_path and temp_answers_path.exists():
                 temp_answers_path.unlink()
@@ -1749,8 +1789,7 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
                 print(error("Project recopy failed."), file=sys.stderr)
             return EXIT_COPIER
 
-    public_answers = {key: value for key, value in answers_data.items() if not key.startswith("_")}
-    ensure_copier_answers_file(project_path, src_path, public_answers)
+    ensure_copier_answers_file(project_path, src_path, {})
     if not refresh_workspace_manifest(project_path, src_path, answers_data):
         return EXIT_VALIDATION
 
@@ -1808,7 +1847,7 @@ def refresh_workspace_manifest(destination: Path, template_path: str, answers: d
 
 
 def should_stage_template_path(template_path: str) -> bool:
-    if "://" in template_path:
+    if is_remote_template(template_path):
         return False
     path = Path(template_path).expanduser().resolve()
     return path.is_dir() and (path / ".git").exists()
@@ -1816,7 +1855,7 @@ def should_stage_template_path(template_path: str) -> bool:
 
 @contextlib.contextmanager
 def staged_template_path(template_path: str):
-    if "://" in template_path:
+    if is_remote_template(template_path):
         yield template_path
         return
     path = Path(template_path).expanduser().resolve()
@@ -1861,14 +1900,32 @@ def slugify(name: str) -> str:
     return slug
 
 
+def is_remote_template(template_path: str) -> bool:
+    return "://" in template_path or template_path.startswith(("gh:", "gl:", "git@", "git+")) or bool(
+        re.match(r"^[^/\\:@]+@[^/\\:]+:", template_path)
+    )
+
+
+def ensure_template_trust(template_path: str, explicitly_trusted: bool = False) -> bool:
+    canonical = {DEFAULT_TEMPLATE_URL, DEFAULT_TEMPLATE_URL.removesuffix(".git"), "gh:mo0rti/prism"}
+    local_maintainer = (REPO_ROOT / "copier.yml").is_file() and not is_remote_template(template_path) and Path(template_path).expanduser().resolve() == REPO_ROOT
+    if explicitly_trusted or template_path in canonical or local_maintainer:
+        return True
+    print(warn(f"Custom template `{template_path}` can execute Python extensions, hooks, and validation scripts."))
+    if sys.stdin.isatty() and confirm("Trust this template to execute code?", default=False):
+        return True
+    print(error("Custom template execution requires explicit trust. Review the source, then use `--trust-template`."), file=sys.stderr)
+    return False
+
+
 def normalize_template_path(template_path: str) -> str:
-    if "://" in template_path:
+    if is_remote_template(template_path):
         return template_path
     return str(Path(template_path).expanduser().resolve())
 
 
 def get_template_commit(template_path: str) -> str | None:
-    if "://" in template_path:
+    if is_remote_template(template_path):
         return None
     path = Path(template_path).expanduser().resolve()
     if not (path / ".git").exists():
@@ -1888,7 +1945,7 @@ def get_template_commit(template_path: str) -> str | None:
 def get_template_version(template_path: str) -> str | None:
     """Return a tag/ref description when the local template exposes one."""
 
-    if "://" in template_path:
+    if is_remote_template(template_path):
         return None
     path = Path(template_path).expanduser().resolve()
     if not (path / ".git").exists():
@@ -1906,7 +1963,7 @@ def get_template_version(template_path: str) -> str | None:
 
 
 def supports_versioned_update(template_path: str) -> bool:
-    if "://" in template_path:
+    if is_remote_template(template_path):
         return True
     path = Path(template_path).expanduser().resolve()
     if not (path / ".git").exists():

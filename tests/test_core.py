@@ -522,10 +522,17 @@ class DoctorCommandTests(unittest.TestCase):
         checks = build_doctor_checks(incubation_mode=False)
         copier_check = next(check for check in checks if check.label == "Copier")
         self.assertIsNone(copier_check.packaged_status)
-        with patch("prism_cli.cli.shutil.which", return_value=None):
+        with patch("prism_cli.cli.importlib.util.find_spec", return_value=None):
             results = evaluate_doctor_checks([copier_check], "Windows", set())
         self.assertEqual("missing", results[0].status)
         self.assertTrue(results[0].check.blocking)
+
+    def test_copier_in_current_interpreter_does_not_require_a_path_entry(self) -> None:
+        copier_check = next(check for check in build_doctor_checks(False) if check.label == "Copier")
+        with patch("prism_cli.cli.shutil.which", return_value=None):
+            with patch("prism_cli.cli.importlib.util.find_spec", return_value=object()):
+                results = evaluate_doctor_checks([copier_check], "Windows", set())
+        self.assertEqual("ready", results[0].status)
 
     @patch("prism_cli.cli.shutil.which")
     def test_evaluate_doctor_checks_marks_ios_not_applicable_on_windows(self, mocked_which: object) -> None:
@@ -1512,8 +1519,12 @@ class WikiGraphHtmlTests(unittest.TestCase):
     def test_render_html_escapes_script_terminators(self) -> None:
         from prism_cli.wiki_graph_html import _embed_json
 
-        embedded = _embed_json({"text": "</script><b>bad</b>"})
-        self.assertNotIn("</script>", embedded)
+        original = {"text": "<!-- </script><script>&<b>bad</b>"}
+        embedded = _embed_json(original)
+        self.assertNotIn("<", embedded)
+        self.assertNotIn(">", embedded)
+        self.assertNotIn("&", embedded)
+        self.assertEqual(original, json.loads(embedded))
 
     def test_cmd_wiki_graph_refuses_output_inside_knowledge(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

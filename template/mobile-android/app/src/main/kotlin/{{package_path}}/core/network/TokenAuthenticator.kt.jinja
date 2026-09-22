@@ -1,9 +1,8 @@
 package {{ package_identifier }}.core.network
 
 import {{ package_identifier }}.core.datastore.TokenStorage
-import {{ package_identifier }}.core.session.SessionManager
 import {{ package_identifier }}.feature.auth.data.remote.dto.RefreshTokenRequest
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import okhttp3.Authenticator
@@ -24,41 +23,44 @@ import javax.inject.Singleton
 @Singleton
 class TokenAuthenticator @Inject constructor(
     private val tokenStorage: TokenStorage,
-    private val sessionManager: SessionManager,
     private val json: Json,
 ) : Authenticator {
 
+    @Synchronized
     override fun authenticate(route: Route?, response: Response): Request? {
-        // Prevent infinite refresh loops
-        if (response.request.header("X-Retry-Auth") != null) {
-            runBlocking { sessionManager.onLogout() }
+        val requestSession = response.request.tag(SessionIdentity::class.java)?.id ?: return null
+        val tokens = runBlocking { tokenStorage.tokens.first() }
+        if (tokens.sessionId != requestSession) return null
+        val access = tokens.accessToken
+        val refresh = tokens.refreshToken
+        if (access != null && response.request.header("Authorization") != "Bearer $access") {
+            return retry(response.request, access)
+        }
+        if (refresh == null || response.request.header("X-Retry-Auth") != null) {
+            runBlocking { tokenStorage.replaceIfCurrent(tokens, null, null) }
             return null
         }
-
-        val refreshToken = runBlocking { tokenStorage.refreshToken.firstOrNull() }
-            ?: run {
-                runBlocking { sessionManager.onLogout() }
-                return null
-            }
-
-        return try {
-            val refreshResponse = executeRefresh(response.request, refreshToken)
-            if (refreshResponse != null) {
-                response.request.newBuilder()
-                    .header("Authorization", "Bearer ${refreshResponse.first}")
-                    .header("X-Retry-Auth", "true")
-                    .build()
-            } else {
-                runBlocking { sessionManager.onLogout() }
-                null
-            }
+        val replacement = try {
+            executeRefresh(response.request, refresh)
         } catch (_: Exception) {
-            runBlocking { sessionManager.onLogout() }
             null
         }
+        // A login/logout outside this lock must not be overwritten by a delayed
+        // refresh response. DataStore performs the comparison and write atomically.
+        val replaced = runBlocking {
+            tokenStorage.replaceIfCurrent(tokens, replacement?.first, replacement?.second)
+        }
+        if (replaced) return replacement?.let { retry(response.request, it.first) }
+        val latest = runBlocking { tokenStorage.tokens.first() }
+        if (latest.sessionId != requestSession) return null
+        return latest.accessToken?.takeIf { it != access }?.let { retry(response.request, it) }
     }
 
-    @Synchronized
+    private fun retry(request: Request, access: String): Request = request.newBuilder()
+        .header("Authorization", "Bearer $access")
+        .header("X-Retry-Auth", "true")
+        .build()
+
     private fun executeRefresh(originalRequest: Request, refreshToken: String): Pair<String, String>? {
         val body = json.encodeToString(
             RefreshTokenRequest.serializer(),
@@ -67,6 +69,7 @@ class TokenAuthenticator @Inject constructor(
 
         val baseUrl = originalRequest.url.newBuilder()
             .encodedPath("/api/v1/auth/refresh")
+            .query(null)
             .build()
 
         val request = Request.Builder()
@@ -75,20 +78,14 @@ class TokenAuthenticator @Inject constructor(
             .build()
 
         val client = OkHttpClient.Builder().build()
-        val response = client.newCall(request).execute()
-
-        if (!response.isSuccessful) return null
-
-        val responseBody = response.body?.string() ?: return null
-        val authResponse = json.decodeFromString(
-            {{ package_identifier }}.feature.auth.data.remote.dto.AuthResponse.serializer(),
-            responseBody,
-        )
-
-        runBlocking {
-            tokenStorage.saveTokens(authResponse.accessToken, authResponse.refreshToken)
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            val responseBody = response.body?.string() ?: return null
+            val authResponse = json.decodeFromString(
+                {{ package_identifier }}.feature.auth.data.remote.dto.AuthResponse.serializer(),
+                responseBody,
+            )
+            return authResponse.accessToken to authResponse.refreshToken
         }
-
-        return authResponse.accessToken to authResponse.refreshToken
     }
 }

@@ -98,6 +98,7 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+            (target_wiki / "api-contracts").mkdir(exist_ok=True)
             (target_wiki / "api-contracts" / "F-007-bad.md").write_text(
                 "---\nfeature-id: F-007\nversion: 1\nstatus:\n---\n\n## Endpoints\nGET /broken\n",
                 encoding="utf-8",
@@ -285,6 +286,7 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+            (target_wiki / "design").mkdir(exist_ok=True)
             (target_wiki / "design" / "F-002-bytes.md").write_bytes(b"\xff\xfe\xfa")
 
             result = lint_wiki(workspace, today=CHECK_DATE)
@@ -299,6 +301,7 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+            (target_wiki / "design").mkdir(exist_ok=True)
             (target_wiki / "design" / "F-002-invalid-date.md").write_text(
                 "---\nfeature-id: F-001\ntitle: Invalid date\ndate: 2026-99-99\nfigma: none\n---\n",
                 encoding="utf-8",
@@ -351,6 +354,7 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "fresh" / "knowledge" / "wiki", target_wiki)
+            (target_wiki / "advisory").mkdir(exist_ok=True)
             (target_wiki / "advisory" / "PROJECT_FOUNDATION.md").write_text(
                 "# Project foundation\n\nSetup interview and rationale.\n",
                 encoding="utf-8",

@@ -19,13 +19,13 @@ def _asset_text(name: str) -> str:
 
 
 def _embed_json(payload: Any) -> str:
-    # `</` would terminate the surrounding <script> tag; escape it inside JSON strings.
-    return json.dumps(payload).replace("</", "<\\/")
+    # Prevent closing tags and HTML tokenizer escape states inside script data.
+    return json.dumps(payload).replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
 
 
 def render_html(envelope: dict[str, Any], mode: str = "snapshot", generated_at: str | None = None) -> str:
     template = _asset_text("graph_template.html")
-    vendor = _asset_text("force-graph.min.js")
+    vendor = "/*\n" + _asset_text("force-graph.LICENSE.txt") + "\n*/\n" + _asset_text("force-graph.min.js")
     config = {
         "mode": mode,
         "generated_at": generated_at or datetime.now().astimezone().isoformat(timespec="seconds"),

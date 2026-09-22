@@ -41,6 +41,31 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           $ref: '#/components/responses/Conflict'
+  /auth/oauth/token:
+    post:
+      operationId: oauthToken
+      tags: [auth]
+      security: []
+      summary: Verify a provider ID token or Facebook access token and issue backend JWTs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuthTokenRequest'
+      responses:
+        '200':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
 {% endif %}
 
   /auth/register:
@@ -91,13 +116,37 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /auth/admin/login:
+    post:
+      operationId: adminLogin
+      tags: [auth]
+      security: []
+      summary: Login as an administrator without rotating a rejected user session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /auth/refresh:
     post:
       operationId: refreshToken
       tags: [auth]
       security: []
       summary: Refresh access and refresh tokens
-      description: The submitted refresh token is rotated on success and cannot be reused afterward.
+      description: Refresh tokens rotate on success. The immediately previous token can be retried for 10 seconds within the same session. A new login or logout invalidates that retry window. Existing access tokens expire normally.
       requestBody:
         required: true
         content:
@@ -287,6 +336,20 @@ components:
   schemas:
     # --- Auth ---
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+    OAuthTokenRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          type: string
+          enum: [google, apple, facebook, microsoft]
+        idToken:
+          type: string
+          description: Provider-signed ID token for Google, Apple, or Microsoft.
+        accessToken:
+          type: string
+          description: Facebook user access token; app binding is verified by the backend.
+
     OAuthCallbackRequest:
       type: object
       required: [provider, code, redirectUri]

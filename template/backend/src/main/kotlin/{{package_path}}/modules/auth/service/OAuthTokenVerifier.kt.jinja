@@ -1,0 +1,118 @@
+package {{ package_identifier }}.modules.auth.service
+
+import {{ package_identifier }}.bootstrap.properties.OAuthProperties
+import {{ package_identifier }}.modules.auth.error.AuthErrorCode
+import {{ package_identifier }}.modules.auth.model.AuthProvider
+import {{ package_identifier }}.modules.auth.model.OAuthUserProfile
+import {{ package_identifier }}.shared.exception.UnauthorizedException
+import org.springframework.http.HttpEntity
+import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpMethod
+import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
+import org.springframework.stereotype.Service
+import org.springframework.web.client.RestTemplate
+import org.springframework.web.util.UriComponentsBuilder
+import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
+
+/** Verifies provider-issued credentials; browser profile data is never identity proof. */
+@Service
+class OAuthTokenVerifier(
+    private val properties: OAuthProperties,
+    private val restTemplate: RestTemplate
+) {
+    private val decoders = ConcurrentHashMap<String, NimbusJwtDecoder>()
+
+    fun verify(provider: AuthProvider, idToken: String?, accessToken: String?): OAuthUserProfile = try {
+        when (provider) {
+{% if "google" in auth_methods %}
+            AuthProvider.GOOGLE -> {
+                val clientId = properties.google?.clientId ?: invalid()
+                val jwt = decode(idToken, "https://www.googleapis.com/oauth2/v3/certs", clientId)
+                if (jwt.getClaimAsString("iss") !in setOf("https://accounts.google.com", "accounts.google.com")) invalid()
+                oidcProfile(jwt, requireVerifiedEmail = true)
+            }
+{% endif %}{% if "apple" in auth_methods %}
+            AuthProvider.APPLE -> {
+                val clientId = properties.apple?.clientId ?: invalid()
+                val jwt = decode(idToken, "https://appleid.apple.com/auth/keys", clientId)
+                if (jwt.issuer.toString() != "https://appleid.apple.com") invalid()
+                oidcProfile(jwt, requireVerifiedEmail = true)
+            }
+{% endif %}{% if "microsoft" in auth_methods %}
+            AuthProvider.MICROSOFT -> {
+                val config = properties.microsoft ?: invalid()
+                val jwt = decode(idToken, "https://login.microsoftonline.com/common/discovery/v2.0/keys", config.clientId)
+                val tenant = jwt.getClaimAsString("tid") ?: invalid()
+                if (!Regex("[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}").matches(tenant)) invalid()
+                if (jwt.issuer.toString() != "https://login.microsoftonline.com/$tenant/v2.0") invalid()
+                val consumerTenant = "9188040d-6c67-4c5b-b112-36a304b66dad"
+                when (config.tenantId.lowercase()) {
+                    "common" -> Unit
+                    "organizations" -> if (tenant == consumerTenant) invalid()
+                    "consumers" -> if (tenant != consumerTenant) invalid()
+                    else -> if (!tenant.equals(config.tenantId, ignoreCase = true)) invalid()
+                }
+                val profile = oidcProfile(jwt, requireVerifiedEmail = false)
+                profile.copy(providerId = jwt.getClaimAsString("oid")?.takeIf { it.isNotBlank() } ?: invalid())
+            }
+{% endif %}{% if "facebook" in auth_methods %}
+            AuthProvider.FACEBOOK -> facebookProfile(accessToken)
+{% endif %}
+            else -> throw UnauthorizedException(AuthErrorCode.OAUTH_PROVIDER_NOT_ENABLED)
+        }
+    } catch (ex: UnauthorizedException) {
+        throw ex
+    } catch (_: Exception) {
+        invalid()
+    }
+
+    private fun decode(value: String?, keys: String, clientId: String): Jwt {
+        if (value.isNullOrBlank() || clientId.isBlank()) invalid()
+        val decoder = decoders.computeIfAbsent(keys) {
+            NimbusJwtDecoder.withJwkSetUri(keys).restOperations(restTemplate).build()
+        }
+        // Nimbus verifies the RS256 signature and standard timestamp claims.
+        // Audience and provider-specific issuer checks are explicit here.
+        val jwt = decoder.decode(value)
+        if (clientId !in jwt.audience || jwt.expiresAt == null || !jwt.expiresAt!!.isAfter(Instant.now())) invalid()
+        val authorizedParty = jwt.getClaimAsString("azp")
+        if ((authorizedParty != null && authorizedParty != clientId) || (jwt.audience.size > 1 && authorizedParty == null)) invalid()
+        return jwt
+    }
+
+    private fun oidcProfile(jwt: Jwt, requireVerifiedEmail: Boolean): OAuthUserProfile {
+        val email = (jwt.getClaimAsString("email") ?: jwt.getClaimAsString("preferred_username"))
+            ?.takeIf { it.isNotBlank() } ?: invalid()
+        if (requireVerifiedEmail && jwt.claims["email_verified"].toString() != "true") invalid()
+        return OAuthUserProfile(
+            providerId = jwt.subject?.takeIf { it.isNotBlank() } ?: invalid(),
+            email = email,
+            displayName = jwt.getClaimAsString("name") ?: email,
+            avatarUrl = jwt.getClaimAsString("picture")
+        )
+    }
+{% if "facebook" in auth_methods %}
+
+    private fun facebookProfile(value: String?): OAuthUserProfile {
+        val config = properties.facebook ?: invalid()
+        if (value.isNullOrBlank() || config.clientId.isBlank() || config.clientSecret.isBlank()) invalid()
+        val debugUri = UriComponentsBuilder.fromUriString("https://graph.facebook.com/v18.0/debug_token")
+            .queryParam("input_token", "{token}").buildAndExpand(value).encode().toUri()
+        val appHeaders = HttpHeaders().apply { setBearerAuth("${config.clientId}|${config.clientSecret}") }
+        val debug = restTemplate.exchange(debugUri, HttpMethod.GET, HttpEntity<Void>(appHeaders), Map::class.java).body
+            ?.get("data") as? Map<*, *> ?: invalid()
+        if (debug["is_valid"] != true || debug["app_id"] != config.clientId ||
+            (debug["expires_at"] as? Number)?.toLong()?.let { it > Instant.now().epochSecond } != true) invalid()
+        val headers = HttpHeaders().apply { setBearerAuth(value) }
+        val info = restTemplate.exchange(config.userInfoUri, HttpMethod.GET, HttpEntity<Void>(headers), Map::class.java).body ?: invalid()
+        val id = info["id"] as? String ?: invalid()
+        if (id != debug["user_id"]) invalid()
+        val email = (info["email"] as? String)?.takeIf { it.isNotBlank() } ?: invalid()
+        return OAuthUserProfile(id, email, info["name"] as? String ?: email, null)
+    }
+{% endif %}
+
+    private fun invalid(): Nothing = throw UnauthorizedException(AuthErrorCode.OAUTH_TOKEN_EXCHANGE_FAILED)
+}

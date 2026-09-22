@@ -1,7 +1,8 @@
 param(
     [string]$OutputRoot = (Join-Path ([System.IO.Path]::GetTempPath()) ("template-validation-" + [System.Guid]::NewGuid().ToString("N"))),
     [ValidateSet("full", "contract", "backend-smoke")]
-    [string]$Mode = "full"
+    [string]$Mode = "full",
+    [string]$ActionlintPath = "actionlint"
 )
 
 $ErrorActionPreference = "Stop"
@@ -231,7 +232,7 @@ function New-GeneratedProject {
     Push-Location $repoRoot
     try {
         Write-Host "Generating sample: $Name"
-        & copier @arguments | Out-Host
+        & python -m copier @arguments | Out-Host
         if ($LASTEXITCODE -ne 0) {
             throw "Copier generation failed for $Name."
         }
@@ -240,6 +241,14 @@ function New-GeneratedProject {
         Pop-Location
     }
 
+    if ($Mode -eq "contract") {
+        $workflows = @(Get-ChildItem -LiteralPath (Join-Path $target ".github/workflows") -Filter "*.yml" -File | ForEach-Object { $_.FullName })
+        & $ActionlintPath '-shellcheck=' '-pyflakes=' @workflows
+        if ($LASTEXITCODE -ne 0) {
+            throw "Generated workflow validation failed for $Name."
+        }
+    }
+    Assert-PathExists -Path (Join-Path $target ".copier-answers.yml") -Message "Raw Copier generation must save its answers for future updates."
     return $target
 }
 
@@ -737,6 +746,16 @@ switch ($Mode) {
             "platforms=[backend, mobile-ios]"
         )
         Validate-IosSample -Root $iosRoot
+
+        $standaloneRoot = New-GeneratedProject -Name "standalone-web" -DataArgs @(
+            "project_name=Standalone Web",
+            "platforms=[web-user-app, web-admin-portal]",
+            "auth_methods=[password]"
+        )
+        Validate-WikiStructure -Root $standaloneRoot
+        foreach ($excluded in @("backend", "infra", "docker-compose.yml", ".github/workflows/backend.yml", ".cursor/rules/backend.mdc")) {
+            Assert-PathMissing -Path (Join-Path $standaloneRoot $excluded) -Message "No-backend selection must omit $excluded."
+        }
     }
     "full" {
         $backendRoot = New-GeneratedProject -Name "backend" -DataArgs @(

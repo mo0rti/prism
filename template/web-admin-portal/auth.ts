@@ -1,8 +1,10 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
+import { backendClaims, sessionCookie } from "@/lib/auth/backend-session"
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
   trustHost: true,
+  cookies: { sessionToken: sessionCookie },
   providers: [
     Credentials({
       name: "Admin credentials",
@@ -21,7 +23,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         }
 
         try {
-          const response = await fetch(`${apiBaseUrl}/api/v1/auth/login`, {
+          const response = await fetch(`${apiBaseUrl}/api/v1/auth/admin/login`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -38,15 +40,12 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           }
 
           const payload = await response.json()
-          const user = payload.user ?? {}
+          const claims = backendClaims(payload)
+          if (claims.role !== "ADMIN") return null
 
           return {
-            id: user.id ?? credentials.email,
-            email: user.email ?? credentials.email,
-            name: user.displayName ?? user.name ?? credentials.email,
-            role: user.role ?? "ADMIN",
-            accessToken: payload.accessToken,
-            refreshToken: payload.refreshToken,
+            ...claims,
+            id: claims.userId,
           }
         } catch {
           return null
@@ -64,6 +63,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         token.role = (user as { role?: string }).role
         token.accessToken = (user as { accessToken?: string }).accessToken
         token.refreshToken = (user as { refreshToken?: string }).refreshToken
+        token.accessTokenExpires = (user as { accessTokenExpires?: number }).accessTokenExpires
       }
 
       return token
@@ -73,9 +73,6 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         session.user.id = token.userId as string
         session.user.role = token.role as string | undefined
       }
-
-      session.accessToken = token.accessToken as string | undefined
-      session.refreshToken = token.refreshToken as string | undefined
 
       return session
     },

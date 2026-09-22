@@ -311,12 +311,14 @@ def interactive_command_palette(label: str, options: list[SelectOption]) -> str 
                 sys.stdout.write("\n")
                 sys.stdout.flush()
                 return None
-            if key in {"up", "k"} and filtered:
+            if key == "up" and filtered:
                 cursor_index = (cursor_index - 1) % len(filtered)
-            elif key in {"down", "j"} and filtered:
+            elif key == "down" and filtered:
                 cursor_index = (cursor_index + 1) % len(filtered)
             elif key == "backspace":
                 query = query[:-1]
+            elif key == "space":
+                query += " "
             elif key == "enter" and filtered:
                 sys.stdout.write("\n")
                 sys.stdout.flush()
@@ -551,16 +553,28 @@ def _read_key() -> str:
 
     import termios
     import tty
+    import codecs
+    import select
 
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     try:
         tty.setraw(fd)
-        first = sys.stdin.read(1)
+        decoder = codecs.getincrementaldecoder(sys.stdin.encoding or "utf-8")()
+        first = ""
+        while not first:
+            byte = os.read(fd, 1)
+            if not byte:
+                return "escape"
+            first = decoder.decode(byte)
         if first == "\x1b":
-            second = sys.stdin.read(1)
+            if not select.select([fd], [], [], 0.05)[0]:
+                return "escape"
+            second = os.read(fd, 1).decode("ascii", errors="replace")
             if second == "[":
-                third = sys.stdin.read(1)
+                if not select.select([fd], [], [], 0.05)[0]:
+                    return "escape"
+                third = os.read(fd, 1).decode("ascii", errors="replace")
                 return {
                     "A": "up",
                     "B": "down",

@@ -1,4 +1,5 @@
 import NextAuth from "next-auth"
+import { backendClaims, sessionCookie } from "@/lib/auth/backend-session"
 {% if "google" in auth_methods %}import Google from "next-auth/providers/google"
 {% endif %}{% if "apple" in auth_methods %}import Apple from "next-auth/providers/apple"
 {% endif %}{% if "facebook" in auth_methods %}import Facebook from "next-auth/providers/facebook"
@@ -8,6 +9,7 @@ import NextAuth from "next-auth"
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
   trustHost: true,
+  cookies: { sessionToken: sessionCookie },
   providers: [
 {% if "google" in auth_methods %}
     Google({
@@ -28,7 +30,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     MicrosoftEntraID({
       clientId: process.env.AUTH_MICROSOFT_ID ?? "",
       clientSecret: process.env.AUTH_MICROSOFT_SECRET ?? "",
-      tenantId: process.env.AUTH_MICROSOFT_TENANT_ID ?? "common",
+      issuer: `https://login.microsoftonline.com/${process.env.AUTH_MICROSOFT_TENANT_ID || "common"}/v2.0`,
     }),
 {% endif %}{% if "password" in auth_methods %}
     Credentials({
@@ -65,14 +67,11 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           }
 
           const payload = await response.json()
-          const user = payload.user ?? {}
+          const claims = backendClaims(payload)
 
           return {
-            id: user.id ?? credentials.email,
-            email: user.email ?? credentials.email,
-            name: user.displayName ?? user.name ?? credentials.email,
-            accessToken: payload.accessToken,
-            refreshToken: payload.refreshToken,
+            ...claims,
+            id: claims.userId,
           }
         } catch {
           return null
@@ -90,10 +89,27 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         token.userId = user.id
         token.accessToken = (user as { accessToken?: string }).accessToken
         token.refreshToken = (user as { refreshToken?: string }).refreshToken
+        token.accessTokenExpires = (user as { accessTokenExpires?: number }).accessTokenExpires
       }
 
       if (account) {
         token.provider = account.provider
+        if (account.provider !== "credentials") {
+          const base = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL
+          if (!base) throw new Error("API_BASE_URL is not configured")
+          const response = await fetch(`${base}/api/v1/auth/oauth/token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({
+              provider: account.provider === "microsoft-entra-id" ? "microsoft" : account.provider,
+              idToken: account.id_token,
+              accessToken: account.provider === "facebook" ? account.access_token : undefined,
+            }),
+            cache: "no-store",
+          })
+          if (!response.ok) throw new Error("Backend OAuth verification failed")
+          Object.assign(token, backendClaims(await response.json()))
+        }
       }
 
       return token
@@ -103,9 +119,6 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         session.user.id = token.userId as string
         session.user.provider = token.provider as string | undefined
       }
-
-      session.accessToken = token.accessToken as string | undefined
-      session.refreshToken = token.refreshToken as string | undefined
 
       return session
     },

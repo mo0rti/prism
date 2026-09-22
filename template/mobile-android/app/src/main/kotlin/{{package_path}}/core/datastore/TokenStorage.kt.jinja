@@ -7,10 +7,13 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private val Context.dataStore by preferencesDataStore(name = "auth_prefs")
+
+data class StoredTokens(val accessToken: String?, val refreshToken: String?, val sessionId: String?)
 
 /**
  * Token persistence via Jetpack DataStore.
@@ -28,16 +31,20 @@ class TokenStorage @Inject constructor(
     companion object {
         private val ACCESS_TOKEN = stringPreferencesKey("access_token")
         private val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
+        private val SESSION_ID = stringPreferencesKey("session_id")
     }
 
-    val accessToken: Flow<String?> = context.dataStore.data.map { it[ACCESS_TOKEN] }
-    val refreshToken: Flow<String?> = context.dataStore.data.map { it[REFRESH_TOKEN] }
-    val hasToken: Flow<Boolean> = context.dataStore.data.map { it[ACCESS_TOKEN] != null }
+    val tokens: Flow<StoredTokens> = context.dataStore.data.map { StoredTokens(it[ACCESS_TOKEN], it[REFRESH_TOKEN], it[SESSION_ID]) }
+    val accessToken: Flow<String?> = tokens.map { it.accessToken }
+    val refreshToken: Flow<String?> = tokens.map { it.refreshToken }
+    val hasToken: Flow<Boolean> = tokens.map { it.accessToken != null && it.sessionId != null }
 
     suspend fun saveTokens(accessToken: String, refreshToken: String) {
         context.dataStore.edit { prefs ->
             prefs[ACCESS_TOKEN] = accessToken
             prefs[REFRESH_TOKEN] = refreshToken
+            // Explicit login creates a new identity; token rotation preserves it.
+            prefs[SESSION_ID] = UUID.randomUUID().toString()
         }
     }
 
@@ -45,6 +52,24 @@ class TokenStorage @Inject constructor(
         context.dataStore.edit { prefs ->
             prefs.remove(ACCESS_TOKEN)
             prefs.remove(REFRESH_TOKEN)
+            prefs.remove(SESSION_ID)
         }
+    }
+
+    suspend fun replaceIfCurrent(
+        expected: StoredTokens,
+        access: String?,
+        refresh: String?,
+    ): Boolean {
+        var replaced = false
+        context.dataStore.edit { prefs ->
+            if (StoredTokens(prefs[ACCESS_TOKEN], prefs[REFRESH_TOKEN], prefs[SESSION_ID]) == expected) {
+                if (access == null) prefs.remove(ACCESS_TOKEN) else prefs[ACCESS_TOKEN] = access
+                if (refresh == null) prefs.remove(REFRESH_TOKEN) else prefs[REFRESH_TOKEN] = refresh
+                if (access == null || refresh == null) prefs.remove(SESSION_ID)
+                replaced = true
+            }
+        }
+        return replaced
     }
 }

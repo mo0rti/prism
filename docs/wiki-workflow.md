@@ -124,6 +124,10 @@ Project-level settings for wiki read/query behavior.
 Commands that use this setting must fall back cleanly to `14` if the file is missing, the
 key is missing, or the value is malformed.
 
+A `stale-page` warning remains visible in lint, transition preflight diagnostics,
+and dashboard health. Page age alone does not make a lifecycle request unavailable;
+source integrity errors and action-specific prerequisites still gate requests.
+
 ## Start Here By Role
 
 ### If you are a Product Owner
@@ -563,3 +567,10 @@ Supported identifiers:
 - [ai-surfaces.md](ai-surfaces.md)
 - [wiki-validation.md](wiki-validation.md)
 - [generated-projects.md](generated-projects.md)
+
+## CLI result codes
+
+`wiki show` returns exit code 3 when the feature is missing.
+`wiki transition-preflight` returns 0 for a supported, ready transition and 3
+for blocked or unknown results, in both human and JSON modes. Empty searches
+remain successful with exit code 0. These commands only inspect state.

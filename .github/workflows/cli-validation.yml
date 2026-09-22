@@ -31,12 +31,18 @@ permissions:
 
 jobs:
   tests:
-    name: Python tests (${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    name: Python tests (${{ matrix.os }}, ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.10", "3.12"]
+        include:
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
 
     steps:
       - name: Checkout
@@ -96,6 +102,10 @@ jobs:
           assert __version__ == "0.2.0"
           assert default_template_reference() == DEFAULT_TEMPLATE_URL
           assert resources.files("prism_cli").joinpath("assets", "graph_template.html").is_file()
+          assert resources.files("prism_cli").joinpath("assets", "force-graph.LICENSE.txt").is_file()
           assert resources.files("prism_cli").joinpath("schemas", "status-v1.json").is_file()
           PY
           "$RUNNER_TEMP/prism-wheel-env/bin/prism" --version
+
+      - name: Exercise installed CLI generation and updates
+        run: '"$RUNNER_TEMP/prism-wheel-env/bin/python" scripts/check-installed-cli.py --python "$RUNNER_TEMP/prism-wheel-env/bin/python" --template "$GITHUB_WORKSPACE"'

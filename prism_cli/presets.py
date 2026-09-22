@@ -27,8 +27,8 @@ PRESETS: tuple[Preset, ...] = (
     Preset(
         slug="backend-mobile",
         label="Backend + Mobile",
-        maturity="validated",
-        summary="Validated mobile application path with both Android and iOS clients.",
+        maturity="partial",
+        summary="Backend with Android and iOS clients; iOS requires macOS/Xcode validation.",
         answers={"platforms": ["backend", "mobile-android", "mobile-ios"]},
     ),
     Preset(

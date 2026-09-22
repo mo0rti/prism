@@ -8,7 +8,7 @@ import {{ package_identifier }}.core.network.ApiService
 import {{ package_identifier }}.core.session.SessionManager
 import {{ package_identifier }}.feature.auth.data.remote.dto.*
 import {{ package_identifier }}.feature.auth.domain.AuthProvider
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -44,10 +44,13 @@ class AuthRepository @Inject constructor(
 
     suspend fun refreshToken(): AppResult<User> =
         appResultOf {
-            val refreshToken = tokenStorage.refreshToken.firstOrNull()
-                ?: throw IllegalStateException("No refresh token available")
+            val tokens = tokenStorage.tokens.first()
+            checkNotNull(tokens.sessionId) { "No active session" }
+            val refreshToken = checkNotNull(tokens.refreshToken) { "No refresh token available" }
             val response = apiService.refreshToken(RefreshTokenRequest(refreshToken))
-            tokenStorage.saveTokens(response.accessToken, response.refreshToken)
+            check(tokenStorage.replaceIfCurrent(tokens, response.accessToken, response.refreshToken)) {
+                "Session changed during refresh"
+            }
             response.user.toDomain()
         }
 

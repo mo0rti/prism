@@ -165,22 +165,28 @@ jobs:
     needs:
       - test
       - lint
-    if: startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' && secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: production
+    env:
+      PRISM_RELEASE_CONFIGURED: {% raw %}${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' && secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}{% endraw %}
     steps:
       - uses: actions/checkout@v4
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
 
       - name: Make Gradle wrapper executable
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
         run: chmod +x mobile-android/gradlew
 
       - name: Set up JDK 21
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
 
       - name: Set up Ruby
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
@@ -188,6 +194,7 @@ jobs:
           working-directory: mobile-android
 
       - name: Cache Gradle
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -198,10 +205,12 @@ jobs:
             {% raw %}${{ runner.os }}-gradle-android-{% endraw %}
 
       - name: Decode keystore
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
         working-directory: mobile-android
         run: echo {% raw %}${{ secrets.ANDROID_KEYSTORE_BASE64 }}{% endraw %} | base64 -d > app/keystore.jks
 
       - name: Build release bundle
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
         working-directory: mobile-android
         run: |
           ./gradlew bundleRelease \
@@ -211,6 +220,7 @@ jobs:
             -Pandroid.injected.signing.key.password={% raw %}${{ secrets.ANDROID_KEY_PASSWORD }}{% endraw %}
 
       - name: Deploy to Play Store
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
         working-directory: mobile-android
         env:
           SUPPLY_JSON_KEY_DATA: {% raw %}${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}{% endraw %}

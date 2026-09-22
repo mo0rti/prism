@@ -61,6 +61,20 @@ backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 
 ## Conventions
 
+### Authentication sessions
+
+Each account has one active refresh-token session. A new login revokes earlier refresh
+credentials. Refresh rotation is serialized with a database row lock; the immediately
+previous token can retry for 10 seconds within the same session. Login and the backend
+logout endpoint clear that retry window. Access JWTs remain valid until their expiry.
+Migration `V3__refresh_retry_window.sql` adds the retry metadata.
+
+The web OAuth exchange validates enabled provider tokens before provisioning. Google and
+Apple require verified email; Microsoft validates the tenant-specific issuer, configured
+audience, and object ID; Facebook validates app binding and user ID. Microsoft configuration
+accepts a tenant UUID, `common`, `organizations`, or `consumers`. An email match never links
+accounts across providers. Real provider redirects and credentials require deployment testing.
+
 ### Controllers
 - Return DTOs, never entities
 - Use `@Valid` for request body validation

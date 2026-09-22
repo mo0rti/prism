@@ -1,0 +1,105 @@
+package {{ package_identifier }}.modules.auth
+
+import {{ package_identifier }}.bootstrap.properties.*
+import {{ package_identifier }}.modules.auth.model.AuthProvider
+import {{ package_identifier }}.modules.auth.service.OAuthTokenVerifier
+import {{ package_identifier }}.shared.exception.UnauthorizedException
+import com.nimbusds.jose.JOSEObjectType
+import com.nimbusds.jose.JWSAlgorithm
+import com.nimbusds.jose.JWSHeader
+import com.nimbusds.jose.crypto.RSASSASigner
+import com.nimbusds.jose.jwk.JWKSet
+import com.nimbusds.jose.jwk.gen.RSAKeyGenerator
+import com.nimbusds.jwt.JWTClaimsSet
+import com.nimbusds.jwt.SignedJWT
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Test
+import org.springframework.http.MediaType
+import org.springframework.test.web.client.MockRestServiceServer
+import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
+import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
+import org.springframework.web.client.RestTemplate
+import java.time.Instant
+import java.util.Date
+
+class OAuthTokenVerifierTest {
+    private val tenant = "12345678-1234-1234-1234-123456789012"
+    private val key = RSAKeyGenerator(2048).keyID("test-key").generate()
+    private val properties = OAuthProperties(
+        google = GoogleProperties(clientId = "test-client", clientSecret = "test-secret"),
+        apple = AppleProperties(clientId = "test-client"),
+        microsoft = MicrosoftProperties(clientId = "test-client", clientSecret = "test-secret", tenantId = tenant),
+        facebook = FacebookProperties(clientId = "test-client", clientSecret = "test-secret")
+    )
+    private val providers = listOf<Triple<AuthProvider, String, String>>(
+{% if "google" in auth_methods %}
+        Triple(AuthProvider.GOOGLE, "https://accounts.google.com", "https://www.googleapis.com/oauth2/v3/certs"),
+{% endif %}{% if "apple" in auth_methods %}
+        Triple(AuthProvider.APPLE, "https://appleid.apple.com", "https://appleid.apple.com/auth/keys"),
+{% endif %}{% if "microsoft" in auth_methods %}
+        Triple(AuthProvider.MICROSOFT, "https://login.microsoftonline.com/$tenant/v2.0", "https://login.microsoftonline.com/common/discovery/v2.0/keys"),
+{% endif %}
+    )
+
+    private fun signedToken(issuer: String, invalid: String = ""): String {
+        val claims = JWTClaimsSet.Builder()
+            .issuer(if (invalid == "issuer") "https://attacker.example" else issuer)
+            .audience(if (invalid == "audience") "other-client" else "test-client")
+            .subject("provider-user")
+            .expirationTime(Date.from(Instant.now().plusSeconds(if (invalid == "expired") -120 else 300)))
+            .claim("email", "user@example.com")
+            .claim("email_verified", invalid != "unverified")
+            .claim("tid", tenant)
+            .claim("oid", "provider-user")
+            .build()
+        val jwt = SignedJWT(JWSHeader.Builder(JWSAlgorithm.RS256).keyID(key.keyID).type(JOSEObjectType.JWT).build(), claims)
+        val signingKey = if (invalid == "signature") RSAKeyGenerator(2048).generate() else key
+        jwt.sign(RSASSASigner(signingKey))
+        return jwt.serialize()
+    }
+
+    @Test
+    fun `enabled OIDC providers accept verified app tokens and reject forged or misdirected tokens`() {
+        for ((provider, issuer, keys) in providers) {
+            for (invalid in listOf("", "signature", "issuer", "audience", "expired", "unverified")) {
+                if (provider == AuthProvider.MICROSOFT && invalid == "unverified") continue
+                val client = RestTemplate()
+                val server = MockRestServiceServer.bindTo(client).build()
+                server.expect(requestTo(keys)).andRespond(withSuccess(JWKSet(key.toPublicJWK()).toString(), MediaType.APPLICATION_JSON))
+                val verifier = OAuthTokenVerifier(properties, client)
+                if (invalid.isEmpty()) {
+                    assertEquals("provider-user", verifier.verify(provider, signedToken(issuer), null).providerId)
+                } else {
+                    assertThrows(UnauthorizedException::class.java, { verifier.verify(provider, signedToken(issuer, invalid), null) }, "$provider: $invalid")
+                }
+                server.verify()
+            }
+        }
+    }
+
+    @Test
+    fun `local credentials are never accepted as a provider token`() {
+        assertThrows(UnauthorizedException::class.java) {
+            OAuthTokenVerifier(properties, RestTemplate()).verify(AuthProvider.LOCAL, "untrusted", "untrusted")
+        }
+    }
+{% if "facebook" in auth_methods %}
+
+    @Test
+    fun `facebook validates app binding and user identity before provisioning`() {
+        for (valid in listOf(true, false)) {
+            val client = RestTemplate()
+            val server = MockRestServiceServer.bindTo(client).build()
+            val appId = if (valid) "test-client" else "attacker-app"
+            server.expect(requestTo("https://graph.facebook.com/v18.0/debug_token?input_token=provider-token"))
+                .andRespond(withSuccess("""{"data":{"is_valid":true,"app_id":"$appId","user_id":"provider-user","expires_at":${Instant.now().epochSecond + 300}}}""", MediaType.APPLICATION_JSON))
+            if (valid) server.expect(requestTo(properties.facebook!!.userInfoUri))
+                .andRespond(withSuccess("""{"id":"provider-user","email":"user@example.com","name":"User"}""", MediaType.APPLICATION_JSON))
+            val verifier = OAuthTokenVerifier(properties, client)
+            if (valid) assertEquals("provider-user", verifier.verify(AuthProvider.FACEBOOK, null, "provider-token").providerId)
+            else assertThrows(UnauthorizedException::class.java) { verifier.verify(AuthProvider.FACEBOOK, null, "provider-token") }
+            server.verify()
+        }
+    }
+{% endif %}
+}

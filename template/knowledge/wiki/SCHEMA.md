@@ -95,7 +95,7 @@ Format: [Description](../design/F-XXX-[slug].md) once design intake is complete.
 This section is empty until /design-intake is run.
 
 ## Related features
-- [F-XXX](features/F-XXX-[slug].md) - [why this relationship exists]
+- [F-XXX](F-XXX-[slug].md) - [why this relationship exists]
 
 ## API surface
 High-level description of API changes required (expanded in api-contracts/).
@@ -137,7 +137,8 @@ Open-question status values must be one of: `open`, `resolved: [answer]`.
 ### Status and owner lifecycle
 
 The `status` and `owner` fields together represent the feature's position in the
-lifecycle. When a handoff command runs, both fields are updated atomically.
+lifecycle. An approved handoff updates both fields together in the feature page;
+updates across the feature page, index, and log are not a filesystem transaction.
 
 | Status | Owner | Meaning |
 |--------|-------|---------|
@@ -165,7 +166,7 @@ This field tracks whether domain review has been done. Only specific commands se
 
 No other command touches the `advisory-review` field.
 
-The lint command flags features in `ready-for-dev` or later with `advisory-review: pending`
+The lint command flags features in `ready-for-design`, `in-design`, `ready-for-dev`, or `in-dev` with `advisory-review: pending`
 as incomplete. Setting `skipped` with a reason suppresses this flag.
 
 ### PO handoff transition contract
@@ -724,7 +725,7 @@ Use this blocker vocabulary consistently in `lint-wiki`, `wiki-blockers`, and
 
 - `pending-board-review`: any feature with `advisory-review: pending` that is at
   `ready-for-design`, `in-design`, `ready-for-dev`, or `in-dev`.
-- `missing-design`: any UI-platform feature in `ready-for-dev` or `in-design` with no
+- `missing-design`: any UI-platform feature in `ready-for-dev`, `in-dev`, or `done` with no
   matching design page.
 - `missing-platform-requirements`: any feature in `ready-for-dev` or `in-dev` that is
   missing one or more platform requirement files for platforms listed in feature

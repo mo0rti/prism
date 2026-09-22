@@ -25,6 +25,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from prism_cli import __version__  # noqa: E402
 from prism_cli.workspace import write_workspace_manifest  # noqa: E402
+from prism_cli.wiki_transitions import ACTION_SPECS  # noqa: E402
 
 
 PRODUCT_NAME = "TreasuryFlow"
@@ -34,7 +35,7 @@ DESCRIPTION = "A finance operations platform for payout approvals, settlements, 
 PLATFORMS = ["backend", "mobile-android", "mobile-ios"]
 AUTH_METHODS = ["password", "google"]
 TEMPLATE_SOURCE = "synthetic-local-demo"
-DEMO_TODAY = date(2026, 9, 8)
+DEMO_TODAY = date.today()
 
 WIKI_TEMPLATE_ROOT = REPO_ROOT / "template" / "knowledge" / "wiki"
 INTAKE_TEMPLATE_ROOT = REPO_ROOT / "template" / "knowledge" / "intake"
@@ -186,6 +187,13 @@ Inspect `knowledge/wiki` and `knowledge/intake` as synthetic source material for
     _write_text(destination / "docs" / "README.md", "# Demo documentation\n\nThis directory contains synthetic local demo context.")
     for relative in (".agents/skills", ".claude/commands", ".cursor/rules"):
         (destination / relative).mkdir(parents=True, exist_ok=True)
+    template_root = Path(__file__).resolve().parents[1] / "template"
+    for command in {spec.command for spec in ACTION_SPECS}:
+        for relative in (f".agents/skills/{command}/SKILL.md", f".claude/commands/{command}.md"):
+            source = template_root / f"{relative}.jinja"
+            # Lifecycle instructions have no project substitutions; capability
+            # markers make the shipped demo's preview/copy path inspectable.
+            _write_text(destination / relative, source.read_text(encoding="utf-8"))
     for platform in PLATFORMS:
         _write_text(
             destination / platform / "DEMO.md",

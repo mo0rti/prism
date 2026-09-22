@@ -5,9 +5,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date
+from functools import cached_property
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote
 
 from prism_cli.wiki_model import (
     UI_PLATFORM_IDS,
@@ -21,6 +22,8 @@ from prism_cli.wiki_model import (
     MarkdownPage,
     PlatformRequirementPage,
     extract_markdown_links,
+    candidate_relative_markdown_link as _candidate_relative_link,
+    normalize_feature_id,
     feature_id_from_path,
     page_date_field,
     parse_index_feature_rows,
@@ -94,6 +97,12 @@ class WikiDiagnostic:
     path: str
     message: str
     feature_id: str | None = None
+
+    @cached_property
+    def resolved_path(self) -> Path:
+        # Diagnostics belong to one lint snapshot. Resolve each path once, not
+        # once per feature/action; a fresh read creates fresh diagnostics.
+        return Path(self.path).resolve()
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -190,7 +199,7 @@ def lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRes
     requirement_pages = read_platform_requirement_pages(wiki_root)
     all_pages = read_wiki_pages(wiki_root)
     requirements_by_feature_platform = {
-        (page.feature_id, page.platform): page
+        (normalize_feature_id(page.feature_id), page.platform): page
         for page in requirement_pages
         if page.feature_id and page.platform
     }
@@ -202,11 +211,25 @@ def lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRes
     for feature in feature_pages:
         diagnostics.extend(_lint_feature(feature))
         feature_id = feature.feature_id
-        if feature_id in features_by_id:
+        if normalize_feature_id(feature_id) in features_by_id:
             diagnostics.append(
                 _diag("duplicate-feature-id", "error", feature.page.path, f"Duplicate feature id `{feature_id}`.", feature_id)
             )
-        features_by_id[feature_id] = feature
+        features_by_id[normalize_feature_id(feature_id)] = feature
+
+    requirement_keys: set[tuple[str, str]] = set()
+    known_feature_ids = set(features_by_id)
+    for requirement in requirement_pages:
+        if not requirement.feature_id or not requirement.platform:
+            continue
+        key = (normalize_feature_id(requirement.feature_id), requirement.platform)
+        if key in requirement_keys:
+            diagnostics.append(_diag("duplicate-platform-requirement", "error", requirement.page.path,
+                f"Multiple requirement pages declare `{key[0]}` / `{key[1]}`.", requirement.feature_id))
+        requirement_keys.add(key)
+        if key[0] not in known_feature_ids:
+            diagnostics.append(_diag("orphan-platform-requirement", "error", requirement.page.path,
+                f"Requirement refers to missing feature `{requirement.feature_id}`.", requirement.feature_id))
 
     for feature in feature_pages:
         if feature.status == "done":
@@ -248,7 +271,7 @@ def lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRes
         for message in index_errors:
             diagnostics.append(_diag("malformed-index", "error", index_path, message))
         if not index_errors:
-            index_feature_ids = {row.feature_id for row in index_rows}
+            index_feature_ids = {normalize_feature_id(row.feature_id) for row in index_rows}
             for feature_id, feature in features_by_id.items():
                 if feature_id not in index_feature_ids:
                     diagnostics.append(
@@ -256,12 +279,12 @@ def lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRes
                             "feature-missing-from-index",
                             "error",
                             index_path,
-                            f"Feature `{feature_id}` has a feature page but no row in index.md.",
-                            feature_id,
+                            f"Feature `{feature.feature_id}` has a feature page but no row in index.md.",
+                            feature.feature_id,
                         )
                     )
         for row in index_rows:
-            feature = features_by_id.get(row.feature_id)
+            feature = features_by_id.get(normalize_feature_id(row.feature_id))
             if feature is None:
                 diagnostics.append(
                     _diag(
@@ -326,7 +349,7 @@ def _lint_done_completion(
     """Apply the post-write Done invariants to a completed feature."""
 
     diagnostics: list[WikiDiagnostic] = []
-    feature_id = feature.feature_id.strip().lower()
+    feature_id = normalize_feature_id(feature.feature_id)
     if feature.advisory_review == "pending":
         diagnostics.append(
             _diag(
@@ -350,7 +373,7 @@ def _lint_done_completion(
                 )
             )
     requirements = {
-        (requirement.feature_id.strip().lower(), requirement.platform.strip().lower()): requirement
+        (normalize_feature_id(requirement.feature_id), requirement.platform.strip().lower()): requirement
         for requirement in requirement_pages
         if isinstance(requirement.feature_id, str) and isinstance(requirement.platform, str)
     }
@@ -410,7 +433,7 @@ def _lint_done_completion(
             page_feature_id = page.frontmatter.get("feature-id")
             if not isinstance(page_feature_id, str) or not page_feature_id.strip():
                 page_feature_id = feature_id_from_path(page.path)
-            if isinstance(page_feature_id, str) and page_feature_id.strip().lower() == feature_id:
+            if isinstance(page_feature_id, str) and normalize_feature_id(page_feature_id) == feature_id:
                 reviews.append(page)
         if len(reviews) != 1:
             diagnostics.append(
@@ -447,19 +470,19 @@ def _api_contract_pages_for_feature(
 ) -> list[MarkdownPage]:
     api_root = (wiki_root / "api-contracts").resolve()
     by_path = {page.path.resolve(): page for page in pages if _is_under(page.path, api_root)}
-    feature_id = feature.feature_id.strip().lower()
+    feature_id = normalize_feature_id(feature.feature_id)
     result: list[MarkdownPage] = []
     for page in by_path.values():
         page_feature_id = page.frontmatter.get("feature-id")
         if not isinstance(page_feature_id, str) or not page_feature_id.strip():
             page_feature_id = feature_id_from_path(page.path)
-        if isinstance(page_feature_id, str) and page_feature_id.strip().lower() == feature_id:
+        if isinstance(page_feature_id, str) and normalize_feature_id(page_feature_id) == feature_id:
             result.append(page)
     sources = [feature.page] + [
         requirement.page
         for requirement in requirement_pages
         if isinstance(requirement.feature_id, str)
-        and requirement.feature_id.strip().lower() == feature_id
+        and normalize_feature_id(requirement.feature_id) == feature_id
         and requirement.platform in feature.platforms
     ]
     for source in sources:
@@ -535,7 +558,7 @@ def _lint_feature_blockers(
         if feature.status in PLATFORM_REQUIREMENTS_REQUIRED_STATUSES:
             for platform_id in sorted(set(feature.platforms)):
                 if platform_id in VALID_PLATFORM_IDS and (
-                    feature_id,
+                    normalize_feature_id(feature_id),
                     platform_id,
                 ) not in requirements_by_feature_platform:
                     diagnostics.append(
@@ -616,13 +639,13 @@ def _lint_api_contract_blockers(
         if feature.status not in API_CONTRACT_DOWNSTREAM_STATUSES:
             continue
         references: list[MarkdownPage] = []
-        feature_id = feature.feature_id.strip().lower()
+        feature_id = normalize_feature_id(feature.feature_id)
         declared_platforms = {platform.strip().lower() for platform in feature.platforms}
         source_pages = [feature.page] + [
             requirement.page
             for requirement in requirement_pages
             if isinstance(requirement.feature_id, str)
-            and requirement.feature_id.strip().lower() == feature_id
+            and normalize_feature_id(requirement.feature_id) == feature_id
             and isinstance(requirement.platform, str)
             and requirement.platform.strip().lower() in declared_platforms
         ]
@@ -663,7 +686,7 @@ def _lint_cross_platform_dependencies(
     wiki_root: Path,
 ) -> list[WikiDiagnostic]:
     features_by_path = {feature.page.path.resolve(): feature for feature in feature_pages}
-    features_by_id = {feature.feature_id.strip().lower(): feature for feature in feature_pages}
+    features_by_id = {normalize_feature_id(feature.feature_id): feature for feature in feature_pages}
     requirements_by_path = {requirement.page.path.resolve(): requirement for requirement in requirement_pages}
     diagnostics: list[WikiDiagnostic] = []
 
@@ -709,7 +732,7 @@ def _lint_cross_platform_dependencies(
         plain_body = _MARKDOWN_LINK_PATTERN.sub(" ", dependency_body)
         plain_body = _FEATURE_FILE_PATTERN.sub(" ", plain_body)
         for feature_id in _FEATURE_ID_PATTERN.findall(plain_body):
-            target_feature = features_by_id.get(feature_id.strip().lower())
+            target_feature = features_by_id.get(normalize_feature_id(feature_id))
             if target_feature is not None and _is_unfinished_feature(target_feature):
                 unfinished.add(("feature", feature_id))
 
@@ -738,7 +761,7 @@ def _is_unfinished_requirement(
         return True
     if requirement.status != "done" or features_by_id is None or not isinstance(requirement.feature_id, str):
         return False
-    parent = features_by_id.get(requirement.feature_id.strip().lower())
+    parent = features_by_id.get(normalize_feature_id(requirement.feature_id))
     if parent is None:
         return False
     domains, errors = parse_revalidation(parent.page.frontmatter.get("revalidation"))
@@ -835,22 +858,6 @@ def _lint_relative_links(
                     )
                 )
     return diagnostics
-
-
-def _candidate_relative_link(source_path: Path, raw_target: str) -> Path | None:
-    try:
-        parsed = urlsplit(raw_target)
-    except ValueError:
-        return None
-    if parsed.scheme or parsed.netloc or "\x00" in parsed.path or not parsed.path.lower().endswith(".md"):
-        return None
-    target = Path(parsed.path)
-    if target.is_absolute():
-        return None
-    try:
-        return (source_path.parent / target).resolve()
-    except (OSError, RuntimeError, ValueError):
-        return None
 
 
 def _wiki_path_references(body: str, directory: str) -> list[str]:

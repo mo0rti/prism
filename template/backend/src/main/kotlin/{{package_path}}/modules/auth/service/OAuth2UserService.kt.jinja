@@ -22,7 +22,8 @@ import org.springframework.web.client.RestTemplate
 class OAuth2UserService(
     private val oAuthProperties: OAuthProperties,
     private val restTemplate: RestTemplate,
-    private val userProvisioningService: UserProvisioningService
+    private val userProvisioningService: UserProvisioningService,
+    private val tokenVerifier: OAuthTokenVerifier
 ) {
 {% if "apple" in auth_methods %}
     private val log = LoggerFactory.getLogger(javaClass)
@@ -57,6 +58,19 @@ class OAuth2UserService(
             )
         }
 
+        return provision(authProvider, userProfile)
+    }
+
+    fun processOAuthToken(provider: String, idToken: String?, accessToken: String?): User {
+        val authProvider = try {
+            AuthProvider.valueOf(provider.uppercase())
+        } catch (_: IllegalArgumentException) {
+            throw UnauthorizedException(AuthErrorCode.INVALID_OAUTH_PROVIDER)
+        }
+        return provision(authProvider, tokenVerifier.verify(authProvider, idToken, accessToken))
+    }
+
+    private fun provision(authProvider: AuthProvider, userProfile: OAuthUserProfile): User {
         return try {
             userProvisioningService.provisionOAuthUser(authProvider, userProfile)
         } catch (ex: DataIntegrityViolationException) {

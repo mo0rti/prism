@@ -8,16 +8,21 @@ import {{ package_identifier }}.modules.auth.error.AuthErrorCode
 import {{ package_identifier }}.shared.exception.ConflictException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import jakarta.persistence.EntityManager
 
 @Service
 class UserProvisioningService(
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val entityManager: EntityManager
 ) {
 
     @Transactional
     fun provisionOAuthUser(provider: AuthProvider, userProfile: OAuthUserProfile): User {
-        val existing = userRepository.findByAuthProviderAndProviderId(provider, userProfile.providerId)
+        val existing = userRepository.findOAuthUserForUpdate(provider, userProfile.providerId)
         if (existing != null) {
+            // Lock and reload before dirtying the entity. Otherwise AUTO flush
+            // could overwrite a concurrent rotation with stale session metadata.
+            entityManager.refresh(existing)
             existing.displayName = userProfile.displayName
             existing.avatarUrl = userProfile.avatarUrl
             return userRepository.save(existing)
@@ -45,5 +50,4 @@ class UserProvisioningService(
     @Transactional(readOnly = true)
     fun findExistingOAuthUser(provider: AuthProvider, userProfile: OAuthUserProfile): User? =
         userRepository.findByAuthProviderAndProviderId(provider, userProfile.providerId)
-            ?: userRepository.findByEmail(userProfile.email)
 }

@@ -59,7 +59,7 @@ fields.
 Link to design artifacts. Empty until /design-intake is run.
 
 ## Related features
-- [F-XXX](features/F-XXX-[slug].md) - [why this relationship exists]
+- [F-XXX](F-XXX-[slug].md) - [why this relationship exists]
 
 ## API surface
 High-level description of API changes required. Empty if no API changes.

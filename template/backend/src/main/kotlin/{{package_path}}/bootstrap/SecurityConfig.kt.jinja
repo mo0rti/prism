@@ -26,9 +26,9 @@ class SecurityConfig(
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
-                auth.requestMatchers("/api/v1/auth/oauth/callback").permitAll()
+                auth.requestMatchers("/api/v1/auth/oauth/callback", "/api/v1/auth/oauth/token").permitAll()
 {% endif %}
-                auth.requestMatchers("/api/v1/auth/register", "/api/v1/auth/login").permitAll()
+                auth.requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/admin/login").permitAll()
                 auth.requestMatchers("/api/v1/auth/refresh").permitAll()
                 auth.requestMatchers("/actuator/health").permitAll()
                 if (isSwaggerEnabled()) {

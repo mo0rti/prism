@@ -13,6 +13,11 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
+import java.time.Instant
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -110,9 +115,49 @@ class AuthServiceTest {
         assertNotNull(response.accessToken)
         assertNotNull(response.refreshToken)
 
-        assertThrows(UnauthorizedException::class.java) {
-            authService.refreshToken(RefreshTokenRequest(refreshToken))
+        val retried = authService.refreshToken(RefreshTokenRequest(refreshToken))
+        val current = userRepository.findById(user.id).orElseThrow()
+        assertTrue(jwtTokenProvider.matchesRefreshTokenVersion(response.refreshToken, current.refreshTokenVersion))
+        assertTrue(jwtTokenProvider.matchesRefreshTokenVersion(retried.refreshToken, current.refreshTokenVersion))
+        current.refreshRotatedAt = Instant.now().minusSeconds(11)
+        userRepository.save(current)
+        assertThrows(UnauthorizedException::class.java) { authService.refreshToken(RefreshTokenRequest(refreshToken)) }
+    }
+
+    @Test
+    fun `concurrent refresh uses one rotation and login invalidates the retry window`() {
+        val original = authService.register(RegisterRequest("race@example.com", "password123", "Race"))
+        val executor = Executors.newFixedThreadPool(2)
+        val start = CountDownLatch(1)
+        try {
+            val results = (1..2).map {
+                executor.submit(Callable { start.await(); authService.refreshToken(RefreshTokenRequest(original.refreshToken)) })
+            }
+            start.countDown()
+            val responses = results.map { it.get(10, TimeUnit.SECONDS) }
+            val current = userRepository.findByEmail("race@example.com")!!
+            assertEquals(2, current.refreshTokenVersion)
+            responses.forEach { assertTrue(jwtTokenProvider.matchesRefreshTokenVersion(it.refreshToken, current.refreshTokenVersion)) }
+            authService.login(LoginRequest("race@example.com", "password123"))
+            (responses.map { it.refreshToken } + original.refreshToken).forEach { old ->
+                assertThrows(UnauthorizedException::class.java) { authService.refreshToken(RefreshTokenRequest(old)) }
+            }
+        } finally {
+            executor.shutdownNow()
         }
+    }
+
+    @Test
+    fun `admin login rejects a regular user without invalidating their session`() {
+        val session = authService.register(RegisterRequest("user@example.com", "password123", "User"))
+        assertThrows(UnauthorizedException::class.java) {
+            authService.login(LoginRequest("user@example.com", "password123"), requireAdmin = true)
+        }
+        assertNotNull(authService.refreshToken(RefreshTokenRequest(session.refreshToken)))
+        val user = userRepository.findByEmail("user@example.com")!!
+        user.role = UserRole.ADMIN
+        userRepository.save(user)
+        assertEquals(UserRole.ADMIN, authService.login(LoginRequest("user@example.com", "password123"), requireAdmin = true).user.role)
     }
 
     @Test

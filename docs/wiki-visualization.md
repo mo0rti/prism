@@ -12,7 +12,7 @@ finance operations story: payout requests, manager approval, and finance-admin
 settlement/history review. Build it into a new empty directory:
 
 ```text
-python scripts/build-wiki-demo.py --destination <new-demo-directory> --stage all --today 2026-09-08 --json
+python scripts/build-wiki-demo.py --destination <new-demo-directory> --stage all --json
 ```
 
 The builder refuses an existing destination. It creates three capture-ready
@@ -36,8 +36,9 @@ prism wiki graph <new-demo-directory>/populated --open
 prism wiki graph <new-demo-directory>/populated --serve --port 8321
 ```
 
-The `--open` command creates a one-off snapshot for the browser. `--serve`
-keeps the dashboard live and refreshes when relevant source files change. Both
+The `--open` and `--serve` commands run the same local server, keep dashboard data
+in memory, and refresh when relevant source files change. Press Ctrl+C to stop.
+Use `--html <path>` when you want to save a snapshot explicitly. All these
 surfaces are read-only. The inspector exposes the source path for a selected
 wiki node. Board intake cards identify their queue and item name; manifest and
 answers inputs remain visible through workspace metadata and confidence
@@ -133,8 +134,8 @@ prior active evidence, marks route-specific `revalidation` domains, and names
 affected requirement/API status changes before downstream readiness can be
 re-established. UI design exemptions and the full confirmation/write protocol
 are defined in the generated `knowledge/wiki/SCHEMA.md`. Browser controls for
-these action previews are implemented in the current UI first pass; integrated
-lifecycle acceptance remains pending. The controls remain copy-only and never
+these action previews have a recorded local acceptance in
+[Lifecycle Transitions Acceptance](lifecycle-transitions-acceptance.md). The controls remain copy-only and never
 execute the agent writes.
 
 ## Snapshot, live state, and confidence

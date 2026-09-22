@@ -46,7 +46,14 @@ app/
 
 - The scaffold is intentionally lightweight but real.
 - It provides a coherent buildable starting point, not a full production product.
-- OAuth-to-backend token exchange still needs hardening if you want full end-to-end backend-issued sessions for every provider.
+- Selected OAuth providers exchange provider credentials through `/api/v1/auth/oauth/token`.
+  The backend verifies signatures, issuer, audience, expiry and provider identity before issuing its own session.
+  Configure the same client ID on the web app and backend; Microsoft tenant settings must match.
+- Backend access and refresh tokens live in a separate encrypted HttpOnly backend cookie.
+  The Auth.js cookie and public session contain user identity only. API route handlers refresh and persist the backend cookie;
+  server-component session reads do not rotate tokens.
+- Use `AUTH_URL` (or `NEXTAUTH_URL`) for the public web origin. HTTPS uses Secure cookies.
+- Provider credentials, redirects, and a live sign-in still need validation in the target environment.
 
 ## Commands
 

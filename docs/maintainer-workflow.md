@@ -55,6 +55,9 @@ CLAUDE.md             # Claude maintainer guidance for this repo
 
 ## Reference Commands
 
+Contract validation requires actionlint 1.7.12 on PATH, or an explicit
+`-ActionlintPath` argument. It checks rendered workflows for every sample.
+
 ```bash
 ./scripts/validate-template.ps1
 copier copy --trust . ../template-test

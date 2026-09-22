@@ -10,6 +10,7 @@ _skip_if_exists:
   - mobile-ios/Config/Release.xcconfig
 
 _exclude:
+  - "{% if 'backend' not in platforms %}.github/workflows/backend.yml{% endif %}"
   - "{% if 'backend' not in platforms %}.env{% endif %}"
   - "{% if 'backend' not in platforms %}.env.example{% endif %}"
   - "{% if 'mobile-android' not in platforms %}mobile-android{% endif %}"
@@ -18,7 +19,8 @@ _exclude:
   - "{% if 'web-user-app' not in platforms %}web-user-app{% endif %}"
   - "{% if 'web-admin-portal' not in platforms %}web-admin-portal{% endif %}"
   - "{% if 'backend' not in platforms %}infra{% endif %}"
-  - "{% if not use_docker %}docker-compose.yml{% endif %}"
+  - "{% if not use_docker or 'backend' not in platforms %}docker-compose.yml{% endif %}"
+  - "{% if 'backend' not in platforms %}.cursor/rules/backend.mdc{% endif %}"
   - "{% if 'web-user-app' not in platforms %}.github/workflows/web-user-app.yml{% endif %}"
   - "{% if 'web-admin-portal' not in platforms %}.github/workflows/web-admin-portal.yml{% endif %}"
   - "{% if 'mobile-android' not in platforms %}.github/workflows/mobile-android.yml{% endif %}"
@@ -76,11 +78,23 @@ project_slug:
   type: str
   help: "Lowercase slug for directories and packages (e.g., my-awesome-app)"
   default: "{{ project_name | lower | replace(' ', '-') | replace('_', '-') }}"
+  validator: >-
+    {% if not (project_slug | regex_search('^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$')) %}
+    Project slug must start with a lowercase letter and contain lowercase letters, digits, and single hyphens.
+    {% endif %}
 
 package_identifier:
   type: str
   help: "Reverse-domain package identifier (e.g., com.example.myapp)"
   default: "com.example.{{ project_slug | replace('-', '') }}"
+  validator: >-
+    {% if not (package_identifier | regex_search('^[A-Za-z][A-Za-z0-9_]*(?:[.][A-Za-z][A-Za-z0-9_]*)+$')) %}
+    Package identifier must have at least two dot-separated identifiers, each starting with a letter.
+    {% endif %}
+    {% for segment in package_identifier.split('.') %}
+    {% if segment in ['as','break','class','continue','do','else','false','for','fun','if','in','interface','is','null','object','package','return','super','this','throw','true','try','typealias','typeof','val','var','when','while','abstract','assert','boolean','byte','case','catch','char','const','default','double','enum','extends','final','finally','float','goto','implements','import','instanceof','int','long','native','new','private','protected','public','short','static','strictfp','switch','synchronized','throws','transient','void','volatile'] %}
+    Package identifier segments cannot be Kotlin or Java keywords.
+    {% endif %}{% endfor %}
 
 description:
   type: str
@@ -98,6 +112,10 @@ ios_module_name:
   help: "Valid Swift/Xcode module name derived from the project slug"
   default: "{{ project_slug | replace('-', ' ') | replace('_', ' ') | title | replace(' ', '') }}"
   when: false
+  validator: >-
+    {% if not (ios_module_name | regex_search('^[A-Za-z_][A-Za-z0-9_]*$')) %}
+    iOS module name must be a valid Swift identifier.
+    {% endif %}
 
 # =============================================================================
 # Platform Selection
@@ -114,6 +132,7 @@ platforms:
     Android (Kotlin/Compose): mobile-android
     iOS (Swift/SwiftUI): mobile-ios
   default: "[backend, web-user-app, web-admin-portal, mobile-android, mobile-ios]"
+  validator: "{% if not platforms %}At least one platform must be selected{% endif %}"
 
 # =============================================================================
 # Authentication

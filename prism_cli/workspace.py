@@ -435,7 +435,7 @@ def write_workspace_manifest(
         data = deepcopy(loaded)
 
     data["schema_version"] = MANIFEST_SCHEMA_VERSION
-    data["min_prism_cli_version"] = prism_cli_version
+    data.setdefault("min_prism_cli_version", "0.2.0")
     generated_by = data.get("generated_by")
     if not isinstance(generated_by, dict):
         generated_by = {}
@@ -585,7 +585,7 @@ def _compare_manifest_filesystem(
                 diagnostics.append(
                     _diag(
                         "missing-expected-surface",
-                        "error",
+                        "warning",
                         root / surface,
                         f"Expected {surface_group} surface `{surface}` is missing.",
                     )
