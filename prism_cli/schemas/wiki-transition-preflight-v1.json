@@ -243,7 +243,7 @@
         "classification": { "enum": ["ready", "blocked", "unknown"] },
         "supported": {
           "type": "boolean",
-          "description": "Whether an action mapping exists for the source status and owner and the evaluator can prepare it; supported describes the action mapping and copy capability, not readiness or approval. true does not mean the feature is ready or approved."
+          "description": "Whether the source status/owner maps to an action and the evaluator can establish its copy capability. Unknown integrity or capability checks can make this false. A blocked action may still be supported; true does not mean the feature is ready or approved. Copying additionally requires classification ready and a consistent snapshot."
         },
         "checks": { "type": "array", "items": { "$ref": "#/$defs/transition_check" } },
         "sources": { "type": "array", "items": { "type": "string", "minLength": 1 } },

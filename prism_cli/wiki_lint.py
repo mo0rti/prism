@@ -134,6 +134,30 @@ class WikiLintResult:
     def is_clean(self) -> bool:
         return self.error_count == 0
 
+    @property
+    def readiness_blockers(self) -> list[WikiDiagnostic]:
+        """Return valid-but-not-ready workflow findings without changing lint semantics."""
+
+        return [diagnostic for diagnostic in self.diagnostics if diagnostic.code in WIKI_BLOCKER_CODES]
+
+    @property
+    def integrity_errors(self) -> list[WikiDiagnostic]:
+        """Return errors that mean the wiki cannot be trusted as structurally sound."""
+
+        return [
+            diagnostic
+            for diagnostic in self.diagnostics
+            if diagnostic.severity == "error" and diagnostic.code not in WIKI_BLOCKER_CODES
+        ]
+
+    @property
+    def non_blocker_warnings(self) -> list[WikiDiagnostic]:
+        return [
+            diagnostic
+            for diagnostic in self.diagnostics
+            if diagnostic.severity == "warning" and diagnostic.code not in WIKI_BLOCKER_CODES
+        ]
+
     def to_dict(self) -> dict[str, Any]:
         confidence = "error" if self.error_count else "degraded" if self.warning_count else "high"
         inspection = inspect_workspace(self.root)

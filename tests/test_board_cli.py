@@ -1,0 +1,117 @@
+"""CLI compatibility and installation result reporting at the shared-board boundary."""
+
+from contextlib import redirect_stderr, redirect_stdout
+import io
+import json
+from pathlib import Path
+import sqlite3
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import yaml
+
+from prism_cli.cli import build_parser
+from prism_cli.board_store import BoardStore
+from prism_cli.workflow_assets import asset_digest
+
+
+class BoardCliTests(unittest.TestCase):
+    def run_cli(self, *argv):
+        args = build_parser().parse_args(argv)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = args.func(args)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def manifest(self, root, digest):
+        (root / "knowledge/wiki").mkdir(parents=True, exist_ok=True)
+        (root / "knowledge/wiki/SCHEMA.md").write_text("# Schema\n", encoding="utf-8")
+        (root / "knowledge/wiki/index.md").write_text("# Index\n", encoding="utf-8")
+        (root / "prism.workspace.yml").write_text(yaml.safe_dump({
+            "schema_version": 1,
+            "project": {"name": "Editorial", "platforms": ["backend"]},
+            "workflow": {"version": "1", "mode": "workflow",
+                         "board_id": "97f352fa-1ac1-4f7d-9ca0-e8246e6293bf",
+                         "asset_digest": digest},
+            "paths": {"wiki_root": "knowledge/wiki"},
+        }), encoding="utf-8")
+
+    def test_status_requires_the_exact_packaged_workflow_pin_and_never_creates_state(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for digest, expected in ((None, 3), ("0" * 64, 3), (asset_digest(), 0)):
+                with self.subTest(digest=digest):
+                    self.manifest(root, digest)
+                    code, output, _ = self.run_cli("board", "status", str(root))
+                    self.assertEqual(expected, code)
+                    self.assertEqual(expected == 0, json.loads(output)["compatible"])
+                    self.assertFalse((root / ".prism").exists())
+
+    def test_status_does_not_advertise_a_missing_wiki_as_ready(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.manifest(root, asset_digest())
+            (root / "knowledge/wiki/SCHEMA.md").unlink()
+            code, output, _ = self.run_cli("board", "status", str(root))
+            self.assertEqual(3, code)
+            self.assertFalse(json.loads(output)["compatible"])
+            self.assertFalse((root / ".prism").exists())
+
+    def test_installer_partial_and_conflict_receipts_are_failures(self):
+        for status, expected in (("applied", 0), ("unchanged", 0), ("partial", 3), ("conflict", 3)):
+            with self.subTest(status=status), patch("prism_cli.workflow_install.plan_install", return_value={"changes": [], "conflicts": []}), patch("prism_cli.workflow_install.apply_install", return_value={"status": status}) as apply:
+                code, output, _ = self.run_cli("workflow", "install", ".", "--apply", "--yes", "--json")
+                self.assertEqual(expected, code)
+                self.assertEqual(status, json.loads(output)["status"])
+                apply.assert_called_once()
+
+    def test_machine_readable_apply_requires_explicit_confirmation(self):
+        with patch("prism_cli.workflow_install.plan_install", return_value={"changes": [], "conflicts": []}), patch("prism_cli.workflow_install.apply_install") as apply:
+            code, _, error = self.run_cli("workflow", "install", ".", "--apply", "--json")
+            self.assertEqual(2, code)
+            self.assertIn("--apply --yes", error)
+            apply.assert_not_called()
+
+    def test_json_preview_round_trips_unicode_on_a_legacy_windows_output_stream(self):
+        plan = {"changes": [{"path": "guidance.md", "before": None, "after": "Follow → review → confirm. فارسی"}], "conflicts": []}
+        for json_mode in (True, False):
+            with self.subTest(json=json_mode):
+                raw = io.BytesIO()
+                stream = io.TextIOWrapper(raw, encoding="cp1252")
+                argv = ["workflow", "install", "."] + (["--json"] if json_mode else [])
+                args = build_parser().parse_args(argv)
+                with redirect_stdout(stream), patch("prism_cli.workflow_install.plan_install", return_value=plan):
+                    code = args.func(args)
+                stream.flush()
+                output = raw.getvalue().decode("cp1252")
+                self.assertEqual(0, code)
+                if json_mode:
+                    self.assertEqual(plan, json.loads(output))
+                else:
+                    self.assertIn(r"\u2192", output)
+                stream.close()
+
+    def test_participant_management_reports_sqlite_contention_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.manifest(root, asset_digest())
+            commands = (
+                ("board", "grant", "Contention agent", "--path", str(root), "--kind", "agent"),
+                ("board", "revoke", "missing-participant", "--path", str(root)),
+            )
+            for argv in commands:
+                with self.subTest(command=argv[1]), patch.object(
+                    BoardStore,
+                    "transaction",
+                    side_effect=sqlite3.OperationalError("database is locked"),
+                ):
+                    code, output, error = self.run_cli(*argv)
+                    self.assertEqual(3, code)
+                    self.assertEqual("", output)
+                    self.assertIn("Participant management failed: database is locked", error)
+                    self.assertNotIn("Traceback", error)
+
+
+if __name__ == "__main__":
+    unittest.main()

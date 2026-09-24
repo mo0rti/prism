@@ -43,7 +43,38 @@ def render_or_print_wiki_query(args: argparse.Namespace, title: str, result: dic
     return exit_code
 
 
-def render_wiki_lint_result(result: WikiLintResult) -> None:
+def render_wiki_lint_result(result: WikiLintResult, *, readiness: bool = False) -> None:
+    if readiness:
+        integrity_errors = result.integrity_errors
+        blockers = result.readiness_blockers
+        warnings = result.non_blocker_warnings
+        print(panel("Wiki readiness", [
+            f"Workspace: {result.root}",
+            f"Features: {result.feature_count}",
+            f"Integrity errors: {len(integrity_errors)}",
+            f"Readiness blockers: {len(blockers)}",
+            f"Warnings: {len(warnings)}",
+        ]))
+        for title, diagnostics, formatter in (
+            ("Integrity errors", integrity_errors, error),
+            ("Workflow readiness", blockers, warn),
+            ("Warnings", warnings, warn),
+        ):
+            if not diagnostics:
+                continue
+            print()
+            print(section(title))
+            for diagnostic in diagnostics:
+                location = diagnostic.path
+                if diagnostic.feature_id:
+                    location += f" [{diagnostic.feature_id}]"
+                print(f"- {formatter(diagnostic.code)}: {diagnostic.message}")
+                print(f"  {colorize(location, STYLE.dim)}")
+        if not integrity_errors:
+            print()
+            print(success("Wiki integrity checks passed."))
+        return
+
     summary = [
         f"Workspace: {result.root}",
         f"Features: {result.feature_count}",

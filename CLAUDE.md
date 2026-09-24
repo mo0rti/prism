@@ -1,4 +1,6 @@
-# Multi-Platform Project Template
+# Prism Core and Application Template
+
+Prism's core is the workflow and board shared by humans and agents. Application generation is an optional capability. Follow `docs/prism-core-workflow-plan.md` for the approved scope and deferred sample findings. Test lifecycle writes, workflow adoption and the shared HTTP/MCP service only in disposable neutral workspaces, never in this maintainer repository. Connected agents use pinned standard skills through one provider-neutral service; custom skills retain the direct-file path, with no extra board approval queue.
 
 Copier template that scaffolds multi-platform workspaces with Backend (Spring Boot 4), User Web App (Next.js), Admin Web Portal (Next.js), Android (Kotlin/Compose), and iOS (Swift/SwiftUI).
 
@@ -52,8 +54,9 @@ copier copy --trust . C:\temp\template-test
 # Test with specific options
 copier copy --trust --data 'project_name=TestApp' --data 'platforms=[backend, mobile-android]' . C:\temp\template-test-mobile
 
-# Update an existing generated project
-cd /path/to/generated-project && copier update --trust
+# Update an existing generated project through Prism's manifest/provenance checks
+cd /path/to/generated-project
+prism update
 ```
 
 ## Reference

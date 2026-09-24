@@ -79,8 +79,41 @@ class GraphFingerprintTests(unittest.TestCase):
 
 
 class GraphServerEndpointTests(unittest.TestCase):
+    def test_five_event_streams_share_published_state_without_individual_scans(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _create_workspace(root)
+            state = _GraphState(root)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(state))
+            server.daemon_threads = True
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            connections = []
+            try:
+                with patch("prism_cli.graph_server._workspace_fingerprint", side_effect=AssertionError("viewer initiated a scan")):
+                    for _ in range(5):
+                        connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=3)
+                        connections.append(connection)
+                        connection.request("GET", "/events")
+                        response = connection.getresponse()
+                        self.assertEqual(200, response.status)
+                        self.assertEqual(f"id: {state.epoch}:1\n".encode(), response.readline())
+                        self.assertEqual(b"data: 1\n", response.readline())
+                        self.assertEqual(b"\n", response.readline())
+                        response.close()
+            finally:
+                state.close()
+                for connection in connections:
+                    connection.close()
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
     def _server(self, root: Path) -> tuple[ThreadingHTTPServer, threading.Thread]:
-        server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(_GraphState(root)))
+        state = _GraphState(root)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(state))
+        state.start_watching()
+        self.addCleanup(state.close)
         server.daemon_threads = True
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -112,6 +145,8 @@ class GraphServerEndpointTests(unittest.TestCase):
                 connection.request("GET", "/data.json")
                 response = connection.getresponse()
                 self.assertEqual(200, response.status)
+                self.assertEqual("DENY", response.getheader("X-Frame-Options"))
+                self.assertEqual("frame-ancestors 'none'", response.getheader("Content-Security-Policy"))
                 initial = json.loads(response.read())
                 self.assertEqual(1, initial["version"])
                 self.assertEqual("Test", initial["envelope"]["workspace"]["project_name"])
@@ -200,6 +235,7 @@ class GraphServerEndpointTests(unittest.TestCase):
                         [("Host", f"127.0.0.1:{port}"), ("Origin", "null")],
                         [("Host", f"127.0.0.1:{port}"), ("Origin", "https://evil.example")],
                         [("Host", f"127.0.0.1:{port}"), ("Sec-Fetch-Site", "cross-site")],
+                        [("Host", f"127.0.0.1:{port}"), ("Sec-Fetch-Site", "same-site")],
                         [],
                     ):
                         with self.subTest(route=route, headers=headers):

@@ -12,7 +12,7 @@ import json
 import re
 import stat
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 from threading import Lock
@@ -423,6 +423,128 @@ def build_transition_preflight(
         _unique_strings(sources),
     )
     return finalize_transition_envelope(workspace_root, envelope)
+
+
+def build_board_transition_preflight(
+    root: Path,
+    feature_id: str,
+    action: str,
+    *,
+    advisory_override: tuple[str, str | None] | None = None,
+    frontmatter_overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Evaluate one named action for an explicitly adopted connected board.
+
+    This service-only evaluator reuses the existing action checks but does not
+    require copied Codex/Claude command files or a generated application
+    directory.  The legacy ``build_transition_preflight`` contract remains
+    copy-only and unchanged.
+    """
+
+    workspace_root = root.expanduser().resolve()
+    requested = action.strip() if isinstance(action, str) else ""
+    normalized_id = normalize_feature_id(feature_id) if isinstance(feature_id, str) else ""
+    wiki_root = workspace_root / _WATCH_WIKI_DIR
+    features = read_feature_pages(wiki_root)
+    matches = [feature for feature in features if normalize_feature_id(feature.feature_id) == normalized_id]
+    lint_result = lint_wiki(workspace_root)
+    inspection = inspect_workspace(workspace_root)
+    identity_checks = _board_workspace_identity_checks(workspace_root, inspection)
+    requirement_pages = read_platform_requirement_pages(wiki_root)
+    wiki_pages = read_wiki_pages(wiki_root)
+
+    if requested not in ACTION_BY_ID:
+        return _unknown_transition(
+            str(feature_id),
+            f"Action `{requested}` is not registered for the Prism workflow.",
+            sources=[str(wiki_root)],
+            action=None,
+            checks=[_check("unsupported-action", "unknown", f"Action `{requested}` is not registered for the Prism workflow.", wiki_root)],
+        )
+    if len(matches) != 1:
+        status = "unknown" if matches else "error"
+        message = (
+            f"Feature ID `{feature_id}` resolves to more than one canonical page."
+            if matches
+            else f"No canonical feature page exists for `{feature_id}`."
+        )
+        return _unknown_transition(
+            str(feature_id),
+            message,
+            sources=[str(wiki_root / "features")],
+            action=requested,
+            checks=[_check("feature-id", "unknown" if status == "unknown" else "blocked", message, wiki_root / "features")],
+        )
+
+    feature = matches[0]
+    overrides = dict(frontmatter_overrides or {})
+    if requested == "po-handoff" and advisory_override is not None:
+        state, reason = advisory_override
+        overrides["advisory-review"] = state
+        if state == "skipped" and isinstance(reason, str):
+            overrides["advisory-skip-reason"] = reason
+    if overrides:
+        frontmatter = dict(feature.page.frontmatter)
+        frontmatter.update(overrides)
+        page = replace(feature.page, frontmatter=frontmatter)
+        feature = replace(feature, page=page)
+
+    spec = ACTION_BY_ID[requested]
+    capability_checks: list[dict[str, Any]] = []
+    if requested == "po-handoff":
+        transition = _evaluate_po_handoff(
+            workspace_root,
+            feature,
+            lint_result,
+            inspection,
+            capability_checks,
+            {},
+            True,
+            identity_checks,
+            _duplicate_feature_ids(features),
+        )
+    else:
+        transition = _evaluate_action(
+            workspace_root,
+            feature,
+            spec,
+            lint_result,
+            inspection,
+            capability_checks,
+            {},
+            True,
+            identity_checks,
+            _duplicate_feature_ids(features),
+            requirement_pages,
+            wiki_pages,
+        )
+    # A service capability is an explicitly adopted workflow record, not an
+    # installed vendor command. Keep the action's status/source checks intact.
+    transition["supported"] = transition.get("action") == requested and transition.get("classification") != "unknown"
+    return transition
+
+
+def _board_workspace_identity_checks(root: Path, inspection: WorkspaceInspection) -> list[dict[str, Any]]:
+    manifest = inspection.manifest
+    if manifest is None:
+        return [_check("workspace-identity", "unknown", "A readable workflow workspace manifest is required.", root / MANIFEST_FILE)]
+    workflow = manifest.workflow
+    if (
+        manifest.schema_version != 1
+        or workflow.get("version") != "1"
+        or workflow.get("mode") not in {"workflow", "generated"}
+        or not isinstance(workflow.get("board_id"), str)
+    ):
+        return [_check("workspace-identity", "unknown", "The workspace has no supported connected workflow identity.", manifest.path)]
+    try:
+        from uuid import UUID
+
+        UUID(workflow["board_id"])
+    except (ValueError, TypeError, AttributeError):
+        return [_check("workspace-identity", "unknown", "The workflow board_id is not a valid UUID.", manifest.path)]
+    if not manifest.project_name or not inspection.platforms:
+        return [_check("workspace-identity", "unknown", "Project identity and explicit platform scope are required.", manifest.path)]
+    return [_check("workspace-identity", "pass", "The adopted workflow identity and scope are available.", manifest.path)]
 
 
 def evaluate_transition_summaries(

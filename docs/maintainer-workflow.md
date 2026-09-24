@@ -51,7 +51,7 @@ CLAUDE.md             # Claude maintainer guidance for this repo
 - `platforms=[backend, web-user-app, web-admin-portal]`
 - default generation as a contract-sanity check, not as the main proof of usability
 
-`./scripts/validate-template.ps1` now also smoke-tests generated web slices through `npm install`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run build:cloudflare`, and `wrangler deploy --dry-run` when Node.js is available.
+`./scripts/validate-template.ps1 -Mode contract` checks rendered files and workflows. The default `full` mode also runs backend smoke checks; both modes disable the script's web smoke helper. Generated web install, lint, typecheck, authentication checks, Next.js/OpenNext builds, and Wrangler dry runs run in the separate `web-smoke` CI job in `.github/workflows/template-validation.yml`. A configured job is not evidence of a passing run on the current changes.
 
 ## Reference Commands
 

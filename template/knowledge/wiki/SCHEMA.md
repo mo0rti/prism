@@ -774,3 +774,24 @@ Follow these rules in every wiki operation:
 
 10. **Do not invent requirements.** Mark gaps as open questions. Mark ambiguities as
     open questions. A requirement with no source is a risk.
+
+## Connected workflow and canonical skills
+
+`knowledge/wiki/CONNECTED.md` is the transport guide for the local Prism Board
+and MCP service. It explains how to discover and read current workspace sources,
+submit a complete proposal, retain source revisions, and inspect receipts or
+recover an interrupted operation. It does not change the semantic checks or
+human-confirmation rules in this schema or in the selected skill.
+
+For a connected workflow at version 1, `workflow.asset_digest` pins the canonical
+standard skill instructions and their complete references. Retrieve them through
+`list_skills` and `get_skill`; do not substitute instructions from a hidden
+template checkout or vendor directory. The service may report a skill's write
+operation as unavailable. Stop on that connected path when it is unavailable or
+rejected; use direct-file instructions only after an explicit human choice to use
+that separate compatibility workflow. Custom project skills remain on the
+direct-file workflow.
+
+The connected service does not launch an agent or create a second approval queue.
+The active host must obtain the same explicit human confirmation required by
+this schema and the selected skill before applying the reviewed preview.

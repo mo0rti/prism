@@ -1,11 +1,17 @@
 # Documentation Index
 
-This folder holds the main documentation for Prism itself and for the workflow embedded in
-generated Prism repositories.
+This folder documents Prism's shared workflow and board, agent connections, and
+optional application generation.
 
 If you are not sure where to start, choose the path that matches your goal.
 
 ## Start Here By Audience
+
+### I want a shared board in an existing or empty workspace
+
+Start with [shared-board.md](shared-board.md) for adoption, participant access,
+the local service, and standard MCP configuration. Read
+[current-status.md](current-status.md) for the current validation boundary.
 
 ### I want to install Prism, generate a project, and try it
 
@@ -47,6 +53,7 @@ These are the best pages for understanding Prism quickly.
 
 | Document | Best for | Purpose |
 |----------|----------|---------|
+| [shared-board.md](shared-board.md) | Humans and agents sharing a workspace | Adopt the workflow, connect through MCP, and use supported human board actions |
 | [getting-started.md](getting-started.md) | Builders and evaluators | Install Prism, generate a first sample, validate it, and enter the generated workflow |
 | [generated-projects.md](generated-projects.md) | Generated-project users | What a generated repo contains and what is safe to do first |
 | [prism-model.md](prism-model.md) | Evaluators and role leads | What Prism is, what problem it solves, and how the wiki-driven lifecycle works |
@@ -71,6 +78,8 @@ inside a generated project.
 
 | Document | Purpose |
 |----------|---------|
+| [prism-core-workflow-plan.md](prism-core-workflow-plan.md) | Approved core direction, implementation scope, and acceptance requirements |
+| [connected-core-acceptance.md](connected-core-acceptance.md) | Current connected-core tests, actual-host evidence and remaining acceptance limits |
 | [maintainer-workflow.md](maintainer-workflow.md) | Template structure, CLI/template workflow, and validation guidance |
 | [questionnaire.md](questionnaire.md) | Generation inputs, defaults, and the current option-specific caveats maintainers need to track |
 | [cli-release.md](cli-release.md) | Local CLI release preparation, wheel checks, and publication boundary |

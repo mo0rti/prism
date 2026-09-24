@@ -22,6 +22,7 @@ from typing import Any
 import yaml
 
 from prism_cli import __version__
+from prism_cli.manifest_update import ManifestUpdateError, prepare_manifest_update
 from prism_cli.presets import (
     ALL_AUTH_CHOICES,
     ALL_PLATFORM_CHOICES,
@@ -32,11 +33,11 @@ from prism_cli.presets import (
     merge_answers,
 )
 from prism_cli.status import build_status
-from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind, write_workspace_manifest
+from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind, inspect_workspace, write_workspace_manifest
 from prism_cli.wiki_model import VALID_FEATURE_OWNERS, VALID_PLATFORM_IDS
 from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
-from prism_cli.wiki_lint import lint_wiki
+from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, lint_wiki
 from prism_cli.wiki_transitions import SUPPORTED_ACTION, SUPPORTED_ACTIONS, build_transition_preflight
 from prism_cli.ui import (
     ANSI_PATTERN,
@@ -90,8 +91,8 @@ def derive_project_slug(project_name: str) -> str:
     return normalized or "generated-project"
 
 
-def build_default_destination(project_name: str) -> str:
-    return str(Path(DEFAULT_GENERATED_DIR) / derive_project_slug(project_name))
+def build_default_destination(project_name: str, project_slug: str | None = None) -> str:
+    return str(Path(DEFAULT_GENERATED_DIR) / (project_slug or derive_project_slug(project_name)))
 
 
 @dataclass(frozen=True)
@@ -134,11 +135,14 @@ def main(argv: list[str] | None = None) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="prism",
-        description="Prism CLI for guided multi-platform project generation.",
+        description="Prism workflows and shared boards for humans and agents, with optional application generation.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.set_defaults(func=cmd_home, parser=parser)
     subparsers = parser.add_subparsers(dest="command")
+    from prism_cli.board_cli import register_commands
+
+    register_commands(subparsers)
 
     presets_parser = subparsers.add_parser("presets", help="Show recommended Prism presets.")
     presets_parser.set_defaults(func=cmd_presets)
@@ -157,7 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doctor_parser.set_defaults(func=cmd_doctor)
 
-    status_parser = subparsers.add_parser("status", help="Show generated-project workspace status.")
+    status_parser = subparsers.add_parser("status", help="Show Prism workspace status.")
     status_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
     status_parser.add_argument("--full", action="store_true", help="Show full diagnostics and detailed counts.")
     status_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable status output.")
@@ -168,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--trust-template", action="store_true", help="Allow custom template validation scripts to execute code.")
     validate_parser.add_argument(
         "--kind",
-        choices=["auto", "template", "generated-project"],
+        choices=["auto", "template", "generated-project", "workflow-project"],
         default="auto",
         help="Validation target type. Defaults to auto-detect.",
     )
@@ -253,6 +257,7 @@ def build_parser() -> argparse.ArgumentParser:
     new_parser = subparsers.add_parser("new", help="Create a Prism project.")
     new_parser.add_argument("--preset", choices=[preset.slug for preset in PRESETS])
     new_parser.add_argument("--project-name")
+    new_parser.add_argument("--project-slug", help="Explicit lowercase project slug used by Copier and the default destination.")
     new_parser.add_argument("--description")
     new_parser.add_argument("--package-identifier")
     new_parser.add_argument("--github-org")
@@ -275,7 +280,7 @@ def cmd_home(args: argparse.Namespace) -> int:
     print(session_panel(__version__, str(current_dir), context_label))
     print()
 
-    if context_kind == "generated-project":
+    if context_kind in ("generated-project", "workflow-project"):
         render_status_result(build_status(current_dir), full=False)
         print()
 
@@ -303,11 +308,26 @@ def detect_launch_context(path: Path) -> tuple[str, str]:
         return "template", "template repo"
     if kind == "generated-project":
         return "generated-project", "generated project"
+    if kind == "workflow-project":
+        return "workflow-project", "workflow workspace"
     return "directory", "plain directory"
 
 
 def build_home_actions(context_kind: str) -> list[SelectOption]:
     actions: list[SelectOption] = []
+
+    if context_kind in ("workflow-project", "generated-project"):
+        actions.append(SelectOption(value="board", label="Shared Board", meta="[board serve]",
+            description="Open the local board and shared MCP connection for registered participants.", accent="action"))
+        if context_kind == "workflow-project":
+            actions.extend([
+                SelectOption(value="status", label="Workspace Status", meta="[status]", description="Show workflow facts and blockers.", accent="action"),
+                SelectOption(value="validate", label="Validate Workflow", meta="[validate]", description="Check the wiki contract without application build requirements.", accent="action"),
+                SelectOption(value="dashboard", label="Read-only Dashboard", meta="[wiki graph]", description="Inspect current wiki facts without a participant token.", accent="action"),
+            ])
+    if context_kind == "directory":
+        actions.append(SelectOption(value="workflow", label="Install Workflow", meta="[workflow install]",
+            description="Preview a Prism workflow in this directory without generating applications.", accent="action"))
 
     if context_kind == "generated-project":
         actions.extend(
@@ -342,7 +362,7 @@ def build_home_actions(context_kind: str) -> list[SelectOption]:
                 ),
             ]
         )
-    else:
+    elif context_kind != "workflow-project":
         actions.extend(
             [
                 SelectOption(
@@ -379,7 +399,7 @@ def build_home_actions(context_kind: str) -> list[SelectOption]:
                 accent="action",
             )
         )
-    elif context_kind != "generated-project":
+    elif context_kind not in ("generated-project", "workflow-project"):
         actions.append(
             SelectOption(
                 value="validate",
@@ -448,6 +468,17 @@ def dispatch_home_action(selected: str, parser: argparse.ArgumentParser) -> int:
         parsed = parser.parse_args(["wiki", "graph", "--open"])
         parsed.from_launcher = True
         return parsed.func(parsed)
+    if selected == "board":
+        parsed = parser.parse_args(["board", "serve"])
+        return parsed.func(parsed)
+    if selected == "workflow":
+        name = prompt_text("Workspace name", Path.cwd().name)
+        platforms = prompt_multiselect("Select workflow scope", ALL_PLATFORM_CHOICES)
+        command = ["workflow", "install", "--name", name, "--apply"]
+        for selected_platform in platforms:
+            command.extend(["--platform", selected_platform])
+        parsed = parser.parse_args(command)
+        return parsed.func(parsed)
 
     parsed = parser.parse_args([selected])
     parsed.from_launcher = True
@@ -498,7 +529,11 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     print(panel("Environment", body))
     print()
 
-    results = evaluate_doctor_checks(build_doctor_checks(incubation_mode), system, target_platforms)
+    checks = build_doctor_checks(incubation_mode)
+    workflow_only = bool(workspace_status and workspace_status.workspace_kind == "workflow-project" and not selected_preset)
+    if workflow_only:
+        checks = [check for check in checks if check.label == "Python"]
+    results = evaluate_doctor_checks(checks, system, target_platforms)
     summary = summarize_doctor_results(results, selected_preset)
     core_missing = any(result.status == "missing" and result.check.blocking for result in results)
     print(panel("Summary", summary))
@@ -534,14 +569,20 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
         )
     )
     if workspace_errors:
-        print(error("Workspace contract checks found errors."))
+        diagnostics = workspace_status.to_dict()["diagnostics"]
+        blockers = [item for item in diagnostics if item["code"] in WIKI_BLOCKER_CODES]
+        integrity = [item for item in diagnostics if item["severity"] == "error" and item["code"] not in WIKI_BLOCKER_CODES]
+        if integrity:
+            print(error(f"Workspace integrity checks found {len(integrity)} error(s)."))
+        if blockers:
+            print(warn(f"Workflow has {len(blockers)} unresolved blocker(s); these describe work that still needs attention."))
         return EXIT_VALIDATION
 
     if core_missing:
         print(error("Install the blocking core dependencies before running `prism new`."))
         return EXIT_ENVIRONMENT
 
-    print(success("Prism core generation is ready."))
+    print(success("Prism workflow checks passed." if workflow_only else "Prism core generation is ready."))
     return 0
 
 
@@ -838,6 +879,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
         return validate_template_repo(target_path, args.template_mode, getattr(args, "trust_template", False))
     if kind == "generated-project":
         return validate_generated_project(target_path)
+    if kind == "workflow-project":
+        return validate_workflow_project(target_path)
 
     print(error("Could not determine whether the target is the template repo or a generated Prism project."), file=sys.stderr)
     print(info("Tip: pass `--kind template` or `--kind generated-project` explicitly."), file=sys.stderr)
@@ -969,6 +1012,12 @@ def cmd_update(args: argparse.Namespace) -> int:
         print(info("Generate the project with the Prism CLI first, or add a valid Copier answers file before updating."), file=sys.stderr)
         return EXIT_VALIDATION
 
+    src_path = answers_data.get("_src_path")
+    if args.strategy != "recopy" and not has_trustworthy_template_baseline(src_path, answers_data):
+        print(error("Copier smart update requires a trustworthy versioned template baseline."), file=sys.stderr)
+        print(info("This project records an unversioned or unknown template snapshot. Use `prism update --strategy recopy` to explicitly reapply the template."), file=sys.stderr)
+        return EXIT_VALIDATION
+
     strategy = resolve_update_strategy(args.strategy, answers_data)
     if strategy == "recopy" and not args.yes and not sys.stdin.isatty():
         print(error("Recopy can overwrite customized files. Non-interactive recopy requires `--yes`."), file=sys.stderr)
@@ -999,6 +1048,10 @@ def cmd_new(args: argparse.Namespace) -> int:
         print(error("`--answers` and `--preset` cannot be used together in v1."), file=sys.stderr)
         return EXIT_USAGE
 
+    if not args.answers and not args.preset and not sys.stdin.isatty():
+        print(error("Non-interactive `prism new` requires `--preset` or `--answers`."), file=sys.stderr)
+        return EXIT_USAGE
+
     show_command_intro(args, "Scaffold a multi-platform project with guided defaults")
     answer_file_data = load_answers_file(args.answers) if args.answers else None
     if answer_file_data is None and args.answers:
@@ -1024,15 +1077,27 @@ def cmd_new(args: argparse.Namespace) -> int:
 
     cli_overrides = {
         "project_name": args.project_name,
+        "project_slug": args.project_slug,
         "description": args.description,
         "package_identifier": args.package_identifier,
         "github_org": args.github_org,
     }
     for key, value in cli_overrides.items():
-        if value:
+        if value is not None and (key == "project_slug" or value):
             answers[key] = value
 
     merged_answers = merge_answers(DEFAULT_ANSWERS, answers)
+    if "project_slug" not in merged_answers:
+        project_name = merged_answers.get("project_name")
+        if isinstance(project_name, str) and project_name.strip():
+            merged_answers["project_slug"] = derive_project_slug(project_name)
+
+    validation_errors, _validation_warnings = validate_answers(merged_answers)
+    if validation_errors:
+        for message in validation_errors:
+            print(error(message), file=sys.stderr)
+        return EXIT_VALIDATION
+
     if not merged_answers.get("project_name"):
         if sys.stdin.isatty():
             merged_answers["project_name"] = prompt_text("Project name")
@@ -1044,13 +1109,15 @@ def cmd_new(args: argparse.Namespace) -> int:
         if sys.stdin.isatty():
             destination = prompt_text(
                 "Where should Prism create the project?",
-                build_default_destination(merged_answers["project_name"]),
+                build_default_destination(merged_answers["project_name"], merged_answers.get("project_slug")),
             )
         else:
             print(error("Destination is required in non-interactive mode. Use `--dest` or an answers file."), file=sys.stderr)
             return EXIT_VALIDATION
 
     dest_path = Path(destination).expanduser().resolve()
+    if "project_slug" not in merged_answers:
+        merged_answers["project_slug"] = derive_project_slug(merged_answers["project_name"])
     validation_errors, validation_warnings = validate_answers(merged_answers)
     if validation_errors:
         for message in validation_errors:
@@ -1085,6 +1152,8 @@ def detect_validation_target(path: Path) -> str:
         return "template"
     if kind == "generated-project":
         return "generated-project"
+    if kind == "workflow-project":
+        return "workflow-project"
     return "unknown"
 
 
@@ -1120,6 +1189,23 @@ def validate_template_repo(path: Path, mode: str, trust_template: bool = False) 
     return 0
 
 
+def validate_workflow_project(path: Path) -> int:
+    inspection = inspect_workspace(path)
+    errors = [item for item in inspection.contract_diagnostics if item.severity == "error"]
+    for diagnostic in errors:
+        print(error(diagnostic.message))
+    wiki_result = lint_wiki(path)
+    if wiki_result.diagnostics:
+        render_wiki_lint_result(wiki_result, readiness=True)
+    if errors or wiki_result.integrity_errors:
+        return EXIT_VALIDATION
+    if wiki_result.readiness_blockers:
+        print(success("Workflow identity and wiki integrity checks passed; readiness blockers are reported above."))
+    else:
+        print(success("Workflow identity and wiki contract checks passed."))
+    return 0
+
+
 def validate_generated_project(path: Path) -> int:
     errors, warnings, detected_platforms = validate_generated_project_structure(path)
 
@@ -1142,9 +1228,9 @@ def validate_generated_project(path: Path) -> int:
         return EXIT_VALIDATION
 
     wiki_result = lint_wiki(path)
-    if not wiki_result.is_clean:
-        print(section("Wiki lint"))
-        render_wiki_lint_result(wiki_result)
+    if wiki_result.diagnostics:
+        render_wiki_lint_result(wiki_result, readiness=True)
+    if wiki_result.integrity_errors:
         return EXIT_VALIDATION
 
     checks = [
@@ -1156,6 +1242,8 @@ def validate_generated_project(path: Path) -> int:
         "platform directories and key workflows present",
     ]
     print(panel("Validation passed", checks))
+    if wiki_result.readiness_blockers:
+        print(warn(f"Validation passed with {len(wiki_result.readiness_blockers)} workflow readiness blocker(s) reported above."))
     return 0
 
 
@@ -1250,6 +1338,18 @@ def resolve_update_strategy(requested: str, answers_data: dict[str, Any]) -> str
     if answers_data.get("_commit") and supports_versioned_update(src_path):
         return "update"
     return "recopy"
+
+
+def has_trustworthy_template_baseline(src_path: Any, answers_data: dict[str, Any]) -> bool:
+    """Smart update is supported only for a saved revision of a VCS source."""
+
+    revision = answers_data.get("_commit")
+    return (
+        isinstance(src_path, str)
+        and is_remote_template(src_path)
+        and isinstance(revision, str)
+        and bool(revision.strip())
+    )
 
 
 def resolve_preset_answers(args: argparse.Namespace) -> dict[str, Any] | None:
@@ -1514,10 +1614,44 @@ def is_generation_safe_existing_destination(entries: list[Path]) -> bool:
 def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
-    platforms = answers.get("platforms", [])
-    auth_methods = answers.get("auth_methods", [])
-    if answers.get("project_name") or answers.get("project_slug"):
-        slug = answers.get("project_slug", derive_project_slug(answers.get("project_name", "")))
+    for field_name in (
+        "project_name",
+        "project_slug",
+        "description",
+        "package_identifier",
+        "github_org",
+        "database",
+        "cloud_provider",
+        "web_hosting",
+        "ios_module_name",
+    ):
+        if field_name in answers and not isinstance(answers[field_name], str):
+            errors.append(f"{field_name} must be a string.")
+
+    platform_values = answers.get("platforms", [])
+    auth_values = answers.get("auth_methods", [])
+    service_values = answers.get("supporting_services", [])
+    platforms = validate_choice_list("platforms", platform_values, {value for value, _label in ALL_PLATFORM_CHOICES}, errors)
+    auth_methods = validate_choice_list("auth_methods", auth_values, {value for value, _label in ALL_AUTH_CHOICES}, errors)
+    validate_choice_list("supporting_services", service_values, {"redis"}, errors)
+
+    for field_name, allowed in (
+        ("database", {"postgres"}),
+        ("cloud_provider", {"azure"}),
+        ("web_hosting", {"cloudflare"}),
+    ):
+        value = answers.get(field_name)
+        if field_name in answers and isinstance(value, str) and value not in allowed:
+            errors.append(f"Unsupported {field_name}: {value!r}. Allowed values: {', '.join(sorted(allowed))}.")
+
+    if "use_docker" in answers and not isinstance(answers["use_docker"], bool):
+        errors.append("use_docker must be true or false.")
+
+    project_name = answers.get("project_name")
+    if project_name or "project_slug" in answers:
+        slug = answers.get("project_slug")
+        if slug is None and isinstance(project_name, str):
+            slug = derive_project_slug(project_name)
         if not isinstance(slug, str) or not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", slug):
             errors.append("Project slug must start with a lowercase letter and contain lowercase letters, digits, and single hyphens.")
             slug = ""
@@ -1540,6 +1674,20 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
     if any(p in platforms for p in ("web-user-app", "web-admin-portal")):
         warnings.append("Generated web slices still need live Cloudflare deployment validation.")
     return errors, warnings
+
+
+def validate_choice_list(field_name: str, value: Any, allowed: set[str], errors: list[str]) -> list[str]:
+    if not isinstance(value, list):
+        errors.append(f"{field_name} must be a list of values.")
+        return []
+    invalid = [item for item in value if not isinstance(item, str) or item not in allowed]
+    if invalid:
+        errors.append(
+            f"Unsupported {field_name} value(s): {', '.join(repr(item) for item in invalid)}. "
+            f"Allowed values: {', '.join(sorted(allowed))}."
+        )
+        return []
+    return value
 
 
 def render_summary(answers: dict[str, Any], dest_path: Path, template_path: str, warnings: list[str]) -> None:
@@ -1623,6 +1771,8 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, 
         if vcs_ref:
             command.extend(["--vcs-ref", vcs_ref])
         for key, value in answers.items():
+            if key.startswith("_"):
+                continue
             command.extend(["--data", f"{key}={format_data_value(value)}"])
         # This private context value lets the template carry truthful CLI
         # provenance even when the manifest post-processing step is skipped.
@@ -1745,8 +1895,21 @@ def run_copier_generation_process(command: list[str], cwd: Path) -> dict[str, An
 
 def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy: str) -> int:
     src_path = str(answers_data["_src_path"])
+    manifest_plan = None
     print(section("Updating"))
     if strategy == "update":
+        revision = answers_data.get("_commit")
+        if not isinstance(revision, str) or not revision.strip():
+            print(error("Copier smart update requires a trustworthy versioned template baseline."), file=sys.stderr)
+            print(info("Use `prism update --strategy recopy` to explicitly reapply an unversioned template snapshot."), file=sys.stderr)
+            return EXIT_VALIDATION
+        try:
+            manifest_plan = prepare_manifest_update(project_path, revision)
+        except ManifestUpdateError as exc:
+            print(error(f"Unable to safely update {MANIFEST_FILE}: {exc}"), file=sys.stderr)
+            print(info("Resolve the manifest issue or conflict, commit the project, then retry."), file=sys.stderr)
+            return EXIT_VALIDATION
+
         print(info("Running Copier update with Prism-managed guardrails..."))
     else:
         print(info("Running Copier recopy with Prism-managed guardrails..."))
@@ -1757,6 +1920,7 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
         temp_answers_name = None
         temp_answers_path = None
         command = [sys.executable, "-m", "copier", "update", "--trust", "--defaults"]
+        command.extend(["--vcs-ref", manifest_plan.target_ref, "--skip", MANIFEST_FILE])
     else:
         temp_answers_name = ".copier-answers.prism-recopy.yml"
         temp_answers_path = project_path / temp_answers_name
@@ -1790,7 +1954,13 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
             return EXIT_COPIER
 
     ensure_copier_answers_file(project_path, src_path, {})
-    if not refresh_workspace_manifest(project_path, src_path, answers_data):
+    if not refresh_workspace_manifest(
+        project_path,
+        src_path,
+        answers_data,
+        manifest_data=manifest_plan.manifest if manifest_plan else None,
+        expected_manifest_bytes=manifest_plan.source_manifest_bytes if manifest_plan else None,
+    ):
         return EXIT_VALIDATION
 
     print()
@@ -1811,35 +1981,94 @@ def ensure_copier_answers_file(dest_path: Path, template_path: str, answers: dic
                 remembered_answers.update(existing_data)
 
     remembered_answers["_src_path"] = normalize_template_path(template_path)
-    template_commit = get_template_commit(template_path)
-    if template_commit:
-        remembered_answers["_commit"] = template_commit
-    remembered_answers.update(answers)
+    if not is_remote_template(template_path):
+        # Local generation stages the working tree, so HEAD is not proof of the
+        # content Copier rendered. Keep that snapshot explicitly unversioned.
+        remembered_answers.pop("_commit", None)
+    remembered_answers.update({key: value for key, value in answers.items() if not key.startswith("_")})
     with answers_path.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(remembered_answers, handle, sort_keys=False)
 
 
-def refresh_workspace_manifest(destination: Path, template_path: str, answers: dict[str, Any]) -> bool:
+def refresh_workspace_manifest(
+    destination: Path,
+    template_path: str,
+    answers: dict[str, Any],
+    *,
+    manifest_data: dict[str, Any] | None = None,
+    expected_manifest_bytes: bytes | None = None,
+) -> bool:
     """Record known generation metadata after an explicit copy/update."""
 
     effective_answers = dict(answers)
     recorded_answers = load_copier_answers(destination / COPIER_ANSWERS_FILE)
     if recorded_answers:
         effective_answers.update(recorded_answers)
-    template_commit = get_template_commit(template_path)
-    if not template_commit:
+    if is_remote_template(template_path):
         candidate = effective_answers.get("_commit")
         template_commit = candidate if isinstance(candidate, str) and candidate else None
-    template_version = get_template_version(template_path) or template_commit
+        template_version = get_template_version(template_path) or template_commit
+    else:
+        # Local template generation renders a working snapshot, which may differ
+        # from every commit and tag in its checkout.
+        template_commit = "unversioned"
+        template_version = "unversioned"
     try:
-        write_workspace_manifest(
-            destination,
-            effective_answers,
-            prism_cli_version=__version__,
-            template_source=normalize_template_path(template_path),
-            template_version=template_version,
-            template_commit=template_commit,
-        )
+        if manifest_data is None:
+            write_workspace_manifest(
+                destination,
+                effective_answers,
+                prism_cli_version=__version__,
+                template_source=normalize_template_path(template_path),
+                template_version=template_version,
+                template_commit=template_commit,
+            )
+        else:
+            with tempfile.TemporaryDirectory(prefix="prism-manifest-") as temp_dir:
+                manifest_path = Path(temp_dir) / MANIFEST_FILE
+                manifest_path.write_text(yaml.safe_dump(manifest_data, sort_keys=False), encoding="utf-8")
+                write_workspace_manifest(
+                    Path(temp_dir),
+                    {},
+                    prism_cli_version=__version__,
+                    template_source=normalize_template_path(template_path),
+                    template_version=template_version,
+                    template_commit=template_commit,
+                )
+                rendered = manifest_path.read_bytes()
+
+            destination_manifest = destination / MANIFEST_FILE
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{destination_manifest.name}.",
+                suffix=".prism-tmp",
+                dir=destination_manifest.parent,
+            )
+            temporary_manifest = Path(temporary_name)
+            try:
+                with os.fdopen(descriptor, "wb") as handle:
+                    handle.write(rendered)
+
+                if expected_manifest_bytes is not None:
+                    try:
+                        current_manifest_bytes = destination_manifest.read_bytes()
+                    except OSError as exc:
+                        print(
+                            error(f"Unable to verify {MANIFEST_FILE} before saving the merge: {exc}"),
+                            file=sys.stderr,
+                        )
+                        print(info("The merged manifest was not written. Restore the file and rerun the update."), file=sys.stderr)
+                        return False
+                    if current_manifest_bytes != expected_manifest_bytes:
+                        print(
+                            error(f"{MANIFEST_FILE} changed after update preflight; the merged manifest was not written."),
+                            file=sys.stderr,
+                        )
+                        print(info("Review the current manifest and rerun `prism update` to merge from its latest contents."), file=sys.stderr)
+                        return False
+                os.replace(temporary_manifest, destination_manifest)
+            finally:
+                with contextlib.suppress(OSError):
+                    temporary_manifest.unlink()
     except (OSError, ValueError) as exc:
         print(error(f"Unable to write {MANIFEST_FILE}: {exc}"), file=sys.stderr)
         return False

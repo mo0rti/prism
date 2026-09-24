@@ -2,7 +2,7 @@
 
 Date: 2026-09-22
 
-Status: Planning. Implementation paused at the user's request. This document sets the proposed product direction, the bounded next delivery, and the decisions required for later stages. Creating this plan does not implement its proposed capabilities.
+Status, 2026-09-24: The approved core scope is implemented. Fable's initial implementation review judged its snapshot implementation-ready; its four low findings are corrected and human HTTP/agent MCP parity checks pass. The final r7 verification passed 385 tests with one skip, installed-wheel checks and both broad generation variants. The focused Fable follow-up could not start because of Claude's session limit and remains pending. [Connected-core acceptance](connected-core-acceptance.md) records the evidence and remaining browser/performance/release gates. Remote access and the remaining direct-human lifecycle actions remain deferred.
 
 ## Product direction
 
@@ -22,7 +22,7 @@ Agents should connect to a Prism board through one shared, provider-neutral inte
 - Plan the broader product direction alongside the core review fixes.
 - Make a shared agent connection part of the core product plan. Client-specific setup instructions may differ; Prism's tools, rules, and collaboration behavior must remain common across clients.
 - Humans direct their agents in the agent's CLI. Agents use the existing Prism skills to perform intake, refine work, and move items through the workflow. Preserve each skill's existing confirmation behavior; do not add a mandatory second approval in the board UI.
-- Include direct human lifecycle moves in the board. Drag-and-drop and an equivalent click/keyboard action select a named workflow action, show its requirements and proposed changes, and require the human's confirmation before applying it through the shared service. A human can complete a supported move without an agent. The detailed per-action UI contract remains an implementation gate.
+- Include direct human lifecycle moves in the board. Drag-and-drop and an equivalent click/keyboard action select a named workflow action, show its requirements and proposed changes, and require the human's confirmation before applying it through the shared service. A human can complete a supported move without an agent. The confirmed first-release matrix below defines its scope.
 - Deliver the first shared connection for a local board and agents on the same computer. Plan remote access as a subsequent stage using the same contract.
 - Allow local working-file generation with truthful unversioned provenance. Do not claim that an uncommitted snapshot has a reproducible Git commit baseline.
 - Use the recommended field-level manifest merge approach described below. Do not silently discard competing changes.
@@ -30,9 +30,22 @@ Agents should connect to a Prism board through one shared, provider-neutral inte
 
 The previous sample decisions about sessions, OAuth, transactions, email identity, and logout remain recorded in the conversation. Deferring their remaining implementation does not reverse those decisions.
 
-## Current foundation and gaps
+### Confirmed implementation decisions, 2026-09-22
 
-These observations are grounded in the current checkout, not a proposed replacement architecture.
+- The first direct-human release supports `design-start`, `dev-start`, and `po-handoff`. Specification, design handoff, completion, and reopening continue through agent skills; the UI must identify them as request-only rather than silently applying a status change.
+- One explicit local service owns each workspace and exposes both the board API and the shared MCP interface. Participants receive separate revocable access tokens. Remote access remains out of scope.
+- Standard skills have a canonical source and are bound to the workspace's workflow version. Local custom skill edits remain available through the existing direct-file path, not silently substituted into the connected contract.
+- Freshness uses the approved hybrid policy: reject changes to relevant action inputs, while preserving unrelated work and the human's unsent inputs. Recheck current deterministic conditions at apply time; a calendar change alone must not be reported as a source edit.
+- Durable operation receipts and recoverable writes support human-only recovery through the board. Actor attribution belongs to the operation journal plus a versioned history format; legacy/direct-file changes remain unattributed.
+- Old workspace contracts stay read-only until an explicit workflow upgrade. Blocked mapped drops open an explanatory preview with confirmation disabled, matching the action controls.
+- Adoption supports both existing repositories and empty workspaces. Keep the five current platform identifiers initially; arbitrary component labels remain deferred. Preserve application files and custom guidance through a reviewed setup diff. Agent-led `setup-project` remains the workflow initialization step after asset installation.
+- Implement the shared service before its human UI and MCP adapters, using a thin workflow foundation first. Existing-repository adoption and the remaining board improvements follow the connected foundation. Template generation remains an optional user journey.
+- Luna at maximum effort implements bounded tasks; the root agent reviews and integrates the work. Claude Fable 5 reviews the completed implementation and its validation evidence.
+
+## Foundation and gaps at planning review
+
+These observations describe the checkout reviewed before implementation. Current
+behavior and validation are tracked in [current-status.md](current-status.md).
 
 | Area | Current behavior | Implication for this plan |
 | --- | --- | --- |
@@ -48,22 +61,33 @@ These observations are grounded in the current checkout, not a proposed replacem
 
 Source anchors: [workflow model](prism-model.md), [lifecycle contract](../template/knowledge/wiki/SCHEMA.md), [current lifecycle acceptance](lifecycle-transitions-acceptance.md), [workspace inspection](../prism_cli/workspace.py), [transition evaluator](../prism_cli/wiki_transitions.py), and [local server](../prism_cli/graph_server.py).
 
-## Decisions before expanding product behavior
+## Settled contracts and later decisions
 
-The following are recommendations for review. Approval of the overall planning direction does not settle these contracts or a new visual design.
+The owner confirmed the first-release contracts below. These are implementation
+constraints, not requests for renewed approval. A new visual design, named
+assignment, arbitrary component labels, and remote hosting remain later work.
 
-| Decision | Recommended starting point | What requires agreement |
+| Decision | Confirmed first release | Boundary |
 | --- | --- | --- |
-| Adoption | Support attaching Prism's workflow to an existing local repository and initializing an empty workflow workspace. | Files created or merged, collision handling, and whether both entry paths belong in the first adoption release. |
-| Board actions | Two entry paths: humans confirm their own named lifecycle actions in the board; agents follow existing skills and confirmations in their CLI. Both use one workflow service. | Define the per-action human interaction and write scope, the shared operation schema, and browser/MCP access. A human's own move confirmation is not an approval queue for agent actions. No automatic agent launcher is included. |
-| Human/agent ownership | Keep the existing PO/designer/dev role field. Design an optional named assignee separately from the role. | Actor types, assignment changes, claimed work, and what evidence can establish who acted. |
-| Project scope | Keep existing generated platform IDs compatible; design declared project components for other repositories. | Whether custom components are needed immediately, their schema, and which evidence requirements apply. |
-| Agent protocol | One Prism MCP server over a shared board service, with one versioned tool contract for every supported client. | Confirm the protocol/SDK baseline and client compatibility; optional transports must reuse the same behavior. |
-| Deployment model | Confirmed: local board and agents on the same computer first; remote access next. | Set the local connection and access setup during interface design. Remote hosting and authorization belong to the subsequent stage. |
-| Human action coverage | Use the nine existing lifecycle actions as the coverage checklist. Preserve their source/target rules, review obligations, permitted changes, and completion evidence. | Approve a matrix of which actions can be completed in the first board release, the exact human inputs and semantic review steps, and which remain request-only with a reason. Do not turn a stage move into automatic specification authoring or a generic status edit. |
-| Browser write authority | Resolve the active board and participant through the local service, and validate each operation independently of UI controls. | Define local browser access, participant attribution, origin/request protections, and token handling alongside agent grants. Existing read-only Host/Origin checks alone do not establish permission to write. |
+| Adoption | Support existing repositories and empty workspaces through a previewed installation. | Preserve existing knowledge and custom guidance; conflicts require resolution. |
+| Board actions | Humans confirm their own named actions; agents follow skill confirmations in their CLI. Both use one service. | No second approval queue for agents and no automatic agent launcher. |
+| Human/agent ownership | Retain PO/designer/dev roles; record the registered participant that performs each connected operation. | Tokens establish a participant, not an independently verified person's identity. Named assignment remains later work. |
+| Project scope | Keep the five current platform IDs for generated and workflow-only workspaces. | Arbitrary component labels remain deferred. |
+| Agent protocol | One standard MCP endpoint and versioned tool contract, backed by the shared service and packaged skills. | Use the official SDK and verify real client compatibility; no provider-specific workflow connectors. |
+| Deployment model | One local process per workspace with separate revocable participant tokens. | Remote hosting and authorization remain deferred. |
+| Human action coverage | Direct `po-handoff`, `design-start`, and `dev-start`; the other six actions remain agent-led. | Keep existing prerequisites and review obligations. A gesture cannot author missing evidence. |
+| Browser write authority | Participant-bound browser sessions, origin/CSRF protections, explicit confirmation, and server-side validation on every operation. | Legacy/static views remain copy-only; old workspaces need an explicit upgrade. |
 
-These decisions are the entry gate for adoption and collaboration work. They do not prevent planning or verification of the already-identified core defects.
+The detailed action, freshness, recovery, and acceptance requirements below remain
+part of the implementation contract.
+
+The owner also confirmed the implementation clarifications: the first connected
+intake release is text-only and clearly reports unsupported attachments; a human
+with board write access may review and recover an interrupted agent operation
+after that agent's grant is revoked; and ordinary workflow blockers are readiness
+information for `prism validate`. Integrity errors still fail validation and a
+blocked transition preflight still exits 3. Human recovery requires a fresh review
+of the remaining changes and records the original and recovering actors separately.
 
 ## Intended architecture
 
@@ -85,7 +109,10 @@ flowchart TB
     T[Optional template generation] --> W
 ```
 
-This is the proposed connected architecture. The current board is read-only and does not implement the MCP or write service shown here. Humans confirm their own board actions in the UI; agents keep each skill's confirmation process in their CLI. The browser uses the board API and does not need an MCP client or a running coding agent. Introduce a shared service boundary over the existing core; a new distributed service or separate repository is not implied.
+This is the approved connected architecture being implemented. Humans confirm
+their own board actions in the UI; agents keep each skill's confirmation process
+in their CLI. The browser uses the board API and does not need an MCP client or a
+running coding agent. The service reuses the existing core in this repository.
 
 The core owns workspace inspection, evidence parsing, queries, lifecycle rules, readiness, and board projections. The board UI, CLI, and MCP server use those same facts and operation contracts. The existing Prism skills define how agents do the work. Publish that guidance through a common interface, while preserving existing Codex and Claude packaging as compatible entry paths. Provider-specific connector code must not determine the workflow. Generation supplies application scaffolds and initial workflow assets through the same core contract.
 
@@ -99,16 +126,16 @@ The new human path is an explicit addition to the current copy-only board. A dro
 2. The service reads the current workspace and returns a preview bound to the action, relevant source revision, and applicable workflow version. Show the source/destination, evidence, required human review, proposed file changes, and blockers or unknown facts. Keep the card in its current source-derived column.
 3. The human reviews the evidence and supplies the approved action-specific inputs. Structural checks do not establish semantic quality: the UI must expose the review obligations a human must perform, just as skills expose them to agents. Missing artifacts must be authored or corrected before proceeding; dragging does not generate a specification, design, implementation, review, or release evidence. Any input change requires an updated preview and checks.
 4. The human confirms that exact preview in the board. The authenticated or locally authorized participant, board, action, inputs, expected revision, and operation identity are bound to the request. There is no confirmation in an agent CLI for this path, and no agent is launched.
-5. The service rechecks authorization, source freshness, allowed write scope, and lifecycle invariants before applying the approved changes. Save the feature and any required index/history changes according to the action contract. Record the acting participant and the actual outcome without claiming a stronger real-person identity than the local access mechanism can establish.
+5. The service rechecks authorization, source freshness, allowed write scope, and lifecycle invariants before applying the approved changes. Save the action contract's complete approved write set, including any requirement, API, advisory, evidence, index, log, or reopen-history changes. Record the acting participant and the actual outcome without claiming a stronger real-person identity than the local access mechanism can establish.
 6. Show success only after a completed operation result and refreshed canonical state establish the change. Other board viewers and agents retrieve the same updated facts. Rejection leaves source files unchanged; an uncertain or partial write outcome is shown as needing reconciliation, not as a successful move or an automatic rollback.
 
 The server performs deterministic validation and bounded writes. The human performs the action's semantic review; for the agent path, the agent follows the existing skill. A shared versioned action contract must describe the invariants, evidence, and permitted writes used by both paths. A UI checkbox, an agent statement, or a passing preflight is not independent proof of the quality of that review or of external shipment.
 
 ### Example: completing development
 
-When a human drags an item from development to Done, Prism selects the existing `dev-done` action. Its preview shows the applicable completion evidence and review obligations. Missing evidence or unresolved blocking facts prevent confirmation. The human can correct the evidence or ask an agent in their own CLI to finish the work, then prepare a fresh move. Confirmation records completion only when the action's existing requirements are met; it does not run tests, deploy the application, or redefine Done.
+The future direct-human Done flow would select the existing `dev-done` action and preview all applicable completion evidence, review obligations, proposed requirement/API completions, and post-ship notes. This action remains request-only in the approved first human release. Missing evidence or unresolved blocking facts prevent completion; a person or agent must verify the evidence before applying the full action contract. No gesture runs tests, deploys the application, or redefines Done.
 
-Reopening likewise uses the existing named reopen route and its required reasons/revalidation. It is not an unrestricted backward status change. The exact fields, review steps, and editable artifacts for every supported human action must be agreed in Milestone 0 before implementing its UI.
+Reopening likewise uses the existing named reopen route and its required reasons/revalidation. It is not an unrestricted backward status change. Its direct-human form remains deferred; the first three human actions use the confirmed fields and review obligations below.
 
 ### One set of rules across both paths
 
@@ -122,9 +149,9 @@ Use the same lifecycle invariants and authorization model, while evaluating the 
 
 During concurrent human and agent work, a preview becomes stale if a relevant source changes. Reject the stale confirmation, retain the human's unsent inputs where safe, show the changed facts, and require a new confirmation. A same-column drop, cancellation before submission, or denied move must not dispatch agent work or change files.
 
-After submission, a timeout or closed dialog cannot be treated as cancellation. Use a durable operation identity and receipt to retrieve the outcome; retrying the identical request must not duplicate a transition or history entry. Design and test crash recovery across the actual multi-file write sequence before enabling either browser or MCP writes. A small operation journal may store receipts and recovery metadata without becoming another authoritative board database; its exact location, format, and recovery protocol remain shared-contract design decisions.
+After submission, a timeout or closed dialog cannot be treated as cancellation. Use a durable operation identity and receipt to retrieve the outcome; retrying the identical request must not duplicate a transition or history entry. Design and test crash recovery across the actual multi-file write sequence before enabling either browser or MCP writes. A small operation journal stores receipts and recovery metadata without becoming another authoritative board database. The board must offer a no-agent recovery path that reports observed changes and safely completes the recorded remaining writes; conflicting external edits must be preserved for explicit reconciliation. A successful receipt followed by a failed refresh is shown as applied with a stale view, not as a failed write.
 
-Advertise browser write support separately from legacy preflight capability version 2 and `mode: copy-only`; retain their existing meaning. A missing grant, unavailable write service, or static export must show the appropriate read-only state. Never silently substitute copying a request after the user confirmed a move.
+Advertise browser write support separately from legacy preflight capability version 2 and `mode: copy-only`; retain their existing meaning. A missing grant, unavailable write service, static export, or workspace contract predating human moves must show the appropriate read-only state. Older workspaces require an explicit upgrade before writes are enabled. Never silently substitute copying a request after the user confirmed a move.
 
 ## Shared agent connection: MCP proposal
 
@@ -158,7 +185,7 @@ These are candidate operation groups for the contract design, not implemented en
 | Discover and read Prism skills | Retrieve the existing skill instructions, inputs, referenced guidance, permitted write scope, and applicable workflow version. |
 | Read work and context | Find features, ownership, blockers, questions, decisions, source references, and current preflight results. |
 | Read intake and refine work | Give intake and clarification skills access to their current source material and the wiki artifacts they are allowed to create or update. |
-| Check a skill's intended changes | Reuse preflight and conflict checks against the current source revision. Return information the agent needs for the skill's existing preview and confirmation steps. |
+| Check a skill's intended changes | Reuse applicable feature preflight and source checks, and add deterministic checks required by the write contract. For intake/clarification, provide current facts and duplicate/source signals for the agent's semantic conflict review; no existing mechanical intake preflight is implied. Return the exact proposed changes for the skill's confirmation steps. |
 | Apply skill-scoped changes | Let the agent perform the selected skill's authorized writes, including feature content, permitted lifecycle fields, index/log updates, and intake moves where that skill allows them. The service checks permissions, source freshness, and structural invariants. |
 | Observe the result | Return the actual changes and any partial failure. The board reflects updated source state; other agents can retrieve it. |
 | Catch up after changes | Fetch changes since a cursor and reread current state; support notifications where available without requiring them for correctness. |
@@ -197,19 +224,19 @@ Pin and test the selected MCP specification and SDK together. At this planning c
 
 ### Milestone 0: Agree the product boundary
 
-Review this plan and settle the remaining adoption, ownership, scope, and operation-schema decisions before their implementation. Preserve both the local, CLI-directed, skill-driven agent connection and direct human board actions. Define what each skill can read and write and what the human and other agents can observe.
+The owner confirmed adoption, local access, scope, staged human actions and the shared-service design. Preserve both the local, CLI-directed, skill-driven agent connection and direct human board actions. The service advertises each skill's readable guidance and supported write scope; unsupported connected writes are explicit.
 
 Keep the current lifecycle stages and completion evidence rules as the baseline. Changes to what Done means, advisory obligations, permissions, or workflow stages require explicit decisions.
 
-For human moves, agree a coverage matrix for `po-specify`, `po-handoff`, `design-start`, `design-handoff`, `dev-start`, `dev-done`, `reopen-spec`, `reopen-design`, and `reopen-dev`: direct-board support in the first release, allowed source/target, exact inputs and permitted writes, semantic review obligations, evidence, authorization, confirmation, and recovery. An action's absence from the first direct-board release is explicit, not silently replaced by a raw status update. Define shared contract/version ownership so browser forms, served skills, and legacy packages cannot maintain conflicting lifecycle rules.
+For human moves, implement the approved coverage matrix: direct-board completion for `po-handoff`, `design-start`, and `dev-start`; request-only for `po-specify`, `design-handoff`, `dev-done`, and the three reopen routes. Preserve the exact source status/owner pair, target, complete per-action write set, semantic review obligations, evidence, authorization, confirmation, and recovery. Document and test deterministic write checks added beyond today's preflight; a ready read-only preflight is insufficient by itself. Shared contract/version ownership keeps browser forms, served skills, and legacy packages aligned.
 
-The [first Fable plan review](reviews/2026-09-22-fable5-prism-core-plan-review.md) also leaves decisions about the local process and board discovery, participant grants, canonical/versioned skill delivery and local customizations, per-skill connected coverage, scope compatibility, retry storage, content trust, path confinement, and delivery order. This human-move revision does not silently resolve those recommendations. Design the relevant mechanisms for both browser and MCP writes; keep implementation gated on the applicable decisions.
+The user has confirmed the local process/access, canonical/versioned guidance, customization, freshness, recovery, history, legacy eligibility, adoption, scope compatibility, and staged human coverage recommendations from the [first Fable review](reviews/2026-09-22-fable5-prism-core-plan-review.md) and [round two](reviews/2026-09-22-fable5-prism-core-plan-review-round-2.md). Apply content-trust and path-confinement protections to both browser and MCP writes. Enumerate connected skill scopes explicitly; trusted packaged instructions must remain separate from untrusted workspace content.
 
 **Exit:** a concrete first-release scope, agreed interaction behavior, and a short list of deferred capabilities. No visual or data-model assumptions remain in the next implementation slice.
 
 ### Milestone 1: Make the current core dependable
 
-This is the recommended next implementation delivery. It can be reviewed and accepted independently of the broader evolution.
+These repairs form the first part of the approved implementation. They also retain independent regression coverage within the integrated delivery.
 
 | Priority | Work | Acceptance evidence |
 | --- | --- | --- |
@@ -223,6 +250,8 @@ This is the recommended next implementation delivery. It can be reviewed and acc
 Primary files: `prism_cli/cli.py`, `workspace.py`, `render.py`, `graph_server.py`, `assets/graph_template.html`, the shared `wiki_*` modules, `scripts/check-installed-cli.py`, `scripts/dashboard-boot-check.js`, core tests, and maintainer documentation. Template edits in this milestone are limited to core workflow assets and generation/update compatibility.
 
 **Manifest merge policy:** compare the old template, the current workspace, and the new template field by field. Preserve user-only changes, apply template-only changes, and stop before modifying the project when both sides changed the same field differently. Regenerate Prism-owned provenance independently. Treat lists conservatively as whole values unless a specific merge rule is agreed.
+
+Prism owns this semantic manifest update: exclude the manifest from Copier's text merge, render the old/new inputs without executing tasks, and reject unresolved baseline/conflict conditions before modifying the project. Milestone 1 also owns creation of the product-neutral core acceptance fixture used by later service, browser, and MCP checks.
 
 Example: an unchanged minimum version can advance from `0.2.0` to the template's `0.3.0`; a workspace-only `team_notes` field stays intact. If the user changed the minimum to `0.4.0` while the template changed it to `0.3.0`, present that conflict for resolution. Do not choose either value silently. Cover new fields, deleted fields, unsupported schemas, malformed manifests, and interrupted updates in the compatibility design.
 
@@ -242,11 +271,11 @@ Make workflow schema and agent guidance available through a reusable installatio
 
 Implement only the entry paths approved in Milestone 0. A user should be able to inspect a proposed Prism setup before files change. Existing source code, project tooling, wiki content, and agent instructions must be preserved or explicitly merged.
 
-Define the exact file set and collision behavior first. Proposed command names such as `prism init` or `prism attach` remain naming candidates until that interface is agreed. Adoption must not silently run application generation, replace a project's agent rules, or classify an unrelated code directory as workspace corruption.
+The entry points are `prism workflow install` and `prism workflow upgrade`, each with a preview before explicit `--apply`. The plan contains the exact file set and collisions. Adoption must not silently run application generation, replace a project's agent rules, or classify an unrelated code directory as workspace corruption.
 
 Support a repeatable second run, a useful repair report for partial setup, and a clear record of the workflow version installed. Installation of workflow assets and later updates must follow the same preservation contract.
 
-**Exit:** adopt a disposable existing repository with its own source, configuration, and agent guidance; verify the approved diff, idempotence, and a complete core workflow journey. Also test an empty workspace if that entry path is included. Neither case needs a TreasuryFlow backend or mobile build to use the board.
+**Exit:** adopt a disposable existing repository with its own source, configuration, and agent guidance; verify the approved diff, idempotence, and a complete core workflow journey. Also test the approved empty-workspace entry path. Neither case needs a TreasuryFlow backend or mobile build to use the board.
 
 ### Milestone 4: Connect agents through the shared MCP interface
 
@@ -294,6 +323,7 @@ Use documentation and maturity labels that identify which evidence concerns Pris
 | Human board actions | Test the approved per-action coverage matrix with no agent running. Drag and click/keyboard produce equivalent previews and confirmed writes. Missing evidence, blocked/unknown facts, same-column drops, cancel, and denied/unsupported actions cause no writes; static/legacy surfaces remain copy-only. Verify exact write scope and the human's required review inputs, not just a moved card. |
 | Collaboration | A human directs multiple agents through their CLIs and also performs their own confirmed board actions. Each path reads the other's actual results. Verify competing edits, changed inputs, stale previews, repeated submissions, lost responses, revocation, crash/partial-write recovery, and participant attribution limits. The human's own confirmation does not introduce an approval queue for agents. |
 | Browser write boundary | Check board/participant binding, authorization on every operation, the agreed origin and cross-site request defenses, credential handling, and revocation. A rejected request produces no writes; external repository edits invalidate affected previews without inventing authorship. |
+| Human/agent parity | The same action and inputs through the board and MCP produce equivalent canonical diffs apart from actor metadata. The same broken fixture is rejected through both paths. Include two-tab double-confirm, unrelated concurrent edits, midnight freshness, legacy-workspace write refusal, and successful-write/failed-refresh cases. |
 | User experience | Actual browser checks for board state, focus, keyboard alternatives, themes, narrow screens, and interrupted live connections. Script harnesses support this evidence but do not replace it. |
 | Scale | Measure representative small and large wikis with one and multiple viewers. Set response and refresh budgets from the baseline before accepting performance work. |
 | Compatibility | Existing generated projects, unsupported schema versions, unversioned local sources, and any newly supported non-generated workspace. |
@@ -310,13 +340,20 @@ The [2026-09-22 Claude Opus 5 review](reviews/2026-09-22-opus5-remediation-revie
 
 | Group | Disposition |
 | --- | --- |
-| N-01, N-11, N-12, N-13, N-14, N-21 | In the next core implementation delivery. |
-| N-15 | Fix already present; verify in the final core acceptance pass. |
-| O-1, O-2, O-3, O-9, O-10 | Bounded core follow-ups: validate the residual, resolve any behavior decision, then implement only the agreed correction. |
+| N-01, N-11, N-12, N-13, N-14, N-21 | Implemented and checked in the core suite, installed-wheel acceptance and current documentation audit; the initial Fable implementation review confirms their disposition. Focused correction review and wider connected acceptance remain separate gates. |
+| N-15 | Verified with actual CLI human/JSON preflight output: the same seven non-pass checks are reported, pass checks omitted from human output, and both exit 3. |
+| O-1, O-2, O-9 | Framing protection, shared polling and `supported` wording are implemented and tested. Scale baselines are measured; no response/refresh budget is claimed. |
+| O-3 | Owner confirmed normal blockers as readiness information for `prism validate`; the implementation and focused verification are in this pass. Integrity failures remain errors and blocked transition preflight exits 3. |
+| O-10 | Shared parser/link cleanup has regression coverage. Domain-specific transition evaluation remains in its existing module; a larger module reorganization is deferred. |
 | O-11 | In-memory `--open` and advanced Redis selection already have changes and targeted checks; retain regression coverage. |
 | N-02 through N-10; N-16 through N-20 | Remaining sample-app findings deferred by the user's scope decision. This includes the approved but unfinished transaction, email, and logout work. |
 | O-4 through O-8; O-12 | Sample security, networking, authorization, and deployment follow-ups deferred. |
 | Existing original-review fixes | Preserve the work; recheck core changes together instead of restarting the entire review or expanding sample scope. |
 | Earlier CLI/board acceptance records | Historical milestones. Keep their boundaries and distinguish them from current acceptance. |
 
-**Next implementation boundary:** complete Milestone 1 as a focused core repair pass once planning review is complete. Begin later product stages only after their stated contract and interaction decisions are settled.
+**Current implementation boundary:** the approved core repairs, workflow adoption,
+shared service/MCP and staged human-board implementation are complete and pass the
+integrated r7 checks. The first Fable implementation review is complete; its four
+low findings are corrected, with follow-up review waiting for Claude availability.
+Actual browser checks and performance acceptance remain open. Publication, remote
+access, wider human action coverage and sample work remain deferred.

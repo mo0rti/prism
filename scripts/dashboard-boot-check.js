@@ -13,6 +13,7 @@ const checkHealthLabels = process.argv.includes("--check-health-labels");
 const checkViewAccessibility = process.argv.includes("--check-view-accessibility");
 const checkUnknownStage = process.argv.includes("--check-unknown-stage");
 const checkTransitions = process.argv.includes("--check-transitions");
+const checkConnectedBoard = process.argv.includes("--check-connected-board");
 
 // --- extract embedded JSON payloads and the app script ---
 function tagContent(id) {
@@ -43,6 +44,8 @@ function hasClass(attrs, name) {
 function matchesSelector(tag, attrs, selector) {
   return selector.split(",").some(part => {
     const value = part.trim();
+    const dataAttribute = value.match(/^\[([\w-]+)\]$/);
+    if (dataAttribute && dataAttribute[1].startsWith("data-")) return attrs[dataAttribute[1]] !== undefined;
     if (value === ".card[data-id]") return tag === "div" && hasClass(attrs, "card") && attrs["data-id"] !== undefined;
     if (value === ".card[data-intake]") return tag === "div" && hasClass(attrs, "card") && attrs["data-intake"] !== undefined;
     if (value === ".column[data-stage]") return tag === "div" && hasClass(attrs, "column") && attrs["data-stage"] !== undefined;
@@ -107,11 +110,15 @@ function makeElement(id, sourceHtml) {
       if (name === "class") { this.className = String(value); String(value).split(/\s+/).filter(Boolean).forEach(name => classes.add(name)); }
       if (name.startsWith("data-")) this.dataset[name.slice(5).replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase())] = String(value);
       if (name === "hidden") this.hidden = true;
+      if (name === "disabled") this.disabled = true;
+      if (name === "checked") this.checked = true;
     },
     removeAttribute(name) {
       delete this.__attributes[name];
       if (name.startsWith("data-")) delete this.dataset[name.slice(5).replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase())];
       if (name === "hidden") this.hidden = false;
+      if (name === "disabled") this.disabled = false;
+      if (name === "checked") this.checked = false;
     },
     hasAttribute(name) { return Object.prototype.hasOwnProperty.call(this.__attributes, name); },
     getAttribute(name) { return this.__attributes[name] === undefined ? null : this.__attributes[name]; },
@@ -152,6 +159,9 @@ function makeElement(id, sourceHtml) {
             if (key.startsWith("data-")) node.dataset[key.slice(5).replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase())] = value;
           });
           node.textContent = decodeHtml((source.slice(match.index + match[0].length, source.indexOf("</", match.index + match[0].length)) || "").replace(/<[^>]*>/g, "").trim());
+          if (attrs.disabled !== undefined) node.disabled = true;
+          if (attrs.checked !== undefined) node.checked = true;
+          if (tag === "textarea") node.value = node.textContent;
           if (attrs.id) { node.id = attrs.id; elements[attrs.id] = node; }
           cache.nodes.push(node);
         }
@@ -221,6 +231,24 @@ function makeChain() {
 }
 
 const errors = [];
+function syncChain(value, failure) {
+  const settle = result => result && result.__syncChain ? result : syncChain(result);
+  return {
+    __syncChain: true,
+    value,
+    failure,
+    then(onFulfilled, onRejected) {
+      if (failure) return onRejected ? settle(onRejected(failure)) : syncChain(null, failure);
+      try { return onFulfilled ? settle(onFulfilled(value)) : syncChain(value); }
+      catch (error) { return syncChain(null, error); }
+    },
+    catch(onRejected) {
+      if (!failure) return syncChain(value);
+      try { return onRejected ? settle(onRejected(failure)) : syncChain(null, failure); }
+      catch (error) { return syncChain(null, error); }
+    },
+  };
+}
 const sandbox = {
   document: doc,
   window: {
@@ -236,11 +264,12 @@ const sandbox = {
   clearTimeout() {},
   navigator: {},
   EventSource: undefined,
-  fetch() { return Promise.resolve({ json: () => Promise.resolve({}) }); },
+  fetch() { return new Promise(() => {}); },
   ForceGraph: () => makeChain(),
   console,
 };
 sandbox.globalThis = sandbox;
+sandbox.__syncChain = syncChain;
 sandbox.transitionPayload = JSON.parse(dataJson);
 
 const vm = require("vm");
@@ -371,6 +400,7 @@ if (checkTransitions) {
 ;(() => {
   const clone = value => JSON.parse(JSON.stringify(value));
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  state.boardConnection = "unsupported";
   const makeReady = () => {
     const payload = clone(globalThis.transitionPayload);
     const sourcePath = "knowledge/wiki/features/F-001-ready-handoff.md";
@@ -619,34 +649,69 @@ if (checkTransitions) {
   const liveEnvelope = makeReady();
   liveEnvelope.facts.transition_capability.snapshot.fingerprint = "fp-live";
   let livePayload = { version: 3, epoch: "first", envelope: liveEnvelope };
+  let failNextLiveFetches = 0;
   globalThis.EventSource = function () { this.onmessage = null; this.onerror = null; liveSources.push(this); };
   globalThis.setTimeout = (callback, delay) => { liveTimers.push({ callback, delay }); return liveTimers.length; };
   globalThis.setInterval = () => 1;
   globalThis.clearTimeout = () => {};
   globalThis.fetch = () => {
     liveFetches += 1;
-    return liveFetches === 1
-      ? liveChain({ json() { throw new Error("temporary fetch failure"); } }, null)
-      : liveChain({ json() { return livePayload; } }, null);
+    if (failNextLiveFetches > 0) {
+      failNextLiveFetches -= 1;
+      return liveChain({ json() { throw new Error("temporary fetch failure"); } }, null);
+    }
+    return liveChain({ ok: true, json() { return livePayload; } }, null);
   };
+  adoptData(liveEnvelope); switchView("board"); renderBoard();
+  const liveAction = document.getElementById("board-view").querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-001");
+  liveAction.__listeners.click[0]({ stopPropagation() {}, preventDefault() {} });
+  const liveDialog = document.getElementById("transition-dialog");
+  assert(!liveDialog.querySelector("[data-transition-copy]").hasAttribute("aria-disabled"), "live recovery fixture did not start with an available Copy action");
+  document.getElementById("sr-status").textContent = "";
   initLive();
   assert(liveSources.length === 1, "live mode did not create an EventSource");
-  liveSources[0].onmessage({ data: "2", lastEventId: "first:2" });
-  assert(liveFetches === 1, "first SSE event did not fetch the live snapshot");
-  const retry = liveTimers.find(timer => timer.delay === 1500);
-  assert(retry, "failed live fetch did not schedule a retry");
-  retry.callback();
-  assert(liveFetches === 2 && state.data === liveEnvelope && state.liveRefreshError === null, "scheduled live retry did not adopt the successful snapshot (fetches=" + liveFetches + ", same=" + (state.data === liveEnvelope) + ", error=" + state.liveRefreshError + ", last=" + liveLastError + ")");
   liveSources[0].onmessage({ data: "3", lastEventId: "first:3" });
-  assert(liveFetches === 2, "live client did not advance from payload.version and coalesce the adopted event");
+  assert(liveFetches === 1 && state.data === liveEnvelope && state.liveRefreshError === null, "initial epoch greeting did not adopt a healthy live snapshot");
+  assert(!document.getElementById("sr-status").textContent.includes("Live refresh unavailable"), "initial epoch greeting was announced as a server restart");
+  assert(!liveDialog.querySelector("[data-transition-copy]").hasAttribute("aria-disabled"), "initial epoch greeting incorrectly staled an open preview");
+  livePayload = { version: 4, epoch: "first", envelope: liveEnvelope };
+  liveSources[0].onmessage({ data: "4", lastEventId: "first:4" });
+  assert(liveFetches === 2 && state.data === livePayload.envelope && state.liveRefreshError === null, "new same-server version was not adopted");
+  liveSources[0].onmessage({ data: "4", lastEventId: "first:4" });
+  assert(liveFetches === 2, "healthy duplicate event caused an unnecessary snapshot fetch");
   liveSources[0].onerror();
-  assert(state.liveRefreshError, "disconnect must disable copying stale facts");
+  const freshness = document.getElementById("freshness");
+  const copyAfterDisconnect = liveDialog.querySelector("[data-transition-copy]");
+  assert(state.liveRefreshError && freshness.innerHTML.includes('class="live-dot stale"') && freshness.innerHTML.includes("STALE"), "disconnect did not render stale header state after the normal header rebuild");
+  assert(copyAfterDisconnect.hasAttribute("aria-disabled") && liveDialog.innerHTML.includes("Copy is disabled"), "disconnect did not revoke Copy from the already-open preview");
+  failNextLiveFetches = 1;
+  liveSources[0].onmessage({ data: "4", lastEventId: "first:4" });
+  assert(liveFetches === 3, "same-epoch reconnect with the same version did not request a fresh snapshot");
+  const copyAfterReconnect = liveDialog.querySelector("[data-transition-copy]");
+  assert(state.liveRefreshError && freshness.innerHTML.includes('class="live-dot stale"') && copyAfterReconnect.hasAttribute("aria-disabled"), "reconnect notice cleared stale state before snapshot validation succeeded");
+  const retry = liveTimers.filter(timer => timer.delay === 1500).at(-1);
+  assert(retry, "failed same-version reconnect refresh did not schedule a retry");
+  retry.callback();
+  assert(liveFetches === 4 && state.data === livePayload.envelope && state.liveRefreshError === null, "successful same-version retry did not restore the validated live snapshot (fetches=" + liveFetches + ", same=" + (state.data === livePayload.envelope) + ", error=" + state.liveRefreshError + ", last=" + liveLastError + ")");
+  assert(freshness.innerHTML.includes('class="live-dot"') && freshness.innerHTML.includes("LIVE") && !freshness.innerHTML.includes("stale"), "validated recovery did not restore the healthy header indicator");
+  const copyAfterRecovery = liveDialog.querySelector("[data-transition-copy]");
+  assert(copyAfterRecovery.hasAttribute("aria-disabled") && liveDialog.innerHTML.includes("Copy is disabled until this feature is refreshed and reviewed again"), "recovery silently approved the preview that was open during the disconnect");
+  liveDialog.querySelector("[data-transition-cancel]").__listeners.click[0]();
+  const recoveredAction = document.getElementById("board-view").querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-001");
+  recoveredAction.__listeners.click[0]({ stopPropagation() {}, preventDefault() {} });
+  const recoveredDialog = document.getElementById("transition-dialog");
+  assert(!recoveredDialog.querySelector("[data-transition-copy]").hasAttribute("aria-disabled"), "fresh preview remained disabled after validated same-version recovery");
+  recoveredDialog.querySelector("[data-transition-cancel]").__listeners.click[0]();
+  liveSources[0].onmessage({ data: "4", lastEventId: "first:4" });
+  assert(liveFetches === 4, "live client did not coalesce a healthy duplicate event after recovery");
+  liveSources[0].onerror();
   livePayload = { version: 1, epoch: "restarted", envelope: JSON.parse(JSON.stringify(liveEnvelope)) };
   liveSources[0].onmessage({ data: "1", lastEventId: "restarted:1" });
-  assert(liveFetches === 3 && state.data === livePayload.envelope && !state.liveRefreshError, "server restart did not adopt its lower version");
+  assert(liveFetches === 5 && state.data === livePayload.envelope && !state.liveRefreshError, "server restart did not adopt its lower version");
   livePayload = { version: 2, epoch: "restarted", envelope: JSON.parse(JSON.stringify(liveEnvelope)) };
   liveSources[0].onmessage({ data: "2", lastEventId: "restarted:2" });
-  assert(liveFetches === 4 && state.data === livePayload.envelope, "post-restart update was ignored");
+  assert(liveFetches === 6 && state.data === livePayload.envelope, "post-restart update was ignored");
+  globalThis.__liveRecoveryChecked = true;
   globalThis.EventSource = priorEventSource;
   globalThis.fetch = priorFetch;
   globalThis.setTimeout = priorSetTimeout;
@@ -904,6 +969,333 @@ if (checkTransitions) {
   state.surface = priorSurface;
 })();`);
 }
+if (checkConnectedBoard) {
+  regressionChecks.push(`
+;(() => {
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const syncChain = globalThis.__syncChain;
+  const calls = [];
+  const saved = [];
+  localStorage.setItem = (key, value) => saved.push([key, value]);
+  const makeEnvelope = () => {
+    const payload = JSON.parse(JSON.stringify(globalThis.transitionPayload));
+    payload.root = "C:\\\\demo\\\\board";
+    payload.workspace = { kind: "generated-project", project_name: "Connected board fixture", platforms: ["backend"] };
+    const agentPath = "knowledge/wiki/features/F-agent.md";
+    const agentAction = { version: 1, feature_id: "F-agent", source_status: "in-design", source_owner: "designer", source_path: agentPath, target_status: "ready-for-dev", target_owner: "dev", action: "design-handoff", classification: "ready", supported: true, checks: [{ code: "source-readable", status: "pass", message: "Connected source is readable.", path: agentPath }], sources: [agentPath] };
+    payload.facts.nodes = [
+      { id: "F-blocked", type: "feature", title: "Blocked mapped action", path: "knowledge/wiki/features/F-blocked.md", health: "warning", status: "specified", owner: "wrong-owner", open_questions: [] },
+      { id: "F-apply", type: "feature", title: "PO handoff", path: "knowledge/wiki/features/F-apply.md", health: "ok", status: "specified", owner: "po", advisory_review: "pending", open_questions: [] },
+      { id: "F-close", type: "feature", title: "Closed while applying", path: "knowledge/wiki/features/F-close.md", health: "ok", status: "ready-for-design", owner: "designer", open_questions: [] },
+      { id: "F-lost", type: "feature", title: "Lost response", path: "knowledge/wiki/features/F-lost.md", health: "ok", status: "ready-for-dev", owner: "dev", open_questions: [] },
+      { id: "F-agent-node", type: "feature", title: "Provider-neutral agent handoff", path: agentPath, health: "ok", status: "in-design", owner: "designer", transition: agentAction, transitions: [agentAction], open_questions: [] },
+    ];
+    payload.facts.node_count = 5;
+    payload.facts.edges = [];
+    payload.facts.edge_count = 0;
+    payload.facts.intake = { pending: [], quarantined: [] };
+    payload.facts.transition_capability = { version: 2, mode: "copy-only", supported_actions: [], snapshot: { consistent: true, fingerprint: "fp-no-vendor", observed_at: "2026-09-22T12:00:00Z" }, surfaces: [] };
+    payload.blocker_facts = [];
+    return payload;
+  };
+  const beforeEnvelope = makeEnvelope();
+  const afterEnvelope = JSON.parse(JSON.stringify(beforeEnvelope));
+  const appliedFeature = afterEnvelope.facts.nodes.find(node => node.id === "F-apply");
+  appliedFeature.status = "ready-for-design";
+  appliedFeature.owner = "designer";
+  const closedApplyEnvelope = JSON.parse(JSON.stringify(afterEnvelope));
+  const closedDuringApply = closedApplyEnvelope.facts.nodes.find(node => node.id === "F-close");
+  closedDuringApply.status = "in-design";
+  const previewFeatureById = {};
+  let dataRefreshEnvelope = beforeEnvelope;
+  let failGraphRefresh = false;
+  let lostOperationId = "";
+  let failNextOperationInspection = false;
+  let failNextLostRecovery = false;
+  let rejectPreview = false;
+  const opListId = "op-list-pending";
+  let opListReviewRevision = "review-op-1";
+  let originalAgentGrantRevoked = false;
+  let lostReviewRevision = "review-lost-1";
+  let discoveredPendingOperations = [];
+  const reply = (payload, status = 200) => syncChain({ ok: status >= 200 && status < 300, status, json: () => syncChain(payload) });
+  globalThis.fetch = (path, options = {}) => {
+    const url = String(path);
+    calls.push({ path: url, options });
+    if (url === "/api/board/v1/auth/session") return reply({ actor: { participant_id: "human-7", name: "Safe Human", kind: "human", writable: true, board_id: "board-7", workflow_version: "1", scopes: ["read", "write"] }, csrf_token: "csrf-only-in-memory" });
+    if (url === "/api/board/v1/discover") return reply({ schema_version: 1, capability: { workflow_eligible: true, human_actions: ["po-handoff", "design-start", "dev-start"], supported_actions: ["po-specify", "po-handoff", "design-start", "design-handoff", "dev-start", "dev-done", "reopen-spec", "reopen-design", "reopen-dev"], supported_write_skills: ["po-specify", "design-handoff", "dev-done", "feature-reopen"] }, pending_operations: discoveredPendingOperations, participant: { name: "Safe Human", kind: "human", writable: true } });
+    if (url === "/api/board/v1/previews/transition") {
+      if (rejectPreview) return reply({ error: { code: "unauthorized", message: "The participant grant was revoked." } }, 401);
+      const body = JSON.parse(options.body || "{}");
+      const previewId = "preview-" + (calls.filter(item => item.path === url).length);
+      previewFeatureById[previewId] = body.feature_id;
+      const blocked = body.feature_id === "F-blocked";
+      const acknowledged = body.inputs && body.inputs.semantic_review_acknowledged === true;
+      const skip = body.inputs && body.inputs.skip_advisory_review === true;
+      const checks = [];
+      if (blocked) checks.push({ code: "source-owner", status: "blocked", message: "Feature owner does not match the PO handoff source." });
+      if (body.feature_id === "F-apply") checks.push({ code: "advisory-review", status: skip ? "pass" : "review", message: skip ? "Advisory review skip was proposed." : "Advisory review is pending." });
+      checks.push({ code: "semantic-review-confirmation", status: acknowledged ? "pass" : "review", message: acknowledged ? "Semantic review acknowledged." : "Review the exact source changes before continuing." });
+      return reply({ schema_version: 1, preview_id: previewId, action: body.action, feature_id: body.feature_id, classification: blocked ? "blocked" : acknowledged && (body.feature_id !== "F-apply" || skip) ? "ready" : "review", applicable: !blocked && acknowledged && (body.feature_id !== "F-apply" || skip), checks, blockers: checks.filter(check => check.status !== "pass"), review_obligations: [], source: { status: "specified", owner: blocked ? "wrong-owner" : "po" }, target: { status: "ready-for-design", owner: "designer" }, writes: [{ path: "knowledge/wiki/features/" + body.feature_id + ".md", role: "canonical", before: "status: specified\\nowner: po\\n", after: "status: ready-for-design\\nowner: designer\\n<title>& safe</title>" }, { path: "knowledge/wiki/log.md", role: "log", before: "", after: "<!-- board operation preview -->\\n" }] });
+    }
+    if (url === "/api/board/v1/query") {
+      const body = JSON.parse(options.body || "{}");
+      if (body.kind === "transition-preflight" && body.value === "F-agent" && body.action === "design-handoff") {
+        return reply({ schema_version: 1, command: "wiki transition-preflight", facts: { transition: { version: 1, feature_id: "F-agent", source_status: "in-design", source_owner: "designer", source_path: "knowledge/wiki/features/F-agent.md", target_status: "ready-for-dev", target_owner: "dev", action: "design-handoff", classification: "ready", supported: true, checks: [{ code: "source-readable", status: "pass", message: "Connected source is current." }], reason: "ready" } }, snapshot: { consistent: true, revision: "sha256:agent-preflight" }, provenance: "fixture" });
+      }
+      return reply({ error: { code: "not_found", message: "Fixture query is unavailable." } }, 404);
+    }
+    if (url === "/api/board/v1/apply") {
+      const body = JSON.parse(options.body);
+      if (previewFeatureById[body.preview_id] === "F-lost") { lostOperationId = body.operation_id; return syncChain(null, new Error("simulated lost apply response")); }
+      if (previewFeatureById[body.preview_id] === "F-close") {
+        closeTransitionPreview("The dialog closed while Apply was in flight.");
+        dataRefreshEnvelope = closedApplyEnvelope;
+      } else dataRefreshEnvelope = afterEnvelope;
+      return reply({ schema_version: 1, operation_id: body.operation_id, state: "applied", applied_paths: ["knowledge/wiki/features/F-apply.md", "knowledge/wiki/index.md", "knowledge/wiki/log.md"], recovery_available: false });
+    }
+    if (url === "/api/board/v1/operations/" + opListId) {
+      if (failNextOperationInspection) { failNextOperationInspection = false; return reply({ error: { code: "temporarily_unavailable", message: "Inspection response was unavailable." } }, 503); }
+      return reply({ schema_version: 1, operation_id: opListId, state: "conflict", recovery_review_revision: opListReviewRevision, actor: { participant_id: "agent-9", name: "Former Agent", kind: "agent" }, remaining_changes: [{ path: "knowledge/wiki/features/F-old.md", state: "conflict", before: "status: specified\\n", after: "status: ready-for-design <&>\\n", current_digest: "sha256:<current&>" }], moves: [{ source: "knowledge/intake/pending/F-old", destination: "knowledge/intake/processed/F-old", source_digest: "private" }], receipt: { schema_version: 1, operation_id: opListId, state: "conflict", applied_paths: ["knowledge/wiki/log.md"], conflicts: [{ path: "knowledge/wiki/features/F-old.md", reason: "Current <file> & differs." }] } });
+    }
+    if (url.startsWith("/api/board/v1/operations/") && !url.endsWith("/recover")) return reply({ schema_version: 1, operation_id: lostOperationId, state: "pending", recovery_review_revision: lostReviewRevision, actor: { participant_id: "human-7", name: "Safe Human", kind: "human" }, remaining_changes: [{ path: "knowledge/wiki/features/F-lost.md", state: "pending", before: "status: ready-for-dev\\n", after: "status: done\\n", current_digest: "sha256-current" }], moves: [], receipt: null });
+    if (url.endsWith("/recover")) {
+      const operationId = decodeURIComponent(url.split("/").at(-2));
+      const body = JSON.parse(options.body || "{}");
+      if (operationId === lostOperationId && failNextLostRecovery) { failNextLostRecovery = false; return syncChain(null, new Error("simulated lost recovery response")); }
+      const expectedRevision = operationId === opListId ? opListReviewRevision : lostReviewRevision;
+      if (body.review_revision !== expectedRevision || body.semantic_review_acknowledged !== true) return reply({ error: { code: "stale_recovery_review", message: "The operation changed after review." } }, 409);
+      if (operationId === opListId && (!originalAgentGrantRevoked || state.boardActor.participant_id === "agent-9")) return reply({ error: { code: "unauthorized", message: "Only another current human can recover this revoked-agent operation." } }, 403);
+      if (operationId === lostOperationId) failGraphRefresh = true;
+      discoveredPendingOperations = discoveredPendingOperations.filter(item => item.operation_id !== operationId);
+      const recoveredReceipt = { schema_version: 1, operation_id: operationId, state: "applied", applied_paths: ["knowledge/wiki/features/F-lost.md", "knowledge/wiki/index.md", "knowledge/wiki/log.md"], recovery_available: false, actor: operationId === opListId ? { participant_id: "agent-9", name: "Former Agent", kind: "agent" } : { participant_id: "human-7", name: "Safe Human", kind: "human" } };
+      if (operationId === opListId) recoveredReceipt.recovered_by = { participant_id: "human-7", name: "Safe Human", kind: "human" };
+      return reply(recoveredReceipt);
+    }
+    if (url === "/data.json") {
+      if (failGraphRefresh) return reply({ error: { code: "graph_unavailable", message: "Snapshot is not ready." } }, 503);
+      const version = dataRefreshEnvelope === closedApplyEnvelope ? 3 : dataRefreshEnvelope === afterEnvelope ? 2 : 1;
+      return reply({ epoch: "board-epoch", version, envelope: dataRefreshEnvelope });
+    }
+    return reply({ error: { code: "not_found", message: "Fixture route is unavailable." } }, 404);
+  };
+  state.boardConnection = "connected";
+  state.boardActor = { participant_id: "human-7", name: "Safe Human", kind: "human", writable: true, board_id: "board-7", workflow_version: "1", scopes: ["read", "write"] };
+  state.boardCsrf = "csrf-only-in-memory";
+  state.boardCapability = { workflow_eligible: true, human_actions: ["po-handoff", "design-start", "dev-start"], supported_actions: ["po-specify", "po-handoff", "design-start", "design-handoff", "dev-start", "dev-done", "reopen-spec", "reopen-design", "reopen-dev"], supported_write_skills: ["po-specify", "design-handoff", "dev-done", "feature-reopen"] };
+  state.boardDiscover = { capability: state.boardCapability, pending_operations: [] };
+  state.boardPendingOperations = [];
+  state.liveRefreshError = null;
+  state.liveEpoch = "board-epoch";
+  state.liveVersion = 1;
+  adoptData(beforeEnvelope);
+  switchView("board");
+  renderBoard();
+  renderHeader();
+  const sessionHtml = document.getElementById("board-session").innerHTML;
+  assert(sessionHtml.includes("Safe Human") && !sessionHtml.includes("csrf-only-in-memory"), "header did not display only the safe actor identity");
+  const board = document.getElementById("board-view");
+  const agentButton = board.querySelectorAll("[data-transition-id]").find(button => button.dataset.transitionId === "F-agent-node");
+  assert(agentButton && !agentButton.hasAttribute("aria-disabled"), "provider-neutral agent action was disabled despite canonical connected skill capability");
+  agentButton.__listeners.click[0]({ stopPropagation() {}, preventDefault() {} });
+  let agentDialog = document.getElementById("transition-dialog");
+  assert(!agentDialog.hidden && agentDialog.innerHTML.includes("PROVIDER-NEUTRAL AGENT REQUEST") && agentDialog.innerHTML.includes("board-7") && agentDialog.innerHTML.includes("board_id exactly matches") && agentDialog.innerHTML.includes("design-handoff") && agentDialog.innerHTML.includes("get_skill") && agentDialog.innerHTML.includes("sha256:agent-preflight") && !agentDialog.innerHTML.includes("$design-handoff") && !agentDialog.innerHTML.includes("/design-handoff") && !agentDialog.innerHTML.includes("Apply reviewed changes"), "agent-only lifecycle action did not produce a provider-neutral MCP request");
+  const agentQuery = calls.filter(item => item.path === "/api/board/v1/query").at(-1);
+  assert(agentQuery && JSON.stringify(JSON.parse(agentQuery.options.body)) === JSON.stringify({ kind: "transition-preflight", value: "F-agent", action: "design-handoff" }), "agent request did not use the server transition-preflight query");
+  assert(!agentDialog.querySelector("[data-transition-copy]").hasAttribute("aria-disabled"), "fresh connected agent preflight remained copy-disabled");
+  markLiveRefreshUnavailable("agent-disconnected");
+  agentDialog = document.getElementById("transition-dialog");
+  assert(agentDialog.querySelector("[data-transition-copy]").hasAttribute("aria-disabled") && document.getElementById("freshness").innerHTML.includes("STALE"), "agent request remained copyable or header stayed green after connection loss");
+  adoptData(beforeEnvelope);
+  agentDialog = document.getElementById("transition-dialog");
+  assert(agentDialog.querySelector("[data-transition-copy]").hasAttribute("aria-disabled"), "healthy snapshot silently re-approved a stale connected agent request");
+  agentDialog.querySelector("[data-connected-agent-refresh]").__listeners.click[0]();
+  agentDialog = document.getElementById("transition-dialog");
+  assert(!agentDialog.querySelector("[data-transition-copy]").hasAttribute("aria-disabled") && agentDialog.innerHTML.includes("sha256:agent-preflight"), "fresh matching agent recheck did not clear stale state and restore the exact preflight");
+  agentDialog.querySelector("[data-transition-cancel]").__listeners.click[0]();
+  const blockedButton = board.querySelectorAll("[data-board-action]").find(button => button.dataset.boardFeatureId === "F-blocked");
+  const blockedCard = board.querySelectorAll(".card[data-id]").find(card => card.dataset.id === "F-blocked");
+  assert(blockedButton && blockedCard && blockedCard.hasAttribute("draggable"), "connected actions depended on legacy transition metadata or vendor folders");
+  assert(board.querySelectorAll("[data-transition-id]").length === 1 && board.querySelectorAll("[data-transition-id]")[0].dataset.transitionId === "F-agent-node", "connected human action fell back to copy-only guidance: " + board.querySelectorAll("[data-transition-id]").map(button => button.dataset.transitionId).join(","));
+  blockedCard.__listeners.dragstart[0]({ currentTarget: blockedCard, preventDefault() {}, dataTransfer: { setData() {} } });
+  const target = board.querySelectorAll(".column[data-stage]").find(column => column.dataset.stage === "ready-for-design");
+  target.__listeners.drop[0]({ currentTarget: target, preventDefault() {} });
+  let dialog = document.getElementById("transition-dialog");
+  assert(!dialog.hidden && dialog.innerHTML.includes("Feature owner does not match") && dialog.innerHTML.includes("&lt;title&gt;&amp; safe&lt;/title&gt;"), "blocked mapped drop did not show escaped exact service diff: " + dialog.innerHTML.slice(0, 900));
+  assert(dialog.innerHTML.includes("rewrites the full YAML frontmatter") && dialog.innerHTML.includes("comments and original formatting may be removed or normalized") && dialog.innerHTML.includes("Review the exact before/after text above before confirming"), "connected human preview did not disclose YAML frontmatter formatting normalization before confirmation");
+  assert(dialog.querySelector("[data-connected-apply]").disabled, "blocked connected preview exposed Apply");
+  assert(calls.filter(item => item.path === "/api/board/v1/previews/transition").length === 1, "mapped drop did not call connected preview");
+  const blockedRequest = JSON.parse(calls.find(item => item.path === "/api/board/v1/previews/transition").options.body);
+  assert(blockedRequest.inputs.semantic_review_acknowledged === false, "semantic review was asserted before the diff was shown");
+  dialog.querySelector("[data-transition-cancel]").__listeners.click[0]();
+
+  originalAgentGrantRevoked = true;
+  discoveredPendingOperations = [{ operation_id: opListId, state: "conflict", created_at: "2026-09-22T12:00:00Z" }];
+  initBoardService();
+  assert(originalAgentGrantRevoked && state.boardActor.kind === "human" && state.boardActor.writable === true && state.boardPendingOperations.length === 1 && state.boardPendingOperations[0].operation_id === opListId, "writable human could not inspect the revoked-agent operation surfaced by discovery");
+  const operationsButton = document.getElementById("board-session").querySelector("[data-board-operations]");
+  assert(operationsButton, "pending service operation was not surfaced separately in the header");
+  operationsButton.__listeners.click[0]();
+  dialog = document.getElementById("transition-dialog");
+  assert(dialog.innerHTML.includes("Operation state is separate from feature lifecycle") && dialog.innerHTML.includes("no agent is involved"), "recovery view did not keep operations separate from lifecycle or identify direct recovery");
+  failNextOperationInspection = true;
+  dialog.querySelector("[data-operation-inspect]").__listeners.click[0]();
+  assert(!state.transitionPreview.selectedOperation && !state.transitionPreview.inspectedOperationId && !state.transitionPreview.recoveryAcknowledged, "failed operation inspection authorized recovery");
+  assert(dialog.querySelectorAll("[data-operation-recover]").every(button => button.disabled), "recovery remained enabled after an unknown inspection response");
+  dialog.querySelector("[data-operation-inspect]").__listeners.click[0]();
+  dialog = document.getElementById("transition-dialog");
+  assert(dialog.innerHTML.includes("Current &lt;file&gt; &amp; differs.") && dialog.innerHTML.includes("Former Agent") && dialog.innerHTML.includes("Original actor") && dialog.innerHTML.includes("sha256:&lt;current&amp;&gt;") && dialog.innerHTML.includes("status: ready-for-design &lt;&amp;&gt;"), "operation inspection did not render escaped original actor, exact remaining changes, current digest, and conflict");
+  assert(dialog.innerHTML.includes("knowledge/intake/pending/F-old → knowledge/intake/processed/F-old") && !dialog.innerHTML.includes("source_digest"), "operation inspection did not show safe folder-move endpoints only");
+  assert(dialog.querySelectorAll("[data-operation-recover]").every(button => button.disabled), "successful inspection skipped explicit recovery acknowledgement");
+  const pendingRecoveryButton = dialog.querySelectorAll("[data-operation-recover]")[0];
+  pendingRecoveryButton.__listeners.click[0]();
+  assert(!calls.some(item => item.path === "/api/board/v1/operations/" + opListId + "/recover"), "unacknowledged pending-operation recovery reached the service");
+  const operationAck = dialog.querySelector("[data-operation-recovery-ack]");
+  operationAck.checked = true;
+  operationAck.__listeners.change[0]();
+  opListReviewRevision = "review-op-2";
+  dialog.querySelectorAll("[data-operation-recover]")[0].__listeners.click[0]();
+  const staleRecoverCall = calls.filter(item => item.path === "/api/board/v1/operations/" + opListId + "/recover").at(-1);
+  assert(JSON.parse(staleRecoverCall.options.body).review_revision === "review-op-1" && JSON.parse(staleRecoverCall.options.body).semantic_review_acknowledged === true, "pending human recovery did not send the inspected revision and explicit acknowledgement");
+  assert(!state.transitionPreview.selectedOperation && !state.transitionPreview.inspectedOperationId && !state.transitionPreview.recoveryAcknowledged, "stale pending-operation recovery retained its old review token or acknowledgement");
+  assert(dialog.querySelectorAll("[data-operation-recover]").every(button => button.disabled), "stale pending-operation inspection left recovery enabled");
+  dialog.querySelector("[data-operation-inspect]").__listeners.click[0]();
+  dialog = document.getElementById("transition-dialog");
+  assert(dialog.innerHTML.includes("review-op-2") === false, "opaque recovery review revision was exposed in the UI");
+  assert(dialog.querySelectorAll("[data-operation-recover]").every(button => button.disabled), "reinspection reused the old acknowledgement");
+  const refreshedOperationAck = dialog.querySelector("[data-operation-recovery-ack]");
+  refreshedOperationAck.checked = true;
+  refreshedOperationAck.__listeners.change[0]();
+  dialog.querySelectorAll("[data-operation-recover]")[0].__listeners.click[0]();
+  const currentRecoverCall = calls.filter(item => item.path === "/api/board/v1/operations/" + opListId + "/recover").at(-1);
+  assert(JSON.parse(currentRecoverCall.options.body).review_revision === "review-op-2" && JSON.parse(currentRecoverCall.options.body).semantic_review_acknowledged === true, "reinspected human recovery did not send the fresh revision and acknowledgement");
+  assert(dialog.innerHTML.includes("Original actor") && dialog.innerHTML.includes("Former Agent") && dialog.innerHTML.includes("Recovered by") && dialog.innerHTML.includes("Safe Human"), "recovery receipt did not distinguish the original agent from the recovering human");
+  assert(state.transitionPreview.operationState === "applied" && state.data.facts.nodes.find(node => node.id === "F-apply").status === "specified", "no-agent recovery changed lifecycle state or lost its operation receipt");
+  document.getElementById("transition-dialog").querySelector("[data-transition-cancel]").__listeners.click[0]();
+
+  const applyButton = board.querySelectorAll("[data-board-action]").find(button => button.dataset.boardFeatureId === "F-apply");
+  applyButton.__listeners.click[0]({ preventDefault() {}, stopPropagation() {} });
+  dialog = document.getElementById("transition-dialog");
+  assert(dialog.innerHTML.includes("Advisory review is pending") && dialog.querySelector("[data-connected-skip]"), "pending PO advisory review did not offer an explicit skip proposal");
+  const skip = dialog.querySelector("[data-connected-skip]");
+  skip.checked = true;
+  skip.__listeners.change[0]();
+  dialog = document.getElementById("transition-dialog");
+  const reason = dialog.querySelector("[data-connected-skip-reason]");
+  reason.value = "PO reviewed the risk and accepts the delay.";
+  reason.__listeners.input[0]();
+  const repreview = dialog.querySelector("[data-connected-repreview]");
+  assert(repreview && !repreview.disabled, "valid PO skip reason did not enable a new preview");
+  repreview.__listeners.click[0]();
+  const skipRequest = JSON.parse(calls.filter(item => item.path === "/api/board/v1/previews/transition").at(-1).options.body);
+  assert(skipRequest.inputs.skip_advisory_review === true && skipRequest.inputs.advisory_skip_reason === "PO reviewed the risk and accepts the delay.", "PO skip reason was not sent as an explicit proposal");
+  dialog = document.getElementById("transition-dialog");
+  const ack = dialog.querySelector("[data-connected-ack]");
+  ack.checked = true;
+  ack.__listeners.change[0]();
+  const ackRequest = JSON.parse(calls.filter(item => item.path === "/api/board/v1/previews/transition").at(-1).options.body);
+  assert(ackRequest.inputs.semantic_review_acknowledged === true, "semantic-review acknowledgement was not sent after the exact diff was shown: " + JSON.stringify(ackRequest));
+  dialog = document.getElementById("transition-dialog");
+  const apply = dialog.querySelector("[data-connected-apply]");
+  assert(apply && !apply.disabled, "applicable preview remained disabled after semantic acknowledgement");
+  apply.__listeners.click[0]();
+  assert(state.transitionPreview.operationState === "applied" && state.transitionPreview.operationMessage.includes("refreshed and validated"), "apply receipt did not retain applied plus validated-view truth");
+  assert(state.data.facts.nodes.find(node => node.id === "F-apply").status === "ready-for-design", "successful apply did not refresh the graph from the service endpoint");
+  const applyCall = calls.find(item => item.path === "/api/board/v1/apply");
+  assert(applyCall && applyCall.options.headers["X-Prism-CSRF"] === "csrf-only-in-memory", "browser apply did not use the in-memory CSRF value");
+  assert(!calls.some(item => item.path.includes("csrf-only-in-memory") || (item.options.body || "").includes("csrf-only-in-memory")), "session CSRF value leaked into a URL or request body");
+  assert(!saved.some(pair => String(pair[0]).includes("token") || String(pair[1]).includes("csrf-only-in-memory")), "session data was persisted to localStorage");
+
+  const closeApplyButton = board.querySelectorAll("[data-board-action]").find(button => button.dataset.boardFeatureId === "F-close");
+  closeApplyButton.__listeners.click[0]({ preventDefault() {}, stopPropagation() {} });
+  dialog = document.getElementById("transition-dialog");
+  dialog.querySelector("[data-connected-ack]").checked = true;
+  dialog.querySelector("[data-connected-ack]").__listeners.change[0]();
+  dialog = document.getElementById("transition-dialog");
+  dialog.querySelector("[data-connected-apply]").__listeners.click[0]();
+  assert(state.transitionPreview === null && state.data.facts.nodes.find(node => node.id === "F-close").status === "in-design", "closing the preview while Apply was in flight discarded the operation receipt and graph refresh: modal=" + !!state.transitionPreview + ", status=" + state.data.facts.nodes.find(node => node.id === "F-close").status + ", stale=" + state.boardViewStale);
+
+  const legacyEnvelope = JSON.parse(JSON.stringify(beforeEnvelope));
+  const legacyPath = "knowledge/wiki/features/F-legacy.md";
+  const legacyAction = { version: 1, feature_id: "F-legacy", source_status: "in-design", source_owner: "designer", source_path: legacyPath, target_status: "ready-for-dev", target_owner: "dev", action: "design-handoff", classification: "ready", supported: true, checks: [{ code: "source-readable", status: "pass", message: "Feature source is readable.", path: legacyPath }], sources: [legacyPath], invocations: { codex: "$design-handoff F-legacy", claude: "/design-handoff F-legacy" } };
+  legacyEnvelope.facts.nodes.push({ id: "F-legacy", type: "feature", title: "Legacy agent guidance", path: legacyPath, health: "ok", status: "in-design", owner: "designer", open_questions: [], transition: legacyAction, transitions: [legacyAction] });
+  legacyEnvelope.facts.node_count += 1;
+  legacyEnvelope.facts.transition_capability = { version: 2, mode: "copy-only", supported_actions: ["design-handoff"], snapshot: { consistent: true, fingerprint: "fp-legacy", observed_at: "2026-09-22T12:00:00Z" }, surfaces: [{ role: "codex", action: "design-handoff", available: true, check: "pass" }, { role: "claude", action: "design-handoff", available: true, check: "pass" }] };
+  const connectedStateBeforeLegacy = state.boardConnection;
+  state.boardConnection = "unsupported";
+  adoptData(legacyEnvelope);
+  switchView("board");
+  renderBoard();
+  const legacyButton = document.getElementById("board-view").querySelectorAll("[data-transition-id]").find(button => button.dataset.transitionId === "F-legacy");
+  assert(legacyButton && !legacyButton.hasAttribute("aria-disabled"), "nonhuman design-handoff did not retain its copy-only agent guidance");
+  legacyButton.__listeners.click[0]({ stopPropagation() {}, preventDefault() {} });
+  assert(document.getElementById("transition-dialog").innerHTML.includes("COPY-ONLY WORKFLOW REQUEST"), "unsupported human actions were routed into connected Apply");
+  document.getElementById("transition-dialog").querySelector("[data-transition-cancel]").__listeners.click[0]();
+  state.boardConnection = connectedStateBeforeLegacy;
+  adoptData(afterEnvelope);
+
+  const lostButton = document.getElementById("board-view").querySelectorAll("[data-board-action]").find(button => button.dataset.boardFeatureId === "F-lost");
+  assert(lostButton, "connected dev-start action was not available without graph transition metadata: connection=" + state.boardConnection + ", capability=" + JSON.stringify(state.boardCapability) + ", stale=" + state.liveRefreshError + ", stage=" + state.data.facts.nodes.find(node => node.id === "F-lost").status + ", html=" + document.getElementById("board-view").innerHTML.slice(0, 1200));
+  lostButton.__listeners.click[0]({ preventDefault() {}, stopPropagation() {} });
+  dialog = document.getElementById("transition-dialog");
+  dialog.querySelector("[data-connected-ack]").checked = true;
+  dialog.querySelector("[data-connected-ack]").__listeners.change[0]();
+  markLiveRefreshUnavailable("disconnected");
+  assert(document.getElementById("freshness").innerHTML.includes("STALE") && document.getElementById("transition-dialog").querySelector("[data-connected-apply]").disabled, "live disconnect left connected Apply enabled or the header green");
+  adoptData(state.data);
+  assert(document.getElementById("freshness").innerHTML.includes("LIVE") && document.getElementById("transition-dialog").querySelector("[data-connected-apply]").disabled, "healthy snapshot recovery silently re-approved the stale connected preview");
+  document.getElementById("transition-dialog").querySelector("[data-transition-cancel]").__listeners.click[0]();
+  const freshLostButton = document.getElementById("board-view").querySelectorAll("[data-board-action]").find(button => button.dataset.boardFeatureId === "F-lost");
+  freshLostButton.__listeners.click[0]({ preventDefault() {}, stopPropagation() {} });
+  dialog = document.getElementById("transition-dialog");
+  dialog.querySelector("[data-connected-ack]").checked = true;
+  dialog.querySelector("[data-connected-ack]").__listeners.change[0]();
+  dialog = document.getElementById("transition-dialog");
+  dialog.querySelector("[data-connected-apply]").__listeners.click[0]();
+  assert(state.transitionPreview.operationState === "pending" && state.transitionPreview.operationId === lostOperationId, "lost apply response did not query the same operation ID");
+  const applyCountBeforeRecovery = calls.filter(item => item.path === "/api/board/v1/apply").length;
+  dialog = document.getElementById("transition-dialog");
+  assert(dialog.innerHTML.includes("status: done") && dialog.innerHTML.includes("sha256-current"), "inline recovery did not show the inspected exact remaining changes");
+  assert(dialog.querySelector("[data-connected-recover]").disabled, "inline recovery was enabled before acknowledgement");
+  dialog.querySelector("[data-connected-recover]").__listeners.click[0]();
+  assert(!calls.some(item => item.path === "/api/board/v1/operations/" + lostOperationId + "/recover"), "unacknowledged inline recovery reached the service");
+  let inlineRecoveryAck = dialog.querySelector("[data-connected-recovery-ack]");
+  inlineRecoveryAck.checked = true;
+  inlineRecoveryAck.__listeners.change[0]();
+  assert(!dialog.querySelector("[data-connected-recover]").disabled, "inline recovery did not enable after explicit acknowledgement");
+  const inlineReviewRevision = state.transitionPreview.operationRecord.recovery_review_revision;
+  failNextLostRecovery = true;
+  dialog.querySelector("[data-connected-recover]").__listeners.click[0]();
+  const inlineRecoverCall = calls.filter(item => item.path === "/api/board/v1/operations/" + lostOperationId + "/recover").at(-1);
+  assert(JSON.parse(inlineRecoverCall.options.body).review_revision === inlineReviewRevision && JSON.parse(inlineRecoverCall.options.body).semantic_review_acknowledged === true, "inline recovery did not send the inspected revision and explicit acknowledgement");
+  assert(state.transitionPreview.operationState === "outcome unknown" && !state.transitionPreview.operationRecord && !state.transitionPreview.recoveryAcknowledged, "unknown recovery response retained stale inspection approval");
+  assert(dialog.querySelector("[data-connected-recover]").disabled, "unknown recovery response left inline recovery enabled");
+  dialog.querySelector("[data-connected-check-operation]").__listeners.click[0]();
+  dialog = document.getElementById("transition-dialog");
+  assert(state.transitionPreview.operationState === "pending" && !state.transitionPreview.recoveryAcknowledged && dialog.querySelector("[data-connected-recover]").disabled, "reinspection after an unknown recovery response reused the old acknowledgement");
+  inlineRecoveryAck = dialog.querySelector("[data-connected-recovery-ack]");
+  inlineRecoveryAck.checked = true;
+  inlineRecoveryAck.__listeners.change[0]();
+  dialog.querySelector("[data-connected-recover]").__listeners.click[0]();
+  assert(state.transitionPreview.operationState === "applied" && state.boardViewStale && state.transitionPreview.operationMessage.includes("view stale"), "applied recovery with failed graph refresh was misreported as failed or current");
+  assert(dialog.innerHTML.includes("Original actor") && dialog.innerHTML.includes("Safe Human") && !dialog.innerHTML.includes("Recovered by"), "same-originator receipt fabricated a separate recovery actor");
+  assert(calls.filter(item => item.path === "/api/board/v1/apply").length === applyCountBeforeRecovery, "lost response recovery silently resubmitted Apply");
+  assert(document.getElementById("freshness").innerHTML.includes("STALE"), "failed post-apply refresh left a green LIVE header");
+
+  closeTransitionPreview();
+  adoptData(beforeEnvelope);
+  rejectPreview = true;
+  const revokedButton = document.getElementById("board-view").querySelectorAll("[data-board-action]").find(button => button.dataset.boardFeatureId === "F-apply");
+  revokedButton.__listeners.click[0]({ preventDefault() {}, stopPropagation() {} });
+  assert(state.boardConnection === "unauthenticated" && state.boardActor === null && state.boardCsrf === null && state.boardPendingOperations.length === 0, "revoked actor kept connected identity, CSRF state, or pending receipts active");
+  assert(!connectedHumanWriter() && document.getElementById("board-session").innerHTML.includes("Board session expired"), "revoked actor still appeared authorized in the dashboard header");
+  let reloads = 0;
+  window.location = { reload() { reloads += 1; } };
+  document.getElementById("board-session").querySelector("[data-board-retry]").__listeners.click[0]();
+  assert(reloads === 1, "expired-session reconnect did not return to the token login shell");
+  globalThis.__connectedBoardChecked = true;
+})();`);
+}
 try {
   vm.runInNewContext(appJs + regressionChecks.join("\n"), sandbox, { filename: "dashboard-app.js" });
   console.log("BOOT OK — full script executed without runtime errors");
@@ -968,7 +1360,15 @@ if (checkHealthLabels) {
 }
 if (checkViewAccessibility) console.log("VIEW ACCESSIBILITY OK - inactive views and closed inspector are inert");
 if (checkUnknownStage) console.log("UNKNOWN STAGE OK - malformed features remain visible and selectable");
-if (checkTransitions) console.log("TRANSITIONS OK - copy-only preview, source-preserving drag, refresh invalidation, and safe fallback passed");
+if (checkTransitions) {
+  if (!sandbox.__liveRecoveryChecked) { console.error("LIVE RECOVERY FAILED - reconnect recovery checks did not complete"); process.exit(1); }
+  console.log("LIVE RECOVERY OK - same-version reconnect validates the snapshot before restoring Copy and LIVE");
+  console.log("TRANSITIONS OK - copy-only preview, source-preserving drag, refresh invalidation, and safe fallback passed");
+}
+if (checkConnectedBoard) {
+  if (!sandbox.__connectedBoardChecked) { console.error("CONNECTED BOARD FAILED - connected service regressions did not complete"); process.exit(1); }
+  console.log("CONNECTED BOARD OK - service-only preview, blocked drop, exact diff, PO skip, semantic acknowledgement, apply receipt, and refreshed view passed");
+}
 // sanity: header + views wired
 const viewsEl = elements["views"];
 if (viewsEl && viewsEl.__listeners.click) console.log("EVENTS OK — view switcher has click handler");

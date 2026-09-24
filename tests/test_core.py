@@ -150,8 +150,7 @@ class LoadCopierAnswersTests(unittest.TestCase):
 
 
 class CopierAnswersPersistenceTests(unittest.TestCase):
-    @patch("prism_cli.cli.get_template_commit", return_value="abc123")
-    def test_writes_answers_file_with_normalized_src_path(self, _mocked_commit: object) -> None:
+    def test_writes_local_answers_file_without_claiming_a_commit(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             ensure_copier_answers_file(root, ".", {"project_name": "Prism App", "platforms": ["backend"]})
@@ -161,20 +160,19 @@ class CopierAnswersPersistenceTests(unittest.TestCase):
         self.assertEqual(str(Path(".").resolve()), loaded["_src_path"])
         self.assertEqual("Prism App", loaded["project_name"])
         self.assertEqual(["backend"], loaded["platforms"])
-        self.assertIn("_commit", loaded)
+        self.assertNotIn("_commit", loaded)
 
-    @patch("prism_cli.cli.get_template_commit", return_value="abc123")
-    def test_preserves_existing_copier_metadata(self, _mocked_commit: object) -> None:
+    def test_preserves_existing_copier_metadata_without_inventing_local_commit(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             answers_path = root / ".copier-answers.yml"
-            answers_path.write_text("_src_path: old\n_custom_meta: keep-me\n", encoding="utf-8")
+            answers_path.write_text("_src_path: old\n_commit: synthetic-head\n_custom_meta: keep-me\n", encoding="utf-8")
             ensure_copier_answers_file(root, ".", {"project_name": "Prism App"})
             loaded = load_copier_answers(answers_path)
 
         assert loaded is not None
         self.assertEqual("keep-me", loaded["_custom_meta"])
-        self.assertIn("_commit", loaded)
+        self.assertNotIn("_commit", loaded)
         self.assertEqual("Prism App", loaded["project_name"])
 
 
@@ -1540,7 +1538,7 @@ class WikiGraphHtmlTests(unittest.TestCase):
         self.assertEqual(cli_module.EXIT_VALIDATION, exit_code)
         self.assertFalse((root / "knowledge" / "evil.html").exists())
 
-    def test_cmd_wiki_graph_open_writes_temp_and_opens_browser(self) -> None:
+    def test_cmd_wiki_graph_open_uses_memory_only_live_server(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
@@ -1548,13 +1546,15 @@ class WikiGraphHtmlTests(unittest.TestCase):
                 path=str(root), json=False, mermaid=False, view="lifecycle", feature=None,
                 platform=None, html=None, open=True, serve=False, port=8321,
             )
-            with patch.object(cli_module.webbrowser, "open") as mocked_open:
+            before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+            with patch("prism_cli.graph_server.serve_graph", return_value=0) as serve:
                 with contextlib.redirect_stdout(io.StringIO()):
                     exit_code = cli_module.cmd_wiki_graph(args)
+            after = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
 
         self.assertEqual(0, exit_code)
-        mocked_open.assert_called_once()
-        self.assertTrue(mocked_open.call_args[0][0].startswith("file://"))
+        serve.assert_called_once_with(root, 8321)
+        self.assertEqual(before, after)
 
     def test_assets_are_packaged(self) -> None:
         from importlib import resources

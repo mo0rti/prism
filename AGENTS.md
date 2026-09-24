@@ -1,6 +1,8 @@
-# Multi-Platform Project Template
+# Prism Core and Application Template
 
 This repository is the Copier template itself. Treat the root `AGENTS.md` as maintainer guidance for the template repo, and treat files under `template/` as instructions that will be copied into generated projects.
+
+Prism's core is the workflow and board shared by humans and agents. Application generation is an optional capability. Keep core acceptance independent of application samples; use disposable neutral workspaces for lifecycle writes, adoption, HTTP/MCP and recovery tests. The approved scope and deferred sample work are recorded in `docs/prism-core-workflow-plan.md`.
 
 ## Two distinct AI context layers
 
@@ -48,6 +50,7 @@ and must not be referenced. They are replaced by the wiki lifecycle system
   - Kotlin and Java directory paths use `{{package_path}}`
   - any file containing Jinja expressions keeps a `.jinja` suffix
 - Update AI context when commands, paths, maturity, or workflow expectations change.
+- Keep provider-neutral workflow guidance and its packaged assets synchronized. Connected agents use the shared service and pinned standard skills; custom skills retain the direct-file path. Do not add per-agent workflow implementations or an extra board approval queue.
 
 ## Repo Skills
 

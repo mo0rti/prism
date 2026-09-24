@@ -5,13 +5,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "prism-kit"
 version = "0.2.0"
-description = "Prism CLI for guided multi-platform project generation."
+description = "Prism workflows and shared boards for humans and agents, with optional application generation."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "PyYAML>=6,<7",
   "copier>=9,<10",
   "jinja2-time>=0.2,<1",
+  "mcp==2.2.0",
+  "starlette>=0.48,<2",
+  "uvicorn>=0.34,<1",
 ]
 
 [project.scripts]

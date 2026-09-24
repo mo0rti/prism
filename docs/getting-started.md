@@ -1,5 +1,9 @@
 # Getting Started
 
+For the workflow and shared human/agent board without generating applications,
+use the [shared board guide](shared-board.md). This page covers the optional
+application-generation path.
+
 This page is the safest first-run path for trying Prism.
 
 If you only want the shortest route:
@@ -19,7 +23,7 @@ Use the smallest path that answers your question.
 Recommended first evaluation paths:
 
 - **Backend only** for repository shape and contract inspection
-- **Backend + Mobile** for the validated multi-client mobile path
+- **Backend + Mobile** for the partial multi-client scaffold; runtime verification remains separate
 - **Backend + Web** to inspect the combined user-web and admin-portal setup
 
 For the maturity notes behind those recommendations, read
@@ -37,7 +41,8 @@ Required to generate a project:
 
 The editable install is distributed as `prism-kit` and exposes the `prism` command;
 the import package remains `prism_cli`. It installs the CLI's generation dependencies
-(`copier`, `jinja2-time`, and `PyYAML`) from `pyproject.toml`. A published package or
+(`copier`, `jinja2-time`, and `PyYAML`) and shared-board runtime dependencies
+(`mcp==2.2.0` and `uvicorn`) from `pyproject.toml`. A published package or
 remote `pipx` install path is still pending and should not be treated as available.
 
 To try the wheel install path locally, build and install the wheel from this checkout:

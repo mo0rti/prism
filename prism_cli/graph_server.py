@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -40,10 +39,36 @@ class _GraphState:
         self.epoch = uuid.uuid4().hex
         self.fingerprint = _workspace_fingerprint(root)
         self.envelope = build_graph(root)
+        self.stop_event = threading.Event()
+        self.watcher: threading.Thread | None = None
+        self.refresh_error = False
+
+    def start_watching(self) -> None:
+        """One fingerprint poll per workspace, independent of viewer count."""
+        if self.watcher is not None:
+            return
+
+        def watch() -> None:
+            while not self.stop_event.wait(POLL_SECONDS):
+                try:
+                    self.refresh_if_changed()
+                    self.refresh_error = False
+                except (OSError, ValueError):
+                    # Disconnect SSE viewers so their existing stale/retry UI is
+                    # honest. Keep the last snapshot and retry on the next poll.
+                    self.refresh_error = True
+
+        self.watcher = threading.Thread(target=watch, daemon=True, name="prism-graph-watch")
+        self.watcher.start()
+
+    def close(self) -> None:
+        self.stop_event.set()
+        if self.watcher is not None:
+            self.watcher.join(timeout=5)
 
     def refresh_if_changed(self) -> bool:
-        fingerprint = _workspace_fingerprint(self.root)
         with self.lock:
+            fingerprint = _workspace_fingerprint(self.root)
             if fingerprint == self.fingerprint:
                 return False
             envelope = build_graph(self.root)
@@ -67,6 +92,9 @@ def _make_handler(state: _GraphState) -> type[BaseHTTPRequestHandler]:
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(body)
 
@@ -81,7 +109,7 @@ def _make_handler(state: _GraphState) -> type[BaseHTTPRequestHandler]:
                 host not in allowed_hosts
                 or len(origins) > 1
                 or (origins and origins[0].lower() != f"http://{host}")
-                or self.headers.get("Sec-Fetch-Site") == "cross-site"
+                or self.headers.get("Sec-Fetch-Site") in ("cross-site", "same-site")
             ):
                 self._send(403, "text/plain; charset=utf-8", b"local same-origin requests only")
                 return
@@ -104,8 +132,10 @@ def _make_handler(state: _GraphState) -> type[BaseHTTPRequestHandler]:
                 self.end_headers()
                 last_sent = 0
                 try:
-                    while True:
-                        state.refresh_if_changed()
+                    while not state.stop_event.is_set():
+                        if state.refresh_error:
+                            self.close_connection = True
+                            return
                         version, _envelope = state.snapshot()
                         if version != last_sent:
                             last_sent = version
@@ -114,9 +144,10 @@ def _make_handler(state: _GraphState) -> type[BaseHTTPRequestHandler]:
                         else:
                             self.wfile.write(b": keep-alive\n\n")
                             self.wfile.flush()
-                        time.sleep(POLL_SECONDS)
+                        state.stop_event.wait(POLL_SECONDS)
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                     return
+                return
             self._send(404, "text/plain; charset=utf-8", b"not found")
 
     return GraphHandler
@@ -132,6 +163,8 @@ def serve_graph(root: Path, port: int) -> int:
         print(f"Cannot start the dashboard on port {port}: {exc}. Choose another --port.", file=sys.stderr)
         return 4
     url = f"http://127.0.0.1:{server.server_port}/"
+    server.daemon_threads = True
+    state.start_watching()
     print(f"Prism graph dashboard: {url}")
     print("Live updates: watching graph wiki, intake queues, manifest, answers, platform directories, and generated transition capabilities. Read-only; press Ctrl+C to stop.")
     try:
@@ -145,5 +178,6 @@ def serve_graph(root: Path, port: int) -> int:
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
+        state.close()
         server.server_close()
     return 0

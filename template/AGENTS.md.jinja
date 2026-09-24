@@ -12,6 +12,17 @@ If this is a newly scaffolded project, initialize the product wiki before featur
 
 See `CONTEXT.md` and `knowledge/wiki/SCHEMA.md` for the full cross-tool workflow.
 
+## Connected board workflow
+
+Read `knowledge/wiki/CONNECTED.md` when using a Prism MCP connection. Discover the
+workspace's pinned standard skills and retrieve their complete instructions through
+that connection. Keep required semantic reviews and confirmations in this CLI;
+there is no second board approval queue. Check `write_supported` and `limitations`;
+preview supported writes through the shared service, confirm and apply, then check
+its durable receipt. Stop on denied or unavailable connected writes. Custom local skills keep their direct-file
+workflow. An older workspace needs an explicit `prism workflow upgrade` before
+connected writes are enabled; the read-only board and existing skills remain usable.
+
 ## Product knowledge wiki
 
 This project uses a shared product wiki at `knowledge/wiki/` as the single source of truth

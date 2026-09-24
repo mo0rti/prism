@@ -1,17 +1,21 @@
 # AI Surfaces
 
-Generated Prism projects support multiple AI tools, but the surfaces are not packaged the
-same way in each tool.
+Prism's connected workflow exposes one standard MCP tool contract and canonical,
+versioned skills to compatible agent hosts. See the [shared board guide](shared-board.md)
+for configuration and the [current status](current-status.md) for runtime evidence.
+It does not require a custom workflow connector per coding agent.
 
-This page explains the packaging model so the differences are understandable instead of
-looking accidental.
+Generated projects also retain local Claude commands, Codex skills and Cursor
+guidance. The remainder of this page describes that direct-file compatibility
+path and its intentional packaging differences. Custom local skill edits stay
+on that path; they do not redefine the server's pinned workflow contract.
 
 ## Short Version
 
 The practical status is:
 
-- wiki usability parity is shipped in both tools
-- core lifecycle parity is shipped in both tools
+- wiki read/query guidance is present in both generated surfaces
+- the nine core lifecycle actions are present in both generated surfaces
 - the backend production guidance surface is now materially deeper on the
   Claude side, while Codex remains intentionally narrower and more
   implementation-focused

@@ -1,13 +1,13 @@
 # Prism Model
 
-Prism is the workflow and coordination model embedded in this template.
-
-It is not just a generated code scaffold. It is a way to carry product intent from raw
-input to implementation across multiple AI-assisted roles and platform slices.
+Prism is a workflow and shared board for humans and agents. It carries product
+intent from raw input through review, implementation, and delivery evidence.
+Application templates are an optional starting point. The
+[shared board guide](shared-board.md) covers adoption without generating an app.
 
 ## Short Version
 
-Each generated project combines:
+Each Prism workspace combines:
 
 - one shared workspace
 - one shared product wiki under `knowledge/wiki/`
@@ -75,9 +75,9 @@ implementing.
 The advisory board adds domain-specific review when product logic has consequences the
 team should not reason about in isolation.
 
-## Generated Project Model
+## Workspace Knowledge Model
 
-Generated projects use this knowledge structure:
+Generated and adopted workspaces use this knowledge structure:
 
 ```text
 knowledge/

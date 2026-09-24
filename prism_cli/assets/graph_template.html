@@ -450,6 +450,21 @@ main { position: relative; flex: 1; overflow: hidden; }
 .transition-request { border: 1px solid var(--hairline); border-radius: 8px; background: var(--page); padding: 10px; }
 .transition-request .request-label { color: var(--muted); font: 8.5px ui-monospace, Consolas, monospace; letter-spacing: .18em; text-transform: uppercase; }
 .transition-request pre { margin-top: 7px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); font: 11px/1.55 ui-monospace, Consolas, monospace; user-select: text; }
+.connected-review { border: 1px solid var(--hairline); border-radius: 8px; padding: 10px; font-size: 11.5px; line-height: 1.45; }
+.connected-review label { display: flex; gap: 8px; align-items: flex-start; color: var(--ink-2); }
+.connected-review input { margin-top: 2px; accent-color: var(--po); }
+.connected-review textarea { width: 100%; min-height: 68px; margin-top: 8px; resize: vertical; border: 1px solid var(--hairline); border-radius: 6px; padding: 8px; background: var(--page); color: var(--ink); font: 11px/1.45 ui-monospace, Consolas, monospace; }
+.connected-write { border: 1px solid var(--hairline); border-radius: 7px; overflow: hidden; }
+.connected-write summary { padding: 8px 10px; background: var(--page); cursor: pointer; font: 10px ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+.connected-write-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--hairline); }
+.connected-write-grid > div { min-width: 0; padding: 8px; }
+.connected-write-grid > div + div { border-left: 1px solid var(--hairline); }
+.connected-write-grid h5 { margin: 0 0 6px; color: var(--muted); font: 8.5px ui-monospace, Consolas, monospace; letter-spacing: .14em; text-transform: uppercase; }
+.connected-write-grid pre { max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); font: 10px/1.45 ui-monospace, Consolas, monospace; user-select: text; }
+.board-session { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 9px; letter-spacing: .07em; }
+.board-session button { border: 1px solid var(--hairline); border-radius: 5px; padding: 4px 7px; background: transparent; color: var(--ink-2); cursor: pointer; font: inherit; }
+.board-session button:hover { background: var(--chip-wash); color: var(--ink); }
+.board-session .actor { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .transition-copy-status { min-height: 16px; margin-top: 7px; color: var(--warning); font-size: 11px; line-height: 1.4; }
 .transition-actions { display: flex; justify-content: flex-end; gap: 8px; align-items: center; flex-wrap: wrap; flex: none; padding: 12px 20px; border-top: 1px solid var(--hairline); background: var(--surface); }
 .transition-actions button { min-height: 34px; }
@@ -525,6 +540,8 @@ main { position: relative; flex: 1; overflow: hidden; }
   .column { min-width: 236px; min-height: 0; }
   .panel { width: min(348px, 100%); }
   .transition-grid { grid-template-columns: 1fr; }
+  .connected-write-grid { grid-template-columns: 1fr; }
+  .connected-write-grid > div + div { border-left: 0; border-top: 1px solid var(--hairline); }
   .transition-backdrop { padding: 10px; }
   .transition-head, .transition-body { padding-left: 14px; padding-right: 14px; }
   .statusline { gap: 8px; padding: 0 12px; font-size: 8px; }
@@ -545,6 +562,7 @@ main { position: relative; flex: 1; overflow: hidden; }
         <div class="status-dot high" id="confidence-dot"></div><span id="confidence-text"></span>
       </div>
       <div class="freshness" id="freshness"></div>
+      <div class="board-session" id="board-session" hidden></div>
       <button class="theme-toggle" id="theme-toggle" title="Day / night">◐</button>
     </div>
   </header>
@@ -634,6 +652,16 @@ const state = {
   panelReturnFocus: null,
   transitionBackground: null,
   liveRefreshError: null,
+  boardConnection: "checking",
+  boardActor: null,
+  boardCsrf: null,
+  boardDiscover: null,
+  boardCapability: null,
+  boardPendingOperations: [],
+  boardOperation: null,
+  boardViewStale: false,
+  liveEpoch: null,
+  liveVersion: null,
 };
 
 // Declared before the theme initializer runs — the boot render path touches these.
@@ -756,6 +784,112 @@ const ACTION_CONTRACTS = {
   "reopen-design": { source_status: "done", source_owner: "none", target_status: "in-design", target_owner: "designer" },
   "reopen-dev": { source_status: "done", source_owner: "none", target_status: "in-dev", target_owner: "dev" },
 };
+const CONNECTED_HUMAN_ACTIONS = new Set(["po-handoff", "design-start", "dev-start"]);
+const CONNECTED_AGENT_ACTIONS = new Set(["po-specify", "design-handoff", "dev-done", "reopen-spec", "reopen-design", "reopen-dev"]);
+const CONNECTED_AGENT_SKILLS = {
+  "po-specify": "po-specify",
+  "design-handoff": "design-handoff",
+  "dev-done": "dev-done",
+  "reopen-spec": "feature-reopen",
+  "reopen-design": "feature-reopen",
+  "reopen-dev": "feature-reopen",
+};
+const CONNECTED_ACTION_BY_STAGE = {
+  specified: "po-handoff",
+  "ready-for-design": "design-start",
+  "ready-for-dev": "dev-start",
+};
+function connectedBoardExpected() {
+  return CONFIG.mode === "live" && state.boardConnection !== "unsupported";
+}
+function connectedHumanAction(node) {
+  if (!connectedBoardExpected() || !node || node.type !== "feature" || duplicateFeatureIds.has(canonicalFeatureId(node))) return null;
+  return CONNECTED_ACTION_BY_STAGE[String(node.status || "")] || null;
+}
+function connectedHumanWriter() {
+  return !!(state.boardConnection === "connected" && state.boardActor && state.boardActor.kind === "human" && state.boardActor.writable === true);
+}
+function connectedActionReady(action) {
+  const actor = state.boardActor, capability = state.boardCapability;
+  return !!(CONNECTED_HUMAN_ACTIONS.has(action) && connectedHumanWriter() && actor && capability && capability.workflow_eligible === true && Array.isArray(capability.human_actions) &&
+    capability.human_actions.includes(action) && !state.liveRefreshError);
+}
+function connectedActionReason(action) {
+  if (!connectedBoardExpected()) return "Connected board service is not available on this server.";
+  if (state.liveRefreshError) return "Live dashboard data has not been refreshed and validated. Wait for the refresh before previewing this action.";
+  if (state.boardConnection === "checking") return "Checking the authenticated board session.";
+  if (state.boardConnection === "unauthenticated") return "The board session has expired. Reconnect to continue this connected action.";
+  if (state.boardConnection === "error") return "The connected board service is unavailable. Retry the board connection; this action cannot be copied as a fallback.";
+  const actor = state.boardActor, capability = state.boardCapability;
+  if (!actor || actor.kind !== "human") return "This action requires an authenticated human participant.";
+  if (actor.writable !== true) return "This participant has read-only board access.";
+  if (!capability || capability.workflow_eligible !== true || !Array.isArray(capability.human_actions) || !capability.human_actions.includes(action)) {
+    return "This workspace does not expose the connected human action.";
+  }
+  return "Connected preview is unavailable.";
+}
+function connectedAgentSkill(action) {
+  return CONNECTED_AGENT_SKILLS[action] || "";
+}
+function connectedAgentActionReady(action) {
+  const actor = state.boardActor, capability = state.boardCapability, skill = connectedAgentSkill(action);
+  return !!(connectedBoardExpected() && state.boardConnection === "connected" && actor && typeof actor.board_id === "string" && actor.board_id.trim() && skill &&
+    capability && capability.workflow_eligible === true && Array.isArray(capability.supported_actions) && capability.supported_actions.includes(action) &&
+    Array.isArray(capability.supported_write_skills) && capability.supported_write_skills.includes(skill) && !state.liveRefreshError);
+}
+function connectedAgentActionReason(action) {
+  const skill = connectedAgentSkill(action);
+  if (!connectedBoardExpected()) return "Connected board service is not available on this server.";
+  if (state.liveRefreshError) return "Live dashboard data has not been refreshed and validated. Wait for the refresh before requesting this agent action.";
+  if (state.boardConnection === "checking") return "Checking the authenticated board session.";
+  if (state.boardConnection === "unauthenticated") return "The board session has expired. Reconnect before requesting this agent action.";
+  if (state.boardConnection === "error") return "The connected board service is unavailable. Retry the board connection; this request cannot use a vendor-file fallback.";
+  if (!state.boardActor) return "An authenticated board participant is required for a connected agent request.";
+  if (typeof state.boardActor.board_id !== "string" || !state.boardActor.board_id.trim()) return "The authenticated board binding is incomplete; reconnect before requesting this agent action.";
+  const capability = state.boardCapability;
+  if (!capability || capability.workflow_eligible !== true || !Array.isArray(capability.supported_actions) || !capability.supported_actions.includes(action) ||
+      !Array.isArray(capability.supported_write_skills) || !capability.supported_write_skills.includes(skill)) {
+    return `The connected board does not advertise canonical MCP skill ${skill || "for this action"}.`;
+  }
+  return "";
+}
+function connectedAgentTransitionOpenable(node, index) {
+  const t = transitionRecord(node, index), action = t && t.action;
+  return !!(connectedAgentActionReady(action) && node && node.type === "feature" && !duplicateNodeIds.has(node.id) &&
+    !duplicateFeatureIds.has(canonicalFeatureId(node)) && t && t.version === 1 && Object.prototype.hasOwnProperty.call(ACTION_CONTRACTS, action) &&
+    Object.keys(ACTION_CONTRACTS[action]).every(key => String(t[key] === undefined || t[key] === null ? "" : t[key]) === ACTION_CONTRACTS[action][key]) &&
+    String(t.feature_id === undefined || t.feature_id === null ? "" : t.feature_id) === String(canonicalFeatureId(node)) &&
+    transitionSourceMatches(node, t));
+}
+function transitionRequestOpenable(node, index) {
+  const t = transitionRecord(node, index);
+  if (connectedBoardExpected() && t && CONNECTED_AGENT_ACTIONS.has(t.action)) return connectedAgentTransitionOpenable(node, index);
+  return transitionOpenable(node, index);
+}
+function transitionRequestReason(node, index) {
+  const t = transitionRecord(node, index);
+  if (connectedBoardExpected() && t && CONNECTED_AGENT_ACTIONS.has(t.action)) return connectedAgentActionReason(t.action);
+  return transitionReason(node, index);
+}
+function transitionDragOpenable(node, index) {
+  const t = transitionRecord(node, index);
+  if (connectedBoardExpected() && t && CONNECTED_AGENT_ACTIONS.has(t.action)) return connectedAgentTransitionOpenable(node, index);
+  return transitionRunnable(node, index);
+}
+function legacyTransitionEntries(node) {
+  return transitionRecords(node).map((action, index) => ({ action, index }))
+    .filter(entry => !connectedBoardExpected() || !CONNECTED_HUMAN_ACTIONS.has(entry.action && entry.action.action));
+}
+function connectedButtonHtml(node, action, context) {
+  const ready = connectedActionReady(action);
+  const reason = ready ? "" : connectedActionReason(action);
+  const label = `Review and apply ${transitionActionLabel({ action })} for ${boundedText(canonicalFeatureId(node), 120)}`;
+  const buttonText = ready ? `Review ${transitionActionLabel({ action })}` : `Connected ${transitionActionLabel({ action })}`;
+  return `<div class="card-actions${context === "panel" ? " panel-actions" : ""}">
+    <button type="button" class="prepare-btn" data-board-action="${escapeHtml(action)}" data-board-feature-id="${escapeHtml(node.id)}" aria-label="${escapeHtml(label)}"${ready ? "" : ` aria-disabled="true" title="${escapeHtml(reason)}"`}>${escapeHtml(buttonText)}</button>
+    <span class="transition-hint">${escapeHtml(reason || "Preview the exact changes before applying. No agent is dispatched.")}</span>
+  </div>`;
+}
 const ACTION_COMMANDS = {
   "po-specify": "po-specify",
   "po-handoff": "po-handoff",
@@ -975,11 +1109,12 @@ function syncTransitionControl(rootEl, nodeId) {
   const elements = transitionControlElements(rootEl, nodeId);
   if (!elements.button) return;
   const node = nodesById[nodeId];
-  const actions = transitionRecords(node);
+  const entries = legacyTransitionEntries(node);
+  const actions = entries.map(entry => entry.action);
   const index = elements.select ? transitionSelectionIndex(elements.select) : Number(elements.button.dataset.transitionIndex);
-  const selected = index >= 0 ? transitionRecord(node, index) : null;
-  const openable = !!(selected && transitionOpenable(node, index));
-  const reason = selected ? transitionReason(node, index) : transitionSelectionReason(actions);
+  const selected = index >= 0 ? (entries.find(entry => entry.index === index) || {}).action : null;
+  const openable = !!(selected && transitionRequestOpenable(node, index));
+  const reason = selected ? transitionRequestReason(node, index) : transitionSelectionReason(actions);
   elements.button.dataset.transitionIndex = selected ? String(index) : "";
   elements.button.textContent = selected ? transitionButtonText(selected) : "Prepare request";
   elements.button.setAttribute("aria-label", `${selected ? transitionButtonText(selected) : "Prepare request"} for ${boundedText(canonicalFeatureId(node), 120)}`);
@@ -994,19 +1129,24 @@ function syncTransitionControl(rootEl, nodeId) {
 }
 function transitionButtonHtml(node, context) {
   const actions = transitionRecords(node);
-  const selectedIndex = actions.length === 1 ? 0 : -1;
-  const selected = selectedIndex >= 0 ? actions[selectedIndex] : null;
-  const openable = !!(selected && transitionOpenable(node, selectedIndex));
-  const reason = selected ? transitionReason(node, selectedIndex) : transitionSelectionReason(actions);
+  const entries = legacyTransitionEntries(node);
+  const connectedAction = connectedHumanAction(node);
+  const connectedHtml = connectedAction ? connectedButtonHtml(node, connectedAction, context) : "";
+  const selectedIndex = entries.length === 1 ? entries[0].index : -1;
+  const selected = selectedIndex >= 0 ? transitionRecord(node, selectedIndex) : null;
+  const openable = !!(selected && transitionRequestOpenable(node, selectedIndex));
+  const reason = selected ? transitionRequestReason(node, selectedIndex) : transitionSelectionReason(actions);
   const label = `${selected ? transitionButtonText(selected) : "Prepare request"} for ${boundedText(canonicalFeatureId(node), 120)}`;
-  const options = actions.length > 1
-    ? `<label class="transition-action-picker"><span class="sr-only">Workflow action for ${escapeHtml(canonicalFeatureId(node))}</span><select class="transition-action-select" data-transition-select data-transition-select-id="${escapeHtml(node.id)}" aria-label="Workflow action for ${escapeHtml(canonicalFeatureId(node))}"><option value="" selected>Choose a workflow action...</option>${actions.map((action, index) => `<option value="${index}">${escapeHtml(transitionOptionLabel(action))}</option>`).join("")}</select></label>`
+  const options = entries.length > 1
+    ? `<label class="transition-action-picker"><span class="sr-only">Workflow action for ${escapeHtml(canonicalFeatureId(node))}</span><select class="transition-action-select" data-transition-select data-transition-select-id="${escapeHtml(node.id)}" aria-label="Workflow action for ${escapeHtml(canonicalFeatureId(node))}"><option value="" selected>Choose a workflow action...</option>${entries.map(entry => `<option value="${entry.index}">${escapeHtml(transitionOptionLabel(entry.action))}</option>`).join("")}</select></label>`
     : "";
   const buttonText = selected ? transitionButtonText(selected) : "Prepare request";
-  return `<div class="card-actions${context === "panel" ? " panel-actions" : ""}">${options}
+  const showEmptyLegacyControl = !actions.length && !connectedAction;
+  const legacyHtml = entries.length || showEmptyLegacyControl ? `<div class="card-actions${context === "panel" ? " panel-actions" : ""}">${options}
     <button type="button" class="prepare-btn" data-transition-id="${escapeHtml(node.id)}" data-transition-index="${selectedIndex >= 0 ? selectedIndex : ""}" aria-label="${escapeHtml(label)}"${openable ? "" : ` aria-disabled="true" title="${escapeHtml(reason)}"`}>${escapeHtml(buttonText)}</button>
     <span class="transition-hint" data-transition-hint="${escapeHtml(node.id)}">${escapeHtml(reason)}</span>
-  </div>`;
+  </div>` : (actions.length && !connectedAction ? `<span class="transition-hint">${escapeHtml("This action is not available through the connected human workflow.")}</span>` : "");
+  return connectedHtml + legacyHtml;
 }
 function transitionFact(label, value) {
   return `<div class="transition-fact"><div class="k">${escapeHtml(label)}</div><div class="v">${escapeHtml(boundedText(value || "not supplied", 320))}</div></div>`;
@@ -1125,6 +1265,398 @@ function transitionCopyReady(node, index) {
   return !!(transitionOpenable(node, index) && t && transitionSourceMatches(node, t) && capabilityActionAdvertised(t) && t.supported === true && t.classification === "ready" &&
     hasTransitionSurface(node, index) && !prompt.tooLarge);
 }
+function connectedWritesHtml(writes) {
+  if (!Array.isArray(writes) || !writes.length) return '<div class="transition-check unknown"><span class="check-status">unknown</span><span class="check-copy">The service did not return an exact write set.</span></div>';
+  return writes.map(write => {
+    const path = String(write && write.path || "unknown path");
+    const before = write && write.before !== undefined && write.before !== null ? String(write.before) : "(file does not exist)";
+    const after = write && write.after !== undefined && write.after !== null ? String(write.after) : "(file removed)";
+    return `<details class="connected-write" open><summary>${escapeHtml(path)}${write && write.role ? ` · ${escapeHtml(write.role)}` : ""}</summary>
+      <div class="connected-write-grid"><div><h5>Before</h5><pre>${escapeHtml(before)}</pre></div><div><h5>After</h5><pre>${escapeHtml(after)}</pre></div></div></details>`;
+  }).join("");
+}
+function boardOperationRecordError(record, operationId) {
+  if (!record || typeof record !== "object" || Array.isArray(record) || record.operation_id !== operationId) return "The service response did not match the requested operation.";
+  if (!["pending", "conflict", "applied"].includes(record.state)) return "The service returned an unknown operation state.";
+  if (record.state === "applied") return record.receipt && typeof record.receipt === "object" && !Array.isArray(record.receipt) ? "" : "The applied operation record did not include its receipt.";
+  const actor = record.actor;
+  if (!actor || typeof actor !== "object" || Array.isArray(actor) || !Array.isArray(record.remaining_changes) || !Array.isArray(record.moves)) {
+    return "The operation record is incomplete. Reinspect it before recovery.";
+  }
+  if (typeof actor.name !== "string" || typeof actor.kind !== "string" || typeof actor.participant_id !== "string") return "The operation actor identity is incomplete. Reinspect it before recovery.";
+  if (typeof record.recovery_review_revision !== "string" || !record.recovery_review_revision) return "The operation review is missing its current revision. Reinspect it before recovery.";
+  if (!record.remaining_changes.every(change => change && typeof change === "object" && typeof change.path === "string" && ["pending", "applied", "conflict"].includes(change.state) &&
+      Object.prototype.hasOwnProperty.call(change, "before") && Object.prototype.hasOwnProperty.call(change, "after") && Object.prototype.hasOwnProperty.call(change, "current_digest") &&
+      (change.before === null || typeof change.before === "string") && (change.after === null || typeof change.after === "string") && (change.current_digest === null || typeof change.current_digest === "string"))) {
+    return "The remaining file changes are incomplete. Reinspect the operation before recovery.";
+  }
+  if (!record.moves.every(move => move && typeof move === "object" && typeof move.source === "string" && typeof move.destination === "string")) return "The recorded folder moves are incomplete. Reinspect the operation before recovery.";
+  if (record.receipt !== null && record.receipt !== undefined && (typeof record.receipt !== "object" || Array.isArray(record.receipt))) return "The operation receipt is incomplete. Reinspect the operation before recovery.";
+  if (record.state === "conflict" && (!record.receipt || !Array.isArray(record.receipt.conflicts))) return "The operation conflicts are incomplete. Reinspect the operation before recovery.";
+  return "";
+}
+function operationActorLabel(actor) {
+  if (!actor || typeof actor !== "object" || Array.isArray(actor)) return "";
+  return [actor.name, actor.kind, actor.participant_id]
+    .filter(value => value !== undefined && value !== null && String(value))
+    .map(String)
+    .join(" · ");
+}
+function operationReceiptActorsHtml(receipt, originalActor) {
+  const original = operationActorLabel(originalActor) || operationActorLabel(receipt && receipt.actor);
+  const recoveredBy = operationActorLabel(receipt && receipt.recovered_by);
+  if (!original && !recoveredBy) return "";
+  return `<div class="transition-grid">${original ? transitionFact("Original actor", original) : ""}${recoveredBy ? transitionFact("Recovered by", recoveredBy) : ""}</div>`;
+}
+function connectedOperationRecordHtml(record) {
+  const actor = record && record.actor || {};
+  const changes = Array.isArray(record && record.remaining_changes) ? record.remaining_changes : [];
+  const changesHtml = changes.length ? changes.map(change => {
+    const path = String(change && change.path || "unknown path");
+    const fileState = String(change && change.state || "unknown");
+    const digest = change && change.current_digest !== undefined && change.current_digest !== null ? String(change.current_digest) : "not supplied";
+    const before = change && change.before !== undefined && change.before !== null ? String(change.before) : "(file does not exist)";
+    const after = change && change.after !== undefined && change.after !== null ? String(change.after) : "(file removed)";
+    return `<details class="connected-write" open><summary>${escapeHtml(path)} · ${escapeHtml(fileState)}</summary><div class="transition-fact"><div class="k">Current digest</div><div class="v">${escapeHtml(digest)}</div></div><div class="connected-write-grid"><div><h5>Recorded before</h5><pre>${escapeHtml(before)}</pre></div><div><h5>Recorded after</h5><pre>${escapeHtml(after)}</pre></div></div></details>`;
+  }).join("") : '<div class="transition-check pass"><span class="check-status">clear</span><span class="check-copy">No file changes remain in this operation.</span></div>';
+  const moves = Array.isArray(record && record.moves) ? record.moves : [];
+  const movesHtml = moves.length ? moves.map(move => `<div class="transition-fact"><div class="k">Folder move</div><div class="v">${escapeHtml(String(move && move.source || "unknown source"))} → ${escapeHtml(String(move && move.destination || "unknown destination"))}</div></div>`).join("") : '<div class="transition-fact"><div class="k">Folder moves</div><div class="v">None</div></div>';
+  const receipt = record && record.receipt || {};
+  const conflicts = Array.isArray(receipt.conflicts) ? receipt.conflicts : [];
+  const conflictsHtml = conflicts.map(item => `<div class="transition-check blocked"><span class="check-status">conflict</span><span class="check-copy">${escapeHtml(String(item && item.path || "workspace"))} · ${escapeHtml(String(item && item.reason || "Current source differs from the recorded operation."))}</span></div>`).join("") + (Array.isArray(receipt.applied_paths) ? receipt.applied_paths.map(path => '<div class="transition-check pass"><span class="check-status">written</span><span class="check-copy">' + escapeHtml(path) + '</span></div>').join("") : "");
+  return `${operationReceiptActorsHtml(record && record.receipt, actor)}<div class="transition-grid">${transitionFact("Operation state", record && record.state)}</div><h5>Recorded exact file changes · ${changes.length}</h5>${changesHtml}<h5>Recorded folder moves</h5>${movesHtml}${conflictsHtml}`;
+}
+function connectedOperationRecoveryReady(preview) {
+  const record = preview && preview.operationRecord;
+  return !!(preview && record && record.operation_id === preview.operationId && ["pending", "conflict"].includes(record.state) && !boardOperationRecordError(record, preview.operationId) &&
+    preview.recoveryAcknowledged === true && !preview.loading && connectedHumanWriter());
+}
+function connectedReviewObligationsHtml(items) {
+  if (!Array.isArray(items) || !items.length) return "";
+  return items.map(item => {
+    const text = typeof item === "string" ? item : (item && (item.message || item.title || item.code)) || "Review obligation";
+    return `<div class="transition-check review"><span class="check-status">review</span><span class="check-copy">${escapeHtml(boundedText(text, 420))}</span></div>`;
+  }).join("");
+}
+function renderConnectedTransitionDialog(focus) {
+  const wrap = document.getElementById("transition-dialog");
+  const preview = state.transitionPreview;
+  if (!wrap || !preview) return;
+  const hadModalFocus = !!(wrap.contains && wrap.contains(document.activeElement));
+  setTransitionBackgroundInert(true);
+  const node = nodesById[preview.featureId];
+  const payload = preview.payload;
+  const checks = payload && Array.isArray(payload.checks) ? payload.checks : [];
+  const writes = payload && payload.writes;
+  const skipAvailable = preview.action === "po-handoff" && !!(node && (node.advisory_review === "pending" || checks.some(check => check && check.code === "advisory-review" && check.status === "review")));
+  const status = preview.error || preview.staleReason || (preview.operationMessage || "");
+  const applied = preview.operationState === "applied";
+  const requiresReason = preview.skipAdvisory && !String(preview.skipReason || "").trim();
+  const applyReady = !!(payload && payload.applicable === true && preview.semanticAcknowledged && !preview.proposalDirty && !preview.loading && !preview.error && !requiresReason && !preview.staleReason && !preview.operationId && !state.liveRefreshError && state.boardConnection === "connected");
+  const checksHtml = checks.length ? checks.map(transitionCheckHtml).join("") : `<div class="transition-check ${preview.loading ? "unknown" : "review"}"><span class="check-status">${preview.loading ? "checking" : "review"}</span><span class="check-copy">${preview.loading ? "Requesting the service preview…" : "No preflight checks were returned."}</span></div>`;
+  const writesHtml = connectedWritesHtml(writes);
+  const formattingNotice = !applied ? '<div class="transition-stale" role="note">Applying this transition rewrites the full YAML frontmatter. Values outside the action scope are preserved, but comments and original formatting may be removed or normalized. Review the exact before/after text above before confirming.</div>' : "";
+  const reviewHtml = connectedReviewObligationsHtml(payload && payload.review_obligations);
+  const statusHtml = status ? `<div class="transition-stale" role="alert">${escapeHtml(status)}</div>` : "";
+  const skipHtml = skipAvailable ? `<div class="connected-review"><label><input type="checkbox" data-connected-skip${preview.skipAdvisory ? " checked" : ""}><span>Propose skipping the pending advisory review. This proposal records the reason below and remains subject to the other preflight checks.</span></label>${preview.skipAdvisory ? `<textarea data-connected-skip-reason aria-label="Reason for skipping advisory review" placeholder="Explain why the pending advisory review is being skipped">${escapeHtml(preview.skipReason || "")}</textarea>` : ""}</div>` : "";
+  const ackHtml = payload && !applied ? `<div class="connected-review"><label><input type="checkbox" data-connected-ack${preview.semanticAcknowledged ? " checked" : ""}${preview.proposalDirty || preview.loading || preview.staleReason ? " disabled" : ""}><span>I reviewed the current source and every exact before/after change listed below.</span></label></div>` : "";
+  const dirtyHtml = preview.proposalDirty ? '<div class="transition-stale" role="status">The proposal changed. Preview it again, review the updated exact changes, then acknowledge them.</div>' : "";
+  const recoveryDisabled = connectedOperationRecoveryReady(preview) ? "" : " disabled";
+  const operationRecordHtml = preview.operationRecord && preview.operationRecord.state !== "applied"
+    ? `${connectedOperationRecordHtml(preview.operationRecord)}<div class="connected-review"><label><input type="checkbox" data-connected-recovery-ack${preview.recoveryAcknowledged ? " checked" : ""}${preview.loading ? " disabled" : ""}><span>I inspected the recorded actor, remaining exact file changes, and folder moves and approve recovery.</span></label></div>`
+    : "";
+  const receiptActorsHtml = preview.receipt ? operationReceiptActorsHtml(preview.receipt, preview.receipt.actor) : "";
+  const operationHtml = preview.operationId ? `<div class="transition-section"><h4>Board operation</h4><div class="transition-fact"><div class="k">Operation ID · ${escapeHtml(preview.operationState || "outcome unknown")}</div><div class="v">${escapeHtml(preview.operationId)}</div></div>${preview.receipt ? `<div class="transition-check ${preview.operationState === "applied" ? "pass" : "review"}"><span class="check-status">${escapeHtml(preview.operationState || "pending")}</span><span class="check-copy">${preview.operationState === "applied" ? `Applied ${escapeHtml((preview.receipt.applied_paths || []).join(", ") || "the reviewed write set")}.` : "The operation has not been confirmed applied. Inspect its current record before recovery."}</span></div>${receiptActorsHtml}` : ""}${operationRecordHtml}${["outcome unknown", "pending", "conflict"].includes(preview.operationState) ? `<button type="button" class="copy-btn" data-connected-check-operation${preview.loading ? " disabled" : ""}>Inspect operation</button><button type="button" class="copy-btn" data-connected-recover${recoveryDisabled}>Recover recorded operation</button>` : ""}</div>` : "";
+  wrap.innerHTML = `<div class="transition-dialog" role="dialog" aria-modal="true" aria-labelledby="transition-dialog-title" aria-describedby="transition-dialog-description" tabindex="-1">
+    <div class="transition-head"><div class="eyebrow">CONNECTED BOARD · HUMAN ACTION</div><h2 id="transition-dialog-title" tabindex="-1">Review ${escapeHtml(transitionActionLabel({ action: preview.action }))}</h2>
+      <p id="transition-dialog-description">The local board service checks the current wiki and shows every exact write. It applies only after your explicit confirmation; no agent is dispatched.</p></div>
+    <div class="transition-body">${statusHtml}${dirtyHtml}
+      <div class="transition-grid">${transitionFact("Human action", preview.action)}${transitionFact("Feature ID", preview.featureId)}${transitionFact("Source status", preview.sourceStatus)}${transitionFact("Source owner", preview.sourceOwner)}${transitionFact("Target status", ACTION_CONTRACTS[preview.action] && ACTION_CONTRACTS[preview.action].target_status)}${transitionFact("Participant", state.boardActor && state.boardActor.name)}</div>
+      <div class="transition-section"><h4>Current service checks and blockers</h4>${checksHtml}${reviewHtml}</div>
+      ${skipHtml}
+      ${skipAvailable && (preview.skipAdvisory || preview.proposalDirty) ? `<button type="button" class="copy-btn" data-connected-repreview${requiresReason || preview.loading ? " disabled" : ""}>${preview.skipAdvisory ? "Preview this skip proposal" : "Preview without skip"}</button>` : ""}
+      ${writes ? `<div class="transition-section"><h4>Exact file changes · ${writes.length}</h4>${writesHtml}</div>` : ""}
+      ${formattingNotice}
+      ${ackHtml}
+      ${payload && payload.classification ? `<div class="transition-fact"><div class="k">Service preflight</div><div class="v">${escapeHtml(payload.classification)}${payload.applicable === true ? " · applicable" : " · blocked or review required"}</div></div>` : ""}
+      ${operationHtml}
+    </div>
+    <div class="transition-actions"><button type="button" class="cancel-btn" data-transition-cancel>Close</button>${!applied ? `<button type="button" class="copy-btn" data-connected-apply${applyReady ? "" : " disabled"}>Apply reviewed changes</button>` : ""}</div>
+  </div>`;
+  wrap.hidden = false;
+  wrap.setAttribute("aria-hidden", "false");
+  wrap.onclick = e => { if (e.target === wrap) closeTransitionPreview("Connected workflow preview closed."); };
+  const dialog = wrap.querySelector(".transition-dialog");
+  if (dialog) dialog.addEventListener("keydown", e => {
+    if (e.key === "Escape") { e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); closeTransitionPreview("Connected workflow preview closed."); return; }
+    if (e.key !== "Tab") return;
+    const focusable = Array.from(dialog.querySelectorAll("button, a[href], input, select, textarea, [tabindex]:not([tabindex=\"-1\"])")).filter(el => !el.hidden && el.getAttribute("aria-hidden") !== "true" && !el.disabled);
+    if (!focusable.length) { e.preventDefault(); dialog.focus(); return; }
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  const cancel = wrap.querySelector("[data-transition-cancel]");
+  if (cancel) cancel.addEventListener("click", () => closeTransitionPreview("Connected workflow preview closed."));
+  const skip = wrap.querySelector("[data-connected-skip]");
+  if (skip) skip.addEventListener("change", () => {
+    preview.skipAdvisory = !!skip.checked;
+    const reason = wrap.querySelector("[data-connected-skip-reason]");
+    preview.skipReason = reason ? reason.value : "";
+    preview.semanticAcknowledged = false;
+    preview.proposalDirty = true;
+    renderTransitionDialog(false);
+    const next = wrap.querySelector("[data-connected-skip]");
+    if (next && next.focus) next.focus();
+  });
+  const reasonInput = wrap.querySelector("[data-connected-skip-reason]");
+  if (reasonInput) reasonInput.addEventListener("input", () => {
+    preview.skipReason = reasonInput.value;
+    preview.semanticAcknowledged = false;
+    preview.proposalDirty = true;
+    const rerun = wrap.querySelector("[data-connected-repreview]");
+    if (rerun) rerun.disabled = !String(preview.skipReason || "").trim() || preview.loading;
+    const ack = wrap.querySelector("[data-connected-ack]");
+    if (ack) { ack.checked = false; ack.disabled = true; }
+    const apply = wrap.querySelector("[data-connected-apply]");
+    if (apply) apply.disabled = true;
+  });
+  const rerun = wrap.querySelector("[data-connected-repreview]");
+  if (rerun) rerun.addEventListener("click", () => refreshConnectedPreview(preview, false));
+  const ack = wrap.querySelector("[data-connected-ack]");
+  if (ack) ack.addEventListener("change", () => {
+    if (preview.proposalDirty) return;
+    refreshConnectedPreview(preview, !!ack.checked);
+  });
+  const apply = wrap.querySelector("[data-connected-apply]");
+  if (apply) apply.addEventListener("click", () => applyConnectedPreview(preview));
+  const check = wrap.querySelector("[data-connected-check-operation]");
+  if (check) check.addEventListener("click", () => inspectConnectedOperation(preview));
+  const recoveryAck = wrap.querySelector("[data-connected-recovery-ack]");
+  if (recoveryAck) recoveryAck.addEventListener("change", () => {
+    if (!preview.operationRecord || boardOperationRecordError(preview.operationRecord, preview.operationId) || preview.loading) { recoveryAck.checked = false; return; }
+    preview.recoveryAcknowledged = !!recoveryAck.checked;
+    const recoverButton = wrap.querySelector("[data-connected-recover]");
+    if (recoverButton) recoverButton.disabled = !connectedOperationRecoveryReady(preview);
+  });
+  const recover = wrap.querySelector("[data-connected-recover]");
+  if (recover) recover.addEventListener("click", () => recoverConnectedOperation(preview));
+  if (focus || hadModalFocus) {
+    const heading = wrap.querySelector("#transition-dialog-title");
+    if (heading && heading.focus) heading.focus();
+    else if (dialog && dialog.focus) dialog.focus();
+  }
+}
+function connectedAgentTransitionPayload(preview) {
+  const payload = preview && preview.payload;
+  const transition = payload && payload.facts && payload.facts.transition;
+  return transition && typeof transition === "object" && !Array.isArray(transition) ? transition : null;
+}
+function connectedAgentCurrent(preview) {
+  const node = preview && nodesById[preview.featureId];
+  const current = node && transitionRecord(node, preview.actionIndex);
+  return { node, current, canonicalId: node ? canonicalFeatureId(node) : "" };
+}
+function normalizedConnectedPath(value) {
+  return String(value === undefined || value === null ? "" : value).replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/{2,}/g, "/").replace(/\/$/, "");
+}
+function connectedSourcePathMatches(node, sourcePath) {
+  const nodePath = normalizedConnectedPath(node && node.path);
+  const responsePath = normalizedConnectedPath(sourcePath);
+  if (!nodePath || !responsePath) return false;
+  if (nodePath === responsePath) return true;
+  const root = normalizedConnectedPath(state.data && state.data.root).replace(/\/$/, "");
+  if (!root) return false;
+  return nodePath === root + "/" + responsePath || responsePath === root + "/" + nodePath;
+}
+function connectedAgentPayloadMatchesCurrent(preview, transition) {
+  const current = connectedAgentCurrent(preview);
+  const contract = transition && ACTION_CONTRACTS[transition.action];
+  return !!(current.node && current.node.type === "feature" && current.current &&
+    current.current.action === preview.action && transition && transition.version === 1 && transition.action === preview.action &&
+    String(transition.feature_id || "") === String(current.canonicalId || "") &&
+    String(transition.source_status || "") === String(current.node.status || "") &&
+    String(transition.source_owner || "") === String(current.node.owner || "") &&
+    connectedSourcePathMatches(current.node, transition.source_path) && contract &&
+    Object.keys(contract).every(key => String(transition[key] === undefined || transition[key] === null ? "" : transition[key]) === contract[key]));
+}
+function connectedAgentRequestReady(preview) {
+  const transition = connectedAgentTransitionPayload(preview);
+  const snapshot = preview && preview.payload && preview.payload.snapshot;
+  const checks = transition && transition.checks;
+  return !!(preview && preview.payload && preview.payload.schema_version === 1 && connectedAgentPayloadMatchesCurrent(preview, transition) &&
+    Array.isArray(checks) && checks.length > 0 && checks.every(check => check && typeof check.code === "string" && typeof check.status === "string" && typeof check.message === "string") &&
+    transition.supported === true && transition.classification === "ready" && snapshot && snapshot.consistent === true && typeof snapshot.revision === "string" && snapshot.revision &&
+    !preview.loading && !preview.error && !preview.staleReason && !state.liveRefreshError && connectedAgentActionReady(preview.action));
+}
+function connectedAgentRequestText(preview) {
+  const transition = connectedAgentTransitionPayload(preview) || {};
+  const snapshot = preview && preview.payload && preview.payload.snapshot || {};
+  const skill = connectedAgentSkill(preview && preview.action);
+  const boardId = state.boardActor && state.boardActor.board_id || "";
+  return [
+    "Use the canonical Prism workflow through the connected Board MCP service.",
+    "",
+    `Board binding: ${promptLiteral(boardId)}`,
+    `Skill: ${promptLiteral(skill)}`,
+    `Action: ${promptLiteral(transition.action || (preview && preview.action))}`,
+    `Feature ID: ${promptLiteral(transition.feature_id || (preview && (preview.canonicalId || preview.featureId)))}`,
+    `Observed source: ${promptLiteral({ status: transition.source_status, owner: transition.source_owner, path: transition.source_path })}`,
+    `Requested destination: ${promptLiteral({ status: transition.target_status, owner: transition.target_owner })}`,
+    `Connected preflight revision: ${promptLiteral(snapshot.revision)}`,
+    "",
+    "Call discover first and proceed only when the authenticated participant's board_id exactly matches the Board binding above. Do not act on another board.",
+    "Retrieve this canonical skill with get_skill(name=...) and read every required workspace source through the connected service.",
+    "Follow the skill's semantic review and confirmation rules in this agent conversation.",
+    "Prepare the complete proposal with preview_skill(skill=..., changes=..., moves=..., read_revisions=...). Preserve the exact source digests returned by read_workspace.",
+    "Apply only after the required confirmation with apply(preview_id=..., operation_id=...), then inspect the durable operation receipt.",
+    "Do not use a Codex or Claude command, write files directly, or assume that the dashboard dispatched an agent.",
+  ].join("\n");
+}
+function connectedAgentRequestReason(preview) {
+  const transition = connectedAgentTransitionPayload(preview);
+  if (!preview || !connectedAgentActionReady(preview.action)) return connectedAgentActionReason(preview && preview.action);
+  if (preview.staleReason) return preview.staleReason;
+  if (preview.error) return preview.error;
+  if (preview.loading) return "Requesting the server-authoritative connected preflight…";
+  if (!transition) return "The connected service did not return a complete lifecycle preflight.";
+  if (transition.supported !== true) return boundedText(transition.reason || "This connected action is not supported by the current workflow.", 240);
+  if (transition.classification !== "ready") return boundedText(transition.reason || transitionCheckReason(transition), 240);
+  const snapshot = preview.payload && preview.payload.snapshot;
+  if (!snapshot || snapshot.consistent !== true || typeof snapshot.revision !== "string" || !snapshot.revision) return "The connected preflight was not a consistent current snapshot.";
+  return "The connected preflight no longer matches the current feature source; recheck before copying.";
+}
+function renderConnectedAgentRequestDialog(focus) {
+  const wrap = document.getElementById("transition-dialog");
+  const preview = state.transitionPreview;
+  if (!wrap || !preview) return;
+  const hadModalFocus = !!(wrap.contains && wrap.contains(document.activeElement));
+  setTransitionBackgroundInert(true);
+  const transition = connectedAgentTransitionPayload(preview);
+  const checks = transition && Array.isArray(transition.checks) ? transition.checks : [];
+  const checksHtml = checks.length ? checks.map(transitionCheckHtml).join("") : `<div class="transition-check ${preview.loading ? "unknown" : "review"}"><span class="check-status">${preview.loading ? "checking" : "review"}</span><span class="check-copy">${escapeHtml(preview.loading ? "Requesting the server-authoritative connected preflight…" : "No preflight checks were returned.")}</span></div>`;
+  const ready = connectedAgentRequestReady(preview);
+  const reason = connectedAgentRequestReason(preview);
+  const requestText = ready ? connectedAgentRequestText(preview) : reason;
+  const snapshot = preview.payload && preview.payload.snapshot || {};
+  const skill = connectedAgentSkill(preview.action);
+  wrap.innerHTML = `<div class="transition-dialog" role="dialog" aria-modal="true" aria-labelledby="transition-dialog-title" aria-describedby="transition-dialog-description" tabindex="-1">
+    <div class="transition-head"><div class="eyebrow">CONNECTED BOARD · PROVIDER-NEUTRAL AGENT REQUEST</div><h2 id="transition-dialog-title" tabindex="-1">Prepare ${escapeHtml(transitionActionLabel({ action: preview.action }))}</h2>
+      <p id="transition-dialog-description">The server checks the current workflow and prepares a request for an agent already connected through MCP. The dashboard does not dispatch an agent or write files.</p></div>
+    <div class="transition-body">${preview.error ? `<div class="transition-stale" role="alert">${escapeHtml(preview.error)}</div>` : ""}
+      <div class="transition-grid">${transitionFact("Canonical skill", skill)}${transitionFact("Requested action", transition && transition.action || preview.action)}${transitionFact("Feature ID", transition && transition.feature_id || preview.canonicalId || preview.featureId)}${transitionFact("Source status", transition && transition.source_status)}${transitionFact("Source owner", transition && transition.source_owner)}${transitionFact("Destination status", transition && transition.target_status)}${transitionFact("Destination owner", transition && transition.target_owner)}${transitionFact("Preflight revision", snapshot.revision)}</div>
+      <div class="transition-section"><h4>Connected preflight checks</h4>${checksHtml}${!ready ? `<div class="transition-stale" style="margin-top:8px">${escapeHtml(reason)}</div>` : ""}</div>
+      <div class="transition-request"><div class="request-label">Provider-neutral MCP request</div><pre id="transition-request-text">${escapeHtml(requestText)}</pre><div class="transition-copy-status" id="transition-copy-status" aria-live="polite">${ready ? "" : escapeHtml(reason)}</div></div>
+    </div>
+    <div class="transition-actions"><button type="button" class="cancel-btn" data-transition-cancel>Cancel</button><button type="button" class="copy-btn copy-request" data-transition-copy ${ready ? "" : 'aria-disabled="true"'}>Copy MCP request</button>${!ready && !preview.loading ? '<button type="button" class="copy-btn" data-connected-agent-refresh>Recheck</button>' : ""}</div>
+  </div>`;
+  wrap.hidden = false;
+  wrap.setAttribute("aria-hidden", "false");
+  wrap.onclick = e => { if (e.target === wrap) closeTransitionPreview("Connected agent request closed."); };
+  const cancel = wrap.querySelector("[data-transition-cancel]");
+  if (cancel) cancel.addEventListener("click", () => closeTransitionPreview("Connected agent request closed."));
+  const copy = wrap.querySelector("[data-transition-copy]");
+  if (copy) copy.addEventListener("click", e => {
+    e.preventDefault();
+    if (!ready) { announce(reason); return; }
+    const status = wrap.querySelector("#transition-copy-status");
+    copyText(requestText,
+      () => { copy.textContent = "Copied"; copy.classList.add("copied"); if (status) status.textContent = "Request text copied. No agent was dispatched."; announce("MCP request text copied. No agent was dispatched."); toast("Paste the request in your connected agent"); },
+      message => { if (status) status.textContent = message; });
+  });
+  const refresh = wrap.querySelector("[data-connected-agent-refresh]");
+  if (refresh) refresh.addEventListener("click", () => refreshConnectedAgentRequest(preview));
+  const dialog = wrap.querySelector(".transition-dialog");
+  if (dialog) dialog.addEventListener("keydown", e => {
+    if (e.key === "Escape") { e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); closeTransitionPreview("Connected agent request closed."); return; }
+    if (e.key !== "Tab") return;
+    const focusable = Array.from(dialog.querySelectorAll("button, a[href], input, select, textarea, [tabindex]:not([tabindex=\"-1\"])")).filter(el => !el.hidden && el.getAttribute("aria-hidden") !== "true" && !el.disabled);
+    if (!focusable.length) { e.preventDefault(); dialog.focus(); return; }
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  if (focus || hadModalFocus) {
+    const heading = wrap.querySelector("#transition-dialog-title");
+    if (heading && heading.focus) heading.focus();
+    else if (dialog && dialog.focus) dialog.focus();
+  }
+}
+function refreshConnectedAgentRequest(preview) {
+  if (!preview || state.transitionPreview !== preview) return;
+  if (!connectedAgentActionReady(preview.action)) {
+    preview.loading = false;
+    preview.payload = null;
+    preview.error = connectedAgentActionReason(preview.action);
+    renderTransitionDialog(false);
+    return;
+  }
+  const current = connectedAgentCurrent(preview);
+  if (!current.node || current.node.type !== "feature" || !connectedAgentTransitionOpenable(current.node, preview.actionIndex)) {
+    preview.loading = false;
+    preview.payload = null;
+    preview.staleReason = "The connected agent action no longer matches the current feature source or destination. Refresh the dashboard and review a new request.";
+    preview.error = preview.staleReason;
+    renderTransitionDialog(false);
+    return;
+  }
+  // A Recheck may clear stale state only after the current graph record has
+  // passed the same action/source/target checks used to open the request.
+  preview.staleReason = "";
+  const sequence = (preview.requestSequence || 0) + 1;
+  preview.requestSequence = sequence;
+  preview.loading = true;
+  preview.payload = null;
+  preview.error = "";
+  renderTransitionDialog(false);
+  boardJsonRequest("/api/board/v1/query", "POST", { kind: "transition-preflight", value: current.canonicalId, action: preview.action }).then(payload => {
+    if (state.transitionPreview !== preview || preview.requestSequence !== sequence) return;
+    const transition = payload && payload.facts && payload.facts.transition;
+    const snapshot = payload && payload.snapshot;
+    if (!connectedAgentActionReady(preview.action) || !connectedAgentPayloadMatchesCurrent(preview, transition) ||
+        !snapshot || snapshot.consistent !== true || typeof snapshot.revision !== "string" || !snapshot.revision) {
+      throw new Error(!connectedAgentActionReady(preview.action)
+        ? "The connected agent request was invalidated before the fresh preflight returned."
+        : "The connected preflight response was incomplete or stale.");
+    }
+    preview.payload = payload;
+    preview.loading = false;
+    preview.error = "";
+    renderTransitionDialog(false);
+  }).catch(error => {
+    if (state.transitionPreview !== preview || preview.requestSequence !== sequence) return;
+    preview.loading = false;
+    preview.payload = null;
+    preview.error = error && error.message || "The connected preflight request failed. No agent request was prepared.";
+    renderTransitionDialog(false);
+  });
+}
+function showConnectedAgentRequestPreview(id, returnFocus, action, index) {
+  const node = nodesById[id];
+  if (!node || node.type !== "feature" || !connectedAgentTransitionOpenable(node, index)) {
+    const message = connectedAgentActionReason(action) || "This connected agent action no longer matches the feature's current stage.";
+    announce(message); toast(message); return;
+  }
+  state.transitionPreview = {
+    kind: "connected-agent",
+    // Keep the graph node key separate from the canonical workflow feature
+    // id. Malformed/degraded data can make them differ.
+    featureId: id,
+    canonicalId: canonicalFeatureId(node),
+    action,
+    actionIndex: index,
+    sourceStatus: node.status,
+    sourceOwner: node.owner,
+    returnFocus: returnFocus || document.activeElement,
+    payload: null,
+    loading: false,
+    error: "",
+    staleReason: "",
+    requestSequence: 0,
+  };
+  renderTransitionDialog(true);
+  refreshConnectedAgentRequest(state.transitionPreview);
+}
 function closeTransitionPreview(message) {
   const preview = state.transitionPreview;
   state.transitionPreview = null;
@@ -1141,6 +1673,18 @@ function renderTransitionDialog(focus) {
     wrap.innerHTML = "";
     wrap.hidden = true;
     wrap.setAttribute("aria-hidden", "true");
+    return;
+  }
+  if (preview.kind === "connected-agent") {
+    renderConnectedAgentRequestDialog(focus);
+    return;
+  }
+  if (preview.kind === "connected") {
+    renderConnectedTransitionDialog(focus);
+    return;
+  }
+  if (preview.kind === "operations") {
+    renderBoardOperationsDialog(focus);
     return;
   }
   const node = nodesById[preview.featureId];
@@ -1242,6 +1786,383 @@ function renderTransitionDialog(focus) {
     else if (dialog && dialog.focus) dialog.focus();
   }
 }
+function connectedPreviewInputs(preview, semanticAcknowledged) {
+  const inputs = { semantic_review_acknowledged: semanticAcknowledged === true };
+  if (preview.skipAdvisory) {
+    inputs.skip_advisory_review = true;
+    inputs.advisory_skip_reason = String(preview.skipReason || "").trim();
+  }
+  return inputs;
+}
+function refreshConnectedPreview(preview, semanticAcknowledged) {
+  if (!preview || state.transitionPreview !== preview) return;
+  if (preview.staleReason) { preview.error = preview.staleReason; renderTransitionDialog(false); return; }
+  if (!connectedActionReady(preview.action)) {
+    preview.error = connectedActionReason(preview.action);
+    preview.loading = false;
+    preview.semanticAcknowledged = false;
+    renderTransitionDialog(false);
+    return;
+  }
+  if (preview.skipAdvisory && !String(preview.skipReason || "").trim()) {
+    preview.error = "A nonblank reason is required before previewing a proposed advisory skip.";
+    preview.proposalDirty = true;
+    preview.semanticAcknowledged = false;
+    renderTransitionDialog(false);
+    return;
+  }
+  const sequence = (preview.requestSequence || 0) + 1;
+  preview.requestSequence = sequence;
+  preview.loading = true;
+  preview.error = "";
+  preview.semanticAcknowledged = semanticAcknowledged === true;
+  renderTransitionDialog(false);
+  boardJsonRequest("/api/board/v1/previews/transition", "POST", {
+    feature_id: preview.featureId,
+    action: preview.action,
+    inputs: connectedPreviewInputs(preview, semanticAcknowledged),
+  }).then(payload => {
+    if (state.transitionPreview !== preview || preview.requestSequence !== sequence) return;
+    preview.payload = payload;
+    preview.previewId = payload.preview_id || null;
+    preview.loading = false;
+    preview.error = "";
+    preview.proposalDirty = false;
+    renderTransitionDialog(false);
+  }).catch(error => {
+    if (state.transitionPreview !== preview || preview.requestSequence !== sequence) return;
+    preview.loading = false;
+    preview.error = error && error.message || "The connected preview request failed.";
+    preview.semanticAcknowledged = false;
+    if (error && error.status === 401) renderAll(false);
+    else renderTransitionDialog(false);
+  });
+}
+function showConnectedTransitionPreview(id, returnFocus, action) {
+  const node = nodesById[id];
+  if (!node || node.type !== "feature" || connectedHumanAction(node) !== action) {
+    const message = "This connected human action no longer matches the feature's current stage.";
+    announce(message); toast(message); return;
+  }
+  state.transitionPreview = {
+    kind: "connected",
+    featureId: id,
+    action,
+    sourceStatus: node.status,
+    sourceOwner: node.owner,
+    sourcePath: node.path,
+    returnFocus: returnFocus || document.activeElement,
+    payload: null,
+    previewId: null,
+    semanticAcknowledged: false,
+    skipAdvisory: false,
+    skipReason: "",
+    proposalDirty: false,
+    loading: false,
+    error: "",
+    staleReason: "",
+    requestSequence: 0,
+    operationId: null,
+    operationState: null,
+    receipt: null,
+    operationMessage: "",
+  };
+  renderTransitionDialog(true);
+  if (!connectedActionReady(action)) {
+    state.transitionPreview.error = connectedActionReason(action);
+    renderTransitionDialog(false);
+    announce(state.transitionPreview.error);
+    return;
+  }
+  refreshConnectedPreview(state.transitionPreview, false);
+}
+function createBoardOperationId() {
+  try {
+    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") return globalThis.crypto.randomUUID();
+  } catch (error) {}
+  return "prism-op-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14);
+}
+function refreshBoardGraphAfterApply(preview) {
+  if (preview) preview.operationMessage = "Operation applied. Refreshing and validating the dashboard view…";
+  renderTransitionDialog(false);
+  boardJsonRequest("/data.json", "GET").then(payload => {
+    const version = Number(payload && payload.version);
+    if (!payload || !payload.envelope || !Number.isFinite(version) || typeof payload.epoch !== "string") throw new Error("The refreshed graph response could not be validated.");
+    if (state.liveEpoch === payload.epoch && state.liveVersion !== null && version < state.liveVersion) throw new Error("The refreshed graph was older than the current dashboard snapshot.");
+    adoptData(payload.envelope);
+    state.liveEpoch = payload.epoch;
+    state.liveVersion = version;
+    state.liveRefreshError = null;
+    state.boardViewStale = false;
+    if (preview) preview.operationMessage = "Operation applied. Dashboard view refreshed and validated.";
+    renderAll(false);
+  }).catch(() => {
+    state.boardViewStale = true;
+    state.liveRefreshError = "Dashboard view is stale after the applied board operation; wait for a refreshed and validated snapshot before another action.";
+    if (preview) preview.operationMessage = "Operation applied. Dashboard view stale: the refreshed snapshot has not been validated.";
+    renderAll(false);
+  });
+}
+function acceptBoardOperationReceipt(preview, receipt) {
+  if (!preview || !receipt) return;
+  preview.loading = false;
+  preview.receipt = receipt;
+  preview.operationState = receipt.state || "pending";
+  preview.operationRecord = null;
+  preview.recoveryAcknowledged = false;
+  preview.operationMessage = preview.operationState === "applied" ? "Operation applied. Refreshing the dashboard view…" : "Operation state recorded; review any conflicts before recovery.";
+  refreshBoardDiscovery().catch(() => {});
+  if (preview.operationState === "applied") refreshBoardGraphAfterApply(preview);
+  else if (state.transitionPreview === preview) inspectConnectedOperation(preview);
+  else renderTransitionDialog(false);
+}
+function applyConnectedPreview(preview) {
+  if (!preview || state.transitionPreview !== preview || !preview.previewId || !preview.payload || preview.payload.applicable !== true ||
+      !preview.semanticAcknowledged || preview.proposalDirty || !connectedActionReady(preview.action) || state.liveRefreshError) return;
+  if (!preview.operationId) preview.operationId = createBoardOperationId();
+  preview.operationState = "applying";
+  preview.operationRecord = null;
+  preview.recoveryAcknowledged = false;
+  preview.loading = true;
+  preview.error = "";
+  preview.operationMessage = "Submitting the reviewed write set…";
+  renderTransitionDialog(false);
+  boardJsonRequest("/api/board/v1/apply", "POST", { preview_id: preview.previewId, operation_id: preview.operationId }).then(receipt => {
+    acceptBoardOperationReceipt(preview, receipt);
+  }).catch(error => {
+    preview.loading = false;
+    preview.operationState = "outcome unknown";
+    preview.error = error && error.message || "The apply response was lost. Check the same operation ID before retrying.";
+    renderTransitionDialog(false);
+    inspectConnectedOperation(preview);
+  });
+}
+function inspectConnectedOperation(preview) {
+  if (!preview || !preview.operationId) return;
+  const operationId = preview.operationId;
+  const requestId = (preview.operationInspectRequestId || 0) + 1;
+  preview.operationInspectRequestId = requestId;
+  preview.loading = true;
+  preview.operationRecord = null;
+  preview.recoveryAcknowledged = false;
+  preview.error = "";
+  if (state.transitionPreview === preview) renderTransitionDialog(false);
+  boardJsonRequest("/api/board/v1/operations/" + encodeURIComponent(operationId), "GET").then(result => {
+    if (preview.operationInspectRequestId !== requestId) return;
+    preview.loading = false;
+    const recordError = boardOperationRecordError(result, operationId);
+    if (recordError) {
+      preview.operationState = "outcome unknown";
+      preview.receipt = null;
+      preview.error = recordError;
+      preview.operationMessage = "No complete operation record is available for recovery. Inspect the same operation again.";
+    } else if (result.state === "applied") {
+      preview.receipt = result.receipt;
+      preview.operationState = "applied";
+      preview.error = "";
+      acceptBoardOperationReceipt(preview, result.receipt);
+      return;
+    } else {
+      preview.operationRecord = result;
+      preview.receipt = result.receipt || null;
+      preview.operationState = result.state;
+      preview.error = "";
+      preview.operationMessage = result.state === "conflict" ? "Inspect the conflicts and remaining writes before deciding whether to recover." : "Inspect the remaining writes before deciding whether to recover.";
+    }
+    if (state.transitionPreview === preview) renderTransitionDialog(false);
+  }).catch(error => {
+    if (preview.operationInspectRequestId !== requestId) return;
+    preview.loading = false;
+    preview.operationState = "outcome unknown";
+    preview.operationRecord = null;
+    preview.recoveryAcknowledged = false;
+    preview.receipt = null;
+    preview.error = error && error.status === 404
+      ? "The service has no operation record for this ID yet. Do not create a new operation until this ID has been checked again."
+      : "The operation could not be checked. Keep this operation ID and retry the lookup.";
+    preview.operationMessage = "The operation result is unknown. Inspect the same operation again before recovery.";
+    if (state.transitionPreview === preview) renderTransitionDialog(false);
+  });
+}
+function recoverConnectedOperation(preview) {
+  if (!connectedOperationRecoveryReady(preview)) return;
+  const reviewRevision = preview.operationRecord.recovery_review_revision;
+  preview.operationRecord = null;
+  preview.recoveryAcknowledged = false;
+  preview.loading = true;
+  preview.operationMessage = "Recovering the recorded operation directly through the board service; no agent is involved…";
+  if (state.transitionPreview === preview) renderTransitionDialog(false);
+  boardJsonRequest("/api/board/v1/operations/" + encodeURIComponent(preview.operationId) + "/recover", "POST", {
+    review_revision: reviewRevision,
+    semantic_review_acknowledged: true,
+  }).then(receipt => {
+    preview.loading = false;
+    preview.receipt = receipt;
+    preview.operationState = receipt && receipt.state || "outcome unknown";
+    if (preview.operationState === "applied") acceptBoardOperationReceipt(preview, receipt);
+    else {
+      preview.operationMessage = "Recovery returned a conflict. Inspect the updated operation record before trying again.";
+      if (state.transitionPreview === preview) inspectConnectedOperation(preview);
+      else renderTransitionDialog(false);
+    }
+  }).catch(error => {
+    preview.loading = false;
+    preview.operationState = "outcome unknown";
+    preview.operationRecord = null;
+    preview.recoveryAcknowledged = false;
+    preview.receipt = null;
+    preview.error = error && error.message || "The recovery response was not confirmed. Inspect the same operation again before any retry.";
+    preview.operationMessage = "Recovery is unconfirmed. Inspect the operation record again before retrying.";
+    if (state.transitionPreview === preview) renderTransitionDialog(false);
+  });
+}
+function openBoardOperations(returnFocus) {
+  state.transitionPreview = {
+    kind: "operations",
+    returnFocus: returnFocus || document.activeElement,
+    operations: Array.isArray(state.boardPendingOperations) ? state.boardPendingOperations.slice() : [],
+    selectedOperation: null,
+    inspectedOperationId: null,
+    recoveryAcknowledged: false,
+    loading: false,
+    error: "",
+    operationMessage: "",
+  };
+  renderTransitionDialog(true);
+}
+function renderBoardOperationsDialog(focus) {
+  const wrap = document.getElementById("transition-dialog");
+  const preview = state.transitionPreview;
+  if (!wrap || !preview) return;
+  const hadModalFocus = !!(wrap.contains && wrap.contains(document.activeElement));
+  setTransitionBackgroundInert(true);
+  const operations = Array.isArray(preview.operations) ? preview.operations : [];
+  const listHtml = operations.length ? operations.map(item => {
+    const id = String(item.operation_id || "");
+    const stateName = String(item.state || "pending");
+    const canRecover = connectedHumanWriter() && stateName !== "applied" && preview.inspectedOperationId === id && preview.selectedOperation && preview.selectedOperation.operation_id === id && preview.recoveryAcknowledged === true && !preview.loading;
+    return `<div class="connected-review"><div class="transition-grid">${transitionFact("Operation", id)}${transitionFact("Recorded state", stateName)}${transitionFact("Created", item.created_at || "not supplied")}</div><div class="transition-actions" style="padding:8px 0 0;border:0"><button type="button" class="copy-btn" data-operation-inspect="${escapeHtml(id)}"${preview.loading ? " disabled" : ""}>Inspect</button><button type="button" class="copy-btn" data-operation-recover="${escapeHtml(id)}"${canRecover ? "" : " disabled"}>Recover without an agent</button></div></div>`;
+  }).join("") : '<div class="transition-check pass"><span class="check-status">clear</span><span class="check-copy">No pending board operations.</span></div>';
+  const selected = preview.selectedOperation && preview.inspectedOperationId === preview.selectedOperation.operation_id && !boardOperationRecordError(preview.selectedOperation, preview.inspectedOperationId) ? preview.selectedOperation : null;
+  let selectedHtml = "";
+  if (selected) {
+    const receipt = selected.receipt || selected;
+    const paths = Array.isArray(receipt.applied_paths) ? receipt.applied_paths : [];
+    const conflicts = Array.isArray(receipt.conflicts) ? receipt.conflicts : [];
+    const reviewHtml = selected.state !== "applied" ? `${connectedOperationRecordHtml(selected)}<div class="connected-review"><label><input type="checkbox" data-operation-recovery-ack${preview.recoveryAcknowledged ? " checked" : ""}${preview.loading ? " disabled" : ""}><span>I inspected the original actor, remaining exact file changes, and folder moves and approve recovery.</span></label></div>` : `${operationReceiptActorsHtml(receipt, selected.actor)}${paths.map(path => `<div class="transition-check pass"><span class="check-status">written</span><span class="check-copy">${escapeHtml(path)}</span></div>`).join("")}`;
+    const recoverReady = selected.state !== "applied" && connectedHumanWriter() && preview.inspectedOperationId === selected.operation_id && preview.recoveryAcknowledged === true && !preview.loading;
+    selectedHtml = `<div class="transition-section"><h4>Operation record · ${escapeHtml(selected.state || "pending")}</h4>${transitionFact("Operation ID", selected.operation_id)}${reviewHtml}${conflicts.map(item => `<div class="transition-check blocked"><span class="check-status">conflict</span><span class="check-copy">${escapeHtml(item.path || "workspace")} · ${escapeHtml(item.reason || "Current source differs from the recorded operation.")}</span></div>`).join("")}${selected.state !== "applied" && selected.operation_id ? `<button type="button" class="copy-btn" data-operation-recover="${escapeHtml(selected.operation_id)}"${recoverReady ? "" : " disabled"}>Recover recorded operation</button>` : ""}</div>`;
+  }
+  wrap.innerHTML = `<div class="transition-dialog" role="dialog" aria-modal="true" aria-labelledby="transition-dialog-title" aria-describedby="transition-dialog-description" tabindex="-1">
+    <div class="transition-head"><div class="eyebrow">CONNECTED BOARD · OPERATION RECOVERY</div><h2 id="transition-dialog-title" tabindex="-1">Review pending operations</h2><p id="transition-dialog-description">Operation state is separate from feature lifecycle. Inspect the recorded result, then recover directly through the service if needed; no agent is involved.</p></div>
+    <div class="transition-body">${preview.error ? `<div class="transition-stale" role="alert">${escapeHtml(preview.error)}</div>` : ""}${preview.operationMessage ? `<div class="transition-check ${preview.operationState === "applied" ? "pass" : "review"}"><span class="check-status">${escapeHtml(preview.operationState || "status")}</span><span class="check-copy">${escapeHtml(preview.operationMessage)}</span></div>` : ""}<div class="transition-section"><h4>Pending service operations · ${operations.length}</h4>${listHtml}</div>${selectedHtml}</div>
+    <div class="transition-actions"><button type="button" class="cancel-btn" data-transition-cancel>Close</button></div>
+  </div>`;
+  wrap.hidden = false;
+  wrap.setAttribute("aria-hidden", "false");
+  wrap.onclick = e => { if (e.target === wrap) closeTransitionPreview("Operation review closed."); };
+  const cancel = wrap.querySelector("[data-transition-cancel]");
+  if (cancel) cancel.addEventListener("click", () => closeTransitionPreview("Operation review closed."));
+  wrap.querySelectorAll("[data-operation-inspect]").forEach(button => button.addEventListener("click", () => inspectBoardOperation(preview, button.dataset.operationInspect)));
+  const recoveryAck = wrap.querySelector("[data-operation-recovery-ack]");
+  if (recoveryAck) recoveryAck.addEventListener("change", () => {
+    if (!preview.selectedOperation || preview.inspectedOperationId !== preview.selectedOperation.operation_id || boardOperationRecordError(preview.selectedOperation, preview.inspectedOperationId) || preview.loading) { recoveryAck.checked = false; return; }
+    preview.recoveryAcknowledged = !!recoveryAck.checked;
+    wrap.querySelectorAll("[data-operation-recover]").forEach(button => {
+      button.disabled = !(connectedHumanWriter() && preview.selectedOperation.state !== "applied" && button.dataset.operationRecover === preview.inspectedOperationId && preview.recoveryAcknowledged && !preview.loading);
+    });
+  });
+  wrap.querySelectorAll("[data-operation-recover]").forEach(button => button.addEventListener("click", () => recoverBoardOperation(preview, button.dataset.operationRecover)));
+  const dialog = wrap.querySelector(".transition-dialog");
+  if (dialog) dialog.addEventListener("keydown", e => {
+    if (e.key === "Escape") { e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); closeTransitionPreview("Operation review closed."); }
+  });
+  if (focus || hadModalFocus) {
+    const heading = wrap.querySelector("#transition-dialog-title");
+    if (heading && heading.focus) heading.focus();
+    else if (dialog && dialog.focus) dialog.focus();
+  }
+}
+function inspectBoardOperation(preview, operationId) {
+  if (!preview || state.transitionPreview !== preview || !operationId) return;
+  preview.loading = true; preview.error = ""; preview.operationMessage = ""; preview.selectedOperation = null; preview.inspectedOperationId = null; preview.recoveryAcknowledged = false; renderTransitionDialog(false);
+  boardJsonRequest("/api/board/v1/operations/" + encodeURIComponent(operationId), "GET").then(result => {
+    if (state.transitionPreview !== preview) return;
+    preview.loading = false;
+    const recordError = boardOperationRecordError(result, operationId);
+    if (recordError) {
+      preview.error = recordError;
+      preview.operationMessage = "No operation was approved for recovery. Reinspect the same operation record.";
+      renderTransitionDialog(false);
+      return;
+    }
+    preview.selectedOperation = result;
+    preview.inspectedOperationId = operationId;
+    preview.operationMessage = "";
+    renderTransitionDialog(false);
+  }).catch(error => {
+    if (state.transitionPreview !== preview) return;
+    preview.loading = false;
+    preview.selectedOperation = null;
+    preview.inspectedOperationId = null;
+    preview.recoveryAcknowledged = false;
+    preview.error = error && error.message || "The operation record could not be read.";
+    preview.operationMessage = "No operation was approved for recovery. Reinspect the same operation record.";
+    renderTransitionDialog(false);
+  });
+}
+function refreshBoardDiscovery() {
+  return boardJsonRequest("/api/board/v1/discover", "GET").then(discovery => {
+    state.boardDiscover = discovery;
+    state.boardCapability = discovery.capability || null;
+    state.boardPendingOperations = Array.isArray(discovery.pending_operations) ? discovery.pending_operations : [];
+    state.boardConnection = "connected";
+    if (state.transitionPreview && state.transitionPreview.kind === "operations") state.transitionPreview.operations = state.boardPendingOperations.slice();
+    renderAll(false);
+    return discovery;
+  });
+}
+function recoverBoardOperation(preview, operationId) {
+  if (!preview || state.transitionPreview !== preview || !operationId || !connectedHumanWriter() || !preview.selectedOperation || preview.selectedOperation.operation_id !== operationId ||
+      preview.inspectedOperationId !== operationId || preview.recoveryAcknowledged !== true || ["applied"].includes(preview.selectedOperation.state) || boardOperationRecordError(preview.selectedOperation, operationId)) return;
+  const reviewRevision = preview.selectedOperation.recovery_review_revision;
+  preview.selectedOperation = null;
+  preview.inspectedOperationId = null;
+  preview.recoveryAcknowledged = false;
+  preview.loading = true; preview.error = ""; preview.operationMessage = "Recovering the recorded operation directly; no agent is involved."; renderTransitionDialog(false);
+  boardJsonRequest("/api/board/v1/operations/" + encodeURIComponent(operationId) + "/recover", "POST", {
+    review_revision: reviewRevision,
+    semantic_review_acknowledged: true,
+  }).then(receipt => {
+    preview.loading = false;
+    preview.operationState = receipt.state || "pending";
+    preview.operationMessage = preview.operationState === "applied" ? "Operation applied. Refreshing the dashboard view…" : "Recovery returned a conflict. Inspect the updated receipt before trying again.";
+    if (preview.operationState === "applied") {
+      preview.selectedOperation = {
+        operation_id: operationId,
+        state: "applied",
+        actor: receipt.actor,
+        receipt,
+      };
+      preview.inspectedOperationId = operationId;
+    }
+    refreshBoardDiscovery().then(() => {
+      if (preview.operationState === "applied") refreshBoardGraphAfterApply(preview);
+      else if (state.transitionPreview === preview) renderTransitionDialog(false);
+    }).catch(() => {
+      preview.error = "The operation recovery returned, but pending operation state could not be refreshed.";
+      if (state.transitionPreview === preview) renderTransitionDialog(false);
+    });
+  }).catch(error => {
+    preview.loading = false;
+    preview.selectedOperation = null;
+    preview.inspectedOperationId = null;
+    preview.recoveryAcknowledged = false;
+    preview.error = error && error.message || "The recovery response was not confirmed. Inspect the operation record again before any retry.";
+    preview.operationMessage = "No operation was approved for another recovery. Reinspect the same operation record.";
+    if (state.transitionPreview === preview) renderTransitionDialog(false);
+  });
+}
 function showTransitionPreview(id, returnFocus, index) {
   const node = nodesById[id];
   const actions = transitionRecords(node);
@@ -1254,13 +2175,18 @@ function showTransitionPreview(id, returnFocus, index) {
     toast(message);
     return;
   }
-  if (!transitionOpenable(node, selectedIndex)) {
-    const message = transitionReason(node, selectedIndex);
+  const t = transitionRecord(node, selectedIndex);
+  const connectedAgent = connectedAgentTransitionOpenable(node, selectedIndex);
+  if (!transitionRequestOpenable(node, selectedIndex)) {
+    const message = transitionRequestReason(node, selectedIndex);
     announce(message);
     toast(message);
     return;
   }
-  const t = transitionRecord(node, selectedIndex);
+  if (connectedAgent) {
+    showConnectedAgentRequestPreview(id, returnFocus, t.action, selectedIndex);
+    return;
+  }
   state.transitionPreview = Object.assign(transitionSnapshot(node, selectedIndex), { returnFocus: returnFocus || document.activeElement, staleReason: "" });
   renderTransitionDialog(true);
   announce(`Prepare ${transitionActionLabel(t)} preview opened for ${canonicalFeatureId(node)}.`);
@@ -1268,6 +2194,41 @@ function showTransitionPreview(id, returnFocus, index) {
 function reconcileTransitionPreview() {
   const preview = state.transitionPreview;
   if (!preview) return;
+  if (preview.kind === "connected") {
+    if (preview.operationState === "applied") { renderTransitionDialog(false); return; }
+    const node = nodesById[preview.featureId];
+    if (!node || node.type !== "feature") {
+      preview.staleReason = "Feature source was removed while this connected preview was open. No apply is allowed.";
+      preview.previewId = null;
+      if (preview.payload) preview.payload.applicable = false;
+      preview.semanticAcknowledged = false;
+      renderTransitionDialog(false);
+      return;
+    }
+    if (String(node.status || "") !== String(preview.sourceStatus || "") || String(node.owner || "") !== String(preview.sourceOwner || "") || String(node.path || "") !== String(preview.sourcePath || "")) {
+      preview.staleReason = "Feature source changed while this connected preview was open. Refresh and review a new preview before applying.";
+      preview.previewId = null;
+      if (preview.payload) preview.payload.applicable = false;
+      preview.semanticAcknowledged = false;
+    }
+    renderTransitionDialog(false);
+    return;
+  }
+  if (preview.kind === "connected-agent") {
+    const node = nodesById[preview.featureId];
+    const current = node && transitionRecord(node, preview.actionIndex);
+    if (!connectedAgentActionReady(preview.action) || !node || node.type !== "feature" || !current || !connectedAgentTransitionOpenable(node, preview.actionIndex) || current.action !== preview.action ||
+        String(node.status || "") !== String(preview.sourceStatus || "") || String(node.owner || "") !== String(preview.sourceOwner || "")) {
+      preview.staleReason = !connectedAgentActionReady(preview.action)
+        ? "The connected board session or fresh dashboard snapshot is no longer valid. Reconnect and request a new server preflight."
+        : "Feature source or destination changed while this connected agent request was open. Refresh and request a new server preflight.";
+      preview.payload = null;
+      preview.error = preview.staleReason;
+    }
+    renderTransitionDialog(false);
+    return;
+  }
+  if (preview.kind === "operations") { renderTransitionDialog(false); return; }
   const node = nodesById[preview.featureId];
   const changed = transitionSnapshotChanged(preview, node);
   if (!node || node.type !== "feature" || !transitionRecord(node, preview.actionIndex)) {
@@ -1297,13 +2258,31 @@ function cancelDrag(message) {
 }
 function transitionIndexForTarget(node, targetStatus) {
   const target = String(targetStatus === undefined || targetStatus === null ? "" : targetStatus);
-  return transitionRecords(node).findIndex(action => action && String(action.source_status || "") === String(node && node.status || "") && String(action.target_status || "") === target && capabilityActionKnown(action));
+  const entry = legacyTransitionEntries(node).find(item => item.action && String(item.action.source_status || "") === String(node && node.status || "") && String(item.action.target_status || "") === target && capabilityActionKnown(item.action));
+  return entry ? entry.index : -1;
 }
 function transitionDragIndex(node) {
-  return transitionRecords(node).findIndex((_action, index) => transitionRunnable(node, index));
+  const entry = legacyTransitionEntries(node).find(item => transitionDragOpenable(node, item.index));
+  return entry ? entry.index : -1;
 }
 function onBoardDragStart(e) {
   const card = e.currentTarget, node = nodesById[card.dataset.id];
+  const connectedAction = connectedHumanAction(node);
+  if (connectedAction) {
+    if (!connectedActionReady(connectedAction)) {
+      e.preventDefault();
+      announce(connectedActionReason(connectedAction));
+      return;
+    }
+    state.drag = { featureId: card.dataset.id, sourceStatus: node.status, element: card, connectedAction };
+    card.classList.add("dragging");
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      if (e.dataTransfer.setData) e.dataTransfer.setData("text/plain", card.dataset.id);
+    }
+    announce(`Dragging ${canonicalFeatureId(node)}. Drop on the connected ${transitionActionLabel({ action: connectedAction })} destination to preview exact changes.`);
+    return;
+  }
   const actionIndex = transitionDragIndex(node);
   if (actionIndex < 0) {
     e.preventDefault();
@@ -1324,8 +2303,9 @@ function onBoardDragOver(e) {
   e.preventDefault();
   const stage = e.currentTarget.dataset.stage;
   const node = nodesById[state.drag.featureId];
-  const targetIndex = transitionIndexForTarget(node, stage);
-  const valid = !!(node && stage !== state.drag.sourceStatus && targetIndex >= 0 && transitionRunnable(node, targetIndex));
+  const connectedDrop = !!(state.drag.connectedAction && ACTION_CONTRACTS[state.drag.connectedAction] && ACTION_CONTRACTS[state.drag.connectedAction].target_status === stage);
+  const targetIndex = connectedDrop ? -1 : transitionIndexForTarget(node, stage);
+  const valid = !!(node && stage !== state.drag.sourceStatus && (connectedDrop || (targetIndex >= 0 && transitionDragOpenable(node, targetIndex))));
   e.currentTarget.classList.toggle("drop-ready", valid);
   e.currentTarget.classList.toggle("drop-invalid", !valid);
   if (e.dataTransfer) e.dataTransfer.dropEffect = valid ? "move" : "none";
@@ -1343,8 +2323,17 @@ function onBoardDrop(e) {
     announce("Same-column drop does nothing; card position remains source-derived.");
     return;
   }
+  if (drag.connectedAction) {
+    if (ACTION_CONTRACTS[drag.connectedAction] && ACTION_CONTRACTS[drag.connectedAction].target_status === stage) {
+      showConnectedTransitionPreview(drag.featureId, drag.element, drag.connectedAction);
+    } else {
+      announce("No connected human action targets this destination; the card stayed in its source stage.");
+      toast("Unsupported drop - card stayed in its source stage");
+    }
+    return;
+  }
   const actionIndex = transitionIndexForTarget(node, stage);
-  if (!node || actionIndex < 0 || !transitionRunnable(node, actionIndex)) {
+  if (!node || actionIndex < 0 || !transitionDragOpenable(node, actionIndex)) {
     announce("No supported workflow request targets this destination; the card stayed in its source stage.");
     toast("Unsupported drop - card stayed in its source stage");
     return;
@@ -1354,7 +2343,7 @@ function onBoardDrop(e) {
 function bindBoardInteractions(view) {
   view.querySelectorAll(".card[data-id]").forEach(card => {
     const node = nodesById[card.dataset.id];
-    if (transitionDragIndex(node) >= 0) {
+    if ((connectedHumanAction(node) && connectedActionReady(connectedHumanAction(node))) || transitionDragIndex(node) >= 0) {
       card.setAttribute("draggable", "true");
       card.addEventListener("dragstart", onBoardDragStart);
       card.addEventListener("dragend", onBoardDragEnd);
@@ -1378,18 +2367,23 @@ function bindTransitionControls(rootEl) {
     const node = nodesById[button.dataset.transitionId];
     const index = button.dataset.transitionIndex === "" || button.dataset.transitionIndex === undefined ? -1 : Number(button.dataset.transitionIndex);
     if (index < 0) {
-      const message = transitionSelectionReason(transitionRecords(node));
+      const message = transitionSelectionReason(legacyTransitionEntries(node).map(entry => entry.action));
       announce(message);
       toast(message);
       return;
     }
-    if (!transitionOpenable(node, index)) {
-      const message = transitionReason(node, index);
+    if (!transitionRequestOpenable(node, index)) {
+      const message = transitionRequestReason(node, index);
       announce(message);
       toast(message);
       return;
     }
     showTransitionPreview(button.dataset.transitionId, button, index);
+  }));
+  rootEl.querySelectorAll("[data-board-action]").forEach(button => button.addEventListener("click", e => {
+    e.preventDefault();
+    e.stopPropagation();
+    showConnectedTransitionPreview(button.dataset.boardFeatureId, button, button.dataset.boardAction);
   }));
 }
 
@@ -1428,6 +2422,114 @@ document.getElementById("theme-toggle").addEventListener("click", () => {
 });
 
 /* ==================== header + statusline ==================== */
+function boardJsonRequest(path, method, body) {
+  const verb = method || "GET";
+  const headers = { Accept: "application/json" };
+  const options = { method: verb, headers, credentials: "same-origin", cache: "no-store" };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  if (verb !== "GET" && state.boardCsrf) headers["X-Prism-CSRF"] = state.boardCsrf;
+  return fetch(path, options).then(response => {
+    const raw = response && typeof response.json === "function" ? response.json() : Promise.resolve({});
+    const parsed = raw && typeof raw.catch === "function" ? raw.catch(() => ({})) : raw;
+    return parsed.then(payload => {
+      if (!response || response.ok === false) {
+        const error = new Error(payload && payload.error && payload.error.message || "The connected board request could not be completed.");
+        error.status = response && response.status;
+        error.code = payload && payload.error && payload.error.code;
+        if (error.status === 401) invalidateBoardSession();
+        throw error;
+      }
+      return payload || {};
+    });
+  });
+}
+function renderBoardSession() {
+  const el = document.getElementById("board-session");
+  if (!el) return;
+  if (!connectedBoardExpected()) {
+    el.innerHTML = "";
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  if (state.boardConnection === "connected" && state.boardActor) {
+    const actor = state.boardActor;
+    const pending = Array.isArray(state.boardPendingOperations) ? state.boardPendingOperations : [];
+    const actorText = `${boundedText(actor.name || actor.participant_id || "Human participant", 80)} · ${actor.kind === "human" ? "human" : "participant"}${actor.writable === true ? " · writable" : " · read only"}`;
+    el.innerHTML = `<span class="actor" title="${escapeHtml(actorText)}">${escapeHtml(actorText)}</span>${pending.length ? `<button type="button" data-board-operations aria-label="Review ${pending.length} pending board operations">Operations ${pending.length}</button>` : ""}<button type="button" data-board-logout>Sign out</button>`;
+  } else if (state.boardConnection === "unauthenticated") {
+    el.innerHTML = `<span>Board session expired</span><button type="button" data-board-retry>Reconnect</button>`;
+  } else if (state.boardConnection === "error") {
+    el.innerHTML = `<span>Board connection unavailable</span><button type="button" data-board-retry>Retry</button>`;
+  } else {
+    el.innerHTML = "<span>Checking board session…</span>";
+  }
+  el.querySelectorAll("[data-board-retry]").forEach(button => button.addEventListener("click", () => retryBoardSession()));
+  el.querySelectorAll("[data-board-operations]").forEach(button => button.addEventListener("click", () => openBoardOperations(button)));
+  el.querySelectorAll("[data-board-logout]").forEach(button => button.addEventListener("click", () => logoutBoardSession()));
+}
+let boardSessionSequence = 0;
+function invalidateBoardSession() {
+  state.boardActor = null;
+  state.boardCsrf = null;
+  state.boardCapability = null;
+  state.boardDiscover = null;
+  state.boardPendingOperations = [];
+  state.boardConnection = "unauthenticated";
+  renderAll(false);
+}
+function retryBoardSession() {
+  if (state.boardConnection === "unauthenticated" && window.location && typeof window.location.reload === "function") {
+    window.location.reload();
+    return;
+  }
+  initBoardService();
+}
+function initBoardService() {
+  if (CONFIG.mode !== "live") { state.boardConnection = "unsupported"; return; }
+  const sequence = ++boardSessionSequence;
+  state.boardConnection = "checking";
+  renderAll(false);
+  boardJsonRequest("/api/board/v1/auth/session", "GET").then(session => {
+    if (sequence !== boardSessionSequence) return null;
+    if (!session || !session.actor || typeof session.csrf_token !== "string") throw new Error("The browser board session response was incomplete.");
+    state.boardActor = session.actor;
+    state.boardCsrf = session.csrf_token;
+    return boardJsonRequest("/api/board/v1/discover", "GET");
+  }).then(discovery => {
+    if (sequence !== boardSessionSequence || !discovery) return;
+    state.boardDiscover = discovery;
+    state.boardCapability = discovery.capability || null;
+    state.boardPendingOperations = Array.isArray(discovery.pending_operations) ? discovery.pending_operations : [];
+    state.boardConnection = "connected";
+    renderAll(false);
+  }).catch(error => {
+    if (sequence !== boardSessionSequence) return;
+    if (error && error.status === 401) { invalidateBoardSession(); return; }
+    state.boardActor = null;
+    state.boardCsrf = null;
+    state.boardCapability = null;
+    state.boardDiscover = null;
+    state.boardPendingOperations = [];
+    if (error && error.status === 404) state.boardConnection = "unsupported";
+    else state.boardConnection = "error";
+    renderAll(false);
+  });
+}
+function logoutBoardSession() {
+  boardJsonRequest("/api/board/v1/auth/logout", "POST").then(() => {
+    state.boardActor = null; state.boardCsrf = null; state.boardCapability = null; state.boardDiscover = null; state.boardPendingOperations = []; state.boardConnection = "unauthenticated";
+    if (window.location && typeof window.location.reload === "function") window.location.reload();
+    else renderAll(false);
+  }).catch(error => {
+    if (error && error.status === 401) return;
+    state.boardConnection = "error";
+    renderAll(false);
+  });
+}
 function renderHeader() {
   const ws = state.data.workspace || {};
   document.getElementById("project-name").textContent = ws.project_name || "Unnamed workspace";
@@ -1435,8 +2537,13 @@ function renderHeader() {
   const dot = document.getElementById("confidence-dot");
   dot.className = "status-dot " + (state.data.confidence || "high");
   document.getElementById("confidence-text").textContent = state.data.confidence;
+  renderBoardSession();
   const fresh = document.getElementById("freshness");
-  if (CONFIG.mode === "live") fresh.innerHTML = '<span class="live-dot" id="live-dot"></span>LIVE';
+  if (CONFIG.mode === "live") {
+    const stale = !!state.liveRefreshError;
+    fresh.innerHTML = `<span class="live-dot${stale ? " stale" : ""}" id="live-dot"></span>${stale ? "STALE" : "LIVE"}`;
+    fresh.title = stale ? "Live data has not been refreshed and validated; copying is disabled." : "Live data is current.";
+  }
   else {
     fresh.textContent = "SNAPSHOT " + (CONFIG.generated_at || "").replace("T", " ").slice(0, 16);
     fresh.title = "Static export — rerun `prism wiki graph --open` to refresh";
@@ -2202,9 +3309,10 @@ function pulseSpectrum() {
 function markLiveRefreshUnavailable(version) {
   const message = "Live refresh unavailable for version " + String(version) + "; copying is disabled. Retry on the next event or request attempt.";
   state.liveRefreshError = message;
-  if (state.transitionPreview) state.transitionPreview.staleReason = message;
-  const dot = document.getElementById("live-dot");
-  if (dot) dot.classList.add("stale");
+  if (state.transitionPreview) {
+    state.transitionPreview.staleReason = message;
+    renderTransitionDialog(false);
+  }
   renderAll(false);
   announce(message);
   toast(message);
@@ -2286,6 +3394,8 @@ function initLive() {
       if (refreshInFlight !== request) return;
       refreshInFlight = null;
       lastVersion = payloadVersion;
+      state.liveEpoch = epoch;
+      state.liveVersion = payloadVersion;
       if (pendingVersion !== null && pendingVersion <= payloadVersion) pendingVersion = null;
       toast("Wiki changed - dashboard updated");
       pump();
@@ -2302,15 +3412,18 @@ function initLive() {
     if (Number.isNaN(version)) return;
     const announcedEpoch = (ev.lastEventId || "").split(":")[0] || null;
     if (announcedEpoch !== epoch) {
+      const serverRestarted = epoch !== null;
       epoch = announcedEpoch;
+      state.liveEpoch = announcedEpoch;
+      state.liveVersion = null;
       lastVersion = latestAnnouncedVersion = pendingVersion = null;
       refreshInFlight = null;
       retryScheduled = false;
-      markLiveRefreshUnavailable(version);
+      if (serverRestarted) markLiveRefreshUnavailable(version);
     }
     if (latestAnnouncedVersion !== null && version < latestAnnouncedVersion) return;
     latestAnnouncedVersion = maxVersion(latestAnnouncedVersion, version);
-    if (lastVersion !== null && version <= lastVersion && pendingVersion === null && !refreshInFlight) return;
+    if (lastVersion !== null && version <= lastVersion && pendingVersion === null && !refreshInFlight && !state.liveRefreshError) return;
     pendingVersion = maxVersion(pendingVersion, version);
     pump();
   };
@@ -2327,6 +3440,7 @@ function escapeHtml(text) {
 buildIndexes();
 initGraph();
 renderAll(true);
+initBoardService();
 initLive();
 </script>
 </body>

@@ -13,6 +13,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 import re
+from uuid import UUID
 
 import yaml
 
@@ -81,6 +82,15 @@ class WorkspaceManifest:
     def project_data(self) -> dict[str, Any]:
         value = self.data.get("project")
         return value if isinstance(value, dict) else {}
+
+    @property
+    def workflow(self) -> dict[str, Any]:
+        value = self.data.get("workflow")
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def workflow_only(self) -> bool:
+        return self.workflow.get("mode") == "workflow"
 
     @property
     def project_name(self) -> str | None:
@@ -386,7 +396,12 @@ def inspect_workspace(root: Path) -> WorkspaceInspection:
 
 def detect_workspace_kind(root: Path) -> str:
     workspace_root = root.expanduser().resolve()
+    if (workspace_root / "copier.yml").exists() and (workspace_root / "template").exists():
+        return "template"
     if (workspace_root / MANIFEST_FILE).exists():
+        manifest = load_workspace(workspace_root).manifest
+        if manifest is not None and manifest.workflow_only:
+            return "workflow-project"
         return "generated-project"
     if (
         (workspace_root / "README.md").exists()
@@ -394,8 +409,6 @@ def detect_workspace_kind(root: Path) -> str:
         and (workspace_root / "knowledge" / "wiki" / "SCHEMA.md").exists()
     ):
         return "generated-project"
-    if (workspace_root / "copier.yml").exists() and (workspace_root / "template").exists():
-        return "template"
     return "unknown"
 
 
@@ -551,7 +564,7 @@ def _compare_manifest_filesystem(
     diagnostics: list[WorkspaceDiagnostic] = []
     manifest_platforms = set(manifest.platforms)
     filesystem_set = set(filesystem_platforms)
-    for platform_id in sorted(filesystem_set - manifest_platforms):
+    for platform_id in sorted(filesystem_set - manifest_platforms) if not manifest.workflow_only else []:
         diagnostics.append(
             _diag(
                 "manifest-filesystem-drift",
@@ -560,7 +573,7 @@ def _compare_manifest_filesystem(
                 f"Platform directory `{platform_id}` exists but is not declared in {MANIFEST_FILE}.",
             )
         )
-    for platform_id in sorted(manifest_platforms - filesystem_set):
+    for platform_id in sorted(manifest_platforms - filesystem_set) if not manifest.workflow_only else []:
         diagnostics.append(
             _diag(
                 "manifest-filesystem-drift",
@@ -647,7 +660,28 @@ def _compare_answers_filesystem(
 
 def _validate_manifest_shape(data: Mapping[str, Any], path: Path) -> list[WorkspaceDiagnostic]:
     diagnostics: list[WorkspaceDiagnostic] = []
+    workflow = data.get("workflow")
+    if workflow is not None:
+        valid = isinstance(workflow, dict)
+        if valid:
+            valid = (
+                isinstance(workflow.get("version"), str)
+                and bool(workflow["version"].strip())
+                and workflow.get("mode") in ("workflow", "generated")
+                and isinstance(workflow.get("board_id"), str)
+            )
+        if valid:
+            try:
+                UUID(workflow["board_id"])
+            except (ValueError, AttributeError):
+                valid = False
+        if not valid:
+            diagnostics.append(_diag("invalid-workspace-workflow", "error", path, "Manifest `workflow` requires a version string, UUID board_id, and mode workflow or generated."))
+        elif workflow["version"] != "1":
+            diagnostics.append(_diag("unsupported-workflow-version", "warning", path, "This workflow version is not supported for connected writes; the workspace remains readable."))
     project = data.get("project")
+    if workflow is not None and not isinstance(project, dict):
+        diagnostics.append(_diag("missing-workflow-project", "error", path, "A workflow workspace requires project identity and explicit platform scope."))
     if project is not None and not isinstance(project, dict):
         diagnostics.append(_diag("invalid-workspace-manifest-project", "error", path, "Manifest `project` must be a mapping."))
     elif isinstance(project, dict):
@@ -657,6 +691,8 @@ def _validate_manifest_shape(data: Mapping[str, Any], path: Path) -> list[Worksp
             platforms = project["platforms"]
             if not isinstance(platforms, list) or any(not isinstance(item, str) for item in platforms):
                 diagnostics.append(_diag("invalid-workspace-manifest-platforms", "error", path, "Manifest project `platforms` must be a list of strings."))
+        if workflow is not None and (not isinstance(project.get("platforms"), list) or not project["platforms"]):
+            diagnostics.append(_diag("missing-workflow-scope", "error", path, "A workflow workspace requires at least one explicit platform scope."))
 
     generated_by = data.get("generated_by")
     if generated_by is not None and not isinstance(generated_by, dict):
