@@ -2,7 +2,7 @@
 
 Date: 2026-09-22
 
-Status, 2026-09-24: The approved core scope is implemented. Fable's initial implementation review judged its snapshot implementation-ready; its four low findings are corrected and human HTTP/agent MCP parity checks pass. The final r7 verification passed 385 tests with one skip, installed-wheel checks and both broad generation variants. The focused Fable follow-up could not start because of Claude's session limit and remains pending. [Connected-core acceptance](connected-core-acceptance.md) records the evidence and remaining browser/performance/release gates. Remote access and the remaining direct-human lifecycle actions remain deferred.
+Status, 2026-09-25: The approved core scope is implemented. The initial Fable review judged its snapshot implementation-ready; its four low findings are corrected and human HTTP/agent MCP parity checks pass. The recorded r7 verification passed 385 tests with one skip, installed-wheel checks and both broad generation variants. The focused Fable follow-up completed on September 25 with no new defects, confirmed the parity gap closed, and judged implementation readiness met. Actual browser acceptance, agreed performance budgets and release gates remain open. [Connected-core acceptance](connected-core-acceptance.md) records the evidence and limits. Remote access and the remaining direct-human lifecycle actions remain deferred.
 
 ## Product direction
 
@@ -340,7 +340,7 @@ The [2026-09-22 Claude Opus 5 review](reviews/2026-09-22-opus5-remediation-revie
 
 | Group | Disposition |
 | --- | --- |
-| N-01, N-11, N-12, N-13, N-14, N-21 | Implemented and checked in the core suite, installed-wheel acceptance and current documentation audit; the initial Fable implementation review confirms their disposition. Focused correction review and wider connected acceptance remain separate gates. |
+| N-01, N-11, N-12, N-13, N-14, N-21 | Implemented and checked in the recorded core suite, installed-wheel acceptance and current documentation audit; the initial Fable implementation review confirms their disposition. The focused follow-up closes F-1 through F-4 and the parity gap; wider connected acceptance remains gated on browser and release checks. |
 | N-15 | Verified with actual CLI human/JSON preflight output: the same seven non-pass checks are reported, pass checks omitted from human output, and both exit 3. |
 | O-1, O-2, O-9 | Framing protection, shared polling and `supported` wording are implemented and tested. Scale baselines are measured; no response/refresh budget is claimed. |
 | O-3 | Owner confirmed normal blockers as readiness information for `prism validate`; the implementation and focused verification are in this pass. Integrity failures remain errors and blocked transition preflight exits 3. |
@@ -352,8 +352,10 @@ The [2026-09-22 Claude Opus 5 review](reviews/2026-09-22-opus5-remediation-revie
 | Earlier CLI/board acceptance records | Historical milestones. Keep their boundaries and distinguish them from current acceptance. |
 
 **Current implementation boundary:** the approved core repairs, workflow adoption,
-shared service/MCP and staged human-board implementation are complete and pass the
-integrated r7 checks. The first Fable implementation review is complete; its four
-low findings are corrected, with follow-up review waiting for Claude availability.
-Actual browser checks and performance acceptance remain open. Publication, remote
-access, wider human action coverage and sample work remain deferred.
+shared service/MCP and staged human-board implementation are complete and meet
+implementation readiness against the reviewed r7 snapshot. The recorded r7 checks
+passed; both Fable implementation reviews are complete, the four low findings are
+resolved, and the focused review found no new defects and confirmed the parity gap
+closed. Actual browser checks, agreed performance budgets and license/tag/
+publication gates remain open. Remote access, wider human action coverage and
+sample work remain deferred as described above.
