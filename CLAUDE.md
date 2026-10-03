@@ -44,6 +44,7 @@ wiki commands from a generated project against this repository.
 - **Documentation organization**: Template-repo docs live in root `docs/`. Generated-project docs stay in `template/docs/`. Platform-specific technical docs live inside each platform directory (`template/mobile-android/docs/`, `template/backend/docs/`, `template/mobile-ios/docs/`). Entity docs are backend-specific (`template/backend/docs/entities/`). Platform docs are auto-excluded with their platform via `_exclude` rules.
 - **Test with `copier copy`** after changes: `copier copy --trust . C:\temp\template-test`
 - **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
+- **Model and effort**: follow the maintainer model workflow in `AGENTS.md`. Launch with an explicit model and effort, keep the full output limit, and use `max` only for one bounded hard problem
 
 ## Common Commands
 
