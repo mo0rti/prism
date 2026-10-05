@@ -39,7 +39,7 @@ if (Test-Path -LiteralPath $TargetDir) {
 
 Push-Location $repoRoot
 try {
-    copier copy --trust --defaults `
+    copier copy --trust --defaults --vcs-ref HEAD `
         --data "project_name=Prism Runtime Validate" `
         --data "description=Reusable runtime validation fixture for Prism wiki commands" `
         --data "platforms=[backend,mobile-android,mobile-ios,web-user-app,web-admin-portal]" `

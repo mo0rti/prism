@@ -121,6 +121,8 @@ class WorkspaceSchemaContractTests(unittest.TestCase):
                     "copier",
                     "copy",
                     "--trust",
+                    "--vcs-ref",
+                    "HEAD",
                     "--defaults",
                     "--data",
                     f"project_name={name}",

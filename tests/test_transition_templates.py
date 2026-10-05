@@ -281,6 +281,8 @@ class TransitionTemplateContractTests(unittest.TestCase):
                     "copier",
                     "copy",
                     "--trust",
+                    "--vcs-ref",
+                    "HEAD",
                     "--defaults",
                     "--data",
                     "project_name=Transition Contract",

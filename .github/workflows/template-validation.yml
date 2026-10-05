@@ -98,7 +98,7 @@ jobs:
           set -euo pipefail
           TARGET="$RUNNER_TEMP/prism-web-validation"
           rm -rf "$TARGET"
-          copier copy --trust --defaults \
+          copier copy --trust --defaults --vcs-ref HEAD \
             --data "project_name=Review Web" \
             --data "platforms=[backend, web-user-app, web-admin-portal]" \
             --data "auth_methods=[google, apple, facebook, microsoft, password]" \
@@ -158,7 +158,7 @@ jobs:
           set -euo pipefail
           TARGET="$RUNNER_TEMP/prism-android-validation"
           rm -rf "$TARGET"
-          copier copy --trust --defaults \
+          copier copy --trust --defaults --vcs-ref HEAD \
             --data "project_name=Review Android" \
             --data "platforms=[backend, mobile-android]" \
             . "$TARGET"
@@ -196,7 +196,7 @@ jobs:
           set -euo pipefail
           TARGET="$RUNNER_TEMP/prism-ios-validation"
           rm -rf "$TARGET"
-          copier copy --trust --defaults \
+          copier copy --trust --defaults --vcs-ref HEAD \
             --data "project_name=Review App" \
             --data "platforms=[backend, mobile-ios]" \
             . "$TARGET"
