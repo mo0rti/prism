@@ -52,40 +52,40 @@ class BoardServiceValidatorTests(unittest.TestCase):
     def test_skill_capabilities_match_enforced_write_path_scopes(self) -> None:
         expected = {
             "po-intake": [
-                "knowledge/wiki/features/**/*.md",
-                "knowledge/wiki/personas/**/*.md",
-                "knowledge/wiki/business-rules/**/*.md",
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/personas/*.md",
+                "knowledge/wiki/business-rules/*.md",
                 "knowledge/intake/processed/**/MANIFEST.md",
                 "knowledge/intake/quarantined/**/CONFLICT.md",
             ],
             "design-intake": [
-                "knowledge/wiki/features/**/*.md",
-                "knowledge/wiki/design/**/*.md",
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/design/*.md",
                 "knowledge/intake/processed/**/MANIFEST.md",
                 "knowledge/intake/quarantined/**/CONFLICT.md",
             ],
-            "ask": ["knowledge/wiki/features/**/*.md"],
-            "po-clarify": ["knowledge/wiki/features/**/*.md"],
-            "design-clarify": ["knowledge/wiki/features/**/*.md", "knowledge/wiki/design/**/*.md"],
-            "dev-clarify": ["knowledge/wiki/features/**/*.md", "knowledge/wiki/platform-requirements/**/*.md"],
-            "po-specify": ["knowledge/wiki/features/**/*.md"],
-            "po-handoff": ["knowledge/wiki/features/**/*.md"],
-            "design-start": ["knowledge/wiki/features/**/*.md"],
+            "ask": ["knowledge/wiki/features/*.md"],
+            "po-clarify": ["knowledge/wiki/features/*.md"],
+            "design-clarify": ["knowledge/wiki/features/*.md", "knowledge/wiki/design/*.md"],
+            "dev-clarify": ["knowledge/wiki/features/*.md", "knowledge/wiki/platform-requirements/*.md"],
+            "po-specify": ["knowledge/wiki/features/*.md"],
+            "po-handoff": ["knowledge/wiki/features/*.md"],
+            "design-start": ["knowledge/wiki/features/*.md"],
             "design-handoff": [
-                "knowledge/wiki/features/**/*.md",
-                "knowledge/wiki/platform-requirements/**/*.md",
-                "knowledge/wiki/api-contracts/**/*.md",
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/platform-requirements/*.md",
+                "knowledge/wiki/api-contracts/*.md",
             ],
-            "dev-start": ["knowledge/wiki/features/**/*.md"],
+            "dev-start": ["knowledge/wiki/features/*.md"],
             "dev-done": [
-                "knowledge/wiki/features/**/*.md",
-                "knowledge/wiki/platform-requirements/**/*.md",
-                "knowledge/wiki/api-contracts/**/*.md",
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/platform-requirements/*.md",
+                "knowledge/wiki/api-contracts/*.md",
             ],
             "feature-reopen": [
-                "knowledge/wiki/features/**/*.md",
-                "knowledge/wiki/platform-requirements/**/*.md",
-                "knowledge/wiki/api-contracts/**/*.md",
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/platform-requirements/*.md",
+                "knowledge/wiki/api-contracts/*.md",
             ],
         }
         discovered = {item["name"]: item for item in self.service.list_skills(self.actor)["skills"]}
@@ -143,9 +143,17 @@ class BoardServiceValidatorTests(unittest.TestCase):
 
         for skill, scopes in expected.items():
             for pattern in scopes:
-                prefix, _, leaf = pattern.partition("/**/")
-                matching = [f"{prefix}/{leaf.replace('*', 'sample')}", f"{prefix}/nested/deeper/{leaf.replace('*', 'sample')}"]
-                non_markdown = [f"{prefix}/notes.txt", f"{prefix}/nested/notes.yaml"]
+                if "/**/" in pattern:
+                    # Intake manifests and conflict notes sit one folder below their queue, at any depth of folder name.
+                    prefix, _, leaf = pattern.partition("/**/")
+                    matching = [f"{prefix}/{leaf.replace('*', 'sample')}", f"{prefix}/nested/deeper/{leaf.replace('*', 'sample')}"]
+                    non_markdown = [f"{prefix}/notes.txt", f"{prefix}/nested/notes.yaml"]
+                else:
+                    # Wiki pages sit directly in their directory: the wiki reads no sub-folders.
+                    prefix, _, leaf = pattern.rpartition("/")
+                    sample = leaf.replace("*", "sample")
+                    matching = [f"{prefix}/{sample}"]
+                    non_markdown = [f"{prefix}/notes.txt", f"{prefix}/nested/{sample}", f"{prefix}/nested/deeper/{sample}"]
                 for path in matching:
                     with self.subTest(skill=skill, pattern=pattern, advertised_match=path):
                         self.service._assert_skill_write_path(skill, path)

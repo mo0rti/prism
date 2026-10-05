@@ -657,7 +657,7 @@ def operation_page(result: dict[str, Any], cursor: str | None = None) -> dict[st
     return page_bodies(header, "remaining_changes", changes, cursor, tag="operation", ident=operation_id, digest=_result_digest(result))
 
 
-_CHANGES_CHUNK_CURSOR = re.compile(r"(\d+)~(\d+)")
+_CHANGES_CHUNK_CURSOR = re.compile(r"([0-9]{1,18})~([0-9]{1,18})")
 
 
 def parse_changes_cursor(cursor: Any) -> tuple[Any, tuple[int, int] | None]:

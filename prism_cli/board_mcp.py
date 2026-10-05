@@ -341,14 +341,16 @@ def create_mcp_server(service: Any) -> Any:
     async def operation(operation_id: str, ctx: Context, cursor: str | None = None) -> ToolReply:
         return reply("operation", await shaped(operation_page, await call(ctx, "operation", operation_id), cursor))
 
-    @server.tool(name="recover", description="Prism board: reconcile a pending or interrupted board operation while preserving conflicting external edits.", annotations=operation_annotations, structured_output=True)
+    @server.tool(name="recover", description="Prism board: reconcile a pending or interrupted board operation while preserving conflicting external edits. abandon (human participants only, with a fresh review_revision and semantic_review_acknowledged) closes an operation that can no longer be rolled forward; agents cannot abandon.", annotations=operation_annotations, structured_output=True)
     async def recover(
         ctx: Context,
         operation_id: str,
         review_revision: StrictStr | None = None,
         semantic_review_acknowledged: StrictBool = False,
+        abandon: StrictBool = False,
     ) -> ToolReply:
-        return reply("recover", await shaped(shrink_to_budget, await call(ctx, "recover", operation_id, review_revision, semantic_review_acknowledged)))
+        extra = {"abandon": True} if abandon else {}
+        return reply("recover", await shaped(shrink_to_budget, await call(ctx, "recover", operation_id, review_revision, semantic_review_acknowledged, **extra)))
 
     @server.tool(name="changes", description="Prism board: read durable board changes (wiki and lifecycle updates) after an optional cursor. An event too large for one result arrives in chunks of its JSON text under event_chunk: keep following the cursor.", annotations=read_annotations, structured_output=True)
     async def changes(ctx: Context, cursor: str | None = None) -> ToolReply:

@@ -1322,8 +1322,9 @@ function connectedWritesHtml(writes) {
 }
 function boardOperationRecordError(record, operationId) {
   if (!record || typeof record !== "object" || Array.isArray(record) || record.operation_id !== operationId) return "The service response did not match the requested operation.";
-  if (!["pending", "conflict", "applied"].includes(record.state)) return "The service returned an unknown operation state.";
+  if (!["pending", "conflict", "applied", "abandoned"].includes(record.state)) return "The service returned an unknown operation state.";
   if (record.state === "applied") return record.receipt && typeof record.receipt === "object" && !Array.isArray(record.receipt) ? "" : "The applied operation record did not include its receipt.";
+  if (record.state === "abandoned") return record.receipt && typeof record.receipt === "object" && !Array.isArray(record.receipt) ? "" : "The abandoned operation record did not include its receipt.";
   const actor = record.actor;
   if (!actor || typeof actor !== "object" || Array.isArray(actor) || !Array.isArray(record.remaining_changes) || !Array.isArray(record.moves)) {
     return "The operation record is incomplete. Reinspect it before recovery.";
@@ -1350,8 +1351,9 @@ function operationActorLabel(actor) {
 function operationReceiptActorsHtml(receipt, originalActor) {
   const original = operationActorLabel(originalActor) || operationActorLabel(receipt && receipt.actor);
   const recoveredBy = operationActorLabel(receipt && receipt.recovered_by);
-  if (!original && !recoveredBy) return "";
-  return `<div class="transition-grid">${original ? transitionFact("Original actor", original) : ""}${recoveredBy ? transitionFact("Recovered by", recoveredBy) : ""}</div>`;
+  const abandonedBy = operationActorLabel(receipt && receipt.abandoned_by);
+  if (!original && !recoveredBy && !abandonedBy) return "";
+  return `<div class="transition-grid">${original ? transitionFact("Original actor", original) : ""}${recoveredBy ? transitionFact("Recovered by", recoveredBy) : ""}${abandonedBy ? transitionFact("Abandoned by", abandonedBy) : ""}</div>`;
 }
 function connectedOperationRecordHtml(record) {
   const actor = record && record.actor || {};
@@ -1419,7 +1421,7 @@ function renderConnectedTransitionDialog(focus) {
     ? `${connectedOperationRecordHtml(preview.operationRecord)}<div class="connected-review"><label><input type="checkbox" data-connected-recovery-ack${preview.recoveryAcknowledged ? " checked" : ""}${preview.loading ? " disabled" : ""}><span>I inspected the recorded actor, remaining exact file changes, and folder moves and approve recovery.</span></label></div>`
     : "";
   const receiptActorsHtml = preview.receipt ? operationReceiptActorsHtml(preview.receipt, preview.receipt.actor) : "";
-  const operationHtml = preview.operationId ? `<div class="transition-section"><h4>Board operation</h4><div class="transition-fact"><div class="k">Operation ID · ${escapeHtml(preview.operationState || "outcome unknown")}</div><div class="v">${escapeHtml(preview.operationId)}</div></div>${preview.receipt ? `<div class="transition-check ${preview.operationState === "applied" ? "pass" : "review"}"><span class="check-status">${escapeHtml(preview.operationState || "pending")}</span><span class="check-copy">${preview.operationState === "applied" ? `Applied ${escapeHtml((preview.receipt.applied_paths || []).join(", ") || "the reviewed write set")}.` : "The operation has not been confirmed applied. Inspect its current record before recovery."}</span></div>${receiptActorsHtml}` : ""}${operationRecordHtml}${["outcome unknown", "pending", "conflict"].includes(preview.operationState) ? `<button type="button" class="copy-btn" data-connected-check-operation${preview.loading ? " disabled" : ""}>Inspect operation</button><button type="button" class="copy-btn" data-connected-recover${recoveryDisabled}>Recover recorded operation</button>` : ""}</div>` : "";
+  const operationHtml = preview.operationId ? `<div class="transition-section"><h4>Board operation</h4><div class="transition-fact"><div class="k">Operation ID · ${escapeHtml(preview.operationState || "outcome unknown")}</div><div class="v">${escapeHtml(preview.operationId)}</div></div>${preview.receipt ? `<div class="transition-check ${preview.operationState === "applied" ? "pass" : "review"}"><span class="check-status">${escapeHtml(preview.operationState || "pending")}</span><span class="check-copy">${preview.operationState === "applied" ? `Applied ${escapeHtml((preview.receipt.applied_paths || []).join(", ") || "the reviewed write set")}.` : preview.operationState === "abandoned" ? "This operation was abandoned and will not be applied. Its receipt lists the writes that were applied and those that were not; preview again if the change is still wanted." : "The operation has not been confirmed applied. Inspect its current record before recovery."}</span></div>${receiptActorsHtml}` : ""}${operationRecordHtml}${["outcome unknown", "pending", "conflict"].includes(preview.operationState) ? `<button type="button" class="copy-btn" data-connected-check-operation${preview.loading ? " disabled" : ""}>Inspect operation</button><button type="button" class="copy-btn" data-connected-recover${recoveryDisabled}>Recover recorded operation</button>` : ""}</div>` : "";
   wrap.innerHTML = `<div class="transition-dialog" role="dialog" aria-modal="true" aria-labelledby="transition-dialog-title" aria-describedby="transition-dialog-description" tabindex="-1">
     <div class="transition-head"><div class="eyebrow">CONNECTED BOARD · HUMAN ACTION</div><h2 id="transition-dialog-title" tabindex="-1">Review ${escapeHtml(transitionActionLabel({ action: preview.action }))}</h2>
       <p id="transition-dialog-description">The local board service checks the current wiki and shows every exact write. It applies only after your explicit confirmation; no agent is dispatched.</p></div>
@@ -2091,6 +2093,14 @@ function inspectConnectedOperation(preview) {
       preview.error = "";
       acceptBoardOperationReceipt(preview, result.receipt);
       return;
+    } else if (result.state === "abandoned") {
+      // A person closed this operation elsewhere; it will not run again.
+      preview.receipt = result.receipt;
+      preview.operationState = "abandoned";
+      preview.operationRecord = null;
+      preview.error = "";
+      preview.operationMessage = "This operation was abandoned by a person; it will not be applied.";
+      refreshBoardDiscovery().catch(() => {});
     } else {
       preview.operationRecord = result;
       preview.receipt = result.receipt || null;
@@ -2179,9 +2189,11 @@ function renderBoardOperationsDialog(focus) {
     const receipt = selected.receipt || selected;
     const paths = Array.isArray(receipt.applied_paths) ? receipt.applied_paths : [];
     const conflicts = Array.isArray(receipt.conflicts) ? receipt.conflicts : [];
-    const reviewHtml = selected.state !== "applied" ? `${connectedOperationRecordHtml(selected)}<div class="connected-review"><label><input type="checkbox" data-operation-recovery-ack${preview.recoveryAcknowledged ? " checked" : ""}${preview.loading ? " disabled" : ""}><span>I inspected the original actor, remaining exact file changes, and folder moves and approve recovery.</span></label></div>` : `${operationReceiptActorsHtml(receipt, selected.actor)}${paths.map(path => `<div class="transition-check pass"><span class="check-status">written</span><span class="check-copy">${escapeHtml(path)}</span></div>`).join("")}`;
-    const recoverReady = selected.state !== "applied" && connectedHumanWriter() && preview.inspectedOperationId === selected.operation_id && preview.recoveryAcknowledged === true && !preview.loading;
-    selectedHtml = `<div class="transition-section"><h4>Operation record · ${escapeHtml(selected.state || "pending")}</h4>${transitionFact("Operation ID", selected.operation_id)}${reviewHtml}${conflicts.map(item => `<div class="transition-check blocked"><span class="check-status">conflict</span><span class="check-copy">${escapeHtml(item.path || "workspace")} · ${escapeHtml(item.reason || "Current source differs from the recorded operation.")}</span></div>`).join("")}${selected.state !== "applied" && selected.operation_id ? `<button type="button" class="copy-btn" data-operation-recover="${escapeHtml(selected.operation_id)}"${recoverReady ? "" : " disabled"}>Recover recorded operation</button>` : ""}</div>`;
+    const closed = selected.state === "applied" || selected.state === "abandoned";
+    const unapplied = selected.state === "abandoned" && Array.isArray(receipt.unapplied_paths) ? receipt.unapplied_paths : [];
+    const reviewHtml = !closed ? `${connectedOperationRecordHtml(selected)}<div class="connected-review"><label><input type="checkbox" data-operation-recovery-ack${preview.recoveryAcknowledged ? " checked" : ""}${preview.loading ? " disabled" : ""}><span>I inspected the original actor, remaining exact file changes, and folder moves and approve recovery.</span></label></div><p class="operation-abandon-note">Abandon closes an operation that can no longer be rolled forward. Files already written and folders already moved stay as they are; the receipt lists which writes were applied and which were not. It needs the same inspection and approval.</p>` : `${operationReceiptActorsHtml(receipt, selected.actor)}${paths.map(path => `<div class="transition-check pass"><span class="check-status">written</span><span class="check-copy">${escapeHtml(path)}</span></div>`).join("")}${unapplied.map(path => `<div class="transition-check blocked"><span class="check-status">not written</span><span class="check-copy">${escapeHtml(path)}</span></div>`).join("")}`;
+    const recoverReady = !closed && connectedHumanWriter() && preview.inspectedOperationId === selected.operation_id && preview.recoveryAcknowledged === true && !preview.loading;
+    selectedHtml = `<div class="transition-section"><h4>Operation record · ${escapeHtml(selected.state || "pending")}</h4>${transitionFact("Operation ID", selected.operation_id)}${reviewHtml}${conflicts.map(item => `<div class="transition-check blocked"><span class="check-status">conflict</span><span class="check-copy">${escapeHtml(item.path || "workspace")} · ${escapeHtml(item.reason || "Current source differs from the recorded operation.")}</span></div>`).join("")}${!closed && selected.operation_id ? `<button type="button" class="copy-btn" data-operation-recover="${escapeHtml(selected.operation_id)}"${recoverReady ? "" : " disabled"}>Recover recorded operation</button><button type="button" class="copy-btn" data-operation-abandon="${escapeHtml(selected.operation_id)}"${recoverReady ? "" : " disabled"}>Abandon operation</button>` : ""}</div>`;
   }
   wrap.innerHTML = `<div class="transition-dialog" role="dialog" aria-modal="true" aria-labelledby="transition-dialog-title" aria-describedby="transition-dialog-description" tabindex="-1">
     <div class="transition-head"><div class="eyebrow">CONNECTED BOARD · OPERATION RECOVERY</div><h2 id="transition-dialog-title" tabindex="-1">Review pending operations</h2><p id="transition-dialog-description">Operation state is separate from feature lifecycle. Inspect the recorded result, then recover directly through the service if needed; no agent is involved.</p></div>
@@ -2201,8 +2213,12 @@ function renderBoardOperationsDialog(focus) {
     wrap.querySelectorAll("[data-operation-recover]").forEach(button => {
       button.disabled = !(connectedHumanWriter() && preview.selectedOperation.state !== "applied" && button.dataset.operationRecover === preview.inspectedOperationId && preview.recoveryAcknowledged && !preview.loading);
     });
+    wrap.querySelectorAll("[data-operation-abandon]").forEach(button => {
+      button.disabled = !(connectedHumanWriter() && !["applied", "abandoned"].includes(preview.selectedOperation.state) && button.dataset.operationAbandon === preview.inspectedOperationId && preview.recoveryAcknowledged && !preview.loading);
+    });
   });
   wrap.querySelectorAll("[data-operation-recover]").forEach(button => button.addEventListener("click", () => recoverBoardOperation(preview, button.dataset.operationRecover)));
+  wrap.querySelectorAll("[data-operation-abandon]").forEach(button => button.addEventListener("click", () => recoverBoardOperation(preview, button.dataset.operationAbandon, true)));
   const dialog = wrap.querySelector(".transition-dialog");
   bindDialogKeyboard(dialog, "Operation review closed.");
   // A re-render that is not a fresh open keeps the control the person was on.
@@ -2251,25 +2267,32 @@ function refreshBoardDiscovery() {
     return discovery;
   });
 }
-function recoverBoardOperation(preview, operationId) {
+function recoverBoardOperation(preview, operationId, abandon) {
   if (!preview || state.transitionPreview !== preview || !operationId || !connectedHumanWriter() || !preview.selectedOperation || preview.selectedOperation.operation_id !== operationId ||
-      preview.inspectedOperationId !== operationId || preview.recoveryAcknowledged !== true || ["applied"].includes(preview.selectedOperation.state) || boardOperationRecordError(preview.selectedOperation, operationId)) return;
+      preview.inspectedOperationId !== operationId || preview.recoveryAcknowledged !== true || ["applied", "abandoned"].includes(preview.selectedOperation.state) || boardOperationRecordError(preview.selectedOperation, operationId)) return;
   const reviewRevision = preview.selectedOperation.recovery_review_revision;
+  const abandoning = abandon === true;
   preview.selectedOperation = null;
   preview.inspectedOperationId = null;
   preview.recoveryAcknowledged = false;
-  preview.loading = true; preview.error = ""; preview.operationMessage = "Recovering the recorded operation directly; no agent is involved."; renderTransitionDialog(false);
-  boardJsonRequest("/api/board/v1/operations/" + encodeURIComponent(operationId) + "/recover", "POST", {
+  preview.loading = true; preview.error = ""; preview.operationMessage = abandoning ? "Abandoning the recorded operation directly; no agent is involved." : "Recovering the recorded operation directly; no agent is involved."; renderTransitionDialog(false);
+  boardJsonRequest("/api/board/v1/operations/" + encodeURIComponent(operationId) + "/recover", "POST", abandoning ? {
+    review_revision: reviewRevision,
+    semantic_review_acknowledged: true,
+    abandon: true,
+  } : {
     review_revision: reviewRevision,
     semantic_review_acknowledged: true,
   }).then(receipt => {
     preview.loading = false;
     preview.operationState = receipt.state || "pending";
-    preview.operationMessage = preview.operationState === "applied" ? "Operation applied. Refreshing the dashboard view…" : "Recovery returned a conflict. Inspect the updated receipt before trying again.";
-    if (preview.operationState === "applied") {
+    preview.operationMessage = preview.operationState === "applied" ? "Operation applied. Refreshing the dashboard view…"
+      : preview.operationState === "abandoned" ? "Operation abandoned. Nothing already written was undone; the receipt lists the writes that were applied and those that were not."
+      : "Recovery returned a conflict. Inspect the updated receipt before trying again.";
+    if (preview.operationState === "applied" || preview.operationState === "abandoned") {
       preview.selectedOperation = {
         operation_id: operationId,
-        state: "applied",
+        state: preview.operationState,
         actor: receipt.actor,
         receipt,
       };

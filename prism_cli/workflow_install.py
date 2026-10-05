@@ -23,6 +23,8 @@ from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, reparse_kind
 WORKFLOW_VERSION = "1"
 _IGNORE_MARKER = "# Prism local workflow state"
 _IGNORE_RULE = ".prism/state/"
+_ATTRIBUTES_MARKER = "# Prism workflow files keep LF line endings"
+_ATTRIBUTES_RULE = "knowledge/** text eol=lf"
 
 
 def plan_install(
@@ -158,11 +160,12 @@ def plan_install(
             if existing is None:
                 _check_missing_parent_chain(workspace, relative)
                 changes.append({"path": relative, "before": None, "after": source_content})
-            elif existing == source_content.encode("utf-8"):
+            elif _lf(existing) == _lf(source_content.encode("utf-8")):
+                # A Git checkout with core.autocrlf rewrites line endings; the text is still Prism's own.
                 unchanged.append(relative)
             elif _is_earlier_shipped_copy(relative, existing):
                 # An untouched copy of an earlier canonical version is Prism's own
-                # text, so it is replaced without asking.
+                # text, so it is replaced without asking. Writes stay LF.
                 changes.append({"path": relative, "before": existing.decode("utf-8"), "after": source_content})
                 updated.append(relative)
             elif relative == "knowledge/wiki/CONNECTED.md":
@@ -175,6 +178,7 @@ def plan_install(
         _plan_guidance_pointer(workspace, "AGENTS.md", changes, preserved, updated, optional_steps, conflicts)
         _plan_guidance_pointer(workspace, "CLAUDE.md", changes, preserved, updated, optional_steps, conflicts)
         _plan_gitignore(workspace, changes, unchanged, conflicts)
+        _plan_gitattributes(workspace, changes, unchanged, conflicts)
 
         # Keep the workflow manifest last so a partially applied scaffold never
         # advertises a connected workspace before its canonical binding exists.
@@ -288,8 +292,8 @@ def apply_install(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
                         plan,
                         status="conflict",
                         conflicts=[
-                            "Workflow upgrade is blocked while non-applied board operations remain: "
-                            f"{descriptions}. Recover or complete these operations, then preview the upgrade again."
+                            "Workflow upgrade is blocked while unfinished board operations remain: "
+                            f"{descriptions}. Recover, complete or abandon these operations, then preview the upgrade again."
                         ],
                     )
             return _apply_change_set(workspace, plan, changes)
@@ -725,7 +729,7 @@ def _plan_guidance_pointer(
         return
     if current is not None:
         pointer = guidance_pointer(relative, WORKFLOW_VERSION)
-        if current != pointer.encode("utf-8") and _is_earlier_shipped_copy(relative, current):
+        if _lf(current) != _lf(pointer.encode("utf-8")) and _is_earlier_shipped_copy(relative, current):
             changes.append({"path": relative, "before": current.decode("utf-8"), "after": pointer})
             updated.append(relative)
             return
@@ -743,10 +747,19 @@ def _plan_guidance_pointer(
     changes.append({"path": relative, "before": None, "after": guidance_pointer(relative, WORKFLOW_VERSION)})
 
 
-def _is_earlier_shipped_copy(relative: str, content: bytes) -> bool:
-    """Tell whether workspace bytes equal an earlier packaged version of a Prism-owned file."""
+def _lf(content: bytes) -> bytes:
+    """Normalise CRLF line endings to LF so a copy checked out with CRLF compares equal to the packaged text."""
 
-    return hashlib.sha256(content).hexdigest() in previous_digests(relative, WORKFLOW_VERSION)
+    return content.replace(b"\r\n", b"\n")
+
+
+def _is_earlier_shipped_copy(relative: str, content: bytes) -> bool:
+    """Tell whether workspace bytes equal an earlier packaged version of a Prism-owned file.
+
+    Line endings are normalised first: the packaged digests are of LF text.
+    """
+
+    return hashlib.sha256(_lf(content)).hexdigest() in previous_digests(relative, WORKFLOW_VERSION)
 
 
 def _plan_gitignore(
@@ -778,6 +791,53 @@ def _plan_gitignore(
     suffix = "" if not text or text.endswith(("\n", "\r")) else newline
     after = f"{text}{suffix}{_IGNORE_MARKER}{newline}{_IGNORE_RULE}{newline}"
     changes.append({"path": relative, "before": text, "after": after})
+
+
+def _plan_gitattributes(
+    root: Path,
+    changes: list[dict[str, str | None]],
+    unchanged: list[str],
+    conflicts: list[str],
+) -> None:
+    """Keep the Prism-owned `knowledge/` text on LF in Git checkouts.
+
+    A checkout with `core.autocrlf=true` otherwise rewrites the installed
+    files with CRLF. The rule is created or appended; existing content stays.
+    """
+
+    relative = ".gitattributes"
+    try:
+        current = _read_path_bytes(root, relative, allow_missing=True)
+    except (OSError, ValueError) as exc:
+        conflicts.append(f"Unable to inspect {relative}: {exc}")
+        return
+    if current is None:
+        _check_missing_parent_chain(root, relative)
+        changes.append({"path": relative, "before": None, "after": f"{_ATTRIBUTES_MARKER}\n{_ATTRIBUTES_RULE}\n"})
+        return
+    try:
+        text = current.decode("utf-8")
+    except UnicodeError as exc:
+        conflicts.append(f"{relative} is not UTF-8 text and cannot safely receive the Prism line-ending rule: {exc}")
+        return
+    if _attributes_rule_is_effective(text):
+        unchanged.append(relative)
+        return
+    newline = "\r\n" if "\r\n" in text else "\n"
+    suffix = "" if not text or text.endswith(("\n", "\r")) else newline
+    changes.append({"path": relative, "before": text, "after": f"{text}{suffix}{_ATTRIBUTES_MARKER}{newline}{_ATTRIBUTES_RULE}{newline}"})
+
+
+def _attributes_rule_is_effective(text: str) -> bool:
+    """Tell whether the last rule for `knowledge/**` already sets `eol=lf`."""
+
+    effective = False
+    for line in text.splitlines():
+        tokens = line.split()
+        if not tokens or tokens[0].startswith("#") or tokens[0] not in {"knowledge/**", "/knowledge/**"}:
+            continue
+        effective = "eol=lf" in tokens[1:]
+    return effective
 
 
 def _state_ignore_is_effective(text: str) -> bool:

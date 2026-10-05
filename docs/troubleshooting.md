@@ -9,6 +9,7 @@ Each entry gives the symptom, its cause and the fix. Start with `prism doctor --
 - [An apply is rejected as stale](#an-apply-is-rejected-as-stale)
 - [Calls fail with grant_identity_changed after an upgrade](#calls-fail-with-grant_identity_changed-after-an-upgrade)
 - [Workflow install stops on a modified CONNECTED.md](#workflow-install-stops-on-a-modified-connectedmd)
+- [An operation is stuck in conflict and blocks other writes](#an-operation-is-stuck-in-conflict-and-blocks-other-writes)
 - [Grants stop working after prism.workspace.yml was deleted](#grants-stop-working-after-prismworkspaceyml-was-deleted)
 - [A cursor is rejected as invalid_cursor or stale_cursor](#a-cursor-is-rejected-as-invalid_cursor-or-stale_cursor)
 - [The agent host does not show the Prism tools](#the-agent-host-does-not-show-the-prism-tools)
@@ -79,7 +80,7 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 **Symptom.** `apply` fails with status 409 and one of `stale_preview`, `stale_move`, `stale_write`, `stale_index_row` or `stale_read_revision`. In the board, a preview that was open when its feature changed says that the feature source changed and disables confirmation.
 
-**Cause.** A file that the preview depended on changed after the preview was made: someone edited the feature page, another operation applied, or new relevant context appeared. Prism refuses to apply a preview whose basis has moved, so a confirmation never covers changes nobody reviewed.
+**Cause.** A file that the preview depended on changed after the preview was made: someone edited the feature page, another operation applied, or new relevant context appeared. A source the skill must read can also appear after the preview, for example a design page created for the feature: `stale_preview` then says "a source this skill must read changed or appeared after the preview; preview again" and `details.paths` names it. Prism refuses to apply a preview whose basis has moved, so a confirmation never covers changes nobody reviewed.
 
 **Fix.** Nothing was written. In the board, choose **Preview again** to build a new preview from the current files; through MCP, read the current files again and create a new preview. Then review and confirm it. Unrelated `index.md` rows and `log.md` additions do not make a preview stale. If an operation was submitted and its outcome is unclear, retrieve its receipt with `operation` before retrying, as described under [Interrupted operations](shared-board.md#interrupted-operations).
 
@@ -170,7 +171,7 @@ If the message asks for a newer Prism, upgrade Prism first. [Upgrading to contra
 Conflict: knowledge/wiki/CONNECTED.md is present with different contents; preserve or reconcile it explicitly before installing the Prism-owned binding.
 ```
 
-**Cause.** `knowledge/wiki/CONNECTED.md` is a Prism-owned file: it binds the workspace's wiki workflow to the board service. Prism replaces a copy that equals an earlier packaged version, but never overwrites a copy that matches no packaged version, for example one you edited or truncated. Nothing was written.
+**Cause.** `knowledge/wiki/CONNECTED.md` is a Prism-owned file: it binds the workspace's wiki workflow to the board service. Prism replaces a copy that equals an earlier packaged version, but never overwrites a copy that matches no packaged version, for example one you edited or truncated. Nothing was written. Line endings do not make a copy different: a Git checkout with `core.autocrlf=true` turns the file into CRLF, and Prism still treats an otherwise unmodified CRLF copy as its own. If the conflict appears right after a fresh clone and nobody edited the file, check what changed with `git diff --ignore-space-at-eol`; only a real text difference needs the fix below.
 
 **Fix.**
 
@@ -178,6 +179,20 @@ Conflict: knowledge/wiki/CONNECTED.md is present with different contents; preser
 2. Delete `knowledge/wiki/CONNECTED.md`.
 3. Run the install again: preview with `prism workflow install .`, then apply with `prism workflow install . --apply`. For a generated workspace, use `prism workflow upgrade .` and `prism workflow upgrade . --apply` instead.
 4. Put your own notes in your own guidance, such as `AGENTS.md` or `CLAUDE.md`, or in wiki pages that are not Prism-owned. The installed `CONNECTED.md` stays as Prism writes it. Installation does not rewrite your `AGENTS.md` or `CLAUDE.md`; add a short pointer to `knowledge/wiki/CONNECTED.md` there if you want agents to find it.
+
+To keep Git from rewriting the line endings of the Prism-owned text, `prism workflow install` and `prism workflow upgrade` add `knowledge/** text eol=lf` to `.gitattributes` (an existing file keeps its content and receives the rule at the end). In a clone made before that rule existed, run `git add --renormalize .` once after the rule is in place.
+
+## An operation is stuck in conflict and blocks other writes
+
+**Symptom.** An `apply` fails with status 409 and `unresolved_operation_overlap`: "Operation `<id>` has unresolved writes that overlap this operation." `recover` on that operation keeps returning `state: conflict` with `recovery_source_changed`, `recovery_conflict` or `recovery_move_conflict` (for example "Both the recorded intake source and destination are missing"). In the board, the operation stays in the pending operations list. `prism workflow upgrade` also stops while it is listed.
+
+**Cause.** An operation was interrupted or ended in conflict, and a file it depends on was then edited by hand, or its intake folder was renamed or deleted. The board does not guess: it keeps the recorded writes and refuses every new write that overlaps them. A `po-intake` operation lists every existing feature page as a source, so one stuck intake operation can block every feature write.
+
+**Fix.** A writable human decides, in the board's operation review (the **Operations** button in the board header) or with `recover`:
+
+1. Inspect the operation and acknowledge the review. If a page was edited by hand, **Recover recorded operation** now checks the remaining writes against the current files and completes the operation when they still pass the current rules. An agent's own `recover` still stops at the changed source; the human's reviewed recovery does not.
+2. If recovery still fails because the folder move or a written file can no longer match the record, choose **Abandon operation** (over HTTP or MCP, `recover` with `abandon: true`, the fresh `review_revision` and `semantic_review_acknowledged: true`). The operation becomes `abandoned`: nothing already written is undone, the receipt lists which writes and folder moves were applied and which were not, and the operation stops blocking other writes. Agents cannot abandon (`abandon_requires_human`), and an operation that can still be recovered is refused with `abandon_not_needed`.
+3. Finish by hand what the receipt lists as not applied, or ask for a new preview.
 
 ## Grants stop working after prism.workspace.yml was deleted
 
@@ -198,7 +213,7 @@ Conflict: knowledge/wiki/CONNECTED.md is present with different contents; preser
 
 **Cause.** Windows cannot hold a name that contains `:` `<` `>` `"` `|` `?` `*` or a control character, that ends in a dot or a space, or that is a reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1` to `COM9`, `LPT1` to `LPT9`, with or without an extension, in any case). Prism refuses these names on every operating system, so that a workspace written on Linux or macOS can be checked out on Windows and an apply never starts a write that the filesystem then refuses.
 
-**Fix.** Rename the file or folder in the proposal, for example `F-001-document-review.md`, and preview again. An existing file that already has such a name on Linux or macOS is not listed by `list_workspace` and cannot be read through the board; rename it in the workspace.
+**Fix.** Rename the file or folder in the proposal, for example `F-001-document-review.md`, and preview again. An existing file that already has such a name on Linux or macOS is not listed by `list_workspace` and cannot be read through the board; rename it in the workspace. It does not stop the board: `changes` and the intake and skill previews skip such a name and `changes` reports it under `skipped_paths` with a count and examples, so the rest of the workspace keeps working until you rename it.
 
 ## A cursor is rejected as invalid_cursor or stale_cursor
 
@@ -206,7 +221,7 @@ Conflict: knowledge/wiki/CONNECTED.md is present with different contents; preser
 
 **Cause.** `invalid_cursor` means the cursor does not belong to the request: it was changed, it comes from another tool, skill, path or query, or it was sent with different arguments. `stale_cursor` means the workspace files or facts behind the earlier pages changed, so the remaining pages would no longer fit together.
 
-**Fix.** Pass `next_cursor` back exactly as returned, with the same arguments as the first call, and do not build cursors yourself. After `stale_cursor`, restart from the first page and read the new text again. A reader that joins chunks should check the digest of the joined text, as in the loop under [MCP tool contract](shared-board.md#mcp-tool-contract-version-2). The `changes` cursor is a number, or `N~K` while the oversize event `N` is being returned in chunks; pass it back unchanged.
+**Fix.** Pass `next_cursor` back exactly as returned, with the same arguments as the first call, and do not build cursors yourself. After `stale_cursor`, restart from the first page and read the new text again. A reader that joins chunks should check the digest of the joined text, as in the loop under [MCP tool contract](shared-board.md#mcp-tool-contract-version-2). The `changes` cursor is a number, or `N~K` while the oversize event `N` is being returned in chunks; pass it back unchanged. Any other value, such as `1_0`, ` 5 `, `+5` or `1e3`, is `invalid_cursor`.
 
 ## The agent host does not show the Prism tools
 

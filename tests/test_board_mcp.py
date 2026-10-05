@@ -106,8 +106,8 @@ class _Service:
     def operation(self, actor: _Actor, operation_id: str) -> dict[str, Any]:
         return self._result("operation", actor, operation_id)
 
-    def recover(self, actor: _Actor, operation_id: str, review_revision: str | None = None, semantic_review_acknowledged: bool = False) -> dict[str, Any]:
-        return self._result("recover", actor, operation_id, review_revision, semantic_review_acknowledged)
+    def recover(self, actor: _Actor, operation_id: str, review_revision: str | None = None, semantic_review_acknowledged: bool = False, abandon: bool = False) -> dict[str, Any]:
+        return self._result("recover", actor, operation_id, review_revision, semantic_review_acknowledged, *(["abandon"] if abandon else []))
 
     def changes(self, actor: _Actor, cursor: str | None = None) -> dict[str, Any]:
         return self._result("changes", actor, cursor)
@@ -302,7 +302,7 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
             "get_preview": ({"preview_id", "cursor"}, {"preview_id"}),
             "apply": ({"preview_id", "operation_id"}, {"preview_id", "operation_id"}),
             "operation": ({"operation_id", "cursor"}, {"operation_id"}),
-            "recover": ({"operation_id", "review_revision", "semantic_review_acknowledged"}, {"operation_id"}),
+            "recover": ({"operation_id", "review_revision", "semantic_review_acknowledged", "abandon"}, {"operation_id"}),
             "changes": ({"cursor"}, set()),
         }
         async with self.app.router.lifespan_context(self.app):
@@ -374,6 +374,8 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(recover_schema["required"], ["operation_id"])
                 self.assertIn({"type": "string"}, recover_schema["properties"]["review_revision"]["anyOf"])
                 self.assertEqual(recover_schema["properties"]["semantic_review_acknowledged"]["type"], "boolean")
+                self.assertEqual(recover_schema["properties"]["abandon"]["type"], "boolean")
+                self.assertEqual(recover_schema["properties"]["abandon"]["default"], False)
 
                 change = {"path": "knowledge/intake/pending/F-1/feature.md", "content": "id: F-1\n"}
                 move = {"source": "knowledge/intake/pending/F-1", "destination": "knowledge/intake/processed/F-1"}
@@ -409,6 +411,13 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(recovered.is_error)
                 self.assertEqual(self.service.calls[-1][1], ("O-review", "revision-1", True))
 
+                abandoned = await session.call_tool(
+                    "recover",
+                    {"operation_id": "O-review", "review_revision": "revision-1", "semantic_review_acknowledged": True, "abandon": True},
+                )
+                self.assertFalse(abandoned.is_error)
+                self.assertEqual(self.service.calls[-1][1], ("O-review", "revision-1", True, "abandon"))
+
                 before = len(self.service.calls)
                 invalid_proposals = [
                     {"skill": "po-intake", "changes": [{**change, "unexpected": "value"}]},
@@ -438,6 +447,7 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                 for invalid_recovery in (
                     {"operation_id": "O-review", "review_revision": 1, "semantic_review_acknowledged": True},
                     {"operation_id": "O-review", "review_revision": "revision-1", "semantic_review_acknowledged": "true"},
+                    {"operation_id": "O-review", "review_revision": "revision-1", "semantic_review_acknowledged": True, "abandon": "true"},
                 ):
                     result = await session.call_tool("recover", invalid_recovery)
                     self.assertTrue(result.is_error, invalid_recovery)

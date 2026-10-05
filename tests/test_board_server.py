@@ -110,8 +110,8 @@ class _Service:
     def operation(self, actor: _Actor, operation_id: str) -> dict[str, Any]:
         return self._result("operation", actor, operation_id)
 
-    def recover(self, actor: _Actor, operation_id: str, review_revision: str | None = None, semantic_review_acknowledged: bool = False) -> dict[str, Any]:
-        return self._result("recover", actor, operation_id, review_revision, semantic_review_acknowledged)
+    def recover(self, actor: _Actor, operation_id: str, review_revision: str | None = None, semantic_review_acknowledged: bool = False, abandon: bool = False) -> dict[str, Any]:
+        return self._result("recover", actor, operation_id, review_revision, semantic_review_acknowledged, **({"abandon": True} if abandon else {}))
 
     def changes(self, actor: _Actor, cursor: str | None = None) -> dict[str, Any]:
         return self._result("changes", actor, cursor)
@@ -291,11 +291,23 @@ class BoardServerTests(unittest.TestCase):
         )
         self.assertEqual(200, response.status_code, response.text)
         self.assertEqual(("O-1", "review-1", True), self.service.calls[-1][2])
+        self.assertEqual({}, self.service.calls[-1][3])
+
+        abandoned = self.client.post(
+            "/api/board/v1/operations/O-1/recover",
+            json={"review_revision": "review-1", "semantic_review_acknowledged": True, "abandon": True},
+            headers=headers,
+        )
+        self.assertEqual(200, abandoned.status_code, abandoned.text)
+        self.assertEqual(("O-1", "review-1", True), self.service.calls[-1][2])
+        self.assertEqual({"abandon": True}, self.service.calls[-1][3])
 
         before = len(self.service.calls)
         for payload in (
             {"review_revision": 7, "semantic_review_acknowledged": True},
             {"review_revision": "review-1", "semantic_review_acknowledged": 1},
+            {"review_revision": "review-1", "semantic_review_acknowledged": True, "abandon": "true"},
+            {"review_revision": "review-1", "semantic_review_acknowledged": True, "abandon": 1},
             {"review_revision": "review-1", "unexpected": "value"},
         ):
             invalid = self.client.post("/api/board/v1/operations/O-1/recover", json=payload, headers=headers)
@@ -503,8 +515,13 @@ class BoardServerTests(unittest.TestCase):
         scans: list[FingerprintCache] = []
         real_scan = FingerprintCache.scan
 
+        request_thread = threading.get_ident()
+
         def recording_scan(cache: FingerprintCache) -> Any:
-            scans.append(cache)
+            # The live graph's own poller thread may scan at any time on a slow
+            # machine; only scans made by this (request) thread are counted.
+            if threading.get_ident() == request_thread:
+                scans.append(cache)
             return real_scan(cache)
 
         with patch.object(FingerprintCache, "scan", recording_scan):

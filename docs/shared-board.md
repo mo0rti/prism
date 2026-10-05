@@ -11,9 +11,9 @@ prism workflow install . --name "Document review" --platform backend
 prism workflow install . --name "Document review" --platform backend --apply
 ```
 
-Repeat `--platform` for additional scope IDs. The IDs are `backend`, `web-user-app`, `web-admin-portal`, `mobile-android`, and `mobile-ios`. A workflow-only workspace does not need corresponding application directories. Installation creates workflow assets, a manifest and a local-state ignore rule; it does not generate an application. Existing source code, wiki content and custom agent instructions are preserved. Conflicting owned guidance stops installation and identifies the file for resolution.
+Repeat `--platform` for additional scope IDs. The IDs are `backend`, `web-user-app`, `web-admin-portal`, `mobile-android`, and `mobile-ios`. A workflow-only workspace does not need corresponding application directories. Installation creates workflow assets, a manifest, a local-state ignore rule and a `.gitattributes` rule (`knowledge/** text eol=lf`) that keeps the Prism-owned `knowledge/` text on LF line endings; an existing `.gitattributes` keeps its content and receives the rule at the end. It does not generate an application. Existing source code, wiki content and custom agent instructions are preserved. Conflicting owned guidance stops installation and identifies the file for resolution.
 
-The one Prism-owned file that can conflict is `knowledge/wiki/CONNECTED.md`. A copy that equals an earlier packaged version is replaced without a conflict and listed in the preview as `Updated: <path>` (and as `updated` in the JSON plan). When it matches no packaged version, for example after you edited it, `prism workflow install` and `prism workflow upgrade` exit with code 3, write nothing and print:
+The one Prism-owned file that can conflict is `knowledge/wiki/CONNECTED.md`. A copy that equals an earlier packaged version is replaced without a conflict and listed in the preview as `Updated: <path>` (and as `updated` in the JSON plan). Line endings are ignored in that comparison: a copy that a Git checkout with `core.autocrlf=true` rewrote with CRLF still counts as unmodified and is left as it is, and Prism writes LF. When it matches no packaged version, for example after you edited it, `prism workflow install` and `prism workflow upgrade` exit with code 3, write nothing and print:
 
 ```text
 Conflict: knowledge/wiki/CONNECTED.md is present with different contents; preserve or reconcile it explicitly before installing the Prism-owned binding.
@@ -37,7 +37,7 @@ prism workflow upgrade . --apply
 
 `--apply` shows the proposed changes and asks for confirmation. Automation must explicitly use `--apply --yes`. Reading or viewing an older workspace does not upgrade it. The manifest records a board UUID, workflow version, mode and canonical asset digest. An incompatible pin disables connected writes until an explicit upgrade.
 
-Before upgrading an existing connected workspace, finish or recover its pending
+Before upgrading an existing connected workspace, finish, recover or abandon its pending
 operations and stop its board service. Upgrade uses the same workspace process
 lock as the service and refuses to change the pin while an operation is incomplete.
 The preview identifies `.prism/state/board.lock` when the upgrade needs to create
@@ -279,7 +279,9 @@ Only short excerpts of workspace text appear in an error.
 | Code | `details` |
 | --- | --- |
 | `clarify_answer_unlinked`, `design_answer_unlinked`, `requirement_answer_unlinked` | `path`, `section`, `resolved_questions` (numbers), `resolved_answers` (question number to the first 160 characters of its answer). One of those answers must appear verbatim in that section; case and whitespace are ignored. |
-| `invalid_path` (400) | For a path segment that Windows cannot hold: `path`, `segment` and `reason`. A segment may not contain `:` `<` `>` `"` `|` `?` `*` or a control character, end in a dot or a space, or be a reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1` to `COM9`, `LPT1` to `LPT9`, with or without an extension, in any case). Prism applies this on every operating system, so a workspace written on Linux or macOS can be checked out on Windows. The preview is rejected and nothing is written. |
+| `write_path_unavailable` (403) | A skill writes Markdown pages directly in its wiki directories, for example `knowledge/wiki/features/F-001-export.md`, and the intake `MANIFEST.md` or `CONFLICT.md` of a processed or quarantined folder. A page in a sub-folder such as `knowledge/wiki/features/2026/F-001-export.md` is refused, because the wiki reads one folder level and would never lint, graph or query it. |
+| `stale_preview` (409) at `apply` | The preview's sources changed, or a source this skill must read changed or appeared after the preview. `details.paths` lists the sources that appeared. Nothing was written: read them and preview again. |
+| `invalid_path` (400) | For a path segment that Windows cannot hold: `path`, `segment` and `reason`. A segment may not contain `:` `<` `>` `"` `|` `?` `*` or a control character, end in a dot or a space, or be a reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1` to `COM9`, `LPT1` to `LPT9`, with or without an extension, in any case). Prism applies this on every operating system, so a workspace written on Linux or macOS can be checked out on Windows. The preview is rejected and nothing is written. This applies to paths a caller supplies. A name that already exists on disk and that Windows cannot hold is skipped when the board reads the workspace, as `list_workspace` skips it: it is not listed, read or fingerprinted, and `changes` reports it under `skipped_paths` (`count`, up to five `examples` and a `reason`) instead of failing. Rename such a file. |
 | `invalid_markdown`, `invalid_frontmatter` | `path`, `problem`, and for a YAML error `line` and `column` within the file. A page starts with `---`, a YAML mapping and a closing `---`. |
 | `invalid_change`, `invalid_move` | `index` of the item in `changes` or `moves`, `missing` and `unexpected` field names, `expected` field names (`path`, `content` or `source`, `destination`), and `not_string` for fields with the wrong type. |
 | `invalid_changes`, `invalid_moves` | `index` of the first item over the limit, `maximum` and `received`; or `expected` and `received` when the value is not a list. |
@@ -339,9 +341,9 @@ The HTTP routes `POST /api/board/v1/workspace/read` and `POST /api/board/v1/quer
 | `preview_transition` | `feature_id`, `action`, `inputs?` | the same as `preview_skill`; only a human participant may call it |
 | `get_preview` | `preview_id`, `cursor?` | the same result as the preview call, for a preview the caller created. An unknown preview or another participant's is `preview_not_found` (404) |
 | `apply` | `preview_id`, `operation_id` | the receipt |
-| `operation` | `operation_id`, `cursor?` | `state`, `receipt`, and for an unfinished operation `actor`, `moves`, `recovery_review_revision`, `remaining_changes` and `remaining_changes_chunk`, and `next_cursor` |
-| `recover` | `operation_id`, `review_revision?`, `semantic_review_acknowledged?` | the receipt |
-| `changes` | `cursor?` | `cursor`, `head_cursor`, `board_revision`, `changes`, `has_more` |
+| `operation` | `operation_id`, `cursor?` | `state` (`pending`, `conflict`, `applied` or `abandoned`), `receipt`, and for an unfinished operation `actor`, `moves`, `recovery_review_revision`, `remaining_changes` and `remaining_changes_chunk`, and `next_cursor` |
+| `recover` | `operation_id`, `review_revision?`, `semantic_review_acknowledged?`, `abandon?` | the receipt. `abandon` is for a writable human only: see "Abandoning an operation" |
+| `changes` | `cursor?` | `cursor`, `head_cursor`, `board_revision`, `changes`, `has_more`, and `skipped_paths` when existing names were skipped. The cursor is a number the board returned, or `N~K` while an oversize event is returned in chunks; any other value is `invalid_cursor` (400) |
 
 `references` is an index: each entry has `path`, `title` (the first Markdown heading, or the file name), `size_chars` and `digest`. It never carries the reference text.
 
@@ -409,6 +411,39 @@ that confirmation. The receipt preserves the original actor and records the
 recovering human separately; other agents, read-only participants and unrelated
 human operations do not gain this recovery permission.
 
+### Recovery against the current files
+
+A writable human who recovers with a fresh `review_revision` and
+`semantic_review_acknowledged: true` has inspected the current relevant files: the
+`review_revision` binds them. Recovery then checks the remaining writes against the
+files on disk now, not against the sources recorded when the preview was made, so a
+page edited by hand while the operation was interrupted no longer blocks it. The
+current rules still apply: a write whose file matches neither its recorded before-state
+nor its recorded after-state, a folder move whose tree changed, a stale review and a
+revoked or read-only participant still stop the recovery and leave the files as they
+are. An agent that recovers its own operation keeps the recorded-source check.
+
+### Abandoning an operation
+
+A conflicted or interrupted operation that can no longer be rolled forward, for
+example because its intake folder was renamed or deleted, would otherwise block every
+new write that overlaps it. A writable human closes it with `recover` and
+`abandon: true`, the same inspection and the same fresh `review_revision` with
+`semantic_review_acknowledged: true` that recovery needs; the board's operation
+review has an **Abandon operation** button for it. Agents cannot abandon
+(`abandon_requires_human`, 403). An operation that can still be recovered against the
+current files is not abandoned (`abandon_not_needed`, 409): recover it. An applied
+operation cannot be abandoned (`operation_already_applied`, 409).
+
+Abandoning undoes nothing. Files already written and folders already moved stay as they
+are, and the receipt records them: `applied_paths` and `unapplied_paths` for the writes,
+`moved_folders` and `unmoved_folders` for the moves, the `reason` recovery failed, the
+original actor under `actor` and the human under `abandoned_by`. The state is
+`abandoned`, which is final: the operation no longer counts as pending, no longer
+blocks overlapping writes, no longer blocks `prism workflow upgrade`, and asking for it
+again returns the same receipt. Finish by hand whatever the receipt lists as not
+applied, or preview the change again.
+
 ### Changes
 
 `changes` returns durable board events after an optional cursor, each as `cursor`, `operation_id`, `event` and `created_at`. The event `type` is one of:
@@ -418,6 +453,7 @@ human operations do not gain this recovery permission.
 | `operation-applied` | An operation finishes. | `receipt` |
 | `operation-recovery-started` | A writable human starts recovering another participant's operation. | `actor`, `operation_id` |
 | `operation-conflict` | An operation ends in `conflict`. | `operation_id`, `paths` |
+| `operation-abandoned` | A writable human abandons an operation. | `operation_id`, `actor` (the original actor), `abandoned_by`, `applied_paths`, `unapplied_paths`, `moved_folders`, `unmoved_folders` |
 
 `paths` lists the workspace paths that block the operation, such as a file edited outside the board after it was journaled. It is empty when no single path is at fault. An event carries paths only, never file content. Repeating `recover` on an operation that is still in conflict for the same paths records no further event; a later conflict with different paths records a new one. Clients that read the event type should ignore types they do not recognize.
 

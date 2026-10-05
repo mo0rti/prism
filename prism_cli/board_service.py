@@ -38,6 +38,8 @@ _MAX_TEXT_FILE = 512 * 1024
 _MAX_READ_TOTAL = 2 * 1024 * 1024
 _MAX_READ_PATHS = 64
 _MCP_CONTRACT = 2
+# Operation states that never run again: `applied` finished its writes and `abandoned` was closed by a human.
+_TERMINAL_OPERATION_STATES = frozenset({"applied", "abandoned"})
 # A path segment every operating system can hold. Windows refuses these characters,
 # a trailing dot or space and the device names, so Prism refuses them on every
 # system: a workspace written on Linux can then be checked out on Windows.
@@ -320,7 +322,7 @@ class BoardService:
             pending = db.execute(
                 "SELECT o.operation_id, o.state, o.created_at, o.participant_id FROM operations o "
                 "JOIN grants g ON g.participant_id = o.participant_id "
-                "WHERE o.state != 'applied' AND (o.participant_id = ? OR (? = 1 AND g.kind = 'agent')) ORDER BY o.created_at",
+                "WHERE o.state NOT IN ('applied', 'abandoned') AND (o.participant_id = ? OR (? = 1 AND g.kind = 'agent')) ORDER BY o.created_at",
                 (actor.participant_id, int(actor.kind == "human" and actor.writable)),
             ).fetchall()
         skills = self._skill_summaries()
@@ -707,7 +709,7 @@ class BoardService:
             "created_at": row[3],
             "updated_at": row[4],
         }
-        if row[1] != "applied":
+        if row[1] not in _TERMINAL_OPERATION_STATES:
             result["actor"] = intent.get("actor")
             result["remaining_changes"] = self._operation_file_states(intent)
             result["moves"] = intent.get("moves", [])
@@ -751,12 +753,26 @@ class BoardService:
         operation_id: str,
         review_revision: str | None = None,
         semantic_review_acknowledged: bool = False,
+        abandon: bool = False,
     ) -> dict[str, Any]:
+        """Roll an unfinished operation forward, or, for a reviewing human, abandon it.
+
+        A writable human who passes a fresh `review_revision` with
+        `semantic_review_acknowledged` has reviewed the current relevant files, so
+        the roll-forward is checked against them instead of the sources recorded
+        at preview. `abandon` closes an operation that can no longer be rolled
+        forward; it needs that same review and is never available to an agent.
+        """
+
         self._require_running()
         operation_id = _safe_id(operation_id, "operation_id")
+        if not isinstance(abandon, bool):
+            raise BoardError("invalid_recovery", "`abandon` must be a boolean.", 400)
         store = self._require_store()
         with self._lock:
             self._require_actor(actor, write=True)
+            if abandon and actor.kind != "human":
+                raise BoardError("abandon_requires_human", "Only a writable human participant can abandon an operation.", 403)
             with store.read() as db:
                 row = db.execute(
                     "SELECT participant_id, state, intent_json, receipt_json FROM operations WHERE operation_id = ?",
@@ -765,14 +781,20 @@ class BoardService:
             intent = _loads(row[2]) if row is not None else {}
             if row is None or not self._can_inspect_operation(actor, row[0], intent):
                 raise BoardError("operation_not_found", "No operation with that ID is available to this participant.", 404)
-            if row[1] == "applied":
+            if row[1] == "applied" and abandon:
+                raise BoardError("operation_already_applied", "This operation was applied; it cannot be abandoned.", 409)
+            if row[1] in _TERMINAL_OPERATION_STATES:
                 return _loads(row[3])
             cross_participant = row[0] != actor.participant_id
-            if cross_participant or review_revision is not None:
+            reviewed = False
+            if cross_participant or review_revision is not None or abandon:
                 if semantic_review_acknowledged is not True or not isinstance(review_revision, str):
                     raise BoardError("recovery_review_required", "Inspect and explicitly acknowledge the remaining changes before recovering this operation.", 409)
                 if review_revision != self._recovery_review_revision(actor, operation_id, intent):
                     raise BoardError("stale_recovery_review", "The operation or its relevant files changed after inspection; inspect and confirm the remaining changes again.", 409)
+                reviewed = actor.kind == "human"
+            if abandon:
+                return self._abandon_operation(actor, operation_id, intent)
             if cross_participant:
                 recovery_attempt = {"actor": actor.to_dict(), "review_revision": review_revision, "started_at": _now()}
                 intent = {**intent, "recovery_attempts": [*intent.get("recovery_attempts", []), recovery_attempt]}
@@ -783,7 +805,7 @@ class BoardService:
                         "INSERT INTO events(operation_id, participant_id, event_json, created_at) VALUES (?, ?, ?, ?)",
                         (operation_id, actor.participant_id, _json({"type": "operation-recovery-started", "actor": actor.to_dict(), "operation_id": operation_id}), recovery_attempt["started_at"]),
                     )
-            return self._roll_forward(actor, operation_id, intent)
+            return self._roll_forward(actor, operation_id, intent, reviewed=reviewed)
 
     @within_wiki_read_scope
     def apply(self, actor: Actor, preview_id: str, operation_id: str) -> dict[str, Any]:
@@ -809,7 +831,7 @@ class BoardService:
             if existing is not None:
                 if existing[0] != actor.participant_id or existing[1] != preview_id or existing[2] != payload_hash:
                     raise BoardError("operation_id_reused", "That operation ID is already bound to a different participant or payload.", 409)
-                if existing[3] == "applied":
+                if existing[3] in _TERMINAL_OPERATION_STATES:
                     return _loads(existing[4])
                 return self._roll_forward(actor, operation_id, _loads(existing[5]))
             if preview_row[3] is not None:
@@ -817,7 +839,19 @@ class BoardService:
             if not payload.get("applicable"):
                 raise BoardError("preview_blocked", "This preview is blocked, unknown, or missing required confirmation.", 409)
             self._assert_preview_fresh(payload)
-            self._revalidate_operation(actor, payload)
+            try:
+                self._revalidate_operation(actor, payload)
+            except BoardError as exc:
+                if exc.code != "missing_read_revisions":
+                    raise
+                # The reads were complete at preview time, so a path missing now is a
+                # source that became required afterwards: a stale preview, not a client mistake.
+                raise BoardError(
+                    "stale_preview",
+                    "A source this skill must read changed or appeared after the preview; preview again.",
+                    409,
+                    exc.details,
+                ) from None
             # Validation can read several files. Recheck them after it finishes
             # and before recording an intent that may be recovered after a crash.
             self._assert_preview_fresh(payload)
@@ -837,22 +871,23 @@ class BoardService:
         self._require_actor(actor)
         self.validate_graph_inputs()
         store = self._require_store()
-        try:
-            after = int(cursor or "0")
-        except (TypeError, ValueError):
-            raise BoardError("invalid_cursor", "Change cursor must be a non-negative integer.", 400) from None
-        if after < 0:
-            raise BoardError("invalid_cursor", "Change cursor must be a non-negative integer.", 400)
+        # Only a cursor this feed issued is valid: plain decimal digits. A chunk
+        # position `N~K` is resolved by the transport before it reaches here.
+        if cursor is not None and (not isinstance(cursor, str) or (cursor != "" and re.fullmatch(r"[0-9]{1,18}", cursor) is None)):
+            raise BoardError("invalid_cursor", "Change cursor must be a cursor returned by this feed.", 400)
+        after = int(cursor or "0")
         with store.read() as db:
             rows = db.execute(
                 "SELECT cursor, operation_id, event_json, created_at FROM events WHERE cursor > ? ORDER BY cursor LIMIT 500",
                 (after,),
             ).fetchall()
             latest = db.execute("SELECT COALESCE(MAX(cursor), 0) FROM events").fetchone()[0]
-        revision_paths = self._all_board_revision_paths()
+        # The walk reads names from the filesystem. One that Windows cannot hold
+        # is left out of the revision and reported, never an error for the feed.
+        revision_paths, skipped = self._split_portable(self._all_board_revision_paths())
         revision = _revision(self._fingerprint_paths(revision_paths))
         next_cursor = rows[-1][0] if rows else after
-        return {
+        result: dict[str, Any] = {
             "schema_version": 1,
             "cursor": str(next_cursor),
             "head_cursor": str(latest),
@@ -862,6 +897,9 @@ class BoardService:
                 for row in rows
             ],
         }
+        if skipped:
+            result["skipped_paths"] = self._skipped_paths_report(skipped)
+        return result
 
     def _load_identity(self) -> None:
         manifest_path = self.root / "prism.workspace.yml"
@@ -1187,32 +1225,32 @@ class BoardService:
     def _skill_scopes(name: str) -> list[str]:
         if name == "po-intake":
             return [
-                "knowledge/wiki/features/**/*.md",
-                "knowledge/wiki/personas/**/*.md",
-                "knowledge/wiki/business-rules/**/*.md",
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/personas/*.md",
+                "knowledge/wiki/business-rules/*.md",
                 "knowledge/intake/processed/**/MANIFEST.md",
                 "knowledge/intake/quarantined/**/CONFLICT.md",
             ]
         if name == "design-intake":
             return [
-                "knowledge/wiki/features/**/*.md",
-                "knowledge/wiki/design/**/*.md",
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/design/*.md",
                 "knowledge/intake/processed/**/MANIFEST.md",
                 "knowledge/intake/quarantined/**/CONFLICT.md",
             ]
         if name in {"po-clarify", "ask"}:
-            return ["knowledge/wiki/features/**/*.md"]
+            return ["knowledge/wiki/features/*.md"]
         if name == "design-clarify":
-            return ["knowledge/wiki/features/**/*.md", "knowledge/wiki/design/**/*.md"]
+            return ["knowledge/wiki/features/*.md", "knowledge/wiki/design/*.md"]
         if name == "dev-clarify":
-            return ["knowledge/wiki/features/**/*.md", "knowledge/wiki/platform-requirements/**/*.md"]
+            return ["knowledge/wiki/features/*.md", "knowledge/wiki/platform-requirements/*.md"]
         if name in {"po-specify", "po-handoff", "design-start", "dev-start"}:
-            return ["knowledge/wiki/features/**/*.md"]
+            return ["knowledge/wiki/features/*.md"]
         if name in {"design-handoff", "dev-done", "feature-reopen"}:
             return [
-                "knowledge/wiki/features/**/*.md",
-                "knowledge/wiki/platform-requirements/**/*.md",
-                "knowledge/wiki/api-contracts/**/*.md",
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/platform-requirements/*.md",
+                "knowledge/wiki/api-contracts/*.md",
             ]
         return []
 
@@ -1322,7 +1360,9 @@ class BoardService:
                     linked_feature_id = _page_feature_id(self._read_text(path), path.stem)
                     if isinstance(linked_feature_id, str) and linked_feature_id.casefold() == feature_id.casefold():
                         paths.add(rel)
-        return paths
+        # Linked and sibling pages are names read from disk; a name Windows
+        # cannot hold is not context the board can fingerprint or show.
+        return set(self._split_portable(paths)[0])
 
     def _fingerprint_paths(self, paths: Iterable[str]) -> dict[str, str | None]:
         result: dict[str, str | None] = {}
@@ -1477,6 +1517,36 @@ class BoardService:
                     {"path": _clip(value, 160), "segment": _clip(shown, 80), "reason": reason},
                 )
         return path.as_posix()
+
+    @staticmethod
+    def _split_portable(paths: Iterable[str]) -> tuple[list[str], list[str]]:
+        """Split names read from disk into those `_relative_path` accepts and those it rejects.
+
+        `invalid_path` stays the answer for caller-supplied paths. A name that
+        already exists on this filesystem and that Windows cannot hold (for
+        example `Brief: export.md` on Linux) is skipped instead, as the
+        workspace inventory skips it, so one such file cannot fail every call.
+        """
+
+        kept: list[str] = []
+        skipped: list[str] = []
+        for raw in sorted(set(paths)):
+            try:
+                BoardService._relative_path(raw)
+            except BoardError:
+                skipped.append(raw)
+            else:
+                kept.append(raw)
+        return kept, skipped
+
+    @staticmethod
+    def _skipped_paths_report(skipped: list[str]) -> dict[str, Any]:
+        examples = [_clip("".join(ch if ch.isprintable() else "?" for ch in name), 120) for name in skipped[:5]]
+        return {
+            "count": len(skipped),
+            "examples": examples,
+            "reason": "These existing names cannot be written on every operating system, so the board does not list, read or fingerprint them. Rename them.",
+        }
 
     @staticmethod
     def _unportable_reason(segment: str) -> str | None:
@@ -1863,6 +1933,14 @@ class BoardService:
             allowed = {"features"}
         if len(parts) < 3 or parts[1] != "wiki" or parts[2] not in allowed:
             raise BoardError("write_path_unavailable", f"Skill `{skill}` cannot write `{relative}`.", 403)
+        if len(parts) != 4:
+            # The wiki reads one folder level (`knowledge/wiki/<dir>/<page>.md`); a page in a sub-folder would be
+            # written but never linted, graphed, queried or checked for duplicate IDs.
+            raise BoardError(
+                "write_path_unavailable",
+                f"Skill `{skill}` writes wiki pages directly in `knowledge/wiki/{parts[2]}/`; `{_clip(relative, 120)}` is in a sub-folder the wiki does not read.",
+                403,
+            )
         self._safe_path(relative, allow_missing=True)
 
     def _required_skill_revision_paths(
@@ -1927,8 +2005,12 @@ class BoardService:
         # fingerprinted into the preview, but its path is intentionally outside
         # the agent-readable workspace text surface.
         required.discard("prism.workspace.yml")
+        # Existing wiki pages and intake files are names read from disk. One
+        # that Windows cannot hold is skipped, as the inventory skips it: the
+        # model cannot list or read it, so it cannot be a required read.
+        portable, _skipped = self._split_portable(required)
         return {
-            relative for relative in required
+            relative for relative in portable
             if relative.startswith(("knowledge/wiki/", "knowledge/intake/"))
             and self._safe_path(relative, allow_missing=True).is_file()
         }
@@ -3490,14 +3572,19 @@ class BoardService:
             if write.get("role") == "index":
                 self._assert_index_rows(write["path"], write["merge"].get("expected_rows", {}))
 
-    def _revalidate_operation(self, actor: Actor, payload: Mapping[str, Any]) -> None:
-        """Re-evaluate current deterministic rules, including calendar checks."""
+    def _revalidate_operation(self, actor: Actor, payload: Mapping[str, Any], *, reviewed: bool = False) -> None:
+        """Re-evaluate current deterministic rules, including calendar checks.
+
+        `reviewed` is set only for a recovery that a writable human confirmed
+        against the current files: the sources recorded at preview are then not
+        compared, and the rules are checked against what is on disk now.
+        """
         if payload.get("kind") == "transition":
             from prism_cli.wiki_transitions import build_board_transition_preflight
 
             feature = self._resolve_feature(payload["feature_id"])
             expected_paths = set(payload.get("source_map", {}))
-            if self._feature_context_paths(feature["path"], feature["frontmatter"]) - expected_paths:
+            if not reviewed and self._feature_context_paths(feature["path"], feature["frontmatter"]) - expected_paths:
                 raise BoardError("stale_preview", "New relevant feature context appeared after this preview; review it before applying.", 409)
             inputs = payload.get("inputs", {})
             overrides = {}
@@ -3519,6 +3606,10 @@ class BoardService:
         for path in ("knowledge/wiki/index.md", "knowledge/wiki/log.md"):
             if path in revisions:
                 revisions[path] = _file_digest(self._optional_text(self._safe_path(path, allow_missing=True)))
+        if reviewed:
+            # The reviewer confirmed the current sources, so the digests recorded at preview are replaced by the current ones.
+            required = self._required_skill_revision_paths(payload["skill"], supplied, before, payload.get("moves", []))
+            revisions = {relative: _sha256(self._safe_path(relative).read_bytes()) for relative in required}
         self._assert_required_skill_revisions(payload["skill"], supplied, before, payload.get("moves", []), revisions)
         features = [path for path in supplied if path.startswith("knowledge/wiki/features/")]
         before_fm = {path: _parse_markdown(before[path], path)[0] if before[path] is not None else None for path in features}
@@ -3552,7 +3643,26 @@ class BoardService:
             if self._index_existing_row(feature_id) != row:
                 raise BoardError("stale_index_row", f"The index row for `{feature_id}` changed after preview.", 409)
 
-    def _roll_forward(self, actor: Actor, operation_id: str, intent: Mapping[str, Any]) -> dict[str, Any]:
+    def _recovery_preflight(self, actor: Actor, intent: Mapping[str, Any], conflict_paths: list[str], *, reviewed: bool) -> bool:
+        """Run every check that precedes a recovery write and return whether the operation is already complete.
+
+        Raises the first reason the recorded writes and moves cannot be rolled forward now.
+        """
+
+        states = self._operation_file_states(intent)
+        for item in states:
+            if item["state"] == "conflict":
+                conflict_paths.append(item["path"])
+                raise BoardError("recovery_conflict", f"`{item['path']}` matches neither the recorded before-state nor after-state.", 409)
+        move_states = [self._move_state(move, intent) for move in intent.get("moves", [])]
+        complete = all(item["state"] == "applied" for item in states) and all(state == "applied" for state in move_states)
+        if not complete:
+            self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
+            self._revalidate_recovery(actor, intent, reviewed=reviewed)
+            self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
+        return complete
+
+    def _roll_forward(self, actor: Actor, operation_id: str, intent: Mapping[str, Any], *, reviewed: bool = False) -> dict[str, Any]:
         store = self._require_store()
         conflicts: list[dict[str, Any]] = []
         conflict_paths: list[str] = []
@@ -3569,27 +3679,17 @@ class BoardService:
                 existing = db.execute(
                     "SELECT state, receipt_json FROM operations WHERE operation_id = ?", (operation_id,)
                 ).fetchone()
-            if existing is not None and existing[0] == "applied":
+            if existing is not None and existing[0] in _TERMINAL_OPERATION_STATES:
                 return _loads(existing[1])
             self._assert_unresolved_writes_safe(operation_id, intent)
             try:
-                states = self._operation_file_states(intent)
-                for item in states:
-                    if item["state"] == "conflict":
-                        conflict_paths.append(item["path"])
-                        raise BoardError("recovery_conflict", f"`{item['path']}` matches neither the recorded before-state nor after-state.", 409)
-                move_states = [self._move_state(move, intent) for move in intent.get("moves", [])]
-                complete = all(item["state"] == "applied" for item in states) and all(state == "applied" for state in move_states)
-                if not complete:
-                    self._assert_recovery_sources(intent, conflict_paths)
-                    self._revalidate_recovery(actor, intent)
-                    self._assert_recovery_sources(intent, conflict_paths)
+                complete = self._recovery_preflight(actor, intent, conflict_paths, reviewed=reviewed)
                 for move in intent.get("moves", []):
                     self._require_actor(actor, write=True)
                     source = self._safe_path(move["source"], allow_missing=True)
                     destination = self._safe_path(move["destination"], allow_missing=True)
                     if self._move_state(move, intent) == "pending":
-                        self._assert_recovery_sources(intent, conflict_paths)
+                        self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         self._reject_reparse(destination.parent, include_leaf=True)
                         self._require_actor(actor, write=True)
@@ -3600,7 +3700,7 @@ class BoardService:
                 if not complete:
                     for write in intent.get("writes", []):
                         self._require_actor(actor, write=True)
-                        self._assert_recovery_sources(intent, conflict_paths)
+                        self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
                         result = self._apply_write(write, actor=actor)
                         if result == "conflict":
                             conflict_paths.append(write["path"])
@@ -3674,6 +3774,101 @@ class BoardService:
                 )
             return receipt
 
+    def _abandon_operation(self, actor: Actor, operation_id: str, intent: Mapping[str, Any]) -> dict[str, Any]:
+        """Close an operation that can no longer be rolled forward, recording what was and was not written.
+
+        The caller has already required a writable human with an acknowledged,
+        fresh review. Nothing is undone: files already written and folders
+        already moved stay as they are, and the receipt lists them.
+        """
+
+        store = self._require_store()
+        with self._lock:
+            self._require_actor(actor, write=True, kind="human")
+            with store.read() as db:
+                existing = db.execute("SELECT state, receipt_json FROM operations WHERE operation_id = ?", (operation_id,)).fetchone()
+            if existing is None:
+                raise BoardError("operation_not_found", "No operation with that ID is available to this participant.", 404)
+            if existing[0] == "abandoned":
+                return _loads(existing[1])
+            if existing[0] == "applied":
+                raise BoardError("operation_already_applied", "This operation was applied; it cannot be abandoned.", 409)
+            try:
+                self._assert_unresolved_writes_safe(operation_id, intent)
+                self._recovery_preflight(actor, intent, [], reviewed=True)
+            except BoardError as exc:
+                reason = f"{exc.code}: {exc.message}"
+            except OSError as exc:
+                reason = f"filesystem error: {type(exc).__name__}"
+            else:
+                raise BoardError(
+                    "abandon_not_needed",
+                    "This operation can still be recovered against the current files; recover it instead of abandoning it.",
+                    409,
+                )
+            try:
+                states = self._operation_file_states(intent)
+            except (BoardError, OSError):
+                states = [{"path": write["path"], "state": "unknown"} for write in intent.get("writes", [])]
+            applied = [item["path"] for item in states if item["state"] == "applied"]
+            unapplied = [item["path"] for item in states if item["state"] != "applied"]
+            moved: list[dict[str, str]] = []
+            unmoved: list[dict[str, str]] = []
+            for move in intent.get("moves", []):
+                entry = {"source": move["source"], "destination": move["destination"]}
+                try:
+                    source_present = self._safe_path(move["source"], allow_missing=True).exists()
+                    destination_present = self._safe_path(move["destination"], allow_missing=True).exists()
+                except BoardError:
+                    unmoved.append({**entry, "state": "unknown"})
+                    continue
+                if destination_present and not source_present:
+                    moved.append(entry)
+                else:
+                    unmoved.append({**entry, "state": "not-moved" if source_present and not destination_present else "missing" if not source_present else "conflict"})
+            now = _now()
+            receipt: dict[str, Any] = {
+                "actor": intent.get("actor"),
+                "schema_version": 1,
+                "operation_id": operation_id,
+                "state": "abandoned",
+                "preview_id": intent.get("preview_id"),
+                "skill": intent.get("skill"),
+                "action": intent.get("action"),
+                "feature_id": intent.get("feature_id"),
+                "applied_paths": applied,
+                "unapplied_paths": unapplied,
+                "moved_folders": moved,
+                "unmoved_folders": unmoved,
+                "reason": _clip(reason, 400),
+                "abandoned_by": actor.to_dict(),
+                "abandoned_at": now,
+                "recovery_available": False,
+            }
+            if intent.get("recovery_attempts"):
+                receipt["recovery_attempts"] = intent["recovery_attempts"]
+            event = {
+                "type": "operation-abandoned",
+                "operation_id": operation_id,
+                "actor": intent.get("actor"),
+                "abandoned_by": actor.to_dict(),
+                "applied_paths": applied,
+                "unapplied_paths": unapplied,
+                "moved_folders": moved,
+                "unmoved_folders": unmoved,
+            }
+            with store.transaction() as db:
+                self._require_actor(actor, write=True, kind="human")
+                db.execute(
+                    "UPDATE operations SET state = 'abandoned', receipt_json = ?, updated_at = ? WHERE operation_id = ? AND state IN ('pending', 'conflict')",
+                    (_json(receipt), now, operation_id),
+                )
+                db.execute(
+                    "INSERT INTO events(operation_id, participant_id, event_json, created_at) VALUES (?, ?, ?, ?)",
+                    (operation_id, actor.participant_id, _json(event), now),
+                )
+            return receipt
+
     def _move_state(self, move: Mapping[str, Any], intent: Mapping[str, Any]) -> str:
         """A rename is recoverable only while its entire recorded tree matches."""
         source = self._safe_path(move["source"], allow_missing=True)
@@ -3704,14 +3899,22 @@ class BoardService:
             raise BoardError("recovery_move_conflict", "The moved intake tree contains changed directory structure.", 409)
         return "applied"
 
-    def _assert_recovery_sources(self, intent: Mapping[str, Any], conflict_paths: list[str] | None = None) -> None:
+    def _assert_recovery_sources(self, intent: Mapping[str, Any], conflict_paths: list[str] | None = None, *, reviewed: bool = False) -> None:
+        """Refuse a recovery whose recorded sources changed, unless a human reviewed the current ones.
+
+        `reviewed` skips only the comparison with the sources recorded at
+        preview: the reviewer's confirmation is bound to the current relevant
+        sources. Recorded folder moves and the state of every recorded write are
+        still checked.
+        """
+
         self.validate_graph_inputs()
         writes = {write["path"] for write in intent.get("writes", [])}
         moved_prefixes = []
         for move in intent.get("moves", []):
             self._move_state(move, intent)
             moved_prefixes.extend((move["source"], move["destination"]))
-        for relative, expected in intent.get("source_map", {}).items():
+        for relative, expected in ({} if reviewed else intent.get("source_map", {})).items():
             if relative in writes or any(relative == prefix or relative.startswith(prefix + "/") for prefix in moved_prefixes):
                 continue
             actual = self._fingerprint_paths([relative])[relative]
@@ -3725,7 +3928,7 @@ class BoardService:
                     conflict_paths.append(state["path"])
                 raise BoardError("recovery_conflict", f"`{state['path']}` changed during recovery.", 409)
 
-    def _revalidate_recovery(self, actor: Actor, intent: Mapping[str, Any]) -> None:
+    def _revalidate_recovery(self, actor: Actor, intent: Mapping[str, Any], *, reviewed: bool = False) -> None:
         """Recheck current rules against a reconstructed before-state, off disk."""
         with tempfile.TemporaryDirectory(prefix="prism-board-recovery-") as directory:
             candidate_root = Path(directory)
@@ -3761,7 +3964,7 @@ class BoardService:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(write["before"].encode("utf-8"))
             with BoardService(candidate_root) as candidate:
-                candidate._revalidate_operation(actor, intent)
+                candidate._revalidate_operation(actor, intent, reviewed=reviewed)
 
     def _apply_write(self, write: Mapping[str, Any], *, actor: Actor | None = None) -> str:
         relative = self._relative_path(write["path"])

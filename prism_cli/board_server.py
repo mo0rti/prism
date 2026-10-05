@@ -832,19 +832,24 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
     async def recover(request: Request) -> Any:
         body = await request.body()
         payload = await json_body(request) if body else {}
-        if set(payload) - {"review_revision", "semantic_review_acknowledged"}:
+        if set(payload) - {"review_revision", "semantic_review_acknowledged", "abandon"}:
             return JSONResponse(
-                {"error": {"code": "invalid_recovery", "message": "Only review_revision and semantic_review_acknowledged are accepted."}},
+                {"error": {"code": "invalid_recovery", "message": "Only review_revision, semantic_review_acknowledged and abandon are accepted."}},
                 status_code=400,
             )
         review_revision = payload.get("review_revision")
         semantic_review_acknowledged = payload.get("semantic_review_acknowledged", False)
-        if (review_revision is not None and not isinstance(review_revision, str)) or not isinstance(semantic_review_acknowledged, bool):
+        abandon = payload.get("abandon", False)
+        if (
+            (review_revision is not None and not isinstance(review_revision, str))
+            or not isinstance(semantic_review_acknowledged, bool)
+            or not isinstance(abandon, bool)
+        ):
             return JSONResponse(
                 {
                     "error": {
                         "code": "invalid_recovery",
-                        "message": "review_revision must be a string or null and semantic_review_acknowledged must be a boolean.",
+                        "message": "review_revision must be a string or null, and semantic_review_acknowledged and abandon must be booleans.",
                     }
                 },
                 status_code=400,
@@ -856,6 +861,7 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
             review_revision,
             semantic_review_acknowledged,
             mutation=True,
+            **({"abandon": True} if abandon else {}),
         )
 
     async def discover(request: Request) -> Any:

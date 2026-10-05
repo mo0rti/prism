@@ -162,6 +162,91 @@ class WorkflowInstallTests(unittest.TestCase):
             self.assertEqual(edited, (root / CONNECTED).read_bytes())
             self.assertFalse((root / "prism.workspace.yml").exists())
 
+    def test_crlf_copy_of_an_unmodified_owned_file_is_unmodified(self):
+        # A Git checkout with core.autocrlf=true rewrites line endings; the text is still Prism's own.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _adopt_empty_workspace(root)
+            crlf_copies = {}
+            for relative in (CONNECTED, "knowledge/wiki/SCHEMA.md", "AGENTS.md", "CLAUDE.md"):
+                path = root / relative
+                crlf_copies[relative] = path.read_bytes().replace(b"\n", b"\r\n")
+                path.write_bytes(crlf_copies[relative])
+            for plan in (plan_install(root, upgrade=True), plan_install(root, name="Editorial", platforms=["backend"])):
+                self.assertEqual([], plan["conflicts"])
+                self.assertEqual([], plan["changes"])
+                self.assertIn(CONNECTED, plan["unchanged"])
+            self.assertEqual("unchanged", apply_install(root, plan_install(root, upgrade=True))["status"])
+            for relative, content in crlf_copies.items():
+                self.assertEqual(content, (root / relative).read_bytes(), "an unmodified CRLF copy must not be rewritten")
+
+    def test_crlf_copy_of_an_earlier_shipped_version_is_replaced_with_lf(self):
+        earlier = b"# Connected Prism workflow\nAn earlier canonical text.\n"
+        with tempfile.TemporaryDirectory() as temporary, _shipped_history({CONNECTED: [earlier], "AGENTS.md": [b"# Earlier pointer\n"]}):
+            root = Path(temporary)
+            _adopt_empty_workspace(root)
+            _make_workflow_stale(root)
+            (root / CONNECTED).write_bytes(earlier.replace(b"\n", b"\r\n"))
+            (root / "AGENTS.md").write_bytes(b"# Earlier pointer\r\n")
+
+            plan = plan_install(root, upgrade=True)
+            self.assertEqual([], plan["conflicts"])
+            self.assertEqual([CONNECTED, "AGENTS.md"], plan["updated"])
+            self.assertEqual("applied", apply_install(root, plan)["status"])
+            self.assertEqual(_current_text(CONNECTED).encode("utf-8"), (root / CONNECTED).read_bytes())
+            self.assertEqual(guidance_pointer("AGENTS.md").encode("utf-8"), (root / "AGENTS.md").read_bytes())
+            self.assertNotIn(b"\r\n", (root / CONNECTED).read_bytes(), "writes stay LF")
+
+    def test_modified_crlf_copy_still_conflicts_and_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _adopt_empty_workspace(root)
+            edited = (root / CONNECTED).read_bytes().replace(b"\n", b"\r\n") + b"A team rule added by the user.\r\n"
+            (root / CONNECTED).write_bytes(edited)
+
+            for plan in (plan_install(root, upgrade=True), plan_install(root, name="Editorial", platforms=["backend"])):
+                self.assertTrue(any("CONNECTED.md" in item for item in plan["conflicts"]))
+            self.assertEqual("conflict", apply_install(root, plan_install(root, upgrade=True))["status"])
+            self.assertEqual(edited, (root / CONNECTED).read_bytes())
+
+    def test_install_adds_the_lf_line_ending_rule_without_touching_existing_attributes(self):
+        rule = "knowledge/** text eol=lf"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            self.assertIn(".gitattributes", [item["path"] for item in plan["changes"]])
+            self.assertFalse((root / ".gitattributes").exists(), "planning must not mutate the workspace")
+            self.assertEqual("applied", apply_install(root, plan)["status"])
+            created = (root / ".gitattributes").read_text(encoding="utf-8")
+            self.assertEqual([rule], [line for line in created.splitlines() if not line.startswith("#")])
+            repeat = plan_install(root, upgrade=True)
+            self.assertNotIn(".gitattributes", [item["path"] for item in repeat["changes"]])
+            self.assertIn(".gitattributes", repeat["unchanged"])
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            existing = "*.sh text eol=lf\r\n*.png binary"
+            (root / ".gitattributes").write_bytes(existing.encode("utf-8"))
+            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            change = next(item for item in plan["changes"] if item["path"] == ".gitattributes")
+            self.assertEqual(existing, change["before"])
+            self.assertTrue(change["after"].startswith(existing + "\r\n"), "existing content and line-ending style are preserved")
+            self.assertTrue(change["after"].endswith(rule + "\r\n"))
+            self.assertEqual("applied", apply_install(root, plan)["status"])
+            self.assertEqual(change["after"].encode("utf-8"), (root / ".gitattributes").read_bytes())
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / ".gitattributes").write_bytes(b"# mine\n/knowledge/** eol=lf text\n")
+            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            self.assertNotIn(".gitattributes", [item["path"] for item in plan["changes"]])
+            self.assertIn(".gitattributes", plan["unchanged"])
+            (root / ".gitattributes").write_bytes(b"knowledge/** text eol=crlf\n")
+            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            change = next(item for item in plan["changes"] if item["path"] == ".gitattributes")
+            self.assertTrue(change["after"].startswith("knowledge/** text eol=crlf\n"))
+            self.assertTrue(change["after"].endswith(rule + "\n"), "a later rule wins in gitattributes")
+
     def test_every_installer_owned_file_follows_the_same_earlier_version_rule(self):
         earlier_schema = b"# Earlier schema\n"
         earlier_pointer = b"# Earlier pointer\n"
@@ -366,7 +451,7 @@ class WorkflowInstallTests(unittest.TestCase):
                 self.assertEqual(before, _snapshot_tree(root))
 
     def test_upgrade_allows_empty_or_fully_applied_journal(self):
-        for operation_state in (None, "applied"):
+        for operation_state in (None, "applied", "abandoned"):
             with self.subTest(operation_state=operation_state), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 _adopt_empty_workspace(root)

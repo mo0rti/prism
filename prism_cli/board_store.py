@@ -232,7 +232,7 @@ def workspace_process_lock(root: Path, *, create: bool) -> Iterator[Path | None]
 
 
 def unresolved_board_operations(root: Path) -> list[tuple[str, str]]:
-    """Read non-applied journal rows without initializing runtime state."""
+    """Read unfinished journal rows (neither applied nor abandoned) without initializing runtime state."""
 
     prism_dir = Path(root) / ".prism"
     state_dir = prism_dir / "state"
@@ -264,7 +264,7 @@ def unresolved_board_operations(root: Path) -> list[tuple[str, str]]:
             if "operations" not in tables:
                 raise ValueError("Prism board journal has no operations table; workflow upgrade is unsafe until it is repaired.")
             rows = connection.execute(
-                "SELECT operation_id, state FROM operations WHERE state IS NULL OR state <> 'applied' ORDER BY created_at, operation_id"
+                "SELECT operation_id, state FROM operations WHERE state IS NULL OR state NOT IN ('applied', 'abandoned') ORDER BY created_at, operation_id"
             ).fetchall()
         finally:
             connection.close()

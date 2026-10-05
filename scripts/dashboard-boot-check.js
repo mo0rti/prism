@@ -1018,6 +1018,7 @@ if (checkConnectedBoard) {
   let failNextLostRecovery = false;
   let rejectPreview = false;
   const opListId = "op-list-pending";
+  const abandonId = "op-abandon-pending";
   let opListReviewRevision = "review-op-1";
   let originalAgentGrantRevoked = false;
   let lostReviewRevision = "review-lost-1";
@@ -1062,10 +1063,18 @@ if (checkConnectedBoard) {
       if (failNextOperationInspection) { failNextOperationInspection = false; return reply({ error: { code: "temporarily_unavailable", message: "Inspection response was unavailable." } }, 503); }
       return reply({ schema_version: 1, operation_id: opListId, state: "conflict", recovery_review_revision: opListReviewRevision, actor: { participant_id: "agent-9", name: "Former Agent", kind: "agent" }, remaining_changes: [{ path: "knowledge/wiki/features/F-old.md", state: "conflict", before: "status: specified\\n", after: "status: ready-for-design <&>\\n", current_digest: "sha256:<current&>" }], moves: [{ source: "knowledge/intake/pending/F-old", destination: "knowledge/intake/processed/F-old", source_digest: "private" }], receipt: { schema_version: 1, operation_id: opListId, state: "conflict", applied_paths: ["knowledge/wiki/log.md"], conflicts: [{ path: "knowledge/wiki/features/F-old.md", reason: "Current <file> & differs." }] } });
     }
+    if (url === "/api/board/v1/operations/" + abandonId) {
+      return reply({ schema_version: 1, operation_id: abandonId, state: "conflict", recovery_review_revision: "review-abandon", actor: { participant_id: "agent-9", name: "Former Agent", kind: "agent" }, remaining_changes: [{ path: "knowledge/wiki/features/F-gone.md", state: "pending", before: null, after: "status: raw\\n", current_digest: null }], moves: [{ source: "knowledge/intake/pending/F-gone", destination: "knowledge/intake/processed/F-gone" }], receipt: { schema_version: 1, operation_id: abandonId, state: "conflict", applied_paths: [], conflicts: [{ path: null, reason: "recovery_move_conflict: Both the recorded intake source and destination are missing." }] } });
+    }
     if (url.startsWith("/api/board/v1/operations/") && !url.endsWith("/recover")) return reply({ schema_version: 1, operation_id: lostOperationId, state: "pending", recovery_review_revision: lostReviewRevision, actor: { participant_id: "human-7", name: "Safe Human", kind: "human" }, remaining_changes: [{ path: "knowledge/wiki/features/F-lost.md", state: "pending", before: "status: ready-for-dev\\n", after: "status: done\\n", current_digest: "sha256-current" }], moves: [], receipt: null });
     if (url.endsWith("/recover")) {
       const operationId = decodeURIComponent(url.split("/").at(-2));
       const body = JSON.parse(options.body || "{}");
+      if (operationId === abandonId) {
+        if (body.abandon !== true || body.review_revision !== "review-abandon" || body.semantic_review_acknowledged !== true) return reply({ error: { code: "stale_recovery_review", message: "The operation changed after review." } }, 409);
+        discoveredPendingOperations = discoveredPendingOperations.filter(item => item.operation_id !== operationId);
+        return reply({ schema_version: 1, operation_id: abandonId, state: "abandoned", applied_paths: [], unapplied_paths: ["knowledge/wiki/features/F-gone.md"], moved_folders: [], unmoved_folders: [{ source: "knowledge/intake/pending/F-gone", destination: "knowledge/intake/processed/F-gone", state: "missing" }], recovery_available: false, actor: { participant_id: "agent-9", name: "Former Agent", kind: "agent" }, abandoned_by: { participant_id: "human-7", name: "Safe Human", kind: "human" } });
+      }
       if (operationId === lostOperationId && failNextLostRecovery) { failNextLostRecovery = false; return syncChain(null, new Error("simulated lost recovery response")); }
       const expectedRevision = operationId === opListId ? opListReviewRevision : lostReviewRevision;
       if (body.review_revision !== expectedRevision || body.semantic_review_acknowledged !== true) return reply({ error: { code: "stale_recovery_review", message: "The operation changed after review." } }, 409);
@@ -1176,6 +1185,30 @@ if (checkConnectedBoard) {
   assert(JSON.parse(currentRecoverCall.options.body).review_revision === "review-op-2" && JSON.parse(currentRecoverCall.options.body).semantic_review_acknowledged === true, "reinspected human recovery did not send the fresh revision and acknowledgement");
   assert(dialog.innerHTML.includes("Original actor") && dialog.innerHTML.includes("Former Agent") && dialog.innerHTML.includes("Recovered by") && dialog.innerHTML.includes("Safe Human"), "recovery receipt did not distinguish the original agent from the recovering human");
   assert(state.transitionPreview.operationState === "applied" && state.data.facts.nodes.find(node => node.id === "F-apply").status === "specified", "no-agent recovery changed lifecycle state or lost its operation receipt");
+  assert(dialog.querySelectorAll("[data-operation-abandon]").length === 0, "an applied operation offered to be abandoned");
+  document.getElementById("transition-dialog").querySelector("[data-transition-cancel]").__listeners.click[0]();
+
+  // A person closes an operation that can no longer be rolled forward: same inspection and approval, explicit abandon.
+  discoveredPendingOperations = [{ operation_id: abandonId, state: "conflict", created_at: "2026-09-22T13:00:00Z" }];
+  refreshBoardDiscovery();
+  openBoardOperations(null);
+  dialog = document.getElementById("transition-dialog");
+  dialog.querySelector("[data-operation-inspect]").__listeners.click[0]();
+  dialog = document.getElementById("transition-dialog");
+  assert(dialog.querySelectorAll("[data-operation-abandon]").length === 1 && dialog.querySelectorAll("[data-operation-abandon]").every(button => button.disabled), "abandon was available before the inspection was acknowledged");
+  dialog.querySelectorAll("[data-operation-abandon]")[0].__listeners.click[0]();
+  assert(!calls.some(item => item.path === "/api/board/v1/operations/" + abandonId + "/recover"), "an unacknowledged abandon reached the service");
+  const abandonAck = dialog.querySelector("[data-operation-recovery-ack]");
+  abandonAck.checked = true;
+  abandonAck.__listeners.change[0]();
+  assert(dialog.querySelectorAll("[data-operation-abandon]").every(button => !button.disabled), "abandon stayed disabled after the explicit acknowledgement");
+  dialog.querySelectorAll("[data-operation-abandon]")[0].__listeners.click[0]();
+  const abandonCall = calls.filter(item => item.path === "/api/board/v1/operations/" + abandonId + "/recover").at(-1);
+  const abandonBody = JSON.parse(abandonCall.options.body);
+  assert(abandonBody.review_revision === "review-abandon" && abandonBody.semantic_review_acknowledged === true && abandonBody.abandon === true, "abandon did not send the inspected revision, the acknowledgement and the explicit abandon flag");
+  dialog = document.getElementById("transition-dialog");
+  assert(state.transitionPreview.operationState === "abandoned" && dialog.innerHTML.includes("Operation abandoned") && dialog.innerHTML.includes("Abandoned by") && dialog.innerHTML.includes("Safe Human") && dialog.innerHTML.includes("Original actor") && dialog.innerHTML.includes("not written") && dialog.innerHTML.includes("knowledge/wiki/features/F-gone.md"), "the abandoned receipt did not show both actors and the writes that were not applied");
+  assert(dialog.querySelectorAll("[data-operation-abandon]").length === 0 && dialog.querySelectorAll("[data-operation-recover]").length === 0, "an abandoned operation offered another recovery");
   document.getElementById("transition-dialog").querySelector("[data-transition-cancel]").__listeners.click[0]();
 
   const applyButton = board.querySelectorAll("[data-board-action]").find(button => button.dataset.boardFeatureId === "F-apply");

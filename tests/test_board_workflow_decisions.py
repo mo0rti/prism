@@ -289,7 +289,7 @@ class DevClarifyTests(_BoardWorkspace):
     def test_the_skill_is_discoverable_as_an_agent_write_with_its_scopes(self) -> None:
         listed = {item["name"]: item for item in self.service.list_skills(self.agent)["skills"]}["dev-clarify"]
         self.assertTrue(listed["write_supported"])
-        self.assertEqual(["knowledge/wiki/features/**/*.md", "knowledge/wiki/platform-requirements/**/*.md"], listed["write_scopes"])
+        self.assertEqual(["knowledge/wiki/features/*.md", "knowledge/wiki/platform-requirements/*.md"], listed["write_scopes"])
         self.assertEqual(["agent"], listed["participant_kinds"])
         self.assertEqual({"preview_skill": ["agent"]}, listed["write_tools"])
         self.assertTrue(any("Resolves only dev-owned open questions" in text for text in listed["limitations"]))
@@ -781,7 +781,7 @@ class HandoffApiContractTests(_BoardWorkspace):
 
     def test_the_skill_listing_reports_the_scope_and_the_rule(self) -> None:
         listed = {item["name"]: item for item in self.service.list_skills(self.agent)["skills"]}["design-handoff"]
-        self.assertIn("knowledge/wiki/api-contracts/**/*.md", listed["write_scopes"])
+        self.assertIn("knowledge/wiki/api-contracts/*.md", listed["write_scopes"])
         self.assertTrue(any("api_contract_required" in text and "status: agreed" in text for text in listed["limitations"]))
 
 
