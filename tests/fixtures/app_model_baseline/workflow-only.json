@@ -56,6 +56,7 @@
       "knowledge/intake/processed/.gitkeep",
       "knowledge/intake/quarantined/.gitkeep",
       "knowledge/wiki/CONNECTED.md",
+      "knowledge/wiki/LIFECYCLE.md",
       "knowledge/wiki/SCHEMA.md",
       "knowledge/wiki/SETTINGS.md",
       "knowledge/wiki/advisory/.gitkeep",
@@ -617,6 +618,7 @@
             "prism.workspace.yml",
             ".copier-answers.yml",
             "knowledge/wiki/SCHEMA.md",
+            "knowledge/wiki/LIFECYCLE.md",
             "knowledge/wiki/index.md",
             ".agents/skills/design-handoff/SKILL.md",
             ".claude/commands/design-handoff.md"
@@ -759,6 +761,7 @@
             "prism.workspace.yml",
             ".copier-answers.yml",
             "knowledge/wiki/SCHEMA.md",
+            "knowledge/wiki/LIFECYCLE.md",
             "knowledge/wiki/index.md",
             ".agents/skills/dev-done/SKILL.md",
             ".claude/commands/dev-done.md",
@@ -824,6 +827,7 @@
             "prism.workspace.yml",
             ".copier-answers.yml",
             "knowledge/wiki/SCHEMA.md",
+            "knowledge/wiki/LIFECYCLE.md",
             "knowledge/wiki/index.md",
             ".agents/skills/po-handoff/SKILL.md",
             ".claude/commands/po-handoff.md"
