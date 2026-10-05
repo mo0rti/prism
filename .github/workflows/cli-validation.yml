@@ -9,6 +9,7 @@ on:
       - "MANIFEST.in"
       - "copier.yml"
       - "pyproject.toml"
+      - "npm/**"
       - "prism_cli/**"
       - "tests/**"
       - "template/**"
@@ -20,6 +21,7 @@ on:
       - "MANIFEST.in"
       - "copier.yml"
       - "pyproject.toml"
+      - "npm/**"
       - "prism_cli/**"
       - "tests/**"
       - "template/**"
@@ -163,3 +165,71 @@ jobs:
           path: ${{ runner.temp }}/prism-browser-e2e/artifacts
           retention-days: 14
           if-no-files-found: warn
+
+  npm-launcher:
+    name: npm launcher (${{ matrix.os }}, Node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: ["24"]
+        include:
+          - os: ubuntu-latest
+            node-version: "22"
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run the launcher tests, including the real uv download
+        working-directory: npm
+        env:
+          PRISM_LAUNCHER_NETWORK_TEST: "1"
+        run: npm test
+
+      - name: Build a wheel from the tree
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir "$RUNNER_TEMP/wheel"
+
+      - name: Pack the launcher
+        working-directory: npm
+        run: |
+          npm pack --pack-destination "$RUNNER_TEMP/npm-pack"
+          ls -l "$RUNNER_TEMP/npm-pack"
+
+      - name: Install the packed launcher globally
+        run: |
+          npm install --global "$RUNNER_TEMP"/npm-pack/mortitech-prism-*.tgz
+          command -v prism
+
+      - name: Run prism through the launcher against the local wheel
+        run: |
+          set -eu
+          # Test-only override: uv installs the wheel built above instead of prism-kit from PyPI.
+          export PRISM_PACKAGE_SPEC="$(ls "$RUNNER_TEMP"/wheel/prism_kit-*.whl)"
+          expected="prism $(node -p "require('./npm/package.json').version")"
+          actual="$(prism --version)"
+          echo "$actual"
+          test "$actual" = "$expected"
+          set +e
+          prism --no-such-option > /dev/null 2>&1
+          code=$?
+          set -e
+          echo "Exit code for an unknown option: $code"
+          test "$code" -eq 2

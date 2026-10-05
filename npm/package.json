@@ -1,0 +1,42 @@
+{
+  "name": "@mortitech/prism",
+  "version": "0.3.0",
+  "description": "Runs the Prism CLI (the prism-kit Python package) through uv, with no Python setup.",
+  "license": "MIT",
+  "author": "Mortitech",
+  "homepage": "https://github.com/mo0rti/prism#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mo0rti/prism.git",
+    "directory": "npm"
+  },
+  "bugs": {
+    "url": "https://github.com/mo0rti/prism/issues"
+  },
+  "keywords": [
+    "prism",
+    "workflow",
+    "board",
+    "mcp",
+    "agents",
+    "uv"
+  ],
+  "bin": {
+    "prism": "bin/prism.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  }
+}

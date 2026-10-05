@@ -1,0 +1,258 @@
+name: Release
+
+# Pushing a tag such as v0.3.0 builds the package once, publishes it to TestPyPI,
+# installs it from there, publishes the same files to PyPI and creates the GitHub
+# release. Publishing uses trusted publishing (OIDC); no token is stored.
+# The one-time owner setup is in docs/cli-release.md.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-tag:
+    name: Check the tag against the package version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check that the tag, the package and the changelog agree
+        id: check
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          import tomllib
+
+          tag = os.environ["TAG"]
+          with open("pyproject.toml", "rb") as handle:
+              pyproject = tomllib.load(handle)["project"]["version"]
+          with open("prism_cli/__init__.py", encoding="utf-8") as handle:
+              match = re.search(r'^__version__\s*=\s*"([^"]+)"', handle.read(), re.MULTILINE)
+          init = match.group(1) if match else None
+          with open("npm/package.json", encoding="utf-8") as handle:
+              npm = json.load(handle)["version"]
+          with open("CHANGELOG.md", encoding="utf-8") as handle:
+              changelog = handle.read()
+
+          errors = []
+          for label, value in (("pyproject.toml", pyproject), ("prism_cli/__init__.py", init), ("npm/package.json", npm)):
+              if tag != f"v{value}":
+                  errors.append(f"The tag {tag} does not equal v + the version in {label} ({value}).")
+          if not re.search(rf"^## \[{re.escape(pyproject)}\]", changelog, re.MULTILINE):
+              errors.append(f"CHANGELOG.md has no section for [{pyproject}].")
+          if errors:
+              for message in errors:
+                  print(f"::error::{message}")
+              sys.exit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={pyproject}\n")
+          print(f"Tag {tag} matches version {pyproject}.")
+          PY
+
+  build:
+    name: Build and check the distributions
+    needs: verify-tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the source archive and the wheel
+        run: |
+          python -m pip install --upgrade pip build twine "readme-renderer[md]"
+          python -m build --sdist --wheel --outdir dist
+          python -m twine check --strict dist/*
+
+      - name: Check the file names
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -eu
+          ls -l dist
+          test -f "dist/prism_kit-${VERSION}-py3-none-any.whl"
+          test -f "dist/prism_kit-${VERSION}.tar.gz"
+          test "$(ls dist | wc -l)" -eq 2
+
+      - name: Upload the distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/prism-kit
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download the distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  smoke-test:
+    name: Install from TestPyPI and run the CLI
+    needs: [verify-tag, publish-testpypi]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the published version, retrying while the index catches up
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -u
+          python -m venv "$RUNNER_TEMP/prism-smoke"
+          attempts=12
+          for attempt in $(seq 1 "$attempts"); do
+            if "$RUNNER_TEMP/prism-smoke/bin/python" -m pip install --no-cache-dir \
+                --index-url https://test.pypi.org/simple/ \
+                --extra-index-url https://pypi.org/simple/ \
+                "prism-kit==${VERSION}"; then
+              exit 0
+            fi
+            echo "Attempt ${attempt} of ${attempts} did not find prism-kit==${VERSION}; waiting 20 seconds."
+            sleep 20
+          done
+          echo "::error::prism-kit==${VERSION} could not be installed from TestPyPI."
+          exit 1
+
+      - name: Run the installed CLI in a temporary workspace
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -eu
+          PRISM="$RUNNER_TEMP/prism-smoke/bin/prism"
+          test "$("$PRISM" --version)" = "prism ${VERSION}" || { echo "::error::Unexpected version output: $("$PRISM" --version)"; exit 1; }
+          workspace="$(mktemp -d)"
+          cd "$workspace"
+          "$PRISM" workflow install . --name "Release smoke" --platform backend --apply --yes
+          "$PRISM" doctor --workspace .
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: smoke-test
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/prism-kit
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download the distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: Create the GitHub release
+    needs: [verify-tag, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Write the checksums and the release notes
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -eu
+          (cd dist && sha256sum -- * > ../SHA256SUMS.txt)
+          cat SHA256SUMS.txt
+          python - <<'PY'
+          import os
+          import re
+          import sys
+
+          version = os.environ["VERSION"]
+          with open("CHANGELOG.md", encoding="utf-8") as handle:
+              lines = handle.read().splitlines()
+          start = next((i for i, line in enumerate(lines) if re.match(rf"^## \[{re.escape(version)}\]", line)), None)
+          if start is None:
+              print(f"::error::CHANGELOG.md has no section for [{version}].")
+              sys.exit(1)
+          end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## [")), len(lines))
+          body = "\n".join(lines[start + 1 : end]).strip()
+          if not body:
+              print(f"::error::The CHANGELOG.md section for [{version}] is empty.")
+              sys.exit(1)
+          with open("release-notes.md", "w", encoding="utf-8") as handle:
+              handle.write(body + "\n")
+          PY
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -eu
+          flags=""
+          if printf '%s' "$VERSION" | grep -Eq '(a|b|rc|dev)[0-9]*$'; then
+            flags="--prerelease"
+          fi
+          gh release create "$TAG" dist/* SHA256SUMS.txt \
+            --verify-tag \
+            --title "Prism ${VERSION}" \
+            --notes-file release-notes.md \
+            $flags

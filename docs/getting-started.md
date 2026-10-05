@@ -10,7 +10,7 @@ This page is the safest first-run path for trying Prism.
 
 If you only want the shortest route:
 
-1. install Prism locally from this repo
+1. install Prism from PyPI
 2. run `prism doctor`
 3. run `prism`
 4. generate one focused sample
@@ -38,17 +38,32 @@ workflow you want to exercise.
 
 Required to generate a project:
 
-- Python 3.10+
-- `pip install -e .` from this checkout
+- Python 3.10+ (uv installs one when none is present)
+- Prism from PyPI, which provides the `prism` command:
 
-The editable install is distributed as `prism-kit` and exposes the `prism` command;
-the import package remains `prism_cli`. It installs the CLI's generation dependencies
-(`copier`, `jinja2-time`, and `PyYAML`) and shared-board runtime dependencies
-(`mcp==2.2.0`, `starlette` and `uvicorn`) from `pyproject.toml`. The optional `e2e`
-extra adds Playwright for the browser tests. A published package and a
-remote `pipx` install are not available.
+```bash
+uv tool install prism-kit
+prism --version
+```
 
-To try the wheel install path locally, build and install the wheel from this checkout:
+`pipx install prism-kit` and `pip install prism-kit` work as well. Without installing
+anything yourself, `npx @mortitech/prism <command>` (Node.js 22 or later) runs the same
+release through uv, which the launcher downloads once and checks against uv's published
+SHA-256 when uv is not already installed; use it in place of `prism <command>` below.
+The distribution is `prism-kit` and the import package remains `prism_cli`. The install
+brings the CLI's generation dependencies (`copier`, `jinja2-time` and `PyYAML`) and the
+shared-board runtime dependencies (`mcp==2.2.0`, `starlette` and `uvicorn`); `pyproject.toml`
+lists the exact ranges. The optional `e2e` extra adds Playwright for the browser tests.
+
+To work on Prism itself, install an editable copy from a checkout:
+
+```bash
+git clone https://github.com/mo0rti/prism.git
+cd prism
+python -m pip install -e .
+```
+
+To check a wheel built from a checkout before it is published:
 
 ```bash
 python -m pip install build
@@ -56,9 +71,10 @@ python -m build
 python -m pip install dist/prism_kit-0.3.0-py3-none-any.whl
 ```
 
-The installed CLI uses the canonical GitHub template by default, at the release tag
-that matches the CLI version (`v0.3.0` for Prism 0.3.0). While that tag is not
-published, `prism new` stops with exit code 3 and one message, and creates nothing:
+An installed CLI uses the canonical GitHub template by default, at the release tag
+that matches the CLI version (`v0.3.0` for Prism 0.3.0). When that tag does not exist,
+for example in a build of an unreleased checkout, `prism new` stops with exit code 3 and
+one message, and creates nothing:
 
 ```text
 The template release tag `v0.3.0` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
@@ -113,7 +129,7 @@ which optional tools are available.
 
 ## 3. Generate Your First Project With Prism
 
-From a local checkout of this repository:
+Run:
 
 ```bash
 prism

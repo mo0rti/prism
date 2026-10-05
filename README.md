@@ -30,11 +30,21 @@ workflow in an existing repository or an empty workspace. The
 
 ## Quickstart: a shared board for you and your agents
 
-Prism runs on one computer. One local service per workspace serves the browser board and an MCP endpoint, so you and your coding agents work on the same wiki. You need Python 3.10 or later. Prism is not published to a package index yet, so install it from this checkout:
+Prism runs on one computer. One local service per workspace serves the browser board and an MCP endpoint, so you and your coding agents work on the same wiki. Prism needs Python 3.10 or later; [uv](https://docs.astral.sh/uv/) installs one when none is present. Install it from PyPI as `prism-kit`, which provides the `prism` command:
 
 ```bash
-pip install -e .
+uv tool install prism-kit
 prism --version
+```
+
+`pipx install prism-kit` and `pip install prism-kit` work as well. To run Prism without installing Python tooling, use the npm launcher: `npx @mortitech/prism <command>` runs the same release through uv, which it downloads once after checking its SHA-256 when uv is not already installed. The rest of this page writes `prism <command>`.
+
+**From source (contributors).** Clone the repository and install it in editable mode:
+
+```bash
+git clone https://github.com/mo0rti/prism.git
+cd prism
+pip install -e .
 ```
 
 Run the remaining steps in a separate workspace folder, not in this maintainer checkout and not in a cloud-synced folder such as OneDrive.
@@ -180,7 +190,7 @@ Start with:
 - The workflow, the shared board, the MCP tool contract and the human board actions are implemented and tested; the [plan](https://github.com/mo0rti/prism/blob/main/docs/prism-core-workflow-plan.md) states their scope and contracts.
 - Application samples: backend, Android and web are verified locally, and the iOS sample is verified only by the macOS CI job, which has not run yet. Live Cloudflare and Azure deployments are unverified, and Apple Sign-In is experimental.
 - Core acceptance uses disposable neutral workspaces. Sample behavior does not define the core workflow.
-- Prism is released under the MIT license. The 0.3.0 release tag and publication to a package index are not established.
+- Prism is released under the MIT license and published to PyPI as `prism-kit`, with the `@mortitech/prism` launcher on npm. The [changelog](https://github.com/mo0rti/prism/blob/main/CHANGELOG.md) lists what each version contains.
 
 For the detailed status, read [docs/current-status.md](https://github.com/mo0rti/prism/blob/main/docs/current-status.md).
 

@@ -1,0 +1,95 @@
+name: npm release
+
+# Runs after the Release workflow (TestPyPI, PyPI and the GitHub release) has succeeded
+# for a v* tag, then publishes @mortitech/prism with npm trusted publishing (OIDC);
+# no token is stored. The one-time owner setup is in docs/cli-release.md.
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-release-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  publish-npm:
+    name: Publish @mortitech/prism
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@mortitech/prism
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout the tagged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check that the tag points at this commit and equals the npm version
+        id: check
+        env:
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -eu
+          if ! git tag --points-at HEAD | grep -Fxq "$TAG"; then
+            echo "::error::The tag $TAG does not point at the commit that the Release workflow built."
+            exit 1
+          fi
+          version="$(node -p "require('./npm/package.json').version")"
+          if [ "$TAG" != "v${version}" ]; then
+            echo "::error::The tag $TAG does not equal v + the version in npm/package.json ($version)."
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Test the launcher
+        working-directory: npm
+        run: npm test
+
+      - name: Decide whether to publish
+        id: decide
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          set -eu
+          # The registry is read without credentials, so the token that setup-node configures is not involved.
+          package_status="$(curl -s -o /dev/null -w '%{http_code}' https://registry.npmjs.org/@mortitech%2Fprism)"
+          version_status="$(curl -s -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/@mortitech%2Fprism/${VERSION}")"
+          if [ "$package_status" = "404" ]; then
+            echo "::warning::@mortitech/prism does not exist on npm yet. The owner publishes the first version by hand (see docs/cli-release.md); this run publishes nothing."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif [ "$version_status" = "200" ]; then
+            echo "::notice::@mortitech/prism@${VERSION} is already published; nothing to do."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif [ "$package_status" = "200" ] && [ "$version_status" = "404" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Unexpected answer from the npm registry (package ${package_status}, version ${version_status})."
+            exit 1
+          fi
+
+      - name: Publish with provenance
+        if: steps.decide.outputs.publish == 'true'
+        working-directory: npm
+        run: npm publish --provenance --access public

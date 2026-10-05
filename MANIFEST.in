@@ -1,4 +1,6 @@
 # The source archive is an installable CLI artifact. Repository fixtures and
 # checkout-only validation tests stay in the repository and CI.
 prune tests
+# The npm launcher is published separately from its own folder.
+prune npm
 include LICENSE THIRD_PARTY_NOTICES.md
