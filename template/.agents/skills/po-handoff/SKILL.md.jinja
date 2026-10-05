@@ -21,7 +21,7 @@ transition:
 - Resolve `[F-XXX]` to exactly one existing file at
   `knowledge/wiki/features/[F-XXX]-[slug].md`. An omitted, invalid, missing, or
   ambiguous feature ID is a stop condition.
-- Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/index.md`, the complete feature
+- Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/index.md`, the complete feature
   page, and the linked source/context needed for the handoff.
 - This action accepts only the exact source pair `status: specified` and
   `owner: po`. A `raw` feature is unsupported for this action; use the separate
@@ -72,7 +72,7 @@ current template. Do not infer this from the Prism version.
 Record the current workspace root, unique feature path, feature ID, status, owner,
 advisory state, and every identity or source-fingerprint fact that the available
 preflight or direct reads can establish. A copied request or dashboard snapshot is
-only a convenience hint. Before using it, reread the current skill, SCHEMA, index,
+only a convenience hint. Before using it, reread the current skill, SCHEMA, LIFECYCLE, index,
 feature, workspace identity, and relevant context. Compare the path, identity,
 status, owner, advisory state, and fingerprint with the current files. Stop and
 produce a fresh preview if any value differs or cannot be reconciled.

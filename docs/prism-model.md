@@ -97,7 +97,8 @@ knowledge/
     platform-requirements/
     index.md
     log.md
-    SCHEMA.md
+    SCHEMA.md       # core wiki conventions, read before every wiki operation
+    LIFECYCLE.md    # feature, board and advisory protocol, read for lifecycle operations
     SETTINGS.md
     WIKI_REPORT.md    # generated on demand by feature-status; gitignored
 ```
@@ -195,7 +196,7 @@ Every write-capable lifecycle action is confirmation-gated and source-backed.
 requires verifiable implementation, test, and release evidence for every
 declared platform. The canonical action table, UI design exemption, active
 revalidation, delivery evidence, and reopen history formats live in
-`template/knowledge/wiki/SCHEMA.md`.
+`template/knowledge/wiki/LIFECYCLE.md`.
 
 ## Advisory Board Model
 

@@ -35,6 +35,7 @@ class BoardCliTests(unittest.TestCase):
     def manifest(self, root, digest):
         (root / "knowledge/wiki").mkdir(parents=True, exist_ok=True)
         (root / "knowledge/wiki/SCHEMA.md").write_text("# Schema\n", encoding="utf-8")
+        (root / "knowledge/wiki/LIFECYCLE.md").write_text("# Lifecycle\n", encoding="utf-8")
         (root / "knowledge/wiki/index.md").write_text("# Index\n", encoding="utf-8")
         (root / "prism.workspace.yml").write_text(yaml.safe_dump({
             "schema_version": 1,
@@ -61,6 +62,16 @@ class BoardCliTests(unittest.TestCase):
             root = Path(temporary)
             self.manifest(root, asset_digest())
             (root / "knowledge/wiki/SCHEMA.md").unlink()
+            code, output, _ = self.run_cli("board", "status", str(root))
+            self.assertEqual(3, code)
+            self.assertFalse(json.loads(output)["compatible"])
+            self.assertFalse((root / ".prism").exists())
+
+    def test_status_does_not_advertise_a_workspace_without_the_lifecycle_protocol_as_ready(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.manifest(root, asset_digest())
+            (root / "knowledge/wiki/LIFECYCLE.md").unlink()
             code, output, _ = self.run_cli("board", "status", str(root))
             self.assertEqual(3, code)
             self.assertFalse(json.loads(output)["compatible"])

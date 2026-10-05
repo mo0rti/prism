@@ -958,8 +958,8 @@ class BoardService:
         if not isinstance(manifest_digest, str) or manifest_digest != expected_digest:
             self._read_only_reason = "The workspace workflow assets do not match the installed canonical version; run the explicit workflow upgrade."
             return
-        if not (self.root / "knowledge" / "wiki" / "SCHEMA.md").is_file() or not (self.root / "knowledge" / "wiki" / "index.md").is_file():
-            self._read_only_reason = "The workspace is missing the canonical wiki schema or index."
+        if not all((self.root / "knowledge" / "wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "index.md")):
+            self._read_only_reason = "The workspace is missing the canonical wiki schema, lifecycle protocol or index."
             return
         self._board_id = parsed_id
         self._workflow_version = "1"
@@ -1071,7 +1071,7 @@ class BoardService:
                 403,
                 {"path": _clip(relative, 120), "approved": ["knowledge/wiki/", "knowledge/intake/"]},
             )
-        if parts[1] == "wiki" and (len(parts) < 3 or parts[2] not in {*_WIKI_DIRS, "SCHEMA.md", "SETTINGS.md", "index.md", "log.md", "PROJECT_FOUNDATION.md", "CONNECTED.md"}):
+        if parts[1] == "wiki" and (len(parts) < 3 or parts[2] not in {*_WIKI_DIRS, "SCHEMA.md", "LIFECYCLE.md", "SETTINGS.md", "index.md", "log.md", "PROJECT_FOUNDATION.md", "CONNECTED.md"}):
             raise BoardError("path_not_approved", "The requested wiki path is outside the approved source folders.", 403)
         if parts[1] == "intake" and not (len(parts) == 3 and parts[2] == "README.md") and (len(parts) < 4 or parts[2] not in {"pending", "processed", "quarantined"}):
             raise BoardError("path_not_approved", "Intake access is limited to pending, processed, and quarantined entries.", 403)
@@ -1330,7 +1330,7 @@ class BoardService:
         return {"path": relative, "content": content, "frontmatter": parsed[0], "body": parsed[1], "feature": matches[0]}
 
     def _feature_context_paths(self, feature_path: str, frontmatter: Mapping[str, Any]) -> set[str]:
-        paths = {"prism.workspace.yml", "knowledge/wiki/SCHEMA.md", "knowledge/wiki/SETTINGS.md", feature_path}
+        paths = {"prism.workspace.yml", "knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", "knowledge/wiki/SETTINGS.md", feature_path}
         from prism_cli.wiki_model import extract_markdown_links, resolve_relative_markdown_link
 
         feature_full = self._safe_path(feature_path)
@@ -1869,7 +1869,7 @@ class BoardService:
         log_after = _append_once(log_before or "", f"<!-- prism:board-history:v1 preview={preview_id} -->", log_entry)
         writes.append(self._write_record("knowledge/wiki/log.md", log_before, log_after, role="log", merge={"kind": "log", "marker": f"preview={preview_id}", "entry": log_entry}))
 
-        context_paths = {"prism.workspace.yml", "knowledge/wiki/SCHEMA.md"}
+        context_paths = {"prism.workspace.yml", "knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md"}
         for relative, text in supplied.items():
             if relative.startswith("knowledge/wiki/features/") and before_frontmatter.get(relative):
                 context_paths.update(self._feature_context_paths(relative, before_frontmatter[relative] or {}))
@@ -1950,7 +1950,7 @@ class BoardService:
         before: Mapping[str, str | None],
         moves: list[dict[str, Any]],
     ) -> set[str]:
-        required = {"knowledge/wiki/SCHEMA.md", "knowledge/wiki/index.md"}
+        required = {"knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", "knowledge/wiki/index.md"}
         settings = self._safe_path("knowledge/wiki/SETTINGS.md", allow_missing=True)
         if settings.is_file():
             required.add("knowledge/wiki/SETTINGS.md")
@@ -4080,9 +4080,9 @@ def BoardServiceIdentity(root: Path) -> tuple[Any, ...] | None:
         workspace_root = Path(root).expanduser().absolute()
         manifest_path = workspace_root / "prism.workspace.yml"
         BoardService._reject_reparse(manifest_path, include_leaf=True)
-        for relative in ("knowledge/wiki/SCHEMA.md", "knowledge/wiki/index.md"):
+        for relative in ("knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", "knowledge/wiki/index.md"):
             BoardService._reject_reparse(workspace_root / relative, include_leaf=True)
-        if not (workspace_root / "knowledge/wiki/SCHEMA.md").is_file() or not (workspace_root / "knowledge/wiki/index.md").is_file():
+        if not all((workspace_root / "knowledge/wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "index.md")):
             return None
         data = yaml.safe_load(manifest_path.read_text(encoding="utf-8-sig")) or {}
         workflow = data.get("workflow") if isinstance(data, dict) else None

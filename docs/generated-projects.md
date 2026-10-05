@@ -224,6 +224,7 @@ the operating model.
 Important wiki artifacts include:
 
 - `knowledge/wiki/SCHEMA.md`
+- `knowledge/wiki/LIFECYCLE.md`
 - `knowledge/wiki/SETTINGS.md`
 - `knowledge/wiki/WIKI_REPORT.md` once `feature-status` has generated it
 - `knowledge/wiki/features/`

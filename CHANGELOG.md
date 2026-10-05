@@ -4,6 +4,10 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- **The wiki schema is split in two files.** `knowledge/wiki/SCHEMA.md` keeps the directory structure, the non-feature page formats and the general rules and is read before every wiki operation. The new `knowledge/wiki/LIFECYCLE.md` holds the feature page format, the status and owner lifecycle, the lifecycle action registry and the advisory file formats and is read after `SCHEMA.md` for feature, board and advisory operations. No rule changed; sections moved verbatim. `LIFECYCLE.md` is a required wiki file wherever `SCHEMA.md` is: wiki lint reports `missing-required-wiki-file`, `prism doctor` and `prism validate` fail, and the board does not identify the workspace without it. Every lifecycle skill, the generated guidance and the connected workflow guide name both files, and the board records `LIFECYCLE.md` in the context reads and source revisions of lifecycle previews. The packaged workflow asset changed, so its digest changed: stop the board service, run `prism workflow upgrade . --apply` and issue new grants with `prism board grant`; earlier grants fail with `grant_identity_changed`.
+
 ## [0.3.0]
 
 Release date: 2026-10-05

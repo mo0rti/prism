@@ -237,7 +237,7 @@ Then move into the generated project workflow:
    - Claude Code: `/setup-project`
    - Codex: `$setup-project`
    - Cursor: ask the agent to run `setup-project`
-3. inspect `knowledge/wiki/SCHEMA.md`
+3. inspect `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
 4. run `feature-status` if you want an orientation report
 5. use the read/query layer before mutating lifecycle state
 
@@ -273,7 +273,7 @@ For a shipped feature, `dev-done` requires a current Delivery evidence row for
 each declared platform with verifiable implementation, tests, and release
 references. A confirmed reopen archives the previous evidence, removes it from
 active readiness, and sets route-specific `revalidation` domains as described in
-the generated `knowledge/wiki/SCHEMA.md`.
+the generated `knowledge/wiki/LIFECYCLE.md`.
 
 If you want the conceptual reason Prism works this way, read
 [prism-model.md](prism-model.md) before going deeper into the generated workflow.

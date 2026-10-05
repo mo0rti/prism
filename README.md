@@ -141,7 +141,7 @@ From the Prism home screen:
 After generating a project:
 
 1. open the generated repository
-2. inspect `README.md`, `CONTEXT.md`, and `knowledge/wiki/SCHEMA.md`
+2. inspect `README.md`, `CONTEXT.md`, `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
 3. initialize the workflow with:
    - Claude Code: `/setup-project`
    - Codex: `$setup-project`

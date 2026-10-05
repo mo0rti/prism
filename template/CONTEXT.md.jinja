@@ -75,7 +75,7 @@ before moving `raw` + `po` to `specified` + `po`. `po-handoff` accepts only
 `design-handoff`, `dev-start`, and `dev-done`; open dev questions are answered
 with `dev-clarify`, and they block `dev-start` and `dev-done`; reopening uses
 `feature-reopen [F-XXX] [specified|in-design|in-dev]`. Read the selected
-surface and `knowledge/wiki/SCHEMA.md` for the exact source guard, current
+surface, `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md` for the exact source guard, current
 evidence/revalidation rules, proposed write set, and final confirmation.
 
 ## Available commands
@@ -110,7 +110,7 @@ evidence/revalidation rules, proposed write set, and final confirmation.
 
 ### Cursor
 
-Ask the agent by operation name, for example `run setup-project` or `run po-intake on the folder meeting-notes-2026-04-07`. The agent will follow `.claude/commands/[command].md` and `knowledge/wiki/SCHEMA.md`.
+Ask the agent by operation name, for example `run setup-project` or `run po-intake on the folder meeting-notes-2026-04-07`. The agent will follow `.claude/commands/[command].md` and `knowledge/wiki/SCHEMA.md`, plus `knowledge/wiki/LIFECYCLE.md` for lifecycle operations.
 
 ## Tech stack and architectural constraints
 

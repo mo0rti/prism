@@ -98,7 +98,7 @@ CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
     },
     "apply": {
         "page_parses": (2, 20),
-        "file_opens": (11, 335),
+        "file_opens": (11, 340),
         "workspace_fingerprint": (0, 4),
         "validate_graph_inputs": (0, 13),
         "lint_wiki": (0, 3),

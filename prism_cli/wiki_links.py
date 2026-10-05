@@ -20,6 +20,7 @@ NON_PAGE_FILENAMES = {
     "PROJECT_FOUNDATION.md",
     "_FORMAT.md",
     "SCHEMA.md",
+    "LIFECYCLE.md",
     "SETTINGS.md",
     "index.md",
     "log.md",

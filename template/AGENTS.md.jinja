@@ -10,7 +10,7 @@ If this is a newly scaffolded project, initialize the product wiki before featur
 - Codex: `$setup-project`
 - Cursor: ask the agent to "run setup-project"
 
-See `CONTEXT.md` and `knowledge/wiki/SCHEMA.md` for the full cross-tool workflow.
+See `CONTEXT.md`, `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md` for the full cross-tool workflow.
 
 ## Connected board workflow
 
@@ -144,7 +144,7 @@ Use the canonical selected-surface instructions and shared contract:
 
 - Codex: `.agents/skills/<action>/SKILL.md`
 - Claude: `.claude/commands/<action>.md`
-- Shared protocol, evidence, exemptions, and reopen rules: `knowledge/wiki/SCHEMA.md`
+- Shared protocol, evidence, exemptions, and reopen rules: `knowledge/wiki/LIFECYCLE.md`, read after `knowledge/wiki/SCHEMA.md`
 
 Each action resolves one feature, rereads its source and context, shows a
 complete proposed write set, and waits for final confirmation. In the board that
@@ -189,6 +189,7 @@ Backend issues JWTs after successful auth. Native clients store them locally; we
 ## Key Documentation
 
 - `knowledge/wiki/SCHEMA.md` - wiki conventions and operational rules
+- `knowledge/wiki/LIFECYCLE.md` - feature, board and advisory protocol, read after `SCHEMA.md` for lifecycle operations
 - `knowledge/wiki/index.md` - feature status board
 - `knowledge/wiki/WIKI_REPORT.md` - generated orientation summary when present
 - `knowledge/wiki/advisory/BOARD.md` - advisory board composition

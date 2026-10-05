@@ -119,6 +119,7 @@ class BoardReadTests(unittest.TestCase):
                 "knowledge/intake/pending/DESIGN_HANDOFF_TEMPLATE.md",
                 "knowledge/intake/pending/PO_BRIEF_TEMPLATE.md",
                 "knowledge/wiki/CONNECTED.md",
+                "knowledge/wiki/LIFECYCLE.md",
                 "knowledge/wiki/SCHEMA.md",
                 "knowledge/wiki/SETTINGS.md",
                 "knowledge/wiki/advisory/_FORMAT.md",
@@ -316,8 +317,8 @@ class PagedReadTests(unittest.TestCase):
             for chunk in chunks[:-1]:
                 starts.append(starts[-1] + len(chunk["content"]))
             self.assertEqual(starts, [chunk["offset"] for chunk in chunks])
-        schema_chunks = self.pages(lambda cursor: self.service.get_skill_reference(self.actor, "po-intake", "knowledge/wiki/SCHEMA.md", cursor))
-        self.assertGreater(len(schema_chunks), 5)
+        lifecycle_chunks = self.pages(lambda cursor: self.service.get_skill_reference(self.actor, "po-intake", "knowledge/wiki/LIFECYCLE.md", cursor))
+        self.assertGreater(len(lifecycle_chunks), 5)
 
     def test_reference_cursors_are_bound_to_one_skill_and_reference(self):
         first = self.service.get_skill_reference(self.actor, "po-intake", "knowledge/wiki/SCHEMA.md")

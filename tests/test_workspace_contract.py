@@ -41,6 +41,7 @@ def write_workspace(root: Path, *, manifest: dict | None = None, answers: dict |
     (root / "knowledge" / "intake" / "pending").mkdir(parents=True, exist_ok=True)
     (root / "knowledge" / "intake" / "quarantined").mkdir(parents=True, exist_ok=True)
     (wiki / "SCHEMA.md").write_text("# Schema\n", encoding="utf-8")
+    (wiki / "LIFECYCLE.md").write_text("# Lifecycle\n", encoding="utf-8")
     (wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 21\n---\n", encoding="utf-8")
     (wiki / "index.md").write_text(
         "# Feature Status Board\n\n"
