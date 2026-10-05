@@ -74,7 +74,7 @@ prism board serve . --port 8765
 
 It prints the board URL, the MCP endpoint (`http://127.0.0.1:8765/mcp`) and a hint for issuing another grant, then opens your browser (`--no-open` skips that). Sign in with the human token. Press Ctrl+C to stop. The service listens on loopback only.
 
-**5. Connect Claude Code and Codex.** Both use their standard Streamable HTTP MCP configuration with that endpoint and `PRISM_BOARD_TOKEN`. The exact entries are in [Connect an agent host](docs/shared-board.md#connect-an-agent-host). Give each host its own grant, and start the host from a shell where the variable is set.
+**5. Connect Claude Code and Codex.** Both use their standard Streamable HTTP MCP configuration with that endpoint and `PRISM_BOARD_TOKEN`. The exact entries are in [Connect an agent host](docs/shared-board.md#connect-an-agent-host). Give each host its own grant, and start the host from a shell where the variable is set. [Agent hosts](docs/agent-hosts.md) lists the tested versions, settings and known limitations.
 
 **6. Run a first journey.**
 

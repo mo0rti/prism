@@ -399,9 +399,9 @@ class ResultShapingTests(unittest.TestCase):
     """Pure helpers that keep MCP results within the budget and free of absolute paths."""
 
     def test_relativize_paths_removes_every_root_spelling_and_keeps_other_text(self):
-        roots = [r"%USERPROFILE%\AppData\Local\Temp\prism-board-preview-ab12", "C:/work/board"]
+        roots = [r"C:\Users\Example\AppData\Local\Temp\prism-board-preview-ab12", "C:/work/board"]
         data = {
-            "root": r"%USERPROFILE%\AppData\Local\Temp\prism-board-preview-ab12",
+            "root": r"C:\Users\Example\AppData\Local\Temp\prism-board-preview-ab12",
             "path": r"c:\users\example\appdata\local\temp\prism-board-preview-ab12\knowledge\wiki\features\F-001.md",
             "also": "C:/work/board/knowledge/wiki/index.md",
             "message": r"Missing C:\work\board\knowledge\wiki\log.md, then retry.",

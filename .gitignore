@@ -21,5 +21,6 @@ dist/
 /tmp/
 /workspaces/
 
-# Claude local settings (machine-specific, not for version control)
+# Claude settings hold machine-specific paths and permissions; keep them out of version control
+.claude/settings.json
 .claude/settings.local.json

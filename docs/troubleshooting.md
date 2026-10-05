@@ -137,7 +137,7 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 **Cause.** An agent may retry a rejected proposal only with the fix the error names, at most 2 more times, and never with a wider change. When the error names no fix, needs your decision, or the third preview is rejected, it stops and reports the error code and message.
 
-**Fix.** Read the error and decide: tell the agent what to change, or correct the source it names. Ask it to try again; the count starts anew with your instruction. The agent does not write the files directly.
+**Fix.** Read the error and decide: tell the agent what to change, or correct the source it names. Ask it to try again; the count starts anew with your instruction. The agent does not write the files directly. [Agent hosts](agent-hosts.md) describes how Claude Code and Codex behave after a rejection.
 
 ## Calls fail with grant_identity_changed after an upgrade
 
@@ -200,7 +200,7 @@ Conflict: knowledge/wiki/CONNECTED.md is present with different contents; preser
 
 1. **The service is not running or the URL is wrong.** `prism board serve` prints the MCP endpoint on its second line. The host must use that exact URL, including the port.
 2. **The token is missing in the host's environment.** The entries in [Connect an agent host](shared-board.md#connect-an-agent-host) read `PRISM_BOARD_TOKEN`. Set it in the shell that starts the host, then restart the host. An unset variable, a revoked grant or a read-only grant used for a write shows up as `unauthorized` or `write_scope_required`.
-3. **The host loads tools on demand.** Some hosts keep MCP tools out of the prompt until the agent searches for them. Every Prism tool description starts with `Prism board:`, so ask the agent to search for "Prism board". Claude Code's setting `ENABLE_TOOL_SEARCH=false` loads all tools up front; see Claude Code's [MCP documentation](https://code.claude.com/docs/en/mcp).
+3. **The host loads tools on demand.** Some hosts keep MCP tools out of the prompt until the agent searches for them. Every Prism tool description starts with `Prism board:`, so ask the agent to search for "Prism board". Claude Code's setting `ENABLE_TOOL_SEARCH=false` loads all tools up front; see Claude Code's [MCP documentation](https://code.claude.com/docs/en/mcp) and [Agent hosts](agent-hosts.md) for how each tested host discovers the tools.
 4. **The host does not support the transport.** Prism uses standard Streamable HTTP MCP with a Bearer token. A host without both cannot connect.
 
 Large results do not need a host setting. Every Prism tool result is at most 32,000 characters, and longer text arrives in pages, so Claude Code's default MCP result limit of 25,000 tokens does not need `MAX_MCP_OUTPUT_TOKENS`. A host that sets a much lower limit still needs it raised.

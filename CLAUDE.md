@@ -75,6 +75,7 @@ prism board serve . --port 8765
 - `docs/README.md` - root documentation index for this template repo
 - `docs/shared-board.md` - shared-board usage contract and MCP tool contract
 - `docs/troubleshooting.md` - symptoms, causes and fixes
+- `docs/agent-hosts.md` - tested agent hosts, their settings and limitations
 - `SECURITY.md` - local threat model
 - `CHANGELOG.md` - user-visible changes
 - `docs/maintainer-workflow.md` - template maintenance workflow and validation variants

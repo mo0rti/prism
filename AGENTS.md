@@ -90,6 +90,7 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 - `docs/README.md` for the repo docs index
 - `docs/shared-board.md` for the shared-board usage contract and the MCP tool contract
 - `docs/troubleshooting.md` for symptoms, causes and fixes
+- `docs/agent-hosts.md` for the tested agent hosts, their settings and limitations
 - `SECURITY.md` for the local threat model
 - `CHANGELOG.md` for user-visible changes
 - `docs/maintainer-workflow.md` for template maintenance flow
