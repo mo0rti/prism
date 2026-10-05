@@ -50,14 +50,6 @@ PRESETS: tuple[Preset, ...] = (
 
 PRESET_BY_SLUG = {preset.slug: preset for preset in PRESETS}
 
-ALL_PLATFORM_CHOICES: tuple[tuple[str, str], ...] = (
-    ("backend", "Spring Boot Backend"),
-    ("web-user-app", "User-Facing Web App"),
-    ("web-admin-portal", "Admin Web Portal"),
-    ("mobile-android", "Android (Kotlin/Compose)"),
-    ("mobile-ios", "iOS (Swift/SwiftUI)"),
-)
-
 ALL_AUTH_CHOICES: tuple[tuple[str, str], ...] = (
     ("password", "Username + Password (required)"),
     ("google", "Google OAuth"),

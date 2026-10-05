@@ -106,22 +106,22 @@ class CliAnswerValidationTests(unittest.TestCase):
 class ManifestFieldMergeTests(unittest.TestCase):
     def test_applies_template_edits_and_keeps_workspace_only_fields(self) -> None:
         previous = {
-            "schema_version": 1,
+            "schema_version": 2,
             "min_prism_cli_version": "0.3.0",
-            "project": {"name": "Example", "description": "Template description", "platforms": ["backend"]},
+            "project": {"name": "Example", "description": "Template description"},
             "generated_by": {"template_commit": "old", "generated_at": "old time", "custom": "baseline"},
         }
         current = {
-            "schema_version": 1,
+            "schema_version": 2,
             "min_prism_cli_version": "0.3.0",
-            "project": {"name": "Example", "description": "Workspace description", "platforms": ["backend"]},
+            "project": {"name": "Example", "description": "Workspace description"},
             "team_notes": {"owner": "workspace"},
             "generated_by": {"template_commit": "rewritten old", "generated_at": "new time", "custom": "workspace"},
         }
         latest = {
-            "schema_version": 1,
+            "schema_version": 2,
             "min_prism_cli_version": "0.4.0",
-            "project": {"name": "Example", "description": "Template description", "platforms": ["backend"]},
+            "project": {"name": "Example", "description": "Template description"},
             "template_field": True,
             "generated_by": {"template_commit": "new", "generated_at": "latest time", "custom": "baseline"},
         }
@@ -136,28 +136,28 @@ class ManifestFieldMergeTests(unittest.TestCase):
         self.assertNotIn("template_commit", merged["generated_by"])
 
     def test_rejects_different_edits_to_the_same_field(self) -> None:
-        previous = {"schema_version": 1, "project": {"platforms": ["backend"]}}
-        current = {"schema_version": 1, "project": {"platforms": ["backend", "mobile-ios"]}}
-        latest = {"schema_version": 1, "project": {"platforms": ["backend", "web-user-app"]}}
+        previous = {"schema_version": 2, "apps": [{"id": "backend"}]}
+        current = {"schema_version": 2, "apps": [{"id": "backend"}, {"id": "mobile-ios"}]}
+        latest = {"schema_version": 2, "apps": [{"id": "backend"}, {"id": "web-user-app"}]}
 
         with self.assertRaises(ManifestMergeConflict) as raised:
             merge_workspace_manifest(previous, current, latest)
 
-        self.assertEqual(["project.platforms"], raised.exception.fields)
+        self.assertEqual(["apps"], raised.exception.fields)
 
     def test_merges_independent_new_nested_fields(self) -> None:
-        previous = {"schema_version": 1}
-        current = {"schema_version": 1, "custom": {"team": "green"}}
-        latest = {"schema_version": 1, "custom": {"support": "email"}}
+        previous = {"schema_version": 2}
+        current = {"schema_version": 2, "custom": {"team": "green"}}
+        latest = {"schema_version": 2, "custom": {"support": "email"}}
 
         merged = merge_workspace_manifest(previous, current, latest)
 
         self.assertEqual({"team": "green", "support": "email"}, merged["custom"])
 
     def test_rejects_non_string_nested_mapping_keys_cleanly(self) -> None:
-        previous = {"schema_version": 1, "custom": {1: "baseline"}}
-        current = {"schema_version": 1, "custom": {1: "workspace"}}
-        latest = {"schema_version": 1, "custom": {"name": "template"}}
+        previous = {"schema_version": 2, "custom": {1: "baseline"}}
+        current = {"schema_version": 2, "custom": {1: "workspace"}}
+        latest = {"schema_version": 2, "custom": {"name": "template"}}
 
         with self.assertRaisesRegex(ManifestUpdateError, "non-string mapping key at custom"):
             merge_workspace_manifest(previous, current, latest)
@@ -203,7 +203,7 @@ class ManifestSaveSafetyTests(unittest.TestCase):
         destination = root / "project"
         destination.mkdir()
         manifest = destination / cli.MANIFEST_FILE
-        original = b"schema_version: 1\nproject:\n  name: Example\n"
+        original = b"schema_version: 2\nproject:\n  name: Example\n"
         manifest.write_bytes(original)
         (destination / cli.COPIER_ANSWERS_FILE).write_text("{}\n", encoding="utf-8")
         return destination, manifest, original
@@ -219,7 +219,7 @@ class ManifestSaveSafetyTests(unittest.TestCase):
                     destination,
                     "C:/templates/prism",
                     {},
-                    manifest_data={"schema_version": 1, "project": {"name": "Example"}},
+                    manifest_data={"schema_version": 2, "project": {"name": "Example"}},
                     expected_manifest_bytes=original,
                 )
 
@@ -234,7 +234,7 @@ class ManifestSaveSafetyTests(unittest.TestCase):
     def test_does_not_overwrite_manifest_changed_after_preflight(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             destination, manifest, original = self._destination(Path(temp_dir))
-            external_edit = b"schema_version: 1\nproject:\n  name: External edit\n"
+            external_edit = b"schema_version: 2\nproject:\n  name: External edit\n"
             manifest.write_bytes(external_edit)
             stderr = io.StringIO()
 
@@ -243,7 +243,7 @@ class ManifestSaveSafetyTests(unittest.TestCase):
                     destination,
                     "C:/templates/prism",
                     {},
-                    manifest_data={"schema_version": 1, "project": {"name": "Merged"}},
+                    manifest_data={"schema_version": 2, "project": {"name": "Merged"}},
                     expected_manifest_bytes=original,
                 )
 

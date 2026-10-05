@@ -31,6 +31,7 @@ from prism_cli.workspace import (
     load_workspace,
     write_workspace_manifest,
 )
+from tests.manifest_fixtures import manifest_data
 from tests import real_temp  # noqa: F401
 
 
@@ -65,20 +66,21 @@ class WorkspaceSchemaContractTests(unittest.TestCase):
         self.assertFalse(result.manifest_exists)
         self.assertEqual("missing-workspace-manifest", result.diagnostics[0].code)
 
-    def test_older_schema_is_read_without_an_invented_adapter(self) -> None:
+    def test_version_one_is_refused_without_interpreting_fields_or_writing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            data = {"schema_version": MANIFEST_SCHEMA_VERSION - 1, "project": {"name": "Older", "platforms": ["backend"]}, "legacy": {"kept": True}}
+            data = {"schema_version": 1, "project": {"name": "Older", "platforms": ["backend"]}}
             path = root / MANIFEST_FILE
             path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-            before = path.read_text(encoding="utf-8")
+            before = path.read_bytes()
 
             result = load_workspace(root)
 
-            self.assertIsNotNone(result.manifest)
-            self.assertEqual(data, result.manifest.data)
-            self.assertIn("older-workspace-manifest-schema", {item.code for item in result.diagnostics})
-            self.assertEqual(before, path.read_text(encoding="utf-8"))
+            self.assertIsNone(result.manifest)
+            self.assertEqual(1, result.manifest_schema_version)
+            self.assertEqual(["unsupported-workspace-manifest-schema"], [item.code for item in result.diagnostics])
+            self.assertIn("Recreate or reinstall", result.diagnostics[0].message)
+            self.assertEqual(before, path.read_bytes())
 
     def test_newer_schema_is_refused_without_interpreting_fields_or_writing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -147,7 +149,7 @@ class WorkspaceInspectionTests(unittest.TestCase):
     def test_newer_generator_preserves_template_minimum_version(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            write_workspace(root, manifest={"schema_version": 1, "min_prism_cli_version": "0.2.0", "project": {"name": "Test", "platforms": ["backend"]}})
+            write_workspace(root, manifest={**manifest_data("Test", ["backend"]), "min_prism_cli_version": "0.2.0"})
             path = write_workspace_manifest(root, {"project_name": "Test", "platforms": ["backend"]}, prism_cli_version="0.9.0")
             result = yaml.safe_load(path.read_text(encoding="utf-8"))
             self.assertEqual("0.2.0", result["min_prism_cli_version"])
@@ -166,7 +168,7 @@ class WorkspaceInspectionTests(unittest.TestCase):
     def test_generated_workspace_without_answers_is_explicitly_degraded(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            write_workspace(root, manifest={"schema_version": 1, "project": {"name": "Generated", "platforms": ["backend"]}})
+            write_workspace(root, manifest=manifest_data("Generated", ["backend"]))
             (root / "backend").mkdir()
 
             inspection = inspect_workspace(root)
@@ -180,11 +182,7 @@ class WorkspaceInspectionTests(unittest.TestCase):
             root = Path(temp_dir)
             write_workspace(
                 root,
-                manifest={
-                    "schema_version": 1,
-                    "min_prism_cli_version": "99.0.0",
-                    "project": {"name": "Manifest Name", "platforms": ["backend"]},
-                },
+                manifest={**manifest_data("Manifest Name", ["backend"]), "min_prism_cli_version": "99.0.0"},
                 answers={"_src_path": "template", "project_name": "Answers Name", "platforms": ["mobile-ios"]},
             )
             (root / "backend").mkdir()
@@ -201,7 +199,7 @@ class WorkspaceInspectionTests(unittest.TestCase):
     def test_inspection_falls_back_to_answers_and_filesystem_when_manifest_is_unsupported(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            write_workspace(root, manifest={"schema_version": 2, "project": {"name": "Future", "platforms": ["mobile-ios"]}}, answers={"_src_path": "template", "project_name": "Current", "platforms": ["backend"]})
+            write_workspace(root, manifest={**manifest_data("Future", ["mobile-ios"]), "schema_version": 3}, answers={"_src_path": "template", "project_name": "Current", "platforms": ["backend"]})
             (root / "backend").mkdir()
             inspection = inspect_workspace(root)
 
@@ -229,7 +227,10 @@ class WorkspaceInspectionTests(unittest.TestCase):
             )
             data = yaml.safe_load(path.read_text(encoding="utf-8"))
 
-        self.assertEqual(1, data["schema_version"])
+        self.assertEqual(2, data["schema_version"])
+        self.assertEqual(["backend"], [app["id"] for app in data["apps"]])
+        self.assertEqual("spring-backend", data["apps"][0]["stack"])
+        self.assertNotIn("platforms", data["project"])
         self.assertEqual("0.3.0", data["min_prism_cli_version"])
         self.assertEqual("0.3.0", data["generated_by"]["prism_cli_version"])
         self.assertEqual("v0.3.0", data["generated_by"]["template_version"])
@@ -256,7 +257,7 @@ class WorkspaceStatusContractTests(unittest.TestCase):
             write_workspace(
                 root,
                 manifest={
-                    "schema_version": 1,
+                    **manifest_data("Safe Project", ["backend"]),
                     "min_prism_cli_version": "0.2.0",
                     "generated_by": {
                         "prism_cli_version": "0.3.0",
@@ -265,7 +266,6 @@ class WorkspaceStatusContractTests(unittest.TestCase):
                         "template_commit": "abc123",
                         "generated_at": "2026-09-08T12:00:00Z",
                     },
-                    "project": {"name": "Safe Project", "platforms": ["backend"]},
                 },
                 answers={
                     "_src_path": "https://github.com/mo0rti/prism.git",
@@ -289,7 +289,7 @@ class WorkspaceStatusContractTests(unittest.TestCase):
     def test_doctor_workspace_returns_validation_failure_for_contract_errors(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            write_workspace(root, manifest={"schema_version": 99, "project": {"name": "Future", "platforms": ["backend"]}})
+            write_workspace(root, manifest={**manifest_data("Future", ["backend"]), "schema_version": 99})
             args = Namespace(preset=None, workspace=str(root), from_launcher=True)
             with patch.object(cli, "evaluate_doctor_checks", return_value=[]), contextlib.redirect_stdout(io.StringIO()):
                 result = cli.cmd_doctor(args)
@@ -306,7 +306,7 @@ class WorkspaceStatusContractTests(unittest.TestCase):
     def test_doctor_workspace_passes_the_cloud_check_for_a_local_folder(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            write_workspace(root, manifest={"schema_version": MANIFEST_SCHEMA_VERSION, "project": {"name": "Local", "platforms": ["backend"]}})
+            write_workspace(root, manifest=manifest_data("Local", ["backend"]))
             _, text = self._run_doctor_for(root)
 
         self.assertIn("Workspace is outside cloud-synced folders", text)
@@ -317,7 +317,7 @@ class WorkspaceStatusContractTests(unittest.TestCase):
             base = Path(temp_dir)
             root = base / "synced" / "project"
             root.mkdir(parents=True)
-            write_workspace(root, manifest={"schema_version": MANIFEST_SCHEMA_VERSION, "project": {"name": "Cloud", "platforms": ["backend"]}})
+            write_workspace(root, manifest=manifest_data("Cloud", ["backend"]))
             with fake_reparse(base / "synced", CLOUD_TAG):
                 result, text = self._run_doctor_for(root)
 
@@ -330,7 +330,7 @@ class WorkspaceStatusContractTests(unittest.TestCase):
             base = Path(temp_dir)
             root = base / "linked" / "project"
             root.mkdir(parents=True)
-            write_workspace(root, manifest={"schema_version": MANIFEST_SCHEMA_VERSION, "project": {"name": "Linked", "platforms": ["backend"]}})
+            write_workspace(root, manifest=manifest_data("Linked", ["backend"]))
             with fake_reparse(base / "linked", JUNCTION_TAG):
                 _, text = self._run_doctor_for(root)
 
@@ -452,7 +452,7 @@ class DoctorBoardCheckTests(unittest.TestCase):
     def test_a_workspace_without_a_workflow_pin_gets_one_warning_not_a_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             legacy = Path(temp_dir)
-            write_workspace(legacy, manifest={"schema_version": MANIFEST_SCHEMA_VERSION, "project": {"name": "Legacy", "platforms": ["backend"]}})
+            write_workspace(legacy, manifest=manifest_data("Legacy", ["backend"]))
             (legacy / "backend").mkdir()
             self.root = legacy
             _, text = self.run_doctor()
@@ -486,14 +486,13 @@ class DoctorBoardCheckTests(unittest.TestCase):
 
     def test_a_generated_workspace_without_a_workflow_pin_is_pointed_to_upgrade(self) -> None:
         manifest = {
-            "schema_version": MANIFEST_SCHEMA_VERSION,
-            "project": {"name": "Generated", "platforms": ["backend"]},
+            **manifest_data("Generated", ["backend"]),
             "generated_by": {"prism_cli_version": __version__, "template_source": "https://example.invalid/prism.git"},
         }
         cases = {
             "manifest provenance": {"manifest": manifest},
             "copier answers": {
-                "manifest": {"schema_version": MANIFEST_SCHEMA_VERSION, "project": {"name": "Generated", "platforms": ["backend"]}},
+                "manifest": manifest_data("Generated", ["backend"]),
                 "answers": {"_src_path": "https://example.invalid/prism.git", "project_name": "Generated"},
             },
         }

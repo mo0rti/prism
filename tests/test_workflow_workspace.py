@@ -7,14 +7,14 @@ import unittest
 import yaml
 
 from prism_cli.workspace import detect_workspace_kind, inspect_workspace
+from tests.manifest_fixtures import manifest_data
 from tests import real_temp  # noqa: F401
 
 
 class WorkflowWorkspaceTests(unittest.TestCase):
     def inspect(self, root, *, mode="workflow", version="1"):
         (root / "prism.workspace.yml").write_text(yaml.safe_dump({
-            "schema_version": 1,
-            "project": {"name": "Editorial", "platforms": ["backend"]},
+            **manifest_data("Editorial", ["backend"]),
             "workflow": {"version": version, "mode": mode,
                          "board_id": "97f352fa-1ac1-4f7d-9ca0-e8246e6293bf"},
             "paths": {"wiki_root": "knowledge/wiki"},

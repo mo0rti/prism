@@ -8,8 +8,9 @@ place so status, doctor, and the read surfaces can agree about degraded state.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from copy import deepcopy
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Mapping
 import re
@@ -18,10 +19,19 @@ from uuid import UUID
 import yaml
 
 from prism_cli import __version__
+from prism_cli.app_model import (
+    GENERATED_PLATFORM_DIRS,
+    MANIFEST_SCHEMA_VERSION,
+    App,
+    WorkspaceDiagnostic,
+    WorkspaceModel,
+    apps_from_platforms,
+    normalize_manifest,
+    resolve_local_repositories,
+)
 
 
 MANIFEST_FILE = "prism.workspace.yml"
-MANIFEST_SCHEMA_VERSION = 1
 COPIER_ANSWERS_FILE = ".copier-answers.yml"
 
 # These are the user-facing Copier questions.  Derived Copier values and
@@ -41,31 +51,10 @@ GENERATION_ANSWER_FIELDS = (
     "github_org",
 )
 
-PLATFORM_DIRS = {
-    "backend": "backend",
-    "mobile-android": "mobile-android",
-    "mobile-ios": "mobile-ios",
-    "web-user-app": "web-user-app",
-    "web-admin-portal": "web-admin-portal",
-}
+# The directories of the generated platforms, derived from the stack registry.
+PLATFORM_DIRS = dict(GENERATED_PLATFORM_DIRS)
 
 _VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?$")
-
-
-@dataclass(frozen=True)
-class WorkspaceDiagnostic:
-    code: str
-    severity: str
-    path: str
-    message: str
-
-    def to_dict(self) -> dict[str, str]:
-        return {
-            "code": self.code,
-            "severity": self.severity,
-            "path": self.path,
-            "message": self.message,
-        }
 
 
 @dataclass(frozen=True)
@@ -97,12 +86,29 @@ class WorkspaceManifest:
         value = self.project_data.get("name")
         return value if isinstance(value, str) else None
 
+    @cached_property
+    def _normalized(self) -> tuple[WorkspaceModel, list[WorkspaceDiagnostic]]:
+        """The application model, built once per manifest by the one normalizer."""
+
+        return normalize_manifest(self.data, path=self.path)
+
+    @property
+    def model(self) -> WorkspaceModel:
+        return self._normalized[0]
+
+    @property
+    def model_diagnostics(self) -> list[WorkspaceDiagnostic]:
+        return list(self._normalized[1])
+
+    @property
+    def apps(self) -> tuple[App, ...]:
+        return self.model.apps
+
     @property
     def platforms(self) -> list[str]:
-        value = self.project_data.get("platforms")
-        if not isinstance(value, list):
-            return []
-        return [item for item in value if isinstance(item, str)]
+        """The IDs of the active apps."""
+
+        return self.model.active_app_ids
 
     @property
     def generated_by(self) -> dict[str, Any]:
@@ -172,16 +178,9 @@ class WorkspaceManifest:
         }
 
     @property
-    def platform_maturity(self) -> dict[str, dict[str, str]]:
-        value = self.data.get("platform_maturity")
-        if not isinstance(value, dict):
-            return {}
-        maturity: dict[str, dict[str, str]] = {}
-        for platform_id, data in value.items():
-            if not isinstance(platform_id, str) or not isinstance(data, dict):
-                continue
-            maturity[platform_id] = {key: item for key, item in data.items() if isinstance(key, str) and isinstance(item, str)}
-        return maturity
+    def app_maturity(self) -> dict[str, dict[str, str]]:
+        return {app_id: dict(entry) for app_id, entry in self.model.app_maturity.items()}
+
 
 
 @dataclass(frozen=True)
@@ -193,6 +192,8 @@ class WorkspaceLoadResult:
     # CLI.  Keep presence distinct from usability so output remains truthful.
     manifest_exists: bool = False
     manifest_schema_version: int | None = None
+    # External repositories that resolve to a checkout through prism.local.yml.
+    local_repositories: Mapping[str, Path] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -220,7 +221,7 @@ class WorkspaceInspection:
 
     @property
     def platforms(self) -> list[str]:
-        if self.manifest and self.manifest.platforms:
+        if self.manifest:
             return list(self.manifest.platforms)
         answer_platforms = _string_list(self.answers.get("platforms"))
         if answer_platforms:
@@ -315,13 +316,13 @@ def load_workspace(root: Path) -> WorkspaceLoadResult:
             diagnostics=diagnostics,
             manifest_exists=True,
         )
-    elif schema_version > MANIFEST_SCHEMA_VERSION:
+    elif schema_version != MANIFEST_SCHEMA_VERSION:
         diagnostics.append(
             _diag(
                 "unsupported-workspace-manifest-schema",
                 "error",
                 manifest_path,
-                f"{MANIFEST_FILE} schema_version is {schema_version}; this CLI supports {MANIFEST_SCHEMA_VERSION}. Upgrade Prism CLI to read this workspace.",
+                f"{MANIFEST_FILE} schema_version is {schema_version}; this CLI supports only {MANIFEST_SCHEMA_VERSION}. Recreate or reinstall this workspace with this CLI.",
             )
         )
         # Do not interpret fields from a schema this CLI does not understand.
@@ -333,24 +334,22 @@ def load_workspace(root: Path) -> WorkspaceLoadResult:
             manifest_exists=True,
             manifest_schema_version=schema_version,
         )
-    elif schema_version < MANIFEST_SCHEMA_VERSION:
-        diagnostics.append(
-            _diag(
-                "older-workspace-manifest-schema",
-                "warning",
-                manifest_path,
-                f"{MANIFEST_FILE} schema_version is {schema_version}; this CLI supports {MANIFEST_SCHEMA_VERSION}. Known fields are read without migration; verify the workspace before updating.",
-            )
-        )
 
     diagnostics.extend(_validate_manifest_shape(data, manifest_path))
 
+    manifest = WorkspaceManifest(path=manifest_path, data=data)
+    diagnostics.extend(manifest.model_diagnostics)
+    resolution = resolve_local_repositories(workspace_root, manifest.model)
+    diagnostics.extend(resolution.diagnostics)
+    local_repositories: Mapping[str, Path] = dict(resolution.paths)
+
     return WorkspaceLoadResult(
         root=workspace_root,
-        manifest=WorkspaceManifest(path=manifest_path, data=data),
+        manifest=manifest,
         diagnostics=diagnostics,
         manifest_exists=True,
         manifest_schema_version=schema_version,
+        local_repositories=local_repositories,
     )
 
 
@@ -446,6 +445,10 @@ def write_workspace_manifest(
         if not isinstance(loaded, dict):
             raise ValueError(f"Existing {MANIFEST_FILE} must be a mapping.")
         data = deepcopy(loaded)
+        if data and (type(data.get("schema_version")) is not int or data["schema_version"] != MANIFEST_SCHEMA_VERSION):
+            raise ValueError(
+                f"Existing {MANIFEST_FILE} does not use schema_version {MANIFEST_SCHEMA_VERSION}; recreate or reinstall this workspace with this CLI."
+            )
 
     data["schema_version"] = MANIFEST_SCHEMA_VERSION
     data.setdefault("min_prism_cli_version", "0.3.0")
@@ -473,7 +476,6 @@ def write_workspace_manifest(
         "project_slug": "slug",
         "package_identifier": "package_identifier",
         "description": "description",
-        "platforms": "platforms",
         "auth_methods": "auth_methods",
         "database": "database",
         "supporting_services": "supporting_services",
@@ -486,6 +488,9 @@ def write_workspace_manifest(
         if answer_key in answers:
             project[project_key] = deepcopy(answers[answer_key])
     data["project"] = project
+    # The questionnaire's platforms are generation input; they become apps once.
+    if "apps" not in data and isinstance(answers.get("platforms"), list):
+        data["apps"] = apps_from_platforms(list(answers["platforms"]))
 
     destination.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
@@ -527,7 +532,6 @@ def _compare_manifest_answers(
         "project_slug": "slug",
         "package_identifier": "package_identifier",
         "description": "description",
-        "platforms": "platforms",
         "auth_methods": "auth_methods",
         "database": "database",
         "supporting_services": "supporting_services",
@@ -561,27 +565,7 @@ def _compare_manifest_filesystem(
 ) -> list[WorkspaceDiagnostic]:
     if manifest is None:
         return []
-    diagnostics: list[WorkspaceDiagnostic] = []
-    manifest_platforms = set(manifest.platforms)
-    filesystem_set = set(filesystem_platforms)
-    for platform_id in sorted(filesystem_set - manifest_platforms) if not manifest.workflow_only else []:
-        diagnostics.append(
-            _diag(
-                "manifest-filesystem-drift",
-                "warning",
-                root / PLATFORM_DIRS[platform_id],
-                f"Platform directory `{platform_id}` exists but is not declared in {MANIFEST_FILE}.",
-            )
-        )
-    for platform_id in sorted(manifest_platforms - filesystem_set) if not manifest.workflow_only else []:
-        diagnostics.append(
-            _diag(
-                "manifest-filesystem-drift",
-                "error",
-                root / PLATFORM_DIRS.get(platform_id, platform_id),
-                f"{MANIFEST_FILE} declares `{platform_id}` but the platform directory is missing.",
-            )
-        )
+    diagnostics: list[WorkspaceDiagnostic] = _compare_app_directories(manifest, filesystem_platforms, root)
     for path_key, relative_path in manifest.paths.items():
         if not _surface_exists(root, relative_path):
             diagnostics.append(
@@ -606,6 +590,45 @@ def _compare_manifest_filesystem(
     return diagnostics
 
 
+def _compare_app_directories(
+    manifest: WorkspaceManifest,
+    filesystem_platforms: list[str],
+    root: Path,
+) -> list[WorkspaceDiagnostic]:
+    """Compare the declared apps with the workspace. Only apps in this repository are looked up, at their paths.
+
+    An app in an external repository is never looked up on disk here; its
+    checkout is resolved through ``prism.local.yml`` and reported separately.
+    """
+
+    if manifest.workflow_only:
+        return []
+    diagnostics: list[WorkspaceDiagnostic] = []
+    declared_paths = [app.path for app in manifest.model.workspace_apps()]
+    for platform_id in sorted(filesystem_platforms):
+        directory = PLATFORM_DIRS[platform_id]
+        if not any(path == directory or path.startswith(f"{directory}/") or directory.startswith(f"{path}/") for path in declared_paths):
+            diagnostics.append(
+                _diag(
+                    "manifest-filesystem-drift",
+                    "warning",
+                    root / directory,
+                    f"Directory `{directory}` exists but no app in {MANIFEST_FILE} is declared at that path.",
+                )
+            )
+    for app in manifest.model.workspace_apps(active_only=True):
+        if not (root / app.path).exists():
+            diagnostics.append(
+                _diag(
+                    "manifest-filesystem-drift",
+                    "error",
+                    root / app.path,
+                    f"{MANIFEST_FILE} declares app `{app.id}` but its directory `{app.path}` is missing.",
+                )
+            )
+    return diagnostics
+
+
 def _compare_manifest_runtime(manifest: WorkspaceManifest | None) -> list[WorkspaceDiagnostic]:
     """Check runtime constraints that do not depend on wiki parsing."""
 
@@ -613,16 +636,6 @@ def _compare_manifest_runtime(manifest: WorkspaceManifest | None) -> list[Worksp
         return []
 
     diagnostics: list[WorkspaceDiagnostic] = []
-    for platform_id in sorted(set(manifest.platforms) - set(PLATFORM_DIRS)):
-        diagnostics.append(
-            _diag(
-                "invalid-manifest-platform",
-                "error",
-                manifest.path,
-                f"`{platform_id}` is not a valid Prism platform id.",
-            )
-        )
-
     minimum = manifest.min_prism_cli_version
     if minimum and _VERSION_PATTERN.fullmatch(minimum.strip()):
         if _version_tuple(__version__) < _version_tuple(minimum):
@@ -681,18 +694,12 @@ def _validate_manifest_shape(data: Mapping[str, Any], path: Path) -> list[Worksp
             diagnostics.append(_diag("unsupported-workflow-version", "warning", path, "This workflow version is not supported for connected writes; the workspace remains readable."))
     project = data.get("project")
     if workflow is not None and not isinstance(project, dict):
-        diagnostics.append(_diag("missing-workflow-project", "error", path, "A workflow workspace requires project identity and explicit platform scope."))
+        diagnostics.append(_diag("missing-workflow-project", "error", path, "A workflow workspace requires project identity."))
     if project is not None and not isinstance(project, dict):
         diagnostics.append(_diag("invalid-workspace-manifest-project", "error", path, "Manifest `project` must be a mapping."))
     elif isinstance(project, dict):
         if "name" in project and not isinstance(project["name"], str):
             diagnostics.append(_diag("invalid-workspace-manifest-project", "error", path, "Manifest project `name` must be a string."))
-        if "platforms" in project:
-            platforms = project["platforms"]
-            if not isinstance(platforms, list) or any(not isinstance(item, str) for item in platforms):
-                diagnostics.append(_diag("invalid-workspace-manifest-platforms", "error", path, "Manifest project `platforms` must be a list of strings."))
-        if workflow is not None and (not isinstance(project.get("platforms"), list) or not project["platforms"]):
-            diagnostics.append(_diag("missing-workflow-scope", "error", path, "A workflow workspace requires at least one explicit platform scope."))
 
     generated_by = data.get("generated_by")
     if generated_by is not None and not isinstance(generated_by, dict):

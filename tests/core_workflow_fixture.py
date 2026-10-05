@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from prism_cli.wiki_transitions import ACTION_SPECS
+from tests.manifest_fixtures import manifest_text
 
 
 FEATURE_ID = "F-001"
@@ -52,12 +53,7 @@ def create_core_workflow_fixture(root: Path) -> Path:
         encoding="utf-8",
     )
     (root / "prism.workspace.yml").write_text(
-        "schema_version: 1\n"
-        "project:\n"
-        "  name: Document review\n"
-        "  slug: document-review\n"
-        "  platforms:\n"
-        "    - backend\n",
+        manifest_text("Document review", ["backend"], slug="document-review"),
         encoding="utf-8",
     )
 

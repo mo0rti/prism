@@ -4,6 +4,12 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- **`prism.workspace.yml` is now `schema_version: 2`, and earlier manifests are not supported.** The manifest lists `repositories` (the workspace itself needs no entry; each other repository has a canonical `remote`), `apps` (an ID, a name, a `stack` from the registry, a `repository`, a repository-relative `path`, an optional `audience`, `status` and capability overrides) and `app_maturity` keyed by app ID. `project.platforms` and `platform_maturity` are gone. A version-1 manifest is refused with `unsupported-workspace-manifest-schema`; recreate or reinstall the workspace with this CLI.
+- **One normalizer reads the manifest.** The new `prism_cli/app_model.py` holds the stack registry (`spring-backend`, `nextjs-web`, `android-compose`, `ios-swiftui`, `other`, with the `has-ui` and `serves-api` capabilities) and validates repositories and apps with stable error codes. Workspace inspection, status, the board service and its identity, workflow install and `prism update` all read the manifest through it. An external repository without a checkout in the untracked `prism.local.yml` is one `external-repository-unresolved` warning, never an error. This change is internal: `status`, `board` and MCP output keep their shape, and `apps` in that output, `prism workspace upgrade` and the docs follow.
+- **`prism new`, `prism workflow install` and `prism update` write version 2.** The questionnaire's platforms and the `--platform` choices become apps (ID, matching stack, default directory, repository `workspace`). On a workspace that already declares apps, `--platform` may only name those same apps; edit `apps` to change them.
+
 ## [0.3.0]
 
 Release date: 2026-10-05

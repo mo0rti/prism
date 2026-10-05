@@ -22,11 +22,11 @@ from typing import Any
 import yaml
 
 from prism_cli import __version__
+from prism_cli.app_model import ALL_PLATFORM_CHOICES, SLUG_PATTERN
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, find_cloud_placeholder
 from prism_cli.manifest_update import ManifestUpdateError, prepare_manifest_update
 from prism_cli.presets import (
     ALL_AUTH_CHOICES,
-    ALL_PLATFORM_CHOICES,
     DEFAULT_ANSWERS,
     PRESETS,
     Preset,
@@ -1707,7 +1707,7 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
         slug = answers.get("project_slug")
         if slug is None and isinstance(project_name, str):
             slug = derive_project_slug(project_name)
-        if not isinstance(slug, str) or not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", slug):
+        if not isinstance(slug, str) or not SLUG_PATTERN.fullmatch(slug):
             errors.append("Project slug must start with a lowercase letter and contain lowercase letters, digits, and single hyphens.")
             slug = ""
         package = answers.get("package_identifier", f"com.example.{slug.replace('-', '')}")

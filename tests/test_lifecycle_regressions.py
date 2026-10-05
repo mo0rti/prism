@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_transitions import ACTION_SPECS, build_transition_preflight
+from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
 
 
@@ -60,12 +61,7 @@ class LifecycleRegressionTests(unittest.TestCase):
             encoding="utf-8",
         )
         (self.root / "prism.workspace.yml").write_text(
-            "schema_version: 1\n"
-            "project:\n"
-            "  name: Lifecycle regression\n"
-            "  slug: lifecycle-regression\n"
-            "  platforms:\n"
-            "    - backend\n",
+            manifest_text("Lifecycle regression", ["backend"], slug="lifecycle-regression"),
             encoding="utf-8",
         )
         (self.wiki_root / "index.md").write_text(
@@ -173,15 +169,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         index_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
 
     def _write_manifest_platforms(self, platforms: tuple[str, ...]) -> None:
-        lines = [
-            "schema_version: 1",
-            "project:",
-            "  name: Lifecycle regression",
-            "  slug: lifecycle-regression",
-            "  platforms:",
-            *(f"    - {platform}" for platform in platforms),
-        ]
-        (self.root / "prism.workspace.yml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        (self.root / "prism.workspace.yml").write_text(manifest_text("Lifecycle regression", platforms, slug="lifecycle-regression"), encoding="utf-8")
         for platform in platforms:
             path = self.root / {
                 "backend": "backend",

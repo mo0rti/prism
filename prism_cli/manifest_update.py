@@ -12,7 +12,8 @@ from typing import Any
 
 import yaml
 
-from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, MANIFEST_SCHEMA_VERSION
+from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, normalize_manifest
+from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE
 
 
 _PROVENANCE_KEYS = {
@@ -134,6 +135,13 @@ def read_workspace_manifest(path: Path, label: str) -> tuple[dict[str, Any], byt
         raise ManifestUpdateError(f"{path.name} contains invalid YAML: {exc}") from exc
 
     validate_manifest_shape(manifest, label)
+    # The apps and repositories must be valid before they are merged.
+    _model, diagnostics = normalize_manifest(manifest, path=path)
+    problems = sorted({item.code for item in diagnostics if item.severity == "error"})
+    if problems:
+        raise ManifestUpdateError(
+            f"The {label} {MANIFEST_FILE} has invalid repository or app declarations ({', '.join(problems)}); fix them before updating."
+        )
     return manifest, source_bytes
 
 

@@ -225,7 +225,7 @@ def _write_workspace_contract(destination: Path, today: date) -> None:
     )
     manifest_path = destination / "prism.workspace.yml"
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
-    manifest["platform_maturity"] = {
+    manifest["app_maturity"] = {
         "backend": {"level": "baseline", "caveat": "Synthetic local fixture; no application build claim."},
         "mobile-android": {"level": "baseline", "caveat": "Synthetic local fixture; no application build claim."},
         "mobile-ios": {"level": "experimental", "caveat": "Synthetic local fixture; no application build claim."},

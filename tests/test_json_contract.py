@@ -12,6 +12,7 @@ from prism_cli.wiki_graph_html import render_html
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
 from prism_cli.wiki_transitions import build_transition_preflight
+from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
 
 
@@ -170,7 +171,7 @@ class JsonContractTests(unittest.TestCase):
             wiki_root.parent.mkdir(parents=True)
             shutil.copytree(FIXTURE_ROOT / "knowledge" / "wiki", wiki_root)
             (workspace / "prism.workspace.yml").write_text(
-                "schema_version: 1\nproject:\n  name: Lint workspace\n  platforms: [backend]\n",
+                manifest_text("Lint workspace", ["backend"]),
                 encoding="utf-8",
             )
 
@@ -256,7 +257,7 @@ class JsonContractTests(unittest.TestCase):
             wiki_root.parent.mkdir(parents=True)
             shutil.copytree(FIXTURE_ROOT / "knowledge" / "wiki", wiki_root)
             (workspace / "prism.workspace.yml").write_text(
-                "schema_version: 1\nproject:\n  name: Manifest name\n  platforms: [backend, mobile-ios]\n",
+                manifest_text("Manifest name", ["backend", "mobile-ios"]),
                 encoding="utf-8",
             )
             (workspace / ".copier-answers.yml").write_text(

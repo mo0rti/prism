@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 
 import yaml
 
+from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, apps_from_platforms, normalize_manifest
 from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, PLATFORM_DIRS
 from prism_cli.workflow_assets import asset_digest, bootstrap_files, guidance_pointer, previous_digests
 from prism_cli.board_store import BoardLockError, unresolved_board_operations, workspace_process_lock
@@ -91,9 +92,14 @@ def plan_install(
 
         if before_manifest is not None and (
             type(manifest_data.get("schema_version")) is not int
-            or manifest_data.get("schema_version") != 1
+            or manifest_data.get("schema_version") != MANIFEST_SCHEMA_VERSION
         ):
-            raise ValueError(f"{MANIFEST_FILE} must use schema_version 1 before workflow adoption.")
+            raise ValueError(
+                f"{MANIFEST_FILE} must use schema_version {MANIFEST_SCHEMA_VERSION} before workflow adoption; recreate or reinstall this workspace with this CLI."
+            )
+        # The manifest declares its own apps; the workflow only pins itself.
+        model, model_diagnostics = normalize_manifest(manifest_data, path=Path(MANIFEST_FILE)) if before_manifest is not None else (None, [])
+        scope_declared = "apps" in manifest_data
 
         old_version, board_id = _workflow_identity(old_workflow, upgrade=upgrade, conflicts=conflicts)
         if old_version and old_version != WORKFLOW_VERSION and not upgrade:
@@ -107,16 +113,29 @@ def plan_install(
 
         inferred_answers = _read_copier_answers(workspace, conflicts) if answers_present else {}
         chosen_name = _choose_name(workspace, project, inferred_answers, name, conflicts)
-        chosen_platforms = _choose_platforms(project, inferred_answers, selected_platforms, conflicts)
+        problem_codes = sorted({item.code for item in model_diagnostics if item.severity == "error"})
+        if problem_codes:
+            conflicts.append(
+                f"{MANIFEST_FILE} has invalid repository or app declarations ({', '.join(problem_codes)}); fix them before adopting or upgrading the workflow."
+            )
+        if scope_declared and model is not None:
+            chosen_platforms = model.active_app_ids
+            # Naming the apps the workspace already has is harmless; naming others would change them.
+            if selected_platforms is not None and set(selected_platforms) != set(chosen_platforms):
+                conflicts.append(f"`--platform` cannot change the apps of this workspace; edit `apps` in {MANIFEST_FILE} instead.")
+        else:
+            chosen_platforms = _choose_platforms(inferred_answers, selected_platforms, conflicts)
         mode = "generated" if is_generated else "workflow"
 
         if not conflicts:
             if before_manifest is None:
-                manifest_data["schema_version"] = 1
+                manifest_data["schema_version"] = MANIFEST_SCHEMA_VERSION
                 manifest_data.setdefault("min_prism_cli_version", "0.3.0")
             project["name"] = chosen_name
-            project["platforms"] = chosen_platforms
             manifest_data["project"] = project
+            if not scope_declared:
+                # The chosen platforms become apps: their ID, stack and default directory.
+                manifest_data["apps"] = apps_from_platforms(chosen_platforms)
             if old_workflow is None:
                 old_workflow = {}
             old_workflow.update(
@@ -149,9 +168,7 @@ def plan_install(
                 unchanged.append(MANIFEST_FILE)
         else:
             chosen_name = chosen_name or (project.get("name") if isinstance(project.get("name"), str) else None)
-            chosen_platforms = chosen_platforms or (
-                project.get("platforms") if isinstance(project.get("platforms"), list) else []
-            )
+            chosen_platforms = chosen_platforms or []
 
         for bootstrap in bootstrap_files(WORKFLOW_VERSION):
             relative = bootstrap["path"]
@@ -624,23 +641,12 @@ def _choose_name(
 
 
 def _choose_platforms(
-    project: dict[str, Any],
     answers: dict[str, Any],
     requested: list[str] | None,
     conflicts: list[str],
 ) -> list[str]:
     if requested is not None:
         return requested
-    old = project.get("platforms")
-    if isinstance(old, list) and old:
-        invalid = [value for value in old if not isinstance(value, str) or value not in PLATFORM_DIRS]
-        if invalid:
-            conflicts.append(f"Existing project platform scope contains unsupported values: {invalid!r}; provide a valid --platform selection.")
-            return []
-        if len(set(old)) != len(old):
-            conflicts.append("Existing project platform scope contains duplicates; provide a valid --platform selection.")
-            return []
-        return list(old)
     answer_platforms = answers.get("platforms")
     if answer_platforms is not None and not isinstance(answer_platforms, list):
         conflicts.append(f"Saved project platform scope must be a list; found {type(answer_platforms).__name__}.")

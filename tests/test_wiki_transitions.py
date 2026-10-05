@@ -28,6 +28,7 @@ from prism_cli.wiki_transitions import (
     fingerprint_digest,
     workspace_fingerprint,
 )
+from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
 
 
@@ -133,12 +134,7 @@ class WikiTransitionTests(unittest.TestCase):
             encoding="utf-8",
         )
         (self.root / "prism.workspace.yml").write_text(
-            "schema_version: 1\n"
-            "project:\n"
-            "  name: Transition test\n"
-            "  slug: transition-test\n"
-            "  platforms:\n"
-            "    - backend\n",
+            manifest_text("Transition test", ["backend"], slug="transition-test"),
             encoding="utf-8",
         )
         self._write_feature()
@@ -274,7 +270,7 @@ class WikiTransitionTests(unittest.TestCase):
         (self.root / "mobile-ios").mkdir()
         manifest = self.root / "prism.workspace.yml"
         manifest.write_text(
-            manifest.read_text(encoding="utf-8").replace("    - backend\n", "    - backend\n    - mobile-ios\n"),
+            manifest_text("Transition test", ["backend", "mobile-ios"], slug="transition-test"),
             encoding="utf-8",
         )
         body = FEATURE_TEMPLATE.format(
@@ -652,7 +648,7 @@ class WikiTransitionTests(unittest.TestCase):
         (self.root / "mobile-ios").mkdir()
         manifest = self.root / "prism.workspace.yml"
         manifest.write_text(
-            manifest.read_text(encoding="utf-8").replace("    - backend\n", "    - backend\n    - mobile-ios\n"),
+            manifest_text("Transition test", ["backend", "mobile-ios"], slug="transition-test"),
             encoding="utf-8",
         )
         self._write_feature(platforms="backend")
@@ -909,7 +905,7 @@ class FingerprintCacheTests(unittest.TestCase):
         for page in self.pages:
             self.write(page, f"alpha {page.name}\n")
         self.write(self.root / "knowledge" / "wiki" / "index.md", "# Index\n")
-        self.write(self.root / "prism.workspace.yml", "schema_version: 1\n")
+        self.write(self.root / "prism.workspace.yml", "schema_version: 2\n")
         self.hashed: list[str] = []
         from prism_cli import wiki_transitions
 

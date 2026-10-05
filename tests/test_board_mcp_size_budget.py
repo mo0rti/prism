@@ -28,6 +28,7 @@ import yaml
 
 from prism_cli.board_server import create_app
 from prism_cli.board_service import BoardError, BoardService
+from prism_cli.app_model import apps_from_platforms
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.core_workflow_fixture import create_core_workflow_fixture
 from tests.test_board_service import _read_revisions
@@ -493,7 +494,7 @@ def build_dev_done_workspace(root: Path, platforms: list[str], bulk: str, large_
     create_core_workflow_fixture(root)
     manifest = root / "prism.workspace.yml"
     data = yaml.safe_load(manifest.read_text(encoding="utf-8"))
-    data["project"]["platforms"] = platforms
+    data["apps"] = apps_from_platforms(list(platforms))
     manifest.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     for platform in platforms:
         (root / platform).mkdir(exist_ok=True)

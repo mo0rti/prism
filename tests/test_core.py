@@ -57,6 +57,7 @@ from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.workspace import MANIFEST_FILE, load_workspace
+from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
 
 
@@ -705,14 +706,14 @@ class WorkspaceManifestTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / MANIFEST_FILE).write_text(
-                "schema_version: 1\nproject:\n  name: Prism App\n  platforms:\n    - backend\n",
+                manifest_text("Prism App", ["backend"]),
                 encoding="utf-8",
             )
 
             result = load_workspace(root)
 
         assert result.manifest is not None
-        self.assertEqual(1, result.manifest.schema_version)
+        self.assertEqual(2, result.manifest.schema_version)
         self.assertEqual("Prism App", result.manifest.project_name)
         self.assertEqual(["backend"], result.manifest.platforms)
 
@@ -1591,17 +1592,7 @@ def create_wiki_skeleton(root: Path) -> None:
 
 
 def write_manifest(root: Path, project_name: str = "Prism App", platforms: list[str] | None = None) -> None:
-    platforms = platforms or ["backend"]
-    platform_lines = "\n".join(f"    - {platform}" for platform in platforms)
-    (root / MANIFEST_FILE).write_text(
-        "schema_version: 1\n"
-        "project:\n"
-        f"  name: {project_name}\n"
-        "  slug: prism-app\n"
-        "  platforms:\n"
-        f"{platform_lines}\n",
-        encoding="utf-8",
-    )
+    (root / MANIFEST_FILE).write_text(manifest_text(project_name, platforms or ["backend"], slug="prism-app"), encoding="utf-8")
 
 
 def write_board_placeholder(root: Path) -> None:

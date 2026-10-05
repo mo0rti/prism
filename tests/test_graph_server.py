@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 from prism_cli.cli import build_parser
 from prism_cli.graph_server import _GraphState, _make_handler, _workspace_fingerprint
 from prism_cli.wiki_transitions import CAPABILITY_FILES
+from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
 
 
@@ -37,12 +38,7 @@ def _create_workspace(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "prism.workspace.yml").write_text(
-        "schema_version: 1\n"
-        "project:\n"
-        "  name: Test\n"
-        "  slug: test\n"
-        "  platforms:\n"
-        "    - backend\n",
+        manifest_text("Test", ["backend"], slug="test"),
         encoding="utf-8",
     )
 
@@ -65,7 +61,7 @@ class GraphFingerprintTests(unittest.TestCase):
             self.assertNotEqual(second, third)
 
             (root / "prism.workspace.yml").write_text(
-                "schema_version: 1\nproject:\n  name: Demo\n  slug: test\n  platforms:\n    - backend\n",
+                manifest_text("Demo", ["backend"], slug="test"),
                 encoding="utf-8",
             )
             fourth = _workspace_fingerprint(root)
@@ -161,7 +157,7 @@ class GraphServerEndpointTests(unittest.TestCase):
                 self.assertEqual("Test", initial["envelope"]["workspace"]["project_name"])
 
                 (root / "prism.workspace.yml").write_text(
-                    "schema_version: 1\nproject:\n  name: Demo\n  slug: test\n  platforms:\n    - backend\n",
+                    manifest_text("Demo", ["backend"], slug="test"),
                     encoding="utf-8",
                 )
                 connection.request("GET", "/data.json")

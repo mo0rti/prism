@@ -449,7 +449,7 @@ def build_status(root: Path) -> WorkspaceStatus:
         feature_owner_counts=owner_counts,
         open_questions_by_owner=open_question_counts,
         platform_requirement_status_counts=requirement_counts,
-        platform_maturity=workspace_result.manifest.platform_maturity if workspace_result.manifest else {},
+        platform_maturity=workspace_result.manifest.app_maturity if workspace_result.manifest else {},
         advisory_review_snapshot=advisory_review_snapshot,
         settings_health=settings_health,
         generation_answers=_safe_generation_answers(answers),

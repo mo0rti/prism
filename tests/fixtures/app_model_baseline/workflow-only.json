@@ -1,0 +1,1500 @@
+{
+  "board": {
+    "compatibility": {
+      "read_only": false,
+      "reason": null
+    },
+    "discover-board": {
+      "board_id": "<uuid>",
+      "mode": "workflow",
+      "platforms": [
+        "backend",
+        "mobile-android"
+      ],
+      "project_name": "Baseline WF",
+      "workflow_version": "1"
+    },
+    "discover-participant-scopes": [
+      "read",
+      "write"
+    ],
+    "discover-skill-names": [
+      "ask",
+      "audit-feature",
+      "board-review",
+      "design-clarify",
+      "design-handoff",
+      "design-intake",
+      "design-start",
+      "dev-clarify",
+      "dev-done",
+      "dev-start",
+      "feature-reopen",
+      "feature-status",
+      "lint-wiki",
+      "po-clarify",
+      "po-handoff",
+      "po-intake",
+      "po-specify",
+      "prep-sprint",
+      "setup-project",
+      "wiki-blockers",
+      "wiki-owner",
+      "wiki-platform",
+      "wiki-query",
+      "wiki-show"
+    ],
+    "identity-platforms": [
+      "backend",
+      "mobile-android"
+    ],
+    "list-knowledge": [
+      "knowledge/intake/README.md",
+      "knowledge/intake/pending/.gitkeep",
+      "knowledge/intake/pending/DESIGN_HANDOFF_TEMPLATE.md",
+      "knowledge/intake/pending/PO_BRIEF_TEMPLATE.md",
+      "knowledge/intake/processed/.gitkeep",
+      "knowledge/intake/quarantined/.gitkeep",
+      "knowledge/wiki/CONNECTED.md",
+      "knowledge/wiki/SCHEMA.md",
+      "knowledge/wiki/SETTINGS.md",
+      "knowledge/wiki/advisory/.gitkeep",
+      "knowledge/wiki/advisory/BOARD.md",
+      "knowledge/wiki/advisory/PROJECT_FOUNDATION.md",
+      "knowledge/wiki/advisory/_FORMAT.md",
+      "knowledge/wiki/api-contracts/.gitkeep",
+      "knowledge/wiki/api-contracts/_FORMAT.md",
+      "knowledge/wiki/business-rules/.gitkeep",
+      "knowledge/wiki/business-rules/_FORMAT.md",
+      "knowledge/wiki/decisions/.gitkeep",
+      "knowledge/wiki/decisions/_FORMAT.md",
+      "knowledge/wiki/design/.gitkeep",
+      "knowledge/wiki/design/_FORMAT.md",
+      "knowledge/wiki/features/.gitkeep",
+      "knowledge/wiki/features/F-001-outcome-capture.md",
+      "knowledge/wiki/features/F-002-outcome-review.md",
+      "knowledge/wiki/features/F-003-outcome-export.md",
+      "knowledge/wiki/features/_FORMAT.md",
+      "knowledge/wiki/index.md",
+      "knowledge/wiki/log.md",
+      "knowledge/wiki/personas/.gitkeep",
+      "knowledge/wiki/personas/_FORMAT.md",
+      "knowledge/wiki/platform-requirements/.gitkeep",
+      "knowledge/wiki/platform-requirements/F-003-backend.md",
+      "knowledge/wiki/platform-requirements/_FORMAT.md"
+    ],
+    "query-blockers": {
+      "blocker_facts": [
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "command": "wiki blockers",
+      "confidence": "error",
+      "diagnostics": [
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "experimental": true,
+      "facts": {
+        "blocker_count": 3,
+        "blockers": [
+          {
+            "code": "missing-design",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+            "path": "knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          },
+          {
+            "code": "missing-platform-requirements",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+            "path": "knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          },
+          {
+            "code": "unresolved-open-questions",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+            "path": "knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          }
+        ]
+      },
+      "next_cursor": null,
+      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
+      "required_obligations": [
+        {
+          "code": "missing-design",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        }
+      ],
+      "root": ".",
+      "schema_version": 1,
+      "snapshot": {
+        "consistent": true,
+        "revision": "sha256:<digest>"
+      },
+      "sources": [
+        "knowledge/wiki"
+      ],
+      "workspace": {
+        "kind": "workflow-project",
+        "platforms": [
+          "backend",
+          "mobile-android"
+        ],
+        "project_name": "Baseline WF"
+      }
+    },
+    "query-lint": {
+      "blocker_facts": [
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "command": "wiki lint",
+      "confidence": "error",
+      "diagnostics": [
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "experimental": true,
+      "facts": {
+        "clean": false,
+        "error_count": 3,
+        "feature_count": 3,
+        "warning_count": 0
+      },
+      "next_cursor": null,
+      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
+      "required_obligations": [
+        {
+          "code": "missing-design",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        }
+      ],
+      "root": ".",
+      "schema_version": 1,
+      "snapshot": {
+        "consistent": true,
+        "revision": "sha256:<digest>"
+      },
+      "sources": [
+        "knowledge/wiki"
+      ],
+      "workspace": {
+        "kind": "workflow-project",
+        "platforms": [
+          "backend",
+          "mobile-android"
+        ],
+        "project_name": "Baseline WF"
+      }
+    },
+    "query-platform-backend": {
+      "blocker_facts": [
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "command": "wiki platform",
+      "confidence": "error",
+      "diagnostics": [
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "experimental": true,
+      "facts": {
+        "feature_count": 2,
+        "features": [
+          {
+            "advisory_review": "not-needed",
+            "id": "F-002",
+            "owner": "designer",
+            "path": "knowledge/wiki/features/F-002-outcome-review.md",
+            "platforms": [
+              "backend",
+              "mobile-android"
+            ],
+            "status": "in-design",
+            "title": "Outcome review"
+          },
+          {
+            "advisory_review": "not-needed",
+            "id": "F-003",
+            "owner": "dev",
+            "path": "knowledge/wiki/features/F-003-outcome-export.md",
+            "platforms": [
+              "backend",
+              "mobile-android"
+            ],
+            "status": "in-dev",
+            "title": "Outcome export"
+          }
+        ],
+        "platform": "backend",
+        "platform_requirement_count": 1,
+        "platform_requirements": [
+          {
+            "feature_id": "F-003",
+            "path": "knowledge/wiki/platform-requirements/F-003-backend.md",
+            "platform": "backend",
+            "status": "in-progress"
+          }
+        ]
+      },
+      "next_cursor": null,
+      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
+      "required_obligations": [
+        {
+          "code": "missing-design",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        }
+      ],
+      "root": ".",
+      "schema_version": 1,
+      "snapshot": {
+        "consistent": true,
+        "revision": "sha256:<digest>"
+      },
+      "sources": [
+        "knowledge/wiki",
+        "knowledge/wiki/features/F-002-outcome-review.md",
+        "knowledge/wiki/features/F-003-outcome-export.md",
+        "knowledge/wiki/platform-requirements/F-003-backend.md"
+      ],
+      "total": 3,
+      "workspace": {
+        "kind": "workflow-project",
+        "platforms": [
+          "backend",
+          "mobile-android"
+        ],
+        "project_name": "Baseline WF"
+      }
+    },
+    "query-platform-mobile-android": {
+      "blocker_facts": [
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "command": "wiki platform",
+      "confidence": "error",
+      "diagnostics": [
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "experimental": true,
+      "facts": {
+        "feature_count": 2,
+        "features": [
+          {
+            "advisory_review": "not-needed",
+            "id": "F-002",
+            "owner": "designer",
+            "path": "knowledge/wiki/features/F-002-outcome-review.md",
+            "platforms": [
+              "backend",
+              "mobile-android"
+            ],
+            "status": "in-design",
+            "title": "Outcome review"
+          },
+          {
+            "advisory_review": "not-needed",
+            "id": "F-003",
+            "owner": "dev",
+            "path": "knowledge/wiki/features/F-003-outcome-export.md",
+            "platforms": [
+              "backend",
+              "mobile-android"
+            ],
+            "status": "in-dev",
+            "title": "Outcome export"
+          }
+        ],
+        "platform": "mobile-android",
+        "platform_requirement_count": 0,
+        "platform_requirements": []
+      },
+      "next_cursor": null,
+      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
+      "required_obligations": [
+        {
+          "code": "missing-design",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        }
+      ],
+      "root": ".",
+      "schema_version": 1,
+      "snapshot": {
+        "consistent": true,
+        "revision": "sha256:<digest>"
+      },
+      "sources": [
+        "knowledge/wiki",
+        "knowledge/wiki/features/F-002-outcome-review.md",
+        "knowledge/wiki/features/F-003-outcome-export.md"
+      ],
+      "total": 2,
+      "workspace": {
+        "kind": "workflow-project",
+        "platforms": [
+          "backend",
+          "mobile-android"
+        ],
+        "project_name": "Baseline WF"
+      }
+    },
+    "query-preflight-design-handoff": {
+      "capability": {
+        "mode": "read-only",
+        "transport": "local-board-service"
+      },
+      "command": "wiki transition-preflight",
+      "facts": {
+        "transition": {
+          "action": "design-handoff",
+          "checks": [
+            {
+              "code": "feature-id",
+              "message": "Feature ID and path identify one canonical feature page.",
+              "path": "knowledge/wiki/features/F-002-outcome-review.md",
+              "status": "pass"
+            },
+            {
+              "code": "source-status",
+              "message": "Source status is `in-design`.",
+              "path": "knowledge/wiki/features/F-002-outcome-review.md",
+              "status": "pass"
+            },
+            {
+              "code": "source-owner",
+              "message": "Source owner is `designer`.",
+              "path": "knowledge/wiki/features/F-002-outcome-review.md",
+              "status": "pass"
+            },
+            {
+              "code": "workspace-identity",
+              "message": "The adopted workflow identity and scope are available.",
+              "path": "prism.workspace.yml",
+              "status": "pass"
+            },
+            {
+              "code": "platform-scope",
+              "message": "Feature platforms are valid and within the available workspace scope.",
+              "path": "knowledge/wiki/features/F-002-outcome-review.md",
+              "status": "pass"
+            },
+            {
+              "code": "design",
+              "message": "UI platform scope requires a matching design page or an explicit confirmed exemption.",
+              "path": "knowledge/wiki/features/F-002-outcome-review.md",
+              "status": "blocked"
+            },
+            {
+              "code": "advisory-review",
+              "message": "Advisory review state is `not-needed`.",
+              "path": "knowledge/wiki/features/F-002-outcome-review.md",
+              "status": "pass"
+            },
+            {
+              "code": "advisory-actions",
+              "message": "No advisory action checklist is required for this feature.",
+              "path": "knowledge/wiki/features/F-002-outcome-review.md",
+              "status": "pass"
+            },
+            {
+              "code": "open-questions",
+              "message": "1 open action-relevant question remains: question 1.",
+              "path": "knowledge/wiki/features/F-002-outcome-review.md",
+              "status": "blocked"
+            },
+            {
+              "code": "revalidation",
+              "message": "No pending revalidation domains remain.",
+              "path": "knowledge/wiki/features/F-002-outcome-review.md",
+              "status": "pass"
+            },
+            {
+              "code": "source-integrity",
+              "message": "No additional feature integrity issues block this request.",
+              "path": "knowledge/wiki/features/F-002-outcome-review.md",
+              "status": "pass"
+            }
+          ],
+          "classification": "blocked",
+          "feature_id": "F-002",
+          "reason": "UI platform scope requires a matching design page or an explicit confirmed exemption.; 1 open action-relevant question remains: question 1.",
+          "source_owner": "designer",
+          "source_path": "knowledge/wiki/features/F-002-outcome-review.md",
+          "source_status": "in-design",
+          "sources": [
+            "knowledge/wiki/features/F-002-outcome-review.md",
+            "prism.workspace.yml",
+            ".copier-answers.yml",
+            "knowledge/wiki/SCHEMA.md",
+            "knowledge/wiki/index.md",
+            ".agents/skills/design-handoff/SKILL.md",
+            ".claude/commands/design-handoff.md"
+          ],
+          "supported": true,
+          "target_owner": "dev",
+          "target_status": "ready-for-dev",
+          "version": 1
+        }
+      },
+      "next_cursor": null,
+      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
+      "schema_version": 1,
+      "snapshot": {
+        "consistent": true,
+        "revision": "sha256:<digest>"
+      }
+    },
+    "query-preflight-dev-done": {
+      "capability": {
+        "mode": "read-only",
+        "transport": "local-board-service"
+      },
+      "command": "wiki transition-preflight",
+      "facts": {
+        "transition": {
+          "action": "dev-done",
+          "checks": [
+            {
+              "code": "feature-id",
+              "message": "Feature ID and path identify one canonical feature page.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "pass"
+            },
+            {
+              "code": "source-status",
+              "message": "Source status is `in-dev`.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "pass"
+            },
+            {
+              "code": "source-owner",
+              "message": "Source owner is `dev`.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "pass"
+            },
+            {
+              "code": "workspace-identity",
+              "message": "The adopted workflow identity and scope are available.",
+              "path": "prism.workspace.yml",
+              "status": "pass"
+            },
+            {
+              "code": "platform-scope",
+              "message": "Feature platforms are valid and within the available workspace scope.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "pass"
+            },
+            {
+              "code": "design",
+              "message": "UI platform scope requires a matching design page or an explicit confirmed exemption.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "blocked"
+            },
+            {
+              "code": "platform-requirements",
+              "message": "missing requirement for `mobile-android`.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "blocked"
+            },
+            {
+              "code": "api-contract",
+              "message": "No API surface is declared for this feature.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "pass"
+            },
+            {
+              "code": "revalidation",
+              "message": "No pending revalidation domains remain.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "pass"
+            },
+            {
+              "code": "delivery-evidence",
+              "message": "Required `Delivery evidence` section is missing or empty.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "blocked"
+            },
+            {
+              "code": "advisory-review",
+              "message": "Advisory review state is `not-needed`.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "pass"
+            },
+            {
+              "code": "advisory-actions",
+              "message": "No advisory action checklist is required for this feature.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "pass"
+            },
+            {
+              "code": "open-questions",
+              "message": "1 open action-relevant question remains: question 1.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "blocked"
+            },
+            {
+              "code": "workflow:missing-design",
+              "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "blocked"
+            },
+            {
+              "code": "workflow:missing-platform-requirements",
+              "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "blocked"
+            },
+            {
+              "code": "workflow:unresolved-open-questions",
+              "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "blocked"
+            },
+            {
+              "code": "source-integrity",
+              "message": "No additional feature integrity issues block this request.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "pass"
+            }
+          ],
+          "classification": "blocked",
+          "feature_id": "F-003",
+          "reason": "UI platform scope requires a matching design page or an explicit confirmed exemption.; missing requirement for `mobile-android`.; Required `Delivery evidence` section is missing or empty.; 1 open action-relevant question remains: question 1.; Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.; Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.; Feature `F-003` has an open question assigned to `po` (#1).",
+          "source_owner": "dev",
+          "source_path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "source_status": "in-dev",
+          "sources": [
+            "knowledge/wiki/features/F-003-outcome-export.md",
+            "prism.workspace.yml",
+            ".copier-answers.yml",
+            "knowledge/wiki/SCHEMA.md",
+            "knowledge/wiki/index.md",
+            ".agents/skills/dev-done/SKILL.md",
+            ".claude/commands/dev-done.md",
+            "knowledge/wiki/platform-requirements/F-003-backend.md"
+          ],
+          "supported": true,
+          "target_owner": "none",
+          "target_status": "done",
+          "version": 1
+        }
+      },
+      "next_cursor": null,
+      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
+      "schema_version": 1,
+      "snapshot": {
+        "consistent": true,
+        "revision": "sha256:<digest>"
+      }
+    },
+    "query-preflight-po-handoff": {
+      "capability": {
+        "mode": "read-only",
+        "transport": "local-board-service"
+      },
+      "command": "wiki transition-preflight",
+      "facts": {
+        "transition": {
+          "action": null,
+          "checks": [
+            {
+              "code": "feature-id",
+              "message": "Feature ID and path identify one canonical feature page.",
+              "path": "knowledge/wiki/features/F-001-outcome-capture.md",
+              "status": "pass"
+            },
+            {
+              "code": "unsupported-source-stage",
+              "message": "No first-slice transition is defined from source status `raw`.",
+              "path": "knowledge/wiki/features/F-001-outcome-capture.md",
+              "status": "unknown"
+            },
+            {
+              "code": "source-owner",
+              "message": "Source owner `po` has no first-slice action mapping.",
+              "path": "knowledge/wiki/features/F-001-outcome-capture.md",
+              "status": "unknown"
+            },
+            {
+              "code": "workspace-identity",
+              "message": "The adopted workflow identity and scope are available.",
+              "path": "prism.workspace.yml",
+              "status": "pass"
+            }
+          ],
+          "classification": "unknown",
+          "feature_id": "F-001",
+          "reason": "No supported po-handoff action is defined from source status `raw` and owner `po`.",
+          "source_owner": "po",
+          "source_path": "knowledge/wiki/features/F-001-outcome-capture.md",
+          "source_status": "raw",
+          "sources": [
+            "knowledge/wiki/features/F-001-outcome-capture.md",
+            "prism.workspace.yml",
+            ".copier-answers.yml",
+            "knowledge/wiki/SCHEMA.md",
+            "knowledge/wiki/index.md",
+            ".agents/skills/po-handoff/SKILL.md",
+            ".claude/commands/po-handoff.md"
+          ],
+          "supported": false,
+          "target_owner": null,
+          "target_status": null,
+          "version": 1
+        }
+      },
+      "next_cursor": null,
+      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
+      "schema_version": 1,
+      "snapshot": {
+        "consistent": true,
+        "revision": "sha256:<digest>"
+      }
+    },
+    "query-show-F-001": {
+      "blocker_facts": [
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "command": "wiki show",
+      "confidence": "error",
+      "diagnostics": [
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "experimental": true,
+      "facts": {
+        "feature": {
+          "advisory_review": "not-needed",
+          "frontmatter": {
+            "advisory-review": "not-needed",
+            "id": "F-001",
+            "introduced": "2026-09-22",
+            "last-updated": "2026-09-22",
+            "owner": "po",
+            "platforms": [
+              "backend"
+            ],
+            "sources": [],
+            "status": "raw",
+            "title": "Outcome capture"
+          },
+          "id": "F-001",
+          "linked_context": {
+            "advisory_reviews": [],
+            "api_contracts": [],
+            "business_rules": [],
+            "decisions": [],
+            "design": [],
+            "personas": []
+          },
+          "open_question_parse_errors": [],
+          "open_questions": [
+            {
+              "number": "1",
+              "owner": "po",
+              "question": "Which outcomes are allowed?",
+              "status": "open"
+            }
+          ],
+          "owner": "po",
+          "path": "knowledge/wiki/features/F-001-outcome-capture.md",
+          "platform_requirements": [],
+          "platforms": [
+            "backend"
+          ],
+          "status": "raw",
+          "title": "Outcome capture"
+        }
+      },
+      "next_cursor": null,
+      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
+      "required_obligations": [
+        {
+          "code": "missing-design",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "missing-platform-requirements",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        }
+      ],
+      "root": ".",
+      "schema_version": 1,
+      "snapshot": {
+        "consistent": true,
+        "revision": "sha256:<digest>"
+      },
+      "sources": [
+        "knowledge/wiki",
+        "knowledge/wiki/features/F-001-outcome-capture.md"
+      ],
+      "workspace": {
+        "kind": "workflow-project",
+        "platforms": [
+          "backend",
+          "mobile-android"
+        ],
+        "project_name": "Baseline WF"
+      }
+    }
+  },
+  "cli": {
+    "doctor-workspace": {
+      "exit": 3,
+      "output": "+ Workspace -------------------------------------------------------------------------+\n|Project: Baseline WF |\n|Kind: workflow-project |\n|Platforms: backend, mobile-android |\n|Setup: not initialized |\n|Confidence: error |\n+------------------------------------------------------------------------------------+\n\n+ Queues and wiki -------------------------------------------------------------------+\n|Pending intake: 0 |\n|Quarantined intake: 0 |\n|Features: 3 |\n|Blockers: 3 |\n|Wiki errors: 3 |\n|Wiki warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nsetup-project has not initialized the wiki yet.\n\nFeature lifecycle\n- in-design: 1\n- in-dev: 1\n- raw: 1\n\nAttention\n- missing-design: Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- missing-platform-requirements: Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n\nShared board\n[ok] Workspace is outside cloud-synced folders\n[ok] Workflow pin is compatible with this Prism installation\n Workflow version 1 matches this installation.\n[warn] At least one active board grant exists\n No grants yet.\n[skip] `.prism/state` is ignored by git\n This folder is not a git repository, so this check was skipped.\n"
+    },
+    "status-json": {
+      "exit": 0,
+      "json": {
+        "blocker_facts": [
+          {
+            "code": "missing-design",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          },
+          {
+            "code": "missing-platform-requirements",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          },
+          {
+            "code": "unresolved-open-questions",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          }
+        ],
+        "command": "status",
+        "confidence": "error",
+        "diagnostics": [
+          {
+            "code": "missing-design",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          },
+          {
+            "code": "missing-platform-requirements",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          },
+          {
+            "code": "unresolved-open-questions",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          }
+        ],
+        "experimental": true,
+        "facts": {
+          "advisory_review": {
+            "counts": {
+              "done": 0,
+              "not-needed": 3,
+              "pending": 0,
+              "skipped": 0,
+              "unknown": 0
+            },
+            "pending": 0,
+            "pending_feature_ids": []
+          },
+          "generation": {
+            "answers": {},
+            "answers_file": "<ROOT>/.copier-answers.yml",
+            "answers_present": false,
+            "template": {
+              "answers_file": "<ROOT>/.copier-answers.yml",
+              "generated_at": null,
+              "generated_by_prism_cli_version": null,
+              "template_commit": null,
+              "template_source": null,
+              "template_version": null
+            }
+          },
+          "generation_answers": {},
+          "intake": {
+            "pending": 0,
+            "quarantined": 0
+          },
+          "settings": {
+            "configured": true,
+            "diagnostics": [],
+            "health": "healthy",
+            "path": "<ROOT>/knowledge/wiki/SETTINGS.md",
+            "source": "settings",
+            "stale_after_days": 36500,
+            "status": "healthy"
+          },
+          "template": {
+            "answers_file": "<ROOT>/.copier-answers.yml",
+            "generated_at": null,
+            "generated_by_prism_cli_version": null,
+            "template_commit": null,
+            "template_source": null,
+            "template_version": null
+          },
+          "wiki": {
+            "blocker_count": 3,
+            "clean": false,
+            "error_count": 3,
+            "feature_count": 3,
+            "feature_owner_counts": {
+              "designer": 1,
+              "dev": 1,
+              "po": 1
+            },
+            "feature_status_counts": {
+              "done": 0,
+              "in-design": 1,
+              "in-dev": 1,
+              "raw": 1,
+              "ready-for-design": 0,
+              "ready-for-dev": 0,
+              "specified": 0
+            },
+            "open_questions_by_owner": {
+              "po": 3
+            },
+            "platform_requirement_status_counts": {
+              "in-progress": 1
+            },
+            "warning_count": 0
+          }
+        },
+        "manifest": {
+          "diagnostics": [],
+          "file": "<ROOT>/prism.workspace.yml",
+          "present": true
+        },
+        "required_obligations": [
+          {
+            "code": "missing-design",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+          },
+          {
+            "code": "missing-platform-requirements",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+          },
+          {
+            "code": "unresolved-open-questions",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+          }
+        ],
+        "root": "<ROOT>",
+        "schema_version": 1,
+        "sources": [
+          "<ROOT>/prism.workspace.yml",
+          "<ROOT>/.copier-answers.yml",
+          "<ROOT>/knowledge/wiki",
+          "<ROOT>/knowledge/intake",
+          "<ROOT>/knowledge/wiki/SETTINGS.md"
+        ],
+        "workspace": {
+          "kind": "workflow-project",
+          "platform_maturity": {},
+          "platforms": [
+            "backend",
+            "mobile-android"
+          ],
+          "project_name": "Baseline WF",
+          "setup_state": "not-initialized"
+        }
+      }
+    },
+    "validate": {
+      "exit": 0,
+      "output": " ____ ____ ___ ____ __ __\n| _ /| _ /|_ _/ ___|| // |\n| |_) | |_) || |/___ /| |//| |\n| __/| _ < | | ___) | | | |\n|_| |_| /_/___|____/|_| |_|\n----------------------------------------------------------------------------------------\nValidate template integrity or generated project structure\n\n+ Target ----------------------------------------------------------------------------+\n|Path: <ROOT> |\n|Kind: workflow-project |\n+------------------------------------------------------------------------------------+\n\n+ Wiki readiness --------------------------------------------------------------------+\n|Workspace: <ROOT> |\n|Features: 3 |\n|Integrity errors: 0 |\n|Readiness blockers: 3 |\n|Warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nWorkflow readiness\n- missing-design: Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n- missing-platform-requirements: Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n\nWiki integrity checks passed.\nWorkflow identity and wiki integrity checks passed; readiness blockers are reported above.\n"
+    },
+    "wiki-lint-json": {
+      "exit": 3,
+      "json": {
+        "blocker_facts": [
+          {
+            "code": "missing-design",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          },
+          {
+            "code": "missing-platform-requirements",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          },
+          {
+            "code": "unresolved-open-questions",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          }
+        ],
+        "command": "wiki lint",
+        "confidence": "error",
+        "diagnostics": [
+          {
+            "code": "missing-design",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          },
+          {
+            "code": "missing-platform-requirements",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          },
+          {
+            "code": "unresolved-open-questions",
+            "feature_id": "F-003",
+            "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "error"
+          }
+        ],
+        "experimental": true,
+        "facts": {
+          "clean": false,
+          "error_count": 3,
+          "feature_count": 3,
+          "warning_count": 0
+        },
+        "required_obligations": [
+          {
+            "code": "missing-design",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+          },
+          {
+            "code": "missing-platform-requirements",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+          },
+          {
+            "code": "unresolved-open-questions",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+          }
+        ],
+        "root": "<ROOT>",
+        "schema_version": 1,
+        "sources": [
+          "<ROOT>/knowledge/wiki"
+        ],
+        "workspace": {
+          "kind": "workflow-project",
+          "platforms": [
+            "backend",
+            "mobile-android"
+          ],
+          "project_name": "Baseline WF"
+        }
+      }
+    }
+  },
+  "inspection": {
+    "diagnostics": [],
+    "filesystem_platforms": [],
+    "manifest_platforms": [
+      "backend",
+      "mobile-android"
+    ],
+    "platform_maturity": {},
+    "platforms": [
+      "backend",
+      "mobile-android"
+    ]
+  },
+  "lint": {
+    "blocker_facts": [
+      {
+        "code": "missing-design",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      },
+      {
+        "code": "missing-platform-requirements",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      },
+      {
+        "code": "unresolved-open-questions",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      }
+    ],
+    "command": "wiki lint",
+    "confidence": "error",
+    "diagnostics": [
+      {
+        "code": "missing-design",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      },
+      {
+        "code": "missing-platform-requirements",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      },
+      {
+        "code": "unresolved-open-questions",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      }
+    ],
+    "experimental": true,
+    "facts": {
+      "clean": false,
+      "error_count": 3,
+      "feature_count": 3,
+      "warning_count": 0
+    },
+    "required_obligations": [
+      {
+        "code": "missing-design",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+      },
+      {
+        "code": "missing-platform-requirements",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+      },
+      {
+        "code": "unresolved-open-questions",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+      }
+    ],
+    "root": "<ROOT>",
+    "schema_version": 1,
+    "sources": [
+      "<ROOT>/knowledge/wiki"
+    ],
+    "workspace": {
+      "kind": "workflow-project",
+      "platforms": [
+        "backend",
+        "mobile-android"
+      ],
+      "project_name": "Baseline WF"
+    }
+  },
+  "status": {
+    "blocker_facts": [
+      {
+        "code": "missing-design",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      },
+      {
+        "code": "missing-platform-requirements",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      },
+      {
+        "code": "unresolved-open-questions",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      }
+    ],
+    "command": "status",
+    "confidence": "error",
+    "diagnostics": [
+      {
+        "code": "missing-design",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      },
+      {
+        "code": "missing-platform-requirements",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      },
+      {
+        "code": "unresolved-open-questions",
+        "feature_id": "F-003",
+        "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "error"
+      }
+    ],
+    "experimental": true,
+    "facts": {
+      "advisory_review": {
+        "counts": {
+          "done": 0,
+          "not-needed": 3,
+          "pending": 0,
+          "skipped": 0,
+          "unknown": 0
+        },
+        "pending": 0,
+        "pending_feature_ids": []
+      },
+      "generation": {
+        "answers": {},
+        "answers_file": "<ROOT>/.copier-answers.yml",
+        "answers_present": false,
+        "template": {
+          "answers_file": "<ROOT>/.copier-answers.yml",
+          "generated_at": null,
+          "generated_by_prism_cli_version": null,
+          "template_commit": null,
+          "template_source": null,
+          "template_version": null
+        }
+      },
+      "generation_answers": {},
+      "intake": {
+        "pending": 0,
+        "quarantined": 0
+      },
+      "settings": {
+        "configured": true,
+        "diagnostics": [],
+        "health": "healthy",
+        "path": "<ROOT>/knowledge/wiki/SETTINGS.md",
+        "source": "settings",
+        "stale_after_days": 36500,
+        "status": "healthy"
+      },
+      "template": {
+        "answers_file": "<ROOT>/.copier-answers.yml",
+        "generated_at": null,
+        "generated_by_prism_cli_version": null,
+        "template_commit": null,
+        "template_source": null,
+        "template_version": null
+      },
+      "wiki": {
+        "blocker_count": 3,
+        "clean": false,
+        "error_count": 3,
+        "feature_count": 3,
+        "feature_owner_counts": {
+          "designer": 1,
+          "dev": 1,
+          "po": 1
+        },
+        "feature_status_counts": {
+          "done": 0,
+          "in-design": 1,
+          "in-dev": 1,
+          "raw": 1,
+          "ready-for-design": 0,
+          "ready-for-dev": 0,
+          "specified": 0
+        },
+        "open_questions_by_owner": {
+          "po": 3
+        },
+        "platform_requirement_status_counts": {
+          "in-progress": 1
+        },
+        "warning_count": 0
+      }
+    },
+    "manifest": {
+      "diagnostics": [],
+      "file": "<ROOT>/prism.workspace.yml",
+      "present": true
+    },
+    "required_obligations": [
+      {
+        "code": "missing-design",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+      },
+      {
+        "code": "missing-platform-requirements",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+      },
+      {
+        "code": "unresolved-open-questions",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
+      }
+    ],
+    "root": "<ROOT>",
+    "schema_version": 1,
+    "sources": [
+      "<ROOT>/prism.workspace.yml",
+      "<ROOT>/.copier-answers.yml",
+      "<ROOT>/knowledge/wiki",
+      "<ROOT>/knowledge/intake",
+      "<ROOT>/knowledge/wiki/SETTINGS.md"
+    ],
+    "workspace": {
+      "kind": "workflow-project",
+      "platform_maturity": {},
+      "platforms": [
+        "backend",
+        "mobile-android"
+      ],
+      "project_name": "Baseline WF",
+      "setup_state": "not-initialized"
+    }
+  }
+}

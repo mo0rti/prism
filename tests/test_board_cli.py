@@ -21,6 +21,7 @@ from prism_cli.cli import build_parser
 from prism_cli.board_store import BoardStore
 from prism_cli.workflow_assets import asset_digest
 from prism_cli.workflow_install import apply_install, plan_install
+from tests.manifest_fixtures import manifest_data
 from tests import real_temp  # noqa: F401
 
 
@@ -37,8 +38,7 @@ class BoardCliTests(unittest.TestCase):
         (root / "knowledge/wiki/SCHEMA.md").write_text("# Schema\n", encoding="utf-8")
         (root / "knowledge/wiki/index.md").write_text("# Index\n", encoding="utf-8")
         (root / "prism.workspace.yml").write_text(yaml.safe_dump({
-            "schema_version": 1,
-            "project": {"name": "Editorial", "platforms": ["backend"]},
+            **manifest_data("Editorial", ["backend"]),
             "workflow": {"version": "1", "mode": "workflow",
                          "board_id": "97f352fa-1ac1-4f7d-9ca0-e8246e6293bf",
                          "asset_digest": digest},

@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 min_prism_cli_version: "0.3.0"
 generated_by:
   tool: prism-cli
@@ -12,10 +12,6 @@ project:
   slug: {{ project_slug | tojson }}
   package_identifier: {{ package_identifier | tojson }}
   description: {{ description | tojson }}
-  platforms:
-{% for platform in platforms %}
-    - {{ platform }}
-{% endfor %}
   auth_methods:
 {% for auth_method in auth_methods %}
     - {{ auth_method }}
@@ -28,7 +24,17 @@ project:
   web_hosting: {{ web_hosting | tojson }}
 {% endif %}
   github_org: {{ github_org | tojson }}
-platform_maturity:
+{% set stacks = {"backend": "spring-backend", "web-user-app": "nextjs-web", "web-admin-portal": "nextjs-web", "mobile-android": "android-compose", "mobile-ios": "ios-swiftui"} %}
+{% set labels = {"backend": "Spring Boot Backend", "web-user-app": "User-Facing Web App", "web-admin-portal": "Admin Web Portal", "mobile-android": "Android (Kotlin/Compose)", "mobile-ios": "iOS (Swift/SwiftUI)"} %}
+apps:
+{% for platform in platforms %}
+  - id: {{ platform }}
+    name: {{ labels[platform] | tojson }}
+    stack: {{ stacks[platform] }}
+    repository: workspace
+    path: {{ platform }}
+{% endfor %}
+app_maturity:
 {% for platform in platforms %}
   {{ platform }}:
 {% if platform == "mobile-ios" %}

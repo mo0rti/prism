@@ -22,6 +22,7 @@ from threading import Lock, RLock
 from typing import Any, Callable, Iterable, Iterator
 from urllib.parse import unquote, urlsplit
 
+from prism_cli.app_model import MANIFEST_SCHEMA_VERSION
 from prism_cli.status import IGNORED_INTAKE_FILES
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, _wiki_path_references, lint_wiki
 from prism_cli.wiki_model import (
@@ -624,7 +625,7 @@ def _board_workspace_identity_checks(root: Path, inspection: WorkspaceInspection
         return [_check("workspace-identity", "unknown", "A readable workflow workspace manifest is required.", root / MANIFEST_FILE)]
     workflow = manifest.workflow
     if (
-        manifest.schema_version != 1
+        manifest.schema_version != MANIFEST_SCHEMA_VERSION
         or workflow.get("version") != "1"
         or workflow.get("mode") not in {"workflow", "generated"}
         or not isinstance(workflow.get("board_id"), str)

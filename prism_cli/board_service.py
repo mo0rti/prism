@@ -22,6 +22,7 @@ from uuid import UUID, uuid4
 
 import yaml
 
+from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, WorkspaceModel, normalize_manifest
 from prism_cli.board_store import BoardLockError, BoardStore
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError, reparse_kind
 from prism_cli.wiki_model import (
@@ -48,7 +49,6 @@ _WINDOWS_DEVICE_NAMES = frozenset({"CON", "PRN", "AUX", "NUL", *(f"COM{number}" 
 _TEXT_FILE_SUFFIXES = (".md", ".txt", ".yaml", ".yml")
 _MAX_PREVIEW_CHANGES = 128
 _HUMAN_ACTIONS = {"po-handoff", "design-start", "dev-start"}
-_SUPPORTED_PLATFORMS = frozenset({"backend", "mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"})
 _CANONICAL_MANIFEST_PATHS = {
     "wiki_root": "knowledge/wiki",
     "intake_root": "knowledge/intake",
@@ -207,6 +207,7 @@ class BoardService:
         self._mode: str | None = None
         self._project_name: str | None = None
         self._platforms: list[str] = []
+        self._model: WorkspaceModel | None = None
         self._asset_digest_value: str | None = None
         self._identity_facts: tuple[Any, ...] | None = None
         self._read_only_reason: str | None = None
@@ -913,7 +914,7 @@ class BoardService:
             self._read_only_reason = f"The workspace manifest cannot be read safely: {type(exc).__name__}."
             return
         schema_version = data.get("schema_version") if isinstance(data, dict) else None
-        if not isinstance(data, dict) or not isinstance(schema_version, int) or isinstance(schema_version, bool) or schema_version != 1:
+        if not isinstance(data, dict) or not isinstance(schema_version, int) or isinstance(schema_version, bool) or schema_version != MANIFEST_SCHEMA_VERSION:
             self._read_only_reason = "The workspace manifest schema is missing or unsupported; connected writes are read-only."
             return
         workflow = data.get("workflow")
@@ -932,12 +933,9 @@ class BoardService:
             self._read_only_reason = "The workflow manifest mode or project identity is unsupported."
             return
         project_name = project.get("name")
-        platforms = project.get("platforms")
-        if not isinstance(project_name, str) or not project_name.strip() or not isinstance(platforms, list) or not platforms:
-            self._read_only_reason = "Project name and an explicit nonempty platform scope are required."
-            return
-        if any(not isinstance(item, str) or item not in _SUPPORTED_PLATFORMS for item in platforms) or len(set(platforms)) != len(platforms):
-            self._read_only_reason = "The workflow platform scope contains invalid or duplicate IDs."
+        model, scope_problem = _board_scope(data, manifest_path)
+        if model is None:
+            self._read_only_reason = scope_problem
             return
         minimum_cli_error = _minimum_cli_version_error(data, manifest_path)
         if minimum_cli_error is not None:
@@ -965,7 +963,8 @@ class BoardService:
         self._workflow_version = "1"
         self._mode = mode
         self._project_name = project_name.strip()
-        self._platforms = list(platforms)
+        self._model = model
+        self._platforms = model.active_app_ids
         self._asset_digest_value = expected_digest
         self._identity_facts = (
             parsed_id,
@@ -973,7 +972,7 @@ class BoardService:
             mode,
             expected_digest,
             self._project_name,
-            tuple(self._platforms),
+            _scope_fact(model),
             schema_version,
             manifest_metadata,
         )
@@ -1011,13 +1010,15 @@ class BoardService:
         of its directory instead of re-checking all of its ancestors.
         """
 
-        from prism_cli.workspace import COPIER_ANSWERS_FILE, PLATFORM_DIRS
+        from prism_cli.workspace import COPIER_ANSWERS_FILE
         from prism_cli.wiki_transitions import _capability_paths
 
+        # The paths of the apps that live in this repository.
+        directories = [app.path for app in self._model.workspace_apps()] if self._model is not None else []
         files = [
             self.root / "prism.workspace.yml",
             self.root / COPIER_ANSWERS_FILE,
-            *(self.root / directory for directory in PLATFORM_DIRS.values()),
+            *(self.root / directory for directory in directories),
             *(self.root / relative for relative in _capability_paths()),
         ]
         self._reject_reparse(self.root, include_leaf=True)
@@ -4089,7 +4090,7 @@ def BoardServiceIdentity(root: Path) -> tuple[Any, ...] | None:
         if not isinstance(data, dict) or not isinstance(workflow, dict):
             return None
         schema_version = data.get("schema_version")
-        if type(schema_version) is not int or schema_version != 1:
+        if type(schema_version) is not int or schema_version != MANIFEST_SCHEMA_VERSION:
             return None
         from prism_cli.workflow_assets import asset_digest
 
@@ -4102,22 +4103,46 @@ def BoardServiceIdentity(root: Path) -> tuple[Any, ...] | None:
         if not isinstance(project, dict) or version != "1" or mode not in {"workflow", "generated"} or stored_digest != digest:
             return None
         project_name = project.get("name")
-        platforms = project.get("platforms")
-        if (
-            not isinstance(project_name, str)
-            or not project_name.strip()
-            or not isinstance(platforms, list)
-            or not platforms
-            or any(not isinstance(item, str) or item not in _SUPPORTED_PLATFORMS for item in platforms)
-            or len(set(platforms)) != len(platforms)
-        ):
+        model, _scope_problem = _board_scope(data, manifest_path)
+        if model is None:
             return None
         manifest_metadata = _manifest_identity_metadata(data, manifest_path)
         if manifest_metadata is None:
             return None
-        return (board_id, "1", mode, digest, project_name.strip(), tuple(platforms), schema_version, manifest_metadata)
+        return (board_id, "1", mode, digest, project_name.strip(), _scope_fact(model), schema_version, manifest_metadata)
     except (OSError, UnicodeError, yaml.YAMLError, ValueError, TypeError, AttributeError, ImportError):
         return None
+
+
+def _board_scope(data: Mapping[str, Any], manifest_path: Path) -> tuple[WorkspaceModel | None, str | None]:
+    """The application model of a connected workspace, or the reason it cannot be used.
+
+    The project needs a name and at least one active app, and every repository
+    and app declaration must be valid.
+    """
+
+    model, diagnostics = normalize_manifest(data, path=manifest_path)
+    project = data.get("project")
+    project_name = project.get("name") if isinstance(project, dict) else None
+    if not isinstance(project_name, str) or not project_name.strip():
+        return None, "Project name and an explicit nonempty app scope are required."
+    errors = [item for item in diagnostics if item.severity == "error"]
+    if errors:
+        codes = ", ".join(sorted({item.code for item in errors}))
+        return None, f"The workspace manifest has invalid repository or app declarations ({codes}); `prism doctor --workspace` lists them, and connected writes are read-only until they are fixed."
+    if not model.active_app_ids:
+        return None, "Project name and an explicit nonempty app scope are required."
+    return model, None
+
+
+def _scope_fact(model: WorkspaceModel) -> tuple[Any, ...]:
+    """The part of the workspace identity that is the app scope.
+
+    It binds each active app's ID, stack, repository and path, so changing any
+    of them changes the identity.
+    """
+
+    return tuple((app.id, app.stack, app.repository, app.path) for app in model.apps if app.active)
 
 
 def _manifest_identity_metadata(data: Mapping[str, Any], manifest_path: Path | None = None) -> tuple[Any, ...] | None:

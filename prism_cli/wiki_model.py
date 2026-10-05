@@ -17,14 +17,17 @@ from urllib.parse import unquote, urlsplit
 
 import yaml
 
+from prism_cli.app_model import GENERATED_PLATFORM_IDS, GENERATED_UI_PLATFORM_IDS
+
 
 VALID_FEATURE_STATUSES = {"raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done"}
 VALID_FEATURE_OWNERS = {"po", "designer", "dev", "none"}
 VALID_OPEN_QUESTION_OWNERS = {"po", "designer", "dev"}
 VALID_ADVISORY_REVIEW_STATES = {"not-needed", "pending", "done", "skipped"}
-VALID_PLATFORM_IDS = {"backend", "mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"}
+# Derived from the stack registry: the generated platform IDs, and those whose stack has `has-ui`.
+VALID_PLATFORM_IDS = set(GENERATED_PLATFORM_IDS)
 VALID_PLATFORM_REQUIREMENT_STATUSES = {"pending", "in-progress", "done"}
-UI_PLATFORM_IDS = {"mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"}
+UI_PLATFORM_IDS = set(GENERATED_UI_PLATFORM_IDS)
 DEFAULT_WIKI_STALE_AFTER_DAYS = 14
 REVALIDATION_DOMAINS = {
     "specification",

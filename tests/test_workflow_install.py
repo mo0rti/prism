@@ -19,6 +19,7 @@ from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE
 from prism_cli.workflow_install import apply_install, plan_install
 import prism_cli.workflow_install as workflow_installer
 from tests.test_fs_safety import CLOUD_TAG, JUNCTION_TAG, fake_reparse
+from tests.manifest_fixtures import manifest_data as fixture_manifest
 from tests import real_temp  # noqa: F401
 
 
@@ -37,9 +38,13 @@ class WorkflowInstallTests(unittest.TestCase):
             self.assertFalse((root / ".prism").exists(), "first-time adoption must not create runtime state")
 
             manifest = yaml.safe_load((root / "prism.workspace.yml").read_text(encoding="utf-8"))
-            self.assertEqual(1, manifest["schema_version"])
+            self.assertEqual(2, manifest["schema_version"])
             self.assertEqual("Editorial", manifest["project"]["name"])
-            self.assertEqual(["backend", "web-user-app"], manifest["project"]["platforms"])
+            self.assertNotIn("platforms", manifest["project"])
+            self.assertEqual(
+                [("backend", "spring-backend", "workspace", "backend"), ("web-user-app", "nextjs-web", "workspace", "web-user-app")],
+                [(app["id"], app["stack"], app["repository"], app["path"]) for app in manifest["apps"]],
+            )
             self.assertEqual("workflow", manifest["workflow"]["mode"])
             self.assertEqual(asset_digest(), manifest["workflow"]["asset_digest"])
             UUID(manifest["workflow"]["board_id"])
@@ -67,8 +72,7 @@ class WorkflowInstallTests(unittest.TestCase):
             (root / "AGENTS.md").write_bytes(custom_agents)
             (root / ".gitignore").write_text("*.scratch\n", encoding="utf-8")
             manifest_data = {
-                "schema_version": 1,
-                "project": {"name": "Existing", "platforms": ["backend"], "custom_owner": "team"},
+                **fixture_manifest("Existing", ["backend"], custom_owner="team"),
                 "paths": {"wiki_root": "knowledge/wiki", "custom_catalog": "docs/catalog.md"},
                 "expected_surfaces": {"team": ["README.md"]},
                 "local_extension": {"keep": True},
@@ -330,8 +334,7 @@ class WorkflowInstallTests(unittest.TestCase):
             with self.subTest(extension=extension), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 manifest = {
-                    "schema_version": 1,
-                    "project": {"name": "Existing", "platforms": ["backend"]},
+                    **fixture_manifest("Existing", ["backend"]),
                     **extension,
                 }
                 (root / "prism.workspace.yml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
@@ -347,13 +350,13 @@ class WorkflowInstallTests(unittest.TestCase):
                 root = Path(temporary)
                 (root / "prism.workspace.yml").write_text(
                     yaml.safe_dump({
+                        **fixture_manifest("Existing", ["backend"]),
                         "schema_version": schema_version,
-                        "project": {"name": "Existing", "platforms": ["backend"]},
                     }),
                     encoding="utf-8",
                 )
                 plan = plan_install(root)
-                self.assertTrue(any("schema_version 1" in item for item in plan["conflicts"]))
+                self.assertTrue(any("schema_version 2" in item for item in plan["conflicts"]))
                 self.assertEqual("conflict", apply_install(root, plan)["status"])
 
     def test_existing_stale_workflow_requires_explicit_upgrade_and_keeps_board_identity(self):
@@ -361,8 +364,7 @@ class WorkflowInstallTests(unittest.TestCase):
             root = Path(temporary)
             board_id = "97f352fa-1ac1-4f7d-9ca0-e8246e6293bf"
             (root / "prism.workspace.yml").write_text(yaml.safe_dump({
-                "schema_version": 1,
-                "project": {"name": "Existing", "platforms": ["backend"]},
+                **fixture_manifest("Existing", ["backend"]),
                 "workflow": {"version": "1", "mode": "workflow", "board_id": board_id, "asset_digest": "0" * 64},
             }), encoding="utf-8")
 
