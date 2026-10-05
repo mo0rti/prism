@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import date, datetime
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterator
 from urllib.parse import unquote, urlsplit
 
@@ -577,17 +577,33 @@ def parse_delivery_evidence(
     the responsible agent must verify those references before writing Done.
     """
 
+    rows, _cells, errors = parse_delivery_evidence_cells(body, declared_platforms)
+    return rows, errors
+
+
+def parse_delivery_evidence_cells(
+    body: str,
+    declared_platforms: list[str],
+) -> tuple[dict[str, dict[str, str]], dict[str, list[str]], list[str]]:
+    """Parse the delivery evidence table like ``parse_delivery_evidence``.
+
+    The second mapping holds each platform's cells exactly as written, in the
+    table's own column order, so a caller can archive a row verbatim whatever
+    column order the table uses.  Platform keys are lower case in both mappings.
+    """
+
     section = section_text(body, "Delivery evidence")
     if not section.strip():
-        return {}, ["Required `Delivery evidence` section is missing or empty."]
+        return {}, {}, ["Required `Delivery evidence` section is missing or empty."]
 
     table_lines = _visible_evidence_table_lines(section)
     if not table_lines:
-        return {}, ["Delivery evidence must contain a markdown table."]
+        return {}, {}, ["Delivery evidence must contain a markdown table."]
 
     header: list[str] | None = None
     header_indexes: dict[str, int] = {}
     rows: dict[str, dict[str, str]] = {}
+    written: dict[str, list[str]] = {}
     errors: list[str] = []
     for line in table_lines:
         cells = [cell.strip() for cell in line.strip("|").split("|")]
@@ -621,6 +637,7 @@ def parse_delivery_evidence(
             for column, index in header_indexes.items()
         }
         rows[platform] = row
+        written[platform] = list(cells)
         for column in DELIVERY_EVIDENCE_COLUMNS[1:]:
             if not _substantive_evidence_cell(row[column]):
                 errors.append(f"Delivery evidence `{column}` for `{platform}` is empty or still a placeholder.")
@@ -635,7 +652,7 @@ def parse_delivery_evidence(
         errors.append("Delivery evidence is missing declared platform(s): " + ", ".join(missing) + ".")
     if extra:
         errors.append("Delivery evidence contains undeclared platform(s): " + ", ".join(extra) + ".")
-    return rows, errors
+    return rows, written, errors
 
 
 def parse_advisory_required_actions(body: str) -> tuple[list[str], list[str]]:
@@ -724,6 +741,50 @@ def _substantive_evidence_cell(value: str) -> bool:
     if re.fullmatch(r"\[[^\]]+\]", normalized):
         return False
     return True
+
+
+_SOURCE_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+PENDING_INTAKE_PREFIX = ("knowledge", "intake", "pending")
+
+
+def source_link_parts(entry: Any, *, path_only: bool = True) -> tuple[str, ...] | None:
+    """Return a `sources` entry as workspace path segments, or None when it is not a workspace path.
+
+    A URL, an absolute or parent-relative path and a blank entry are not
+    workspace links. `intake/...` is read as `knowledge/intake/...`. With
+    `path_only=False`, which personas and business rules use because their
+    source fields may hold free text, only an entry that already starts with
+    `knowledge/` counts as a link.
+    """
+
+    if not isinstance(entry, str):
+        return None
+    text = entry.strip()
+    if not text or _SOURCE_SCHEME.match(text):
+        return None
+    if not path_only and re.search(r"\s", text):
+        return None
+    path = PurePosixPath(text)
+    if path.is_absolute() or ".." in path.parts or not path.parts:
+        return None
+    parts = path.parts
+    if parts[0].casefold() == "intake":
+        parts = ("knowledge", *parts)
+    if not path_only and parts[0].casefold() != "knowledge":
+        return None
+    return parts
+
+
+def is_pending_intake_source(parts: tuple[str, ...]) -> bool:
+    """Whether workspace path segments lie in the pending intake queue."""
+
+    return len(parts) >= 3 and tuple(part.casefold() for part in parts[:3]) == PENDING_INTAKE_PREFIX
+
+
+def processed_source_path(parts: tuple[str, ...]) -> str:
+    """The `knowledge/intake/processed/<folder>` path that replaces a pending source path."""
+
+    return "/".join(("knowledge", "intake", "processed", *(parts[3:] or ("<folder>",))))
 
 
 def feature_id_from_path(path: Path) -> str | None:

@@ -207,7 +207,10 @@ jobs:
           git -C "$TARGET" -c user.name=prism-validation -c user.email=prism-validation@example.invalid commit -q -m "Generated sample"
           CLONE="$RUNNER_TEMP/prism-ios-clone"
           rm -rf "$CLONE"
-          git clone -q "$TARGET" "$CLONE"
+          # --no-local copies objects through git's transport instead of sharing the source's files,
+          # which avoids an intermittent "unable to read tree" on the runner.
+          git -C "$TARGET" fsck --no-progress
+          git clone -q --no-local "$TARGET" "$CLONE"
           echo "PRISM_IOS_TARGET=$CLONE" >> "$GITHUB_ENV"
 
       - name: Create local xcconfig files

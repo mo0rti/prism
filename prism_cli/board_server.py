@@ -75,7 +75,9 @@ class _LiveGraph:
         self.root = root
         self._validate_inputs = validate_inputs
         self._build_graph: Callable[[Path], dict[str, Any]] = build_graph
-        # Only this poller reuses file hashes between scans; request paths hash every file.
+        # The graph snapshot and version reuse file hashes between scans: this poller and the
+        # refresh that follows an apply or recover request share the cache. Stale-preview and
+        # apply decisions and `query` hash every file themselves and never read it.
         self._fingerprint_fn: Callable[[Path], Any] = functools.partial(workspace_fingerprint, cache=FingerprintCache())
         self._lock = threading.RLock()
         self._stop = threading.Event()
@@ -763,7 +765,10 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
         paths = payload.get("paths")
         if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
             return JSONResponse({"error": {"code": "invalid_paths", "message": "paths must be a list of relative path strings."}}, status_code=400)
-        return await invoke(request, "read_workspace", paths, mutation=True)
+        cursor = payload.get("cursor")
+        if cursor is not None and not isinstance(cursor, str):
+            return JSONResponse({"error": {"code": "invalid_paths", "message": "cursor must be a string or null."}}, status_code=400)
+        return await invoke(request, "read_workspace", paths, cursor, mutation=True)
 
     async def list_workspace(request: Request) -> Any:
         payload = await json_body(request)
@@ -777,20 +782,22 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
 
     async def query(request: Request) -> Any:
         payload = await json_body(request)
-        if set(payload) - {"kind", "value", "action"}:
-            return JSONResponse({"error": {"code": "invalid_query", "message": "Only kind, value, and action are accepted."}}, status_code=400)
+        if set(payload) - {"kind", "value", "action", "cursor"}:
+            return JSONResponse({"error": {"code": "invalid_query", "message": "Only kind, value, action, and cursor are accepted."}}, status_code=400)
         kind = payload.get("kind")
         value = payload.get("value")
         action = payload.get("action")
+        cursor = payload.get("cursor")
         allowed_kinds = {"show", "blockers", "owner", "platform", "search", "transition-preflight", "lint"}
         if (
             not isinstance(kind, str)
             or kind not in allowed_kinds
             or (value is not None and not isinstance(value, str))
             or (action is not None and not isinstance(action, str))
+            or (cursor is not None and not isinstance(cursor, str))
         ):
-            return JSONResponse({"error": {"code": "invalid_query", "message": "kind must be an approved query; value and action must be strings when supplied."}}, status_code=400)
-        return await invoke(request, "query", kind, value, action, mutation=True)
+            return JSONResponse({"error": {"code": "invalid_query", "message": "kind must be an approved query; value, action and cursor must be strings when supplied."}}, status_code=400)
+        return await invoke(request, "query", kind, value, action, cursor, mutation=True)
 
     async def preview_transition(request: Request) -> Any:
         payload = await json_body(request)

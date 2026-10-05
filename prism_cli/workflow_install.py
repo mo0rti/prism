@@ -111,7 +111,7 @@ def plan_install(
         if not conflicts:
             if before_manifest is None:
                 manifest_data["schema_version"] = 1
-                manifest_data.setdefault("min_prism_cli_version", "0.2.0")
+                manifest_data.setdefault("min_prism_cli_version", "0.3.0")
             project["name"] = chosen_name
             project["platforms"] = chosen_platforms
             manifest_data["project"] = project

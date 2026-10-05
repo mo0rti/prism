@@ -63,7 +63,18 @@ The steps run in this order. Agent steps alternate between the two hosts by this
 | 11 | `dev-done` | Codex | `done`, `none`, delivery evidence recorded |
 | 12 | `feature-reopen` | Claude | `in-dev`, `dev` |
 
-Prompts are fixed text in `prompts/`: one file per agent step plus `apply.txt`. They are short, name no host or model, and ask the agent to follow the board's guidance. The preview prompts carry the answers a person would give (for example the product owner's answers to the open questions). Under the retry rule, an agent may retry a rejected proposal inside its run; the script adds nothing.
+Prompts are fixed text in `prompts/`: one file per agent step plus `apply.txt`. They are short, name no host or model, and ask the agent to follow the board's guidance. The three clarify prompts hold an `{answers}` placeholder that the script fills at run time (below); every other prompt is sent as written. Under the retry rule, an agent may retry a rejected proposal inside its run; the script adds nothing.
+
+## Answers at run time
+
+An agent writes its own question set, so the clarify steps (`po-clarify`, `design-clarify`, `dev-clarify`) do not answer fixed questions. Before the preview run the script reads the feature page, takes the open questions owned by the step's role (`po`, `designer`, `dev`) and fills the prompt's `{answers}` placeholder with one line per question: its number, its text and the owner's answer.
+
+- A question whose topic is scripted gets the scripted answer. The scripted topics and their answers are in `prism_e2e/answers.py`: for the product owner the format and channel, comments that overflow one page, date or version and languages; for the designer the export control and the summary's look; for the developer the platform that presents the export control. A topic matches by words in the question text.
+- Any other open question of the role gets the role's fixed fallback decision, `Not needed for this release; decide later.`, as the owner's own reply. The prompt asks the agent to paste each answer exactly as written into that question's row and to change only the sections the skill allows, so every answer stays traceable to its question and the agent invents nothing.
+- A role with no open question gets a line saying there is nothing to answer.
+- The prompt that was sent is saved under `transcripts/` (`NN-step.preview.prompt.txt`) with the filled answers.
+
+The checks do not change: `no_open_po_questions`, `no_open_designer_questions` and `no_open_dev_questions` still require that no open question of the role is left after the apply.
 
 ## Subsets and seeding
 
@@ -111,4 +122,4 @@ The tests need no host, network or browser:
 python -B -m unittest discover -s scripts/e2e/tests
 ```
 
-They cover step selection and the seeding plan, the fixtures and the second fixture set against the step table, report building, the token scan, transcript parsing, host command lines, the prompts and process handling. `python -B -m unittest discover -s tests` does not collect them.
+They cover step selection and the seeding plan, the fixtures and the second fixture set against the step table, report building, the token scan, transcript parsing, host command lines, the prompts, the run-time answers for a recorded and for a different question set, the text decoding of `scripts/check-installed-cli.py` and process handling. `python -B -m unittest discover -s tests` does not collect them.

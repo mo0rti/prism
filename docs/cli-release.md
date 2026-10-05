@@ -1,6 +1,6 @@
 # Prism CLI Release Preparation
 
-Prism's local release candidate is distribution `prism-kit` version `0.2.0`. The user-facing command remains `prism`, and Python
+Prism's local release candidate is distribution `prism-kit` version `0.3.0`. The user-facing command remains `prism`, and Python
 imports remain under `prism_cli`. The package has not been published to PyPI;
 publication is a later, explicit step.
 
@@ -26,7 +26,7 @@ Build a wheel and test that artifact in an isolated environment:
 python -m pip install --upgrade build
 python -m build --wheel
 python -m venv .release-check
-.release-check/bin/python -m pip install dist/prism_kit-0.2.0-py3-none-any.whl
+.release-check/bin/python -m pip install dist/prism_kit-0.3.0-py3-none-any.whl
 .release-check/bin/prism --version
 .release-check/bin/prism doctor
 ```
@@ -38,7 +38,7 @@ temporary environment after the check.
 The installed package does not depend on a template copied into `site-packages`.
 When run from the Prism checkout, `prism new` defaults to that local template.
 When run from an installed wheel, it uses the matching release tag at the canonical
-template URL: CLI `0.2.0` requires `v0.2.0` at `https://github.com/mo0rti/prism.git`.
+template URL: CLI `0.3.0` requires `v0.3.0` at `https://github.com/mo0rti/prism.git`.
 A missing tag fails generation; there is no fallback to a newer template.
 Publish and validate that tag before publishing the matching wheel.
 An explicit `--template <path-or-url>`
@@ -54,10 +54,12 @@ tests; Node.js is needed for the dashboard boot checks.
 python -m pip install -e . jsonschema
 python -m unittest tests.test_workspace_contract
 python -m unittest discover -s tests
-python -m pip install --upgrade build twine
+python -m pip install --upgrade build twine "readme-renderer[md]"
 python -m build --sdist --wheel
-python -m twine check dist/*
+python -m twine check --strict dist/*
 ```
+
+The package declares its license as the SPDX expression `MIT` (setuptools 77 or newer) and ships `LICENSE`, `THIRD_PARTY_NOTICES.md` and the vendored force-graph license in both the wheel and the source archive. `readme-renderer[md]` makes `twine check` render the README, which must keep absolute links and images so it displays on a package index.
 
 The browser tests under `tests/browser` are skipped unless the `e2e` extra is
 installed and `PRISM_BROWSER_E2E=1` is set; [current-status.md](current-status.md#validation)
@@ -70,7 +72,7 @@ snapshot they name; build and hash the wheel again for every release candidate.
 [CLI V2 acceptance](cli-v2-acceptance.md) are dated milestone records.
 
 Run a broad Copier render outside the repository and inspect the generated
-`prism.workspace.yml`. It should parse as YAML, carry `min_prism_cli_version: "0.2.0"`,
+`prism.workspace.yml`. It should parse as YAML, carry `min_prism_cli_version: "0.3.0"`,
 and include a timestamp and the template commit when that metadata is available.
 Run a CLI generation as well; the CLI post-processing step records the actual CLI
 version, source, template version or commit, and generation timestamp.

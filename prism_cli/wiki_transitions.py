@@ -218,8 +218,10 @@ class TransitionEvaluation:
 class FingerprintCache:
     """Reuse per-file content hashes between scans of an unchanged workspace.
 
-    Only the shared change poller uses it; request paths hash every file. A hash
-    is reused when the file's ``(st_mtime_ns, st_size)`` is unchanged and the file
+    Only the shared graph refresh uses it, from the change poller and from the refresh
+    that follows an apply or recover request; it feeds the graph snapshot and its
+    version, never a stale-preview or apply decision, and no other request path uses
+    it. A hash is reused when the file's ``(st_mtime_ns, st_size)`` is unchanged and the file
     was already older than the racy window when it was hashed, so an edit that
     lands in the same timestamp tick as the hash cannot hide behind it. An edit
     that keeps both size and modification time (a restored timestamp, ``rsync
@@ -293,7 +295,8 @@ def workspace_fingerprint(root: Path, *, cache: FingerprintCache | None = None) 
     included so changing or removing a generated command invalidates a snapshot.
 
     Every file is hashed unless a ``FingerprintCache`` is passed. The result is
-    identical either way; only the shared change poller passes one.
+    identical either way; only the shared graph refresh (the change poller and the
+    refresh after an apply or recover request) passes one.
     """
 
     if cache is None:

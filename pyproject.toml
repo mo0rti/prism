@@ -1,13 +1,15 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "prism-kit"
-version = "0.2.0"
+version = "0.3.0"
 description = "Prism workflows and shared boards for humans and agents, with optional application generation."
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "prism_cli/assets/force-graph.LICENSE.txt"]
 dependencies = [
   "PyYAML>=6,<7",
   "copier>=9,<10",
@@ -19,6 +21,12 @@ dependencies = [
 
 [project.optional-dependencies]
 e2e = ["playwright>=1.50,<2"]
+
+[project.urls]
+Homepage = "https://github.com/mo0rti/prism"
+Documentation = "https://github.com/mo0rti/prism/blob/main/docs/README.md"
+Issues = "https://github.com/mo0rti/prism/issues"
+Changelog = "https://github.com/mo0rti/prism/blob/main/CHANGELOG.md"
 
 [project.scripts]
 prism = "prism_cli.cli:main"

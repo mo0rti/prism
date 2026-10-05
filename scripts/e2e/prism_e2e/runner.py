@@ -12,7 +12,7 @@ import traceback
 from typing import Any
 import uuid
 
-from . import config, report as reports, workspace as ws
+from . import answers, config, report as reports, workspace as ws
 from .browser import BrowserUnavailable
 from .browser_client import BrowserClient
 from .config import Step
@@ -40,6 +40,17 @@ def load_prompt(step_id: str, fixture_set: Path | None = None) -> str:
     if fixture_set is not None and (fixture_set / "prompts" / f"{step_id}.txt").is_file():
         return (fixture_set / "prompts" / f"{step_id}.txt").read_text(encoding="utf-8")
     return (config.PROMPTS_DIR / f"{step_id}.txt").read_text(encoding="utf-8")
+
+
+def build_preview_prompt(step_id: str, fixture_set: Path | None, feature: ws.FeatureState | None) -> str:
+    """The preview prompt. A clarify step's answers are filled in from the open questions its role owns on the live feature page."""
+
+    text = load_prompt(step_id, fixture_set)
+    role = answers.CLARIFY_ROLES.get(step_id)
+    if role is None:
+        return text
+    open_questions = [(question.number, question.text) for question in feature.open_questions(role)] if feature else []
+    return answers.fill(text, role, open_questions)
 
 
 def render_apply_prompt(step: Step, preview_id: str, operation_id: str) -> str:
@@ -209,7 +220,7 @@ class Journey:
         before = ws.read_feature(self.env.workspace)
         runs: list[HostRun] = []
 
-        preview = self._launch(host, "preview", load_prompt(step.id, self.options.fixtures), number, step, result, runs)
+        preview = self._launch(host, "preview", build_preview_prompt(step.id, self.options.fixtures, before), number, step, result, runs)
         transcript = preview.transcript
         preview_calls = transcript.preview_calls
         result.preview_attempts = len(preview_calls)

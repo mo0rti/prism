@@ -9,7 +9,7 @@ import unittest
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from prism_e2e import config, hosts  # noqa: E402
+from prism_e2e import answers, config, hosts  # noqa: E402
 from prism_e2e.runner import load_prompt, render_apply_prompt  # noqa: E402
 
 EXE = Path("C:/tools/claude.exe")
@@ -74,7 +74,7 @@ class PromptTests(unittest.TestCase):
                 self.assertIn("Stop at the preview: do not apply it.", text)
                 self.assertIn("preview ID", text)
                 self.assertIn("Prism MCP tools", text)
-                self.assertNotIn("{", text, "preview prompts are fixed text with no placeholders")
+                self.assertNotIn("{", text.replace(answers.PLACEHOLDER, ""), "preview prompts are fixed text; only a clarify prompt has the answers placeholder")
                 self.assertFalse(re.search(r"[0-9a-f]{8}-[0-9a-f]{4}", text), "no ID is baked into a prompt")
 
     def test_prompts_do_not_name_a_host_or_a_model(self):
@@ -96,7 +96,7 @@ class PromptTests(unittest.TestCase):
                 self.assertIn("Stop at the preview: do not apply it.", text)
                 self.assertIn("preview ID", text)
                 self.assertIn("Prism MCP tools", text)
-                self.assertNotIn("{", text)
+                self.assertNotIn("{", text.replace(answers.PLACEHOLDER, ""))
                 self.assertFalse(re.search(r"[0-9a-f]{8}-[0-9a-f]{4}", text))
                 self.assertFalse(re.search(r"[A-Za-z0-9_-]{40,}", text))
                 for word in ("claude", "codex", "gpt", "anthropic", "openai"):
@@ -106,6 +106,22 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(load_prompt("ask", config.API_WORK_FIXTURES_DIR), load_prompt("ask"))
         self.assertIn("API contract page", load_prompt("dev-clarify", config.API_WORK_FIXTURES_DIR))
         self.assertIn("no API contract page", load_prompt("dev-clarify"))
+
+    def test_only_the_clarify_prompts_hold_the_answers_placeholder_once(self):
+        for step in config.STEPS:
+            if step.is_human:
+                continue
+            with self.subTest(step=step.id):
+                expected = 1 if step.id in answers.CLARIFY_ROLES else 0
+                self.assertEqual(load_prompt(step.id).count(answers.PLACEHOLDER), expected)
+        self.assertEqual(load_prompt("dev-clarify", config.API_WORK_FIXTURES_DIR).count(answers.PLACEHOLDER), 1)
+
+    def test_the_clarify_prompts_name_no_scripted_answer_of_their_own(self):
+        for step_id in answers.CLARIFY_ROLES:
+            text = load_prompt(step_id)
+            for topics in answers.TOPICS.values():
+                for topic in topics:
+                    self.assertNotIn(topic.answer, text, f"{step_id} gets its answers from the live questions")
 
     def test_the_apply_prompt_carries_the_preview_and_a_new_operation_id(self):
         text = render_apply_prompt(config.STEPS_BY_ID["po-specify"], UUID, OP)

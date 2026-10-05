@@ -223,16 +223,16 @@ class WorkspaceInspectionTests(unittest.TestCase):
                 },
                 prism_cli_version=__version__,
                 template_source=r"C:\templates\prism",
-                template_version="v0.2.0",
+                template_version="v0.3.0",
                 template_commit="abc123",
                 generated_at="2026-09-08T12:00:00+00:00",
             )
             data = yaml.safe_load(path.read_text(encoding="utf-8"))
 
         self.assertEqual(1, data["schema_version"])
-        self.assertEqual("0.2.0", data["min_prism_cli_version"])
-        self.assertEqual("0.2.0", data["generated_by"]["prism_cli_version"])
-        self.assertEqual("v0.2.0", data["generated_by"]["template_version"])
+        self.assertEqual("0.3.0", data["min_prism_cli_version"])
+        self.assertEqual("0.3.0", data["generated_by"]["prism_cli_version"])
+        self.assertEqual("v0.3.0", data["generated_by"]["template_version"])
         self.assertEqual("Safe Project", data["project"]["name"])
         self.assertNotIn("secret_token", yaml.safe_dump(data))
 
@@ -259,9 +259,9 @@ class WorkspaceStatusContractTests(unittest.TestCase):
                     "schema_version": 1,
                     "min_prism_cli_version": "0.2.0",
                     "generated_by": {
-                        "prism_cli_version": "0.2.0",
+                        "prism_cli_version": "0.3.0",
                         "template_source": "https://github.com/mo0rti/prism.git",
-                        "template_version": "v0.2.0",
+                        "template_version": "v0.3.0",
                         "template_commit": "abc123",
                         "generated_at": "2026-09-08T12:00:00Z",
                     },
@@ -283,7 +283,7 @@ class WorkspaceStatusContractTests(unittest.TestCase):
         self.assertEqual(21, data["facts"]["settings"]["stale_after_days"])
         self.assertEqual([], data["facts"]["advisory_review"]["pending_feature_ids"])
         self.assertEqual("Safe Project", data["facts"]["generation"]["answers"]["project_name"])
-        self.assertEqual("v0.2.0", data["facts"]["generation"]["template"]["template_version"])
+        self.assertEqual("v0.3.0", data["facts"]["generation"]["template"]["template_version"])
         self.assertNotIn("secret_token", yaml.safe_dump(data))
 
     def test_doctor_workspace_returns_validation_failure_for_contract_errors(self) -> None:

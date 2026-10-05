@@ -27,7 +27,27 @@ Prism's core is the workflow and the shared board that humans and agents use tog
 
 ## Board performance
 
-Board work grows about linearly with the number of features. On a synthetic workspace of 1,000 features, an idle change scan takes about 60 ms every 1.5 s, a preview about 1.1 s, an `apply` about 6.4 s, a blockers query about 1.9 s and a graph rebuild about 3 s. At 100 features, a preview takes about 0.3 s and an `apply` about 1.3 s. The change poller reuses file hashes for unchanged files and rehashes everything at least every 60 seconds. An edit that keeps both a file's size and modification time can go unnoticed by the poller for up to 60 seconds, while previews and applies always re-read the files they depend on. No response or refresh budget is agreed, so these figures describe the board and are not a guarantee. The [changelog](../CHANGELOG.md) lists the speed-ups.
+Board work grows about linearly with the number of features. On a synthetic workspace of 1,000 features, an idle change scan takes about 60 ms every 1.5 s, a preview about 1.1 s, an `apply` about 6.4 s, a blockers query about 1.9 s and a graph rebuild about 3 s. At 100 features, a preview takes about 0.3 s and an `apply` about 1.3 s. The change poller reuses file hashes for unchanged files and rehashes everything at least every 60 seconds. An edit that keeps both a file's size and modification time can go unnoticed by the poller for up to 60 seconds, while previews and applies always re-read the files they depend on. The [changelog](../CHANGELOG.md) lists the speed-ups.
+
+**Budgets.** The board is held to these 95th-percentile budgets per workspace size. A change that exceeds one is a regression to fix, not a figure to loosen.
+
+| Metric (p95) | 100 features | 500 features | 1,000 features |
+| --- | ---: | ---: | ---: |
+| Idle change scan, workspace unchanged | 0.04 s | 0.10 s | 0.20 s |
+| Graph rebuild after a change | 0.6 s | 3.0 s | 5.5 s |
+| `preview_transition` | 0.7 s | 2.5 s | 5.0 s |
+| `query` blockers | 0.7 s | 2.5 s | 5.0 s |
+| `apply` (`po-handoff`) | 1.6 s | 5.5 s | 12 s |
+| Cold start to the first `/data.json` | 2.5 s | 5.0 s | 8.0 s |
+| `/data.json` request | 0.05 s | 0.10 s | 0.15 s |
+| CPU of one core, no viewers | 3% | 8% | 12% |
+| Peak memory (RSS) | 128 MiB | 192 MiB | 256 MiB |
+
+**Reference machine.** Windows 11 with an Intel Core i9-14900KF (32 logical cores) and CPython 3.12.7, with the board service and the measuring client in one process. A slower machine scales every row by one factor; do not loosen single rows.
+
+**How to measure.** Run `python scripts/measure-board-scale.py --out <dir> --sizes 100,500,1000` with the interpreter that has Prism's board dependencies installed. It builds a deterministic synthetic workspace per size in a temporary folder under `--out`, measures the real service, HTTP app and MCP tools on disposable copies, and writes `scale-results.json` and `scale-results.md`. The figures are timings, so they are compared by hand against the budgets and are not asserted in unit tests.
+
+**Guard.** `tests/test_board_hot_path_counts.py` counts the repeated work of the same paths (page parses, file opens, workspace fingerprints, graph-input validations, lint runs and graph builds) on workspaces of 24 and 48 features. The counts are exact on every machine, so a regression fails as a counted extra read, never as a flaky timing.
 
 ## Application samples
 
@@ -44,7 +64,7 @@ Sign in with Apple and the native mobile runtime remain experimental. A generate
 
 ## Public release
 
-Local tests do not establish a public release. License terms and holder, the release version and tag, and publication are separate gates. An installed CLI generates from the template tag that matches its version, and a missing tag fails generation.
+Prism is released under the MIT license, copyright 2026 Mortitech, and the package version is 0.3.0. Local tests do not establish a public release: the release tag and publication are separate gates. An installed CLI generates from the template tag that matches its version, and a missing tag fails generation.
 
 ## Evaluating application generation
 

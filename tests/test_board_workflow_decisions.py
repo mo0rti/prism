@@ -158,6 +158,55 @@ class RawIntakeTests(_BoardWorkspace):
                 )
         self.assertFalse((self.root / FEATURE).exists())
 
+    def test_a_path_segment_windows_cannot_hold_is_rejected_at_preview_and_nothing_is_written(self) -> None:
+        name = FEATURE.rsplit("/", 1)[1]
+        directory = FEATURE.rsplit("/", 1)[0]
+        paths = {
+            "colon (alternate data stream)": (f"{directory}/{name}:stream.md", ":"),
+            "less-than": (f"{directory}/F-001<x.md", "<"),
+            "greater-than": (f"{directory}/F-001>x.md", ">"),
+            "double quote": (f'{directory}/F-001"x.md', '"'),
+            "pipe": (f"{directory}/F-001|x.md", "|"),
+            "question mark": (f"{directory}/F-001?x.md", "?"),
+            "asterisk": (f"{directory}/F-001*x.md", "*"),
+            "control character": (f"{directory}/F-001\x07x.md", "control character"),
+            "trailing dot": (f"{directory}/F-001-document-review.", "ends in a dot"),
+            "trailing space in a folder": (f"{directory} /{name}", "ends in a dot or a space"),
+            "device name": (f"{directory}/CON", "reserved device name"),
+            "device name, lower case, with an extension": (f"{directory}/nul.md", "reserved device name"),
+            "numbered device name": (f"{directory}/Com1.txt.md", "reserved device name"),
+            "last numbered device name": (f"{directory}/LPT9.md", "reserved device name"),
+        }
+        for label, (bad, reason) in paths.items():
+            with self.subTest(case=label):
+                changes = self.intake_changes("raw", blank_trailing=True)
+                changes[0]["path"] = bad
+                changes[3]["content"] = changes[3]["content"].replace(FEATURE, bad)
+                with self.assertRaises(BoardError) as caught:
+                    self.preview("po-intake", changes, [{"source": self.PENDING, "destination": self.PROCESSED}])
+                error = caught.exception
+                self.assertEqual(("invalid_path", 400), (error.code, error.status))
+                self.assertIn(reason, error.message + error.details["reason"])
+                self.assertIn("every operating system", error.message)
+                self.assertNotIn("\x07", error.message + json.dumps(error.details))
+                self.assertLessEqual(len(error.details["segment"]), 80)
+                self.assertTrue((self.root / self.PENDING).is_dir())
+                self.assertFalse((self.root / self.PROCESSED).exists())
+                self.assertFalse((self.root / FEATURE).exists())
+                self.assertEqual([], self.service.discover(self.agent).get("pending_operations"))
+
+    def test_a_folder_move_to_a_segment_windows_cannot_hold_is_rejected_at_preview(self) -> None:
+        for destination in (self.PROCESSED + ":stream", self.PROCESSED + ".", "knowledge/intake/processed/aux"):
+            with self.subTest(destination=destination), self.assertRaises(BoardError) as caught:
+                self.preview("po-intake", self.intake_changes("raw", blank_trailing=True), [{"source": self.PENDING, "destination": destination}])
+            self.assertEqual("invalid_path", caught.exception.code)
+        self.assertTrue((self.root / self.PENDING).is_dir())
+
+    def test_portable_names_are_still_accepted(self) -> None:
+        for name in ("F-001-document-review.md", "notes v1.2.md", "CONSOLE.md", "console-1.md", "COM10.md", "auxiliary", "a.b.c.md", "Résumé.md", "_FORMAT.md"):
+            with self.subTest(name=name):
+                self.assertEqual(f"knowledge/wiki/{name}", self.service._relative_path(f"knowledge/wiki/{name}"))
+
     def test_po_specify_names_the_empty_sections_of_a_fresh_raw_feature_and_then_completes_it(self) -> None:
         self.apply(self.intake("raw", blank_trailing=True))
         raw = self.read(FEATURE)
@@ -305,6 +354,31 @@ class DevClarifyTests(_BoardWorkspace):
         self.assertEqual(("clarify_answer_unlinked", 409), (error.code, error.status))
         self.assertEqual("Platform scope", error.details["section"])
         self.assertIn("dev-owned question(s) 2", error.message)
+
+    def test_an_answer_is_matched_as_whole_words_not_inside_other_words(self) -> None:
+        feature = self.answered(self.read(FEATURE), answer="no")
+        for text in (
+            "Any reviewer can delete any document without notice.",
+            "The limit is not stated; ask who may know it.",
+            "Nothing is exported, and nobody noticed.",
+        ):
+            with self.subTest(text=text):
+                changed = _replace_body_section(self.service, feature, "Acceptance criteria", f"- [ ] {text}")
+                error = self.rejection("dev-clarify", [{"path": FEATURE, "content": changed}])
+                self.assertEqual(("clarify_answer_unlinked", 409), (error.code, error.status))
+                self.assertEqual("Acceptance criteria", error.details["section"])
+        for text in ("No.", "Is a limit needed? NO, none.", "The answer was no\nfor now.", "(no)"):
+            with self.subTest(accepted=text):
+                changed = _replace_body_section(self.service, feature, "Acceptance criteria", f"- [ ] {text}")
+                self.assertEqual("ready", self.preview("dev-clarify", [{"path": FEATURE, "content": changed}])["classification"])
+
+    def test_an_answer_with_punctuation_at_its_edges_still_matches(self) -> None:
+        answer = "$5 per export (max)"
+        feature = self.answered(self.read(FEATURE), answer=answer)
+        changed = _replace_body_section(self.service, feature, "Platform scope", f"- **backend**: The fee is {answer}.")
+        self.assertEqual("ready", self.preview("dev-clarify", [{"path": FEATURE, "content": changed}])["classification"])
+        glued = _replace_body_section(self.service, feature, "Platform scope", f"- **backend**: The fee is {answer}s.")
+        self.assertEqual("clarify_answer_unlinked", self.rejection("dev-clarify", [{"path": FEATURE, "content": glued}]).code)
 
     def test_case_and_spacing_of_the_answer_do_not_matter(self) -> None:
         loose = DEV_ANSWER.upper().replace(" ", "  ")

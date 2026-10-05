@@ -1,6 +1,7 @@
 """Shared reads discover intake and retain canonical facts without write grants."""
 
 import hashlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -231,6 +232,30 @@ class PagedReadTests(unittest.TestCase):
             platform = self.pages(lambda cursor: query(self.service, self.actor, "platform", "backend", None, cursor))
         self.assertGreater(len(platform), 1)
         self.assertEqual(self.ids, [item["id"] for page in platform for item in page["facts"]["features"]])
+
+    def test_an_oversize_query_item_is_replaced_by_a_placeholder_that_names_it(self):
+        # One open question larger than a whole result must not drop out of the paging silently.
+        path = self.root / "knowledge/wiki/features/F-007-document-review.md"
+        page = path.read_text(encoding="utf-8").replace(
+            "| 1 | Which points should a review summary highlight? | po | open |",
+            "| 1 | " + "Which points should a review summary highlight? " * 150 + " | po | open |",
+        )
+        path.write_text(page, encoding="utf-8", newline="\n")
+        pages = self.pages(lambda cursor: query(self.service, self.actor, "owner", "po", None, cursor))
+        questions = [item for page in pages for item in page["facts"]["open_questions"]]
+        self.assertEqual(self.ids, [item["feature_id"] for item in questions])
+        placeholders = [item for item in questions if item.get("oversize")]
+        self.assertEqual(["F-007"], [item["feature_id"] for item in placeholders])
+        placeholder = placeholders[0]
+        self.assertEqual("knowledge/wiki/features/F-007-document-review.md", placeholder["path"])
+        self.assertGreater(placeholder["size_chars"], board_reads.STRUCTURED_BUDGET_CHARS)
+        self.assertNotIn("question", placeholder)
+        self.assertIn("read_workspace", placeholder["note"])
+        self.assertEqual([item["id"] for item in pages[0]["facts"]["features"]][:1], ["F-001"])
+        self.assertEqual(self.ids, [item["id"] for page in pages for item in page["facts"]["features"]])
+        # The same page again is identical: the replacement depends only on the item and its position.
+        again = self.pages(lambda cursor: query(self.service, self.actor, "owner", "po", None, cursor))
+        self.assertEqual([page["next_cursor"] for page in pages], [page["next_cursor"] for page in again])
 
     def test_small_results_keep_their_shape_and_add_a_null_cursor(self):
         with patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", board_reads.RESULT_BUDGET_CHARS - 2000):
@@ -543,6 +568,62 @@ class ResultShapingTests(unittest.TestCase):
         self.assertEqual((2, "2", False), (len(whole["changes"]), whole["cursor"], whole["has_more"]))
         empty = board_reads.changes_page({**result, "changes": [], "cursor": "30"})
         self.assertEqual(("30", False), (empty["cursor"], empty["has_more"]))
+
+    def test_an_event_larger_than_one_result_is_returned_in_chunks_and_never_skipped(self):
+        big = {"cursor": "5", "operation_id": "op-5", "event": {"type": "operation-conflict", "paths": [f"knowledge/intake/processed/batch/file-{index:04d}-" + "x" * 60 + ".md" for index in range(450)]}, "created_at": "t"}
+        before = [{"cursor": str(number), "operation_id": f"op-{number}", "event": {"type": "operation-applied"}, "created_at": "t"} for number in range(1, 5)]
+        after = [{"cursor": "6", "operation_id": "op-6", "event": {"type": "operation-applied"}, "created_at": "t"}]
+        events = [*before, big, *after]
+        head = "6"
+
+        def serve(cursor):
+            # What the service returns for a cursor: the events after it, in a result of their own.
+            service_cursor, resume = board_reads.parse_changes_cursor(cursor)
+            after_cursor = int(service_cursor or "0")
+            listed = [event for event in events if int(event["cursor"]) > after_cursor]
+            result = {"schema_version": 1, "cursor": listed[-1]["cursor"] if listed else str(after_cursor), "head_cursor": head, "board_revision": "r", "changes": listed}
+            return board_reads.changes_page(result, resume)
+
+        seen, text, cursor, calls = [], [], None, 0
+        while True:
+            page = serve(cursor)
+            calls += 1
+            self.assertLessEqual(compact_size(page), board_reads.STRUCTURED_BUDGET_CHARS)
+            for record in page["changes"]:
+                chunk = record.get("event_chunk")
+                if chunk is None:
+                    seen.append(record["operation_id"])
+                    continue
+                self.assertEqual({"type": "operation-conflict", "chunked": True}, record["event"])
+                self.assertEqual(len("".join(text)), chunk["offset"])
+                text.append(chunk["text"])
+                if chunk["offset"] + len(chunk["text"]) == chunk["total_chars"]:
+                    seen.append(record["operation_id"])
+            self.assertEqual(page["has_more"], page["cursor"] != head)
+            if not page["has_more"]:
+                break
+            cursor = page["cursor"]
+            self.assertLess(calls, 50)
+        self.assertEqual([f"op-{number}" for number in range(1, 7)], seen)
+        self.assertEqual(big["event"], json.loads("".join(text)))
+        self.assertGreater(calls, 3)
+
+    def test_changes_chunk_cursors_are_validated(self):
+        self.assertEqual(("4", (5, 100)), board_reads.parse_changes_cursor("5~100"))
+        self.assertEqual(("7", None), board_reads.parse_changes_cursor("7"))
+        self.assertEqual((None, None), board_reads.parse_changes_cursor(None))
+        for bad in ("0~5", "5~0"):
+            with self.subTest(cursor=bad), self.assertRaises(BoardError) as error:
+                board_reads.parse_changes_cursor(bad)
+            self.assertEqual(("invalid_cursor", 400), (error.exception.code, error.exception.status))
+        event = {"cursor": "5", "operation_id": "op-5", "event": {"type": "operation-applied"}, "created_at": "t"}
+        result = {"schema_version": 1, "cursor": "5", "head_cursor": "5", "board_revision": "r", "changes": [event]}
+        for resume in ((6, 1), (5, 10_000)):
+            with self.subTest(resume=resume), self.assertRaises(BoardError) as error:
+                board_reads.changes_page(result, resume)
+            self.assertEqual("invalid_cursor", error.exception.code)
+        with self.assertRaises(BoardError):
+            board_reads.changes_page({**result, "changes": []}, (5, 1))
 
 
 if __name__ == "__main__":

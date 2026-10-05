@@ -1,7 +1,9 @@
-I am the developer. Use Prism's dev clarify skill to resolve the open developer question on feature F-001 with my answer below. Work only through your Prism MCP tools and follow the board's guidance.
+I am the developer. Use Prism's dev clarify skill to resolve the open developer questions on feature F-001 with my answers below. Work only through your Prism MCP tools and follow the board's guidance.
 
-- Which platform presents the export control: The backend serves the export through a service operation. The "Export summary" button lives in the client that calls the backend, and that client is outside this feature. Only the backend platform is in scope.
+{answers}
 
-Where the answer changes what must be built, reflect it in the pages the skill allows you to update. This feature already has its API contract page, which the skill does not change, so leave the API surface section as it is.
+Each answer is my own decision. Paste it exactly as written into that question's row; do not reword it or add decisions I did not give you. Change only the sections the skill allows, so every answer stays traceable to its question.
+
+Where an answer changes what must be built, reflect it in the pages the skill allows you to update. This feature already has its API contract page, which the skill does not change, so leave the API surface section as it is.
 
 Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would change. If something blocks it, tell me exactly what and stop.

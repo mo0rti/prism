@@ -786,6 +786,48 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([], empty["changes"])
             self.assertFalse(empty["has_more"])
 
+    async def test_changes_returns_an_event_larger_than_one_result_in_chunks(self) -> None:
+        root = self.temporary / "oversize-event"
+        build_workspace(root, 0)
+        async with connected(self, root) as client:
+            paths = [f"knowledge/intake/processed/batch/file-{number:04d}-" + "x" * 60 + ".md" for number in range(450)]
+            events = [
+                {"type": "operation-applied", "receipt": {"operation_id": "op-1", "applied_paths": ["a.md"]}},
+                {"type": "operation-conflict", "operation_id": "op-2", "paths": paths},
+                {"type": "operation-applied", "receipt": {"operation_id": "op-3", "applied_paths": ["b.md"]}},
+            ]
+            with client.service.store.transaction() as db:
+                for number, event in enumerate(events, start=1):
+                    db.execute(
+                        "INSERT INTO events(operation_id, participant_id, event_json, created_at) VALUES (?, ?, ?, ?)",
+                        (f"op-{number}", "participant", json.dumps(event), "2026-01-01T00:00:00Z"),
+                    )
+            seen: list[str] = []
+            text = ""
+            cursor = None
+            for _ in range(20):
+                page = await client.call("changes", {} if cursor is None else {"cursor": cursor})
+                for record in page["changes"]:
+                    chunk = record.get("event_chunk")
+                    if chunk is None:
+                        seen.append(record["operation_id"])
+                        continue
+                    self.assertEqual(len(text), chunk["offset"])
+                    text += chunk["text"]
+                    if len(text) == chunk["total_chars"]:
+                        seen.append(record["operation_id"])
+                if not page["has_more"]:
+                    break
+                cursor = page["cursor"]
+            else:
+                self.fail("the changes cursor never reached the head")
+            self.assertEqual(["op-1", "op-2", "op-3"], seen)
+            self.assertEqual(events[1], json.loads(text))
+            self.assertEqual("3", page["cursor"])
+            invalid = await client.session.call_tool("changes", {"cursor": "2~999999"})
+            self.assertTrue(invalid.is_error)
+            self.assertIn("invalid_cursor", " ".join(block.text for block in invalid.content if hasattr(block, "text")))
+
     async def test_list_skills_reports_which_participant_kinds_may_write(self) -> None:
         root = self.temporary / "skills"
         build_workspace(root, 0)

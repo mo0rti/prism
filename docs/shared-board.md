@@ -207,6 +207,12 @@ and confirmation.
   `specified`. A page that leaves one of those sections empty is rejected with
   `required_section_missing`, which names the sections. Features that were
   `specified` before stay valid.
+- **Intake pages link the processed folder.** A feature's `sources` lists paths under
+  `knowledge/intake/processed/`. A proposal that lists a path under
+  `knowledge/intake/pending/` is rejected with `intake_source_not_processed`, which
+  names the processed path to use, because the move turns the pending folder into the
+  processed one. A path that will not exist after the proposal applies is rejected with
+  `source_link_missing`. Links already on a page are not rechecked.
 - **`dev-clarify` answers dev-owned questions**, as `po-clarify` does for `po` and
   `design-clarify` for `designer`. It resolves only questions owned by `dev`, on any
   feature that is not `done`, and cannot change the feature's status or owner. Next
@@ -255,7 +261,8 @@ A browser session ends after 12 hours, when the board service restarts, when the
 
 Connected clarification has a deterministic traceability requirement: each changed
 requirement-bearing section of a feature, a platform requirement page or a design
-page includes the full text of at least one answer resolved in that proposal. Case and whitespace differences are ignored;
+page includes the full text of at least one answer resolved in that proposal. Case and whitespace differences are ignored,
+and the answer must stand as whole words (`no` is not found inside `not` or `know`);
 paraphrases alone do not pass. Skill discovery reports this limitation. Including
 an answer does not establish that every edit follows it: the agent and reviewer
 still perform that semantic check before confirmation.
@@ -272,6 +279,7 @@ Only short excerpts of workspace text appear in an error.
 | Code | `details` |
 | --- | --- |
 | `clarify_answer_unlinked`, `design_answer_unlinked`, `requirement_answer_unlinked` | `path`, `section`, `resolved_questions` (numbers), `resolved_answers` (question number to the first 160 characters of its answer). One of those answers must appear verbatim in that section; case and whitespace are ignored. |
+| `invalid_path` (400) | For a path segment that Windows cannot hold: `path`, `segment` and `reason`. A segment may not contain `:` `<` `>` `"` `|` `?` `*` or a control character, end in a dot or a space, or be a reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1` to `COM9`, `LPT1` to `LPT9`, with or without an extension, in any case). Prism applies this on every operating system, so a workspace written on Linux or macOS can be checked out on Windows. The preview is rejected and nothing is written. |
 | `invalid_markdown`, `invalid_frontmatter` | `path`, `problem`, and for a YAML error `line` and `column` within the file. A page starts with `---`, a YAML mapping and a closing `---`. |
 | `invalid_change`, `invalid_move` | `index` of the item in `changes` or `moves`, `missing` and `unexpected` field names, `expected` field names (`path`, `content` or `source`, `destination`), and `not_string` for fields with the wrong type. |
 | `invalid_changes`, `invalid_moves` | `index` of the first item over the limit, `maximum` and `received`; or `expected` and `received` when the value is not a list. |
@@ -279,6 +287,7 @@ Only short excerpts of workspace text appear in an error.
 | `lifecycle_body_scope`, `clarify_scope_exceeded`, `design_clarify_scope_exceeded`, `requirement_clarify_scope_exceeded`, `ask_scope_exceeded` | `sections`: the sections outside the action's scope that the proposal changed. Restore them to their current text. `whitespace_only` lists the sections that differ from the current text only in whitespace, usually the file's missing final newline: send unchanged sections exactly as `read_workspace` returned them. |
 | `linked_page_scope` | `path`: the linked requirement or API contract that changes more than its `status`. Restore everything else to the current text. |
 | `invalid_intake_feature` | `path`, `status`, `owner` and the expected `expected_status` (`raw`) and `expected_owner` (`po`). |
+| `intake_source_not_processed`, `source_link_missing` | `path` (the page), `source` (the entry) and, for `intake_source_not_processed`, `expected`: the `knowledge/intake/processed/<folder>` path to list instead of the pending one. A feature's `sources`, a persona's `sources` and a business rule's `source` may link only a path that exists on disk, that the proposal writes, or that lies in the processed folder the proposal's own move creates. An entry already on the page, a URL, and a persona or business-rule entry that is not a `knowledge/` path are not checked. Nothing is written. |
 | `required_section_missing` | For `po-specify`: `path` and `sections`, the empty sections to fill. The message gives a line to write under each. |
 | `clarify_stage_unavailable` | `path` and `status` (`done`): `dev-clarify` does not change a done feature; reopen it first. |
 | `api_contract_required` | `path` (the contract page to add), `feature_id`, `status` (`agreed`) and `sections` (the four required sections). |
@@ -315,6 +324,8 @@ The server publishes orientation instructions (at most 2,000 characters) in its 
 
 Any text or list that does not fit one result is paged with an opaque `next_cursor`. A `next_cursor` of `null` marks the last page. Offsets and `total_chars` count Unicode characters, so a chunk never splits a UTF-8 sequence. Digests are `sha256:` followed by the lowercase hex SHA-256 of the full UTF-8 text. An invalid cursor is `invalid_cursor` (400). A cursor whose underlying workspace files or facts changed is `stale_cursor` (409); restart from the first page.
 
+The HTTP routes `POST /api/board/v1/workspace/read` and `POST /api/board/v1/query` take the same optional string `cursor` in their JSON body and return `next_cursor`, so a Bearer client pages exactly as an MCP client does. Resend the same `paths` (or the same `kind` and `value`) with each cursor. A `cursor` that is not a string is rejected with 400.
+
 | Tool | Arguments | Result |
 | --- | --- | --- |
 | `discover` | none | `mcp_contract`, `board` (`board_id`, `project_name`, `platforms`, `workflow_version`, `mode`), `capability` (with `read_support`), `participant`, `pending_operations`, `skills` (`name` and `description` only), `skills_detail`, `compatibility` |
@@ -342,7 +353,7 @@ Any text or list that does not fit one result is paged with an opaque `next_curs
 
 Every path in the `references` of `get_skill`, and every path an instructions text lists as a canonical reference (`.claude/commands/<name>.md`), resolves with `get_skill_reference` exactly as written.
 
-`query` pages `owner`, `platform` and `search`. For `owner` the pages walk `facts.features` and then `facts.open_questions`; for `platform`, `facts.features` and then `facts.platform_requirements`; for `search`, `facts.results`. `total` counts those items, and every item appears on exactly one page. `facts.feature_count` and the other counts stay totals. `sources` lists the paths of the page's items.
+`query` pages `owner`, `platform` and `search`. For `owner` the pages walk `facts.features` and then `facts.open_questions`; for `platform`, `facts.features` and then `facts.platform_requirements`; for `search`, `facts.results`. `total` counts those items, and every item appears on exactly one page. An item that alone is larger than one result is replaced by an entry that keeps its short fields and adds `oversize: true`, `size_chars` and a `note`; read its `path` with `read_workspace`, which returns it in chunks. `facts.feature_count` and the other counts stay totals. `sources` lists the paths of the page's items.
 
 Results contain no absolute paths: preview checks, `root` and `sources` of query results and every other path are relative to the workspace, with forward slashes.
 
@@ -352,7 +363,7 @@ A preview carries the exact before and after text of every write, which can exce
 
 The result leaves out `proposed_changes` and `read_revisions`, which copy the caller's own input (`read_revisions_count` keeps the count), and the internal `source_map` (`source_count` keeps the count). `moves` lists `source`, `destination`, `source_digest` and `source_file_count`. A cursor belongs to one preview: another preview's cursor is `invalid_cursor`. A preview is immutable, so its cursors do not go stale.
 
-`operation` pages `remaining_changes` of an unfinished operation the same way, with `before` and `after` text per path, and the same header (`state`, `actor`, `recovery_review_revision`) on every page. A cursor for an operation whose state or files changed since the first page is `stale_cursor`. `changes` returns the events that fit one result, oldest first, and sets `cursor` to the last event returned and `has_more` to whether events remain; call it again with that `cursor`. `apply`, `recover`, `discover`, `query` and `list_skills` return their whole result when it fits. When it does not, the tail of the longest lists is cut and every cut is named in `truncated` with the number of items left out.
+`operation` pages `remaining_changes` of an unfinished operation the same way, with `before` and `after` text per path, and the same header (`state`, `actor`, `recovery_review_revision`) on every page. A cursor for an operation whose state or files changed since the first page is `stale_cursor`. `changes` returns the events that fit one result, oldest first, and sets `cursor` to the last event returned and `has_more` to whether events remain; call it again with that `cursor`. An event that alone is larger than one result is never skipped: it is returned alone as a record whose `event` is `{"type": ..., "chunked": true}` and whose `event_chunk` carries `offset`, `total_chars` and `text`, a slice of the event's compact JSON. The page's `cursor` is then `N~K` (event number `N`, next character `K`); call `changes` with it to continue. After the last slice, `cursor` is the event number and the feed goes on. Join the `text` slices in order and parse the result as the event. `apply`, `recover`, `discover`, `query` and `list_skills` return their whole result when it fits. When it does not, the tail of the longest lists is cut and every cut is named in `truncated` with the number of items left out.
 
 A client loop that reads every chunk and checks its digest:
 

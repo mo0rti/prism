@@ -37,7 +37,7 @@ def main() -> None:
     assert shutil.which("copier", path=env["PATH"]) is None
 
     def run(cwd: Path, command: list[str], expected: int = 0) -> subprocess.CompletedProcess:
-        result = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True, stdin=subprocess.DEVNULL)
+        result = subprocess.run(command, cwd=cwd, env=env, text=True, encoding="utf-8", errors="replace", capture_output=True, stdin=subprocess.DEVNULL)
         assert result.returncode == expected, f"{command}\nexit {result.returncode}\n{result.stdout[-3000:]}\n{result.stderr[-3000:]}"
         return result
 
@@ -167,7 +167,7 @@ def main() -> None:
         manifest_template = files / "prism.workspace.yml.jinja"
         manifest_template.write_text(
             manifest_template.read_text(encoding="utf-8").replace(
-                'min_prism_cli_version: "0.2.0"', 'min_prism_cli_version: "0.3.0"'
+                'min_prism_cli_version: "0.3.0"', 'min_prism_cli_version: "0.4.0"'
             ),
             encoding="utf-8",
         )
@@ -180,7 +180,7 @@ def main() -> None:
         updated_manifest = yaml.safe_load(current_manifest_path.read_text(encoding="utf-8"))
         updated_answers = yaml.safe_load((project / ".copier-answers.yml").read_text(encoding="utf-8"))
         assert "<<<<<<<" not in current_manifest_path.read_text(encoding="utf-8")
-        assert updated_manifest["min_prism_cli_version"] == "0.3.0"
+        assert updated_manifest["min_prism_cli_version"] == "0.4.0"
         assert updated_manifest["team_notes"] == {"owner": "workspace"}
         assert updated_manifest["project"]["description"] == "Workspace-owned description"
         assert updated_manifest["generated_by"]["template_commit"] == updated_answers["_commit"]
@@ -189,14 +189,14 @@ def main() -> None:
         run(project, ["git", "add", "."])
         run(project, ["git", "commit", "-qm", "fixture updated"])
 
-        current_manifest["min_prism_cli_version"] = "0.4.0"
+        current_manifest["min_prism_cli_version"] = "0.5.0"
         current_manifest_path.write_text(yaml.safe_dump(current_manifest, sort_keys=False), encoding="utf-8")
         run(project, ["git", "add", "."])
         run(project, ["git", "commit", "-qm", "competing manifest edit"])
         (files / "custom.txt").write_text(text.replace("version: one", "version: three"), encoding="utf-8")
         manifest_template.write_text(
             manifest_template.read_text(encoding="utf-8").replace(
-                'min_prism_cli_version: "0.3.0"', 'min_prism_cli_version: "0.5.0"'
+                'min_prism_cli_version: "0.4.0"', 'min_prism_cli_version: "0.6.0"'
             ),
             encoding="utf-8",
         )
@@ -214,7 +214,7 @@ def main() -> None:
         run(root, cli + ["update", str(project), "--strategy", "recopy", "--trust-template", "--yes"])
         assert "user line: original" in (project / "custom.txt").read_text(encoding="utf-8")
         recopied_manifest = yaml.safe_load(current_manifest_path.read_text(encoding="utf-8"))
-        assert recopied_manifest["min_prism_cli_version"] == "0.5.0"
+        assert recopied_manifest["min_prism_cli_version"] == "0.6.0"
         assert "team_notes" not in recopied_manifest
         assert not (project / ".copier-answers.prism-recopy.yml").exists()
         # Substitute only the canonical URL with a local Git remote; exercise the
@@ -222,12 +222,12 @@ def main() -> None:
         pin_cli = [executable, "-c", "import sys; from prism_cli import cli; cli.DEFAULT_TEMPLATE_URL=sys.argv.pop(1); raise SystemExit(cli.main(sys.argv[1:]))", "git+" + template.as_uri()]
         pin_args = ["new", "--preset", "backend-only", "--project-name", "Pinned Smoke", "--yes"]
         missing = run(root, pin_cli + pin_args + ["--dest", str(root / "missing-tag")], expected=3)
-        assert "v0.2.0" in missing.stderr and "is not published" in missing.stderr, missing.stderr
-        run(template, ["git", "tag", "v0.2.0", "v1.0.0"])
+        assert "v0.3.0" in missing.stderr and "is not published" in missing.stderr, missing.stderr
+        run(template, ["git", "tag", "v0.3.0", "v1.0.0"])
         pinned = root / "pinned-project"
         run(root, pin_cli + pin_args + ["--dest", str(pinned)])
         assert "template version: one" in (pinned / "custom.txt").read_text(encoding="utf-8")
-        assert yaml.safe_load((pinned / ".copier-answers.yml").read_text(encoding="utf-8"))["_commit"] == "v0.2.0"
+        assert yaml.safe_load((pinned / ".copier-answers.yml").read_text(encoding="utf-8"))["_commit"] == "v0.3.0"
         print("PASS: installed wheel, preserving workflow adoption, generated-workspace upgrade gate/provenance preservation, packaged skills/transport, read-only default grants and revocation, ignored journal, real manifest update/merge/conflicts, unversioned local provenance, custom trust, explicit recopy, matching/missing release tag")
 
 

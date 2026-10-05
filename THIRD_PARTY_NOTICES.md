@@ -7,5 +7,5 @@ Its [upstream license](https://github.com/vasturiano/force-graph/blob/v1.47.2/LI
 is retained in [force-graph.LICENSE.txt](prism_cli/assets/force-graph.LICENSE.txt),
 included in the Python package, and embedded in generated dashboard HTML.
 
-This notice describes the vendored asset's license. Prism's own license remains
-an owner decision before publication.
+This notice describes the vendored asset's license. Prism's own license is the
+MIT license in [LICENSE](LICENSE), copyright 2026 Mortitech.

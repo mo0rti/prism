@@ -154,7 +154,7 @@ def create_mcp_server(service: Any) -> Any:
     returned server is mounted by ``board_server`` and shares its lifecycle.
     """
 
-    from prism_cli.board_reads import changes_page, operation_page, preview_page, shrink_to_budget
+    from prism_cli.board_reads import changes_page, operation_page, parse_changes_cursor, preview_page, shrink_to_budget
 
     try:
         from mcp.server import MCPServer
@@ -350,8 +350,9 @@ def create_mcp_server(service: Any) -> Any:
     ) -> ToolReply:
         return reply("recover", await shaped(shrink_to_budget, await call(ctx, "recover", operation_id, review_revision, semantic_review_acknowledged)))
 
-    @server.tool(name="changes", description="Prism board: read durable board changes (wiki and lifecycle updates) after an optional cursor.", annotations=read_annotations, structured_output=True)
+    @server.tool(name="changes", description="Prism board: read durable board changes (wiki and lifecycle updates) after an optional cursor. An event too large for one result arrives in chunks of its JSON text under event_chunk: keep following the cursor.", annotations=read_annotations, structured_output=True)
     async def changes(ctx: Context, cursor: str | None = None) -> ToolReply:
-        return reply("changes", await shaped(changes_page, await call(ctx, "changes", cursor)))
+        service_cursor, resume = await shaped(parse_changes_cursor, cursor)
+        return reply("changes", await shaped(changes_page, await call(ctx, "changes", service_cursor), resume))
 
     return server

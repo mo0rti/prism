@@ -2,7 +2,7 @@
 
 This document states Prism's core scope and the contracts that the CLI, the board service, the browser board and the MCP adapter implement. [Current status](current-status.md) records what is verified and what is open. [Shared board](shared-board.md) is the usage guide. [Connected-core acceptance](connected-core-acceptance.md) is the dated record of the connected service's acceptance run, and [reviews](reviews/) holds the dated independent reviews.
 
-The core is implemented: workflow adoption, MCP tool contract 2, the shared local service, the human board actions `po-handoff`, `design-start` and `dev-start`, and recovery of interrupted operations. A real-browser test suite exercises the board. Remote access, the six agent-led lifecycle actions as direct human actions, named assignment and arbitrary component labels are deferred. License terms, the release version and tag, and publication are separate release gates.
+The core is implemented: workflow adoption, MCP tool contract 2, the shared local service, the human board actions `po-handoff`, `design-start` and `dev-start`, and recovery of interrupted operations. A real-browser test suite exercises the board. Remote access, the six agent-led lifecycle actions as direct human actions, named assignment and arbitrary component labels are deferred. The release tag and publication are separate release gates; the license is MIT and the version is 0.3.0.
 
 ## Product direction
 
@@ -184,7 +184,7 @@ The MCP specification and SDK are pinned and tested together, and the first jour
 
 **Dependable core.** The dashboard derives its connection indicator from state and recovers after a reconnect. `prism update` merges the manifest semantically. The CLI validates input before prompting or rendering, and `prism new` takes an explicit slug that Copier receives unchanged. Local working snapshots are identified as unversioned, and a versioned update keeps Copier's recorded revision. Human and JSON preflight output agree, and one change poller serves all connected clients.
 
-**Manifest merge policy.** `prism update` compares the old template, the current workspace and the new template field by field. It keeps user-only changes, applies template-only changes and stops before modifying the project when both sides changed the same field differently. Lists are whole values. Prism-owned provenance is regenerated independently. The manifest is excluded from Copier's text merge, the old and new inputs render without running tasks, and an unresolved baseline or conflict is rejected before the project changes. For example, an unchanged minimum version can advance from `0.2.0` to the template's `0.3.0` and a workspace-only `team_notes` field stays intact, while a workspace that moved the minimum to `0.4.0` against a template change to `0.3.0` is a conflict that the command reports without choosing either value.
+**Manifest merge policy.** `prism update` compares the old template, the current workspace and the new template field by field. It keeps user-only changes, applies template-only changes and stops before modifying the project when both sides changed the same field differently. Lists are whole values. Prism-owned provenance is regenerated independently. The manifest is excluded from Copier's text merge, the old and new inputs render without running tasks, and an unresolved baseline or conflict is rejected before the project changes. For example, an unchanged minimum version can advance from `0.3.0` to the template's `0.4.0` and a workspace-only `team_notes` field stays intact, while a workspace that moved the minimum to `0.5.0` against a template change to `0.4.0` is a conflict that the command reports without choosing either value.
 
 **Workflow contract apart from generation.** A workspace is valid with a core schema version and declared scope, with no generator source, answers or application scaffold. A generated workspace and a minimal workspace give equivalent workflow facts. Existing generated projects stay readable, and an incompatible schema has an explicit upgrade path.
 
@@ -220,6 +220,5 @@ The core scenario is a small product-neutral workspace that spans intake, an una
 - Named participant assignment, work claims and a board chat.
 - Arbitrary component labels beyond the five platform IDs.
 - PDF and image extraction for connected intake.
-- Agreed response and refresh budgets for the board.
-- License, release version, tag and publication.
+- Release tag and publication.
 - Remaining application-sample hardening, which is tracked in [current-status.md](current-status.md) and does not define core acceptance.

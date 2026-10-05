@@ -53,15 +53,15 @@ To try the wheel install path locally, build and install the wheel from this che
 ```bash
 python -m pip install build
 python -m build
-python -m pip install dist/prism_kit-0.2.0-py3-none-any.whl
+python -m pip install dist/prism_kit-0.3.0-py3-none-any.whl
 ```
 
 The installed CLI uses the canonical GitHub template by default, at the release tag
-that matches the CLI version (`v0.2.0` for Prism 0.2.0). While that tag is not
+that matches the CLI version (`v0.3.0` for Prism 0.3.0). While that tag is not
 published, `prism new` stops with exit code 3 and one message, and creates nothing:
 
 ```text
-The template release tag `v0.2.0` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
+The template release tag `v0.3.0` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
 ```
 
 Pass `--template <path-or-url>` to choose another template, for example a checkout
@@ -243,8 +243,8 @@ prism wiki transition-preflight F-XXX /path/to/generated-project --action po-han
 
 Use it only when its response explicitly identifies common envelope schema 1,
 the transition-preflight command facts, capability version 2 with the requested
-action's surface, transition version 1, and a consistent snapshot. A `0.2.0`
-version string alone does not prove that surface; missing or unsupported
+action's surface, transition version 1, and a consistent snapshot. A version
+string alone does not prove that surface; missing or unsupported
 capability falls back to direct wiki reads. The preflight and dashboard are
 copy-only, and the agent must reread the source before any confirmed write. The
 selected generated action file must contain its matching

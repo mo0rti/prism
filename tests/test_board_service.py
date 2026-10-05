@@ -23,7 +23,7 @@ from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE
 from prism_cli.workflow_assets import asset_digest
 from prism_cli.workflow_install import apply_install, plan_install
-from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, create_core_workflow_fixture
+from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, PROCESSED_INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page, _write_index
 from tests.test_fs_safety import CLOUD_TAG, JUNCTION_TAG, fake_reparse
 from tests import real_temp  # noqa: F401
@@ -1103,6 +1103,173 @@ class BoardServiceValidatorTests(unittest.TestCase):
                 finally:
                     path.unlink(missing_ok=True)
 
+    def _po_intake_proposal(self, sources: list[str]) -> tuple[list[dict[str, str]], list[dict[str, str]], str]:
+        pending = INTAKE_ITEM.parent.as_posix()
+        processed = pending.replace("pending", "processed", 1)
+        feature_path = "knowledge/wiki/features/F-002-document-review.md"
+        feature = _unquote_yaml_date_fields(
+            _journey_feature_page(
+                "F-002", "Document review", "raw", "po", sources,
+                ["| 1 | Which details should the summary emphasize? | po | open |"],
+            )
+        )
+        manifest = f"# Processed intake\n\n- {feature_path} (F-002)\n"
+        changes = [
+            {"path": feature_path, "content": feature},
+            {"path": processed + "/MANIFEST.md", "content": manifest},
+        ]
+        return changes, [{"source": pending, "destination": processed}], feature_path
+
+    def _preview_po_intake(self, sources: list[str]) -> dict[str, Any]:
+        changes, moves, _feature_path = self._po_intake_proposal(sources)
+        return self.service.preview_skill(
+            self.actor, "po-intake", changes, moves, read_revisions=_read_revisions(self.service, self.actor, "po-intake", changes, moves)
+        )
+
+    def test_po_intake_rejects_a_pending_source_and_writes_nothing(self) -> None:
+        pending = INTAKE_ITEM.parent.as_posix()
+        processed = pending.replace("pending", "processed", 1)
+        cases = (
+            (pending, processed),
+            (pending + "/", processed),
+            (INTAKE_ITEM.as_posix(), PROCESSED_INTAKE_ITEM.as_posix()),
+            ("intake/pending/document-review-brief", processed),
+            ("knowledge/intake/pending/other-folder", "knowledge/intake/processed/other-folder"),
+        )
+        for entry, expected in cases:
+            with self.subTest(entry=entry):
+                changes, moves, feature_path = self._po_intake_proposal([entry])
+                error = self._rejected_preview(
+                    "po-intake", changes, moves, read_revisions=_read_revisions(self.service, self.actor, "po-intake", changes, moves)
+                )
+                self.assertEqual(("intake_source_not_processed", 409), (error.code, error.status))
+                self.assertEqual({"path": feature_path, "source": entry, "expected": expected}, error.details)
+                self.assertIn(feature_path, error.message)
+                self.assertIn(entry, error.message)
+                self.assertIn(expected, error.message)
+                self.assertTrue((self.root / pending).is_dir())
+                self.assertFalse((self.root / processed).exists())
+                self.assertFalse((self.root / feature_path).exists())
+
+    def test_po_intake_accepts_a_processed_source_from_its_own_move(self) -> None:
+        pending = INTAKE_ITEM.parent.as_posix()
+        processed = pending.replace("pending", "processed", 1)
+        (self.root / pending / "notes").mkdir()
+        (self.root / pending / "notes" / "context.md").write_text("Reviewer context.\n", encoding="utf-8")
+        for entry in (
+            processed,
+            processed + "/",
+            PROCESSED_INTAKE_ITEM.as_posix(),
+            processed + "/notes",
+            processed + "/notes/context.md",
+            processed + "/MANIFEST.md",
+            "intake/processed/document-review-brief/brief.md",
+        ):
+            with self.subTest(entry=entry):
+                preview = self._preview_po_intake([entry])
+                self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]), preview["checks"])
+        preview = self._preview_po_intake([])
+        self.assertTrue(preview["applicable"])
+        self.assertTrue((self.root / pending).is_dir())
+        self.assertFalse((self.root / processed).exists())
+
+    def test_po_intake_rejects_a_source_that_will_not_exist(self) -> None:
+        pending = INTAKE_ITEM.parent.as_posix()
+        processed = pending.replace("pending", "processed", 1)
+        for entry in (
+            processed + "/absent.md",
+            processed + "/notes",
+            "knowledge/intake/processed/other-folder",
+            "knowledge/intake/quarantined/document-review-brief",
+            "knowledge/wiki/features/F-099-absent.md",
+            "brief.md",
+        ):
+            with self.subTest(entry=entry):
+                changes, moves, feature_path = self._po_intake_proposal([entry])
+                error = self._rejected_preview(
+                    "po-intake", changes, moves, read_revisions=_read_revisions(self.service, self.actor, "po-intake", changes, moves)
+                )
+                self.assertEqual(("source_link_missing", 409), (error.code, error.status))
+                self.assertEqual({"path": feature_path, "source": entry}, error.details)
+                self.assertIn(entry, error.message)
+                self.assertFalse((self.root / feature_path).exists())
+
+        # A source that exists on disk, or is not a workspace path, stays accepted.
+        for entry in ("knowledge/wiki/SCHEMA.md", "https://example.com/review-brief"):
+            with self.subTest(entry=entry):
+                self.assertTrue(self._preview_po_intake([entry])["applicable"])
+
+    def test_source_link_rule_covers_every_page_that_writes_sources(self) -> None:
+        pending = INTAKE_ITEM.parent.as_posix()
+        processed = pending.replace("pending", "processed", 1)
+        move = [{"source": pending, "destination": processed, "source_files": {"brief.md": "digest"}, "source_directories": []}]
+        feature_path = "knowledge/wiki/features/F-002-document-review.md"
+        feature = _unquote_yaml_date_fields(
+            _journey_feature_page(
+                "F-002", "Document review", "specified", "po", [PROCESSED_INTAKE_ITEM.as_posix()], ["| 1 | Which details? | po | open |"]
+            )
+        )
+        persona = _unquote_yaml_date_fields(_journey_persona_page())
+        persona_path = "knowledge/wiki/personas/P-001-reviewer.md"
+        rule = _journey_business_rule_page()
+        rule_path = "knowledge/wiki/business-rules/BR-001-review-record.md"
+
+        def with_sources(page: str, field_name: str, value: Any) -> str:
+            frontmatter, _body = _parse_markdown(page)
+            frontmatter[field_name] = value
+            return self.service._replace_frontmatter(page, frontmatter)
+
+        def rejected(path: str, page: str, before: str | None, code: str, moves: list | None = None) -> None:
+            with self.assertRaises(BoardError) as error:
+                self.service._validate_source_links({path: page}, {path: before}, moves or [])
+            self.assertEqual(code, error.exception.code)
+
+        # Any skill that writes a feature page: a new pending source is rejected, an unchanged one is not.
+        # The processed source already on the page predates this proposal, so it is not re-checked.
+        pending_page = with_sources(feature, "sources", [PROCESSED_INTAKE_ITEM.as_posix(), INTAKE_ITEM.as_posix()])
+        rejected(feature_path, pending_page, feature, "intake_source_not_processed")
+        self.service._validate_source_links({feature_path: pending_page}, {feature_path: pending_page}, [])
+        stale_page = with_sources(feature, "sources", ["knowledge/intake/processed/gone"])
+        self.service._validate_source_links({feature_path: stale_page}, {feature_path: stale_page}, [])
+        rejected(feature_path, stale_page, feature, "source_link_missing")
+        moved_page = with_sources(feature, "sources", [PROCESSED_INTAKE_ITEM.as_posix(), processed + "/MANIFEST.md"])
+        self.service._validate_source_links({feature_path: moved_page, processed + "/MANIFEST.md": "# Processed intake"}, {feature_path: feature}, move)
+        rejected(feature_path, moved_page, feature, "source_link_missing", [])
+
+        # A persona or business rule is checked only when the entry is a workspace path.
+        for page_path, page, field_name, entry_value in (
+            (persona_path, persona, "sources", [INTAKE_ITEM.as_posix()]),
+            (rule_path, rule, "source", INTAKE_ITEM.as_posix()),
+        ):
+            with self.subTest(page=page_path):
+                rejected(page_path, with_sources(page, field_name, entry_value), None, "intake_source_not_processed")
+        self.service._validate_source_links({persona_path: with_sources(persona, "sources", ["Interview with the review team"])}, {}, [])
+        self.service._validate_source_links({rule_path: with_sources(rule, "source", "Board review, March")}, {}, [])
+        self.service._validate_source_links({persona_path: with_sources(persona, "sources", [PROCESSED_INTAKE_ITEM.as_posix()])}, {}, move)
+        rejected(persona_path, with_sources(persona, "sources", [PROCESSED_INTAKE_ITEM.as_posix()]), None, "source_link_missing")
+
+    def test_design_intake_cannot_add_a_pending_source(self) -> None:
+        feature_path = FEATURE_PATH.as_posix()
+        specified = _set_feature_stage(self._write_feature_page(), "specified", "po", self.service)
+        (self.root / FEATURE_PATH).write_bytes(specified.encode("utf-8"))
+        _write_index(self.root, "specified", "po")
+        design_source = "knowledge/intake/pending/design-notes"
+        (self.root / design_source).mkdir(parents=True)
+        (self.root / design_source / "notes.md").write_text("Make the saved outcome easy to find.\n", encoding="utf-8")
+        frontmatter, _body = _parse_markdown(specified)
+        frontmatter["sources"] = [*frontmatter["sources"], design_source]
+        proposed = self.service._replace_frontmatter(specified, frontmatter)
+        changes = [
+            {"path": feature_path, "content": proposed},
+            {"path": "knowledge/wiki/design/F-001-document-review.md", "content": _design_page()},
+        ]
+        moves = [{"source": design_source, "destination": design_source.replace("pending", "processed", 1)}]
+        error = self._rejected_preview(
+            "design-intake", changes, moves, read_revisions=_read_revisions(self.service, self.actor, "design-intake", changes, moves)
+        )
+        self.assertEqual("design_intake_frontmatter_scope", error.code)
+        self.assertTrue((self.root / design_source).is_dir())
+
 
 class BoardServiceConnectedJourneyTests(unittest.TestCase):
     """Exercise accepted wiki writes through preview, confirmation, and apply."""
@@ -1546,16 +1713,17 @@ class BoardServiceReopenRecordTests(unittest.TestCase):
         self.service = BoardService(self.root).start()
         self.addCleanup(self.service.close)
         self.agent = self.service.authenticate(self.service.create_participant("Workflow agent", "agent", True)["token"])
+        self.in_dev = {path: (self.root / path).read_bytes() for path in (self.FEATURE, self.REQUIREMENT)}
         self.complete()
 
     def submit(self, skill: str, changes: list[dict[str, str]]) -> dict:
         preview = self.service.preview_skill(self.agent, skill, changes, None, _read_revisions(self.service, self.agent, skill, changes))
         return preview
 
-    def complete(self) -> None:
+    def complete(self, table: list[str] | None = None) -> None:
         current = self.service._read_text(self.root / self.FEATURE)
         done = _set_feature_stage(current, "done", "none", self.service)
-        done = _replace_body_section(self.service, done, "Delivery evidence", "\n".join(self.TABLE))
+        done = _replace_body_section(self.service, done, "Delivery evidence", "\n".join(table or self.TABLE))
         done = _replace_body_section(self.service, done, "Post-ship notes", "No deviations were recorded in this fixture.")
         requirement = _set_requirement_status(self.service._read_text(self.root / self.REQUIREMENT), "done")
         preview = self.submit("dev-done", [{"path": self.FEATURE, "content": done}, {"path": self.REQUIREMENT, "content": requirement}])
@@ -1599,6 +1767,58 @@ class BoardServiceReopenRecordTests(unittest.TestCase):
                 preview = self.reopen(self.record(archive))
                 self.assertEqual("ready", preview["classification"], preview["checks"])
                 self.assertTrue(preview["applicable"], preview["blockers"])
+
+    def evidence_layouts(self) -> dict[str, list[str]]:
+        cells = ["Synthetic review record `tests/fixtures/review.md`", "Acceptance check `document-review` passed", "Synthetic release label `review-v1`"]
+        separator = "|---|---|---|---|"
+        return {
+            "canonical": self.TABLE,
+            "platform capitalised": ["| Platform | Implementation | Tests | Release |", separator, "| Backend | " + " | ".join(cells) + " |"],
+            "columns reordered": ["| Implementation | Platform | Tests | Release |", separator, f"| {cells[0]} | backend | {cells[1]} | {cells[2]} |"],
+            "release first": ["| Release | Tests | Implementation | Platform |", separator, f"| {cells[2]} | {cells[1]} | {cells[0]} | backend |"],
+            "header case and emphasis": ["| **PLATFORM** | implementation | _Tests_ | Release |", separator, "| backend | " + " | ".join(cells) + " |"],
+            "release cell says Release": ["| Platform | Implementation | Tests | Release |", separator, f"| backend | {cells[0]} | {cells[1]} | Release |"],
+            "compact pipes": ["|Platform|Implementation|Tests|Release|", separator, "|backend|" + "|".join(cells) + "|"],
+        }
+
+    def restore_in_dev(self) -> None:
+        for relative, content in self.in_dev.items():
+            (self.root / relative).write_bytes(content)
+        _write_index_rows(self.root, [("F-001", "Document review", "in-dev", "dev")])
+
+    def test_every_evidence_table_dev_done_accepts_can_be_archived_by_a_reopen(self) -> None:
+        for name, table in self.evidence_layouts().items():
+            with self.subTest(layout=name):
+                self.restore_in_dev()
+                self.complete(table)
+                archive = ["- Prior completion/release evidence:", *(f"  {line}" for line in table)]
+                preview = self.reopen(self.record(archive))
+                self.assertEqual("ready", preview["classification"], preview["checks"])
+                self.assertTrue(preview["applicable"], preview["blockers"])
+
+    def test_a_reopen_archives_each_row_in_the_column_order_of_its_table(self) -> None:
+        table = self.evidence_layouts()["columns reordered"]
+        self.restore_in_dev()
+        self.complete(table)
+        canonical_order = self.record(["- Prior completion/release evidence:", *(f"  {line}" for line in self.TABLE)])
+        error = self.reopen_error(canonical_order)
+        self.assertEqual(("delivery_evidence_not_archived", 409), (error.code, error.status))
+        self.assertIn("Missing row: | Synthetic review record", error.message)
+        self.assertEqual(table[2], error.details["missing_row"])
+
+    def test_a_row_kept_active_must_equal_the_prior_row_whatever_its_column_order(self) -> None:
+        table = self.evidence_layouts()["columns reordered"]
+        self.restore_in_dev()
+        self.complete(table)
+        archive = ["- Prior completion/release evidence:", *(f"  {line}" for line in table)]
+        current = self.service._read_text(self.root / self.FEATURE)
+        reopened = _set_stage_and_revalidation(self.service, current, "in-dev", "dev", ["implementation", "tests", "release"])
+        reopened = _replace_body_section(self.service, reopened, "Delivery evidence", "\n".join(table))
+        reopened = _append_body_section(self.service, reopened, "Reopen history", self.record(archive))
+        requirement = _set_requirement_status(self.service._read_text(self.root / self.REQUIREMENT), "in-progress")
+        with self.assertRaises(BoardError) as error:
+            self.submit("feature-reopen", [{"path": self.FEATURE, "content": reopened}, {"path": self.REQUIREMENT, "content": requirement}])
+        self.assertEqual(("delivery_evidence_still_active", 409), (error.exception.code, error.exception.status))
 
     def test_a_row_outside_the_label_block_or_changed_is_rejected_with_the_expected_layout(self) -> None:
         label = "- Prior completion/release evidence:"

@@ -4,9 +4,9 @@ This document describes the threat model of Prism's local board service as it is
 
 ## Reporting a vulnerability
 
-<!-- OWNER: add a security contact -->
+Send suspected vulnerabilities privately by email to **admin@mortitech.com**. Do not open a public issue for them, and do not include participant tokens or workspace content in a report.
 
-Report suspected vulnerabilities privately to the contact above. Do not open a public issue for them, and do not include participant tokens or workspace content in a report.
+Include the Prism version (`prism --version`), your operating system and Python version, what you did, what you expected and what happened. A short reproduction in a disposable workspace helps most. Reports are acknowledged.
 
 ## Scope
 

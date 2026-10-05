@@ -137,7 +137,9 @@ def list_workspace(service: Any, actor: Any, prefix: str = "knowledge", cursor: 
         try:
             _relative, approved = service._approved_source_path(name)
         except BoardError as exc:
-            if exc.code == "path_not_approved":
+            # A name Windows cannot hold (an existing Linux file such as `a:b.md`) is neither
+            # listed nor readable.
+            if exc.code in {"path_not_approved", "invalid_path"}:
                 continue
             raise
         info = approved.stat()
@@ -281,12 +283,18 @@ def _query_page(result: dict[str, Any], kind: str, value: str | None, position: 
         item["path"] for items in lists for item in items if isinstance(item, dict) and isinstance(item.get("path"), str)
     }
 
+    # An item larger than one result is replaced by a placeholder that names it,
+    # so the cursor never moves past it without a trace.
+    replaced: set[int] = set()
+
     def build(count: int) -> dict[str, Any]:
         end = offset + count
         paged = dict(facts)
         page_paths: set[str] = set()
         for key, items, start in zip(keys, lists, starts):
             window = items[max(0, offset - start):max(0, end - start)]
+            if offset in replaced and start <= offset < start + len(items):
+                window = [_oversize_placeholder(window[0]), *window[1:]]
             paged[key] = window
             page_paths.update(item["path"] for item in window if isinstance(item, dict) and isinstance(item.get("path"), str))
         next_cursor = None
@@ -300,7 +308,30 @@ def _query_page(result: dict[str, Any], kind: str, value: str | None, position: 
             "next_cursor": next_cursor,
         }
 
-    return fit_units(total, offset, lambda end: build(end - offset))
+    page = fit_units(total, offset, lambda end: build(end - offset))
+    if total and compact_size(page) > STRUCTURED_BUDGET_CHARS:
+        # Only the first item of a page can be too large for it on its own.
+        replaced.add(offset)
+        page = fit_units(total, offset, lambda end: build(end - offset))
+    return page
+
+
+def _oversize_placeholder(item: Any) -> dict[str, Any]:
+    """A short entry standing in for one query item that exceeds a whole result."""
+
+    placeholder: dict[str, Any] = {}
+    if isinstance(item, dict):
+        for key, value in item.items():
+            if isinstance(value, (int, float, bool)) or (isinstance(value, str) and len(value) <= 200):
+                placeholder[key] = value
+    path = item.get("path") if isinstance(item, dict) else None
+    placeholder["oversize"] = True
+    placeholder["size_chars"] = compact_size(item)
+    placeholder["note"] = (
+        "This item is larger than one result and is replaced by this entry. "
+        + (f"Read `{path}` with read_workspace, which returns it in chunks by cursor." if isinstance(path, str) else "Narrow the query to reach it.")
+    )
+    return placeholder
 
 
 def read_files_page(files: list[dict[str, Any]], paths: list[str], cursor: str | None) -> dict[str, Any]:
@@ -626,27 +657,72 @@ def operation_page(result: dict[str, Any], cursor: str | None = None) -> dict[st
     return page_bodies(header, "remaining_changes", changes, cursor, tag="operation", ident=operation_id, digest=_result_digest(result))
 
 
-def changes_page(result: dict[str, Any]) -> dict[str, Any]:
+_CHANGES_CHUNK_CURSOR = re.compile(r"(\d+)~(\d+)")
+
+
+def parse_changes_cursor(cursor: Any) -> tuple[Any, tuple[int, int] | None]:
+    """Split a `changes` cursor into the service cursor and an in-event position.
+
+    A plain cursor is the last event the caller has seen. `N~K` continues event
+    N from character K of its JSON text, so the service is asked for the events
+    after `N - 1` and `changes_page` resumes the first of them.
+    """
+
+    if isinstance(cursor, str):
+        found = _CHANGES_CHUNK_CURSOR.fullmatch(cursor)
+        if found:
+            event, offset = int(found.group(1)), int(found.group(2))
+            if event < 1 or offset < 1:
+                raise BoardError("invalid_cursor", "The cursor is invalid for this request.", 400)
+            return str(event - 1), (event, offset)
+    return cursor, None
+
+
+def changes_page(result: dict[str, Any], resume: tuple[int, int] | None = None) -> dict[str, Any]:
     """Return the longest run of events from the start of `changes` that fits.
 
     `cursor` is the last returned event, so the next call continues where this
-    one stopped; `has_more` says whether events remain.
+    one stopped; `has_more` says whether events remain. An event that alone is
+    larger than one result is never dropped: it is returned in chunks of its
+    JSON text under `event_chunk`, and the cursor `N~K` continues it.
     """
 
     events = result.get("changes")
     if not isinstance(events, list):
         return shrink_to_budget(result)
 
+    def more_after(cursor: Any) -> bool:
+        try:
+            return int(cursor) < int(result.get("head_cursor"))
+        except (TypeError, ValueError):
+            return False
+
     def build(count: int) -> dict[str, Any]:
         kept = events[:count]
         cursor = kept[-1]["cursor"] if kept else result.get("cursor")
-        page = {**result, "cursor": cursor, "changes": kept}
-        try:
-            page["has_more"] = int(cursor) < int(result.get("head_cursor"))
-        except (TypeError, ValueError):
-            page["has_more"] = False
-        return page
+        return {**result, "cursor": cursor, "changes": kept, "has_more": more_after(cursor)}
 
+    def chunked(offset: int) -> dict[str, Any]:
+        event = events[0]
+        text = json.dumps(event.get("event"), ensure_ascii=False, separators=(",", ":"))
+        kind = event["event"].get("type") if isinstance(event.get("event"), dict) else None
+
+        def build_chunk(end: int) -> dict[str, Any]:
+            done = end >= len(text)
+            cursor = event["cursor"] if done else f"{event['cursor']}~{end}"
+            record = {
+                **{key: value for key, value in event.items() if key != "event"},
+                "event": {"type": kind, "chunked": True},
+                "event_chunk": {"offset": offset, "total_chars": len(text), "text": text[offset:end]},
+            }
+            return {**result, "cursor": cursor, "changes": [record], "has_more": True if not done else more_after(cursor)}
+
+        return fit_units(len(text), offset, build_chunk)
+
+    if resume is not None:
+        if not events or str(events[0].get("cursor")) != str(resume[0]):
+            raise BoardError("invalid_cursor", "The cursor is invalid for this request.", 400)
+        return chunked(resume[1])
     if compact_size(build(len(events))) <= STRUCTURED_BUDGET_CHARS:
         return build(len(events))
     low, high, best = 1, len(events) - 1, 1
@@ -656,4 +732,6 @@ def changes_page(result: dict[str, Any]) -> dict[str, Any]:
             best, low = middle, middle + 1
         else:
             high = middle - 1
+    if best == 1 and compact_size(build(1)) > STRUCTURED_BUDGET_CHARS:
+        return chunked(0)
     return shrink_to_budget(build(best))

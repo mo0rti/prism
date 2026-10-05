@@ -76,14 +76,14 @@ class _Service:
     def discover(self, actor: _Actor) -> dict[str, Any]:
         return self._result("discover", actor)
 
-    def read_workspace(self, actor: _Actor, paths: list[str]) -> dict[str, Any]:
-        return self._result("read_workspace", actor, paths)
+    def read_workspace(self, actor: _Actor, paths: list[str], cursor: str | None = None) -> dict[str, Any]:
+        return self._result("read_workspace", actor, paths, cursor)
 
     def list_workspace(self, actor: _Actor, prefix: str = "knowledge", cursor: str | None = None) -> dict[str, Any]:
         return self._result("list_workspace", actor, prefix, cursor)
 
-    def query(self, actor: _Actor, kind: str, value: str | None = None, action: str | None = None) -> dict[str, Any]:
-        return self._result("query", actor, kind, value, action)
+    def query(self, actor: _Actor, kind: str, value: str | None = None, action: str | None = None, cursor: str | None = None) -> dict[str, Any]:
+        return self._result("query", actor, kind, value, action, cursor)
 
     def list_skills(self, actor: _Actor) -> dict[str, Any]:
         return self._result("list_skills", actor)
@@ -338,6 +338,84 @@ class BoardServerTests(unittest.TestCase):
                 self.assertEqual("po-specify", queried.json()["facts"]["transition"]["action"])
                 self.assertEqual("read-only", queried.json()["capability"]["mode"])
                 self.assertEqual(original_feature, feature.read_text(encoding="utf-8"))
+
+    def test_read_and_query_routes_forward_a_cursor_and_validate_its_type(self) -> None:
+        headers = {"Authorization": "Bearer secret-token"}
+        read = self.client.post("/api/board/v1/workspace/read", json={"paths": ["knowledge/wiki/BOARD.md"], "cursor": "C-2"}, headers=headers)
+        self.assertEqual(200, read.status_code, read.text)
+        self.assertEqual((["knowledge/wiki/BOARD.md"], "C-2"), self.service.calls[-1][2])
+        first = self.client.post("/api/board/v1/workspace/read", json={"paths": ["knowledge/wiki/BOARD.md"]}, headers=headers)
+        self.assertEqual(200, first.status_code, first.text)
+        self.assertEqual((["knowledge/wiki/BOARD.md"], None), self.service.calls[-1][2])
+        query = self.client.post("/api/board/v1/query", json={"kind": "owner", "value": "po", "cursor": "C-3"}, headers=headers)
+        self.assertEqual(200, query.status_code, query.text)
+        self.assertEqual(("owner", "po", None, "C-3"), self.service.calls[-1][2])
+        before = len(self.service.calls)
+        for path, body in (
+            ("/api/board/v1/workspace/read", {"paths": ["knowledge/wiki/BOARD.md"], "cursor": 7}),
+            ("/api/board/v1/query", {"kind": "owner", "value": "po", "cursor": ["C-3"]}),
+            ("/api/board/v1/query", {"kind": "owner", "value": "po", "unexpected": "x"}),
+        ):
+            rejected = self.client.post(path, json=body, headers=headers)
+            self.assertEqual(400, rejected.status_code, rejected.text)
+        self.assertEqual(before, len(self.service.calls), "invalid cursor fields reached BoardService")
+
+    def test_bearer_clients_can_page_workspace_reads_and_queries_over_http(self) -> None:
+        from prism_cli import board_reads
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))["status"])
+            ids = [f"F-{number:03d}" for number in range(1, 15)]
+            for feature_id in ids:
+                page = _feature_page().replace("F-001", feature_id).replace("Document review", f"Document review {feature_id}")
+                (root / f"knowledge/wiki/features/{feature_id}-document-review.md").write_text(page, encoding="utf-8", newline="\n")
+            large = root / "knowledge/wiki/features/F-001-document-review.md"
+            large.write_text(large.read_text(encoding="utf-8") + "\nA long paragraph of review notes. " * 1200 + "\n", encoding="utf-8", newline="\n")
+            expected = large.read_text(encoding="utf-8")
+            service = BoardService(root)
+            self.addCleanup(service.close)
+            headers = {"Authorization": f"Bearer {service.create_participant('Paging client', 'agent')['token']}"}
+            app = create_app(root, port=8767, service=service)
+            with TestClient(app, base_url="http://127.0.0.1:8767") as client, patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", 8000):
+                path = "knowledge/wiki/features/F-001-document-review.md"
+                body: dict[str, Any] = {"paths": [path]}
+                text, pages = "", 0
+                while True:
+                    response = client.post("/api/board/v1/workspace/read", json=body, headers=headers)
+                    self.assertEqual(200, response.status_code, response.text)
+                    page = response.json()
+                    pages += 1
+                    text += page["files"][0]["content"]
+                    self.assertEqual(len(text) - len(page["files"][0]["content"]), page["files"][0]["offset"])
+                    if page["next_cursor"] is None:
+                        break
+                    body = {"paths": [path], "cursor": page["next_cursor"]}
+                    self.assertLess(pages, 20)
+                self.assertGreater(pages, 2)
+                self.assertEqual(expected, text)
+                wrong = client.post("/api/board/v1/workspace/read", json={"paths": [path.replace("F-001", "F-002")], "cursor": page.get("next_cursor") or body["cursor"]}, headers=headers)
+                self.assertEqual(400, wrong.status_code, wrong.text)
+                self.assertEqual("invalid_cursor", wrong.json()["error"]["code"])
+
+                found, query_body, queries = [], {"kind": "owner", "value": "po"}, 0
+                budget = patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", 4000)
+                budget.start()
+                self.addCleanup(budget.stop)
+                while True:
+                    response = client.post("/api/board/v1/query", json=query_body, headers=headers)
+                    self.assertEqual(200, response.status_code, response.text)
+                    page = response.json()
+                    queries += 1
+                    found.extend(item["id"] for item in page["facts"]["features"])
+                    if page["next_cursor"] is None:
+                        break
+                    query_body = {"kind": "owner", "value": "po", "cursor": page["next_cursor"]}
+                    self.assertLess(queries, 20)
+                self.assertGreater(queries, 1)
+                self.assertEqual(ids, found)
+                other = client.post("/api/board/v1/query", json={"kind": "owner", "value": "dev", "cursor": query_body["cursor"]}, headers=headers)
+                self.assertEqual(("invalid_cursor", 400), (other.json()["error"]["code"], other.status_code))
 
     def test_apply_refreshes_the_graph_snapshot_before_the_response_returns(self) -> None:
         # A one-hour poll interval keeps the background poller out of the way,

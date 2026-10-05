@@ -107,20 +107,20 @@ class ManifestFieldMergeTests(unittest.TestCase):
     def test_applies_template_edits_and_keeps_workspace_only_fields(self) -> None:
         previous = {
             "schema_version": 1,
-            "min_prism_cli_version": "0.2.0",
+            "min_prism_cli_version": "0.3.0",
             "project": {"name": "Example", "description": "Template description", "platforms": ["backend"]},
             "generated_by": {"template_commit": "old", "generated_at": "old time", "custom": "baseline"},
         }
         current = {
             "schema_version": 1,
-            "min_prism_cli_version": "0.2.0",
+            "min_prism_cli_version": "0.3.0",
             "project": {"name": "Example", "description": "Workspace description", "platforms": ["backend"]},
             "team_notes": {"owner": "workspace"},
             "generated_by": {"template_commit": "rewritten old", "generated_at": "new time", "custom": "workspace"},
         }
         latest = {
             "schema_version": 1,
-            "min_prism_cli_version": "0.3.0",
+            "min_prism_cli_version": "0.4.0",
             "project": {"name": "Example", "description": "Template description", "platforms": ["backend"]},
             "template_field": True,
             "generated_by": {"template_commit": "new", "generated_at": "latest time", "custom": "baseline"},
@@ -128,7 +128,7 @@ class ManifestFieldMergeTests(unittest.TestCase):
 
         merged = merge_workspace_manifest(previous, current, latest)
 
-        self.assertEqual("0.3.0", merged["min_prism_cli_version"])
+        self.assertEqual("0.4.0", merged["min_prism_cli_version"])
         self.assertEqual("Workspace description", merged["project"]["description"])
         self.assertEqual({"owner": "workspace"}, merged["team_notes"])
         self.assertTrue(merged["template_field"])

@@ -64,7 +64,7 @@ class TotalsTests(unittest.TestCase):
 class RenderTests(unittest.TestCase):
     def build(self):
         run = {"tier": "smoke", "verdict": "failed", "verdict_reason": "steps not passed: po-clarify", "steps_selected": ["po-intake"], "hosts": ["claude", "codex"],
-               "timeout_s": 600, "started": "2026-10-05T09:00:00+00:00", "elapsed_s": 300.0, "prism_version": "0.2.0", "wheel": "w.whl", "wheel_sha256": "abc",
+               "timeout_s": 600, "started": "2026-10-05T09:00:00+00:00", "elapsed_s": 300.0, "prism_version": "0.3.0", "wheel": "w.whl", "wheel_sha256": "abc",
                "claude_version": "2.1.286 (Claude Code)", "codex_version": "codex-cli 0.159.0", "token_scan": "clean (3 tokens checked in every saved file)", "cleanup": "done"}
         seeds = [{"through": "po-intake", "files": ["a", "b"], "lint_errors": 0, "lint_ok": True}]
         return report.build_report(run, sample_results(), seeds, "smoke")

@@ -22,7 +22,7 @@ Each entry gives the symptom, its cause and the fix. Start with `prism doctor --
 **Symptom.** `prism new` without `--template`, run from an installed Prism, prints the generation review and `Default generation requires the matching template release tag` followed by the tag, then exits with code 3 and one message. No project is created and no Copier traceback appears:
 
 ```text
-The template release tag `v0.2.0` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
+The template release tag `v0.3.0` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
 ```
 
 **Cause.** The default template is the canonical GitHub repository at the tag that matches the installed Prism version, so a generated project is always rendered from the template that release shipped with. The tag does not exist yet for a version that has not been released. Other failures, such as no network, keep the Copier output and exit code 5.
@@ -97,7 +97,7 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 **Cause.** A reopen record must keep every prior Delivery evidence row verbatim under its `- Prior completion/release evidence:` bullet. The row must be on that line or on the lines directly below it, before the next `- Label:` bullet or heading. A row placed after another bullet, under its own heading or with changed cell text is not found. Spaces around `|` and letter case do not matter.
 
-**Fix.** Move the rows (a table or a list) directly under the bullet and copy the cells from the active Delivery evidence table. The layout is in `knowledge/wiki/features/_FORMAT.md`.
+**Fix.** Move the rows (a table or a list) directly under the bullet and copy the cells from the active Delivery evidence table. The layout is in `knowledge/wiki/features/_FORMAT.md`. Reopen reads the active table with the same parser that `dev-done` uses, so any column order, header case and platform letter case that `dev-done` accepted is accepted here; copy each row exactly as it stands in the table, in the table's own column order.
 
 ## A dev-done proposal is rejected for its delivery evidence
 
@@ -122,6 +122,14 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 **Cause.** `po-intake` creates every new feature as `raw` + `po`, and a proposal that sets another status is rejected. `po-handoff` accepts only `specified` + `po`. `po-specify` completes a raw feature and moves it to `specified`; it fails with `required_section_missing` when Design, Related features, API surface, Board review summary or Post-ship notes is empty.
 
 **Fix.** Run `po-specify` on the feature. Under each section it names, write one line of supported content or an explicit statement such as `Not started.`, `None identified.`, `Not reviewed yet.` or `Not shipped yet.`, and `None.` under API surface (any other API surface text needs an API contract page before `dev-start`)
+
+## An intake proposal is rejected for a source link
+
+**Symptom.** `preview_skill` for `po-intake` fails with `intake_source_not_processed` or `source_link_missing` (409). The `details` name the page `path`, the `source` entry and, for `intake_source_not_processed`, the `expected` path.
+
+**Cause.** The page lists a `sources` entry that would not resolve after the proposal applies. A folder under `knowledge/intake/pending/` moves to `knowledge/intake/processed/<folder>` when intake applies, so a link to the pending path would point at a folder that no longer exists, and the next agent could not read its source. A `source_link_missing` entry names a path that is not on disk, is not written by the proposal and is not in the processed folder the proposal's move creates. Nothing was written.
+
+**Fix.** List the processed path, such as `knowledge/intake/processed/<folder>/brief.md`, or another path that exists, then preview again.
 
 ## dev-start or dev-done is blocked by an open dev question
 
@@ -184,13 +192,21 @@ Conflict: knowledge/wiki/CONNECTED.md is present with different contents; preser
 
 **Fix.** Issue new grants with `prism board grant "NAME" --kind human|agent --write --path .`, update the token in each agent host's environment and sign in to the browser with the new human token. To keep your existing grants, restore `prism.workspace.yml` from version control or a backup instead of reinstalling.
 
+## A proposal is rejected as invalid_path for a file or folder name
+
+**Symptom.** `preview_skill` fails with `invalid_path` (400) and the message names a path segment, for example ``Workspace path segment `F-001.md:stream.md` contains `:` ``. `details` carry `path`, `segment` and `reason`. Nothing was written.
+
+**Cause.** Windows cannot hold a name that contains `:` `<` `>` `"` `|` `?` `*` or a control character, that ends in a dot or a space, or that is a reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1` to `COM9`, `LPT1` to `LPT9`, with or without an extension, in any case). Prism refuses these names on every operating system, so that a workspace written on Linux or macOS can be checked out on Windows and an apply never starts a write that the filesystem then refuses.
+
+**Fix.** Rename the file or folder in the proposal, for example `F-001-document-review.md`, and preview again. An existing file that already has such a name on Linux or macOS is not listed by `list_workspace` and cannot be read through the board; rename it in the workspace.
+
 ## A cursor is rejected as invalid_cursor or stale_cursor
 
 **Symptom.** A paged call (`get_skill`, `get_skill_reference`, `read_workspace`, `list_workspace`, `query`, `get_preview`, `operation`) fails with `invalid_cursor` (400) or `stale_cursor` (409). `list_workspace` can also return `stale_source_cursor`, and `query` can return `stale_read`.
 
 **Cause.** `invalid_cursor` means the cursor does not belong to the request: it was changed, it comes from another tool, skill, path or query, or it was sent with different arguments. `stale_cursor` means the workspace files or facts behind the earlier pages changed, so the remaining pages would no longer fit together.
 
-**Fix.** Pass `next_cursor` back exactly as returned, with the same arguments as the first call, and do not build cursors yourself. After `stale_cursor`, restart from the first page and read the new text again. A reader that joins chunks should check the digest of the joined text, as in the loop under [MCP tool contract](shared-board.md#mcp-tool-contract-version-2).
+**Fix.** Pass `next_cursor` back exactly as returned, with the same arguments as the first call, and do not build cursors yourself. After `stale_cursor`, restart from the first page and read the new text again. A reader that joins chunks should check the digest of the joined text, as in the loop under [MCP tool contract](shared-board.md#mcp-tool-contract-version-2). The `changes` cursor is a number, or `N~K` while the oversize event `N` is being returned in chunks; pass it back unchanged.
 
 ## The agent host does not show the Prism tools
 

@@ -1,3 +1,4 @@
 # The source archive is an installable CLI artifact. Repository fixtures and
 # checkout-only validation tests stay in the repository and CI.
 prune tests
+include LICENSE THIRD_PARTY_NOTICES.md

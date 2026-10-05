@@ -24,13 +24,25 @@ import yaml
 
 from prism_cli.board_store import BoardLockError, BoardStore
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError, reparse_kind
-from prism_cli.wiki_model import api_surface_declared, section_text, within_wiki_read_scope
+from prism_cli.wiki_model import (
+    api_surface_declared,
+    is_pending_intake_source,
+    processed_source_path,
+    section_text,
+    source_link_parts,
+    within_wiki_read_scope,
+)
 
 
 _MAX_TEXT_FILE = 512 * 1024
 _MAX_READ_TOTAL = 2 * 1024 * 1024
 _MAX_READ_PATHS = 64
 _MCP_CONTRACT = 2
+# A path segment every operating system can hold. Windows refuses these characters,
+# a trailing dot or space and the device names, so Prism refuses them on every
+# system: a workspace written on Linux can then be checked out on Windows.
+_WINDOWS_INVALID_CHARACTERS = re.compile(r'[:<>"|?*\x00-\x1f\x7f]')
+_WINDOWS_DEVICE_NAMES = frozenset({"CON", "PRN", "AUX", "NUL", *(f"COM{number}" for number in range(1, 10)), *(f"LPT{number}" for number in range(1, 10))})
 _TEXT_FILE_SUFFIXES = (".md", ".txt", ".yaml", ".yml")
 _MAX_PREVIEW_CHANGES = 128
 _HUMAN_ACTIONS = {"po-handoff", "design-start", "dev-start"}
@@ -1453,7 +1465,32 @@ class BoardService:
         path = PurePosixPath(value)
         if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
             raise BoardError("invalid_path", "Workspace paths must stay inside the board root.", 403)
+        for part in path.parts:
+            reason = BoardService._unportable_reason(part)
+            if reason is not None:
+                shown = re.sub(r"[\x00-\x1f\x7f]", lambda found: f"\\x{ord(found.group()):02x}", part)
+                raise BoardError(
+                    "invalid_path",
+                    f"Workspace path segment `{_clip(shown, 80)}` {reason}, so it cannot be written on every operating system. "
+                    "Rename it with letters, digits, spaces inside the name, dots, dashes and underscores only.",
+                    400,
+                    {"path": _clip(value, 160), "segment": _clip(shown, 80), "reason": reason},
+                )
         return path.as_posix()
+
+    @staticmethod
+    def _unportable_reason(segment: str) -> str | None:
+        """Why Windows refuses this path segment, or None when every system accepts it."""
+
+        found = _WINDOWS_INVALID_CHARACTERS.search(segment)
+        if found is not None:
+            character = found.group()
+            return "contains a control character" if ord(character) < 32 or ord(character) == 127 else f"contains `{character}`"
+        if segment.endswith((".", " ")):
+            return "ends in a dot or a space"
+        if segment.split(".", 1)[0].upper() in _WINDOWS_DEVICE_NAMES:
+            return "is a reserved device name"
+        return None
 
     @staticmethod
     def _reject_reparse(path: Path, *, include_leaf: bool) -> None:
@@ -2172,6 +2209,7 @@ class BoardService:
             self._validate_intake_outputs(skill, supplied, moves[0], changed_features)
         elif moves:
             raise BoardError("move_unavailable", f"Skill `{skill}` cannot move intake folders.", 403)
+        self._validate_source_links(supplied, before, moves)
 
         for relative, content in supplied.items():
             if relative.startswith("knowledge/wiki/personas/"):
@@ -2842,13 +2880,18 @@ class BoardService:
         affected = {part.strip().strip("`[]") for part in re.split(r"[,;]", values["Affected platforms"]) if part.strip()}
         if not isinstance(declared, list) or not affected or not affected.issubset(set(declared)):
             raise BoardError("reopen_platform_scope", "Reopen history must name affected platform IDs from the feature's declared scope.", 409)
-        old_delivery = _section(old_body, "Delivery evidence")
-        prior_rows = _table_rows(old_delivery, expected_columns=4)
-        if not prior_rows or {row[0] for row in prior_rows} != set(declared):
+        from prism_cli.wiki_model import parse_delivery_evidence_cells
+
+        # The same parser that dev-done applies to the evidence it accepts, so every
+        # table dev-done wrote can be archived here. Rows keep their own column order.
+        declared_platforms = [item for item in declared if isinstance(item, str)]
+        declared_keys = {item.strip().lower() for item in declared_platforms}
+        prior_canonical, prior_cells, _prior_problems = parse_delivery_evidence_cells(old_body, declared_platforms)
+        if not prior_cells or set(prior_cells) != declared_keys:
             raise BoardError("delivery_evidence_missing", "Reopen must archive the existing active delivery evidence for every declared platform.", 409)
         normalized_archive = _normalized_table_text(values[_ARCHIVE_LABEL])
-        for row in prior_rows:
-            row_text = "| " + " | ".join(row) + " |"
+        for cells in prior_cells.values():
+            row_text = "| " + " | ".join(cells) + " |"
             if _normalized_table_text(row_text) not in normalized_archive:
                 raise BoardError(
                     "delivery_evidence_not_archived",
@@ -2859,13 +2902,18 @@ class BoardService:
                     409,
                     {"path": relative, "label": _ARCHIVE_LABEL, "missing_row": _clip(row_text, 300)},
                 )
-        active_rows = _table_rows(_section(new_body, "Delivery evidence"), expected_columns=4)
-        prior_by_platform = {row[0]: row for row in prior_rows}
-        for row in active_rows:
-            old_row = prior_by_platform.get(row[0])
-            if old_row is None or row != old_row or row[0] in affected:
+        new_delivery = _section(new_body, "Delivery evidence")
+        active_canonical, active_cells, _active_problems = parse_delivery_evidence_cells(new_body, declared_platforms)
+        # A row the parser does not read as a platform row still counts as active evidence.
+        known_rows = list(active_cells.values())
+        for cells in _table_rows(new_delivery, expected_columns=4):
+            if cells not in known_rows:
                 raise BoardError("delivery_evidence_still_active", "Reopen may preserve only unchanged evidence for unaffected platforms explicitly reaffirmed in the impact review.", 409)
-            if "reaffirm" not in values["Impact review"].casefold() or re.sub(r"\s+", " ", "| " + " | ".join(row) + " |").casefold() not in re.sub(r"\s+", " ", values["Impact review"]).casefold():
+        affected_keys = {item.lower() for item in affected}
+        for platform, cells in active_cells.items():
+            if platform not in prior_canonical or active_canonical[platform] != prior_canonical[platform] or platform in affected_keys:
+                raise BoardError("delivery_evidence_still_active", "Reopen may preserve only unchanged evidence for unaffected platforms explicitly reaffirmed in the impact review.", 409)
+            if "reaffirm" not in values["Impact review"].casefold() or re.sub(r"\s+", " ", "| " + " | ".join(cells) + " |").casefold() not in re.sub(r"\s+", " ", values["Impact review"]).casefold():
                 raise BoardError("delivery_evidence_not_reaffirmed", "Unchanged evidence kept active must be named as reaffirmed in the impact review.", 409)
         related_paths = {
             path for path in supplied
@@ -3008,7 +3056,12 @@ class BoardService:
     @staticmethod
     def _answers_ground_section(section: str, answers: list[str]) -> bool:
         normalized = re.sub(r"\s+", " ", section).casefold()
-        return bool(answers) and any(re.sub(r"\s+", " ", answer).casefold() in normalized for answer in answers)
+        # The answer must stand as whole words: `no` is not found inside `not` or `know`.
+        return bool(answers) and any(
+            re.search(rf"(?<!\w){re.escape(re.sub(r'\s+', ' ', answer).strip().casefold())}(?!\w)", normalized)
+            for answer in answers
+            if answer.strip()
+        )
 
     def _validate_feature_shape(self, relative: str, content: str, skill: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
@@ -3140,6 +3193,106 @@ class BoardService:
                 raise BoardError("design_page_required", "Design intake must propose exactly one design page.", 409)
             if set(destination_files) - {"MANIFEST.md"}:
                 raise BoardError("intake_manifest_scope", "Design intake may write only an optional MANIFEST.md inside the processed intake folder.", 409)
+
+    def _validate_source_links(
+        self,
+        supplied: Mapping[str, str],
+        before: Mapping[str, str | None],
+        moves: list[dict[str, Any]],
+    ) -> None:
+        """Reject a source link that will not resolve once the proposal applies.
+
+        Features list `sources` paths. Personas list `sources` and business rules
+        list one `source`; those fields may hold free text, so only an entry that
+        starts with `knowledge/` is checked. An entry already on the page before
+        this proposal is left alone, so editing a page cannot be blocked by an
+        older link. A new entry may not lie under `knowledge/intake/pending/`, and
+        must exist on disk, be written by the proposal or lie in the processed
+        folder that the proposal's own intake move creates.
+        """
+
+        for relative, content in sorted(supplied.items()):
+            if relative.startswith("knowledge/wiki/features/"):
+                field_name, path_only = "sources", True
+            elif relative.startswith("knowledge/wiki/personas/"):
+                field_name, path_only = "sources", False
+            elif relative.startswith("knowledge/wiki/business-rules/"):
+                field_name, path_only = "source", False
+            else:
+                continue
+            existing = set(self._source_entries(before.get(relative), relative, field_name))
+            for entry in self._source_entries(content, relative, field_name):
+                if entry in existing:
+                    continue
+                parts = source_link_parts(entry, path_only=path_only)
+                if parts is None:
+                    continue
+                if is_pending_intake_source(parts):
+                    expected = self._processed_source_expectation(parts, moves)
+                    raise BoardError(
+                        "intake_source_not_processed",
+                        f"`{relative}` lists source `{entry}`, which is in the pending intake queue. "
+                        f"A pending folder moves when intake applies, so this link would stop resolving; list `{expected}` instead.",
+                        409,
+                        {"path": relative, "source": entry, "expected": expected},
+                    )
+                if not self._source_exists_after(parts, moves, supplied):
+                    raise BoardError(
+                        "source_link_missing",
+                        f"`{relative}` lists source `{entry}`, which will not exist once this proposal applies. "
+                        "List a workspace path that exists, such as a file in the processed intake folder this proposal moves.",
+                        409,
+                        {"path": relative, "source": entry},
+                    )
+
+    @staticmethod
+    def _source_entries(text: str | None, relative: str, field_name: str) -> list[str]:
+        if text is None:
+            return []
+        try:
+            value = _parse_markdown(text, relative)[0].get(field_name)
+        except BoardError:
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, str)]
+        return []
+
+    @staticmethod
+    def _processed_source_expectation(parts: tuple[str, ...], moves: list[dict[str, Any]]) -> str:
+        """The processed path that replaces a pending source path, following the proposal's own move."""
+
+        for move in moves:
+            source = tuple(PurePosixPath(str(move["source"])).parts)
+            if tuple(part.casefold() for part in parts[: len(source)]) == tuple(part.casefold() for part in source):
+                return "/".join((*PurePosixPath(str(move["destination"])).parts, *parts[len(source):]))
+        return processed_source_path(parts)
+
+    def _source_exists_after(self, parts: tuple[str, ...], moves: list[dict[str, Any]], supplied: Mapping[str, str]) -> bool:
+        relative = "/".join(parts)
+        if relative in supplied or any(path.startswith(relative + "/") for path in supplied):
+            return True
+        folded = tuple(part.casefold() for part in parts)
+        for move in moves:
+            destination = tuple(PurePosixPath(str(move["destination"])).parts)
+            if folded[: len(destination)] != tuple(part.casefold() for part in destination):
+                continue
+            inside = "/".join(parts[len(destination):])
+            if not inside:
+                return True
+            files = move.get("source_files", {})
+            return (
+                inside in files
+                or inside in move.get("source_directories", [])
+                or any(name.startswith(inside + "/") for name in files)
+            )
+        try:
+            return self._safe_path(relative, allow_missing=True).exists()
+        except BoardError as error:
+            if error.code == "invalid_path":
+                return False
+            raise
 
     def _validate_persona(self, relative: str, content: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
