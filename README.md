@@ -37,7 +37,15 @@ uv tool install prism-kit
 prism --version
 ```
 
-`pipx install prism-kit` and `pip install prism-kit` work as well. If `prism` is not found after `uv tool install`, run `uv tool update-shell` and open a new terminal. To upgrade later, run `uv tool upgrade prism-kit`. The npm launcher `@mortitech/prism` is not published yet; use one of the commands above. The rest of this page writes `prism <command>`.
+`pipx install prism-kit` and `pip install prism-kit` work as well. If `prism` is not found after `uv tool install`, run `uv tool update-shell` and open a new terminal. To upgrade later, run `uv tool upgrade prism-kit`.
+
+**Without a Python setup.** With Node.js 22 or later, the npm launcher runs the same CLI; it fetches uv and the matching `prism-kit` on first use:
+
+```bash
+npx @mortitech/prism --version
+```
+
+`npm install --global @mortitech/prism` installs it as the `prism` command. The rest of this page writes `prism <command>`.
 
 **From source (contributors).** Clone the repository and install it in editable mode:
 
