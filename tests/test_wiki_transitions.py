@@ -28,6 +28,7 @@ from prism_cli.wiki_transitions import (
     fingerprint_digest,
     workspace_fingerprint,
 )
+from tests import real_temp  # noqa: F401
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

@@ -21,7 +21,10 @@ def main() -> None:
     parser.add_argument("--python", required=True)
     parser.add_argument("--template", type=Path, required=True)
     args = parser.parse_args()
-    executable = str(Path(args.python).resolve())
+    # A virtual environment's interpreter is often a symlink to the base
+    # interpreter; resolving it would run the base interpreter without the
+    # environment's packages.
+    executable = os.path.abspath(args.python)
     source = args.template.resolve()
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
@@ -29,7 +32,7 @@ def main() -> None:
     env["PATH"] = os.pathsep.join(
         item for item in env.get("PATH", "").split(os.pathsep)
         if item and not any((Path(item) / name).exists() for name in ("copier", "copier.exe", "copier.cmd"))
-        and Path(item).resolve() != Path(executable).parent
+        and os.path.realpath(item) != os.path.realpath(os.path.dirname(executable))
     )
     assert shutil.which("copier", path=env["PATH"]) is None
 

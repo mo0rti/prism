@@ -14,6 +14,7 @@ from prism_cli.manifest_update import (
     ManifestUpdateError,
     merge_workspace_manifest,
 )
+from tests import real_temp  # noqa: F401
 
 
 class CliAnswerValidationTests(unittest.TestCase):

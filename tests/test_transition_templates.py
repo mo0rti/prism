@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from tests import real_temp  # noqa: F401
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

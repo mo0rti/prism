@@ -17,6 +17,7 @@ from mcp.shared.exceptions import MCPError
 from prism_cli.board_mcp import SERVER_INSTRUCTIONS, _safe_error
 from prism_cli.board_service import BoardError
 from prism_cli.board_server import create_app
+from tests import real_temp  # noqa: F401
 
 
 class _BoardError(Exception):

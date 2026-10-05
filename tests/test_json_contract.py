@@ -12,6 +12,7 @@ from prism_cli.wiki_graph_html import render_html
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
 from prism_cli.wiki_transitions import build_transition_preflight
+from tests import real_temp  # noqa: F401
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

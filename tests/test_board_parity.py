@@ -21,6 +21,7 @@ from prism_cli.board_service import BoardService
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page, _requirement_page, _write_index
+from tests import real_temp  # noqa: F401
 
 
 ORIGIN = "http://127.0.0.1:8765"

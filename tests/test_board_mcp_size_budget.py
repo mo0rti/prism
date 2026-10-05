@@ -31,6 +31,7 @@ from prism_cli.board_service import BoardError, BoardService
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.core_workflow_fixture import create_core_workflow_fixture
 from tests.test_board_service import _read_revisions
+from tests import real_temp  # noqa: F401
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

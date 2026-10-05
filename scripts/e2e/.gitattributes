@@ -1,0 +1,4 @@
+# The journey fixtures are compared byte for byte with the pages a test or a run writes, so
+# every checkout keeps their line endings as LF.
+fixtures/** text eol=lf
+fixtures-api-work/** text eol=lf

@@ -13,6 +13,7 @@ import yaml
 from prism_cli import cli
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, PROCESSED_INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page
+from tests import real_temp  # noqa: F401
 
 
 class ValidateReadinessTests(unittest.TestCase):

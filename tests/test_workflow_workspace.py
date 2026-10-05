@@ -7,6 +7,7 @@ import unittest
 import yaml
 
 from prism_cli.workspace import detect_workspace_kind, inspect_workspace
+from tests import real_temp  # noqa: F401
 
 
 class WorkflowWorkspaceTests(unittest.TestCase):

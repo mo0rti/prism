@@ -57,6 +57,7 @@ from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.workspace import MANIFEST_FILE, load_workspace
+from tests import real_temp  # noqa: F401
 
 
 class ValidateAnswersTests(unittest.TestCase):

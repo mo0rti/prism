@@ -8,6 +8,7 @@ from pathlib import Path
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, lint_wiki
 from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_model import read_wiki_settings
+from tests import real_temp  # noqa: F401
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "wiki_contract"
@@ -270,7 +271,7 @@ class WikiContractLintTests(unittest.TestCase):
                 feature_path.read_text(encoding="utf-8")
                 + "\n[Encoded missing page](../design/missing%20page.md)\n"
                 + "[Processed source](../../intake/processed/brief.md)\n"
-                + "[Malformed URI]([::1].md)\n",
+                + "[Malformed URI](//[::1.md)\n",
                 encoding="utf-8",
             )
 

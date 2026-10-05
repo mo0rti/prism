@@ -21,6 +21,7 @@ from prism_cli.cli import build_parser
 from prism_cli.board_store import BoardStore
 from prism_cli.workflow_assets import asset_digest
 from prism_cli.workflow_install import apply_install, plan_install
+from tests import real_temp  # noqa: F401
 
 
 class BoardCliTests(unittest.TestCase):

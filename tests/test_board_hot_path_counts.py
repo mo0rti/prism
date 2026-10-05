@@ -40,6 +40,7 @@ from unittest.mock import patch
 from prism_cli import wiki_graph, wiki_lint, wiki_model, wiki_transitions
 from prism_cli.board_server import _LiveGraph, _SnapshotRefreshingService
 from prism_cli.board_service import BoardService
+from tests import real_temp  # noqa: F401
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SIZES = (24, 48)

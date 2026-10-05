@@ -32,6 +32,7 @@ from prism_cli.wiki_model import (
 )
 from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_search, wiki_show
 from prism_cli.wiki_transitions import build_board_transition_preflight, build_transition_preflight
+from tests import real_temp  # noqa: F401
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "wiki_contract"

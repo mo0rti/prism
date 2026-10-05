@@ -19,6 +19,7 @@ from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE
 from prism_cli.workflow_install import apply_install, plan_install
 import prism_cli.workflow_install as workflow_installer
 from tests.test_fs_safety import CLOUD_TAG, JUNCTION_TAG, fake_reparse
+from tests import real_temp  # noqa: F401
 
 
 class WorkflowInstallTests(unittest.TestCase):

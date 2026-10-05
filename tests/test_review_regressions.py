@@ -19,6 +19,7 @@ from prism_cli.graph_server import serve_graph
 from prism_cli.render import render_or_print_wiki_query
 from prism_cli.wiki_lint import lint_wiki
 from copier import run_copy
+from tests import real_temp  # noqa: F401
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "wiki_contract" / "healthy"

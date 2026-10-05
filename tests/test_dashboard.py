@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from prism_cli.wiki_graph_html import render_html
+from tests import real_temp  # noqa: F401
 
 
 def _fresh_envelope(root: Path) -> dict:

@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 from prism_cli.board_service import BoardError, BoardService
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.test_core_workflow_fixture import _feature_page, _write_index
+from tests import real_temp  # noqa: F401
 
 
 class SimulatedCrash(BaseException):

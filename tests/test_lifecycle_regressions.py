@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_transitions import ACTION_SPECS, build_transition_preflight
+from tests import real_temp  # noqa: F401
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

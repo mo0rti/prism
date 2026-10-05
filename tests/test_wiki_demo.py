@@ -8,6 +8,7 @@ from pathlib import Path
 
 from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, lint_wiki
+from tests import real_temp  # noqa: F401
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

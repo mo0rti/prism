@@ -16,6 +16,7 @@ from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 from tests.test_fs_safety import CLOUD_TAG, JUNCTION_TAG, fake_reparse
+from tests import real_temp  # noqa: F401
 
 
 class BoardStoreConcurrencyTests(unittest.TestCase):

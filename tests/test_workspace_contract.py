@@ -31,6 +31,7 @@ from prism_cli.workspace import (
     load_workspace,
     write_workspace_manifest,
 )
+from tests import real_temp  # noqa: F401
 
 
 def write_workspace(root: Path, *, manifest: dict | None = None, answers: dict | None = None) -> None:

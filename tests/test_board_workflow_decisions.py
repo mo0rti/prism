@@ -31,6 +31,7 @@ from tests.test_board_service import (
     _write_index_rows,
 )
 from tests.test_core_workflow_fixture import CHECK_DATE
+from tests import real_temp  # noqa: F401
 
 
 FEATURE = FEATURE_PATH.as_posix()

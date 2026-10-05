@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from prism_cli.workflow_assets import asset_digest, bootstrap_files, get_skill, guidance_pointer, list_skills, previous_digests
+from tests import real_temp  # noqa: F401
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

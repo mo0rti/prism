@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 from prism_cli.cli import build_parser
 from prism_cli.graph_server import _GraphState, _make_handler, _workspace_fingerprint
 from prism_cli.wiki_transitions import CAPABILITY_FILES
+from tests import real_temp  # noqa: F401
 
 
 def _create_workspace(root: Path) -> None:
@@ -111,12 +112,17 @@ class GraphServerEndpointTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=3)
+                if getattr(self, "_graph_state", None) is not None:
+                    self._graph_state.close()
 
     def _server(self, root: Path) -> tuple[ThreadingHTTPServer, threading.Thread]:
         state = _GraphState(root)
         server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(state))
         state.start_watching()
         self.addCleanup(state.close)
+        # Stopped again in each test's finally block, before the temporary
+        # workspace is deleted, so the watcher never holds a file open then.
+        self._graph_state = state
         server.daemon_threads = True
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -174,6 +180,8 @@ class GraphServerEndpointTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=3)
+                if getattr(self, "_graph_state", None) is not None:
+                    self._graph_state.close()
 
     def test_events_report_a_new_graph_version_after_queue_item_arrives(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -206,6 +214,8 @@ class GraphServerEndpointTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=3)
+                if getattr(self, "_graph_state", None) is not None:
+                    self._graph_state.close()
 
     def test_post_is_refused_by_read_only_server(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -223,6 +233,8 @@ class GraphServerEndpointTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=3)
+                if getattr(self, "_graph_state", None) is not None:
+                    self._graph_state.close()
 
     def test_get_routes_reject_foreign_or_ambiguous_authorities(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -262,6 +274,8 @@ class GraphServerEndpointTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=3)
+                if getattr(self, "_graph_state", None) is not None:
+                    self._graph_state.close()
 
     def test_raw_duplicate_authority_headers_are_rejected(self) -> None:
         # Exercise the HTTP parser directly; intermediaries may normalize

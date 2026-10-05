@@ -20,6 +20,7 @@ from tests.core_workflow_fixture import (
     PROCESSED_INTAKE_ITEM,
     create_core_workflow_fixture,
 )
+from tests import real_temp  # noqa: F401
 
 
 CHECK_DATE = date(2026, 9, 22)

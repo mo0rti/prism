@@ -21,6 +21,7 @@ from prism_cli.wiki_lint import lint_wiki  # noqa: E402
 from prism_cli.wiki_transitions import build_transition_preflight  # noqa: E402
 from prism_cli.workflow_install import apply_install, plan_install  # noqa: E402
 from tests.core_workflow_fixture import create_core_workflow_fixture  # noqa: E402
+from tests import real_temp  # noqa: F401
 
 TODAY = date(2026, 10, 5)
 FIXTURE_SETS = {"default": None, "api-work": config.API_WORK_FIXTURES_DIR}
@@ -47,7 +48,7 @@ class JourneyFixtureTests(unittest.TestCase):
         self.human = self.service.authenticate(self.service.create_participant("Fixture owner", "human", True)["token"])
 
     def proposal(self, step: str, fixture_set: Path | None) -> list[dict[str, str]]:
-        """What the step's agent proposes: the files its fixture folders write."""
+        """What the step's agent proposes: the files its fixture folders write, byte for byte (no newline translation)."""
 
         paths = {
             relative: path
@@ -55,7 +56,7 @@ class JourneyFixtureTests(unittest.TestCase):
             if root.is_dir()
             for relative, path in ((p.relative_to(root).as_posix(), p) for p in sorted(root.rglob("*")) if p.is_file())
         }
-        return [{"path": relative, "content": path.read_text(encoding="utf-8")} for relative, path in sorted(paths.items())]
+        return [{"path": relative, "content": path.read_bytes().decode("utf-8")} for relative, path in sorted(paths.items())]
 
     def test_every_state_of_both_sets_lints_clean_apart_from_the_open_dev_question_after_the_handoff(self) -> None:
         for name, fixture_set in FIXTURE_SETS.items():

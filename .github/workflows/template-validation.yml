@@ -143,6 +143,11 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default list names the retired `tools` package. These are what the
+          # generated project compiles against: the platform of its compileSdk and the build
+          # tools of its Android Gradle Plugin.
+          packages: platform-tools platforms;android-36 build-tools;35.0.0
 
       - name: Install Copier
         run: python -m pip install --upgrade pip copier jinja2-time
