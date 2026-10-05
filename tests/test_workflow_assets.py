@@ -97,8 +97,8 @@ class WorkflowAssetsTests(unittest.TestCase):
         done = get_skill("dev-done")
         self.assertIn("Delivery evidence is an input to this action", done["instructions"])
         self.assertNotIn("must already be recorded", done["instructions"])
-        schema = {item["path"]: item["content"] for item in done["references"]}["knowledge/wiki/SCHEMA.md"]
-        self.assertIn("Delivery evidence is an input to `dev-done`", schema)
+        lifecycle = {item["path"]: item["content"] for item in done["references"]}["knowledge/wiki/LIFECYCLE.md"]
+        self.assertIn("Delivery evidence is an input to `dev-done`", lifecycle)
 
     def test_skill_references_never_substitute_template_workspace_state(self):
         workspace_state = {

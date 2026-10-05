@@ -225,7 +225,7 @@ class TransitionTemplateContractTests(unittest.TestCase):
                 self.assertNotIn("raw source does not already satisfy", normalized)
 
     def test_schema_defines_delivery_revalidation_and_reopen_contract(self) -> None:
-        schema = (REPO_ROOT / "template" / "knowledge" / "wiki" / "SCHEMA.md").read_text(encoding="utf-8")
+        schema = (REPO_ROOT / "template" / "knowledge" / "wiki" / "LIFECYCLE.md").read_text(encoding="utf-8")
         feature_format = (REPO_ROOT / "template" / "knowledge" / "wiki" / "features" / "_FORMAT.md").read_text(encoding="utf-8")
         for text in (schema, feature_format):
             with self.subTest(document="schema" if text is schema else "feature-format"):
@@ -281,6 +281,8 @@ class TransitionTemplateContractTests(unittest.TestCase):
                     "copier",
                     "copy",
                     "--trust",
+                    "--vcs-ref",
+                    "HEAD",
                     "--defaults",
                     "--data",
                     "project_name=Transition Contract",
@@ -317,7 +319,7 @@ class TransitionTemplateContractTests(unittest.TestCase):
                         self.assertIn("## ", rendered)
                         self.assertIn("confirmation", rendered)
             for path in (
-                destination / "knowledge" / "wiki" / "SCHEMA.md",
+                destination / "knowledge" / "wiki" / "LIFECYCLE.md",
                 destination / "knowledge" / "wiki" / "features" / "_FORMAT.md",
                 destination / "CONTEXT.md",
             ):

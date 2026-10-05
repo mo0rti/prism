@@ -56,6 +56,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         (self.root / "knowledge" / "intake" / "pending").mkdir(parents=True)
         (self.root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
         (self.wiki_root / "SCHEMA.md").write_text("# Wiki schema\n", encoding="utf-8")
+        (self.wiki_root / "LIFECYCLE.md").write_text("# Wiki lifecycle\n", encoding="utf-8")
         (self.wiki_root / "SETTINGS.md").write_text(
             "---\nwiki-stale-after-days: 14\n---\n",
             encoding="utf-8",

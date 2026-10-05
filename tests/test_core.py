@@ -344,6 +344,7 @@ class HomeLauncherTests(unittest.TestCase):
             (root / "CONTEXT.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
+            (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
             self.assertEqual(("generated-project", "generated project"), detect_launch_context(root))
 
     def test_build_home_actions_includes_update_only_for_generated_projects(self) -> None:
@@ -427,6 +428,7 @@ class DestinationPreparationTests(unittest.TestCase):
             (root / "CONTEXT.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
+            (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
 
             with patch("sys.stderr"):
                 result = prepare_generation_destination(root)
@@ -641,6 +643,7 @@ class ValidationTargetDetectionTests(unittest.TestCase):
             (root / "CONTEXT.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
+            (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
             self.assertEqual("generated-project", detect_validation_target(root))
 
     def test_returns_unknown_for_unrecognized_directory(self) -> None:
@@ -665,6 +668,7 @@ class GeneratedProjectStructureTests(unittest.TestCase):
             (root / "Taskfile.yml").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
+            (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
             (root / "backend").mkdir()
             (root / ".github" / "workflows").mkdir(parents=True)
             (root / ".github" / "workflows" / "backend.yml").write_text("", encoding="utf-8")
@@ -683,6 +687,7 @@ class GeneratedProjectStructureTests(unittest.TestCase):
             (root / "Taskfile.yml").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
+            (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
             (root / "web-user-app").mkdir()
             (root / ".github" / "workflows").mkdir(parents=True)
             (root / ".github" / "workflows" / "web-user-app.yml").write_text("", encoding="utf-8")
@@ -1587,6 +1592,7 @@ def create_wiki_skeleton(root: Path) -> None:
     (root / "knowledge" / "intake" / "pending").mkdir(parents=True)
     (root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
     (wiki / "SCHEMA.md").write_text("# Schema\n", encoding="utf-8")
+    (wiki / "LIFECYCLE.md").write_text("# Lifecycle\n", encoding="utf-8")
     (wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 14\n---\n", encoding="utf-8")
     write_index(root)
 

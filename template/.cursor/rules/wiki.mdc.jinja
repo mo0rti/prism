@@ -39,7 +39,7 @@ reads. This generated project must not hard-depend on an installed Prism CLI.
 
 ## Fallback path
 
-The fallback reads `knowledge/wiki/SCHEMA.md`, `index.md`, feature pages,
+The fallback reads `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md`, feature pages,
 platform requirements, and only the relevant design, API, advisory,
 business-rule, persona, and decision pages. Keep malformed pages visible and
 compute only categories proved by files; the canonical blocker categories are
@@ -64,7 +64,7 @@ Use the canonical instructions for the selected surface and shared contract:
 
 - Codex: `.agents/skills/<action>/SKILL.md`
 - Claude: `.claude/commands/<action>.md`
-- Shared protocol: `knowledge/wiki/SCHEMA.md`
+- Shared protocol: `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
 
 When present, use the read-only probe:
 
@@ -81,7 +81,7 @@ file must contain its matching `prism:<command>-contract:v1` marker; the other
 surface is optional. Refresh old instructions before acting.
 
 Before copying or acting on a request, reread the selected instructions,
-`knowledge/wiki/SCHEMA.md`, `index.md`, the feature, linked context, and workspace
+`knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md`, the feature, linked context, and workspace
 identity. Compare the path, identity, feature ID, status, owner, advisory state,
 and fingerprint with current files. Use **Copy request** only for a ready result
 on the selected invocation; blocked or unknown results require review or repair.

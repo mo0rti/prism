@@ -18,7 +18,7 @@ The agent system in this workspace does four jobs:
 |------|-------|---------|
 | Shared context | [`CONTEXT.md`](../CONTEXT.md) | First file to read for project identity, commands, repository layout, and wiki workflow |
 | Root agent guidance | [`AGENTS.md`](../AGENTS.md), [`CLAUDE.md`](../CLAUDE.md) | Workspace-wide operating rules for Codex and Claude |
-| Product wiki | [`knowledge/wiki/SCHEMA.md`](../knowledge/wiki/SCHEMA.md) | Source of truth for features, platform requirements, contracts, rules, and advisory reviews |
+| Product wiki | [`knowledge/wiki/SCHEMA.md`](../knowledge/wiki/SCHEMA.md), [`knowledge/wiki/LIFECYCLE.md`](../knowledge/wiki/LIFECYCLE.md) | Source of truth for features, platform requirements, contracts, rules, and advisory reviews |
 | Claude commands | [`.claude/commands/`](../.claude/commands/) | Structured project operations such as setup, PO intake, review, handoff, and wiki maintenance |
 | Claude skills | [`.claude/skills/`](../.claude/skills/) | Reusable Claude Code guidance for implementation, conventions, testing, and platform work |
 | Codex skills | [`.agents/skills/`](../.agents/skills/) | Reusable Codex guidance for shared workflows and supported platform work |
@@ -39,6 +39,7 @@ The agent system in this workspace does four jobs:
 ├── knowledge/
 │   └── wiki/
 │       ├── SCHEMA.md
+│       ├── LIFECYCLE.md
 │       ├── index.md
 │       └── advisory/BOARD.md
 ├── .claude/
@@ -146,7 +147,7 @@ canonical structured body from one raw page, so no action is a generic status
 setter.
 
 Detailed behavior is canonical in the selected `.agents/skills/<action>/SKILL.md`
-or `.claude/commands/<action>.md` plus `knowledge/wiki/SCHEMA.md`. The selected
+or `.claude/commands/<action>.md` plus `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`. The selected
 surface is independent; its matching `prism:<command>-contract:v1` marker is
 required, while the other surface is optional. Every write action rereads one
 feature and linked evidence, shows the complete proposed write set, and waits
@@ -162,7 +163,7 @@ version 1, and a consistent snapshot. A version string alone is insufficient;
 missing or unsupported probes fall back to direct-file reads. Use **Copy
 request** only for a ready result. Static captures are snapshot-relative; live
 refresh observes later source changes. Delivery evidence, UI design exemptions,
-and reopen revalidation are defined in `SCHEMA.md`.
+and reopen revalidation are defined in `LIFECYCLE.md`.
 
 ## Skill Map
 
@@ -294,3 +295,4 @@ This document is especially useful for:
 - [CONTEXT.md](../CONTEXT.md) for the shared AI entry point
 - [docs/architecture.md](architecture.md) for platform boundaries and system design
 - [knowledge/wiki/SCHEMA.md](../knowledge/wiki/SCHEMA.md) for wiki structure and operational rules
+- [knowledge/wiki/LIFECYCLE.md](../knowledge/wiki/LIFECYCLE.md) for the feature, board and advisory protocol

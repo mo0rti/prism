@@ -138,7 +138,7 @@ evidence for every declared platform. A confirmed `feature-reopen` archives
 prior active evidence, marks route-specific `revalidation` domains, and names
 affected requirement/API status changes before downstream readiness can be
 re-established. UI design exemptions and the full confirmation/write protocol
-are defined in the generated `knowledge/wiki/SCHEMA.md`. Browser controls for
+are defined in the generated `knowledge/wiki/LIFECYCLE.md`. Browser controls for
 these action previews are covered by the browser tests. The controls remain copy-only and never
 execute the agent writes.
 

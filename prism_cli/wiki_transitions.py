@@ -959,6 +959,7 @@ def _evaluate_po_handoff(
         str(workspace_root / MANIFEST_FILE),
         str(workspace_root / COPIER_ANSWERS_FILE),
         str(wiki_root / "SCHEMA.md"),
+        str(wiki_root / "LIFECYCLE.md"),
         str(wiki_root / "index.md"),
         *[str(workspace_root / relative) for relative in CAPABILITY_FILES.values()],
     ]
@@ -1407,6 +1408,7 @@ def _transition_sources(
         str(workspace_root / MANIFEST_FILE),
         str(workspace_root / COPIER_ANSWERS_FILE),
         str(wiki_root / "SCHEMA.md"),
+        str(wiki_root / "LIFECYCLE.md"),
         str(wiki_root / "index.md"),
         *[str(workspace_root / relative) for relative in _ACTION_SURFACE_PATHS[spec.action].values()],
     ]
@@ -2101,7 +2103,7 @@ def _relevant_integrity_checks(
         if target is not None:
             linked_paths.add(target.resolve())
     relevant: list[WikiDiagnostic] = []
-    for filename in ("SCHEMA.md", "index.md"):
+    for filename in ("SCHEMA.md", "LIFECYCLE.md", "index.md"):
         required_path = wiki_root / filename
         if _required_wiki_file_unreadable(required_path):
             relevant.append(
@@ -2125,6 +2127,7 @@ def _relevant_integrity_checks(
         diagnostic_path = diagnostic.resolved_path
         is_global_contract = diagnostic.code in {"missing-required-wiki-file", "malformed-index"} and diagnostic_path.name in {
             "SCHEMA.md",
+            "LIFECYCLE.md",
             "index.md",
         }
         diagnostic_feature_id = feature_id_from_path(diagnostic_path)

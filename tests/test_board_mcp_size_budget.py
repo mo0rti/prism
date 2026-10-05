@@ -152,6 +152,7 @@ def build_workspace(root: Path, feature_count: int) -> None:
     (root / "knowledge/intake/pending/document-review-brief").rename(root / "knowledge/intake/processed/document-review-brief")
     # A generated project ships the real wiki schema; the fixture has a placeholder.
     shutil.copyfile(REPO_ROOT / "template/knowledge/wiki/SCHEMA.md", root / "knowledge/wiki/SCHEMA.md")
+    shutil.copyfile(REPO_ROOT / "template/knowledge/wiki/LIFECYCLE.md", root / "knowledge/wiki/LIFECYCLE.md")
     features = root / "knowledge/wiki/features"
     rows = []
     for number in range(1, feature_count + 1):
@@ -335,7 +336,8 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
     async def test_read_workspace_pages_and_chunks_stay_within_budget_and_match_their_digests(self) -> None:
         async with connected(self, self.root) as client:
             feature_paths = [f"knowledge/wiki/features/F-{number:03d}-document-review.md" for number in range(1, 65)]
-            for paths in (feature_paths, ["knowledge/wiki/SCHEMA.md"], ["knowledge/wiki/index.md"], ["knowledge/wiki/SCHEMA.md", *feature_paths[:10]]):
+            schema_paths = ["knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md"]
+            for paths in (feature_paths, ["knowledge/wiki/SCHEMA.md"], ["knowledge/wiki/LIFECYCLE.md"], schema_paths, ["knowledge/wiki/index.md"], ["knowledge/wiki/SCHEMA.md", *feature_paths[:10]]):
                 with self.subTest(paths=len(paths), first=paths[0]):
                     pages = await client.paged("read_workspace", {"paths": paths})
                     records = [record for page in pages for record in page["files"]]
@@ -349,7 +351,7 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(on_disk, joined[path])
                         self.assertEqual({_digest(on_disk)}, {record["digest"] for record in records if record["path"] == path})
                         self.assertEqual({len(on_disk)}, {record["total_chars"] for record in records if record["path"] == path})
-            schema_pages = await client.paged("read_workspace", {"paths": ["knowledge/wiki/SCHEMA.md"]})
+            schema_pages = await client.paged("read_workspace", {"paths": schema_paths})
             self.assertGreater(len(schema_pages), 1)
             index_pages = await client.paged("read_workspace", {"paths": ["knowledge/wiki/index.md"]})
             self.assertGreater(len(index_pages), 1)

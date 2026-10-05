@@ -406,6 +406,7 @@ def detect_workspace_kind(root: Path) -> str:
         (workspace_root / "README.md").exists()
         and (workspace_root / "CONTEXT.md").exists()
         and (workspace_root / "knowledge" / "wiki" / "SCHEMA.md").exists()
+        and (workspace_root / "knowledge" / "wiki" / "LIFECYCLE.md").exists()
     ):
         return "generated-project"
     return "unknown"

@@ -87,7 +87,7 @@ a future Done check, sets route-specific revalidation domains, and names exact
 affected requirement/API status invalidations. Unaffected evidence is preserved
 only when explicitly reaffirmed. Shared API contracts are never reset in bulk.
 The complete protocol and formats are in
-[`knowledge/wiki/SCHEMA.md`](../template/knowledge/wiki/SCHEMA.md).
+[`knowledge/wiki/LIFECYCLE.md`](../template/knowledge/wiki/LIFECYCLE.md).
 
 ## `WIKI_REPORT.md`
 

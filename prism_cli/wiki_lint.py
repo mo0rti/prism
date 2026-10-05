@@ -80,6 +80,7 @@ _NON_SOURCE_FILENAMES = {
     "BOARD.md",
     "PROJECT_FOUNDATION.md",
     "SCHEMA.md",
+    "LIFECYCLE.md",
     "SETTINGS.md",
     "WIKI_REPORT.md",
     "log.md",
@@ -233,9 +234,9 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
         diagnostics.append(_diag("missing-wiki-root", "error", wiki_root, "Missing knowledge/wiki directory."))
         return WikiLintResult(root=root, diagnostics=diagnostics)
 
-    # SETTINGS.md is optional by contract. SCHEMA.md and index.md remain the
-    # structural files that lint requires before it can reason about the board.
-    for required in ("SCHEMA.md", "index.md"):
+    # SETTINGS.md is optional by contract. SCHEMA.md, LIFECYCLE.md and index.md
+    # remain the structural files that lint requires before it can reason about the board.
+    for required in ("SCHEMA.md", "LIFECYCLE.md", "index.md"):
         required_path = wiki_root / required
         if not required_path.exists():
             diagnostics.append(

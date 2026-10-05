@@ -1292,6 +1292,7 @@ def validate_generated_project(path: Path) -> int:
         "README.md present",
         "CONTEXT.md present",
         "knowledge/wiki/SCHEMA.md present",
+        "knowledge/wiki/LIFECYCLE.md present",
         "Taskfile.yml present",
         "wiki contract checks passed",
         "platform directories and key workflows present",
@@ -1310,6 +1311,7 @@ def validate_generated_project_structure(path: Path) -> tuple[list[str], list[st
         ("README.md", path / "README.md"),
         ("CONTEXT.md", path / "CONTEXT.md"),
         ("knowledge/wiki/SCHEMA.md", path / "knowledge" / "wiki" / "SCHEMA.md"),
+        ("knowledge/wiki/LIFECYCLE.md", path / "knowledge" / "wiki" / "LIFECYCLE.md"),
         ("Taskfile.yml", path / "Taskfile.yml"),
     ]
     for label, required_path in required_paths:

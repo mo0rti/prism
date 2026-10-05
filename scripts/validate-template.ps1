@@ -268,6 +268,7 @@ function Validate-WikiStructure {
 
     # Knowledge wiki directories
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Message "Generated project missing knowledge/wiki/SCHEMA.md."
+    Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\LIFECYCLE.md") -Message "Generated project missing knowledge/wiki/LIFECYCLE.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\index.md") -Message "Generated project missing knowledge/wiki/index.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\log.md") -Message "Generated project missing knowledge/wiki/log.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\advisory\BOARD.md") -Message "Generated project missing knowledge/wiki/advisory/BOARD.md."
@@ -349,10 +350,10 @@ function Validate-WikiStructure {
     # advisory-review skill must have been renamed to board-review (not present under old name)
     Assert-PathMissing -Path (Join-Path $Root ".agents\skills\advisory-review") -Message "advisory-review skill directory should not exist (it was renamed to board-review)."
 
-    # SCHEMA.md must contain advisory-review field, four-question format, and confirm-before-committing rule
-    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "advisory-review" -Message "SCHEMA.md must define the advisory-review field."
-    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## 1. Conflicts" -Message "SCHEMA.md must include the four-question pre-dev review format (section 1)."
-    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## 4. Biggest risk" -Message "SCHEMA.md must include the four-question pre-dev review format (section 4)."
+    # LIFECYCLE.md must contain the advisory-review field and the four-question format; SCHEMA.md the confirm-before-committing rule
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\LIFECYCLE.md") -Needle "advisory-review" -Message "LIFECYCLE.md must define the advisory-review field."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\LIFECYCLE.md") -Needle "## 1. Conflicts" -Message "LIFECYCLE.md must include the four-question pre-dev review format (section 1)."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\LIFECYCLE.md") -Needle "## 4. Biggest risk" -Message "LIFECYCLE.md must include the four-question pre-dev review format (section 4)."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "Confirm before committing" -Message "SCHEMA.md must include the confirm-before-committing operational rule."
 
     # Advisory placeholders must contain setup-project instruction

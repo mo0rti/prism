@@ -43,6 +43,11 @@ def create_core_workflow_fixture(root: Path) -> Path:
         "Feature and evidence fields follow the template wiki schema.\n",
         encoding="utf-8",
     )
+    (wiki_root / "LIFECYCLE.md").write_text(
+        "# Wiki lifecycle fixture\n\n"
+        "Feature lifecycle and evidence fields follow the template lifecycle protocol.\n",
+        encoding="utf-8",
+    )
     (wiki_root / "SETTINGS.md").write_text(
         "---\nwiki-stale-after-days: 365\n---\n", encoding="utf-8"
     )

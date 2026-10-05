@@ -54,6 +54,30 @@ COMMON_REFERENCES = (
     "knowledge/wiki/CONNECTED.md",
     "knowledge/wiki/SCHEMA.md",
 )
+# Skills that read or change feature pages, the status and owner lifecycle or the
+# advisory files also read the lifecycle protocol; the other skills keep the core only.
+LIFECYCLE_REFERENCE = "knowledge/wiki/LIFECYCLE.md"
+LIFECYCLE_SKILLS = frozenset(
+    {
+        "board-review",
+        "design-clarify",
+        "design-handoff",
+        "design-intake",
+        "design-start",
+        "dev-clarify",
+        "dev-done",
+        "dev-start",
+        "feature-reopen",
+        "feature-status",
+        "lint-wiki",
+        "po-clarify",
+        "po-handoff",
+        "po-intake",
+        "po-specify",
+        "prep-sprint",
+        "wiki-blockers",
+    }
+)
 REFERENCE_GROUPS = {
     "intake": (
         "knowledge/intake/README.md",
@@ -246,7 +270,7 @@ def build_asset() -> dict[str, Any]:
         add_file(codex_path, codex_content)
         add_file(claude_path, claude_content)
 
-        reference_paths = [*COMMON_REFERENCES, claude_path]
+        reference_paths = [*COMMON_REFERENCES, *((LIFECYCLE_REFERENCE,) if name in LIFECYCLE_SKILLS else ()), claude_path]
         for group in SKILL_REFERENCE_GROUPS[name]:
             reference_paths.extend(REFERENCE_GROUPS[group])
         reference_paths = list(dict.fromkeys(reference_paths))

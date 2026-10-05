@@ -30,7 +30,7 @@ status-only write.
 
 ## Read-only preflight and source freshness
 
-Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/index.md`, the complete feature,
+Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/index.md`, the complete feature,
 linked context, and workspace identity before preparing a preview. When installed,
 probe the optional CLI:
 
@@ -43,11 +43,11 @@ Use that response only when it identifies common envelope schema 1, command fact
 capability version 2 with an action-specific `po-specify` surface, transition
 version 1, and a consistent snapshot. The version string alone does not prove
 support. If the probe is missing, old, unsupported, or fails, state the direct-file
-fallback and follow `SCHEMA.md`. The preflight is copy-only and never authorizes a
+fallback and follow `LIFECYCLE.md`. The preflight is copy-only and never authorizes a
 write.
 
 Before using copied facts, reread this command, the Codex skill when available,
-SCHEMA, index, feature, linked context, and identity. Compare the unique path,
+SCHEMA, LIFECYCLE, index, feature, linked context, and identity. Compare the unique path,
 identity, status, owner, advisory, and fingerprint. A mismatch or unavailable
 comparison requires a fresh preview.
 
