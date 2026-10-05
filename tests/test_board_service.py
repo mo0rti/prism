@@ -4,21 +4,28 @@ from __future__ import annotations
 
 import hashlib
 from io import BytesIO
+import os
 import re
-from contextlib import nullcontext
+import shutil
+import subprocess
+from contextlib import contextmanager, nullcontext
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Callable, Iterator
 from unittest.mock import patch
 from uuid import uuid4
 
 import yaml
 
 from prism_cli.board_service import BoardError, BoardService, _parse_markdown
+from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE
 from prism_cli.workflow_assets import asset_digest
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page, _write_index
+from tests.test_fs_safety import CLOUD_TAG, JUNCTION_TAG, fake_reparse
 
 
 class BoardServiceValidatorTests(unittest.TestCase):
@@ -44,35 +51,40 @@ class BoardServiceValidatorTests(unittest.TestCase):
     def test_skill_capabilities_match_enforced_write_path_scopes(self) -> None:
         expected = {
             "po-intake": [
-                "knowledge/wiki/features/**",
-                "knowledge/wiki/personas/**",
-                "knowledge/wiki/business-rules/**",
+                "knowledge/wiki/features/**/*.md",
+                "knowledge/wiki/personas/**/*.md",
+                "knowledge/wiki/business-rules/**/*.md",
                 "knowledge/intake/processed/**/MANIFEST.md",
                 "knowledge/intake/quarantined/**/CONFLICT.md",
             ],
             "design-intake": [
-                "knowledge/wiki/features/**",
-                "knowledge/wiki/design/**",
+                "knowledge/wiki/features/**/*.md",
+                "knowledge/wiki/design/**/*.md",
                 "knowledge/intake/processed/**/MANIFEST.md",
                 "knowledge/intake/quarantined/**/CONFLICT.md",
             ],
-            "ask": ["knowledge/wiki/features/**"],
-            "po-clarify": ["knowledge/wiki/features/**"],
-            "design-clarify": ["knowledge/wiki/features/**", "knowledge/wiki/design/**"],
-            "po-specify": ["knowledge/wiki/features/**"],
-            "po-handoff": ["knowledge/wiki/features/**"],
-            "design-start": ["knowledge/wiki/features/**"],
-            "design-handoff": ["knowledge/wiki/features/**", "knowledge/wiki/platform-requirements/**"],
-            "dev-start": ["knowledge/wiki/features/**"],
+            "ask": ["knowledge/wiki/features/**/*.md"],
+            "po-clarify": ["knowledge/wiki/features/**/*.md"],
+            "design-clarify": ["knowledge/wiki/features/**/*.md", "knowledge/wiki/design/**/*.md"],
+            "dev-clarify": ["knowledge/wiki/features/**/*.md", "knowledge/wiki/platform-requirements/**/*.md"],
+            "po-specify": ["knowledge/wiki/features/**/*.md"],
+            "po-handoff": ["knowledge/wiki/features/**/*.md"],
+            "design-start": ["knowledge/wiki/features/**/*.md"],
+            "design-handoff": [
+                "knowledge/wiki/features/**/*.md",
+                "knowledge/wiki/platform-requirements/**/*.md",
+                "knowledge/wiki/api-contracts/**/*.md",
+            ],
+            "dev-start": ["knowledge/wiki/features/**/*.md"],
             "dev-done": [
-                "knowledge/wiki/features/**",
-                "knowledge/wiki/platform-requirements/**",
-                "knowledge/wiki/api-contracts/**",
+                "knowledge/wiki/features/**/*.md",
+                "knowledge/wiki/platform-requirements/**/*.md",
+                "knowledge/wiki/api-contracts/**/*.md",
             ],
             "feature-reopen": [
-                "knowledge/wiki/features/**",
-                "knowledge/wiki/platform-requirements/**",
-                "knowledge/wiki/api-contracts/**",
+                "knowledge/wiki/features/**/*.md",
+                "knowledge/wiki/platform-requirements/**/*.md",
+                "knowledge/wiki/api-contracts/**/*.md",
             ],
         }
         discovered = {item["name"]: item for item in self.service.list_skills(self.actor)["skills"]}
@@ -93,7 +105,9 @@ class BoardServiceValidatorTests(unittest.TestCase):
             ("design-intake", "knowledge/wiki/design/F-002-review.md"),
             ("design-intake", "knowledge/intake/quarantined/review/CONFLICT.md"),
             ("design-clarify", "knowledge/wiki/design/F-002-review.md"),
+            ("dev-clarify", "knowledge/wiki/platform-requirements/F-002-backend.md"),
             ("design-handoff", "knowledge/wiki/platform-requirements/backend.md"),
+            ("design-handoff", "knowledge/wiki/api-contracts/F-002-review.md"),
             ("dev-done", "knowledge/wiki/api-contracts/F-002-review.md"),
             ("feature-reopen", "knowledge/wiki/platform-requirements/backend.md"),
         )
@@ -107,10 +121,16 @@ class BoardServiceValidatorTests(unittest.TestCase):
             ("ask", "knowledge/wiki/design/F-002-review.md"),
             ("po-clarify", "knowledge/wiki/design/F-002-review.md"),
             ("design-clarify", "knowledge/wiki/api-contracts/F-002-review.md"),
+            ("design-clarify", "knowledge/wiki/platform-requirements/F-002-backend.md"),
+            ("po-clarify", "knowledge/wiki/platform-requirements/F-002-backend.md"),
+            ("dev-clarify", "knowledge/wiki/design/F-002-review.md"),
+            ("dev-clarify", "knowledge/wiki/api-contracts/F-002-review.md"),
             ("po-specify", "knowledge/wiki/platform-requirements/backend.md"),
             ("po-handoff", "knowledge/wiki/platform-requirements/backend.md"),
             ("design-start", "knowledge/wiki/platform-requirements/backend.md"),
-            ("design-handoff", "knowledge/wiki/api-contracts/F-002-review.md"),
+            ("po-specify", "knowledge/wiki/api-contracts/F-002-review.md"),
+            ("po-handoff", "knowledge/wiki/api-contracts/F-002-review.md"),
+            ("design-start", "knowledge/wiki/api-contracts/F-002-review.md"),
             ("dev-start", "knowledge/wiki/api-contracts/F-002-review.md"),
             ("dev-done", "knowledge/wiki/design/F-002-review.md"),
             ("feature-reopen", "knowledge/wiki/design/F-002-review.md"),
@@ -119,6 +139,19 @@ class BoardServiceValidatorTests(unittest.TestCase):
             with self.subTest(skill=skill, rejected_path=path), self.assertRaises(BoardError) as error:
                 self.service._assert_skill_write_path(skill, path)
             self.assertEqual("write_path_unavailable", error.exception.code)
+
+        for skill, scopes in expected.items():
+            for pattern in scopes:
+                prefix, _, leaf = pattern.partition("/**/")
+                matching = [f"{prefix}/{leaf.replace('*', 'sample')}", f"{prefix}/nested/deeper/{leaf.replace('*', 'sample')}"]
+                non_markdown = [f"{prefix}/notes.txt", f"{prefix}/nested/notes.yaml"]
+                for path in matching:
+                    with self.subTest(skill=skill, pattern=pattern, advertised_match=path):
+                        self.service._assert_skill_write_path(skill, path)
+                for path in non_markdown:
+                    with self.subTest(skill=skill, pattern=pattern, non_markdown=path), self.assertRaises(BoardError) as error:
+                        self.service._assert_skill_write_path(skill, path)
+                    self.assertEqual("write_path_unavailable", error.exception.code)
 
         for skill in expected:
             for managed in ("knowledge/wiki/index.md", "knowledge/wiki/log.md"):
@@ -252,6 +285,44 @@ class BoardServiceValidatorTests(unittest.TestCase):
             self.service.discover(self.actor)
         self.assertEqual("workspace_identity_changed", error.exception.code)
 
+    def test_discover_and_list_skills_report_contract_2_and_state_read_support_once(self) -> None:
+        discovered = self.service.discover(self.actor)
+        listed = self.service.list_skills(self.actor)
+        self.assertEqual(2, discovered["mcp_contract"])
+        self.assertEqual(2, listed["mcp_contract"])
+        self.assertEqual(listed["read_support"], discovered["capability"]["read_support"])
+        self.assertTrue(discovered["skills"])
+        for item in discovered["skills"]:
+            self.assertEqual({"name", "description"}, set(item))
+            self.assertTrue(item["description"])
+        self.assertIn("list_skills", discovered["skills_detail"])
+        self.assertIn("get_skill", discovered["skills_detail"])
+        self.assertEqual({item["name"] for item in listed["skills"]}, {item["name"] for item in discovered["skills"]})
+        for item in listed["skills"]:
+            self.assertNotIn("read_support", item)
+            self.assertIn("limitations", item)
+            self.assertIn("write_scopes", item)
+
+    def test_unknown_skill_and_reference_errors_are_typed(self) -> None:
+        for call in (
+            lambda: self.service.get_skill(self.actor, "no-such-skill"),
+            lambda: self.service.get_skill_reference(self.actor, "no-such-skill", "knowledge/wiki/SCHEMA.md"),
+        ):
+            with self.assertRaises(BoardError) as error:
+                call()
+            self.assertEqual(("skill_not_found", 404), (error.exception.code, error.exception.status))
+        with self.assertRaises(BoardError) as outside:
+            self.service.get_skill_reference(self.actor, "po-intake", "knowledge/wiki/log.md")
+        self.assertEqual(("reference_not_found", 404), (outside.exception.code, outside.exception.status))
+        # A reference of another skill is outside this skill's reference paths.
+        other_only = set(
+            item["path"] for item in self.service.get_skill(self.actor, "design-intake")["skill"]["references"]
+        ) - set(item["path"] for item in self.service.get_skill(self.actor, "wiki-show")["skill"]["references"])
+        self.assertTrue(other_only)
+        with self.assertRaises(BoardError) as foreign:
+            self.service.get_skill_reference(self.actor, "wiki-show", sorted(other_only)[0])
+        self.assertEqual("reference_not_found", foreign.exception.code)
+
     def test_unrelated_unknown_manifest_metadata_does_not_invalidate_grant(self) -> None:
         manifest_path = self.root / "prism.workspace.yml"
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
@@ -283,6 +354,316 @@ class BoardServiceValidatorTests(unittest.TestCase):
         self.assertEqual("ready", preview["classification"])
         self.assertTrue(preview["applicable"])
         self.assertEqual("F-001", preview["feature_id"])
+
+    def test_a_wrong_digest_is_told_apart_from_a_source_that_changed_after_it_was_read(self) -> None:
+        path = self.root / FEATURE_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_feature_page(), encoding="utf-8")
+        relative = FEATURE_PATH.as_posix()
+        original = self.service._read_text(path)
+        proposed = original.replace(
+            "| 1 | Which points should a review summary highlight? | po | open |",
+            "| 1 | Which points should a review summary highlight? | po | open |\n"
+            "| 2 | How should the review be organized? | designer | open |",
+        )
+        changes = [{"path": relative, "content": proposed}]
+        revisions = _read_revisions(self.service, self.actor, "ask", changes)
+        current = revisions[relative]
+
+        # One mistyped character: the file did not change, the digest is wrong.
+        mistyped = {**revisions, relative: current[:-1] + ("0" if current[-1] != "0" else "1")}
+        with self.assertRaises(BoardError) as wrong:
+            self.service.preview_skill(self.actor, "ask", changes, read_revisions=mistyped)
+        self.assertEqual(("read_digest_mismatch", 409), (wrong.exception.code, wrong.exception.status))
+        self.assertIn(current, wrong.exception.message)
+        self.assertIn("is wrong", wrong.exception.message)
+        self.assertIn("read_workspace", wrong.exception.message)
+        self.assertNotIn("changed after", wrong.exception.message)
+        self.assertEqual({"path": relative, "supplied": mistyped[relative], "expected": current}, wrong.exception.details)
+
+        # A digest that was never returned for the file is wrong in the same way.
+        invented = {**revisions, relative: "sha256:" + "ab" * 32}
+        with self.assertRaises(BoardError) as unknown:
+            self.service.preview_skill(self.actor, "ask", changes, read_revisions=invented)
+        self.assertEqual("read_digest_mismatch", unknown.exception.code)
+
+        # The right digest is accepted.
+        self.assertTrue(self.service.preview_skill(self.actor, "ask", changes, read_revisions=revisions)["applicable"])
+
+        # A digest the board returned, for text that has since changed, is a stale read.
+        path.write_text(original + "\nEdited after the read.\n", encoding="utf-8")
+        edited = self.service._read_text(path)
+        with self.assertRaises(BoardError) as stale:
+            self.service.preview_skill(self.actor, "ask", changes, read_revisions=revisions)
+        self.assertEqual(("stale_read_revision", 409), (stale.exception.code, stale.exception.status))
+        self.assertIn("changed after you read it", stale.exception.message)
+        self.assertIn(current, stale.exception.message)
+        self.assertEqual("sha256:" + hashlib.sha256(edited.encode("utf-8")).hexdigest(), stale.exception.details["expected"])
+
+    def test_a_feature_outside_the_board_platforms_is_rejected_with_the_board_platforms(self) -> None:
+        relative = FEATURE_PATH.as_posix()
+        content = _feature_page().replace("platforms:\n- backend\n", "platforms:\n- web-user-app\n- backend\n")
+        self.assertIn("web-user-app", content)
+        with self.assertRaises(BoardError) as outside:
+            self.service._validate_feature_output(relative, content, "po-intake")
+        error = outside.exception
+        self.assertEqual(("invalid_feature_output", 409), (error.code, error.status))
+        self.assertIn("`web-user-app`", error.message)
+        self.assertIn("this board's platforms are `backend`", error.message)
+        self.assertEqual({"platforms": ["backend", "web-user-app"], "board_platforms": ["backend"]}, error.details)
+        with self.assertRaises(BoardError) as empty:
+            self.service._validate_feature_output(relative, content.replace("platforms:\n- web-user-app\n- backend\n", "platforms: []\n"), "po-intake")
+        self.assertIn("nonempty `platforms` list", empty.exception.message)
+        self.assertIn("`backend`", empty.exception.message)
+
+    def test_discover_reports_the_board_platforms(self) -> None:
+        self.assertEqual(["backend"], self.service.discover(self.actor)["board"]["platforms"])
+
+    def test_a_section_that_differs_only_in_its_final_newline_is_named_as_whitespace(self) -> None:
+        old = "## Open questions\nrow\n\n## Post-ship notes\nNot shipped yet.\n"
+        new = "## Open questions\nrow\n\n## Post-ship notes\nNot shipped yet."
+        with self.assertRaises(BoardError) as whitespace:
+            BoardService._assert_only_body_sections_changed(old, new, {"Open questions"}, "clarify_scope_exceeded", "Clarify may update the question table only.")
+        error = whitespace.exception
+        self.assertEqual(("clarify_scope_exceeded", 409), (error.code, error.status))
+        self.assertIn("`Post-ship notes`", error.message)
+        self.assertIn("differ only in whitespace", error.message)
+        self.assertIn("final newline", error.message)
+        self.assertEqual({"sections": ["Post-ship notes"], "whitespace_only": ["Post-ship notes"]}, error.details)
+
+        with self.assertRaises(BoardError) as content:
+            BoardService._assert_only_body_sections_changed(old, old.replace("Not shipped yet.", "Shipped."), {"Open questions"}, "clarify_scope_exceeded", "Clarify may update the question table only.")
+        self.assertNotIn("differ only in whitespace", content.exception.message)
+        self.assertEqual({"sections": ["Post-ship notes"]}, content.exception.details)
+
+    def test_an_ask_proposal_that_drops_the_final_newline_names_the_section_and_the_whitespace(self) -> None:
+        _path, _original, changes = self._ask_proposal()
+        trimmed = [{"path": changes[0]["path"], "content": changes[0]["content"].rstrip("\r\n")}]
+        _read_revisions(self.service, self.actor, "ask", trimmed)
+        with self.assertRaises(BoardError) as error:
+            self.service.preview_skill(self.actor, "ask", trimmed)
+        self.assertEqual(("ask_scope_exceeded", 409), (error.exception.code, error.exception.status))
+        self.assertIn("`API surface`", error.exception.message)
+        self.assertIn("differ only in whitespace", error.exception.message)
+        self.assertEqual({"sections": ["API surface"], "whitespace_only": ["API surface"]}, error.exception.details)
+
+    def test_a_body_scope_rejection_names_the_first_line_that_differs(self) -> None:
+        old = "## Open questions\n| # | Q | O | S |\n|---|----------|-------|--------|\n\n## Post-ship notes\nNot shipped yet.\n"
+        table = old.replace("|---|----------|-------|--------|", "|---|---|---|---|")
+        with self.assertRaises(BoardError) as changed:
+            BoardService._assert_only_body_sections_changed(old, table, set(), "lifecycle_body_scope", "Action `design-handoff` changes only lifecycle metadata on the feature page.")
+        self.assertEqual({"sections": ["Open questions"]}, changed.exception.details)
+        self.assertIn("`Open questions`", changed.exception.message)
+        self.assertIn("current line `|---|----------|-------|--------|`, proposed line `|---|---|---|---|`", changed.exception.message)
+
+        # A section heading that the proposal adds changes no named section, so the message quotes the heading.
+        added = old + "\n## Reopen history\n"
+        with self.assertRaises(BoardError) as heading:
+            BoardService._assert_only_body_sections_changed(old, added, {"Delivery evidence", "Post-ship notes"}, "lifecycle_body_scope", "Dev done may update delivery evidence and post-ship notes only.")
+        self.assertIn("the proposal adds the line `## Reopen history`", heading.exception.message)
+        self.assertIn("add or remove no section heading", heading.exception.message)
+        self.assertEqual({"current_line": "", "proposed_line": "## Reopen history"}, {key: heading.exception.details[key] for key in ("current_line", "proposed_line")})
+
+        # A missing final newline tells the agent to end the content with one.
+        with self.assertRaises(BoardError) as newline:
+            BoardService._assert_only_body_sections_changed(old, old.rstrip("\n"), {"Open questions"}, "clarify_scope_exceeded", "Clarify may update the question table only.")
+        self.assertIn("end `content` with one", newline.exception.message)
+
+    def test_a_status_change_by_a_clarify_skill_names_the_skill_rule(self) -> None:
+        error = BoardService._lifecycle_change_error("po-clarify", "knowledge/wiki/features/F-001-x.md", {"status": "raw", "owner": "po"}, {"status": "specified", "owner": "po"})
+        self.assertEqual(("lifecycle_action_required", 409), (error.code, error.status))
+        self.assertIn("`raw` / `po` to `specified` / `po`", error.message)
+        self.assertIn("`po-clarify` never changes status or owner", error.message)
+        lifecycle = BoardService._lifecycle_change_error("po-specify", "knowledge/wiki/features/F-001-x.md", {"status": "raw", "owner": "po"}, {"status": "done", "owner": "none"})
+        self.assertIn("`po-specify` moves a feature only from `raw` / `po` to `specified` / `po`", lifecycle.message)
+
+    def test_a_question_that_is_not_in_the_table_is_named_as_new_and_must_be_open(self) -> None:
+        path, original, _changes = self._ask_proposal()
+        invented = original.replace(
+            "| 1 | Which points should a review summary highlight? | po | open |",
+            "| 1 | Which points should a review summary highlight? | po | open |\n"
+            "| 2 | Where does the export control appear? | designer | resolved: On the review page. |",
+        )
+        self.assertNotEqual(original, invented)
+        with self.assertRaises(BoardError) as error:
+            self.service._validate_question_change("design-clarify", FEATURE_PATH.as_posix(), original, invented)
+        self.assertEqual(("new_question_must_be_open", 409), (error.exception.code, error.exception.status))
+        self.assertIn("Question 2", error.exception.message)
+        self.assertIn("its numbers are 1", error.exception.message)
+        self.assertIn("ask skill", error.exception.message)
+        self.assertEqual({"path": FEATURE_PATH.as_posix(), "question": "2", "existing_questions": ["1"]}, error.exception.details)
+
+    def test_every_listed_reference_of_every_skill_resolves_through_get_skill_reference(self) -> None:
+        names = [item["name"] for item in self.service.list_skills(self.actor)["skills"]]
+        self.assertEqual(24, len(names))
+        for name in names:
+            with self.subTest(skill=name):
+                page = self.service.get_skill(self.actor, name)
+                instructions = page["skill"]["instructions"]
+                while page["next_cursor"] is not None:
+                    page = self.service.get_skill(self.actor, name, page["next_cursor"])
+                    instructions += page["skill"]["instructions"]
+                index = {item["path"]: item for item in page["skill"]["references"]}
+                self.assertTrue(index)
+                listed = set(index)
+                # A path the instructions list as a canonical reference must be one of the skill's references, written the same way.
+                marker = instructions.find("## Canonical format reference")
+                if marker >= 0:
+                    section = instructions[marker:].split("\n## ")[0]
+                    named = re.findall(r"^- `([^`]+)`\s*$", section, flags=re.MULTILINE)
+                    self.assertTrue(named, section)
+                    listed.update(named)
+                for path in sorted(listed):
+                    with self.subTest(skill=name, reference=path):
+                        chunk = self.service.get_skill_reference(self.actor, name, path)
+                        text = chunk["content"]
+                        while chunk["next_cursor"] is not None:
+                            chunk = self.service.get_skill_reference(self.actor, name, path, chunk["next_cursor"])
+                            text += chunk["content"]
+                        self.assertEqual(len(text), chunk["total_chars"])
+                        self.assertEqual("sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest(), chunk["digest"])
+                        if path in index:
+                            self.assertEqual(index[path]["digest"], chunk["digest"])
+
+    def _ask_proposal(self) -> tuple[Path, str, list[dict[str, str]]]:
+        path = self.root / FEATURE_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_feature_page(), encoding="utf-8")
+        original = self.service._read_text(path)
+        proposed = original.replace(
+            "| 1 | Which points should a review summary highlight? | po | open |",
+            "| 1 | Which points should a review summary highlight? | po | open |\n"
+            "| 2 | How should the review be organized? | designer | open |",
+        )
+        return path, original, [{"path": FEATURE_PATH.as_posix(), "content": proposed}]
+
+    def test_omitted_read_revisions_are_filled_from_the_participants_own_reads(self) -> None:
+        _path, _original, changes = self._ask_proposal()
+        explicit = _read_revisions(self.service, self.actor, "ask", changes)
+
+        filled = self.service.preview_skill(self.actor, "ask", changes)
+        self.assertEqual("ready", filled["classification"])
+        self.assertTrue(filled["applicable"])
+        self.assertEqual(explicit, filled["read_revisions"])
+
+        supplied = self.service.preview_skill(self.actor, "ask", changes, read_revisions=explicit)
+        self.assertEqual(supplied["read_revisions"], filled["read_revisions"])
+        self.assertEqual(supplied["source_revision"], filled["source_revision"])
+
+        # A supplied digest still wins over the recorded one and is checked on its own.
+        relative = FEATURE_PATH.as_posix()
+        wrong = {relative: "sha256:" + "ab" * 32}
+        with self.assertRaises(BoardError) as mismatch:
+            self.service.preview_skill(self.actor, "ask", changes, read_revisions=wrong)
+        self.assertEqual("read_digest_mismatch", mismatch.exception.code)
+
+        # The filled preview applies like any other.
+        applied = self.service.apply(self.actor, filled["preview_id"], str(uuid4()))
+        self.assertEqual("applied", applied["state"])
+
+    def test_another_participants_reads_are_never_used_to_fill_revisions(self) -> None:
+        _path, _original, changes = self._ask_proposal()
+        other = self.service.authenticate(self.service.create_participant("Other agent", "agent", writable=True)["token"])
+        _read_revisions(self.service, other, "ask", changes)
+
+        with self.assertRaises(BoardError) as missing:
+            self.service.preview_skill(self.actor, "ask", changes)
+        self.assertEqual(("missing_read_revisions", 409), (missing.exception.code, missing.exception.status))
+
+        # The participant that read is served, the one that did not is not.
+        self.assertTrue(self.service.preview_skill(other, "ask", changes)["applicable"])
+        with self.assertRaises(BoardError) as still_missing:
+            self.service.preview_skill(self.actor, "ask", changes)
+        self.assertEqual("missing_read_revisions", still_missing.exception.code)
+
+    def test_an_unread_path_is_still_rejected_and_the_error_lists_what_to_read(self) -> None:
+        _path, original, changes = self._ask_proposal()
+        relative = FEATURE_PATH.as_posix()
+        required = sorted(self.service._required_skill_revision_paths("ask", {c["path"]: c["content"] for c in changes}, {relative: original}, []))
+        self.assertGreater(len(required), 1)
+        unread = relative
+        # Read every required source except the feature page.
+        self.service.read_workspace(self.actor, [path for path in required if path != unread])
+
+        with self.assertRaises(BoardError) as missing:
+            self.service.preview_skill(self.actor, "ask", changes)
+        error = missing.exception
+        self.assertEqual(("missing_read_revisions", 409), (error.code, error.status))
+        self.assertEqual([unread], error.details["paths"])
+        self.assertEqual(1, error.details["total"])
+        self.assertEqual("read_workspace", error.details["read_with"])
+        self.assertIn(unread, error.message)
+        self.assertIn("read_workspace", error.message)
+        self.assertIn("read them", error.message.lower())
+
+        # Reading it supplies the last digest.
+        self.service.read_workspace(self.actor, [unread])
+        self.assertTrue(self.service.preview_skill(self.actor, "ask", changes)["applicable"])
+
+    def test_a_large_missing_list_keeps_the_message_and_details_short(self) -> None:
+        error = BoardService._missing_read_revisions_error([f"knowledge/wiki/features/F-{number:03d}-" + "x" * 60 + ".md" for number in range(60)])
+        self.assertEqual("missing_read_revisions", error.code)
+        self.assertLess(len(error.message), 1500)
+        self.assertIsNotNone(error.details)
+        self.assertEqual(60, error.details["total"])
+        self.assertLess(len(error.details["paths"]), 60)
+        self.assertRegex(error.message, r"and \d+ more")
+
+    def test_a_file_changed_after_the_participants_read_is_rejected_as_stale(self) -> None:
+        path, original, changes = self._ask_proposal()
+        read = _read_revisions(self.service, self.actor, "ask", changes)
+        path.write_bytes((original + "\nEdited after the read.\n").encode("utf-8"))
+
+        with self.assertRaises(BoardError) as stale:
+            self.service.preview_skill(self.actor, "ask", changes)
+        self.assertEqual(("stale_read_revision", 409), (stale.exception.code, stale.exception.status))
+        self.assertIn("changed after you read it", stale.exception.message)
+        self.assertEqual(read[FEATURE_PATH.as_posix()], stale.exception.details["supplied"])
+
+        # The same rejection as when the digest is supplied by hand.
+        with self.assertRaises(BoardError) as supplied:
+            self.service.preview_skill(self.actor, "ask", changes, read_revisions=read)
+        self.assertEqual(stale.exception.code, supplied.exception.code)
+        self.assertEqual(stale.exception.details, supplied.exception.details)
+
+        # Reading again recovers.
+        edited = self.service._read_text(path)
+        self.assertNotEqual(edited, original)
+        proposed = [{"path": changes[0]["path"], "content": changes[0]["content"] + "\nEdited after the read.\n"}]
+        _read_revisions(self.service, self.actor, "ask", proposed)
+        self.assertTrue(self.service.preview_skill(self.actor, "ask", proposed)["applicable"])
+
+    def test_a_service_restart_clears_the_recorded_reads(self) -> None:
+        _path, _original, changes = self._ask_proposal()
+        _read_revisions(self.service, self.actor, "ask", changes)
+        self.assertTrue(self.service.preview_skill(self.actor, "ask", changes)["applicable"])
+        token = self.service.create_participant("Restart agent", "agent", writable=True)["token"]
+        before = self.service.authenticate(token)
+        _read_revisions(self.service, before, "ask", changes)
+        self.service.close()
+
+        restarted = BoardService(self.root).start()
+        self.addCleanup(restarted.close)
+        after = restarted.authenticate(token)
+        with self.assertRaises(BoardError) as missing:
+            restarted.preview_skill(after, "ask", changes)
+        self.assertEqual("missing_read_revisions", missing.exception.code)
+        _read_revisions(restarted, after, "ask", changes)
+        self.assertTrue(restarted.preview_skill(after, "ask", changes)["applicable"])
+
+    def test_only_a_file_received_in_full_counts_as_read(self) -> None:
+        relative = FEATURE_PATH.as_posix()
+        digest = "sha256:" + "cd" * 32
+        self.service._remember_participant_reads(
+            self.actor,
+            [{"path": relative, "content": "a" * 10, "offset": 0, "total_chars": 25, "digest": digest}],
+        )
+        self.assertEqual({}, self.service._participant_read_digests(self.actor))
+        self.service._remember_participant_reads(
+            self.actor,
+            [{"path": relative, "content": "a" * 15, "offset": 10, "total_chars": 25, "digest": digest}],
+        )
+        self.assertEqual({relative.casefold(): digest}, self.service._participant_read_digests(self.actor))
 
     def test_po_clarify_cannot_resolve_a_designer_owned_question(self) -> None:
         path = self.root / FEATURE_PATH
@@ -337,6 +718,249 @@ class BoardServiceValidatorTests(unittest.TestCase):
                 read_revisions=_read_revisions(self.service, self.actor, "design-clarify", changes),
             )
         self.assertEqual("design_answer_unlinked", error.exception.code)
+
+    # Rejected proposals: every rejection keeps its code and names the place and the fix.
+
+    def _write_feature_page(self, page: str | None = None) -> str:
+        path = self.root / FEATURE_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(page if page is not None else _feature_page(), encoding="utf-8")
+        return self.service._read_text(path)
+
+    def _rejected_preview(self, skill: str, changes: list, moves: list | None = None, **kwargs) -> BoardError:
+        with self.assertRaises(BoardError) as caught:
+            self.service.preview_skill(self.actor, skill, changes, moves, **kwargs)
+        return caught.exception
+
+    def _assert_error_is_small(self, error: BoardError) -> None:
+        import json
+
+        self.assertLess(len(error.message) + len(json.dumps(error.details)), 2000)
+
+    def test_unlinked_clarify_answer_names_section_questions_and_answer_start(self) -> None:
+        original = self._write_feature_page()
+        answer = "Capture key points. " * 15
+        proposed = original.replace(
+            "| 1 | Which points should a review summary highlight? | po | open |",
+            f"| 1 | Which points should a review summary highlight? | po | resolved: {answer.strip()} |",
+        ).replace(
+            "Review a document, summarize its key points, and record the review outcome.",
+            "A different wording of the same idea.",
+        )
+        changes = [{"path": FEATURE_PATH.as_posix(), "content": proposed}]
+
+        error = self._rejected_preview(
+            "po-clarify", changes, read_revisions=_read_revisions(self.service, self.actor, "po-clarify", changes)
+        )
+
+        self.assertEqual("clarify_answer_unlinked", error.code)
+        self.assertEqual(409, error.status)
+        self.assertIn("`Summary`", error.message)
+        self.assertIn(FEATURE_PATH.as_posix(), error.message)
+        self.assertIn("question(s) 1", error.message)
+        self.assertIn("verbatim", error.message)
+        self.assertEqual("Summary", error.details["section"])
+        self.assertEqual(FEATURE_PATH.as_posix(), error.details["path"])
+        self.assertEqual(["1"], error.details["resolved_questions"])
+        start = error.details["resolved_answers"]["1"]
+        self.assertLessEqual(len(start), 160)
+        self.assertTrue(start.startswith("Capture key points. Capture key points."))
+        self._assert_error_is_small(error)
+
+    def test_unlinked_design_answer_names_section_and_designer_questions(self) -> None:
+        original_feature = self._write_feature_page(_feature_page().replace("| po | open |", "| designer | open |"))
+        design_relative = "knowledge/wiki/design/F-001-document-review.md"
+        design_path = self.root / design_relative
+        design_path.parent.mkdir(parents=True, exist_ok=True)
+        design_path.write_text(_design_page(), encoding="utf-8")
+        proposed_feature = original_feature.replace(
+            "| 1 | Which points should a review summary highlight? | designer | open |",
+            "| 1 | Which points should a review summary highlight? | designer | resolved: Use a concise bulleted summary. |",
+        )
+        proposed_design = self.service._read_text(design_path).replace(
+            "The reviewer sees the document title and review status.",
+            "The reviewer opens a modal panel for every document.",
+        )
+        changes = [
+            {"path": FEATURE_PATH.as_posix(), "content": proposed_feature},
+            {"path": design_relative, "content": proposed_design},
+        ]
+
+        error = self._rejected_preview(
+            "design-clarify", changes, read_revisions=_read_revisions(self.service, self.actor, "design-clarify", changes)
+        )
+
+        self.assertEqual("design_answer_unlinked", error.code)
+        self.assertEqual(409, error.status)
+        self.assertIn("`Summary`", error.message)
+        self.assertIn(design_relative, error.message)
+        self.assertIn("designer-owned question(s) 1", error.message)
+        self.assertEqual("Summary", error.details["section"])
+        self.assertEqual(design_relative, error.details["path"])
+        self.assertEqual(["1"], error.details["resolved_questions"])
+        self.assertEqual({"1": "Use a concise bulleted summary."}, error.details["resolved_answers"])
+
+    def test_invalid_yaml_names_path_line_column_and_problem(self) -> None:
+        original = self._write_feature_page()
+        proposed = original.replace(
+            "| 1 | Which points should a review summary highlight? | po | open |",
+            "| 1 | Which points should a review summary highlight? | po | open |\n"
+            "| 2 | How should the review be organized? | designer | open |",
+        ).replace("title: Document review", "title: Document review: bad", 1)
+        line = proposed.splitlines().index("title: Document review: bad") + 1
+        changes = [{"path": FEATURE_PATH.as_posix(), "content": proposed}]
+
+        error = self._rejected_preview(
+            "ask", changes, read_revisions=_read_revisions(self.service, self.actor, "ask", changes)
+        )
+
+        self.assertEqual("invalid_frontmatter", error.code)
+        self.assertEqual(409, error.status)
+        self.assertIn(FEATURE_PATH.as_posix(), error.message)
+        self.assertIn(f"line {line}, column 23", error.message)
+        self.assertIn("mapping values are not allowed here", error.message)
+        self.assertEqual(
+            {
+                "path": FEATURE_PATH.as_posix(),
+                "line": line,
+                "column": 23,
+                "problem": "mapping values are not allowed here",
+            },
+            error.details,
+        )
+
+    def test_page_without_frontmatter_explains_the_required_shape(self) -> None:
+        self._write_feature_page()
+        changes = [{"path": FEATURE_PATH.as_posix(), "content": "## Summary\nNo frontmatter here.\n"}]
+
+        error = self._rejected_preview(
+            "ask", changes, read_revisions=_read_revisions(self.service, self.actor, "ask", changes)
+        )
+
+        self.assertEqual("invalid_markdown", error.code)
+        self.assertEqual(409, error.status)
+        self.assertIn(FEATURE_PATH.as_posix(), error.message)
+        self.assertIn("`---`", error.message)
+        self.assertIn("YAML mapping", error.message)
+        self.assertIn("closing `---`", error.message)
+        self.assertEqual(FEATURE_PATH.as_posix(), error.details["path"])
+
+    def test_malformed_change_and_move_items_name_index_and_fields(self) -> None:
+        good = {"path": FEATURE_PATH.as_posix(), "content": "x"}
+
+        error = self._rejected_preview("ask", [good, {"path": "knowledge/wiki/features/F-002.md", "body": "x"}])
+        self.assertEqual(("invalid_change", 400), (error.code, error.status))
+        self.assertIn("`changes[1]`", error.message)
+        self.assertIn("`content`", error.message)
+        self.assertIn("`body`", error.message)
+        self.assertEqual(
+            {"index": 1, "missing": ["content"], "unexpected": ["body"], "expected": ["path", "content"]},
+            error.details,
+        )
+
+        error = self._rejected_preview("po-intake", [good], [{"source": "knowledge/intake/pending/a"}])
+        self.assertEqual(("invalid_move", 400), (error.code, error.status))
+        self.assertIn("`moves[0]`", error.message)
+        self.assertEqual(
+            {"index": 0, "missing": ["destination"], "unexpected": [], "expected": ["source", "destination"]},
+            error.details,
+        )
+
+        error = self._rejected_preview("po-intake", [good], [{"source": "a", "destination": "b", "extra": "c"}])
+        self.assertEqual("invalid_move", error.code)
+        self.assertEqual(["extra"], error.details["unexpected"])
+
+        error = self._rejected_preview("po-intake", [good], [{"source": "a", "destination": "b"}] * 2)
+        self.assertEqual(("invalid_moves", 400), (error.code, error.status))
+        self.assertIn("`moves[1]`", error.message)
+        self.assertEqual({"index": 1, "maximum": 1, "received": 2}, error.details)
+
+        error = self._rejected_preview("ask", [good] * 129)
+        self.assertEqual(("invalid_changes", 400), (error.code, error.status))
+        self.assertIn("`changes[128]`", error.message)
+        self.assertEqual({"index": 128, "maximum": 128, "received": 129}, error.details)
+
+    def test_lifecycle_scope_error_lists_path_and_offending_fields(self) -> None:
+        path = self.root / FEATURE_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_feature_page(), encoding="utf-8")
+        original = _set_feature_stage(self.service._read_text(path), "specified", "po", self.service)
+        path.write_bytes(original.encode("utf-8"))
+        _write_index(self.root, "specified", "po")
+        proposed = _set_feature_stage(original, "ready-for-design", "designer", self.service).replace(
+            "title: Document review", "title: Renamed review", 1
+        )
+        changes = [{"path": FEATURE_PATH.as_posix(), "content": proposed}]
+
+        error = self._rejected_preview(
+            "po-handoff", changes, read_revisions=_read_revisions(self.service, self.actor, "po-handoff", changes)
+        )
+
+        self.assertEqual(("lifecycle_frontmatter_scope", 409), (error.code, error.status))
+        self.assertIn(FEATURE_PATH.as_posix(), error.message)
+        self.assertIn("title", error.message)
+        self.assertEqual(FEATURE_PATH.as_posix(), error.details["path"])
+        self.assertEqual(["title"], error.details["fields"])
+        self.assertIn("status", error.details["allowed"])
+
+    def test_unknown_and_clarify_frontmatter_errors_list_fields(self) -> None:
+        original = self._write_feature_page()
+        question_row = "| 1 | Which points should a review summary highlight? | po | open |"
+        added = question_row + "\n| 2 | How should the review be organized? | designer | open |"
+
+        with_unknown = original.replace(question_row, added).replace(
+            "advisory-review: not-needed", "advisory-review: not-needed\nreviewer: Alex", 1
+        )
+        changes = [{"path": FEATURE_PATH.as_posix(), "content": with_unknown}]
+        error = self._rejected_preview(
+            "ask", changes, read_revisions=_read_revisions(self.service, self.actor, "ask", changes)
+        )
+        self.assertEqual(("unknown_frontmatter_fields", 409), (error.code, error.status))
+        self.assertIn(FEATURE_PATH.as_posix(), error.message)
+        self.assertIn("reviewer", error.message)
+        self.assertEqual(FEATURE_PATH.as_posix(), error.details["path"])
+        self.assertEqual(["reviewer"], error.details["fields"])
+
+        retitled = original.replace(question_row, added).replace("title: Document review", "title: Renamed review", 1)
+        changes = [{"path": FEATURE_PATH.as_posix(), "content": retitled}]
+        error = self._rejected_preview(
+            "ask", changes, read_revisions=_read_revisions(self.service, self.actor, "ask", changes)
+        )
+        self.assertEqual(("clarify_frontmatter_change", 409), (error.code, error.status))
+        self.assertIn(FEATURE_PATH.as_posix(), error.message)
+        self.assertIn("title", error.message)
+        self.assertEqual({"path": FEATURE_PATH.as_posix(), "fields": ["title"]}, error.details)
+
+    def test_design_clarify_frontmatter_change_lists_design_path_and_fields(self) -> None:
+        original_feature = self._write_feature_page(_feature_page().replace("| po | open |", "| designer | open |"))
+        design_relative = "knowledge/wiki/design/F-001-document-review.md"
+        design_path = self.root / design_relative
+        design_path.parent.mkdir(parents=True, exist_ok=True)
+        design_path.write_text(_design_page(), encoding="utf-8")
+        proposed_feature = original_feature.replace(
+            "| 1 | Which points should a review summary highlight? | designer | open |",
+            "| 1 | Which points should a review summary highlight? | designer | resolved: Use a concise bulleted summary. |",
+        )
+        proposed_design = self.service._read_text(design_path).replace("designer: Reviewer", "designer: Someone Else", 1)
+        changes = [
+            {"path": FEATURE_PATH.as_posix(), "content": proposed_feature},
+            {"path": design_relative, "content": proposed_design},
+        ]
+
+        error = self._rejected_preview(
+            "design-clarify", changes, read_revisions=_read_revisions(self.service, self.actor, "design-clarify", changes)
+        )
+
+        self.assertEqual(("design_frontmatter_change", 409), (error.code, error.status))
+        self.assertIn(design_relative, error.message)
+        self.assertEqual({"path": design_relative, "fields": ["designer"]}, error.details)
+
+    def test_error_details_are_json_safe_and_small(self) -> None:
+        self.assertIsNone(BoardError("x", "m", 400).details)
+        self.assertIsNone(BoardError("x", "m", 400, {}).details)
+        self.assertIsNone(BoardError("x", "m", 400, {"bad": object()}).details)
+        self.assertIsNone(BoardError("x", "m", 400, {"long": "a" * 5000}).details)
+        self.assertEqual({"a": [1, "b"]}, BoardError("x", "m", 400, {"a": (1, "b")}).details)
 
     def test_po_handoff_cannot_rewrite_feature_body(self) -> None:
         path = self.root / FEATURE_PATH
@@ -401,7 +1025,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
 
         feature_relative = "knowledge/wiki/features/F-002-document-review.md"
         feature = _feature_page().replace("F-001", "F-002").replace("Document review", "Second document review")
-        feature = _set_feature_stage(feature, "specified", "po").replace(
+        feature = _set_feature_stage(feature, "raw", "po").replace(
             "knowledge/intake/processed/document-review-brief/brief.md",
             "knowledge/intake/processed/document-review-brief/brief.md",
         )
@@ -536,7 +1160,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         feature = _journey_feature_page(
             "F-001",
             "Document review",
-            "specified",
+            "raw",
             "po",
             [processed_folder + "/brief.md"],
             ["| 1 | Which details should the summary emphasize? | po | open |"],
@@ -577,6 +1201,13 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             f"- [ ] {po_answer}",
         )
         self._submit_skill("po-clarify", [{"path": feature_path, "content": clarified}])
+
+        # po-intake created F-001 as raw; po-specify completes it and moves it
+        # to specified, which design intake and the PO handoff require.
+        current = self.service._read_text(self.root / feature_path)
+        self.assertEqual("raw", _parse_markdown(current)[0]["status"])
+        self._submit_skill("po-specify", [{"path": feature_path, "content": _set_feature_stage(current, "specified", "po", self.service)}])
+        self.assertEqual("specified", self.service.query(self.agent, "show", "F-001")["facts"]["feature"]["status"])
 
         # Process a design note in a folder with an empty nested directory; the
         # journal must preserve both file and directory membership at apply.
@@ -885,6 +1516,136 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         )
 
 
+class BoardServiceReopenRecordTests(unittest.TestCase):
+    """The archived evidence of a reopen record may follow its label in the layouts an agent writes."""
+
+    FEATURE = "knowledge/wiki/features/F-001-document-review.md"
+    REQUIREMENT = "knowledge/wiki/platform-requirements/F-001-backend.md"
+    DESIGN = "knowledge/wiki/design/F-001-document-review.md"
+    PRIOR_ROW = "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | Synthetic release label `review-v1` |"
+    TABLE = ["| Platform | Implementation | Tests | Release |", "|---|---|---|---|", PRIOR_ROW]
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = create_core_workflow_fixture(Path(temporary.name) / "generated-project")
+        self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Document review", platforms=["backend"]))["status"])
+        (self.root / INTAKE_ITEM).parent.rename(self.root / "knowledge/intake/processed/document-review-brief")
+        for relative, content in (
+            (self.FEATURE, _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/document-review-brief"], ["| 1 | Which points should a review summary highlight? | po | resolved: The key points. |"])),
+            (self.REQUIREMENT, _journey_requirement_page("in-progress")),
+            (self.DESIGN, _journey_design_page()),
+        ):
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content.encode("utf-8"))
+        feature = (self.root / self.FEATURE).read_text(encoding="utf-8")
+        (self.root / self.FEATURE).write_bytes(feature.replace("No design has been recorded yet.", "The design is recorded in [F-001 design](../design/F-001-document-review.md).").encode("utf-8"))
+        _write_index_rows(self.root, [("F-001", "Document review", "in-dev", "dev")])
+        self.service = BoardService(self.root).start()
+        self.addCleanup(self.service.close)
+        self.agent = self.service.authenticate(self.service.create_participant("Workflow agent", "agent", True)["token"])
+        self.complete()
+
+    def submit(self, skill: str, changes: list[dict[str, str]]) -> dict:
+        preview = self.service.preview_skill(self.agent, skill, changes, None, _read_revisions(self.service, self.agent, skill, changes))
+        return preview
+
+    def complete(self) -> None:
+        current = self.service._read_text(self.root / self.FEATURE)
+        done = _set_feature_stage(current, "done", "none", self.service)
+        done = _replace_body_section(self.service, done, "Delivery evidence", "\n".join(self.TABLE))
+        done = _replace_body_section(self.service, done, "Post-ship notes", "No deviations were recorded in this fixture.")
+        requirement = _set_requirement_status(self.service._read_text(self.root / self.REQUIREMENT), "done")
+        preview = self.submit("dev-done", [{"path": self.FEATURE, "content": done}, {"path": self.REQUIREMENT, "content": requirement}])
+        self.assertTrue(preview["applicable"], preview["checks"])
+        self.assertEqual("applied", self.service.apply(self.agent, preview["preview_id"], str(uuid4()))["state"])
+
+    def record(self, archive: list[str], trailer: list[str] | None = None) -> str:
+        lines = [
+            f"### {CHECK_DATE.isoformat()} - reopen-dev",
+            "- Reason: A confirmed reviewer needs a revised outcome summary.",
+            "- Impact review: Recheck implementation, tests, release evidence, and the linked backend requirement.",
+            "- Affected platforms: backend",
+            f"- Affected artifacts: {self.FEATURE} and {self.REQUIREMENT}",
+            *archive,
+            f"- Requirement/API invalidations: {self.REQUIREMENT} done -> in-progress",
+            *(trailer or []),
+        ]
+        return "\n".join(lines)
+
+    def reopen(self, record: str) -> dict:
+        current = self.service._read_text(self.root / self.FEATURE)
+        reopened = _set_stage_and_revalidation(self.service, current, "in-dev", "dev", ["implementation", "tests", "release"])
+        reopened = _replace_body_section(self.service, reopened, "Delivery evidence", "| Platform | Implementation | Tests | Release |\n|---|---|---|---|")
+        reopened = _append_body_section(self.service, reopened, "Reopen history", record)
+        requirement = _set_requirement_status(self.service._read_text(self.root / self.REQUIREMENT), "in-progress")
+        return self.submit("feature-reopen", [{"path": self.FEATURE, "content": reopened}, {"path": self.REQUIREMENT, "content": requirement}])
+
+    def test_the_archived_row_is_accepted_on_the_label_line_or_below_it_in_a_table_or_a_list(self) -> None:
+        label = "- Prior completion/release evidence:"
+        compact_row = "|backend|Synthetic review record `tests/fixtures/review.md`|Acceptance check `document-review` passed|Synthetic release label `review-v1`|"
+        layouts = {
+            "same line": [f"{label} {self.PRIOR_ROW}"],
+            "sentence then table, no indent": [f"{label} Archived unchanged in the table below.", "", *self.TABLE, ""],
+            "label alone, indented table": [label, *(f"  {line}" for line in self.TABLE)],
+            "sentence then indented table": [f"{label} Archived as it was.", "", *(f"  {line}" for line in self.TABLE)],
+            "list item": [label, f"  - {self.PRIOR_ROW}"],
+            "row without spaces around pipes": [label, compact_row],
+        }
+        for name, archive in layouts.items():
+            with self.subTest(layout=name):
+                preview = self.reopen(self.record(archive))
+                self.assertEqual("ready", preview["classification"], preview["checks"])
+                self.assertTrue(preview["applicable"], preview["blockers"])
+
+    def test_a_row_outside_the_label_block_or_changed_is_rejected_with_the_expected_layout(self) -> None:
+        label = "- Prior completion/release evidence:"
+        rejected = {
+            "table after the next label": self.reopen_error(self.record([f"{label} Archived below."], ["", *self.TABLE])),
+            "table under a later heading": self.reopen_error(self.record([f"{label} Archived below."], ["", "#### Archived delivery evidence", *self.TABLE])),
+            "row changed": self.reopen_error(self.record([f"{label} {self.PRIOR_ROW.replace('review-v1', 'review-v2')}"])),
+        }
+        for name, error in rejected.items():
+            with self.subTest(case=name):
+                self.assertEqual(("delivery_evidence_not_archived", 409), (error.code, error.status))
+                self.assertIn("- Prior completion/release evidence:", error.message)
+                self.assertIn("next `- Label:` line or heading", error.message)
+                self.assertIn("Missing row: | backend | Synthetic review record", error.message)
+                self.assertEqual("Prior completion/release evidence", error.details["label"])
+                self.assertEqual(self.FEATURE, error.details["path"])
+        empty = self.reopen_error(self.record(["- Prior completion/release evidence:"]))
+        self.assertEqual("impact_review_required", empty.code)
+
+    def test_reopen_rejections_name_the_exact_format_of_the_invalidation_line(self) -> None:
+        archive = ["- Prior completion/release evidence:", *(f"  {line}" for line in self.TABLE)]
+        arrow_line = f"- Requirement/API invalidations: {self.REQUIREMENT} done -> in-progress"
+        good = self.record(archive)
+        self.assertIn(arrow_line, good)
+
+        sentence = self.reopen_error(good.replace(arrow_line, f"- Requirement/API invalidations: {self.REQUIREMENT} status changed from `done` to `in-progress`"))
+        self.assertEqual(("reopen_invalidation_mismatch", 409), (sentence.code, sentence.status))
+        self.assertIn(f"`{self.REQUIREMENT}: done -> in-progress`", sentence.message)
+        self.assertEqual({"path": self.REQUIREMENT, "from": "done", "to": "in-progress"}, sentence.details)
+
+        unnamed = self.reopen_error(good.replace(f"- Affected artifacts: {self.FEATURE} and {self.REQUIREMENT}", f"- Affected artifacts: {self.FEATURE} and the backend renderer"))
+        self.assertEqual(("reopen_artifact_missing", 409), (unnamed.code, unnamed.status))
+        self.assertIn(self.REQUIREMENT, unnamed.message)
+        self.assertIn("Affected artifacts", unnamed.message)
+
+        none = self.reopen_error(good.replace(arrow_line, "- Requirement/API invalidations: None"))
+        self.assertEqual(("impact_review_required", 409), (none.code, none.status))
+        self.assertIn("Requirement/API invalidations", none.message)
+        self.assertIn("done -> in-progress", none.message)
+        self.assertIn("No requirement or API page is invalidated.", none.message)
+        self.assertEqual({"label": "Requirement/API invalidations"}, none.details)
+
+    def reopen_error(self, record: str) -> BoardError:
+        with self.assertRaises(BoardError) as error:
+            self.reopen(record)
+        return error.exception
+
+
 def _read_revisions(
     service: BoardService,
     actor: object,
@@ -908,8 +1669,15 @@ def _read_revisions(
             }
         )
     required = service._required_skill_revision_paths(skill, supplied, before, normalized_moves)
-    response = service.read_workspace(actor, sorted(required)) if required else {"files": []}
-    return {item["path"]: item["digest"] for item in response["files"]}
+    digests: dict[str, str] = {}
+    cursor = None
+    while required:
+        response = service.read_workspace(actor, sorted(required), cursor)
+        digests.update({item["path"]: item["digest"] for item in response["files"]})
+        cursor = response["next_cursor"]
+        if cursor is None:
+            break
+    return digests
 
 
 def _set_feature_stage(content: str, status: str, owner: str, service: BoardService | None = None) -> str:
@@ -1112,3 +1880,410 @@ def _unquote_yaml_date_fields(content: str) -> str:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BoardServiceCloudSyncTests(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.base = Path(temporary.name)
+        self.root = self.base / "synced" / "board"
+        self.root.mkdir(parents=True)
+        self.assertEqual(
+            "applied",
+            apply_install(self.root, plan_install(self.root, name="Cloud board", platforms=["backend"]))["status"],
+        )
+
+    def test_cloud_ancestor_is_rejected_with_cloud_guidance(self) -> None:
+        with fake_reparse(self.base / "synced", CLOUD_TAG):
+            with self.assertRaises(BoardError) as raised:
+                BoardService(self.root)
+
+        self.assertEqual("cloud_sync_path", raised.exception.code)
+        self.assertEqual(403, raised.exception.status)
+        self.assertEqual(CLOUD_SYNC_MESSAGE, raised.exception.message)
+        self.assertNotIn(str(self.base), raised.exception.message)
+
+    def test_cloud_workspace_root_is_rejected_with_cloud_guidance(self) -> None:
+        with fake_reparse(self.root, 0x9000701A):
+            with self.assertRaises(BoardError) as raised:
+                BoardService(self.root)
+
+        self.assertEqual("cloud_sync_path", raised.exception.code)
+
+    def test_non_cloud_reparse_keeps_the_generic_rejection(self) -> None:
+        for tag in (JUNCTION_TAG, 0x80000021, None):
+            with self.subTest(tag=tag), fake_reparse(self.base / "synced", tag):
+                with self.assertRaises(BoardError) as raised:
+                    BoardService(self.root)
+
+                self.assertEqual("reparse_path", raised.exception.code)
+                self.assertEqual(403, raised.exception.status)
+                self.assertEqual("Symlinks and reparse points are not allowed in BoardService paths.", raised.exception.message)
+
+    def test_cloud_state_directory_surfaces_cloud_guidance_when_state_opens(self) -> None:
+        service = BoardService(self.root)
+        self.addCleanup(service.close)
+        with fake_reparse(self.root / ".prism", CLOUD_TAG):
+            with self.assertRaises(BoardError) as started:
+                service.start()
+            with self.assertRaises(BoardError) as lazy:
+                service.create_participant("Reader", "agent", writable=False)
+
+        for raised in (started, lazy):
+            self.assertEqual("cloud_sync_path", raised.exception.code)
+            self.assertEqual(403, raised.exception.status)
+            self.assertEqual(CLOUD_SYNC_MESSAGE, raised.exception.message)
+
+
+def _legacy_validate_graph_inputs(service: BoardService) -> None:
+    """The per-entry ancestor walk that ``validate_graph_inputs`` replaced; the oracle for equivalence."""
+
+    from prism_cli.wiki_transitions import _capability_paths
+    from prism_cli.workspace import COPIER_ANSWERS_FILE, PLATFORM_DIRS
+
+    root = service.root
+    roots = [
+        root / "knowledge",
+        root / "knowledge" / "wiki",
+        root / "knowledge" / "intake" / "pending",
+        root / "knowledge" / "intake" / "processed",
+        root / "knowledge" / "intake" / "quarantined",
+    ]
+    files = [
+        root / "prism.workspace.yml",
+        root / COPIER_ANSWERS_FILE,
+        *(root / directory for directory in PLATFORM_DIRS.values()),
+        *(root / relative for relative in _capability_paths()),
+    ]
+    for path in files:
+        BoardService._reject_reparse(path, include_leaf=True)
+    for tree in roots:
+        BoardService._reject_reparse(tree, include_leaf=True)
+        if not tree.is_dir():
+            continue
+        pending = [tree]
+        while pending:
+            current = pending.pop()
+            BoardService._reject_reparse(current, include_leaf=True)
+            try:
+                children = list(current.iterdir())
+            except OSError as exc:
+                raise BoardError("graph_path_unavailable", "Graph input tree cannot be traversed safely.", 409) from exc
+            for child in children:
+                BoardService._reject_reparse(child, include_leaf=True)
+                if child.is_dir():
+                    pending.append(child)
+
+
+def _legacy_tree_children(path: Path) -> list[Path]:
+    return sorted(path.rglob("*"), key=lambda item: item.relative_to(path).as_posix())
+
+
+def _legacy_tree_digest(path: Path) -> str:
+    from prism_cli.board_service import _revision, _sha256
+
+    BoardService._reject_reparse(path, include_leaf=True)
+    entries: list[tuple[str, str]] = []
+    for child in _legacy_tree_children(path):
+        BoardService._reject_reparse(child, include_leaf=True)
+        if child.is_file():
+            entries.append((child.relative_to(path).as_posix(), _sha256(child.read_bytes())))
+        elif child.is_dir():
+            entries.append((child.relative_to(path).as_posix() + "/", "directory"))
+        else:
+            raise BoardError("unsupported_path_type", "Intake trees may contain only regular files and directories.", 409)
+    return _revision({name: digest for name, digest in entries})
+
+
+def _legacy_tree_snapshot(path: Path) -> dict[str, str]:
+    from prism_cli.board_service import _sha256
+
+    BoardService._reject_reparse(path, include_leaf=True)
+    result: dict[str, str] = {}
+    for child in _legacy_tree_children(path):
+        BoardService._reject_reparse(child, include_leaf=True)
+        if child.is_file():
+            result[child.relative_to(path).as_posix()] = _sha256(child.read_bytes())
+        elif not child.is_dir():
+            raise BoardError("unsupported_path_type", "Intake trees may contain only regular files and directories.", 409)
+    return result
+
+
+def _legacy_tree_directories(path: Path) -> list[str]:
+    BoardService._reject_reparse(path, include_leaf=True)
+    result: list[str] = []
+    for child in _legacy_tree_children(path):
+        BoardService._reject_reparse(child, include_leaf=True)
+        if child.is_dir():
+            result.append(child.relative_to(path).as_posix())
+        elif not child.is_file():
+            raise BoardError("unsupported_path_type", "Intake trees may contain only regular files and directories.", 409)
+    return result
+
+
+def _legacy_copy_tree_safely(source: Path, destination: Path) -> None:
+    import os
+
+    BoardService._reject_reparse(source, include_leaf=True)
+    destination.mkdir(parents=True, exist_ok=True)
+    pending = [(source, destination)]
+    while pending:
+        current_source, current_destination = pending.pop()
+        BoardService._reject_reparse(current_source, include_leaf=True)
+        try:
+            with os.scandir(current_source) as entries:
+                children = sorted(list(entries), key=lambda entry: entry.name)
+        except OSError as exc:
+            raise BoardError("candidate_copy_failed", "A candidate wiki/intake tree cannot be inspected safely.", 409) from exc
+        for entry in children:
+            source_child = Path(entry.path)
+            target_child = current_destination / entry.name
+            BoardService._reject_reparse(source_child, include_leaf=True)
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    target_child.mkdir(parents=True, exist_ok=True)
+                    pending.append((source_child, target_child))
+                elif entry.is_file(follow_symlinks=False):
+                    BoardService._reject_reparse(source_child, include_leaf=True)
+                    target_child.parent.mkdir(parents=True, exist_ok=True)
+                    target_child.write_bytes(source_child.read_bytes())
+                else:
+                    raise BoardError("candidate_copy_failed", "Candidate trees may contain only regular files and directories.", 409)
+            except OSError as exc:
+                raise BoardError("candidate_copy_failed", "A candidate wiki/intake tree cannot be copied safely.", 409) from exc
+
+
+class _FakeReparseEntry:
+    """A ``DirEntry`` that reports one chosen path as a reparse point from ``stat``."""
+
+    def __init__(self, entry: Any, target: Path, tag: int | None) -> None:
+        self._entry = entry
+        self._target = target
+        self._tag = tag
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._entry, name)
+
+    def stat(self, *, follow_symlinks: bool = True) -> Any:
+        info = self._entry.stat(follow_symlinks=follow_symlinks)
+        if Path(self._entry.path) != self._target:
+            return info
+        fields = {"st_mode": info.st_mode, "st_size": info.st_size, "st_file_attributes": 0x400}
+        if self._tag is not None:
+            fields["st_reparse_tag"] = self._tag
+        return SimpleNamespace(**fields)
+
+
+class _FakeReparseListing:
+    def __init__(self, listing: Any, target: Path, tag: int | None) -> None:
+        self._listing = listing
+        self._target = target
+        self._tag = tag
+
+    def __enter__(self) -> "_FakeReparseListing":
+        self._listing.__enter__()
+        return self
+
+    def __exit__(self, *exc_info: Any) -> Any:
+        return self._listing.__exit__(*exc_info)
+
+    def __iter__(self) -> Any:
+        return (_FakeReparseEntry(entry, self._target, self._tag) for entry in self._listing)
+
+
+@contextmanager
+def _fake_reparse_in_tree(target: Path, tag: int | None) -> Iterator[None]:
+    """Report ``target`` as a reparse point with ``tag`` to ``Path.lstat`` and to directory listings."""
+
+    real_scandir = os.scandir
+
+    def scandir(path: Any = ".") -> _FakeReparseListing:
+        return _FakeReparseListing(real_scandir(path), target, tag)
+
+    with fake_reparse(target, tag), patch("prism_cli.board_service.os.scandir", scandir):
+        yield
+
+
+def _link_directory(link: Path, target: Path) -> bool:
+    """Create a junction on Windows or a directory symlink elsewhere; False when the OS refuses."""
+
+    try:
+        if os.name == "nt":
+            result = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True, check=False)
+            return result.returncode == 0
+        os.symlink(target, link, target_is_directory=True)
+        return True
+    except OSError:
+        return False
+
+
+def _outcome(call: Callable[[], Any]) -> tuple[Any, ...]:
+    try:
+        value = call()
+    except BoardError as error:
+        return ("rejected", error.code, error.status, error.message)
+    return ("accepted", value)
+
+
+class BoardServiceTreeWalkEquivalenceTests(unittest.TestCase):
+    """The single-walk checks reject exactly what the per-entry ancestor walk rejected."""
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.base = Path(temporary.name)
+        self.outside = self.base / "outside"
+        self.outside.mkdir()
+        (self.outside / "x.md").write_text("outside\n", encoding="utf-8")
+        self.parent = self.base / "synced"
+        self.root = create_core_workflow_fixture(self.parent / "board")
+        self.service = BoardService(self.root)
+        self.addCleanup(self.service.close)
+        self.features = self.root / "knowledge" / "wiki" / "features"
+        self.intake = self.root / INTAKE_ITEM.parent
+        (self.intake / "nested" / "empty").mkdir(parents=True)
+        (self.intake / "nested" / "notes.md").write_text("nested notes\n", encoding="utf-8")
+
+    def assert_validate_matches(self, expected_code: str | None) -> None:
+        legacy = _outcome(lambda: _legacy_validate_graph_inputs(self.service))
+        current = _outcome(self.service.validate_graph_inputs)
+        self.assertEqual(legacy, current)
+        if expected_code is None:
+            self.assertEqual("accepted", current[0])
+        else:
+            self.assertEqual(("rejected", expected_code), current[:2])
+
+    def assert_tree_helpers_match(self, tree: Path, expected_code: str | None) -> None:
+        pairs = (
+            (lambda: _legacy_tree_digest(tree), lambda: self.service._tree_digest(tree)),
+            (lambda: _legacy_tree_snapshot(tree), lambda: self.service._tree_snapshot(tree)),
+            (lambda: _legacy_tree_directories(tree), lambda: self.service._tree_directories(tree)),
+        )
+        for legacy_call, current_call in pairs:
+            legacy = _outcome(legacy_call)
+            current = _outcome(current_call)
+            self.assertEqual(legacy, current)
+            if expected_code is None:
+                self.assertEqual("accepted", current[0])
+            else:
+                self.assertEqual(("rejected", expected_code), current[:2])
+
+    def assert_copy_matches(self, tree: Path, expected_code: str | None) -> None:
+        legacy_destination = self.base / f"legacy-copy-{uuid4().hex[:8]}"
+        current_destination = self.base / f"current-copy-{uuid4().hex[:8]}"
+        legacy = _outcome(lambda: _legacy_copy_tree_safely(tree, legacy_destination))
+        current = _outcome(lambda: self.service._copy_tree_safely(tree, current_destination))
+        self.assertEqual(legacy, current)
+        if expected_code is None:
+            self.assertEqual("accepted", current[0])
+            self.assertEqual(_legacy_tree_snapshot(legacy_destination), _legacy_tree_snapshot(current_destination))
+            self.assertEqual(_legacy_tree_directories(legacy_destination), _legacy_tree_directories(current_destination))
+            self.assertEqual(_legacy_tree_snapshot(tree), _legacy_tree_snapshot(current_destination))
+        else:
+            self.assertEqual(("rejected", expected_code), current[:2])
+
+    def test_clean_tree_is_accepted_the_same_way(self) -> None:
+        self.assert_validate_matches(None)
+        self.assert_tree_helpers_match(self.intake, None)
+        self.assert_copy_matches(self.intake, None)
+        self.assert_copy_matches(self.root / "knowledge" / "wiki", None)
+
+    def test_tree_digest_matches_for_a_populated_tree(self) -> None:
+        self.assertEqual(_legacy_tree_digest(self.intake), self.service._tree_digest(self.intake))
+        self.assertEqual(_legacy_tree_snapshot(self.intake), self.service._tree_snapshot(self.intake))
+        self.assertEqual(["nested", "nested/empty"], self.service._tree_directories(self.intake))
+        self.assertEqual({"brief.md", "nested/notes.md"}, set(self.service._tree_snapshot(self.intake)))
+
+    def test_missing_trees_match(self) -> None:
+        missing = self.root / "knowledge" / "intake" / "pending" / "absent"
+        self.assert_tree_helpers_match(missing, None)
+
+    def test_junction_inside_the_wiki_is_rejected_the_same_way(self) -> None:
+        if not _link_directory(self.features / "linked-dir", self.outside):
+            self.skipTest("Directory links are not available here.")
+        self.assert_validate_matches("reparse_path")
+        self.assert_tree_helpers_match(self.root / "knowledge" / "wiki", "reparse_path")
+        self.assert_copy_matches(self.root / "knowledge" / "wiki", "reparse_path")
+
+    def test_junction_inside_an_intake_queue_is_rejected_the_same_way(self) -> None:
+        if not _link_directory(self.intake / "linked-dir", self.outside):
+            self.skipTest("Directory links are not available here.")
+        self.assert_validate_matches("reparse_path")
+        self.assert_tree_helpers_match(self.intake, "reparse_path")
+        self.assert_copy_matches(self.intake, "reparse_path")
+
+    def test_junction_replacing_a_capability_directory_is_rejected_the_same_way(self) -> None:
+        shutil.rmtree(self.root / ".claude")
+        if not _link_directory(self.root / ".claude", self.outside):
+            self.skipTest("Directory links are not available here.")
+        self.assert_validate_matches("reparse_path")
+
+    def test_file_symlink_is_rejected_the_same_way(self) -> None:
+        link = self.features / "linked.md"
+        try:
+            os.symlink(self.outside / "x.md", link)
+        except (OSError, NotImplementedError):
+            self.skipTest("File symlinks are not available here.")
+        self.assert_validate_matches("reparse_path")
+        self.assert_tree_helpers_match(self.root / "knowledge" / "wiki", "reparse_path")
+
+    def test_cloud_placeholder_inside_the_tree_is_rejected_the_same_way(self) -> None:
+        placeholder = self.features / "placeholder.md"
+        placeholder.write_text("placeholder\n", encoding="utf-8")
+        with _fake_reparse_in_tree(placeholder, CLOUD_TAG):
+            self.assert_validate_matches("cloud_sync_path")
+            self.assert_tree_helpers_match(self.root / "knowledge" / "wiki", "cloud_sync_path")
+            self.assert_copy_matches(self.root / "knowledge" / "wiki", "cloud_sync_path")
+        self.assert_validate_matches(None)
+
+    def test_cloud_placeholder_directory_inside_the_tree_is_rejected_the_same_way(self) -> None:
+        with _fake_reparse_in_tree(self.intake / "nested", 0x9000701A):
+            self.assert_validate_matches("cloud_sync_path")
+            self.assert_tree_helpers_match(self.intake, "cloud_sync_path")
+            self.assert_copy_matches(self.intake, "cloud_sync_path")
+
+    def test_other_reparse_tags_inside_the_tree_keep_the_generic_rejection(self) -> None:
+        target = self.features / "tagged.md"
+        target.write_text("tagged\n", encoding="utf-8")
+        for tag in (JUNCTION_TAG, 0x80000021, None):
+            with self.subTest(tag=tag), _fake_reparse_in_tree(target, tag):
+                self.assert_validate_matches("reparse_path")
+                self.assert_tree_helpers_match(self.root / "knowledge" / "wiki", "reparse_path")
+
+    def test_cloud_and_reparse_ancestors_of_the_root_are_rejected_the_same_way(self) -> None:
+        with fake_reparse(self.parent, CLOUD_TAG):
+            self.assert_validate_matches("cloud_sync_path")
+        with fake_reparse(self.base, JUNCTION_TAG):
+            self.assert_validate_matches("reparse_path")
+        with fake_reparse(self.root, 0x9000701A):
+            self.assert_validate_matches("cloud_sync_path")
+
+    def test_cloud_placeholder_on_a_checked_file_or_the_knowledge_folder_is_rejected_the_same_way(self) -> None:
+        for target in (self.root / "prism.workspace.yml", self.root / ".claude" / "commands", self.root / "knowledge"):
+            with self.subTest(target=target.relative_to(self.root).as_posix()), fake_reparse(target, CLOUD_TAG):
+                self.assert_validate_matches("cloud_sync_path")
+
+    def test_ancestor_chain_is_checked_on_every_call(self) -> None:
+        self.service.validate_graph_inputs()
+        with fake_reparse(self.parent, CLOUD_TAG):
+            with self.assertRaises(BoardError) as raised:
+                self.service.validate_graph_inputs()
+        self.assertEqual("cloud_sync_path", raised.exception.code)
+        self.service.validate_graph_inputs()
+
+    def test_ancestors_are_not_rechecked_for_every_entry(self) -> None:
+        for number in range(40):
+            (self.features / f"F-{number + 100:03d}-extra.md").write_text("extra\n", encoding="utf-8")
+        lstat_calls = []
+        real_lstat = Path.lstat
+
+        def counting_lstat(path: Path, *args: Any, **kwargs: Any) -> Any:
+            lstat_calls.append(path)
+            return real_lstat(path, *args, **kwargs)
+
+        with patch.object(Path, "lstat", counting_lstat):
+            self.service.validate_graph_inputs()
+        feature_entries = [path for path in lstat_calls if path.parent == self.features]
+        self.assertEqual([], feature_entries)
+        self.assertLess(len(lstat_calls), 120)

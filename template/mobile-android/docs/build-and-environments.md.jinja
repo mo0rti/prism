@@ -45,6 +45,8 @@ On Windows, use `gradlew.bat` instead of `./gradlew`.
 - `mobile-android/local.config.properties` supplies the local `API_BASE_URL`.
 - `app/build.gradle.kts` reads that file from the Android project root and falls back to `http://10.0.2.2:8080/api/v1/` when the file is absent.
 - `10.0.2.2` lets an Android emulator reach a backend running on the host machine.
+- The debug build reaches that HTTP backend through `app/src/debug/` (`AndroidManifest.xml` plus `res/xml/network_security_config.xml`), which allows cleartext only for `10.0.2.2` and `localhost`. The main manifest has no cleartext setting, so release builds stay HTTPS-only. To use a LAN address from a physical device, add that host to the debug config only.
+- `android:allowBackup` is `false`: the refresh token in `auth_prefs` stays out of cloud and device-transfer backups.
 
 ## Local Emulator Workflow
 

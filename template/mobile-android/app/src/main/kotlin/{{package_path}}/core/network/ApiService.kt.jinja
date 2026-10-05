@@ -25,27 +25,27 @@ interface ApiService {
     @GET("auth/me")
     suspend fun getCurrentUser(): UserResponse
 
-    // --- Examples ---
+    // --- Transactions (the sample feature's data source) ---
 
-    @GET("examples")
-    suspend fun listExamples(
+    @GET("transactions")
+    suspend fun listTransactions(
         @Query("page") page: Int = 0,
         @Query("size") size: Int = 20,
         @Query("sort") sort: String = "createdAt,desc",
-    ): ExampleListResponse
+    ): TransactionListResponse
 
-    @POST("examples")
-    suspend fun createExample(@Body request: CreateExampleRequest): ExampleResponse
+    @POST("transactions")
+    suspend fun createTransaction(@Body request: CreateTransactionRequest): TransactionResponse
 
-    @GET("examples/{id}")
-    suspend fun getExample(@Path("id") id: String): ExampleResponse
+    @GET("transactions/{id}")
+    suspend fun getTransaction(@Path("id") id: String): TransactionResponse
 
-    @PUT("examples/{id}")
-    suspend fun updateExample(
+    @PUT("transactions/{id}")
+    suspend fun updateTransaction(
         @Path("id") id: String,
-        @Body request: UpdateExampleRequest,
-    ): ExampleResponse
+        @Body request: UpdateTransactionRequest,
+    ): TransactionResponse
 
-    @DELETE("examples/{id}")
-    suspend fun deleteExample(@Path("id") id: String)
+    @DELETE("transactions/{id}")
+    suspend fun deleteTransaction(@Path("id") id: String)
 }

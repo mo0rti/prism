@@ -15,6 +15,8 @@ import threading
 from typing import Iterator
 from urllib.parse import quote
 
+from prism_cli.fs_safety import CloudSyncPathError, reparse_kind
+
 
 class BoardLockError(RuntimeError):
     """The workspace is already served by another process."""
@@ -174,6 +176,8 @@ class BoardStore:
             info = path.lstat()
         except OSError as exc:
             raise ValueError(f"Unable to inspect Prism state path: {path.name}.") from exc
+        if reparse_kind(info) == "cloud":
+            raise CloudSyncPathError()
         if not stat.S_ISDIR(info.st_mode) or BoardStore._is_reparse_point(info):
             raise ValueError(f"Prism state path must be a real directory: {path.name}.")
 
@@ -183,14 +187,14 @@ class BoardStore:
             info = path.lstat()
         except OSError as exc:
             raise ValueError(f"Unable to inspect Prism state file: {path.name}.") from exc
+        if reparse_kind(info) == "cloud":
+            raise CloudSyncPathError()
         if not stat.S_ISREG(info.st_mode) or BoardStore._is_reparse_point(info):
             raise ValueError(f"Prism state file must be a regular file: {path.name}.")
 
     @staticmethod
     def _is_reparse_point(info: os.stat_result) -> bool:
-        attributes = getattr(info, "st_file_attributes", 0)
-        reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
-        return bool(attributes & reparse)
+        return reparse_kind(info) != "none"
 
 
 @contextmanager
@@ -244,6 +248,8 @@ def unresolved_board_operations(root: Path) -> list[tuple[str, str]]:
         info = database.lstat()
     except FileNotFoundError:
         return []
+    if reparse_kind(info) == "cloud":
+        raise CloudSyncPathError()
     if not stat.S_ISREG(info.st_mode) or _is_reparse_point(info):
         raise ValueError("Prism board journal must be a regular file before workflow upgrade.")
 
@@ -267,6 +273,51 @@ def unresolved_board_operations(root: Path) -> list[tuple[str, str]]:
     return [(str(operation_id), str(state) if state is not None else "unknown") for operation_id, state in rows]
 
 
+def count_active_grants(root: Path, identity: tuple[str, str, str] | None = None) -> tuple[int, int] | None:
+    """Count active grants without creating or initializing runtime state.
+
+    Returns ``None`` when the workspace has no board journal yet. Otherwise it
+    returns ``(active, current)``: every non-revoked grant, and the subset
+    issued for ``identity`` (board ID, workflow version, asset digest). Without
+    an identity ``current`` equals ``active``. The journal is opened read-only
+    and no token or token hash is read.
+    """
+
+    prism_dir = Path(root) / ".prism"
+    state_dir = prism_dir / "state"
+    if not _inspect_directory(prism_dir) or not _inspect_directory(state_dir):
+        return None
+    database = state_dir / "board.sqlite3"
+    try:
+        info = database.lstat()
+    except FileNotFoundError:
+        return None
+    if reparse_kind(info) == "cloud":
+        raise CloudSyncPathError()
+    if not stat.S_ISREG(info.st_mode) or _is_reparse_point(info):
+        raise ValueError("Prism board journal must be a regular file.")
+
+    uri_path = quote(str(database.resolve(strict=True)).replace("\\", "/"), safe="/:")
+    try:
+        connection = sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True, timeout=1)
+        try:
+            tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            if "grants" not in tables:
+                return 0, 0
+            active = connection.execute("SELECT COUNT(*) FROM grants WHERE active = 1").fetchone()[0]
+            if identity is None:
+                return int(active), int(active)
+            current = connection.execute(
+                "SELECT COUNT(*) FROM grants WHERE active = 1 AND board_id = ? AND workflow_version = ? AND asset_digest = ?",
+                identity,
+            ).fetchone()[0]
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        raise ValueError(f"Unable to read the Prism board journal: {exc}") from exc
+    return int(active), int(current)
+
+
 def _inspect_directory(path: Path) -> bool:
     try:
         info = path.lstat()
@@ -274,6 +325,8 @@ def _inspect_directory(path: Path) -> bool:
         return False
     except OSError as exc:
         raise ValueError(f"Unable to inspect Prism runtime directory {path.name}: {exc}") from exc
+    if reparse_kind(info) == "cloud":
+        raise CloudSyncPathError()
     if not stat.S_ISDIR(info.st_mode) or _is_reparse_point(info):
         raise ValueError(f"Prism runtime path must be a real directory: {path.name}.")
     return True
@@ -286,14 +339,14 @@ def _require_plain_file(path: Path) -> None:
         return
     except OSError as exc:
         raise ValueError(f"Unable to inspect Prism runtime file {path.name}: {exc}") from exc
+    if reparse_kind(info) == "cloud":
+        raise CloudSyncPathError()
     if not stat.S_ISREG(info.st_mode) or _is_reparse_point(info):
         raise ValueError(f"Prism runtime file must be a regular file: {path.name}.")
 
 
 def _is_reparse_point(info: os.stat_result) -> bool:
-    attributes = getattr(info, "st_file_attributes", 0)
-    reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
-    return bool(attributes & reparse)
+    return reparse_kind(info) != "none"
 
 
 def _acquire_lock_stream(lock_path: Path):

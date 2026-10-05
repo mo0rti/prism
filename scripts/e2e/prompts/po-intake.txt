@@ -1,0 +1,3 @@
+Use Prism's PO intake skill to process the pending intake folder `knowledge/intake/pending/review-summary`. Work only through your Prism MCP tools and follow the board's guidance.
+
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would create, change or move. If something blocks it, tell me exactly what and stop.

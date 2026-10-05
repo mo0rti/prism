@@ -15,7 +15,9 @@
 backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 ├── Application.kt                # @SpringBootApplication entry point
 ├── bootstrap/
-│   ├── SecurityConfig.kt         # Spring Security + JWT filter
+│   ├── ApplicationConfig.kt      # Prints the local access URLs on startup
+│   ├── SecurityConfig.kt         # Spring Security filter chain
+│   ├── security/                 # JWT filter, token provider, and the 401 entry point
 │   ├── WebConfig.kt              # CORS configuration
 {% if auth_methods | reject("equalto", "password") | list | length > 0 %}│   ├── OAuth2Config.kt           # RestTemplate for OAuth provider exchange
 {% endif %}│   ├── OpenApiConfig.kt          # Swagger / OpenAPI wiring
@@ -78,7 +80,8 @@ accounts across providers. Real provider redirects and credentials require deplo
 ### Controllers
 - Return DTOs, never entities
 - Use `@Valid` for request body validation
-- Map exceptions in `GlobalExceptionHandler`
+- Map exceptions in `GlobalExceptionHandler`; it extends `ResponseEntityExceptionHandler`, so Spring's own 404, 405 and 400 keep their status and only unexpected exceptions become 500
+- Missing, malformed or expired access tokens get 401 from `ApiAuthenticationEntryPoint`; authenticated users without permission get 403
 
 ### Services
 - Contain business logic and transaction boundaries (`@Transactional`)
@@ -113,7 +116,7 @@ accounts across providers. Real provider redirects and credentials require deplo
 
 ```bash
 task backend:run        # loads ../.env (fallback: ../.env.example) then ./gradlew bootRun
-task backend:build      # ./gradlew build
+task backend:build      # ./gradlew build -x test
 task backend:test       # ./gradlew test
 task backend:lint       # ./gradlew check -x test
 ```

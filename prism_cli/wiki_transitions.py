@@ -11,12 +11,15 @@ import hashlib
 import json
 import re
 import stat
+import time
 from collections import OrderedDict
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
-from threading import Lock
-from typing import Any, Iterable
+from threading import Lock, RLock
+from typing import Any, Callable, Iterable, Iterator
 from urllib.parse import unquote, urlsplit
 
 from prism_cli.status import IGNORED_INTAKE_FILES
@@ -32,6 +35,7 @@ from prism_cli.wiki_model import (
     feature_id_from_path,
     normalize_feature_id,
     parse_open_question_rows,
+    api_surface_declared,
     parse_delivery_evidence,
     parse_advisory_required_actions,
     parse_revalidation,
@@ -40,6 +44,7 @@ from prism_cli.wiki_model import (
     read_wiki_pages,
     resolve_relative_markdown_link,
     section_text,
+    within_wiki_read_scope,
 )
 from prism_cli.wiki_query import build_envelope
 from prism_cli.workspace import (
@@ -147,6 +152,8 @@ _WATCH_QUEUE_DIRS = (
 _OBSERVED_AT_CACHE_LIMIT = 256
 _OBSERVED_AT_BY_FINGERPRINT: OrderedDict[str, str] = OrderedDict()
 _OBSERVED_AT_LOCK = Lock()
+# ``evaluate_transition_summaries`` checks the required wiki files once per call, not once per feature.
+_REQUIRED_WIKI_FILE_READS: ContextVar[dict[Path, bool] | None] = ContextVar("prism_required_wiki_file_reads", default=None)
 _WIKI_SOURCE_DIRECTORIES = {
     "advisory",
     "api-contracts",
@@ -208,14 +215,96 @@ class TransitionEvaluation:
     sources: list[str]
 
 
-def workspace_fingerprint(root: Path) -> tuple[tuple[str, str], ...]:
+class FingerprintCache:
+    """Reuse per-file content hashes between scans of an unchanged workspace.
+
+    Only the shared change poller uses it; request paths hash every file. A hash
+    is reused when the file's ``(st_mtime_ns, st_size)`` is unchanged and the file
+    was already older than the racy window when it was hashed, so an edit that
+    lands in the same timestamp tick as the hash cannot hide behind it. An edit
+    that keeps both size and modification time (a restored timestamp, ``rsync
+    -t``) is only noticed by the full rehash that runs at least every
+    ``FULL_REHASH_SECONDS``. The poller is a trigger: preview and apply compare
+    content digests again before they write.
+    """
+
+    RACY_WINDOW_NS = 2_000_000_000
+    FULL_REHASH_SECONDS = 60.0
+
+    def __init__(
+        self,
+        *,
+        wall_clock_ns: Callable[[], int] = time.time_ns,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._wall_clock_ns = wall_clock_ns
+        self._monotonic = monotonic
+        self._lock = RLock()
+        self._entries: dict[str, tuple[int, int, str]] = {}
+        self._seen: dict[str, tuple[int, int, str]] = {}
+        self._last_full_rehash: float | None = None
+        self._rehash_everything = True
+
+    @contextmanager
+    def scan(self) -> Iterator["FingerprintCache"]:
+        """Bracket one fingerprint pass; files the pass did not visit are forgotten."""
+
+        with self._lock:
+            now = self._monotonic()
+            last = self._last_full_rehash
+            self._rehash_everything = last is None or now < last or now - last >= self.FULL_REHASH_SECONDS
+            if self._rehash_everything:
+                self._last_full_rehash = now
+            self._seen = {}
+            try:
+                yield self
+            finally:
+                self._entries = self._seen
+                self._seen = {}
+
+    def file_fingerprint(self, path: Path, info: Any = None) -> str:
+        """Return ``_file_fingerprint(path)``, reusing the last hash when the file is unchanged."""
+
+        if info is None:
+            try:
+                info = path.stat()
+            except (OSError, RuntimeError):
+                return _file_fingerprint(path)
+        key = str(path)
+        modified_ns = info.st_mtime_ns
+        size = info.st_size
+        cached = self._entries.get(key)
+        if not self._rehash_everything and cached is not None and cached[0] == modified_ns and cached[1] == size:
+            self._seen[key] = cached
+            return cached[2]
+        hashed_at_ns = self._wall_clock_ns()
+        digest = _file_fingerprint(path)
+        if digest != "unreadable" and hashed_at_ns - modified_ns > self.RACY_WINDOW_NS:
+            self._seen[key] = (modified_ns, size, digest)
+        return digest
+
+
+def workspace_fingerprint(root: Path, *, cache: FingerprintCache | None = None) -> tuple[tuple[str, str], ...]:
     """Fingerprint files and metadata consumed by graph and transition reads.
 
     The tuple shape is kept compatible with the existing graph server watcher.
     Content is hashed for files; queue entries and platform directories retain
     the existing name/type invalidation semantics.  Capability instructions are
     included so changing or removing a generated command invalidates a snapshot.
+
+    Every file is hashed unless a ``FingerprintCache`` is passed. The result is
+    identical either way; only the shared change poller passes one.
     """
+
+    if cache is None:
+        return _workspace_fingerprint(root, None)
+    with cache.scan():
+        return _workspace_fingerprint(root, cache)
+
+
+def _workspace_fingerprint(root: Path, cache: FingerprintCache | None) -> tuple[tuple[str, str], ...]:
+    def content(path: Path, info: Any = None) -> str:
+        return _file_fingerprint(path) if cache is None else cache.file_fingerprint(path, info)
 
     workspace_root = root.expanduser().resolve()
     entries: list[tuple[str, str]] = [("today", date.today().isoformat())]
@@ -223,7 +312,7 @@ def workspace_fingerprint(root: Path) -> tuple[tuple[str, str], ...]:
     for relative in _WATCH_FILES:
         path = workspace_root / relative
         kind = _path_kind(path)
-        entries.append((relative, _file_fingerprint(path) if kind == "file" else kind))
+        entries.append((relative, content(path) if kind == "file" else kind))
 
     wiki_root = workspace_root / _WATCH_WIKI_DIR
     wiki_kind = _path_kind(wiki_root)
@@ -241,7 +330,7 @@ def workspace_fingerprint(root: Path) -> tuple[tuple[str, str], ...]:
             except (OSError, RuntimeError, ValueError):
                 continue
             if stat.S_ISREG(path_stat.st_mode):
-                entries.append((relative, _file_fingerprint(path)))
+                entries.append((relative, content(path, path_stat)))
             else:
                 entries.append((relative, f"mode:{path_stat.st_mode}"))
 
@@ -271,7 +360,7 @@ def workspace_fingerprint(root: Path) -> tuple[tuple[str, str], ...]:
     for relative in _capability_paths():
         path = workspace_root / relative
         kind = _path_kind(path)
-        entries.append((relative.as_posix(), _file_fingerprint(path) if kind == "file" else kind))
+        entries.append((relative.as_posix(), content(path) if kind == "file" else kind))
 
     return tuple(entries)
 
@@ -303,6 +392,7 @@ def _observed_at(entries: Iterable[tuple[str, str]]) -> str:
         return observed_at
 
 
+@within_wiki_read_scope
 def build_transition_preflight(
     root: Path,
     feature_id: str,
@@ -425,6 +515,7 @@ def build_transition_preflight(
     return finalize_transition_envelope(workspace_root, envelope)
 
 
+@within_wiki_read_scope
 def build_board_transition_preflight(
     root: Path,
     feature_id: str,
@@ -547,6 +638,7 @@ def _board_workspace_identity_checks(root: Path, inspection: WorkspaceInspection
     return [_check("workspace-identity", "pass", "The adopted workflow identity and scope are available.", manifest.path)]
 
 
+@within_wiki_read_scope
 def evaluate_transition_summaries(
     root: Path,
     *,
@@ -588,22 +680,26 @@ def evaluate_transition_summaries(
     transitions: dict[str, dict[str, Any]] = {}
     transitions_list: dict[str, list[dict[str, Any]]] = {}
 
-    for feature in feature_pages:
-        primary, records = _evaluate_feature(
-            workspace_root,
-            feature,
-            wiki_lint,
-            workspace_inspection,
-            capability_checks_by_action,
-            invocations_by_action,
-            capability_available_by_action,
-            identity_checks,
-            duplicate_ids,
-            requirement_pages,
-            wiki_pages,
-        )
-        transitions[str(feature.page.path)] = primary
-        transitions_list[str(feature.page.path)] = records
+    required_reads_token = _REQUIRED_WIKI_FILE_READS.set({})
+    try:
+        for feature in feature_pages:
+            primary, records = _evaluate_feature(
+                workspace_root,
+                feature,
+                wiki_lint,
+                workspace_inspection,
+                capability_checks_by_action,
+                invocations_by_action,
+                capability_available_by_action,
+                identity_checks,
+                duplicate_ids,
+                requirement_pages,
+                wiki_pages,
+            )
+            transitions[str(feature.page.path)] = primary
+            transitions_list[str(feature.page.path)] = records
+    finally:
+        _REQUIRED_WIKI_FILE_READS.reset(required_reads_token)
 
     after = workspace_fingerprint(workspace_root)
     consistent = before == after
@@ -1426,6 +1522,15 @@ def _is_out_of_scope_requirement_dependency(
     return requirement_platform.strip().lower() not in declared_platforms
 
 
+def _open_questions_message(kind: str, numbers: list[str]) -> str:
+    """Count the open questions and name each by its number, so a number is never read as a count."""
+
+    listed = ", ".join(numbers)
+    if len(numbers) == 1:
+        return f"1 open {kind} question remains: question {listed}."
+    return f"{len(numbers)} open {kind} questions remain: questions {listed}."
+
+
 def _open_questions_check_for_action(feature: FeaturePage, owners: set[str]) -> dict[str, Any]:
     section = section_text(feature.page.body, "Open questions")
     rows, errors = parse_open_question_rows(feature.page.body)
@@ -1437,8 +1542,7 @@ def _open_questions_check_for_action(feature: FeaturePage, owners: set[str]) -> 
         return _check("open-questions", "unknown", "; ".join(errors), path)
     open_rows = [row for row in rows if row["status"] == "open" and row["owner"] in owners]
     if open_rows:
-        numbers = ", ".join(row["number"] for row in open_rows)
-        return _check("open-questions", "blocked", f"Open action-relevant questions remain ({numbers}).", path)
+        return _check("open-questions", "blocked", _open_questions_message("action-relevant", [row["number"] for row in open_rows]), path)
     return _check("open-questions", "pass", "No open questions remain for this action.", path)
 
 
@@ -1519,9 +1623,7 @@ def _requirements_check(feature: FeaturePage, requirement_pages: list[Any], *, r
 
 def _api_contract_check(feature: FeaturePage, wiki_pages: list[Any], *, require_implemented: bool) -> dict[str, Any]:
     path = feature.page.path
-    api_section = section_text(feature.page.body, "API surface")
-    normalized_section = re.sub(r"\s+", " ", api_section).strip().lower()
-    section_applicable = bool(normalized_section) and normalized_section not in {"none", "no api", "not applicable", "n/a"}
+    section_applicable = api_surface_declared(section_text(feature.page.body, "API surface"))
     feature_id = normalize_feature_id(feature.feature_id)
     wiki_root = path.parent.parent
     api_root = wiki_root / "api-contracts"
@@ -1553,17 +1655,7 @@ def _api_contract_check(feature: FeaturePage, wiki_pages: list[Any], *, require_
             continue
         source_pages.append(page)
     for source in source_pages:
-        for raw_target in extract_markdown_links(source.body):
-            target = _resolve_api_link(source.path, raw_target, wiki_root)
-            if target is None:
-                continue
-            for page in wiki_pages:
-                if page.path.resolve() == target and page not in matching:
-                    matching.append(page)
-        for raw_target in _wiki_path_references(source.body, "api-contracts"):
-            target = _resolve_api_link(source.path, raw_target, wiki_root)
-            if target is None:
-                continue
+        for target in api_contract_link_targets(source.body, source.path, wiki_root):
             for page in wiki_pages:
                 if page.path.resolve() == target and page not in matching:
                     matching.append(page)
@@ -1582,6 +1674,17 @@ def _api_contract_check(feature: FeaturePage, wiki_pages: list[Any], *, require_
     if any(status == "draft" for status in statuses):
         return _check("api-contract", "blocked", "An applicable API contract is still `draft`.", matching[0].path)
     return _check("api-contract", "pass", "Applicable API contracts are ready for this action.", matching[0].path)
+
+
+def api_contract_link_targets(body: str, source_path: Path, wiki_root: Path) -> list[Path]:
+    """Return the API contract paths that a page body links or names, in the order they appear."""
+
+    targets: list[Path] = []
+    for raw_target in [*extract_markdown_links(body), *_wiki_path_references(body, "api-contracts")]:
+        target = _resolve_api_link(source_path, raw_target, wiki_root)
+        if target is not None:
+            targets.append(target)
+    return targets
 
 
 def _resolve_api_link(source_path: Path, raw_target: str, wiki_root: Path) -> Path | None:
@@ -1920,8 +2023,7 @@ def _open_questions_check(feature: FeaturePage) -> dict[str, Any]:
         return _check("open-questions", "unknown", "; ".join(_unique_strings(malformed_rows)), path)
     open_po = [row for row in rows if row["owner"] == "po" and row["status"] == "open"]
     if open_po:
-        numbers = ", ".join(row["number"] for row in open_po)
-        return _check("open-questions", "blocked", f"Open PO-owned questions remain ({numbers}).", path)
+        return _check("open-questions", "blocked", _open_questions_message("PO-owned", [row["number"] for row in open_po]), path)
     return _check("open-questions", "pass", "No open PO-owned questions remain.", path)
 
 
@@ -1997,10 +2099,7 @@ def _relevant_integrity_checks(
     relevant: list[WikiDiagnostic] = []
     for filename in ("SCHEMA.md", "index.md"):
         required_path = wiki_root / filename
-        try:
-            if required_path.exists():
-                required_path.read_text(encoding="utf-8-sig")
-        except (OSError, UnicodeError):
+        if _required_wiki_file_unreadable(required_path):
             relevant.append(
                 _diag(
                     "unreadable-required-wiki-file",
@@ -2046,6 +2145,26 @@ def _relevant_integrity_checks(
             )
         )
     return checks
+
+
+def _required_wiki_file_unreadable(path: Path) -> bool:
+    """Report whether an existing required wiki file cannot be read as UTF-8.
+
+    Inside ``evaluate_transition_summaries`` each file is read once for all features.
+    """
+
+    reads = _REQUIRED_WIKI_FILE_READS.get()
+    if reads is not None and path in reads:
+        return reads[path]
+    try:
+        if path.exists():
+            path.read_text(encoding="utf-8-sig")
+        unreadable = False
+    except (OSError, UnicodeError):
+        unreadable = True
+    if reads is not None:
+        reads[path] = unreadable
+    return unreadable
 
 
 def _classify_checks(checks: list[dict[str, Any]], *, capability_available: bool = False) -> str:

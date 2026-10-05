@@ -113,9 +113,10 @@ Notes added after shipping. Populated by /dev-done command. Empty until then.
 |---|---|---|---|
 | backend | [artifact or source reference] | [test command and result] | [release artifact or target] |
 
-One row is required for every declared platform before `/dev-done`. Each cell
-must contain a substantive, current reference that an agent can verify. A file
-being present or a clean lint result does not prove implementation or shipment.
+One row is required for every declared platform in the `/dev-done` proposal. Each
+cell must contain a substantive, current reference that an agent can verify. A
+file being present or a clean lint result does not prove implementation or
+shipment.
 
 ## Reopen history
 Append one record for every confirmed reopen. Keep the prior completion and
@@ -134,6 +135,18 @@ section so it cannot satisfy a later `/dev-done` automatically.
 Owner values in the open-questions table must be one of: `po`, `designer`, `dev`.
 Open-question status values must be one of: `open`, `resolved: [answer]`.
 
+Each owner has one clarify action that resolves only that owner's open questions:
+`/po-clarify` (`po`), `/design-clarify` (`designer`) and `/dev-clarify` (`dev`).
+Each one preserves question text, owners and lifecycle fields. A clarify action
+that changes a requirement-bearing section of the feature, a design page or a
+platform requirement page must carry the full text of at least one answer it
+resolves in that section. `/dev-clarify` may update the feature's Acceptance
+criteria, Platform scope and API surface sections and the What to build,
+Technical constraints, API contract reference and Acceptance criteria sections of
+that feature's existing platform requirement pages; it leaves their frontmatter
+unchanged and does not change a `done` feature. Open dev-owned questions block
+`/dev-start` and `/dev-done`.
+
 ### Status and owner lifecycle
 
 The `status` and `owner` fields together represent the feature's position in the
@@ -142,7 +155,7 @@ updates across the feature page, index, and log are not a filesystem transaction
 
 | Status | Owner | Meaning |
 |--------|-------|---------|
-| raw | po | Just captured, not yet structured |
+| raw | po | Captured by `/po-intake` with Summary, User story, Acceptance criteria, Open questions and Platform scope; `/po-specify` completes the structure |
 | specified | po | Structured spec written, open questions may remain |
 | ready-for-design | designer | PO has handed off; designer picks up |
 | in-design | designer | Designer is actively working |
@@ -238,7 +251,7 @@ confirmation.
 | `po-specify` | `raw` + `po` | `specified` + `po` | Author a canonical structured body from one raw page; preserve facts and represent unknowns as owned questions. |
 | `po-handoff` | `specified` + `po` | `ready-for-design` + `designer` | Verify factual PO completeness and hand the specification to design. |
 | `design-start` | `ready-for-design` + `designer` | `in-design` + `designer` | Start design work after rereading the assigned feature. |
-| `design-handoff` | `in-design` + `designer` | `ready-for-dev` + `dev` | Verify design evidence or the confirmed UI design exemption and prepare platform requirements. |
+| `design-handoff` | `in-design` + `designer` | `ready-for-dev` + `dev` | Verify design evidence or the confirmed UI design exemption, prepare platform requirements and, when the API surface declares API work, create the agreed API contract. |
 | `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` | Start implementation after rereading requirements and applicable API contracts. |
 | `dev-done` | `in-dev` + `dev` | `done` + `none` | Verify current per-platform implementation, tests, release evidence, requirements, and APIs. |
 | `reopen-spec` | `done` + `none` | `specified` + `po` | Revalidate specification, design, implementation, tests, and release domains after impact review. |
@@ -281,6 +294,19 @@ provide a generic status setter.
 
 #### Specification and handoff boundaries
 
+`po-intake` creates every new feature as `raw` + `po`. It writes the Summary, User
+story, Acceptance criteria, Open questions and Platform scope sections from the
+intake material and leaves Design, Related features, API surface, Board review
+summary and Post-ship notes empty. `po-specify` adds what is missing: each of
+those five sections gets one line of supported content or an explicit statement
+that nothing exists yet (for example `Not started.`; under API surface, `None.`),
+and the spec checks below are satisfied before the feature becomes `specified`.
+An API surface other than an empty section or a plain statement that there is none
+(`None.`) declares API work and needs an API contract page before `dev-start`, which
+`design-handoff` creates, so `po-specify` writes `None.` unless the intake material or
+an answered question states an API change. Open questions stay in the Open questions table, never in these
+sections.
+
 `po-specify` must verify or author the complete required feature body from raw
 input. It must not merely change status, index, and log without showing and
 confirming the body. When the raw page is incomplete, the confirmed write set
@@ -307,6 +333,20 @@ the final write preview. A non-UI feature does not need a design page or an
 exemption field. The exemption applies to the feature and declared UI scope;
 it does not silently waive other requirements.
 
+#### API contract at design handoff
+
+When the feature's API surface declares API work and no API contract exists for it,
+`design-handoff` creates `api-contracts/F-XXX.md` as a new page with `status:
+agreed`; the user confirming the handoff preview is the agreement. The page is
+written only from the API surface: each endpoint as `METHOD /path`, using the paths
+the API surface names (or, when it names none, a resource word it uses), and only data
+models that the API surface or a listed endpoint names. The handoff writes no
+contract when the API surface declares none, never rewrites an existing contract, and
+creates no second contract for a feature that a linked or existing page already covers.
+Requirement pages link the contract in `## API contract reference`. `dev-start` accepts
+an `agreed` contract and blocks on a `draft` one; `dev-done` marks the contract
+`implemented`.
+
 #### Delivery and revalidation
 
 `dev-done` means shipped for every declared platform. The active Delivery
@@ -318,11 +358,18 @@ test, and release evidence is verified; a draft API contract blocks. Agents
 verify actual artifacts and results; table text, file presence,
 or lint alone is insufficient. Partial delivery remains `in-dev`.
 
-Delivery evidence must be recorded on the feature page before invoking
-`dev-done`. Missing or incomplete evidence keeps the feature `in-dev` until it
-is recorded and verified. A confirmed `dev-done` write may include reviewed
-corrections to existing evidence, but it must not invent delivery evidence or
-implicitly satisfy an absent or incomplete table.
+Delivery evidence is an input to `dev-done`. The developer supplies, for each
+declared platform, the implementation, test and release references, and the
+proposal writes them into the `## Delivery evidence` table in the same preview
+as the status change; a table already filled in an earlier edit is also valid
+input. A proposal whose table is absent, has no rows, or has a placeholder or
+missing cell keeps the feature `in-dev`. A reference the agent cannot check is
+recorded in `## Post-ship notes` as the developer's attestation, which the
+developer confirms with the final confirmation. That attestation stands in for the
+agent's own check: with it, the agent may propose the exact requirement pages and
+API contract that the evidence covers as complete, and says in its summary that it
+did not verify the references itself. The agent must not invent delivery evidence
+or imply that an absent or incomplete table is complete.
 
 An active `revalidation` list invalidates current readiness even when older
 status fields or evidence still say done. `dev-done` may perform fresh checks and
@@ -464,7 +511,8 @@ Link to api-contracts/F-XXX.md. List endpoints or data shapes this platform cons
 Platform-specific done conditions.
 
 ## Dependencies
-Other feature IDs or platform-requirement files that must complete first.
+Other feature IDs or platform-requirement files that must complete first, or `None.`
+Open questions never go here; they stay in the feature's Open questions table.
 ```
 
 ---
@@ -492,6 +540,10 @@ Auth method, required scopes or roles.
 ## Notes
 Design decisions, backwards-compatibility concerns.
 ```
+
+`design-handoff` creates the page at `status: agreed` when the feature's API surface
+declares API work; `dev-done` moves it to `implemented`. List each endpoint as
+`METHOD /path` and define only data models that the API surface or an endpoint names.
 
 ---
 
@@ -787,10 +839,12 @@ For a connected workflow at version 1, `workflow.asset_digest` pins the canonica
 standard skill instructions and their complete references. Retrieve them through
 `list_skills` and `get_skill`; do not substitute instructions from a hidden
 template checkout or vendor directory. The service may report a skill's write
-operation as unavailable. Stop on that connected path when it is unavailable or
-rejected; use direct-file instructions only after an explicit human choice to use
-that separate compatibility workflow. Custom project skills remain on the
-direct-file workflow.
+operation as unavailable. Stop on that connected path when it is unavailable. When
+the service rejects a proposal, the agent may retry with exactly the fix the
+error names, at most 2 more times, and never widens the change; then it stops and
+reports the rejection. Use direct-file instructions only after an explicit human
+choice to use that separate compatibility workflow. Custom project skills remain
+on the direct-file workflow.
 
 The connected service does not launch an agent or create a second approval queue.
 The active host must obtain the same explicit human confirmation required by

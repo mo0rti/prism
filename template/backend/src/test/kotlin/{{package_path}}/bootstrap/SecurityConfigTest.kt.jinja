@@ -1,9 +1,14 @@
 package {{ package_identifier }}.bootstrap
 
+import {{ package_identifier }}.bootstrap.properties.JwtProperties
 import {{ package_identifier }}.bootstrap.security.JwtTokenProvider
 import {{ package_identifier }}.modules.auth.model.AuthProvider
 import {{ package_identifier }}.modules.auth.model.User
 import {{ package_identifier }}.modules.auth.repository.UserRepository
+import {{ package_identifier }}.modules.transactions.repository.TransactionRepository
+import io.jsonwebtoken.Jwts
+import io.jsonwebtoken.security.Keys
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -13,7 +18,12 @@ import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.util.Date
+import java.util.UUID
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -27,12 +37,48 @@ class SecurityConfigTest {
     private lateinit var userRepository: UserRepository
 
     @Autowired
+    private lateinit var transactionRepository: TransactionRepository
+
+    @Autowired
     private lateinit var jwtTokenProvider: JwtTokenProvider
+
+    @Autowired
+    private lateinit var jwtProperties: JwtProperties
+
+    private val createdUsers = mutableListOf<User>()
+
+    @AfterEach
+    fun cleanUp() {
+        transactionRepository.deleteAll()
+        userRepository.deleteAll(createdUsers)
+        createdUsers.clear()
+    }
+
+    private fun newUser(): User = userRepository.save(User(
+        email = "security-${UUID.randomUUID()}@example.com",
+        displayName = "Security Test User",
+        authProvider = AuthProvider.LOCAL
+    )).also { createdUsers += it }
+
+    private fun bearer(user: User): String = "Bearer ${jwtTokenProvider.generateAccessToken(user)}"
+
+    private fun expiredAccessToken(user: User): String {
+        val now = System.currentTimeMillis()
+        return Jwts.builder()
+            .subject(user.id.toString())
+            .claim("type", "access")
+            .issuedAt(Date(now - 7_200_000))
+            .expiration(Date(now - 3_600_000))
+            .signWith(Keys.hmacShaKeyFor(jwtProperties.secret.toByteArray()))
+            .compact()
+    }
 
     @Test
     fun `me endpoint is not public`() {
         mockMvc.perform(get("/api/v1/auth/me"))
-            .andExpect(status().is4xxClientError)
+            .andExpect(status().isUnauthorized)
+            .andExpect(header().string("WWW-Authenticate", "Bearer"))
+            .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
     }
 
     @Test
@@ -48,7 +94,7 @@ class SecurityConfigTest {
     @Test
     fun `logout endpoint is not public`() {
         mockMvc.perform(post("/api/v1/auth/logout"))
-            .andExpect(status().is4xxClientError)
+            .andExpect(status().isUnauthorized)
     }
 
     @Test
@@ -64,7 +110,7 @@ class SecurityConfigTest {
             get("/api/v1/auth/me")
                 .header("Authorization", "Bearer $refreshToken")
         )
-            .andExpect(status().is4xxClientError)
+            .andExpect(status().isUnauthorized)
     }
 
     @Test
@@ -87,5 +133,60 @@ class SecurityConfigTest {
                 .header("Authorization", "Bearer $accessToken")
         )
             .andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `malformed bearer token is answered with 401`() {
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer not-a-jwt"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+    }
+
+    @Test
+    fun `expired access token is answered with 401`() {
+        val user = newUser()
+
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer ${expiredAccessToken(user)}"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+    }
+
+    @Test
+    fun `valid access token reaches the protected endpoint`() {
+        val user = newUser()
+
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(user)))
+            .andExpect(status().isOk)
+    }
+
+    @Test
+    fun `authenticated user without permission is answered with 403 not 401`() {
+        val owner = newUser()
+        val other = newUser()
+        val created = mockMvc.perform(
+            post("/api/v1/transactions")
+                .header("Authorization", bearer(owner))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"amount": 10.00, "currency": "USD", "type": "CHARGE"}""")
+        )
+            .andExpect(status().isCreated)
+            .andReturn().response.contentAsString
+        val id = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"").find(created)!!.groupValues[1]
+
+        mockMvc.perform(
+            put("/api/v1/transactions/$id")
+                .header("Authorization", bearer(other))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"description": "not mine"}""")
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("TRANSACTION_MODIFICATION_FORBIDDEN"))
+        mockMvc.perform(
+            put("/api/v1/transactions/$id")
+                .header("Authorization", bearer(owner))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"description": "mine"}""")
+        )
+            .andExpect(status().isOk)
     }
 }

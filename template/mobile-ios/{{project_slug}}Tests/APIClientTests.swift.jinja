@@ -1,0 +1,69 @@
+import XCTest
+@testable import {{ ios_module_name }}
+
+final class APIClientTests: XCTestCase {
+    func testJoinsBaseURLWithTrailingSlashAndLeadingSlashPathWithOneSlash() {
+        let url = APIURL.make(baseURL: "http://localhost:8080/api/v1/", path: "/auth/login")
+
+        XCTAssertEqual(url?.absoluteString, "http://localhost:8080/api/v1/auth/login")
+    }
+
+    func testJoinsBaseURLWithoutTrailingSlash() {
+        let url = APIURL.make(baseURL: "http://localhost:8080/api/v1", path: "/auth/login")
+
+        XCTAssertEqual(url?.absoluteString, "http://localhost:8080/api/v1/auth/login")
+    }
+
+    func testAddsMissingLeadingSlashToPath() {
+        let url = APIURL.make(baseURL: "https://api.example.com/api/v1", path: "auth/refresh")
+
+        XCTAssertEqual(url?.absoluteString, "https://api.example.com/api/v1/auth/refresh")
+    }
+
+    func testKeepsQueryString() {
+        let endpoint = APIEndpoint.listTransactions(page: 1, size: 20)
+        let url = APIURL.make(baseURL: "http://localhost:8080/api/v1/", path: endpoint.path)
+
+        XCTAssertEqual(url?.absoluteString, "http://localhost:8080/api/v1/transactions?page=1&size=20&sort=createdAt,desc")
+    }
+
+    func testRejectsBaseURLWithoutHost() {
+        // An xcconfig `//` comment cuts `http://host` down to `http:`.
+        XCTAssertNil(APIURL.make(baseURL: "http:", path: "/auth/login"))
+        XCTAssertNil(APIURL.make(baseURL: "", path: "/auth/login"))
+    }
+
+    func testBundledBaseURLKeepsSchemeAndHost() {
+        if let value = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String {
+            XCTAssertTrue(value.contains("://"), "API_BASE_URL lost its scheme separator: \(value)")
+        }
+
+        // `make` returns nil for a base URL without scheme or host.
+        XCTAssertNotNil(APIURL.make(baseURL: APIURL.configuredBaseURL(), path: "/auth/login"))
+    }
+
+    func testTransactionMapsToExampleRow() throws {
+        let json = """
+        {
+          "id": "7c1d2f64-0000-4000-8000-000000000001",
+          "reference": "TX-1",
+          "amount": 12.5,
+          "currency": "EUR",
+          "description": null,
+          "type": "CHARGE",
+          "status": "PENDING",
+          "createdBy": "7c1d2f64-0000-4000-8000-000000000002",
+          "createdAt": "2025-01-01T00:00:00Z",
+          "updatedAt": "2025-01-01T00:00:00Z"
+        }
+        """
+
+        let transaction = try JSONDecoder().decode(TransactionResponse.self, from: Data(json.utf8))
+        let example = transaction.toDomain()
+
+        XCTAssertEqual(example.id, "7c1d2f64-0000-4000-8000-000000000001")
+        XCTAssertEqual(example.title, "CHARGE 12.50 EUR")
+        XCTAssertEqual(example.status, "PENDING")
+        XCTAssertNil(example.description)
+    }
+}

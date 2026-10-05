@@ -16,7 +16,7 @@
 
 ## Authentication
 
-All endpoints except auth routes require a JWT Bearer token:
+All endpoints require a JWT Bearer token except `/auth/register`, `/auth/login`, `/auth/admin/login`, `/auth/refresh`, `/auth/oauth/callback`, `/auth/oauth/token` and `/actuator/health`; `/auth/me` and `/auth/logout` do need it. Send the token as:
 
 ```
 Authorization: Bearer <access-token>
@@ -62,10 +62,12 @@ All errors follow this format:
 |-------------|------|------|
 | 400 | `VALIDATION_ERROR` | Request body or field validation fails |
 | 400 | `BAD_REQUEST`, `INVALID_REQUEST`, or domain-specific 400 code | Malformed JSON or business-rule request failures |
-| 401 | `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INVALID_REFRESH_TOKEN` | Missing token or authentication failure |
+| 401 | `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INVALID_REFRESH_TOKEN` | Missing, malformed or expired token, or authentication failure |
 | 403 | `FORBIDDEN` or domain-specific 403 code | Valid token but insufficient permissions |
 | 404 | `NOT_FOUND` or domain-specific 404 code | Resource does not exist or is not visible |
+| 405 | `METHOD_NOT_ALLOWED` | HTTP method is not supported for the route |
 | 409 | `CONFLICT`, `EMAIL_ALREADY_REGISTERED`, `OAUTH_ACCOUNT_LINK_REQUIRED` | Duplicate resource or account-linking conflict |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | Request content type is not supported |
 | 500 | `INTERNAL_ERROR` | Unexpected server error |
 
 ## Versioning

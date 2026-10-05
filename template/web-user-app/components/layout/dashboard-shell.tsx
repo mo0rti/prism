@@ -1,8 +1,10 @@
 "use client"
 
 import { Moon, Sun } from "lucide-react"
-import { signOut, useSession } from "next-auth/react"
+import { useSession } from "next-auth/react"
 import { useTheme } from "next-themes"
+import { useState } from "react"
+import { signOutEverywhere } from "@/lib/auth/sign-out"
 import { Link, usePathname } from "@/lib/i18n/routing"
 import { cn } from "@/lib/utils"
 
@@ -22,6 +24,12 @@ export function DashboardShell({
   const pathname = usePathname()
   const { data: session } = useSession()
   const { resolvedTheme, setTheme } = useTheme()
+  const [signOutFailed, setSignOutFailed] = useState(false)
+
+  async function handleSignOut() {
+    setSignOutFailed(false)
+    setSignOutFailed(!(await signOutEverywhere(`/${locale}/login`)))
+  }
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10">
@@ -53,11 +61,16 @@ export function DashboardShell({
           </button>
           <button
             type="button"
-            onClick={() => signOut({ callbackUrl: `/${locale}/login` })}
+            onClick={handleSignOut}
             className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
           >
             Sign Out
           </button>
+          {signOutFailed ? (
+            <p role="alert" className="text-sm text-rose-600">
+              Sign out could not be completed. Try again.
+            </p>
+          ) : null}
         </div>
       </div>
       {children}

@@ -64,6 +64,11 @@ first-run guidance before the wiki has been initialized. Confidence and source
 paths remain visible so a stale or malformed source can be inspected before it
 informs a workflow decision.
 
+The shared board that `prism board serve` provides shows the same views and adds direct
+human actions (`po-handoff`, `design-start` and `dev-start`) plus an MCP endpoint for
+agents. A generated project activates it with `prism workflow upgrade . --apply`; see
+[shared-board.md](shared-board.md).
+
 For a repeatable local capture, use the [wiki visualization guide](wiki-visualization.md),
 which builds a synthetic TreasuryFlow fixture in a new destination. The
 fixture demonstrates fresh, intake, and populated stages; it contains no
@@ -150,7 +155,7 @@ the agent to run the same named operation.
 | Shared | `/wiki-show F-XXX` | `$wiki-show F-XXX` | Assemble focused feature context from linked wiki files |
 | Shared | `/wiki-blockers` | `$wiki-blockers` | Show blockers using the canonical blocker categories |
 | Shared | `/wiki-query "text"` | `$wiki-query "text"` | Retrieval-assisted search across the wiki |
-| Shared | `/wiki-owner po\|designer\|dev` | `$wiki-owner po\|designer\|dev` | Show pending work and stale items for one owner role |
+| Shared | `/wiki-owner po\|designer\|dev\|none` | `$wiki-owner po\|designer\|dev\|none` | Show pending work and stale items for one owner role |
 | Shared | `/wiki-platform <platform-id>` | `$wiki-platform <platform-id>` | Show the active feature queue for one platform |
 
 Recommended first use:
@@ -164,13 +169,18 @@ Recommended first use:
 | Role | Claude Code | Codex | Purpose |
 |------|-------------|-------|---------|
 | Shared | `/setup-project` | `$setup-project` | One-time project initialization that interviews you and builds the advisory board |
-| PO | `/po-intake [folder]` | `$po-intake [folder]` | Process raw PO notes into feature specs |
+| PO | `/po-intake [folder]` | `$po-intake [folder]` | Process raw PO notes into `raw` feature pages |
 | PO | `/po-clarify` | `$po-clarify` | Answer open questions assigned to PO |
+| PO | `/po-specify [F-XXX]` | `$po-specify [F-XXX]` | Complete a `raw` feature and move it to `specified` |
 | PO | `/po-handoff [F-XXX]` | `$po-handoff [F-XXX]` | Hand off a feature to design |
 | Designer | `/design-intake [F-XXX] [folder]` | `$design-intake [F-XXX] [folder]` | Attach design artifacts to a feature |
 | Designer | `/design-clarify` | `$design-clarify` | Answer open design questions |
+| Designer | `/design-start [F-XXX]` | `$design-start [F-XXX]` | Start design on a feature that was handed off |
 | Designer | `/design-handoff [F-XXX]` | `$design-handoff [F-XXX]` | Hand off a feature to dev |
-| Dev | `/dev-done [F-XXX]` | `$dev-done [F-XXX]` | Mark a feature as shipped |
+| Dev | `/dev-clarify` | `$dev-clarify` | Answer open questions assigned to Dev |
+| Dev | `/dev-start [F-XXX]` | `$dev-start [F-XXX]` | Start development on a feature that is ready for dev |
+| Dev | `/dev-done [F-XXX]` | `$dev-done [F-XXX]` | Mark a feature as shipped, recording the delivery evidence the developer supplies |
+| Shared | `/feature-reopen [F-XXX] [specified\|in-design\|in-dev]` | `$feature-reopen [F-XXX] [specified\|in-design\|in-dev]` | Reopen shipped work through one impact-reviewed route |
 | Shared | `/ask [F-XXX] "q" --to po\|designer\|dev` | `$ask [F-XXX] "q" --to po\|designer\|dev` | Route a question to a role |
 
 Use these only when you are intentionally changing project state.
@@ -179,7 +189,7 @@ Use these only when you are intentionally changing project state.
 
 | Role | Claude Code | Codex | Purpose |
 |------|-------------|-------|---------|
-| Shared | `/lint-wiki` | `$lint-wiki` | Health-check the knowledge base and emit a dated lint report |
+| Shared | `/lint-wiki` | `$lint-wiki` | Health-check the knowledge base; writes a lint report only when you ask for one |
 | Board | `/board-review [F-XXX]` | `$board-review [F-XXX]` | Domain expert review before dev starts |
 | Shared | `/audit-feature [F-XXX]` | `$audit-feature [F-XXX]` | Cross-check spec vs. source intake |
 
@@ -225,7 +235,7 @@ after reading this page.
 
 ## Code Generators
 
-Generated projects currently include these Hygen generators under `_templates/`:
+Generated projects include these Hygen generators under `_templates/`:
 
 | Generator | Purpose |
 |-----------|---------|
@@ -245,16 +255,16 @@ npx hygen page new
 
 ## GitHub Actions
 
-The current generated workflow set includes:
+The generated workflow set is:
 
-| Workflow | Generated today | Purpose |
-|----------|-----------------|---------|
-| `api-contracts.yml` | Yes | Validate the OpenAPI contract |
-| `backend.yml` | Yes | Backend test, image build, and deployment flow |
-| `mobile-android.yml` | Yes | Android test, lint, build, and release flow |
-| `mobile-ios.yml` | Yes | iOS test and release flow |
-| `web-user-app.yml` | Yes | User web app install/build/deploy flow |
-| `web-admin-portal.yml` | Yes | Admin web portal install/build/deploy flow |
+| Workflow | Generated | Purpose |
+|----------|-----------|---------|
+| `api-contracts.yml` | Always | Validate the OpenAPI contract |
+| `backend.yml` | With `backend` | Backend test, image build, and deployment flow |
+| `mobile-android.yml` | With `mobile-android` | Android test, lint, build, and release flow |
+| `mobile-ios.yml` | With `mobile-ios` | iOS test and release flow |
+| `web-user-app.yml` | With `web-user-app` | User web app install/build/deploy flow |
+| `web-admin-portal.yml` | With `web-admin-portal` | Admin web portal install/build/deploy flow |
 
 ## What To Read Next
 

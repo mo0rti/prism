@@ -26,7 +26,7 @@ class SignInScreenTest {
 
 {% if "password" in auth_methods %}
     @Test
-    fun `shows error message when ui state is error`() {
+    fun showsErrorMessageWhenUiStateIsError() {
         composeRule.setContent {
             AppTheme {
                 SignInScreen(
@@ -47,7 +47,7 @@ class SignInScreenTest {
     }
 
     @Test
-    fun `password sign in button enables when both fields are filled`() {
+    fun passwordSignInButtonEnablesWhenBothFieldsAreFilled() {
         composeRule.setContent {
             AppTheme {
                 var email by remember { mutableStateOf("") }

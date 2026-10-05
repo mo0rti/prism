@@ -88,6 +88,8 @@ def cmd_workflow(args: argparse.Namespace) -> int:
                 )), end="")
             for conflict in plan.get("conflicts", []):
                 _text(f"Conflict: {conflict}", file=sys.stderr)
+            for updated in plan.get("updated", []):
+                _text(f"Updated: {updated}")
             for preserved in plan.get("preserved", []):
                 _text(f"Preserved: {preserved}")
             for step in plan.get("optional_steps", []):

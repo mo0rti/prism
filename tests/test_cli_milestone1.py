@@ -251,5 +251,92 @@ class ManifestSaveSafetyTests(unittest.TestCase):
             self.assertIn("changed after update preflight", stderr.getvalue())
 
 
+class MissingTemplateTagTests(unittest.TestCase):
+    """Default generation needs the release tag; a missing tag ends in one message."""
+
+    TAG = f"v{cli.__version__}"
+    TRACEBACK = (
+        "Traceback (most recent call last):\n"
+        '  File "copier/_vcs.py", line 334, in _clone_via_cache\n'
+        "plumbum.commands.processes.ProcessExecutionError: Unexpected exit code: 128\n"
+        f"Stderr:       | fatal: invalid reference: {TAG}\n"
+    )
+
+    def run_new(self, result: dict, *extra: str):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            destination = Path(temp_dir) / "project"
+            argv = ["new", "--preset", "backend-only", "--project-name", "Demo", "--dest", str(destination), "--yes", *extra]
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with (
+                patch.object(cli, "default_template_reference", return_value=cli.DEFAULT_TEMPLATE_URL),
+                patch.object(cli, "run_copier_generation_process", return_value=result) as process,
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                code = cli.main(argv)
+            return code, stdout.getvalue(), stderr.getvalue(), process, destination
+
+    def test_missing_release_tag_gives_one_message_and_no_traceback(self) -> None:
+        code, stdout, stderr, process, destination = self.run_new(
+            {"returncode": 1, "event_count": 0, "tail": [], "stderr": self.TRACEBACK}
+        )
+
+        self.assertEqual(cli.EXIT_VALIDATION, code)
+        self.assertTrue(process.call_args.kwargs["capture_stderr"])
+        self.assertIn(f"Default generation requires the matching template release tag `{self.TAG}`.", stdout)
+        self.assertNotIn("Traceback", stderr)
+        self.assertNotIn("Copier generation failed", stderr)
+        self.assertEqual(1, len(stderr.strip().splitlines()), stderr)
+        self.assertIn(f"`{self.TAG}` is not published", stderr)
+        self.assertIn("--template <path or URL>", stderr)
+        self.assertIn("install a released version", stderr)
+        self.assertFalse(destination.exists())
+
+    def test_missing_release_tag_is_recognized_from_terminal_output_too(self) -> None:
+        code, _stdout, stderr, _process, _destination = self.run_new(
+            {"returncode": 1, "event_count": 0, "tail": [f"Stderr:       | fatal: invalid reference: {self.TAG}"]}
+        )
+
+        self.assertEqual(cli.EXIT_VALIDATION, code)
+        self.assertIn("is not published", stderr)
+        self.assertNotIn("Copier output", stderr)
+
+    def test_other_copier_failures_keep_their_output_and_exit_code(self) -> None:
+        detail = "fatal: unable to access 'https://github.com/mo0rti/prism.git/': Could not resolve host"
+        code, _stdout, stderr, _process, _destination = self.run_new(
+            {"returncode": 1, "event_count": 0, "tail": [], "stderr": detail + "\n"}
+        )
+
+        self.assertEqual(cli.EXIT_COPIER, code)
+        self.assertIn(detail, stderr)
+        self.assertIn("Copier generation failed.", stderr)
+        self.assertNotIn("is not published", stderr)
+
+    def test_custom_template_does_not_capture_or_reinterpret_copier_output(self) -> None:
+        code, _stdout, stderr, process, _destination = self.run_new(
+            {"returncode": 1, "event_count": 0, "tail": [], "stderr": ""},
+            "--template",
+            "custom-template",
+            "--trust-template",
+        )
+
+        self.assertEqual(cli.EXIT_COPIER, code)
+        self.assertFalse(process.call_args.kwargs["capture_stderr"])
+        self.assertNotIn("is not published", stderr)
+
+    def test_noninteractive_process_captures_stderr_only_when_asked(self) -> None:
+        completed = type("Completed", (), {"returncode": 1, "stderr": "boom\n"})()
+        with patch.object(cli.sys.stdout, "isatty", return_value=False, create=True), patch.object(
+            cli.subprocess, "run", return_value=completed
+        ) as run:
+            captured = cli.run_copier_generation_process(["copier"], Path("."), capture_stderr=True)
+            plain = cli.run_copier_generation_process(["copier"], Path("."))
+
+        self.assertEqual("boom\n", captured["stderr"])
+        self.assertIs(run.call_args_list[0].kwargs["stderr"], cli.subprocess.PIPE)
+        self.assertNotIn("stderr", run.call_args_list[1].kwargs)
+        self.assertNotIn("stderr", plain)
+
+
 if __name__ == "__main__":
     unittest.main()

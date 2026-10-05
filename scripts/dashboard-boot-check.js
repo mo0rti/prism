@@ -1,7 +1,7 @@
 // Runtime boot harness for the Prism dashboard inline script.
 // Stubs just enough DOM to execute the whole boot sequence and surface
 // runtime errors (TDZ, undefined refs) that `node --check` cannot catch.
-// Usage: node boot_harness.js <exported-dashboard.html> [--check-guide-transition] [--check-escaping] [--check-health-labels] [--check-view-accessibility] [--check-unknown-stage] [--check-transitions]
+// Usage: node boot_harness.js <exported-dashboard.html> [--check-guide-transition] [--check-escaping] [--check-health-labels] [--check-view-accessibility] [--check-unknown-stage] [--check-transitions] [--check-connected-board] [--check-board-defects]
 
 const fs = require("fs");
 
@@ -14,6 +14,7 @@ const checkViewAccessibility = process.argv.includes("--check-view-accessibility
 const checkUnknownStage = process.argv.includes("--check-unknown-stage");
 const checkTransitions = process.argv.includes("--check-transitions");
 const checkConnectedBoard = process.argv.includes("--check-connected-board");
+const checkBoardDefects = process.argv.includes("--check-board-defects");
 
 // --- extract embedded JSON payloads and the app script ---
 function tagContent(id) {
@@ -67,6 +68,7 @@ function matchesSelector(tag, attrs, selector) {
     if (value === "#transition-dialog-title" || value === "#transition-copy-status") return attrs.id === value.slice(1);
     if (value === "button") return tag === "button";
     if (value === "a[href]") return tag === "a" && attrs.href !== undefined;
+    if (value === "summary") return tag === "summary";
     if (value === "input") return tag === "input";
     if (value === "select") return tag === "select";
     if (value === "textarea") return tag === "textarea";
@@ -121,6 +123,7 @@ function makeElement(id, sourceHtml) {
       if (name === "checked") this.checked = false;
     },
     hasAttribute(name) { return Object.prototype.hasOwnProperty.call(this.__attributes, name); },
+    getAttributeNames() { return Object.keys(this.__attributes); },
     getAttribute(name) { return this.__attributes[name] === undefined ? null : this.__attributes[name]; },
     addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
     __listeners: listeners,
@@ -1009,6 +1012,7 @@ if (checkConnectedBoard) {
   const previewFeatureById = {};
   let dataRefreshEnvelope = beforeEnvelope;
   let failGraphRefresh = false;
+  let staleDataReads = 0;
   let lostOperationId = "";
   let failNextOperationInspection = false;
   let failNextLostRecovery = false;
@@ -1074,6 +1078,7 @@ if (checkConnectedBoard) {
     }
     if (url === "/data.json") {
       if (failGraphRefresh) return reply({ error: { code: "graph_unavailable", message: "Snapshot is not ready." } }, 503);
+      if (staleDataReads > 0) { staleDataReads -= 1; return reply({ epoch: "board-epoch", version: 1, envelope: beforeEnvelope }); }
       const version = dataRefreshEnvelope === closedApplyEnvelope ? 3 : dataRefreshEnvelope === afterEnvelope ? 2 : 1;
       return reply({ epoch: "board-epoch", version, envelope: dataRefreshEnvelope });
     }
@@ -1215,6 +1220,55 @@ if (checkConnectedBoard) {
   dialog.querySelector("[data-connected-apply]").__listeners.click[0]();
   assert(state.transitionPreview === null && state.data.facts.nodes.find(node => node.id === "F-close").status === "in-design", "closing the preview while Apply was in flight discarded the operation receipt and graph refresh: modal=" + !!state.transitionPreview + ", status=" + state.data.facts.nodes.find(node => node.id === "F-close").status + ", stale=" + state.boardViewStale);
 
+  // A snapshot that predates the applied write is retried and never reported as validated.
+  const retryTimers = [];
+  const priorSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (callback, delay) => { retryTimers.push({ callback, delay }); return retryTimers.length; };
+  const applyCloseFixture = () => {
+    adoptData(beforeEnvelope);
+    state.liveVersion = 1;
+    retryTimers.length = 0;
+    const button = board.querySelectorAll("[data-board-action]").find(item => item.dataset.boardFeatureId === "F-close");
+    button.__listeners.click[0]({ preventDefault() {}, stopPropagation() {} });
+    const opened = state.transitionPreview;
+    let current = document.getElementById("transition-dialog");
+    current.querySelector("[data-connected-ack]").checked = true;
+    current.querySelector("[data-connected-ack]").__listeners.change[0]();
+    current = document.getElementById("transition-dialog");
+    current.querySelector("[data-connected-apply]").__listeners.click[0]();
+    return opened;
+  };
+  const closeStage = () => state.data.facts.nodes.find(node => node.id === "F-close").status;
+  const retryDelays = () => retryTimers.filter(item => [150, 300, 600, 900, 1200].includes(item.delay)).map(item => item.delay);
+  const fireRetry = () => retryTimers.filter(item => [150, 300, 600, 900, 1200].includes(item.delay)).at(-1).callback();
+  staleDataReads = 2;
+  const dataCallsAndApplyBefore = { data: calls.filter(item => item.path === "/data.json").length, apply: calls.filter(item => item.path === "/api/board/v1/apply").length };
+  const retriedPreview = applyCloseFixture();
+  assert(retriedPreview.operationState === "applied" && retriedPreview.operationMessage.includes("Refreshing and validating") && !retriedPreview.operationMessage.includes("refreshed and validated") && closeStage() === "ready-for-design", "a snapshot older than the applied write was reported as refreshed and validated: " + retriedPreview.operationMessage);
+  assert(!state.boardViewStale && !state.liveRefreshError && JSON.stringify(retryDelays()) === "[150]", "the first stale read did not schedule exactly one retry: " + JSON.stringify(retryDelays()));
+  fireRetry();
+  assert(retriedPreview.operationMessage.includes("Refreshing and validating") && closeStage() === "ready-for-design" && JSON.stringify(retryDelays()) === "[150,300]", "the second stale read did not keep waiting: " + retriedPreview.operationMessage);
+  fireRetry();
+  assert(retriedPreview.operationMessage.includes("refreshed and validated") && closeStage() === "in-design" && !state.boardViewStale && !state.liveRefreshError && state.liveVersion === 3, "the retry that returned the applied snapshot was not adopted and validated: " + retriedPreview.operationMessage);
+  assert(JSON.stringify(retryDelays()) === "[150,300]", "a validated retry scheduled another read");
+  const applyCallsAfterRetry = calls.filter(item => item.path === "/api/board/v1/apply").length;
+  assert(applyCallsAfterRetry === dataCallsAndApplyBefore.apply + 1 && calls.filter(item => item.path === "/data.json").length >= dataCallsAndApplyBefore.data + 3, "the retries did not re-request the snapshot without resubmitting the apply");
+
+  staleDataReads = 100;
+  const waitingPreview = applyCloseFixture();
+  assert(calls.filter(item => item.path === "/api/board/v1/apply").length === applyCallsAfterRetry + 1, "the fallback case did not submit exactly one apply");
+  for (let index = 0; index < 5; index += 1) fireRetry();
+  assert(JSON.stringify(retryDelays()) === "[150,300,600,900,1200]" && state.boardViewStale && state.liveRefreshError && closeStage() === "ready-for-design", "exhausted retries did not mark the view stale: " + JSON.stringify(retryDelays()));
+  assert(waitingPreview.operationMessage.includes("view stale") && waitingPreview.operationMessage.includes("live update stream") && !waitingPreview.operationMessage.includes("refreshed and validated") && state.pendingAppliedStage && state.pendingAppliedStage.featureId === "F-close", "exhausted retries did not say the board is waiting for the event stream: " + waitingPreview.operationMessage);
+  assert(calls.filter(item => item.path === "/api/board/v1/apply").length === applyCallsAfterRetry + 1, "exhausted retries resubmitted the apply");
+  staleDataReads = 0;
+  adoptData(beforeEnvelope);
+  assert(waitingPreview.operationMessage.includes("view stale") && state.pendingAppliedStage, "an unrelated snapshot cleared the waiting state");
+  adoptData(closedApplyEnvelope);
+  assert(waitingPreview.operationMessage.includes("refreshed and validated") && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && closeStage() === "in-design", "the event stream snapshot did not settle the waiting state");
+  globalThis.setTimeout = priorSetTimeout;
+  staleDataReads = 0;
+
   const legacyEnvelope = JSON.parse(JSON.stringify(beforeEnvelope));
   const legacyPath = "knowledge/wiki/features/F-legacy.md";
   const legacyAction = { version: 1, feature_id: "F-legacy", source_status: "in-design", source_owner: "designer", source_path: legacyPath, target_status: "ready-for-dev", target_owner: "dev", action: "design-handoff", classification: "ready", supported: true, checks: [{ code: "source-readable", status: "pass", message: "Feature source is readable.", path: legacyPath }], sources: [legacyPath], invocations: { codex: "$design-handoff F-legacy", claude: "/design-handoff F-legacy" } };
@@ -1296,6 +1350,354 @@ if (checkConnectedBoard) {
   globalThis.__connectedBoardChecked = true;
 })();`);
 }
+if (checkBoardDefects) {
+  regressionChecks.push(`
+;(() => {
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const clone = value => JSON.parse(JSON.stringify(value));
+  const syncChain = globalThis.__syncChain;
+  const reply = (payload, status = 200) => syncChain({ ok: status >= 200 && status < 300, status, json: () => syncChain(payload) });
+  // A response that settles later, so a test can decide what arrives first: the live event or the apply response.
+  const lateChain = () => {
+    const handlers = [];
+    let done = false, value, failure;
+    const run = () => {
+      handlers.splice(0).forEach(handler => {
+        let result;
+        try {
+          if (failure) {
+            if (!handler.onRejected) { handler.next.settle(undefined, failure); return; }
+            result = handler.onRejected(failure);
+          } else result = handler.onFulfilled ? handler.onFulfilled(value) : value;
+        } catch (error) { handler.next.settle(undefined, error); return; }
+        if (result && typeof result.then === "function") result.then(next => handler.next.settle(next), error => handler.next.settle(undefined, error));
+        else handler.next.settle(result);
+      });
+    };
+    const chain = {
+      then(onFulfilled, onRejected) { const next = lateChain(); handlers.push({ onFulfilled, onRejected, next }); if (done) run(); return next; },
+      catch(onRejected) { return chain.then(undefined, onRejected); },
+      settle(nextValue, nextFailure) { if (done) return; done = true; value = nextValue; failure = nextFailure; run(); },
+    };
+    return chain;
+  };
+  const actor = { participant_id: "human-7", name: "Safe Human", kind: "human", writable: true, board_id: "board-7", workflow_version: "1", scopes: ["read", "write"] };
+  const capability = { workflow_eligible: true, human_actions: ["po-handoff", "design-start", "dev-start"], supported_actions: ["po-handoff", "design-start", "dev-start"], supported_write_skills: [] };
+  const connect = () => {
+    state.boardConnection = "connected";
+    state.boardActor = actor;
+    state.boardCsrf = "csrf-only-in-memory";
+    state.boardCapability = capability;
+    state.boardDiscover = { capability, pending_operations: [] };
+    state.boardPendingOperations = [];
+    state.liveRefreshError = null;
+    state.liveEpoch = "defect-epoch";
+    state.liveVersion = 1;
+  };
+  const featureNode = (id, extra) => Object.assign({ id, type: "feature", title: "Feature " + id, path: "knowledge/wiki/features/" + id + ".md", health: "ok", status: "specified", owner: "po", open_questions: [] }, extra || {});
+  const makeEnvelope = () => {
+    const payload = clone(globalThis.transitionPayload);
+    payload.root = "/demo/defects";
+    payload.workspace = { kind: "generated-project", project_name: "Defect fixture", platforms: ["backend"] };
+    payload.facts.nodes = [
+      featureNode("F-live"), featureNode("F-lost"), featureNode("F-rejected", { advisory_review: "pending" }), featureNode("F-revoked"), featureNode("F-down"), featureNode("F-drag"),
+    ];
+    payload.facts.node_count = payload.facts.nodes.length;
+    payload.facts.edges = [];
+    payload.facts.edge_count = 0;
+    payload.facts.intake = { pending: [], quarantined: [] };
+    payload.facts.transition_capability = { version: 2, mode: "copy-only", supported_actions: [], snapshot: { consistent: true, fingerprint: "fp-defects", observed_at: "2026-09-22T12:00:00Z" }, surfaces: [] };
+    payload.blocker_facts = [];
+    return payload;
+  };
+  const beforeEnvelope = makeEnvelope();
+  const afterEnvelope = clone(beforeEnvelope);
+  for (const node of afterEnvelope.facts.nodes) if (node.id === "F-live" || node.id === "F-lost") { node.status = "ready-for-design"; node.owner = "designer"; }
+  const calls = [];
+  let applyMode = "ok";
+  let operationMode = "applied";
+  let heldApply = null;
+  let dataEnvelope = beforeEnvelope;
+  let dataVersion = 1;
+  let sessionStatus = 200;
+  let dataStatus = 200;
+  let previewCount = 0;
+  const receiptFor = operationId => ({ schema_version: 1, operation_id: operationId, state: "applied", action: "po-handoff", feature_id: "F-live", applied_paths: ["knowledge/wiki/features/F-live.md", "knowledge/wiki/index.md", "knowledge/wiki/log.md"], recovery_available: false, actor });
+  globalThis.fetch = (path, options = {}) => {
+    const url = String(path);
+    calls.push({ path: url, options });
+    if (url === "/api/board/v1/auth/session") {
+      if (sessionStatus === 401) return reply({ error: { code: "session_expired", message: "The Prism board session has expired." } }, 401);
+      return reply({ actor, csrf_token: "csrf-only-in-memory" });
+    }
+    if (url === "/api/board/v1/discover") return reply({ schema_version: 1, capability, pending_operations: [], participant: actor });
+    if (url === "/api/board/v1/previews/transition") {
+      const body = JSON.parse(options.body || "{}");
+      previewCount += 1;
+      const acknowledged = body.inputs && body.inputs.semantic_review_acknowledged === true;
+      const skip = body.inputs && body.inputs.skip_advisory_review === true;
+      const advisory = body.feature_id === "F-rejected";
+      const applicable = acknowledged && (!advisory || skip);
+      return reply({ schema_version: 1, preview_id: "preview-" + previewCount, action: body.action, feature_id: body.feature_id, classification: applicable ? "ready" : "review", applicable,
+        checks: advisory ? [{ code: "advisory-review", status: skip ? "pass" : "review", message: skip ? "Advisory review skip was proposed." : "Advisory review is pending." }] : [],
+        blockers: [], review_obligations: [], source: { status: "specified", owner: "po" }, target: { status: "ready-for-design", owner: "designer" },
+        writes: [{ path: "knowledge/wiki/features/" + body.feature_id + ".md", role: "canonical", before: "status: specified\\n", after: "status: ready-for-design\\n" }] });
+    }
+    if (url === "/api/board/v1/apply") {
+      const body = JSON.parse(options.body);
+      if (applyMode === "held") { heldApply = { body, chain: lateChain() }; return heldApply.chain; }
+      if (applyMode === "lost") return syncChain(null, new Error("simulated lost apply response"));
+      if (applyMode === "stale") return reply({ error: { code: "stale_preview", message: "Relevant source knowledge/wiki/features/F-rejected.md changed after this preview." } }, 409);
+      if (applyMode === "unauthorized") return reply({ error: { code: "unauthorized", message: "The Prism participant token is invalid or revoked." } }, 401);
+      if (applyMode === "unavailable") return reply({ error: { code: "service_closed", message: "The board service has been closed." } }, 503);
+      return reply(receiptFor(body.operation_id));
+    }
+    if (url.startsWith("/api/board/v1/operations/")) {
+      if (operationMode === "unavailable") return reply({ error: { code: "temporarily_unavailable", message: "Lookup unavailable." } }, 503);
+      return reply(Object.assign(receiptFor(decodeURIComponent(url.split("/").at(-1))), { receipt: receiptFor(decodeURIComponent(url.split("/").at(-1))) }));
+    }
+    if (url === "/data.json") {
+      if (dataStatus === 401) return reply({ error: { code: "session_expired", message: "The Prism board session has expired." } }, 401);
+      return reply({ epoch: "defect-epoch", version: dataVersion, envelope: dataEnvelope });
+    }
+    return reply({ error: { code: "not_found", message: "Fixture route is unavailable." } }, 404);
+  };
+  const dialogNow = () => document.getElementById("transition-dialog");
+  const boardNow = () => document.getElementById("board-view");
+  const reset = () => {
+    if (state.transitionPreview) closeTransitionPreview();
+    applyMode = "ok"; operationMode = "applied"; heldApply = null; sessionStatus = 200; dataStatus = 200;
+    dataEnvelope = beforeEnvelope; dataVersion = 1;
+    calls.length = 0;
+    connect();
+    adoptData(beforeEnvelope);
+    switchView("board");
+    renderBoard();
+  };
+  const openReview = (featureId, acknowledge) => {
+    const button = boardNow().querySelectorAll("[data-board-action]").find(item => item.dataset.boardFeatureId === featureId);
+    assert(button, "no connected review button for " + featureId);
+    button.__listeners.click[0]({ preventDefault() {}, stopPropagation() {} });
+    if (acknowledge) {
+      const ack = dialogNow().querySelector("[data-connected-ack]");
+      ack.checked = true;
+      ack.__listeners.change[0]();
+    }
+    return state.transitionPreview;
+  };
+  const click = selector => { const element = dialogNow().querySelector(selector); assert(element, "dialog has no " + selector); element.__listeners.click[0](); };
+  const alertText = () => { const match = dialogNow().innerHTML.match(/role="alert">([^<]*)</); return match ? match[1] : ""; };
+
+  // D4: a live update that arrives before the apply response must not mark the preview stale.
+  reset();
+  let preview = openReview("F-live", true);
+  assert(preview.previewId && !dialogNow().querySelector("[data-connected-apply]").disabled, "the acknowledged preview did not offer Apply");
+  applyMode = "held";
+  click("[data-connected-apply]");
+  assert(preview.operationState === "applying" && heldApply, "Apply did not reach the service while its response was held");
+  dataEnvelope = afterEnvelope; dataVersion = 2;
+  adoptData(afterEnvelope);
+  assert(!preview.staleReason && !dialogNow().innerHTML.includes("Feature source changed"), "a live update during an in-flight apply marked the preview stale: " + preview.staleReason);
+  heldApply.chain.settle({ ok: true, status: 200, json: () => syncChain(receiptFor(heldApply.body.operation_id)) });
+  assert(preview.operationState === "applied" && !preview.staleReason, "the applied receipt did not settle the preview");
+  assert(alertText().startsWith("Operation applied") && !dialogNow().innerHTML.includes("Feature source changed"), "the stale warning outranked the applied outcome: " + alertText());
+  assert(calls.filter(item => item.path === "/api/board/v1/apply").length === 1, "the apply was submitted more than once");
+  markLiveRefreshUnavailable("disconnected");
+  assert(alertText().startsWith("Operation applied"), "a later stream drop replaced the applied outcome with a stale warning: " + alertText());
+
+  // D4 after a lost response: the live stage change is the operation's effect, and the retrieved receipt wins.
+  reset();
+  applyMode = "lost"; operationMode = "unavailable";
+  preview = openReview("F-lost", true);
+  click("[data-connected-apply]");
+  assert(preview.operationState === "outcome unknown" && preview.operationId, "a lost apply response was not reported as an unknown outcome");
+  dataEnvelope = afterEnvelope; dataVersion = 2;
+  adoptData(afterEnvelope);
+  assert(!preview.staleReason && !dialogNow().innerHTML.includes("Feature source changed"), "a live update after a lost response marked the preview stale");
+  operationMode = "applied";
+  click("[data-connected-check-operation]");
+  assert(preview.operationState === "applied" && alertText().startsWith("Operation applied"), "the retrieved receipt was shadowed after a lost response: " + alertText());
+  assert(calls.filter(item => item.path === "/api/board/v1/apply").length === 1, "a lost response resubmitted the apply");
+
+  // D2: a stale rejection is not an unknown outcome. The service's message shows, inputs stay, a fresh preview is offered.
+  reset();
+  applyMode = "stale";
+  preview = openReview("F-rejected", false);
+  let dialog = dialogNow();
+  const skip = dialog.querySelector("[data-connected-skip]");
+  skip.checked = true; skip.__listeners.change[0]();
+  dialog = dialogNow();
+  const reason = dialog.querySelector("[data-connected-skip-reason]");
+  reason.value = "PO accepts the delay."; reason.__listeners.input[0]();
+  dialog.querySelector("[data-connected-repreview]").__listeners.click[0]();
+  const ack = dialogNow().querySelector("[data-connected-ack]");
+  ack.checked = true; ack.__listeners.change[0]();
+  assert(!dialogNow().querySelector("[data-connected-apply]").disabled, "the skip proposal preview did not offer Apply");
+  const callsBeforeApply = calls.length;
+  click("[data-connected-apply]");
+  dialog = dialogNow();
+  assert(!preview.operationId && !preview.operationState && preview.staleReason.includes("changed after this preview"), "a stale rejection was not treated as rejected before an operation existed");
+  assert(alertText().includes("Relevant source knowledge/wiki/features/F-rejected.md changed after this preview."), "the service's stale message was not shown: " + alertText());
+  assert(!dialog.innerHTML.includes("Operation ID") && !dialog.querySelector("[data-connected-check-operation]") && !dialog.querySelector("[data-connected-recover]"), "a stale rejection offered Inspect or Recover for an operation that never existed");
+  assert(calls.slice(callsBeforeApply).every(item => !item.path.startsWith("/api/board/v1/operations/")), "a stale rejection looked up an operation that never existed");
+  assert(dialog.querySelector("[data-connected-apply]").disabled && preview.previewId === null && preview.payload.applicable === false, "a rejected preview could still be applied");
+  assert(preview.skipAdvisory === true && preview.skipReason === "PO accepts the delay." && dialog.innerHTML.includes("PO accepts the delay."), "the typed skip proposal was not kept");
+  const previewAgain = dialog.querySelector("[data-connected-preview-again]");
+  assert(previewAgain, "no fresh preview was offered after a stale rejection");
+  previewAgain.__listeners.click[0]();
+  const freshRequest = JSON.parse(calls.filter(item => item.path === "/api/board/v1/previews/transition").at(-1).options.body);
+  assert(freshRequest.inputs.skip_advisory_review === true && freshRequest.inputs.advisory_skip_reason === "PO accepts the delay." && freshRequest.inputs.semantic_review_acknowledged === false, "the fresh preview did not keep the typed inputs or asked for approval it was not given: " + JSON.stringify(freshRequest));
+  assert(!preview.staleReason && preview.semanticAcknowledged === false && dialogNow().querySelector("[data-connected-apply]").disabled, "a fresh preview was approved without a new acknowledgement");
+
+  // D2 counterpart: a service failure leaves the outcome unknown, so Inspect stays offered.
+  reset();
+  applyMode = "unavailable"; operationMode = "unavailable";
+  preview = openReview("F-down", true);
+  click("[data-connected-apply]");
+  assert(preview.operationState === "outcome unknown" && preview.operationId && dialogNow().querySelector("[data-connected-check-operation]"), "a 5xx apply answer was not left as an unknown outcome with Inspect");
+
+  // D5: a 401 during apply shows the session-expired message with Reconnect, not an unknown outcome.
+  reset();
+  applyMode = "unauthorized";
+  preview = openReview("F-revoked", true);
+  click("[data-connected-apply]");
+  dialog = dialogNow();
+  assert(state.boardConnection === "unauthenticated" && !preview.operationId && !preview.operationState, "a 401 apply left an operation behind");
+  assert(alertText().includes("The board session has expired. Reconnect"), "a 401 apply did not show the session-expired message: " + alertText());
+  assert(!dialog.querySelector("[data-connected-check-operation]") && !dialog.querySelector("[data-connected-recover]") && !dialog.innerHTML.includes("Operation ID"), "a 401 apply offered Inspect or Recover");
+  assert(dialog.querySelector("[data-connected-apply]").disabled, "Apply stayed enabled after the session ended");
+  assert(calls.every(item => !item.path.startsWith("/api/board/v1/operations/")), "a 401 apply looked up an operation that never existed");
+  let reloads = 0;
+  window.location = { reload() { reloads += 1; } };
+  click("[data-connected-reconnect]");
+  assert(reloads === 1, "the dialog's Reconnect did not return to the token sign-in");
+
+  // D3: the event stream and a fetch that get 401 show the expired session instead of a silent STALE.
+  const priorEventSource = globalThis.EventSource, priorSetInterval = globalThis.setInterval, priorSetTimeout = globalThis.setTimeout;
+  const sources = [], timers = [];
+  globalThis.EventSource = function () { this.onmessage = null; this.onerror = null; sources.push(this); };
+  globalThis.setInterval = () => 1;
+  globalThis.setTimeout = (callback, delay) => { timers.push({ callback, delay }); return timers.length; };
+  reset();
+  sessionStatus = 401;
+  openReview("F-live", true);
+  initLive();
+  assert(sources.length === 1, "live mode did not open the event stream");
+  sources[0].onerror();
+  assert(state.boardConnection === "unauthenticated", "a stream error answered with 401 left the board looking connected");
+  assert(document.getElementById("board-session").innerHTML.includes("Board session expired") && document.getElementById("board-session").innerHTML.includes("Reconnect"), "the header did not offer Reconnect after the stream was refused");
+  assert(document.getElementById("freshness").innerHTML.includes("STALE"), "the header went green while the session was gone");
+  assert(alertText().includes("The board session has expired. Reconnect") && dialogNow().querySelector("[data-connected-reconnect]") && dialogNow().querySelector("[data-connected-apply]").disabled, "the open review did not show the expired session");
+  const probesBefore = calls.filter(item => item.path === "/api/board/v1/auth/session").length;
+  sources[0].onerror();
+  assert(calls.filter(item => item.path === "/api/board/v1/auth/session").length === probesBefore, "an already-expired session was probed again");
+  reset();
+  dataStatus = 401;
+  initLive();
+  sources[1].onmessage({ data: "1", lastEventId: "defect-epoch:1" });
+  assert(state.boardConnection === "unauthenticated" && document.getElementById("board-session").innerHTML.includes("Board session expired"), "a snapshot fetch answered with 401 did not show the expired session");
+  assert(!timers.some(timer => timer.delay === 1500), "a snapshot fetch answered with 401 kept retrying");
+  globalThis.EventSource = priorEventSource; globalThis.setInterval = priorSetInterval; globalThis.setTimeout = priorSetTimeout;
+
+  // D1: a drop the board refuses is explained when the drag ends; same-column and leaving the board are not.
+  reset();
+  const toastEl = document.getElementById("toast");
+  const srEl = document.getElementById("sr-status");
+  const dragCard = () => boardNow().querySelectorAll(".card[data-id]").find(item => item.dataset.id === "F-drag");
+  const column = stage => boardNow().querySelectorAll(".column[data-stage]").find(item => item.dataset.stage === stage);
+  const startDrag = () => { const card = dragCard(); card.__listeners.dragstart[0]({ currentTarget: card, preventDefault() {}, dataTransfer: { setData() {} } }); return card; };
+  const hover = target => target.__listeners.dragover[0]({ currentTarget: target, preventDefault() {}, dataTransfer: {} });
+  toastEl.textContent = ""; srEl.textContent = "";
+  let card = startDrag();
+  hover(column("in-dev"));
+  column("in-dev").__listeners.dragleave[0]({ currentTarget: column("in-dev") });
+  card.__listeners.dragend[0]();
+  assert(toastEl.textContent === "Unsupported drop - card stayed in its source stage" && srEl.textContent.includes("stayed in its source stage") && state.drag === null, "a refused drop was not explained: " + toastEl.textContent + " / " + srEl.textContent);
+  toastEl.textContent = ""; srEl.textContent = "";
+  card = startDrag();
+  hover(column("specified"));
+  card.__listeners.dragend[0]();
+  assert(toastEl.textContent === "" && srEl.textContent === "Workflow drag canceled.", "a same-column drag was explained as an unsupported drop: " + toastEl.textContent + " / " + srEl.textContent);
+  card = startDrag();
+  hover(column("in-dev"));
+  column("in-dev").__listeners.dragleave[0]({ currentTarget: column("in-dev"), relatedTarget: { closest() { return null; } } });
+  card.__listeners.dragend[0]();
+  assert(toastEl.textContent === "" && srEl.textContent === "Workflow drag canceled.", "a drag released outside the board was explained as an unsupported drop");
+  card = startDrag();
+  hover(column("ready-for-design"));
+  card.__listeners.dragend[0]();
+  assert(toastEl.textContent === "" && srEl.textContent === "Workflow drag canceled.", "a canceled drag over a supported column was explained as an unsupported drop");
+
+  // A live re-render keeps focus on the control the person was on instead of sending it to the heading.
+  reset();
+  openReview("F-live", true);
+  dialogNow().querySelector("[data-connected-apply]").focus();
+  adoptData(beforeEnvelope);
+  assert(document.activeElement && document.activeElement.hasAttribute("data-connected-apply") && document.activeElement.isConnected !== false, "a live re-render moved focus off the control the person was on");
+  dialogNow().querySelector("#transition-dialog-title").focus();
+  adoptData(beforeEnvelope);
+  assert(document.activeElement && document.activeElement.id === "transition-dialog-title", "a re-render with focus on the heading did not keep it there");
+
+  // D8 and D9: one Tab trap for every modal, computed at key time, covering focus that is not on a listed control.
+  const rankOf = element => element.rank;
+  const focusable = (name, rank) => ({ name, rank, hidden: false, disabled: false, getAttribute() { return null; }, focus() { document.activeElement = this; },
+    compareDocumentPosition(other) { return rankOf(other) < rankOf(this) ? 2 : rankOf(other) > rankOf(this) ? 4 : 0; } });
+  const heading = focusable("heading", 1), summaryRow = focusable("summary", 2), middle = focusable("middle", 5), closeButton = focusable("close", 8), applyButton = focusable("apply", 9);
+  const outside = focusable("outside", -3);
+  const fakeDialog = { rank: 0, listed: [summaryRow, middle, closeButton, applyButton], querySelectorAll() { return this.listed; }, contains(element) { return !!element && element.rank >= 0; }, focus() { document.activeElement = this; } };
+  const press = (active, shiftKey) => {
+    document.activeElement = active;
+    const event = { key: "Tab", shiftKey, prevented: false, preventDefault() { this.prevented = true; } };
+    trapDialogTab(event, fakeDialog);
+    return event;
+  };
+  let tab = press(heading, true);
+  assert(tab.prevented && document.activeElement === applyButton, "Shift+Tab from the dialog heading left the dialog");
+  tab = press(fakeDialog, true);
+  assert(tab.prevented && document.activeElement === applyButton, "Shift+Tab from the dialog itself left the dialog");
+  tab = press(summaryRow, true);
+  assert(tab.prevented && document.activeElement === applyButton, "Shift+Tab from the first file-change row did not wrap to the last control");
+  tab = press(applyButton, false);
+  assert(tab.prevented && document.activeElement === summaryRow, "Tab from the last control did not wrap to the first");
+  tab = press(middle, false);
+  assert(!tab.prevented && document.activeElement === middle, "Tab between controls was taken over from the browser");
+  tab = press(middle, true);
+  assert(!tab.prevented, "Shift+Tab between controls was taken over from the browser");
+  tab = press(outside, false);
+  assert(tab.prevented && document.activeElement === summaryRow, "Tab with focus outside the dialog did not come back to its first control");
+  tab = press(outside, true);
+  assert(tab.prevented && document.activeElement === applyButton, "Shift+Tab with focus outside the dialog did not come back to its last control");
+  applyButton.disabled = true;
+  tab = press(closeButton, false);
+  assert(tab.prevented && document.activeElement === summaryRow, "a disabled control was still counted as the last focusable element");
+  applyButton.disabled = false;
+  fakeDialog.listed = [];
+  tab = press(heading, false);
+  assert(tab.prevented && document.activeElement === fakeDialog, "an empty dialog did not keep focus on itself");
+
+  reset();
+  closeTransitionPreview();
+  state.boardPendingOperations = [{ operation_id: "op-pending", state: "pending", created_at: "2026-09-22T12:00:00Z" }];
+  renderHeader();
+  document.getElementById("board-session").querySelector("[data-board-operations]").__listeners.click[0]();
+  const operationsModal = dialogNow().querySelector(".transition-dialog");
+  assert(dialogNow().innerHTML.includes("Review pending operations") && operationsModal.__listeners.keydown && operationsModal.__listeners.keydown.length === 1, "the pending-operations dialog did not bind the shared keyboard handler");
+  const operationControls = operationsModal.querySelectorAll("button");
+  const lastControl = operationControls.filter(item => !item.disabled).at(-1);
+  const firstControl = operationControls.filter(item => !item.disabled)[0];
+  document.activeElement = lastControl;
+  let operationTab = { key: "Tab", shiftKey: false, prevented: false, preventDefault() { this.prevented = true; } };
+  operationsModal.__listeners.keydown[0](operationTab);
+  assert(operationTab.prevented && document.activeElement === firstControl, "Tab from the last control of the pending-operations dialog left it");
+  document.activeElement = firstControl;
+  operationTab = { key: "Tab", shiftKey: true, prevented: false, preventDefault() { this.prevented = true; } };
+  operationsModal.__listeners.keydown[0](operationTab);
+  assert(operationTab.prevented && document.activeElement === lastControl, "Shift+Tab from the first control of the pending-operations dialog left it");
+  closeTransitionPreview();
+  state.boardPendingOperations = [];
+  globalThis.__boardDefectsChecked = true;
+})();`);
+}
 try {
   vm.runInNewContext(appJs + regressionChecks.join("\n"), sandbox, { filename: "dashboard-app.js" });
   console.log("BOOT OK — full script executed without runtime errors");
@@ -1368,6 +1770,10 @@ if (checkTransitions) {
 if (checkConnectedBoard) {
   if (!sandbox.__connectedBoardChecked) { console.error("CONNECTED BOARD FAILED - connected service regressions did not complete"); process.exit(1); }
   console.log("CONNECTED BOARD OK - service-only preview, blocked drop, exact diff, PO skip, semantic acknowledgement, apply receipt, and refreshed view passed");
+}
+if (checkBoardDefects) {
+  if (!sandbox.__boardDefectsChecked) { console.error("BOARD DEFECTS FAILED - the board defect regressions did not complete"); process.exit(1); }
+  console.log("BOARD DEFECTS OK - in-flight apply never goes stale, rejected applies are not unknown outcomes, expired sessions offer Reconnect, refused drops are explained, and every modal keeps Tab focus");
 }
 // sanity: header + views wired
 const viewsEl = elements["views"];

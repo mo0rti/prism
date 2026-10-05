@@ -1,7 +1,6 @@
 # Prism CLI Release Preparation
 
-Prism's local release candidate is currently prepared as distribution
-`prism-kit` version `0.2.0`. The user-facing command remains `prism`, and Python
+Prism's local release candidate is distribution `prism-kit` version `0.2.0`. The user-facing command remains `prism`, and Python
 imports remain under `prism_cli`. The package has not been published to PyPI;
 publication is a later, explicit step.
 
@@ -14,9 +13,12 @@ python -m pip install -e .
 prism --version
 ```
 
-The package metadata installs the generation prerequisites `copier`, `jinja2-time`,
-and `PyYAML`. Generated repositories still need their platform tools, such as
-Node.js, go-task, Docker, a JDK, or Xcode, depending on the selected slices.
+The package metadata installs `PyYAML` for the CLI, `copier` and `jinja2-time` for
+generation, and `mcp`, `starlette` and `uvicorn` for the shared board service
+(`pyproject.toml` lists the exact version ranges). The optional `e2e` extra
+(`pip install -e ".[e2e]"`) adds Playwright for the browser tests. Generated
+repositories still need their platform tools, such as Node.js, go-task, Docker,
+a JDK, or Xcode, depending on the selected slices.
 
 Build a wheel and test that artifact in an isolated environment:
 
@@ -57,9 +59,15 @@ python -m build --sdist --wheel
 python -m twine check dist/*
 ```
 
-The current handoff delivery's local checks and artifact hashes are recorded in
-[board-transitions-acceptance.md](board-transitions-acceptance.md). The earlier
-[CLI V2 acceptance](cli-v2-acceptance.md) remains a historical milestone record.
+The browser tests under `tests/browser` are skipped unless the `e2e` extra is
+installed and `PRISM_BROWSER_E2E=1` is set; [current-status.md](current-status.md#validation)
+describes how to run them.
+
+The connected core's acceptance run, artifact hashes and remaining limits are recorded in
+[connected-core-acceptance.md](connected-core-acceptance.md). Those hashes describe the
+snapshot they name; build and hash the wheel again for every release candidate.
+[Board handoff acceptance](board-transitions-acceptance.md) and
+[CLI V2 acceptance](cli-v2-acceptance.md) are dated milestone records.
 
 Run a broad Copier render outside the repository and inspect the generated
 `prism.workspace.yml`. It should parse as YAML, carry `min_prism_cli_version: "0.2.0"`,

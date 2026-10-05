@@ -55,6 +55,21 @@ unaffected evidence to be explicitly reaffirmed after review. Show exact affecte
 platform-requirement and API pages with their proposed invalidated statuses;
 preserve prior statuses in the history and never reset unrelated shared contracts.
 
+Write the archived evidence under the `- Prior completion/release evidence:` bullet
+of the reopen record. Copy each prior Delivery evidence row verbatim, with its
+`| platform | implementation | tests | release |` cells, on that line or on the
+lines directly below it as a table or a list, before the next `- Label:` bullet or
+heading. A row anywhere else is not found, and the connected board rejects the
+record with `delivery_evidence_not_archived`. `knowledge/wiki/features/_FORMAT.md` shows the
+layout.
+
+Write `- Requirement/API invalidations:` with one entry for each requirement or API page
+you change: its full relative path, a colon, the page's current status, an arrow and its
+new status, for example `knowledge/wiki/platform-requirements/F-001-backend.md: done ->
+in-progress` (on one line). Name each of those pages by the same path in
+`- Affected artifacts:`. When no page changes, write a sentence such as `No requirement
+or API page is invalidated.`; the bullet cannot be empty or a bare `None`.
+
 Reread the feature, index, identity, and linked context immediately before asking
 for confirmation and once after confirmation. On confirmation, update the feature
 route, set the pending revalidation domains, archive the prior delivery evidence,

@@ -1,5 +1,6 @@
 package {{ package_identifier }}.bootstrap
 
+import {{ package_identifier }}.bootstrap.security.ApiAuthenticationEntryPoint
 import {{ package_identifier }}.bootstrap.security.JwtAuthenticationFilter
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -16,6 +17,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    private val authenticationEntryPoint: ApiAuthenticationEntryPoint,
     private val environment: Environment
 ) {
 
@@ -24,6 +26,7 @@ class SecurityConfig(
         http
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            .exceptionHandling { it.authenticationEntryPoint(authenticationEntryPoint) }
             .authorizeHttpRequests { auth ->
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
                 auth.requestMatchers("/api/v1/auth/oauth/callback", "/api/v1/auth/oauth/token").permitAll()

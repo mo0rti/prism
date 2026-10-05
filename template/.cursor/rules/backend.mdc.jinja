@@ -15,7 +15,7 @@ globs: "backend/**"
 ```
 src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
   bootstrap/    -> SecurityConfig, WebConfig, OAuth2Config, OpenApiConfig
-    security/   -> JwtTokenProvider, JwtAuthenticationFilter
+    security/   -> JwtTokenProvider, JwtAuthenticationFilter, ApiAuthenticationEntryPoint
   shared/       -> Cross-cutting: exceptions, models, audit
     audit/      -> AuditableEntity (@MappedSuperclass with timestamps)
     exception/  -> ApiException hierarchy + GlobalExceptionHandler
@@ -31,11 +31,13 @@ src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
 - Entities extend `AuditableEntity` for automatic timestamps
 - Global exception handler returns `ApiErrorResponse`
 - Pagination via `Pageable` -> `PagedResponse<T>`
-- All endpoints require JWT except `/auth/**`
+- All endpoints require JWT except the public auth endpoints (`/auth/register`, `/auth/login`, `/auth/refresh`, and the OAuth callback when enabled)
+- A missing, malformed or expired access token gets 401; an authenticated user without permission gets 403
+- Emails are compared without regard to case: `normalizedEmail()` lower-cases them for storage and lookups
 - Flyway migrations in `src/main/resources/db/migration/`
-- Tests use `@SpringBootTest` + MockK
+- Tests use MockK for service logic and `@SpringBootTest` with MockMvc for security and request-path behavior
 
 ## Commands
 - `./gradlew bootRun` or `task backend:run`
 - `./gradlew test` or `task backend:test`
-- `./gradlew assembleBootDist` or `task backend:build`
+- `./gradlew build -x test` or `task backend:build`

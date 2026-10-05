@@ -11,7 +11,8 @@ The app theme is defined in `designsystem/theme/`:
 | `Type.kt` | Typography scale |
 | `Shape.kt` | Shape definitions (rounded corners) |
 | `Dimensions.kt` | Spacing and sizing constants |
-| `preview/ThemePreviews.kt` | Shared light/dark preview annotation for Compose previews |
+
+`designsystem/preview/ThemePreviews.kt` holds the shared light/dark preview annotation for Compose previews.
 
 ### Usage
 
@@ -50,6 +51,7 @@ Located in `designsystem/components/`:
 |-----------|---------|
 | `LoadingIndicator` | Centered circular progress indicator |
 | `ErrorView` | Error message with optional retry button |
+| `StepNavigationButtons` | Primary action button with an optional back button, used by the welcome slides |
 
 Feature-local auth building blocks live in `feature/auth/ui/components/`:
 
@@ -67,6 +69,7 @@ Auth-specific art assets are kept in resources so generated projects can swap br
 | Resource | Purpose |
 |----------|---------|
 | `drawable/ic_brand_logo.xml` | Brand logo used by the shared brand lockup |
+| `drawable/img_welcome_slide_*.xml` | Illustrations for the welcome slides |
 | `drawable/ic_auth_provider_*.xml` | Provider icons for Google, Apple, and Facebook |
 | `drawable-nodpi/img_auth_sign_in_hero.png` | Full-bleed social auth hero image |
 
@@ -81,6 +84,6 @@ When a composable is used by more than one feature:
 
 ## Design tokens
 
-Shared design tokens are defined in [shared/design-tokens/tokens.json](../../shared/design-tokens/tokens.json). These provide the canonical color, spacing, typography, and border-radius values consumed by all platforms.
+Shared design tokens are defined in [shared/design-tokens/tokens.json](../../shared/design-tokens/tokens.json). These provide the shared color, spacing, typography, and border-radius values that `designsystem/theme/` mirrors by hand.
 
 When updating theme values, check if the design tokens file should be updated first to keep all platforms aligned.

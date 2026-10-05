@@ -39,7 +39,8 @@ and never authorizes a write.
    - **If no UI platforms are in scope (backend/API/infra):**
      - Design page is not required — skip design coverage check
      - A design page is not required and no exemption field is needed.
-   - For all features: no open questions with owner = `designer`
+   - For all features: no open questions with owner = `po` or `designer`. An open question
+     with owner = `dev` does not block this handoff; it stays open for `/dev-clarify`
    - Status of `in-design` and owner `designer`
 5. Check `advisory-review` field:
    - If `pending`: board review has not been run. Inform the user. Ask:
@@ -58,9 +59,15 @@ and never authorizes a write.
 9. If the check passes:
    - Show the user: status → `ready-for-dev`, owner → `dev`
    - Wait for confirmation
-   - Update feature file frontmatter
+   - Update feature file frontmatter only: change `status`, `owner` and `last-updated`
+     (and clear the verified `design` revalidation domain). Leave every body section,
+     including `## Design`, exactly as it is; the service rejects any other change
    - Generate platform-requirements pages for all platforms in scope, incorporating
      design decisions and any board review findings relevant to implementation
+   - If the feature's `## API surface` declares API work (anything other than an empty
+     section or a plain statement that there is none, such as `None.`) and no API
+     contract exists for the feature, create `knowledge/wiki/api-contracts/F-XXX.md` as
+     a new page (see "API contract" below)
    - Update `index.md` and append to `log.md`
 
 Before confirmation show every feature, generated requirement, index, and log
@@ -70,7 +77,34 @@ authorize a write. Decline or cancel means no write. If a multi-file write is pa
 report the exact observed state and require fresh recovery; no transaction is
 implied.
 
+## API contract
+
+The API contract page is created here, never later and never by hand, so `/dev-start`
+finds it. The user who confirms this handoff is the one who agrees it.
+
+- Create it only when `## API surface` declares API work and no contract for the feature
+  exists yet. When the API surface says there is none, write no contract page.
+- Frontmatter `feature-id: F-XXX`, `version: 1`, `status: agreed`; sections `## Endpoints`,
+  `## Data models`, `## Authentication requirements` and `## Notes` (format in
+  `knowledge/wiki/api-contracts/_FORMAT.md`).
+- Write it only from the API surface text: list each endpoint as `METHOD /path`, use the
+  paths the API surface names, and define only data models that the API surface or a
+  listed endpoint names. Add no endpoint, model or behavior the API surface does not state;
+  an API surface that is too vague to write from needs `/ask` and `/po-clarify` or
+  `/dev-clarify` first.
+- Link the page from each generated requirement's `## API contract reference`.
+- Never rewrite an existing contract page: leave it out of the write set.
+
 ## Notes for the agent
+
+- In each generated requirement page, `## Dependencies` lists only real dependencies
+  (other feature IDs or platform-requirement files that must complete first) or says
+  `None.`. Never write an open question, note or caveat there; `/dev-clarify` may not
+  change that section, so the text would stay after the question is answered.
+- Open questions owned by `po` or `designer` block this handoff: resolve them first with
+  `/po-clarify` or `/design-clarify`. An open question owned by `dev` does not block it: it
+  stays open in the feature's Open questions table, which this handoff cannot change, and
+  `/dev-clarify` resolves it before `/dev-start`.
 
 - Platform-requirements pages are generated at handoff time (not at intake time) because
   the spec is now complete and can be derived accurately.

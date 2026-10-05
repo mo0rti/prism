@@ -653,6 +653,54 @@ class LifecycleRegressionTests(unittest.TestCase):
                 self.assertEqual("blocked", transition["classification"])
                 self.assertEqual("blocked", self._check(transition, "design")["status"])
 
+    def test_open_question_checks_name_question_numbers_and_count_them_separately(self) -> None:
+        cases = (
+            ("dev-start", "ready-for-dev", "dev", "dev", (("3", "Which limit applies?", "dev", "open"),), "1 open action-relevant question remains: question 3."),
+            (
+                "dev-start",
+                "ready-for-dev",
+                "dev",
+                "dev",
+                (("3", "Which limit applies?", "dev", "open"), ("5", "Which store is used?", "dev", "open"), ("6", "Already answered", "dev", "resolved: Yes.")),
+                "2 open action-relevant questions remain: questions 3, 5.",
+            ),
+            ("po-handoff", "specified", "po", "po", (("1", "Which points?", "po", "open"),), "1 open PO-owned question remains: question 1."),
+            (
+                "po-handoff",
+                "specified",
+                "po",
+                "po",
+                (("2", "Which points?", "po", "open"), ("4", "Which format?", "po", "open")),
+                "2 open PO-owned questions remain: questions 2, 4.",
+            ),
+        )
+        for action, status, owner, _question_owner, questions, expected in cases:
+            with self.subTest(action=action, expected=expected):
+                self._write_feature(status=status, owner=owner, advisory="done", questions=questions)
+                check = self._check(self._transition(action), "open-questions")
+                self.assertEqual("blocked", check["status"])
+                self.assertEqual(expected, check["message"])
+                self.assertNotIn("(", check["message"])
+
+    def test_a_requirement_linking_its_own_feature_does_not_depend_on_it(self) -> None:
+        self._write_feature(status="in-dev", owner="dev", advisory="done")
+        own_link = "Context: [F-001](../features/F-001-payout-summary.md) and its feature page F-001-payout-summary.md."
+        self._write_requirement(status="pending", dependencies=own_link)
+        diagnostics = [item for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.code == "cross-platform-dependency"]
+        self.assertEqual([], diagnostics, diagnostics)
+
+        plain = "This follows F-001 and [the requirement itself](F-001-backend.md)."
+        self._write_requirement(status="pending", dependencies=plain)
+        self.assertEqual([], [item for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.code == "cross-platform-dependency"])
+
+        # Another unfinished feature is still a dependency.
+        self._write_feature(feature_id="F-002", filename="F-002-other-summary.md", title="Other summary", status="specified", owner="po")
+        self._write_requirement(status="pending", dependencies=own_link + " It also waits for [F-002](../features/F-002-other-summary.md).")
+        found = [item for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.code == "cross-platform-dependency"]
+        self.assertEqual(1, len(found), found)
+        self.assertIn("unfinished feature `F-002`", found[0].message)
+        self.assertNotIn("`F-001`", found[0].message)
+
     def test_design_start_allows_designer_owned_questions(self) -> None:
         self._write_feature(
             status="ready-for-design",

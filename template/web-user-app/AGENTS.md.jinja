@@ -25,12 +25,13 @@ If you discover information during implementation that should update the wiki, p
 the update and ask for confirmation before writing, or route a question using the `ask`
 command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
 
-This slice is based on the reference-app client-web structure:
+This slice has this structure:
 
 - locale-aware routing with `next-intl`
 - public marketing routes plus authenticated dashboard routes
 - NextAuth for web session handling
-- `/api/v1/*` proxy routes for backend integration
+- `/api/v1/*` proxy routes for backend integration; they forward only plain paths under `/api/v1/`
+- sign-out through `signOutEverywhere` (`lib/auth/sign-out.ts`), which revokes the backend refresh session before Auth.js clears the web session
 - Cloudflare/OpenNext deployment
 
 ## Focus Areas
@@ -46,5 +47,6 @@ This slice is based on the reference-app client-web structure:
 - `app/[locale]/dashboard/` - authenticated product shell
 - `app/api/auth/[...nextauth]/route.ts` - NextAuth route handlers
 - `app/api/v1/[...path]/route.ts` - backend proxy
+- `app/api/session/logout/route.ts` - revokes the backend refresh session on sign-out
 - `auth.ts` - web session configuration
 - `lib/i18n/` - locale config and routing helpers

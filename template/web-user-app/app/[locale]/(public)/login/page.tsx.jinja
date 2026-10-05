@@ -5,7 +5,8 @@ import { signIn } from "next-auth/react"
 import { useLocale, useTranslations } from "next-intl"
 import { Link } from "@/lib/i18n/routing"
 
-type SignInMethod = "credentials" | "google" | "apple" | "facebook" | "microsoft"
+// Social ids must match the Auth.js provider ids in auth.ts (Microsoft is "microsoft-entra-id").
+type SignInMethod = "credentials" | "google" | "apple" | "facebook" | "microsoft-entra-id"
 
 export default function LoginPage() {
   const locale = useLocale()
@@ -17,7 +18,7 @@ export default function LoginPage() {
 {% if "google" in auth_methods %}    { id: "google", label: `${t("socialPrefix")} Google` },
 {% endif %}{% if "apple" in auth_methods %}    { id: "apple", label: `${t("socialPrefix")} Apple` },
 {% endif %}{% if "facebook" in auth_methods %}    { id: "facebook", label: `${t("socialPrefix")} Facebook` },
-{% endif %}{% if "microsoft" in auth_methods %}    { id: "microsoft", label: `${t("socialPrefix")} Microsoft` },
+{% endif %}{% if "microsoft" in auth_methods %}    { id: "microsoft-entra-id", label: `${t("socialPrefix")} Microsoft` },
 {% endif %}  ]
 
   async function handleCredentials(event: FormEvent<HTMLFormElement>) {
@@ -56,7 +57,7 @@ export default function LoginPage() {
           <h1 className="text-3xl font-semibold">{t("title")}</h1>
           <p className="text-sm leading-7 text-slate-300">{t("description")}</p>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
-            This template follows the reference-app client-web shape: public marketing routes, dashboard routes, next-intl, and a Cloudflare-ready Next.js setup.
+            This app includes public marketing routes, dashboard routes, next-intl, and a Cloudflare-ready Next.js setup.
           </div>
         </div>
 

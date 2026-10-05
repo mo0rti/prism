@@ -29,7 +29,12 @@ class OAuthTokenVerifier(
 {% if "google" in auth_methods %}
             AuthProvider.GOOGLE -> {
                 val clientId = properties.google?.clientId ?: invalid()
-                val jwt = decode(idToken, "https://www.googleapis.com/oauth2/v3/certs", clientId)
+                val jwt = decode(
+                    idToken,
+                    "https://www.googleapis.com/oauth2/v3/certs",
+                    clientId,
+                    authorizedParties = properties.google?.authorizedParties.orEmpty().filter { it.isNotBlank() }.toSet()
+                )
                 if (jwt.getClaimAsString("iss") !in setOf("https://accounts.google.com", "accounts.google.com")) invalid()
                 oidcProfile(jwt, requireVerifiedEmail = true)
             }
@@ -68,7 +73,7 @@ class OAuthTokenVerifier(
         invalid()
     }
 
-    private fun decode(value: String?, keys: String, clientId: String): Jwt {
+    private fun decode(value: String?, keys: String, clientId: String, authorizedParties: Set<String> = emptySet()): Jwt {
         if (value.isNullOrBlank() || clientId.isBlank()) invalid()
         val decoder = decoders.computeIfAbsent(keys) {
             NimbusJwtDecoder.withJwkSetUri(keys).restOperations(restTemplate).build()
@@ -78,7 +83,8 @@ class OAuthTokenVerifier(
         val jwt = decoder.decode(value)
         if (clientId !in jwt.audience || jwt.expiresAt == null || !jwt.expiresAt!!.isAfter(Instant.now())) invalid()
         val authorizedParty = jwt.getClaimAsString("azp")
-        if ((authorizedParty != null && authorizedParty != clientId) || (jwt.audience.size > 1 && authorizedParty == null)) invalid()
+        if ((authorizedParty != null && authorizedParty != clientId && authorizedParty !in authorizedParties) ||
+            (jwt.audience.size > 1 && authorizedParty == null)) invalid()
         return jwt
     }
 

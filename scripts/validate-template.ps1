@@ -19,6 +19,7 @@ $CurrentClaudeCommands = @(
     "design-handoff",
     "design-intake",
     "design-start",
+    "dev-clarify",
     "dev-done",
     "dev-start",
     "document-entity",
@@ -47,6 +48,7 @@ $CurrentWorkflowSkills = @(
     "design-handoff",
     "design-intake",
     "design-start",
+    "dev-clarify",
     "dev-done",
     "dev-start",
     "document-entity",
@@ -75,6 +77,7 @@ $ExplicitOnlyWorkflowSkills = @(
     "design-handoff",
     "design-intake",
     "design-start",
+    "dev-clarify",
     "dev-done",
     "dev-start",
     "document-entity",
@@ -229,16 +232,24 @@ function New-GeneratedProject {
     $arguments += "."
     $arguments += $target
 
+    # Copier writes notices to stderr. Windows PowerShell 5.1 turns native stderr
+    # output into a terminating error under $ErrorActionPreference = "Stop", so the
+    # call runs with "Continue" and only a non-zero exit code fails the generation.
+    $copierExitCode = 0
     Push-Location $repoRoot
+    $savedErrorActionPreference = $ErrorActionPreference
     try {
         Write-Host "Generating sample: $Name"
-        & python -m copier @arguments | Out-Host
-        if ($LASTEXITCODE -ne 0) {
-            throw "Copier generation failed for $Name."
-        }
+        $ErrorActionPreference = "Continue"
+        & python -m copier @arguments 2>&1 | ForEach-Object { Write-Host "$_" }
+        $copierExitCode = $LASTEXITCODE
     }
     finally {
+        $ErrorActionPreference = $savedErrorActionPreference
         Pop-Location
+    }
+    if ($copierExitCode -ne 0) {
+        throw "Copier generation failed for $Name."
     }
 
     if ($Mode -eq "contract") {
@@ -554,6 +565,229 @@ function Validate-BackendPasswordOnly {
     }
 }
 
+function ConvertTo-ComparableApiPath {
+    param([string]$Path)
+
+    $value = $Path.Trim()
+    $queryIndex = $value.IndexOf('?')
+    if ($queryIndex -ge 0) {
+        $value = $value.Substring(0, $queryIndex)
+    }
+
+    # Swift interpolation \(id), JavaScript template ${id} and OpenAPI or Retrofit {id} all become {}.
+    $value = [regex]::Replace($value, '\\\([^)]*\)', '{}')
+    $value = [regex]::Replace($value, '\$?\{[^}/]*\}', '{}')
+    if (-not $value.StartsWith('/')) {
+        $value = '/' + $value
+    }
+    if ($value.Length -gt 1) {
+        $value = $value.TrimEnd('/')
+    }
+    return $value
+}
+
+function Get-OpenApiPaths {
+    param([string]$Content)
+
+    $paths = @()
+    $inPaths = $false
+    foreach ($line in ($Content -split "\r?\n")) {
+        if ($line -match '^paths:\s*$') {
+            $inPaths = $true
+            continue
+        }
+        if ($inPaths -and $line -match '^[A-Za-z]') {
+            break
+        }
+        if ($inPaths -and $line -match '^  (/\S*):\s*$') {
+            $paths += (ConvertTo-ComparableApiPath -Path $Matches[1])
+        }
+    }
+    return @($paths | Sort-Object -Unique)
+}
+
+function Get-AndroidApiPaths {
+    param([string]$Content)
+
+    $paths = @()
+    foreach ($match in [regex]::Matches($Content, '@(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\(\s*(?:value\s*=\s*)?"([^"]*)"')) {
+        $paths += (ConvertTo-ComparableApiPath -Path $match.Groups[1].Value)
+    }
+    return @($paths)
+}
+
+function Get-IosApiPaths {
+    param([string]$Content)
+
+    $paths = @()
+    foreach ($match in [regex]::Matches($Content, 'APIEndpoint\(\s*path:\s*"((?:[^"\\]|\\.)*)"')) {
+        $paths += (ConvertTo-ComparableApiPath -Path $match.Groups[1].Value)
+    }
+    return @($paths)
+}
+
+function Get-WebApiPaths {
+    param(
+        [string]$Content,
+        [bool]$IsRouteMap = $false
+    )
+
+    $paths = @()
+    if ($IsRouteMap) {
+        # PATH_MAPPINGS maps a frontend /api/v1 path to a backend path. Backend paths under /actuator/
+        # are infrastructure endpoints outside the OpenAPI contract, so those entries are not API calls.
+        foreach ($match in [regex]::Matches($Content, '"(/api/v1/[^"]*)"\s*:\s*"([^"]*)"')) {
+            if ($match.Groups[2].Value.StartsWith('/actuator/')) {
+                continue
+            }
+            $paths += (ConvertTo-ComparableApiPath -Path $match.Groups[1].Value.Substring('/api/v1'.Length))
+            $backendPath = $match.Groups[2].Value
+            if ($backendPath.StartsWith('/api/v1/')) {
+                $backendPath = $backendPath.Substring('/api/v1'.Length)
+            }
+            $paths += (ConvertTo-ComparableApiPath -Path $backendPath)
+        }
+        return @($paths)
+    }
+
+    foreach ($match in [regex]::Matches($Content, '/api/v1(/[A-Za-z][A-Za-z0-9_\-/{}$]*)')) {
+        $paths += (ConvertTo-ComparableApiPath -Path $match.Groups[1].Value)
+    }
+    return @($paths)
+}
+
+function Find-ClientPathsMissingFromSpec {
+    param(
+        [object[]]$ClientPaths,
+        [string[]]$SpecPaths
+    )
+
+    $missing = @()
+    foreach ($clientPath in $ClientPaths) {
+        if ($SpecPaths -notcontains $clientPath.Path) {
+            $missing += $clientPath
+        }
+    }
+    return @($missing)
+}
+
+function Get-ClientApiPaths {
+    param([string]$Root)
+
+    $clientPaths = @()
+    $sources = @()
+
+    $androidService = @(Get-ChildItem -LiteralPath (Join-Path $Root "mobile-android") -Recurse -Filter "ApiService.kt" -File -ErrorAction SilentlyContinue)
+    foreach ($file in $androidService) {
+        $sources += [pscustomobject]@{ Client = "android"; File = $file.FullName; Paths = (Get-AndroidApiPaths -Content (Get-Content -Raw -LiteralPath $file.FullName)) }
+    }
+
+    $iosEndpoint = @(Get-ChildItem -LiteralPath (Join-Path $Root "mobile-ios") -Recurse -Filter "APIEndpoint.swift" -File -ErrorAction SilentlyContinue)
+    foreach ($file in $iosEndpoint) {
+        $sources += [pscustomobject]@{ Client = "ios"; File = $file.FullName; Paths = (Get-IosApiPaths -Content (Get-Content -Raw -LiteralPath $file.FullName)) }
+    }
+
+    foreach ($webApp in @("web-user-app", "web-admin-portal")) {
+        $webRoot = Join-Path $Root $webApp
+        if (-not (Test-Path -LiteralPath $webRoot)) {
+            continue
+        }
+        $webFiles = @(Get-ChildItem -LiteralPath $webRoot -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
+            $relativePath = $_.FullName.Substring($webRoot.Length)
+            ($_.Extension -eq ".ts" -or $_.Extension -eq ".tsx") -and
+            $relativePath -notmatch '[\\/](node_modules|\.next|\.open-next|\.wrangler|dist|tests?|__tests__)[\\/]' -and
+            $_.Name -notmatch '\.(test|spec)\.tsx?$'
+        })
+        $routeFiles = @($webFiles | Where-Object { $_.Name -eq "api-routes.ts" })
+        if ($routeFiles.Count -eq 0) {
+            throw "$webApp is missing lib/config/api-routes.ts, so its API path mappings cannot be checked."
+        }
+        foreach ($file in $webFiles) {
+            $content = Get-Content -Raw -LiteralPath $file.FullName
+            $isRouteMap = $file.Name -eq "api-routes.ts"
+            $sources += [pscustomobject]@{ Client = $webApp; File = $file.FullName; Paths = (Get-WebApiPaths -Content $content -IsRouteMap $isRouteMap) }
+        }
+    }
+
+    foreach ($source in $sources) {
+        foreach ($path in $source.Paths) {
+            $clientPaths += [pscustomobject]@{ Client = $source.Client; File = $source.File; Path = $path }
+        }
+    }
+    return @($clientPaths)
+}
+
+function Assert-ClientPathsInOpenApi {
+    param([string]$Root)
+
+    $specFile = Join-Path $Root "shared\api-contracts\openapi.yml"
+    Assert-PathExists -Path $specFile -Message "Generated project missing shared/api-contracts/openapi.yml, so client paths cannot be checked against the contract."
+    $specPaths = @(Get-OpenApiPaths -Content (Get-Content -Raw -LiteralPath $specFile))
+    if ($specPaths.Count -eq 0) {
+        throw "Could not read any paths from $specFile."
+    }
+
+    $clientPaths = @(Get-ClientApiPaths -Root $Root)
+
+    # Each rendered client must yield paths. An empty result would mean the extraction no longer matches the code.
+    $expectedClients = @()
+    if (Test-Path -LiteralPath (Join-Path $Root "mobile-android")) { $expectedClients += "android" }
+    if (Test-Path -LiteralPath (Join-Path $Root "mobile-ios")) { $expectedClients += "ios" }
+    if (Test-Path -LiteralPath (Join-Path $Root "web-user-app")) { $expectedClients += "web-user-app" }
+    if (Test-Path -LiteralPath (Join-Path $Root "web-admin-portal")) { $expectedClients += "web-admin-portal" }
+    foreach ($client in $expectedClients) {
+        if (@($clientPaths | Where-Object { $_.Client -eq $client }).Count -eq 0) {
+            throw "Found no API paths in the generated $client client, so the contract guard cannot check it."
+        }
+    }
+
+    $missing = @(Find-ClientPathsMissingFromSpec -ClientPaths $clientPaths -SpecPaths $specPaths)
+    if ($missing.Count -gt 0) {
+        $details = ($missing | ForEach-Object { "$($_.Client): $($_.Path) ($($_.File))" } | Sort-Object -Unique) -join "; "
+        throw "Generated client calls paths that are not in shared/api-contracts/openapi.yml: $details"
+    }
+    Write-Host "Client API paths match the OpenAPI spec ($($clientPaths.Count) client paths, $($specPaths.Count) spec paths)."
+}
+
+function Assert-ClientPathGuardRejectsUnknownPaths {
+    # Negative control: the guard must flag a client path that the spec does not define.
+    $specPaths = @("/auth/login", "/transactions", "/transactions/{}")
+
+    $plantedAndroid = '@GET("examples/{id}") suspend fun getExample(@Path("id") id: String): ExampleResponse'
+    $plantedIos = 'static func listExamples() -> APIEndpoint { APIEndpoint(path: "/examples?page=\(page)", method: .get, requiresAuth: true) }'
+    $plantedWeb = 'fetch(`${apiBaseUrl}/api/v1/examples/${id}`)'
+    $plantedRouteMap = '"/api/v1/examples": "/api/v1/examples"'
+
+    $cases = @(
+        @{ Client = "android"; Paths = (Get-AndroidApiPaths -Content $plantedAndroid) },
+        @{ Client = "ios"; Paths = (Get-IosApiPaths -Content $plantedIos) },
+        @{ Client = "web"; Paths = (Get-WebApiPaths -Content $plantedWeb) },
+        @{ Client = "web route map"; Paths = (Get-WebApiPaths -Content $plantedRouteMap -IsRouteMap $true) }
+    )
+    foreach ($case in $cases) {
+        $clientPaths = @($case.Paths | ForEach-Object { [pscustomobject]@{ Client = $case.Client; File = "planted"; Path = $_ } })
+        if ($clientPaths.Count -eq 0) {
+            throw "Contract guard self-check failed: the $($case.Client) extraction found no path in the planted sample."
+        }
+        if (@(Find-ClientPathsMissingFromSpec -ClientPaths $clientPaths -SpecPaths $specPaths).Count -eq 0) {
+            throw "Contract guard self-check failed: a planted /examples path in the $($case.Client) client was not flagged."
+        }
+    }
+
+    $validAndroid = '@GET("transactions") @PUT("transactions/{id}") @POST("auth/login")'
+    $validIos = 'APIEndpoint(path: "/transactions?page=\(page)&size=\(size)", method: .get, requiresAuth: true) APIEndpoint(path: "/transactions/\(id)", method: .put, requiresAuth: true)'
+    foreach ($valid in @($validAndroid, $validIos)) {
+        $extracted = @()
+        $extracted += Get-AndroidApiPaths -Content $valid
+        $extracted += Get-IosApiPaths -Content $valid
+        $clientPaths = @($extracted | ForEach-Object { [pscustomobject]@{ Client = "valid"; File = "sample"; Path = $_ } })
+        if ($clientPaths.Count -eq 0 -or @(Find-ClientPathsMissingFromSpec -ClientPaths $clientPaths -SpecPaths $specPaths).Count -ne 0) {
+            throw "Contract guard self-check failed: valid sample paths were rejected or not extracted."
+        }
+    }
+    Write-Host "Contract guard self-check passed (planted /examples paths are rejected)."
+}
+
 function Validate-WebSample {
     param(
         [string]$Root,
@@ -562,6 +796,7 @@ function Validate-WebSample {
 
     Assert-NoCopierPlaceholders -Root $Root
     Validate-WikiStructure -Root $Root
+    Assert-ClientPathsInOpenApi -Root $Root
 
     # web-user-app and web-admin-portal CLAUDE.md and AGENTS.md must have wiki section
     foreach ($platform in @("web-user-app", "web-admin-portal")) {
@@ -649,6 +884,7 @@ function Validate-AndroidSample {
 
     Assert-NoCopierPlaceholders -Root $Root
     Validate-WikiStructure -Root $Root
+    Assert-ClientPathsInOpenApi -Root $Root
 
     # mobile-android CLAUDE.md and AGENTS.md must have wiki section with platform-specific path
     Assert-FileContains -Path (Join-Path $Root "mobile-android\CLAUDE.md") -Needle "platform-requirements/[feature-id]-mobile-android" -Message "mobile-android/CLAUDE.md missing mobile-android platform-requirements reference."
@@ -669,6 +905,7 @@ function Validate-IosSample {
 
     Assert-NoCopierPlaceholders -Root $Root
     Validate-WikiStructure -Root $Root
+    Assert-ClientPathsInOpenApi -Root $Root
 
     # mobile-ios CLAUDE.md and AGENTS.md must have wiki section with platform-specific path
     Assert-FileContains -Path (Join-Path $Root "mobile-ios\CLAUDE.md") -Needle "platform-requirements/[feature-id]-mobile-ios" -Message "mobile-ios/CLAUDE.md missing mobile-ios platform-requirements reference."
@@ -690,6 +927,18 @@ function Validate-IosSample {
     Assert-FileContains -Path (Join-Path $Root "mobile-ios\Taskfile.yml") -Needle 'default "ReviewApp"' -Message "iOS Taskfile should default to the iOS-safe scheme name."
     Assert-FileContains -Path (Join-Path $Root "mobile-ios\fastlane\Fastfile") -Needle 'project: "Review App.xcodeproj"' -Message "Fastlane should use the generated Xcode project name."
     Assert-FileContains -Path (Join-Path $Root "mobile-ios\fastlane\Fastfile") -Needle 'scheme: "ReviewApp"' -Message "Fastlane should use the iOS-safe scheme name."
+
+    # xcconfig treats // as a comment start, so URL values must use the $() escape, and CI must be able to create the git-ignored local files.
+    foreach ($configName in @("Debug", "Release")) {
+        $configPath = Join-Path $Root "mobile-ios\Config\$configName.xcconfig"
+        Assert-FileContains -Path $configPath -Needle ':/$()/' -Message "iOS $configName.xcconfig should escape // in API_BASE_URL with the `$() form."
+        Assert-FileNotContains -Path $configPath -Needle '= http://' -Message "iOS $configName.xcconfig must not contain an unescaped http:// URL value."
+        Assert-FileNotContains -Path $configPath -Needle '= https://' -Message "iOS $configName.xcconfig must not contain an unescaped https:// URL value."
+        Assert-PathExists -Path (Join-Path $Root "mobile-ios\Config\$configName.xcconfig.example") -Message "iOS sample should track Config/$configName.xcconfig.example for fresh checkouts."
+        Assert-FileContains -Path (Join-Path $Root ".github\workflows\mobile-ios.yml") -Needle "cp Config/$configName.xcconfig.example Config/$configName.xcconfig" -Message "iOS workflow should create Config/$configName.xcconfig before generating the project."
+    }
+    Assert-FileContains -Path (Join-Path $Root ".github\workflows\mobile-ios.yml") -Needle '-project "Review App.xcodeproj"' -Message "iOS workflow should quote the Xcode project name."
+    Assert-FileContains -Path (Join-Path $Root "mobile-ios\project.yml") -Needle 'name: "Review App"' -Message "iOS project.yml should quote the project name."
 
     Assert-FileNotContains -Path (Join-Path $Root "mobile-ios\review-app\App.swift") -Needle "Review-appApp" -Message "App.swift should not contain slug-based invalid Swift identifiers."
     Assert-FileNotContains -Path (Join-Path $Root "mobile-ios\review-appTests\LoginViewModelTests.swift") -Needle "@testable import review-app" -Message "iOS tests should not import slug-based invalid module names."
@@ -715,6 +964,8 @@ switch ($Mode) {
         Validate-BackendPasswordOnly -Root $passwordOnlyRoot -RunSmoke $true
     }
     "contract" {
+        Assert-ClientPathGuardRejectsUnknownPaths
+
         $backendRoot = New-GeneratedProject -Name "backend" -DataArgs @(
             "project_name=Review Backend",
             "platforms=[backend]",
@@ -758,6 +1009,8 @@ switch ($Mode) {
         }
     }
     "full" {
+        Assert-ClientPathGuardRejectsUnknownPaths
+
         $backendRoot = New-GeneratedProject -Name "backend" -DataArgs @(
             "project_name=Review Backend",
             "platforms=[backend]",

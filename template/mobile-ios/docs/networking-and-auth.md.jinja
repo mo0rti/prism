@@ -30,7 +30,8 @@
 ## Current Behavior
 
 - The base URL already includes `/api/v1`.
-- Endpoint paths in `APIEndpoint` append to that base URL and therefore start with feature-relative paths like `/auth/...` or `/examples/...`.
+- Endpoint paths in `APIEndpoint` append to that base URL and therefore start with feature-relative paths like `/auth/...` or `/transactions/...`. `APIURL.make(baseURL:path:)` joins them with exactly one `/`, so a trailing slash on the base URL never produces `//` in the request path.
+- The sample feature reads and writes the backend `/transactions` endpoints. `TransactionResponse`, `TransactionListResponse`, `CreateTransactionRequest` and `UpdateTransactionRequest` mirror the OpenAPI schemas, and `toDomain()` maps each transaction to the `Example` row the UI shows.
 - The default baseline for `APIError.unauthorized` is to clear stored tokens and return the app to login flow.
 - That return-to-login transition should be driven by the app-level auth gate in `AppRouter`, not by ad hoc per-screen navigation logic.
 - `AuthRepository.refreshToken()` exists as an extension point, but `APIClient` does not perform automatic refresh-and-retry orchestration by default.

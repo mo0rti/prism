@@ -1,0 +1,1 @@
+I reviewed Prism preview {preview_id} ({summary}) and I confirm it. Apply exactly that preview through your Prism MCP tools, using the new operation ID {operation_id}. Then check the operation's receipt and tell me the outcome and the paths the receipt lists. Do not create any other preview.

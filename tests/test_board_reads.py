@@ -1,11 +1,13 @@
 """Shared reads discover intake and retain canonical facts without write grants."""
 
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from prism_cli.board_reads import list_workspace, query
+from prism_cli import board_reads
+from prism_cli.board_reads import chunk_text, compact_size, list_workspace, query
 from prism_cli.board_service import BoardError, BoardService
 from prism_cli.workflow_install import apply_install, plan_install
 from prism_cli.wiki_query import wiki_show
@@ -159,6 +161,387 @@ class BoardReadTests(unittest.TestCase):
         self.assertGreater(search["facts"]["result_count"], 0)
         missing = query(self.service, self.actor, "search", "absent-unique-prose")
         self.assertEqual(0, missing["facts"]["result_count"])
+
+
+class PagedReadTests(unittest.TestCase):
+    """Cursor paging keeps every tool result within the structured budget."""
+
+    BUDGET = 4000
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        receipt = apply_install(self.root, plan_install(self.root, name="Document review", platforms=["backend"]))
+        self.assertEqual("applied", receipt["status"])
+        self.ids = [f"F-{number:03d}" for number in range(1, 15)]
+        for feature_id in self.ids:
+            page = _feature_page().replace("F-001", feature_id).replace("Document review", f"Document review {feature_id}")
+            (self.root / f"knowledge/wiki/features/{feature_id}-document-review.md").write_text(page, encoding="utf-8", newline="\n")
+        self.service = BoardService(self.root)
+        self.addCleanup(self.service.close)
+        grant = self.service.create_participant("Paging client", "agent")
+        self.actor = self.service.authenticate(grant["token"])
+        budget = patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", self.BUDGET)
+        budget.start()
+        self.addCleanup(budget.stop)
+
+    def pages(self, call):
+        pages, cursor = [], None
+        while True:
+            page = call(cursor)
+            self.assertLessEqual(compact_size(page), board_reads.STRUCTURED_BUDGET_CHARS)
+            pages.append(page)
+            cursor = page["next_cursor"]
+            if cursor is None:
+                return pages
+
+    def test_owner_pages_return_every_feature_and_question_exactly_once(self):
+        pages = self.pages(lambda cursor: query(self.service, self.actor, "owner", "po", None, cursor))
+        self.assertGreater(len(pages), 2)
+        self.assertEqual({28}, {page["total"] for page in pages})
+        features = [item["id"] for page in pages for item in page["facts"]["features"]]
+        questions = [(item["feature_id"], item["number"]) for page in pages for item in page["facts"]["open_questions"]]
+        self.assertEqual(self.ids, features)
+        self.assertEqual([(feature_id, "1") for feature_id in self.ids], questions)
+        for page in pages:
+            self.assertEqual(14, page["facts"]["feature_count"])
+            self.assertEqual(14, page["facts"]["open_question_count"])
+            self.assertTrue(page["snapshot"]["consistent"])
+            listed = {item["path"] for item in page["facts"]["features"]} | {item["path"] for item in page["facts"]["open_questions"]}
+            feature_sources = {source for source in page["sources"] if source.startswith("knowledge/wiki/features/")}
+            self.assertEqual(listed, feature_sources)
+
+    def test_search_and_platform_pages_return_every_match_exactly_once(self):
+        search = self.pages(lambda cursor: query(self.service, self.actor, "search", "Document review", None, cursor))
+        self.assertGreater(len(search), 1)
+        paths = [item["path"] for page in search for item in page["facts"]["results"]]
+        self.assertEqual(len(paths), len(set(paths)))
+        self.assertEqual({len(paths)}, {page["total"] for page in search})
+        self.assertTrue({f"knowledge/wiki/features/{feature_id}-document-review.md" for feature_id in self.ids} <= set(paths))
+        for page in search:
+            self.assertEqual(len(paths), page["facts"]["result_count"])
+        # Features become platform-active once they leave raw.
+        for feature_id in self.ids:
+            path = self.root / f"knowledge/wiki/features/{feature_id}-document-review.md"
+            path.write_text(path.read_text(encoding="utf-8").replace("status: raw", "status: ready-for-design"), encoding="utf-8", newline="\n")
+        # Their missing requirement pages add diagnostics that repeat on every page.
+        with patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", 8000):
+            platform = self.pages(lambda cursor: query(self.service, self.actor, "platform", "backend", None, cursor))
+        self.assertGreater(len(platform), 1)
+        self.assertEqual(self.ids, [item["id"] for page in platform for item in page["facts"]["features"]])
+
+    def test_small_results_keep_their_shape_and_add_a_null_cursor(self):
+        with patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", board_reads.RESULT_BUDGET_CHARS - 2000):
+            owner = query(self.service, self.actor, "owner", "po")
+            self.assertIsNone(owner["next_cursor"])
+            self.assertEqual(28, owner["total"])
+            self.assertEqual(14, len(owner["facts"]["features"]))
+            self.assertEqual(14, len(owner["facts"]["open_questions"]))
+            missing = query(self.service, self.actor, "search", "absent-unique-prose")
+            self.assertEqual((0, [], None), (missing["total"], missing["facts"]["results"], missing["next_cursor"]))
+            for kind, value in (("show", "F-001"), ("lint", None), ("blockers", None)):
+                result = query(self.service, self.actor, kind, value)
+                self.assertIsNone(result["next_cursor"], kind)
+                self.assertNotIn("total", result)
+
+    def test_query_cursors_are_validated(self):
+        first = query(self.service, self.actor, "owner", "po")
+        cursor = first["next_cursor"]
+        self.assertIsNotNone(cursor)
+        for bad in ("", "not-base64!", "e30=", cursor[:-3], "x" * 5000):
+            with self.subTest(cursor=bad[:12]), self.assertRaises(BoardError) as error:
+                query(self.service, self.actor, "owner", "po", None, bad)
+            self.assertEqual(("invalid_cursor", 400), (error.exception.code, error.exception.status))
+        with self.assertRaises(BoardError) as other_value:
+            query(self.service, self.actor, "owner", "designer", None, cursor)
+        self.assertEqual("invalid_cursor", other_value.exception.code)
+        with self.assertRaises(BoardError) as other_kind:
+            query(self.service, self.actor, "search", "po", None, cursor)
+        self.assertEqual("invalid_cursor", other_kind.exception.code)
+        with self.assertRaises(BoardError) as unpaged:
+            query(self.service, self.actor, "show", "F-001", None, cursor)
+        self.assertEqual(("invalid_query", 400), (unpaged.exception.code, unpaged.exception.status))
+        path = self.root / "knowledge/wiki/features/F-001-document-review.md"
+        path.write_text(path.read_text(encoding="utf-8") + "\nAdded after the first page.\n", encoding="utf-8", newline="\n")
+        with self.assertRaises(BoardError) as stale:
+            query(self.service, self.actor, "owner", "po", None, cursor)
+        self.assertEqual(("stale_cursor", 409), (stale.exception.code, stale.exception.status))
+
+    def test_skill_index_lists_references_without_bodies_and_chunks_reassemble(self):
+        with patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", board_reads.RESULT_BUDGET_CHARS - 2000):
+            page = self.service.get_skill(self.actor, "po-intake")
+        skill = page["skill"]
+        self.assertIsNone(page["next_cursor"])
+        self.assertEqual({"path", "title", "size_chars", "digest"}, {key for item in skill["references"] for key in item})
+        by_path = {item["path"]: item for item in skill["references"]}
+        catalog = {item["path"]: item for item in self.service._asset_get("po-intake")["references"]}
+        self.assertEqual(set(catalog), set(by_path))
+        self.assertTrue(by_path["knowledge/wiki/SCHEMA.md"]["title"].startswith("Wiki schema"))
+        for path, entry in by_path.items():
+            chunks = self.pages(lambda cursor, path=path: self.service.get_skill_reference(self.actor, "po-intake", path, cursor))
+            text = "".join(chunk["content"] for chunk in chunks)
+            self.assertEqual(catalog[path]["content"], text)
+            self.assertEqual(entry["size_chars"], len(text), path)
+            self.assertEqual(entry["digest"], "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest(), path)
+            self.assertEqual({entry["digest"]}, {chunk["digest"] for chunk in chunks})
+            self.assertEqual({len(text)}, {chunk["total_chars"] for chunk in chunks})
+            starts = [0]
+            for chunk in chunks[:-1]:
+                starts.append(starts[-1] + len(chunk["content"]))
+            self.assertEqual(starts, [chunk["offset"] for chunk in chunks])
+        schema_chunks = self.pages(lambda cursor: self.service.get_skill_reference(self.actor, "po-intake", "knowledge/wiki/SCHEMA.md", cursor))
+        self.assertGreater(len(schema_chunks), 5)
+
+    def test_reference_cursors_are_bound_to_one_skill_and_reference(self):
+        first = self.service.get_skill_reference(self.actor, "po-intake", "knowledge/wiki/SCHEMA.md")
+        cursor = first["next_cursor"]
+        self.assertIsNotNone(cursor)
+        for call in (
+            lambda: self.service.get_skill_reference(self.actor, "po-intake", "knowledge/wiki/CONNECTED.md", cursor),
+            lambda: self.service.get_skill_reference(self.actor, "design-intake", "knowledge/wiki/SCHEMA.md", cursor),
+            lambda: self.service.get_skill_reference(self.actor, "po-intake", "knowledge/wiki/SCHEMA.md", "garbage"),
+            lambda: self.service.get_skill(self.actor, "po-intake", cursor),
+        ):
+            with self.assertRaises(BoardError) as error:
+                call()
+            self.assertEqual(("invalid_cursor", 400), (error.exception.code, error.exception.status))
+
+    def test_instructions_and_required_reads_continue_with_a_cursor(self):
+        with patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", board_reads.RESULT_BUDGET_CHARS - 2000):
+            whole = self.service.get_skill(self.actor, "po-handoff")["skill"]
+        with patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", 5000):
+            pages = self.pages(lambda cursor: self.service.get_skill(self.actor, "po-handoff", cursor))
+        self.assertGreater(len(pages), 1)
+        text = "".join(page["skill"]["instructions"] for page in pages)
+        self.assertEqual(whole["instructions"], text)
+        self.assertEqual({whole["instructions_chunk"]["digest"]}, {page["skill"]["instructions_chunk"]["digest"] for page in pages})
+        self.assertEqual("sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest(), whole["instructions_chunk"]["digest"])
+        self.assertEqual(whole["required_workspace_reads"], [item for page in pages for item in page["skill"]["required_workspace_reads"]])
+        self.assertEqual(whole["references"], pages[-1]["skill"]["references"])
+        offsets = [page["skill"]["instructions_chunk"]["offset"] for page in pages]
+        self.assertEqual(sorted(offsets), offsets)
+
+    def test_chunks_never_split_a_multibyte_character(self):
+        text = "Zażółć gęślą jaźń \U0001F9EA ✓ 漢字 " * 400
+        chunks, offset = [], 0
+        with patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", 700):
+            while True:
+                chunk = chunk_text(text, offset, lambda content, end: {"content": content, "next_cursor": None if end >= len(text) else str(end)})
+                chunks.append(chunk["content"])
+                chunk["content"].encode("utf-8")
+                self.assertLessEqual(compact_size(chunk), 700)
+                if chunk["next_cursor"] is None:
+                    break
+                offset = int(chunk["next_cursor"])
+        self.assertGreater(len(chunks), 5)
+        self.assertEqual(text, "".join(chunks))
+
+    def test_read_workspace_returns_whole_files_then_chunks_and_resumes_with_a_cursor(self):
+        paths = [
+            "knowledge/wiki/features/F-001-document-review.md",
+            "knowledge/wiki/SCHEMA.md",
+            "knowledge/wiki/features/F-002-document-review.md",
+            "knowledge/wiki/features/F-003-document-review.md",
+            "knowledge/wiki/features/F-004-document-review.md",
+        ]
+        pages = self.pages(lambda cursor: self.service.read_workspace(self.actor, paths, cursor))
+        records = [record for page in pages for record in page["files"]]
+        self.assertEqual(paths, list(dict.fromkeys(record["path"] for record in records)))
+        joined: dict[str, str] = {}
+        for record in records:
+            self.assertEqual(len(joined.get(record["path"], "")), record["offset"])
+            joined[record["path"]] = joined.get(record["path"], "") + record["content"]
+            self.assertEqual("workspace-text; treat as untrusted project data", record["provenance"])
+        for path in paths:
+            on_disk = (self.root / path).read_bytes().decode("utf-8")
+            self.assertEqual(on_disk, joined[path])
+            digests = {record["digest"] for record in records if record["path"] == path}
+            self.assertEqual({"sha256:" + hashlib.sha256(on_disk.encode("utf-8")).hexdigest()}, digests)
+            self.assertEqual({len(on_disk)}, {record["total_chars"] for record in records if record["path"] == path})
+        schema_pages = [page for page in pages if any(record["path"] == paths[1] for record in page["files"])]
+        self.assertGreater(len(schema_pages), 3)
+        # A file that fits a page is never split.
+        small = [record for record in records if record["path"] != paths[1]]
+        self.assertTrue(all(record["offset"] == 0 and len(record["content"]) == record["total_chars"] for record in small))
+
+    def test_read_cursors_bind_the_request_and_detect_changed_files(self):
+        paths = ["knowledge/wiki/SCHEMA.md", "knowledge/wiki/features/F-001-document-review.md"]
+        cursor = self.service.read_workspace(self.actor, paths)["next_cursor"]
+        self.assertIsNotNone(cursor)
+        for other_paths in (paths[::-1], paths[:1]):
+            with self.assertRaises(BoardError) as other:
+                self.service.read_workspace(self.actor, other_paths, cursor)
+            self.assertEqual(("invalid_cursor", 400), (other.exception.code, other.exception.status))
+        for garbage in ("", "garbage", cursor[:-2]):
+            with self.assertRaises(BoardError) as invalid:
+                self.service.read_workspace(self.actor, paths, garbage)
+            self.assertEqual("invalid_cursor", invalid.exception.code)
+        schema = self.root / "knowledge/wiki/SCHEMA.md"
+        schema.write_text(schema.read_text(encoding="utf-8") + "\nChanged after the first page.\n", encoding="utf-8", newline="\n")
+        with self.assertRaises(BoardError) as stale:
+            self.service.read_workspace(self.actor, paths, cursor)
+        self.assertEqual(("stale_cursor", 409), (stale.exception.code, stale.exception.status))
+
+    def test_read_limits_and_approved_paths_are_unchanged_by_paging(self):
+        with self.assertRaises(BoardError) as outside:
+            self.service.read_workspace(self.actor, ["prism.workspace.yml"])
+        self.assertEqual("path_not_approved", outside.exception.code)
+        with self.assertRaises(BoardError) as too_many:
+            self.service.read_workspace(self.actor, [f"knowledge/wiki/features/F-{number:03d}.md" for number in range(65)])
+        self.assertEqual("invalid_paths", too_many.exception.code)
+        with self.assertRaises(BoardError) as duplicate:
+            self.service.read_workspace(self.actor, ["knowledge/wiki/index.md", "knowledge/wiki/index.md"])
+        self.assertEqual("duplicate_path", duplicate.exception.code)
+
+
+class ResultShapingTests(unittest.TestCase):
+    """Pure helpers that keep MCP results within the budget and free of absolute paths."""
+
+    def test_relativize_paths_removes_every_root_spelling_and_keeps_other_text(self):
+        roots = [r"%USERPROFILE%\AppData\Local\Temp\prism-board-preview-ab12", "C:/work/board"]
+        data = {
+            "root": r"%USERPROFILE%\AppData\Local\Temp\prism-board-preview-ab12",
+            "path": r"c:\users\example\appdata\local\temp\prism-board-preview-ab12\knowledge\wiki\features\F-001.md",
+            "also": "C:/work/board/knowledge/wiki/index.md",
+            "message": r"Missing C:\work\board\knowledge\wiki\log.md, then retry.",
+            "sibling": "C:/work/board2/knowledge/x.md",
+            "nested": [{"p": "C:/work/board/prism.workspace.yml"}, 3, None, True],
+        }
+        result = board_reads.relativize_paths(data, roots)
+        self.assertEqual(".", result["root"])
+        self.assertEqual("knowledge/wiki/features/F-001.md", result["path"])
+        self.assertEqual("knowledge/wiki/index.md", result["also"])
+        self.assertEqual("Missing knowledge/wiki/log.md, then retry.", result["message"])
+        self.assertEqual("C:/work/board2/knowledge/x.md", result["sibling"])
+        self.assertEqual([{"p": "prism.workspace.yml"}, 3, None, True], result["nested"])
+        self.assertEqual({"a": "b"}, board_reads.relativize_paths({"a": "b"}, []))
+
+    def test_shrink_to_budget_leaves_a_fitting_result_alone_and_names_every_cut(self):
+        small = {"state": "applied", "applied_paths": ["a", "b"]}
+        self.assertIs(small, board_reads.shrink_to_budget(small))
+        receipt = {"state": "applied", "applied_paths": [f"knowledge/wiki/features/F-{number:04d}-long-feature-name.md" for number in range(2000)], "conflicts": [{"path": "x", "reason": "y"}]}
+        result = board_reads.shrink_to_budget(receipt)
+        self.assertLessEqual(compact_size(result), board_reads.STRUCTURED_BUDGET_CHARS)
+        self.assertEqual(receipt["applied_paths"][: len(result["applied_paths"])], result["applied_paths"])
+        self.assertEqual(2000 - len(result["applied_paths"]), result["truncated"]["applied_paths"])
+        self.assertEqual([{"path": "x", "reason": "y"}], result["conflicts"])
+        self.assertIn("truncated", result["truncated_note"])
+        self.assertEqual(2000, len(receipt["applied_paths"]), "the input is not modified")
+        text = board_reads.shrink_to_budget({"message": "x" * 100000})
+        self.assertLessEqual(compact_size(text), board_reads.STRUCTURED_BUDGET_CHARS)
+        self.assertIn("message#chars", text["truncated"])
+
+    def _items(self):
+        return [
+            {"path": "a.md", "role": "canonical", "before": None, "after": "new file\n"},
+            {"path": "b.md", "role": "canonical", "before": "old " * 9000, "after": "new " * 9000},
+            {"path": "c.md", "role": "index", "before": "", "after": "row\n"},
+            {"path": "d.md", "role": "log", "before": None, "after": None},
+        ]
+
+    def _walk(self, items, **extra):
+        pages, cursor = [], None
+        while True:
+            page = board_reads.page_bodies({"id": "x", "state": "pending"}, "writes", items, cursor, tag="preview", ident="p-1", digest="d1", **extra)
+            pages.append(page)
+            cursor = page["next_cursor"]
+            if cursor is None:
+                return pages
+            self.assertLess(len(pages), 50)
+
+    def test_page_bodies_returns_whole_items_then_chunks_and_every_side_reassembles(self):
+        items = self._items()
+        pages = self._walk(items)
+        self.assertGreater(len(pages), 2)
+        joined = {}
+        for page in pages:
+            self.assertLessEqual(compact_size(page), board_reads.STRUCTURED_BUDGET_CHARS)
+            self.assertEqual({"id": "x", "state": "pending"}, {key: page[key] for key in ("id", "state")})
+            for entry in page["writes"]:
+                held = joined.setdefault(entry["path"], {"before": None, "after": None})
+                for side in ("before", "after"):
+                    if isinstance(entry.get(side), str):
+                        chunk = entry.get(f"{side}_chunk")
+                        self.assertEqual(len(held[side] or ""), chunk["offset"] if chunk else 0)
+                        held[side] = (held[side] or "") + entry[side]
+        for item in items:
+            self.assertEqual(item["before"], joined[item["path"]]["before"], item["path"])
+            self.assertEqual(item["after"], joined[item["path"]]["after"], item["path"])
+        self.assertEqual(["a.md", "b.md", "c.md", "d.md"], list(joined))
+        first_entry = pages[0]["writes"][0]
+        self.assertEqual((None, "new file\n", 9, None), (first_entry["before"], first_entry["after"], first_entry["after_chars"], first_entry["before_chars"]))
+
+    def test_page_bodies_without_items_is_one_empty_page(self):
+        page = board_reads.page_bodies({"id": "x"}, "writes", [], None, tag="preview", ident="p-1", digest="d1")
+        self.assertEqual([], page["writes"])
+        self.assertIsNone(page["next_cursor"])
+        self.assertEqual({"offset": 0, "count": 0, "total": 0}, page["writes_chunk"])
+
+    def test_page_bodies_cursors_are_bound_to_the_record_and_its_digest(self):
+        items = self._items()
+        cursor = self._walk(items)[0]["next_cursor"]
+        self.assertIsNotNone(cursor)
+        with self.assertRaises(BoardError) as other:
+            board_reads.page_bodies({}, "writes", items, cursor, tag="preview", ident="p-2", digest="d1")
+        self.assertEqual(("invalid_cursor", 400), (other.exception.code, other.exception.status))
+        with self.assertRaises(BoardError) as changed:
+            board_reads.page_bodies({}, "writes", items, cursor, tag="preview", ident="p-1", digest="d2")
+        self.assertEqual(("stale_cursor", 409), (changed.exception.code, changed.exception.status))
+        with self.assertRaises(BoardError) as tag:
+            board_reads.page_bodies({}, "writes", items, cursor, tag="operation", ident="p-1", digest="d1")
+        self.assertEqual("invalid_cursor", tag.exception.code)
+        for garbage in ("", "garbage", cursor[:-3]):
+            with self.assertRaises(BoardError) as invalid:
+                board_reads.page_bodies({}, "writes", items, garbage, tag="preview", ident="p-1", digest="d1")
+            self.assertEqual("invalid_cursor", invalid.exception.code)
+        beyond = board_reads.encode_cursor({"t": "preview", "i": "p-1", "d": "d1", "g": 99, "o": 0})
+        with self.assertRaises(BoardError) as past:
+            board_reads.page_bodies({}, "writes", items, beyond, tag="preview", ident="p-1", digest="d1")
+        self.assertEqual("invalid_cursor", past.exception.code)
+
+    def test_page_bodies_chunks_never_split_a_multibyte_character(self):
+        text = "naive caf\u00e9 \u2603 " * 7000
+        pages = self._walk([{"path": "u.md", "role": "canonical", "before": None, "after": text}])
+        joined = "".join(entry["after"] for page in pages for entry in page["writes"])
+        self.assertEqual(text, joined)
+        self.assertGreater(len(pages), 1)
+
+    def test_preview_page_drops_internal_copies_and_keeps_moves_compact(self):
+        envelope = {
+            "schema_version": 1,
+            "preview_id": "p-9",
+            "checks": [{"code": "x", "status": "pass", "message": "ok"}],
+            "writes": [{"path": "a.md", "role": "canonical", "before": None, "before_digest": None, "after": "x", "after_digest": "sha256:1", "merge": None}],
+            "proposed_changes": [{"path": "a.md", "content": "x"}],
+            "source_map": {"a.md": "sha256:1", "b.md": None},
+            "read_revisions": {"a.md": "sha256:1"},
+            "moves": [{"source": "s", "destination": "d", "source_digest": "sha256:2", "source_files": {"f": "sha256:3", "g": "sha256:4"}, "source_directories": ["."]}],
+        }
+        page = board_reads.preview_page(envelope)
+        for omitted in ("proposed_changes", "source_map", "read_revisions"):
+            self.assertNotIn(omitted, page)
+        self.assertEqual((2, 1), (page["source_count"], page["read_revisions_count"]))
+        self.assertEqual([{"source": "s", "destination": "d", "source_digest": "sha256:2", "source_file_count": 2}], page["moves"])
+        self.assertIsNone(page["next_cursor"])
+        self.assertEqual("x", page["writes"][0]["after"])
+        # Anything that is not a preview envelope is returned as it is.
+        other = {"operation": "get_preview", "args": ["p-1"]}
+        self.assertIs(other, board_reads.preview_page(other, "ignored"))
+
+    def test_changes_page_keeps_the_cursor_of_the_last_event_it_returns(self):
+        events = [{"cursor": str(number), "operation_id": f"op-{number}", "event": {"paths": ["p" * 200] * 40}, "created_at": "t"} for number in range(1, 31)]
+        result = {"schema_version": 1, "cursor": "30", "head_cursor": "30", "board_revision": "r", "changes": events}
+        page = board_reads.changes_page(result)
+        kept = len(page["changes"])
+        self.assertTrue(0 < kept < 30)
+        self.assertEqual(str(kept), page["cursor"])
+        self.assertTrue(page["has_more"])
+        self.assertLessEqual(compact_size(page), board_reads.STRUCTURED_BUDGET_CHARS)
+        whole = board_reads.changes_page({**result, "changes": events[:2], "cursor": "2", "head_cursor": "2"})
+        self.assertEqual((2, "2", False), (len(whole["changes"]), whole["cursor"], whole["has_more"]))
+        empty = board_reads.changes_page({**result, "changes": [], "cursor": "30"})
+        self.assertEqual(("30", False), (empty["cursor"], empty["has_more"]))
 
 
 if __name__ == "__main__":

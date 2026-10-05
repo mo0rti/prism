@@ -20,7 +20,7 @@ final class ExampleListViewModelTests: XCTestCase {
     @MainActor
     func testLoadExamplesSuccess() async {
         let (viewModel, mockExampleRepository, _) = makeSUT()
-        mockExampleRepository.listResult = .success(MockData.exampleListResponse)
+        mockExampleRepository.listResult = .success(MockData.examplePage)
 
         await viewModel.loadExamples()
 
@@ -46,7 +46,7 @@ final class ExampleListViewModelTests: XCTestCase {
     @MainActor
     func testDeleteRemovesFromList() async {
         let (viewModel, mockExampleRepository, _) = makeSUT()
-        mockExampleRepository.listResult = .success(MockData.exampleListResponse)
+        mockExampleRepository.listResult = .success(MockData.examplePage)
         await viewModel.loadExamples()
 
         await viewModel.deleteExample("1")
@@ -60,22 +60,22 @@ final class ExampleListViewModelTests: XCTestCase {
 
 @MainActor
 private final class MockExampleRepository: ExampleRepository {
-    var listResult: Result<ExampleListResponse, Error> = .success(MockData.exampleListResponse)
+    var listResult: Result<ExamplePage, Error> = .success(MockData.examplePage)
 
-    func list(page: Int, size: Int) async throws -> ExampleListResponse {
+    func list(page: Int, size: Int) async throws -> ExamplePage {
         try listResult.get()
     }
 
-    func getById(_ id: String) async throws -> ExampleResponse {
-        MockData.exampleListResponse.content.first { $0.id == id }!
+    func getById(_ id: String) async throws -> Example {
+        MockData.examplePage.content.first { $0.id == id }!
     }
 
-    func create(title: String, description: String?) async throws -> ExampleResponse {
-        ExampleResponse(id: "new", title: title, description: description, status: "DRAFT", createdBy: "user-1", createdAt: "2025-01-01", updatedAt: "2025-01-01")
+    func create(amount: Double, currency: String, type: String, description: String?) async throws -> Example {
+        Example(id: "new", title: "\(type) \(String(format: "%.2f", amount)) \(currency)", description: description, status: "PENDING", createdBy: "user-1", createdAt: "2025-01-01", updatedAt: "2025-01-01")
     }
 
-    func update(id: String, title: String?, description: String?, status: String?) async throws -> ExampleResponse {
-        ExampleResponse(id: id, title: title ?? "Updated", description: description, status: status ?? "DRAFT", createdBy: "user-1", createdAt: "2025-01-01", updatedAt: "2025-01-01")
+    func update(id: String, description: String?, status: String?) async throws -> Example {
+        Example(id: id, title: "Updated", description: description, status: status ?? "PENDING", createdBy: "user-1", createdAt: "2025-01-01", updatedAt: "2025-01-01")
     }
 
     func delete(_ id: String) async throws {}
@@ -104,10 +104,10 @@ private final class MockAuthRepository: AuthRepository {
 }
 
 private enum MockData {
-    static let exampleListResponse = ExampleListResponse(
+    static let examplePage = ExamplePage(
         content: [
-            ExampleResponse(id: "1", title: "Example 1", description: "Desc 1", status: "PUBLISHED", createdBy: "user-1", createdAt: "2025-01-01", updatedAt: "2025-01-01"),
-            ExampleResponse(id: "2", title: "Example 2", description: nil, status: "DRAFT", createdBy: "user-1", createdAt: "2025-01-02", updatedAt: "2025-01-02")
+            Example(id: "1", title: "Example 1", description: "Desc 1", status: "SETTLED", createdBy: "user-1", createdAt: "2025-01-01", updatedAt: "2025-01-01"),
+            Example(id: "2", title: "Example 2", description: nil, status: "PENDING", createdBy: "user-1", createdAt: "2025-01-02", updatedAt: "2025-01-02")
         ],
         page: 0,
         size: 20,

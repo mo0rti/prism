@@ -1,7 +1,9 @@
 # Getting Started
 
 For the workflow and shared human/agent board without generating applications,
-use the [shared board guide](shared-board.md). This page covers the optional
+follow the [README quickstart](../README.md#quickstart-a-shared-board-for-you-and-your-agents)
+and the [shared board guide](shared-board.md); [troubleshooting.md](troubleshooting.md)
+lists fixes for the common failures. This page covers the optional
 application-generation path.
 
 This page is the safest first-run path for trying Prism.
@@ -23,7 +25,7 @@ Use the smallest path that answers your question.
 Recommended first evaluation paths:
 
 - **Backend only** for repository shape and contract inspection
-- **Backend + Mobile** for the partial multi-client scaffold; runtime verification remains separate
+- **Backend + Mobile** for the Android and iOS client path; iOS needs macOS and Xcode validation
 - **Backend + Web** to inspect the combined user-web and admin-portal setup
 
 For the maturity notes behind those recommendations, read
@@ -42,8 +44,9 @@ Required to generate a project:
 The editable install is distributed as `prism-kit` and exposes the `prism` command;
 the import package remains `prism_cli`. It installs the CLI's generation dependencies
 (`copier`, `jinja2-time`, and `PyYAML`) and shared-board runtime dependencies
-(`mcp==2.2.0` and `uvicorn`) from `pyproject.toml`. A published package or
-remote `pipx` install path is still pending and should not be treated as available.
+(`mcp==2.2.0`, `starlette` and `uvicorn`) from `pyproject.toml`. The optional `e2e`
+extra adds Playwright for the browser tests. A published package and a
+remote `pipx` install are not available.
 
 To try the wheel install path locally, build and install the wheel from this checkout:
 
@@ -53,9 +56,23 @@ python -m build
 python -m pip install dist/prism_kit-0.2.0-py3-none-any.whl
 ```
 
-The installed CLI uses the canonical GitHub template by default. A local checkout
-uses its local template automatically. Pass `--template <path-or-url>` to choose a
-different template explicitly.
+The installed CLI uses the canonical GitHub template by default, at the release tag
+that matches the CLI version (`v0.2.0` for Prism 0.2.0). While that tag is not
+published, `prism new` stops with exit code 3 and one message, and creates nothing:
+
+```text
+The template release tag `v0.2.0` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
+```
+
+Pass `--template <path-or-url>` to choose another template, for example a checkout
+of this repository. A custom template can run code, so Prism asks you to trust it;
+`--trust-template` gives that trust without a prompt:
+
+```bash
+prism new --preset backend-only --project-name "My App" --dest ../my-app --template /path/to/prism --trust-template --yes
+```
+
+A local checkout uses its local template automatically.
 
 Useful first commands after install:
 
@@ -66,7 +83,7 @@ prism doctor --preset backend-mobile
 prism presets
 ```
 
-`prism doctor` now separates Prism core readiness from workflow and platform checks, so it
+`prism doctor` separates Prism core readiness from workflow and platform checks, so it
 is the fastest way to see what is blocked versus what can wait.
 
 Required to use generated task commands:
@@ -102,13 +119,16 @@ From a local checkout of this repository:
 prism
 ```
 
-Running bare `prism` opens the Prism home screen. From there you can:
+Running bare `prism` opens the Prism home screen. Its choices depend on the folder you
+run it in. From a plain folder you can:
 
 - choose `New Project`
 - choose `Doctor`
-- choose `Validate`
-- choose `Presets`
+- choose `Browse Presets`
+- choose `Validate Current Directory` (`Validate Template Repo` in this checkout)
 - press `/` to open the command palette and filter commands directly
+
+Inside a generated project, the home screen also offers the dashboard, validation and update.
 
 ![Prism home screen](media/prism-menu.png)
 
@@ -130,13 +150,13 @@ prism new --preset backend-mobile --project-name "My Mobile App" --dest ../my-mo
 prism validate ../my-mobile-app
 ```
 
-The Prism CLI is now the main entry point for generation in this repository. Raw Copier
+The Prism CLI is the main entry point for generation in this repository. Raw Copier
 commands remain the lower-level fallback underneath it.
 
 Optional deeper context before choosing a non-standard path:
 
 - read [questionnaire.md](questionnaire.md) if you want the full question surface and option-specific caveats
-- read [current-status.md](current-status.md) if you want the latest maturity guidance before evaluating a partial slice
+- read [current-status.md](current-status.md) for the verification behind each platform before evaluating a slice
 
 ## 4. Validate What You Generated
 
@@ -257,9 +277,10 @@ This is the Prism-managed update path. It expects the generated project to inclu
 Use updates only after reviewing template changes and only in a generated project that is
 already under version control with a clean git working tree.
 
-During local incubation, Prism may fall back to a Copier `recopy` strategy because the
-template repo is not yet version-tagged for a full `copier update` flow. If you need to
-force that path:
+`prism update` uses Copier's smart update when `.copier-answers.yml` records a remote
+template source and a saved revision. A project generated from a local checkout records an
+unversioned snapshot, so `prism update` stops with an error and asks for an explicit
+recopy instead of guessing a baseline. To reapply the template explicitly:
 
 ```bash
 prism update /path/to/generated-project --strategy recopy
@@ -267,7 +288,7 @@ prism update /path/to/generated-project --strategy recopy
 
 Recopy overwrites customized template files. Non-interactive recopy requires `--yes`.
 Custom template sources require a separate trust confirmation or `--trust-template`;
-`--yes` does not grant code-execution trust. Raw Copier generation now saves
+`--yes` does not grant code-execution trust. Raw Copier generation saves
 `.copier-answers.yml`, including version provenance when the source is versioned.
 
 ## 7. Raw Copier Fallbacks

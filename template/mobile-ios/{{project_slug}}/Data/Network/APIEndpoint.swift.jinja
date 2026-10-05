@@ -31,20 +31,20 @@ struct APIEndpoint {
         APIEndpoint(path: "/auth/me", method: .get, requiresAuth: true)
     }
 
-    // Examples
-    static func listExamples(page: Int = 0, size: Int = 20) -> APIEndpoint {
-        APIEndpoint(path: "/examples?page=\(page)&size=\(size)&sort=createdAt,desc", method: .get, requiresAuth: true)
+    // Transactions (the sample feature's data source)
+    static func listTransactions(page: Int = 0, size: Int = 20) -> APIEndpoint {
+        APIEndpoint(path: "/transactions?page=\(page)&size=\(size)&sort=createdAt,desc", method: .get, requiresAuth: true)
     }
-    static func createExample() -> APIEndpoint {
-        APIEndpoint(path: "/examples", method: .post, requiresAuth: true)
+    static func createTransaction() -> APIEndpoint {
+        APIEndpoint(path: "/transactions", method: .post, requiresAuth: true)
     }
-    static func getExample(id: String) -> APIEndpoint {
-        APIEndpoint(path: "/examples/\(id)", method: .get, requiresAuth: true)
+    static func getTransaction(id: String) -> APIEndpoint {
+        APIEndpoint(path: "/transactions/\(id)", method: .get, requiresAuth: true)
     }
-    static func updateExample(id: String) -> APIEndpoint {
-        APIEndpoint(path: "/examples/\(id)", method: .put, requiresAuth: true)
+    static func updateTransaction(id: String) -> APIEndpoint {
+        APIEndpoint(path: "/transactions/\(id)", method: .put, requiresAuth: true)
     }
-    static func deleteExample(id: String) -> APIEndpoint {
-        APIEndpoint(path: "/examples/\(id)", method: .delete, requiresAuth: true)
+    static func deleteTransaction(id: String) -> APIEndpoint {
+        APIEndpoint(path: "/transactions/\(id)", method: .delete, requiresAuth: true)
     }
 }

@@ -30,7 +30,9 @@ discovered during implementation. Drop as a markdown note referencing the featur
 ## After processing
 
 Processed items are moved to intake/processed/[folder-name]/ automatically with a
-manifest of what was extracted.
+manifest of what was extracted. Every feature the intake creates starts as `raw`; run
+`/po-specify [F-XXX]` (Codex: `$po-specify [F-XXX]`) to complete it and move it to
+`specified`.
 
 Items that conflict with existing wiki content are moved to intake/quarantined/[folder-name]/
 with a conflict explanation. A human must resolve the conflict before the item can be

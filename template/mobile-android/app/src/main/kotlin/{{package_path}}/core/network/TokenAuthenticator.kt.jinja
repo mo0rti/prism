@@ -1,11 +1,15 @@
 package {{ package_identifier }}.core.network
 
 import {{ package_identifier }}.core.datastore.TokenStorage
+import {{ package_identifier }}.core.di.ApiBaseUrl
+import {{ package_identifier }}.feature.auth.data.remote.dto.AuthResponse
 import {{ package_identifier }}.feature.auth.data.remote.dto.RefreshTokenRequest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import okhttp3.Authenticator
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -18,13 +22,36 @@ import javax.inject.Singleton
 /**
  * Handles 401 responses by attempting a token refresh.
  * If the refresh succeeds, the original request is retried with the new token.
- * If the refresh fails, the user is logged out.
+ * If the backend rejects the refresh token (400, 401 or 403), the session is cleared and the
+ * user is logged out. If the refresh cannot be completed (timeout, I/O error, 5xx or any other
+ * status), the stored session is kept so a later request can try again.
  */
 @Singleton
-class TokenAuthenticator @Inject constructor(
+class TokenAuthenticator internal constructor(
     private val tokenStorage: TokenStorage,
     private val json: Json,
+    apiBaseUrl: String,
+    private val refreshClient: OkHttpClient,
 ) : Authenticator {
+
+    // The refresh client carries no interceptors or authenticator, so a refresh can never
+    // recurse into this class.
+    @Inject
+    constructor(
+        tokenStorage: TokenStorage,
+        json: Json,
+        @ApiBaseUrl apiBaseUrl: String,
+    ) : this(tokenStorage, json, apiBaseUrl, OkHttpClient.Builder().build())
+
+    private val refreshUrl: HttpUrl = apiBaseUrl.toHttpUrl().newBuilder()
+        .addPathSegments("auth/refresh")
+        .build()
+
+    private sealed interface RefreshOutcome {
+        data class Refreshed(val access: String, val refresh: String) : RefreshOutcome
+        data object Rejected : RefreshOutcome
+        data object Unavailable : RefreshOutcome
+    }
 
     @Synchronized
     override fun authenticate(route: Route?, response: Response): Request? {
@@ -40,17 +67,23 @@ class TokenAuthenticator @Inject constructor(
             runBlocking { tokenStorage.replaceIfCurrent(tokens, null, null) }
             return null
         }
-        val replacement = try {
-            executeRefresh(response.request, refresh)
+        val outcome = try {
+            executeRefresh(refresh)
         } catch (_: Exception) {
-            null
+            RefreshOutcome.Unavailable
         }
         // A login/logout outside this lock must not be overwritten by a delayed
         // refresh response. DataStore performs the comparison and write atomically.
-        val replaced = runBlocking {
-            tokenStorage.replaceIfCurrent(tokens, replacement?.first, replacement?.second)
+        val replaced = when (outcome) {
+            is RefreshOutcome.Refreshed -> runBlocking {
+                tokenStorage.replaceIfCurrent(tokens, outcome.access, outcome.refresh)
+            }
+            // The backend refused the refresh token: this session cannot recover.
+            RefreshOutcome.Rejected -> runBlocking { tokenStorage.replaceIfCurrent(tokens, null, null) }
+            // The refresh did not complete: keep the session and let the caller see the 401.
+            RefreshOutcome.Unavailable -> false
         }
-        if (replaced) return replacement?.let { retry(response.request, it.first) }
+        if (replaced) return (outcome as? RefreshOutcome.Refreshed)?.let { retry(response.request, it.access) }
         val latest = runBlocking { tokenStorage.tokens.first() }
         if (latest.sessionId != requestSession) return null
         return latest.accessToken?.takeIf { it != access }?.let { retry(response.request, it) }
@@ -61,31 +94,28 @@ class TokenAuthenticator @Inject constructor(
         .header("X-Retry-Auth", "true")
         .build()
 
-    private fun executeRefresh(originalRequest: Request, refreshToken: String): Pair<String, String>? {
+    private fun executeRefresh(refreshToken: String): RefreshOutcome {
         val body = json.encodeToString(
             RefreshTokenRequest.serializer(),
             RefreshTokenRequest(refreshToken),
         )
 
-        val baseUrl = originalRequest.url.newBuilder()
-            .encodedPath("/api/v1/auth/refresh")
-            .query(null)
-            .build()
-
         val request = Request.Builder()
-            .url(baseUrl)
+            .url(refreshUrl)
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
 
-        val client = OkHttpClient.Builder().build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return null
-            val responseBody = response.body?.string() ?: return null
-            val authResponse = json.decodeFromString(
-                {{ package_identifier }}.feature.auth.data.remote.dto.AuthResponse.serializer(),
-                responseBody,
-            )
-            return authResponse.accessToken to authResponse.refreshToken
+        refreshClient.newCall(request).execute().use { response ->
+            if (response.isSuccessful) {
+                val responseBody = response.body?.string() ?: return RefreshOutcome.Unavailable
+                val authResponse = json.decodeFromString(AuthResponse.serializer(), responseBody)
+                return RefreshOutcome.Refreshed(authResponse.accessToken, authResponse.refreshToken)
+            }
+            return if (response.code in REJECTED_STATUS_CODES) RefreshOutcome.Rejected else RefreshOutcome.Unavailable
         }
+    }
+
+    private companion object {
+        val REJECTED_STATUS_CODES = setOf(400, 401, 403)
     }
 }

@@ -66,7 +66,10 @@ criteria, matching platform scope, PO questions, and advisory outcome.
 `design-handoff` requires design evidence for UI platforms unless the feature
 frontmatter has `design: not-applicable` and a nonblank
 `design-exemption-reason`, with the user's explicit confirmation in the final
-handoff preview. Non-UI features do not need a design page or exemption. A
+handoff preview. Non-UI features do not need a design page or exemption. When the
+feature's API surface declares API work and no API contract covers it yet,
+`design-handoff` also creates `api-contracts/F-XXX.md` at `agreed`, written only from
+that API surface; the person confirming the handoff preview is the agreement. A
 `revalidation` list records domains invalidated by a confirmed reopen;
 downstream actions treat those domains as active until fresh evidence is
 verified and explicitly cleared.
@@ -109,7 +112,7 @@ It is not:
 `knowledge/wiki/SETTINGS.md` is the canonical home for project-level wiki behavior
 settings.
 
-Current shipped setting:
+The setting:
 
 ```markdown
 ---
@@ -173,9 +176,10 @@ Typical flow:
 2. run `prep-sprint` to see what is actually ready
 3. use `wiki-show F-XXX` to assemble focused implementation context
 4. read platform requirements before implementation
-5. use `dev-start` to take confirmed ready-for-dev work
-6. use `dev-done` only when implementation is truly complete and shipped
-7. use `feature-reopen` after impact review when shipped work needs revalidation
+5. use `dev-clarify` to answer dev-owned open questions, which block `dev-start`
+6. use `dev-start` to take confirmed ready-for-dev work
+7. use `dev-done` only when implementation is truly complete and shipped
+8. use `feature-reopen` after impact review when shipped work needs revalidation
 
 Helpful read/query commands:
 
@@ -470,6 +474,7 @@ Supported values:
 - `po`
 - `designer`
 - `dev`
+- `none`
 
 Example:
 
@@ -504,6 +509,7 @@ Supported values:
 - po
 - designer
 - dev
+- none
 ```
 
 ## `wiki-platform`

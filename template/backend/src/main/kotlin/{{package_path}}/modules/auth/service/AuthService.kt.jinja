@@ -14,6 +14,7 @@ import {{ package_identifier }}.modules.auth.dto.toResponse
 import {{ package_identifier }}.modules.auth.error.AuthErrorCode
 import {{ package_identifier }}.modules.auth.model.AuthProvider
 import {{ package_identifier }}.modules.auth.model.User
+import {{ package_identifier }}.modules.auth.model.normalizedEmail
 import {{ package_identifier }}.modules.auth.model.UserRole
 import {{ package_identifier }}.modules.auth.repository.UserRepository
 import {{ package_identifier }}.shared.exception.ConflictException
@@ -50,13 +51,14 @@ class AuthService(
 
     @Transactional
     fun register(request: RegisterRequest): AuthResponse {
-        if (userRepository.existsByEmail(request.email)) {
+        val email = request.email.normalizedEmail()
+        if (userRepository.existsByEmail(email)) {
             throw ConflictException(AuthErrorCode.EMAIL_ALREADY_REGISTERED)
         }
 
         val user = userRepository.save(
             User(
-                email = request.email,
+                email = email,
                 displayName = request.displayName,
                 passwordHash = passwordEncoder.encode(request.password),
                 authProvider = AuthProvider.LOCAL
@@ -68,7 +70,7 @@ class AuthService(
 
     @Transactional
     fun login(request: LoginRequest, requireAdmin: Boolean = false): AuthResponse {
-        val user = userRepository.findByEmail(request.email)?.let { lockedUser(it.id) }
+        val user = userRepository.findByEmail(request.email.normalizedEmail())?.let { lockedUser(it.id) }
         val passwordHash = user?.passwordHash ?: dummyPasswordHash
         val passwordMatches = passwordEncoder.matches(request.password, passwordHash)
         if (user == null || user.passwordHash == null || !passwordMatches) {

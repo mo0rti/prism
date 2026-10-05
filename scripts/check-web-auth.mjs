@@ -31,8 +31,13 @@ function moduleUrl(relative, extra = new Map()) {
 const helperUrl = moduleUrl("lib/auth/backend-session.ts")
 replacements.set("@/lib/auth/backend-session", helperUrl)
 const helper = await import(helperUrl)
-replacements.set("@/lib/config/api-routes", moduleUrl("lib/config/api-routes.ts"))
+const apiRoutesUrl = moduleUrl("lib/config/api-routes.ts")
+replacements.set("@/lib/config/api-routes", apiRoutesUrl)
+const apiRoutes = await import(apiRoutesUrl)
 const route = await import(moduleUrl("app/api/v1/[...path]/route.ts"))
+const logoutRoute = await import(moduleUrl("app/api/session/logout/route.ts"))
+const signOutStub = "data:text/javascript,export const signOut = async options => { (globalThis.prismSignOutCalls ||= []).push(options) }"
+const signOutHelper = await import(moduleUrl("lib/auth/sign-out.ts", new Map([["next-auth/react", signOutStub]])))
 const capture = "data:text/javascript,export default config => { globalThis.prismAuthConfig = config; return {}; }"
 await import(moduleUrl("auth.ts", new Map([["next-auth", capture]])))
 const config = globalThis.prismAuthConfig
@@ -170,6 +175,116 @@ try {
   const cleared = await rejected.persist(NextResponse.json({}, { status: 401 }))
   assert.ok(cleared.cookies.getAll().length > 1)
   assert.ok(cleared.cookies.getAll().every(c => c.value === "" && c.maxAge === 0))
+  assert.ok(cleared.cookies.getAll().some(c => c.name === authName), "a rejected refresh must also clear the Auth.js identity cookie")
+  const afterRejection = await replay(cleared, largeRequest)
+  assert.equal(await jwt.getToken({ req: afterRejection, secret: process.env.AUTH_SECRET, cookieName: authName, salt: authName }), null, "web session must end when the backend rejects the refresh")
+  assert.equal(await jwt.getToken({ req: afterRejection, secret: process.env.AUTH_SECRET, cookieName: name, salt: name }), null)
+
+  // An identity cookie without backend credentials (for example an expired backend cookie) ends the web session.
+  const identityOnly = await jwt.encode({ token: { userId: claims.userId, role: claims.role }, secret: process.env.AUTH_SECRET, salt: authName, maxAge: 3600 })
+  const orphan = await route.GET(new NextRequest("https://web.example.test/api/v1/users/me", { headers: { cookie: `${authName}=${identityOnly}` } }), { params: { path: ["users", "me"] } })
+  assert.ok(orphan.cookies.getAll().some(c => c.name === authName && c.value === "" && c.maxAge === 0), "identity without backend credentials must end the web session")
+
+  // Sign-out revokes the backend refresh session before any cookie is cleared.
+  const live = { ...claims, accessTokenExpires: Date.now() + 3600000 }
+  const backend = process.env.API_BASE_URL
+  let logoutCalls = []
+  globalThis.fetch = async (url, init) => {
+    logoutCalls.push({ url, method: init?.method, authorization: new Headers(init?.headers).get("authorization") })
+    return new Response(null, { status: 204 })
+  }
+  const signedOut204 = await logoutRoute.POST(new NextRequest("https://web.example.test/api/session/logout", { method: "POST", headers: (await request(live)).headers }))
+  assert.deepEqual(logoutCalls, [{ url: `${backend}/api/v1/auth/logout`, method: "POST", authorization: "Bearer old-access" }])
+  assert.equal(signedOut204.status, 204)
+  assert.ok(signedOut204.cookies.getAll().every(c => c.value === "" && c.maxAge === 0))
+  for (const cookie of [name, authName]) assert.ok(signedOut204.cookies.getAll().some(c => c.name === cookie), `logout must clear ${cookie}`)
+  // An expired access token is refreshed first, then the rotated token is revoked.
+  logoutCalls = []
+  globalThis.fetch = async (url, init) => {
+    logoutCalls.push({ url, authorization: new Headers(init?.headers).get("authorization") })
+    return url.endsWith("/auth/refresh") ? Response.json(payload()) : new Response(null, { status: 204 })
+  }
+  const refreshedLogout = await logoutRoute.POST(await request())
+  assert.deepEqual(logoutCalls.map(c => c.url), [`${backend}/api/v1/auth/refresh`, `${backend}/api/v1/auth/logout`])
+  assert.equal(logoutCalls[1].authorization, "Bearer new-access")
+  assert.equal(refreshedLogout.status, 204)
+  // A backend failure keeps the session so sign-out can be retried; nothing is cleared.
+  for (const failure of [async () => new Response(null, { status: 503 }), async () => { throw new Error("private host/address") }]) {
+    globalThis.fetch = failure
+    const failed = await logoutRoute.POST(await request(live))
+    assert.equal(failed.status, 502)
+    assert.equal(failed.headers.get("set-cookie"), null, "a failed revocation must not clear the session")
+    assert.deepEqual(await failed.json(), { error: "Sign out could not be completed" })
+  }
+  // A rotation that happened before a failed revocation is still persisted.
+  globalThis.fetch = async url => url.endsWith("/auth/refresh") ? Response.json(payload()) : new Response(null, { status: 503 })
+  const rotatedThenFailed = await logoutRoute.POST(await request())
+  assert.equal(rotatedThenFailed.status, 502)
+  assert.ok(rotatedThenFailed.cookies.getAll().some(c => c.name === name && c.value), "rotated refresh token must be saved")
+  // Credentials the backend already rejects (401/403) leave nothing to revoke.
+  globalThis.fetch = async () => new Response(null, { status: 401 })
+  const alreadyRevoked = await logoutRoute.POST(await request(live))
+  assert.equal(alreadyRevoked.status, 204)
+  assert.ok(alreadyRevoked.cookies.getAll().every(c => c.value === "" && c.maxAge === 0))
+  // Without a session there is nothing to revoke and no backend call.
+  globalThis.fetch = async () => { throw new Error("must not call the backend without a session") }
+  assert.equal((await logoutRoute.POST(new NextRequest("https://web.example.test/api/session/logout", { method: "POST" }))).status, 204)
+
+  // The browser helper revokes first and signs out locally only afterwards.
+  const helperEvents = []
+  globalThis.prismSignOutCalls = []
+  globalThis.fetch = async (url, init) => { helperEvents.push(`${init.method} ${url}`); return new Response(null, { status: 204 }) }
+  assert.equal(await signOutHelper.signOutEverywhere("/login"), true)
+  assert.deepEqual(helperEvents, ["POST /api/session/logout"])
+  assert.deepEqual(globalThis.prismSignOutCalls, [{ callbackUrl: "/login" }])
+  globalThis.prismSignOutCalls = []
+  for (const failure of [async () => new Response(null, { status: 502 }), async () => { throw new Error("offline") }]) {
+    globalThis.fetch = failure
+    assert.equal(await signOutHelper.signOutEverywhere("/login"), false)
+  }
+  assert.deepEqual(globalThis.prismSignOutCalls, [], "a failed revocation must not clear the local session")
+  delete globalThis.prismSignOutCalls
+  // Every sign-out goes through the helper, never a bare next-auth signOut().
+  const sources = []
+  const walk = folder => fs.readdirSync(path.join(app, folder), { withFileTypes: true }).forEach(entry => {
+    const relative = path.join(folder, entry.name)
+    if (entry.isDirectory()) walk(relative)
+    else if (/\.tsx?$/.test(entry.name)) sources.push(relative.replaceAll("\\", "/"))
+  })
+  for (const folder of ["app", "components", "lib"]) walk(folder)
+  const read = file => fs.readFileSync(path.join(app, file), "utf8")
+  assert.deepEqual(sources.filter(file => /\bsignOut\s*\(/.test(read(file))), ["lib/auth/sign-out.ts"], "components must call signOutEverywhere, not signOut")
+  assert.ok(sources.filter(file => file !== "lib/auth/sign-out.ts" && read(file).includes("signOutEverywhere(")).length >= (admin ? 1 : 2), "the layout shells must use signOutEverywhere")
+
+  // The proxy only forwards plain paths under /api/v1/ and never attaches the
+  // bearer token to anything else.
+  const forwarded = []
+  globalThis.fetch = async (url, init) => {
+    forwarded.push({ url, authorization: new Headers(init?.headers).get("authorization") })
+    return Response.json({ ok: true })
+  }
+  const allowed = [[["users", "me"], "/api/v1/users/me"], [["health"], "/actuator/health"], [["files", "a b"], "/api/v1/files/a%20b"]]
+  for (const [segments, expected] of allowed) {
+    forwarded.length = 0
+    const response = await route.GET(await request(live), { params: { path: segments } })
+    assert.equal(response.status, 200, `allowed path ${segments} must be forwarded`)
+    assert.deepEqual(forwarded, [{ url: `${backend}${expected}`, authorization: "Bearer old-access" }])
+    assert.equal(apiRoutes.resolveProxyPath(segments), expected)
+  }
+  const rejectedPaths = [
+    [".."], ["."], ["users", "..", "..", "actuator", "env"], ["..", "..", "actuator", "health"],
+    ["%2e%2e"], ["%2E%2E", "x"], ["users", "%2e%2e", "%2e%2e", "actuator"], ["%252e%252e"], ["..%2fadmin"], ["users%2F..%2Fadmin"], ["users", "%5c..%5cadmin"],
+    ["https:", "", "evil.example"], ["https://evil.example/x"], ["https%3A%2F%2Fevil.example"], ["//evil.example"], ["mailto:x@evil.example"],
+    ["users", ""], [""], ["a;b"], ["bad%"], ["nul\u0000"], [], null,
+  ]
+  for (const segments of rejectedPaths) {
+    forwarded.length = 0
+    assert.equal(apiRoutes.resolveProxyPath(segments), null, `resolveProxyPath must reject ${JSON.stringify(segments)}`)
+    const response = await route.GET(await request(live), { params: { path: segments } })
+    assert.equal(response.status, 400, `proxy must reject ${JSON.stringify(segments)}`)
+    assert.deepEqual(await response.json(), { error: "Invalid API path" })
+    assert.deepEqual(forwarded, [], "a rejected path must never reach the backend")
+  }
 
   globalThis.fetch = async () => Response.json({}, { status: 503 })
   await assert.rejects(helper.backendSession(await request()), /unavailable/)
@@ -208,6 +323,17 @@ try {
       assert.equal(user?.role || null, role === "ADMIN" ? "ADMIN" : null)
     }
   } else {
+    // Every login-page button must name a configured Auth.js provider: next-auth/react
+    // sends an unknown id to the sign-in page instead of the provider.
+    const providerIds = new Set(config.providers.map(entry => (typeof entry === "function" ? entry() : entry).id))
+    const loginPage = fs.readFileSync(path.join(app, "app/[locale]/(public)/login/page.tsx"), "utf8")
+    const methods = /const methods[^=]*=\s*\[([\s\S]*?)\r?\n\s*\]\r?\n/.exec(loginPage)
+    assert.ok(methods, "login page must declare its social methods")
+    const pageIds = [...methods[1].matchAll(/\bid:\s*"([^"]+)"/g)].map(match => match[1])
+    assert.deepEqual([...pageIds].sort(), [...providerIds].filter(id => id !== "credentials").sort(), "login page methods must match the configured providers")
+    for (const id of pageIds) assert.ok(providerIds.has(id), `login page uses unknown provider id ${id}`)
+    assert.ok(/signIn\(method[,)]/.test(loginPage), "login page must sign in with the method id")
+    assert.equal(providerIds.has("credentials"), loginPage.includes('signIn("credentials"'), "credentials form must match the credentials provider")
     for (const provider of ["google", "apple", "facebook", "microsoft-entra-id"]) {
       globalThis.fetch = async (url, init) => {
         assert.ok(url.endsWith("/auth/oauth/token"))
@@ -224,5 +350,5 @@ try {
     globalThis.fetch = async () => Response.json({}, { status: 401 })
     await assert.rejects(config.callbacks.jwt({ token: {}, account: { provider: "google", id_token: "forged" } }), /verification failed/)
   }
-  console.log(`PASS: ${path.basename(app)} encrypted cookies, refresh persistence, concurrency, rejection, outages, public session and admission checks`)
+  console.log(`PASS: ${path.basename(app)} encrypted cookies, refresh persistence, concurrency, rejection, outages, public session, admission, sign-out revocation, provider ids and proxy path confinement checks`)
 } finally { globalThis.fetch = originalFetch }

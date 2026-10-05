@@ -1,0 +1,42 @@
+# Dev clarify — answer open questions assigned to Dev
+
+## Usage
+/dev-clarify
+
+## What this command does
+
+Identical in structure to /po-clarify but filters for open questions where owner = `dev`.
+
+1. Read `knowledge/wiki/SCHEMA.md`
+2. Read all files in `knowledge/wiki/features/`
+3. Collect all open questions where owner = `dev` and status = `open`
+4. Group by feature and present them to the user one feature at a time:
+   ```
+   F-002 — Profile Edit
+   1. Is there a limit on how long an exported comment can be?
+   2. Can the export run inside the request, or must it be queued?
+   ```
+5. For each question the user answers:
+   - Update the open questions table: change status to `resolved: [answer]`
+   - If the answer reveals a new requirement, update the feature's Acceptance criteria,
+     Platform scope or API surface section
+   - If the answer changes what a platform must build, update that feature's platform
+     requirement page (`knowledge/wiki/platform-requirements/[F-XXX]-[platform].md`):
+     What to build, Technical constraints, API contract reference or Acceptance criteria
+   - If the answer contradicts an existing wiki entry, flag and quarantine
+6. Append a single log entry summarizing all questions resolved
+
+## Notes for the agent
+
+- Resolve only questions owned by `dev`. Leave PO and designer questions open.
+- Do not change the feature's status or owner. Do not change a feature that is `done`;
+  reopen it with /feature-reopen first.
+- Present questions one feature at a time. Do not dump all questions at once.
+- After each answer, confirm what you updated before moving to the next.
+- Every requirement-bearing section you change (in the feature or in a platform
+  requirement page) must contain the full text of at least one answer you resolve in the
+  same proposal. A paraphrase alone is not enough. Leave the requirement page's
+  frontmatter, including `status`, unchanged.
+- If the user's answer introduces a new open question, add it immediately.
+- Questions tagged "[Board: ...]" came from a board review. Treat them with the same
+  priority as other open questions.

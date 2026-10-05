@@ -13,7 +13,9 @@ Identical in structure to /po-clarify but filters for open questions where owner
 4. Present questions grouped by feature, one feature at a time
 5. For each answer:
    - Update the open questions table in the feature file
-   - If the answer reveals a missing design artifact, note it in the design page
+   - If the answer reveals a missing design artifact, note it in the design page; when the
+     feature has no design page, record the answer in the question table only and tell the
+     user that design intake can attach a page later
    - If the answer resolves a design state gap, update the design page's "States covered" section
 6. Update `index.md` if any feature status changes
 7. Append to `log.md` with a summary of questions resolved
@@ -21,6 +23,9 @@ Identical in structure to /po-clarify but filters for open questions where owner
 ## Notes for the agent
 
 - Present questions one feature at a time.
+- On the feature page change only the Open questions table. Leave every other section,
+  including Acceptance criteria and Platform scope, exactly as it is; design detail
+  belongs on the design page.
 - After each answer, confirm what you updated before moving to the next.
 - Questions tagged "[Board: ...]" came from a board review. Flag them clearly and treat
   with high priority — they represent domain expert concerns the designer must address.

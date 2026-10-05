@@ -14,6 +14,7 @@ globs: "web-user-app/**,web-admin-portal/**"
 app/                -> App Router pages, layouts, and route handlers
 components/         -> Reusable UI and layout components
 lib/api/            -> Fetch helpers for `/api/v1`
+lib/auth/           -> Backend session cookie and sign-out helpers
 lib/config/         -> Route and runtime config helpers
 types/              -> NextAuth and other shared TypeScript types
 auth.ts             -> NextAuth configuration
@@ -23,15 +24,15 @@ open-next.config.ts -> OpenNext Cloudflare adapter config
 ```
 
 ## Admin Additions
-- Sidebar layout with navigation
-- Data tables with pagination
-- Admin role guard (wraps ProtectedRoute)
-- Stats/dashboard cards
+- Sidebar shell (`components/layout/admin-shell.tsx`) with navigation
+- Starter tables and cards under `app/admin/(dashboard)/` to replace with product screens
+- Admin role guard: the dashboard layout redirects to `/admin/login` unless the session role is `ADMIN`
 
 ## Patterns
 - Server Components by default, `"use client"` only when needed
 - Auth: NextAuth route handlers with OAuth and/or credentials
-- API calls proxy through `/api/v1/[...path]` with `fetch`
+- API calls proxy through `/api/v1/[...path]` with `fetch`; the proxy forwards only plain paths under `/api/v1/`
+- Sign-out goes through `signOutEverywhere` (`lib/auth/sign-out.ts`): it revokes the backend refresh session, then Auth.js clears the web session
 - `npm run preview` is the Cloudflare-aware local production check
 - Keep secrets in Cloudflare Worker secrets, not `wrangler.jsonc`
 - Tailwind for styling and shared design patterns

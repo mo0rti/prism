@@ -9,10 +9,11 @@ from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, lint_wiki
 from prism_cli.wiki_model import (
     FeaturePage,
     PlatformRequirementPage,
+    load_markdown_page,
     parse_open_question_rows,
     read_feature_pages,
-    read_markdown_page,
     read_platform_requirement_pages,
+    within_wiki_read_scope,
 )
 from prism_cli.workspace import detect_workspace_kind, inspect_workspace
 
@@ -35,6 +36,7 @@ from prism_cli.wiki_links import (  # noqa: E402  (kept here so existing imports
 )
 
 
+@within_wiki_read_scope
 def wiki_show(root: Path, feature_id: str) -> dict[str, Any]:
     workspace_root = root.expanduser().resolve()
     wiki_root = workspace_root / "knowledge" / "wiki"
@@ -71,6 +73,7 @@ def wiki_show(root: Path, feature_id: str) -> dict[str, Any]:
     return _envelope(workspace_root, "wiki show", diagnostics, facts, sources)
 
 
+@within_wiki_read_scope
 def wiki_blockers(root: Path) -> dict[str, Any]:
     workspace_root = root.expanduser().resolve()
     lint_result = lint_wiki(workspace_root)
@@ -82,6 +85,7 @@ def wiki_blockers(root: Path) -> dict[str, Any]:
     return _envelope(workspace_root, "wiki blockers", lint_result.diagnostics, facts, [str(workspace_root / "knowledge" / "wiki")], blockers)
 
 
+@within_wiki_read_scope
 def wiki_owner(root: Path, owner: str) -> dict[str, Any]:
     workspace_root = root.expanduser().resolve()
     wiki_root = workspace_root / "knowledge" / "wiki"
@@ -116,6 +120,7 @@ def wiki_owner(root: Path, owner: str) -> dict[str, Any]:
     return _envelope(workspace_root, "wiki owner", lint_result.diagnostics, facts, _unique([str(wiki_root), *sources]))
 
 
+@within_wiki_read_scope
 def wiki_platform(root: Path, platform_id: str) -> dict[str, Any]:
     workspace_root = root.expanduser().resolve()
     wiki_root = workspace_root / "knowledge" / "wiki"
@@ -143,6 +148,7 @@ def wiki_platform(root: Path, platform_id: str) -> dict[str, Any]:
     return _envelope(workspace_root, "wiki platform", lint_result.diagnostics, facts, _unique(sources))
 
 
+@within_wiki_read_scope
 def wiki_search(root: Path, query: str) -> dict[str, Any]:
     workspace_root = root.expanduser().resolve()
     wiki_root = workspace_root / "knowledge" / "wiki"
@@ -256,7 +262,7 @@ def _search_wiki_pages(wiki_root: Path, query: str) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for page_type, directory in SEARCH_DIRECTORIES.items():
         for path in _markdown_files(wiki_root / directory):
-            page = read_markdown_page(path)
+            page = load_markdown_page(path)
             fields = {
                 "filename": path.name,
                 "body": page.body,

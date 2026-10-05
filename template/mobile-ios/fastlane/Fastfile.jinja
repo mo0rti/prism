@@ -1,12 +1,21 @@
+{% set ruby_project_name = project_name | replace("\\", "\\\\") | replace('"', '\\"') | replace("#", "\\#") -%}
 default_platform(:ios)
 
 platform :ios do
   desc "Run tests"
   lane :test do
+    # SIMULATOR_NAME picks the device. Without it the newest available iPhone simulator runs.
+    simulator = ENV["SIMULATOR_NAME"].to_s.strip
+    if simulator.empty?
+      iphone = `xcrun simctl list devices available`.lines.map(&:strip).select { |line| line.start_with?("iPhone ") }.last
+      UI.user_error!("No available iPhone simulator found. Install a simulator runtime in Xcode or set SIMULATOR_NAME.") if iphone.nil?
+      simulator = iphone.sub(/\s*\([0-9A-Fa-f-]{36}\).*\z/, "")
+    end
+
     run_tests(
-      project: "{{ project_name }}.xcodeproj",
+      project: "{{ ruby_project_name }}.xcodeproj",
       scheme: "{{ ios_module_name }}",
-      device: "iPhone 16",
+      device: simulator,
       clean: true,
     )
   end
@@ -33,7 +42,7 @@ platform :ios do
     )
 
     build_app(
-      project: "{{ project_name }}.xcodeproj",
+      project: "{{ ruby_project_name }}.xcodeproj",
       scheme: "{{ ios_module_name }}",
       export_method: "app-store",
     )

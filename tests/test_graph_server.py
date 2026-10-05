@@ -3,15 +3,18 @@ from __future__ import annotations
 import http.client
 import io
 import json
+import socket
 import tempfile
 import threading
 import time
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import date
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from prism_cli.cli import build_parser
 from prism_cli.graph_server import _GraphState, _make_handler, _workspace_fingerprint
 from prism_cli.wiki_transitions import CAPABILITY_FILES
 
@@ -274,6 +277,25 @@ class GraphServerEndpointTests(unittest.TestCase):
                 request.sendall.side_effect = output.write
                 _make_handler(Mock())(request, ("127.0.0.1", 12345), Mock(server_port=8321))
                 self.assertIn(b" 403 ", output.getvalue().split(b"\r\n", 1)[0])
+
+
+class GraphServerBusyPortTests(unittest.TestCase):
+    def test_busy_port_gives_one_line_error_and_exit_code_4(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, socket.socket(socket.AF_INET, socket.SOCK_STREAM) as busy:
+            busy.bind(("127.0.0.1", 0))
+            busy.listen()
+            port = busy.getsockname()[1]
+            stdout, stderr = io.StringIO(), io.StringIO()
+            args = build_parser().parse_args(["wiki", "graph", temporary, "--serve", "--port", str(port)])
+            with patch("webbrowser.open") as opened, redirect_stdout(stdout), redirect_stderr(stderr):
+                code = args.func(args)
+
+        self.assertEqual(4, code)
+        self.assertEqual("", stdout.getvalue())
+        self.assertEqual(1, len(stderr.getvalue().strip().splitlines()), stderr.getvalue())
+        self.assertIn(f"Cannot start the dashboard on port {port}", stderr.getvalue())
+        self.assertIn("Choose another --port", stderr.getvalue())
+        opened.assert_not_called()
 
 
 if __name__ == "__main__":

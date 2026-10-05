@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import copy
+import functools
+import hashlib
 import re
+import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterator
 from urllib.parse import unquote, urlsplit
 
 import yaml
@@ -30,12 +36,103 @@ REVALIDATION_DOMAINS = {
 DELIVERY_EVIDENCE_COLUMNS = ("platform", "implementation", "tests", "release")
 
 
+def _refuse_change(self: Any, *args: Any, **kwargs: Any) -> Any:
+    raise TypeError(
+        "A parsed wiki page is a read-only snapshot shared within one request; "
+        "copy its mappings and lists (`dict(...)`, `list(...)`) before changing them."
+    )
+
+
+class FrozenDict(dict):
+    """A ``dict`` that refuses in-place changes.
+
+    It still compares, iterates and serializes like a ``dict``; copying it
+    (``dict(x)``, ``copy.copy``, ``copy.deepcopy``) yields ordinary mutable objects.
+    """
+
+    __slots__ = ()
+    __setitem__ = __delitem__ = __ior__ = _refuse_change
+    clear = pop = popitem = setdefault = update = _refuse_change
+
+    def __copy__(self) -> dict[Any, Any]:
+        return dict(self)
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> dict[Any, Any]:
+        result: dict[Any, Any] = {}
+        memo[id(self)] = result
+        for key, value in self.items():
+            result[copy.deepcopy(key, memo)] = copy.deepcopy(value, memo)
+        return result
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (dict, (dict(self),))
+
+
+class FrozenList(list):
+    """A ``list`` that refuses in-place changes; copying it yields an ordinary list."""
+
+    __slots__ = ()
+    __setitem__ = __delitem__ = __iadd__ = __imul__ = _refuse_change
+    append = extend = insert = remove = pop = clear = sort = reverse = _refuse_change
+
+    def __copy__(self) -> list[Any]:
+        return list(self)
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> list[Any]:
+        result: list[Any] = []
+        memo[id(self)] = result
+        result.extend(copy.deepcopy(item, memo) for item in self)
+        return result
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (list, (list(self),))
+
+
+def freeze(value: Any, _memo: dict[int, Any] | None = None) -> Any:
+    """Return ``value`` with every nested ``dict`` and ``list`` made read-only.
+
+    Containers that are already read-only are returned as they are. Parsed YAML
+    may contain anchors that refer back to their own container, so the walk
+    remembers what it has already converted.
+    """
+
+    if isinstance(value, (FrozenDict, FrozenList)):
+        return value
+    if isinstance(value, dict):
+        memo = {} if _memo is None else _memo
+        if id(value) in memo:
+            return memo[id(value)]
+        frozen_dict = FrozenDict()
+        memo[id(value)] = frozen_dict
+        dict.update(frozen_dict, [(freeze(key, memo), freeze(item, memo)) for key, item in value.items()])
+        return frozen_dict
+    if isinstance(value, list):
+        memo = {} if _memo is None else _memo
+        if id(value) in memo:
+            return memo[id(value)]
+        frozen_list = FrozenList()
+        memo[id(value)] = frozen_list
+        list.extend(frozen_list, [freeze(item, memo) for item in value])
+        return frozen_list
+    return value
+
+
 @dataclass(frozen=True)
 class MarkdownPage:
+    """One parsed wiki page.
+
+    Pages are shared between the readers of a request (see ``wiki_read_scope``),
+    so ``frontmatter`` and ``parse_errors`` are read-only; copy before changing.
+    """
+
     path: Path
     frontmatter: dict[str, Any]
     body: str
     parse_errors: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "frontmatter", freeze(self.frontmatter))
+        object.__setattr__(self, "parse_errors", freeze(self.parse_errors))
 
 
 @dataclass(frozen=True)
@@ -126,10 +223,21 @@ FEATURE_ID_PATTERN = re.compile(r"\bF-\d+\b")
 
 
 def read_markdown_page(path: Path) -> MarkdownPage:
+    """Read and parse one markdown page, always from the file."""
+
     try:
         text = path.read_text(encoding="utf-8-sig")
     except (OSError, UnicodeError) as exc:
-        return MarkdownPage(path=path, frontmatter={}, body="", parse_errors=[f"Unable to read file: {exc}"])
+        return _unreadable_page(path, exc)
+    return parse_markdown_text(path, text)
+
+
+def _unreadable_page(path: Path, exc: BaseException) -> MarkdownPage:
+    return MarkdownPage(path=path, frontmatter={}, body="", parse_errors=[f"Unable to read file: {exc}"])
+
+
+def parse_markdown_text(path: Path, text: str) -> MarkdownPage:
+    """Parse the text of the page at ``path``."""
 
     match = FRONTMATTER_PATTERN.match(text)
     if not match:
@@ -145,6 +253,98 @@ def read_markdown_page(path: Path) -> MarkdownPage:
         return MarkdownPage(path=path, frontmatter={}, body=body, parse_errors=["YAML frontmatter must be a mapping."])
 
     return MarkdownPage(path=path, frontmatter=loaded, body=body)
+
+
+class WikiPageScope:
+    """Parsed pages shared by every reader of one request.
+
+    A request (a preview, a query, a graph build, an apply) opens one scope with
+    ``wiki_read_scope`` and drops it when it ends, so nothing survives between
+    requests and the board's stale-change detection is unchanged. Inside the
+    scope ``load_markdown_page`` parses a page once:
+
+    * A page whose file still has the ``(mtime, size, inode, ctime, device)`` it
+      had when it was read is reused without opening the file, but only when the
+      file was already older than ``RACY_WINDOW_NS`` at that read, so a later
+      write is bound to change the modification time. The window is the one the
+      change poller's ``FingerprintCache`` uses.
+    * Any other page is read from the file again and compared with the cached
+      one by the SHA-256 digest of its text. An equal digest reuses the parsed
+      page; a different one parses the new text. A page rewritten with the same
+      size inside one timestamp tick is therefore never served stale.
+    """
+
+    RACY_WINDOW_NS = 2_000_000_000
+
+    def __init__(self, *, wall_clock_ns: Callable[[], int] = time.time_ns) -> None:
+        self._wall_clock_ns = wall_clock_ns
+        # path -> (stat signature, text digest, page, reusable without rereading the file)
+        self._entries: dict[str, tuple[tuple[int, ...], bytes, MarkdownPage, bool]] = {}
+
+    def load(self, path: Path) -> MarkdownPage:
+        read_started_ns = self._wall_clock_ns()
+        try:
+            info = path.stat()
+        except (OSError, RuntimeError, ValueError):
+            return read_markdown_page(path)
+        signature = (info.st_mtime_ns, info.st_size, info.st_ino, info.st_ctime_ns, info.st_dev)
+        key = str(path)
+        entry = self._entries.get(key)
+        if entry is not None and entry[3] and entry[0] == signature:
+            return entry[2]
+        try:
+            text = path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeError) as exc:
+            self._entries.pop(key, None)
+            return _unreadable_page(path, exc)
+        digest = hashlib.sha256(text.encode("utf-8")).digest()
+        page = entry[2] if entry is not None and entry[1] == digest else parse_markdown_text(path, text)
+        settled = read_started_ns - info.st_mtime_ns > self.RACY_WINDOW_NS
+        self._entries[key] = (signature, digest, page, settled)
+        return page
+
+
+_PAGE_SCOPE: ContextVar[WikiPageScope | None] = ContextVar("prism_wiki_page_scope", default=None)
+
+
+@contextmanager
+def wiki_read_scope() -> Iterator[WikiPageScope]:
+    """Share parsed pages between the readers of one request.
+
+    The outermost caller owns the scope and a nested call joins it. Wrap exactly
+    one request in it, never work that outlives the request.
+    """
+
+    current = _PAGE_SCOPE.get()
+    if current is not None:
+        yield current
+        return
+    scope = WikiPageScope()
+    token = _PAGE_SCOPE.set(scope)
+    try:
+        yield scope
+    finally:
+        _PAGE_SCOPE.reset(token)
+
+
+def within_wiki_read_scope(function: Callable[..., Any]) -> Callable[..., Any]:
+    """Decorator: run ``function`` inside ``wiki_read_scope``, joining one that is already open."""
+
+    @functools.wraps(function)
+    def scoped(*args: Any, **kwargs: Any) -> Any:
+        with wiki_read_scope():
+            return function(*args, **kwargs)
+
+    return scoped
+
+
+def load_markdown_page(path: Path) -> MarkdownPage:
+    """Return the page at ``path``: shared inside a ``wiki_read_scope``, read from the file otherwise."""
+
+    scope = _PAGE_SCOPE.get()
+    if scope is None:
+        return read_markdown_page(path)
+    return scope.load(path)
 
 
 def read_wiki_settings(wiki_root: Path) -> WikiSettings:
@@ -164,7 +364,7 @@ def read_wiki_settings(wiki_root: Path) -> WikiSettings:
             ),
         )
 
-    page = read_markdown_page(settings_path)
+    page = load_markdown_page(settings_path)
     if page.parse_errors:
         return WikiSettings(
             stale_after_days=DEFAULT_WIKI_STALE_AFTER_DAYS,
@@ -212,7 +412,7 @@ def read_feature_pages(wiki_root: Path) -> list[FeaturePage]:
     if not features_dir.exists():
         return []
     return [
-        FeaturePage(read_markdown_page(path))
+        FeaturePage(load_markdown_page(path))
         for path in sorted(features_dir.glob("*.md"))
         if not path.name.startswith("_")
     ]
@@ -223,7 +423,7 @@ def read_platform_requirement_pages(wiki_root: Path) -> list[PlatformRequirement
     if not requirements_dir.exists():
         return []
     return [
-        PlatformRequirementPage(read_markdown_page(path))
+        PlatformRequirementPage(load_markdown_page(path))
         for path in sorted(requirements_dir.glob("*.md"))
         if not path.name.startswith("_")
     ]
@@ -235,7 +435,7 @@ def read_markdown_pages(directory: Path) -> list[MarkdownPage]:
     if not directory.exists():
         return []
     return [
-        read_markdown_page(path)
+        load_markdown_page(path)
         for path in sorted(directory.glob("*.md"), key=lambda item: item.name)
         if not path.name.startswith("_")
     ]
@@ -247,7 +447,7 @@ def read_wiki_pages(wiki_root: Path) -> list[MarkdownPage]:
     if not wiki_root.exists():
         return []
     return [
-        read_markdown_page(path)
+        load_markdown_page(path)
         for path in sorted(
             wiki_root.rglob("*.md"),
             key=lambda item: item.relative_to(wiki_root).as_posix(),
@@ -295,6 +495,23 @@ def resolve_relative_markdown_link(source_path: Path, raw_target: str, wiki_root
     except ValueError:
         return None
     return resolved
+
+
+_NO_API_SURFACE = frozenset(
+    {"none", "no api", "not applicable", "n/a", "no api changes", "no api changes identified", "no api changes required", "no api surface"}
+)
+
+
+def api_surface_declared(section: str) -> bool:
+    """Whether a feature's `## API surface` text declares API work.
+
+    An empty section and a plain statement that there is none (case, spacing and
+    a closing period do not matter) declare nothing. Any other text needs an API
+    contract page.
+    """
+
+    normalized = re.sub(r"\s+", " ", section).strip().lower().rstrip(".").strip()
+    return bool(normalized) and normalized not in _NO_API_SURFACE
 
 
 def section_text(body: str, heading: str) -> str:

@@ -82,7 +82,7 @@ code, .stat .label, .stat .value, .sec-label, .kind-chip, .statusline, .chip,
 
 /* ---------- header + spectral hairline ---------- */
 header {
-  display: flex; align-items: center; gap: 14px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
   padding: 11px 20px 9px;
   background: color-mix(in srgb, var(--surface) 86%, transparent);
   backdrop-filter: blur(8px);
@@ -101,7 +101,7 @@ header {
   color: var(--ink-2); border: 1px solid var(--hairline); border-radius: 3px;
   padding: 3px 8px; white-space: nowrap;
 }
-.header-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+.header-right { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px 16px; min-width: 0; max-width: 100%; }
 .status-light { display: flex; align-items: center; gap: 7px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); cursor: pointer; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; }
 .status-dot.high { background: var(--good); box-shadow: 0 0 8px color-mix(in srgb, var(--good) 60%, transparent); }
@@ -629,7 +629,7 @@ const SURFACES = [
 const PIPE_STAGES = [
   { n: "01", name: "CAPTURE", who: "YOU", color: "po", cmd: null, desc: "Drop a markdown brief into <code>knowledge/intake/pending/</code> — the template in that folder shows the shape. A few honest paragraphs beat a perfect spec." },
   { n: "02", name: "INTAKE", who: "AGENT", color: "po", cmd: "po-specify", desc: "Your agent reads the brief, asks you to confirm its interpretation, then prepares the feature specification. Nothing is written without your confirmation." },
-  { n: "03", name: "CLARIFY", who: "PO", color: "po", cmd: "po-clarify", desc: "Open questions owned by the PO get answered; clarification stays stage-neutral until its workflow is confirmed." },
+  { n: "03", name: "CLARIFY", who: "PO", color: "po", cmd: "po-clarify", desc: "Open questions get answered by their owner: <code>po-clarify</code> for the PO, <code>design-clarify</code> for the designer and <code>dev-clarify</code> for the developer. Clarification stays stage-neutral until its workflow is confirmed." },
   { n: "04", name: "DESIGN", who: "DESIGNER", color: "design", cmd: "design-intake", desc: "Design artifacts attach to the feature; UI states and interactions get covered before development starts." },
   { n: "05", name: "BOARD", who: "ADVISORY", color: "design", cmd: "board-review", desc: "Domain-sensitive features pass the advisory board — project-specific expert personas reviewing conflicts, gaps, and risk before a line of code." },
   { n: "06", name: "BUILD", who: "DEV", color: "dev", cmd: "prep-sprint", desc: "Review platform requirements and source evidence before development; the dashboard prepares a request but never starts a host job." },
@@ -660,6 +660,7 @@ const state = {
   boardPendingOperations: [],
   boardOperation: null,
   boardViewStale: false,
+  pendingAppliedStage: null,
   liveEpoch: null,
   liveVersion: null,
 };
@@ -784,6 +785,7 @@ const ACTION_CONTRACTS = {
   "reopen-design": { source_status: "done", source_owner: "none", target_status: "in-design", target_owner: "designer" },
   "reopen-dev": { source_status: "done", source_owner: "none", target_status: "in-dev", target_owner: "dev" },
 };
+const BOARD_SESSION_EXPIRED = "The board session has expired. Reconnect to continue this connected action.";
 const CONNECTED_HUMAN_ACTIONS = new Set(["po-handoff", "design-start", "dev-start"]);
 const CONNECTED_AGENT_ACTIONS = new Set(["po-specify", "design-handoff", "dev-done", "reopen-spec", "reopen-design", "reopen-dev"]);
 const CONNECTED_AGENT_SKILLS = {
@@ -818,7 +820,7 @@ function connectedActionReason(action) {
   if (!connectedBoardExpected()) return "Connected board service is not available on this server.";
   if (state.liveRefreshError) return "Live dashboard data has not been refreshed and validated. Wait for the refresh before previewing this action.";
   if (state.boardConnection === "checking") return "Checking the authenticated board session.";
-  if (state.boardConnection === "unauthenticated") return "The board session has expired. Reconnect to continue this connected action.";
+  if (state.boardConnection === "unauthenticated") return BOARD_SESSION_EXPIRED;
   if (state.boardConnection === "error") return "The connected board service is unavailable. Retry the board connection; this action cannot be copied as a fallback.";
   const actor = state.boardActor, capability = state.boardCapability;
   if (!actor || actor.kind !== "human") return "This action requires an authenticated human participant.";
@@ -1265,6 +1267,49 @@ function transitionCopyReady(node, index) {
   return !!(transitionOpenable(node, index) && t && transitionSourceMatches(node, t) && capabilityActionAdvertised(t) && t.supported === true && t.classification === "ready" &&
     hasTransitionSurface(node, index) && !prompt.tooLarge);
 }
+// Every modal shares one Tab trap. It computes the focusable elements at key
+// time and also handles focus that sits on a non-control element (the dialog
+// itself, its heading after a re-render, a scrollable text region) or outside
+// the dialog altogether.
+const DIALOG_FOCUSABLE_SELECTOR = "button, a[href], input, select, textarea, summary, [tabindex]:not([tabindex=\"-1\"])";
+function dialogFocusableElements(dialog) {
+  return Array.from(dialog.querySelectorAll(DIALOG_FOCUSABLE_SELECTOR)).filter(el => !el.hidden && el.getAttribute("aria-hidden") !== "true" && !el.disabled);
+}
+function trapDialogTab(event, dialog) {
+  const focusable = dialogFocusableElements(dialog);
+  if (!focusable.length) { event.preventDefault(); dialog.focus(); return; }
+  const first = focusable[0], last = focusable[focusable.length - 1], active = document.activeElement;
+  // DOCUMENT_POSITION_PRECEDING is 2 and DOCUMENT_POSITION_FOLLOWING is 4.
+  const position = (reference, other) => typeof reference.compareDocumentPosition === "function" ? reference.compareDocumentPosition(other) : 0;
+  const inside = !!active && active !== document.body && dialog.contains(active);
+  let target = null;
+  if (!inside) target = event.shiftKey ? last : first;
+  else if (event.shiftKey) { if (active === first || (position(first, active) & 2)) target = last; }
+  else if (active === last || (position(last, active) & 4)) target = first;
+  if (target) { event.preventDefault(); target.focus(); }
+}
+// A re-render replaces the dialog's markup. A control with a data-* marker that had focus gets it back on its
+// replacement; anything else (the heading, a text region) falls back to the heading.
+function captureDialogFocus(wrap) {
+  const active = document.activeElement;
+  if (!active || !wrap.contains || !wrap.contains(active) || typeof active.getAttributeNames !== "function") return null;
+  const name = active.getAttributeNames().find(item => item.startsWith("data-"));
+  return name ? { name, value: active.getAttribute(name) } : null;
+}
+function restoreDialogFocus(wrap, saved) {
+  if (!saved) return false;
+  const target = Array.from(wrap.querySelectorAll("[" + saved.name + "]")).find(el => el.getAttribute(saved.name) === saved.value && !el.disabled && !el.hidden);
+  if (!target || typeof target.focus !== "function") return false;
+  target.focus();
+  return true;
+}
+function bindDialogKeyboard(dialog, closeMessage) {
+  if (!dialog) return;
+  dialog.addEventListener("keydown", e => {
+    if (e.key === "Escape") { e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); closeTransitionPreview(closeMessage); return; }
+    if (e.key === "Tab") trapDialogTab(e, dialog);
+  });
+}
 function connectedWritesHtml(writes) {
   if (!Array.isArray(writes) || !writes.length) return '<div class="transition-check unknown"><span class="check-status">unknown</span><span class="check-copy">The service did not return an exact write set.</span></div>';
   return writes.map(write => {
@@ -1343,14 +1388,22 @@ function renderConnectedTransitionDialog(focus) {
   const preview = state.transitionPreview;
   if (!wrap || !preview) return;
   const hadModalFocus = !!(wrap.contains && wrap.contains(document.activeElement));
+  const savedFocus = captureDialogFocus(wrap);
   setTransitionBackgroundInert(true);
   const node = nodesById[preview.featureId];
   const payload = preview.payload;
   const checks = payload && Array.isArray(payload.checks) ? payload.checks : [];
   const writes = payload && payload.writes;
   const skipAvailable = preview.action === "po-handoff" && !!(node && (node.advisory_review === "pending" || checks.some(check => check && check.code === "advisory-review" && check.status === "review")));
-  const status = preview.error || preview.staleReason || (preview.operationMessage || "");
   const applied = preview.operationState === "applied";
+  const sessionExpired = state.boardConnection === "unauthenticated" && !applied;
+  // An applied operation outranks any staleness noted before its receipt arrived.
+  const status = sessionExpired
+    ? [preview.error === BOARD_SESSION_EXPIRED ? "" : preview.error, BOARD_SESSION_EXPIRED].filter(Boolean).join(" ")
+    : preview.error || (applied ? "" : preview.staleReason) || (preview.operationMessage || "");
+  const previewAgainNode = nodesById[preview.featureId];
+  const previewAgainReady = !!(preview.staleReason && !applied && !preview.operationId && !preview.loading && !sessionExpired && !state.liveRefreshError &&
+    previewAgainNode && previewAgainNode.type === "feature" && connectedHumanAction(previewAgainNode) === preview.action && connectedActionReady(preview.action));
   const requiresReason = preview.skipAdvisory && !String(preview.skipReason || "").trim();
   const applyReady = !!(payload && payload.applicable === true && preview.semanticAcknowledged && !preview.proposalDirty && !preview.loading && !preview.error && !requiresReason && !preview.staleReason && !preview.operationId && !state.liveRefreshError && state.boardConnection === "connected");
   const checksHtml = checks.length ? checks.map(transitionCheckHtml).join("") : `<div class="transition-check ${preview.loading ? "unknown" : "review"}"><span class="check-status">${preview.loading ? "checking" : "review"}</span><span class="check-copy">${preview.loading ? "Requesting the service preview…" : "No preflight checks were returned."}</span></div>`;
@@ -1381,21 +1434,13 @@ function renderConnectedTransitionDialog(focus) {
       ${payload && payload.classification ? `<div class="transition-fact"><div class="k">Service preflight</div><div class="v">${escapeHtml(payload.classification)}${payload.applicable === true ? " · applicable" : " · blocked or review required"}</div></div>` : ""}
       ${operationHtml}
     </div>
-    <div class="transition-actions"><button type="button" class="cancel-btn" data-transition-cancel>Close</button>${!applied ? `<button type="button" class="copy-btn" data-connected-apply${applyReady ? "" : " disabled"}>Apply reviewed changes</button>` : ""}</div>
+    <div class="transition-actions"><button type="button" class="cancel-btn" data-transition-cancel>Close</button>${sessionExpired ? '<button type="button" class="copy-btn" data-connected-reconnect>Reconnect</button>' : ""}${previewAgainReady ? '<button type="button" class="copy-btn" data-connected-preview-again>Preview again</button>' : ""}${!applied ? `<button type="button" class="copy-btn" data-connected-apply${applyReady ? "" : " disabled"}>Apply reviewed changes</button>` : ""}</div>
   </div>`;
   wrap.hidden = false;
   wrap.setAttribute("aria-hidden", "false");
   wrap.onclick = e => { if (e.target === wrap) closeTransitionPreview("Connected workflow preview closed."); };
   const dialog = wrap.querySelector(".transition-dialog");
-  if (dialog) dialog.addEventListener("keydown", e => {
-    if (e.key === "Escape") { e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); closeTransitionPreview("Connected workflow preview closed."); return; }
-    if (e.key !== "Tab") return;
-    const focusable = Array.from(dialog.querySelectorAll("button, a[href], input, select, textarea, [tabindex]:not([tabindex=\"-1\"])")).filter(el => !el.hidden && el.getAttribute("aria-hidden") !== "true" && !el.disabled);
-    if (!focusable.length) { e.preventDefault(); dialog.focus(); return; }
-    const first = focusable[0], last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-  });
+  bindDialogKeyboard(dialog, "Connected workflow preview closed.");
   const cancel = wrap.querySelector("[data-transition-cancel]");
   if (cancel) cancel.addEventListener("click", () => closeTransitionPreview("Connected workflow preview closed."));
   const skip = wrap.querySelector("[data-connected-skip]");
@@ -1430,6 +1475,10 @@ function renderConnectedTransitionDialog(focus) {
   });
   const apply = wrap.querySelector("[data-connected-apply]");
   if (apply) apply.addEventListener("click", () => applyConnectedPreview(preview));
+  const reconnect = wrap.querySelector("[data-connected-reconnect]");
+  if (reconnect) reconnect.addEventListener("click", () => retryBoardSession());
+  const previewAgain = wrap.querySelector("[data-connected-preview-again]");
+  if (previewAgain) previewAgain.addEventListener("click", () => previewConnectedAgain(preview));
   const check = wrap.querySelector("[data-connected-check-operation]");
   if (check) check.addEventListener("click", () => inspectConnectedOperation(preview));
   const recoveryAck = wrap.querySelector("[data-connected-recovery-ack]");
@@ -1441,7 +1490,8 @@ function renderConnectedTransitionDialog(focus) {
   });
   const recover = wrap.querySelector("[data-connected-recover]");
   if (recover) recover.addEventListener("click", () => recoverConnectedOperation(preview));
-  if (focus || hadModalFocus) {
+  // A re-render that is not a fresh open keeps the control the person was on.
+  if ((focus || hadModalFocus) && (focus || !restoreDialogFocus(wrap, savedFocus))) {
     const heading = wrap.querySelector("#transition-dialog-title");
     if (heading && heading.focus) heading.focus();
     else if (dialog && dialog.focus) dialog.focus();
@@ -1531,6 +1581,7 @@ function renderConnectedAgentRequestDialog(focus) {
   const preview = state.transitionPreview;
   if (!wrap || !preview) return;
   const hadModalFocus = !!(wrap.contains && wrap.contains(document.activeElement));
+  const savedFocus = captureDialogFocus(wrap);
   setTransitionBackgroundInert(true);
   const transition = connectedAgentTransitionPayload(preview);
   const checks = transition && Array.isArray(transition.checks) ? transition.checks : [];
@@ -1567,16 +1618,9 @@ function renderConnectedAgentRequestDialog(focus) {
   const refresh = wrap.querySelector("[data-connected-agent-refresh]");
   if (refresh) refresh.addEventListener("click", () => refreshConnectedAgentRequest(preview));
   const dialog = wrap.querySelector(".transition-dialog");
-  if (dialog) dialog.addEventListener("keydown", e => {
-    if (e.key === "Escape") { e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); closeTransitionPreview("Connected agent request closed."); return; }
-    if (e.key !== "Tab") return;
-    const focusable = Array.from(dialog.querySelectorAll("button, a[href], input, select, textarea, [tabindex]:not([tabindex=\"-1\"])")).filter(el => !el.hidden && el.getAttribute("aria-hidden") !== "true" && !el.disabled);
-    if (!focusable.length) { e.preventDefault(); dialog.focus(); return; }
-    const first = focusable[0], last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-  });
-  if (focus || hadModalFocus) {
+  bindDialogKeyboard(dialog, "Connected agent request closed.");
+  // A re-render that is not a fresh open keeps the control the person was on.
+  if ((focus || hadModalFocus) && (focus || !restoreDialogFocus(wrap, savedFocus))) {
     const heading = wrap.querySelector("#transition-dialog-title");
     if (heading && heading.focus) heading.focus();
     else if (dialog && dialog.focus) dialog.focus();
@@ -1707,6 +1751,7 @@ function renderTransitionDialog(focus) {
   }
   const cap = transitionCapability() || {}, snapshot = cap.snapshot || {};
   const hadModalFocus = !!(wrap.contains && wrap.contains(document.activeElement));
+  const savedFocus = captureDialogFocus(wrap);
   setTransitionBackgroundInert(true);
   const checks = Array.isArray(t.checks) ? t.checks : [];
   const checksHtml = checks.length ? checks.map(transitionCheckHtml).join("") : '<div class="transition-check unknown"><span class="check-status">unknown</span><span class="check-copy">No observable checks were supplied by this payload.</span></div>';
@@ -1760,15 +1805,7 @@ function renderTransitionDialog(focus) {
     announce(`Agent surface changed to ${button.textContent || state.surface}. Review the request again.`);
   }));
   const dialog = wrap.querySelector(".transition-dialog");
-  if (dialog) dialog.addEventListener("keydown", e => {
-    if (e.key === "Escape") { e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); closeTransitionPreview("Workflow preview canceled."); return; }
-    if (e.key !== "Tab") return;
-    const focusable = Array.from(dialog.querySelectorAll("button, a[href], input, select, textarea, [tabindex]:not([tabindex=\"-1\"])")).filter(el => !el.hidden && el.getAttribute("aria-hidden") !== "true");
-    if (!focusable.length) { e.preventDefault(); dialog.focus(); return; }
-    const first = focusable[0], last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-  });
+  bindDialogKeyboard(dialog, "Workflow preview canceled.");
   const cancel = wrap.querySelector("[data-transition-cancel]");
   if (cancel) cancel.addEventListener("click", () => closeTransitionPreview("Workflow preview canceled."));
   const copy = wrap.querySelector("[data-transition-copy]");
@@ -1780,7 +1817,8 @@ function renderTransitionDialog(focus) {
       () => { copy.textContent = "Copied"; copy.classList.add("copied"); if (status) status.textContent = "Request text copied. No job was dispatched."; announce("Request text copied. No job was dispatched."); toast("Paste the request in your agent"); },
       message => { if (status) status.textContent = message; });
   });
-  if (focus || hadModalFocus) {
+  // A re-render that is not a fresh open keeps the control the person was on.
+  if ((focus || hadModalFocus) && (focus || !restoreDialogFocus(wrap, savedFocus))) {
     const heading = wrap.querySelector("#transition-dialog-title");
     if (heading && heading.focus) heading.focus();
     else if (dialog && dialog.focus) dialog.focus();
@@ -1882,26 +1920,72 @@ function createBoardOperationId() {
   } catch (error) {}
   return "prism-op-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14);
 }
+const APPLY_REFRESH_RETRY_MS = [150, 300, 600, 900, 1200];
+const APPLY_STALE_VIEW_ERROR = "Dashboard view is stale after the applied board operation; wait for a refreshed and validated snapshot before another action.";
+function appliedStageExpectation(preview) {
+  if (!preview) return null;
+  const receipt = preview.receipt || {};
+  const featureId = preview.kind === "connected" ? preview.featureId : receipt.feature_id;
+  const action = preview.kind === "connected" ? preview.action : receipt.action;
+  if (typeof featureId !== "string" || !featureId || typeof action !== "string" || !Object.prototype.hasOwnProperty.call(ACTION_CONTRACTS, action)) return null;
+  return { featureId, status: ACTION_CONTRACTS[action].target_status };
+}
+function envelopeShowsStage(envelope, expectation) {
+  const nodes = envelope && envelope.facts && Array.isArray(envelope.facts.nodes) ? envelope.facts.nodes : [];
+  const matches = nodes.filter(node => node && node.id === expectation.featureId);
+  return matches.length === 1 && matches[0].status === expectation.status;
+}
+function confirmPendingAppliedStage() {
+  const pending = state.pendingAppliedStage;
+  if (!pending) return;
+  const node = nodesById[pending.featureId];
+  if (!node || node.status !== pending.status) return;
+  state.pendingAppliedStage = null;
+  state.boardViewStale = false;
+  if (pending.preview) {
+    pending.preview.operationMessage = "Operation applied. Dashboard view refreshed and validated.";
+    if (state.transitionPreview === pending.preview) renderTransitionDialog(false);
+  }
+}
 function refreshBoardGraphAfterApply(preview) {
   if (preview) preview.operationMessage = "Operation applied. Refreshing and validating the dashboard view…";
   renderTransitionDialog(false);
-  boardJsonRequest("/data.json", "GET").then(payload => {
-    const version = Number(payload && payload.version);
-    if (!payload || !payload.envelope || !Number.isFinite(version) || typeof payload.epoch !== "string") throw new Error("The refreshed graph response could not be validated.");
-    if (state.liveEpoch === payload.epoch && state.liveVersion !== null && version < state.liveVersion) throw new Error("The refreshed graph was older than the current dashboard snapshot.");
-    adoptData(payload.envelope);
-    state.liveEpoch = payload.epoch;
-    state.liveVersion = version;
-    state.liveRefreshError = null;
-    state.boardViewStale = false;
-    if (preview) preview.operationMessage = "Operation applied. Dashboard view refreshed and validated.";
-    renderAll(false);
-  }).catch(() => {
-    state.boardViewStale = true;
-    state.liveRefreshError = "Dashboard view is stale after the applied board operation; wait for a refreshed and validated snapshot before another action.";
-    if (preview) preview.operationMessage = "Operation applied. Dashboard view stale: the refreshed snapshot has not been validated.";
-    renderAll(false);
-  });
+  state.pendingAppliedStage = null;
+  const expectation = appliedStageExpectation(preview);
+  const refreshId = preview ? (preview.graphRefreshId = (preview.graphRefreshId || 0) + 1) : 0;
+  const superseded = () => !!preview && preview.graphRefreshId !== refreshId;
+  const requestSnapshot = attempt => {
+    boardJsonRequest("/data.json", "GET").then(payload => {
+      if (superseded()) return;
+      const version = Number(payload && payload.version);
+      if (!payload || !payload.envelope || !Number.isFinite(version) || typeof payload.epoch !== "string") throw new Error("The refreshed graph response could not be validated.");
+      if (state.liveEpoch === payload.epoch && state.liveVersion !== null && version < state.liveVersion) throw new Error("The refreshed graph was older than the current dashboard snapshot.");
+      if (expectation && !envelopeShowsStage(payload.envelope, expectation)) {
+        // The snapshot predates the applied write. Retry briefly, then wait for the live event stream.
+        if (attempt < APPLY_REFRESH_RETRY_MS.length) { setTimeout(() => requestSnapshot(attempt + 1), APPLY_REFRESH_RETRY_MS[attempt]); return; }
+        state.boardViewStale = true;
+        state.liveRefreshError = APPLY_STALE_VIEW_ERROR;
+        state.pendingAppliedStage = { preview, featureId: expectation.featureId, status: expectation.status };
+        if (preview) preview.operationMessage = "Operation applied. Dashboard view stale: the board has not received the applied change yet; waiting for the live update stream.";
+        renderAll(false);
+        return;
+      }
+      adoptData(payload.envelope);
+      state.liveEpoch = payload.epoch;
+      state.liveVersion = version;
+      state.liveRefreshError = null;
+      state.boardViewStale = false;
+      if (preview) preview.operationMessage = "Operation applied. Dashboard view refreshed and validated.";
+      renderAll(false);
+    }).catch(() => {
+      if (superseded()) return;
+      state.boardViewStale = true;
+      state.liveRefreshError = APPLY_STALE_VIEW_ERROR;
+      if (preview) preview.operationMessage = "Operation applied. Dashboard view stale: the refreshed snapshot has not been validated.";
+      renderAll(false);
+    });
+  };
+  requestSnapshot(0);
 }
 function acceptBoardOperationReceipt(preview, receipt) {
   if (!preview || !receipt) return;
@@ -1910,11 +1994,54 @@ function acceptBoardOperationReceipt(preview, receipt) {
   preview.operationState = receipt.state || "pending";
   preview.operationRecord = null;
   preview.recoveryAcknowledged = false;
+  // An applied receipt is the outcome; a staleness note recorded while the apply was in flight no longer applies.
+  if (preview.operationState === "applied") preview.staleReason = "";
   preview.operationMessage = preview.operationState === "applied" ? "Operation applied. Refreshing the dashboard view…" : "Operation state recorded; review any conflicts before recovery.";
   refreshBoardDiscovery().catch(() => {});
   if (preview.operationState === "applied") refreshBoardGraphAfterApply(preview);
   else if (state.transitionPreview === preview) inspectConnectedOperation(preview);
   else renderTransitionDialog(false);
+}
+// Codes the service answers with before it records an operation. A 4xx with one of these means no operation exists;
+// a network failure, a 5xx or any other answer leaves the outcome unknown.
+const APPLY_REJECTED_CODES = new Set(["stale_preview", "stale_move", "stale_write", "stale_index_row", "checks_changed", "preview_blocked", "preview_not_found",
+  "preview_already_submitted", "operation_id_reused", "invalid_preview", "invalid_operation", "invalid_identifier", "write_scope_required",
+  "participant_kind_required", "same_origin_required", "csrf_failed", "csrf_required"]);
+function connectedApplyRejected(error) {
+  const status = error && error.status;
+  return typeof status === "number" && status >= 400 && status < 500 && typeof error.code === "string" && APPLY_REJECTED_CODES.has(error.code);
+}
+// The apply was refused before an operation existed, so there is nothing to inspect or recover. The preview can no
+// longer be approved; typed inputs and the acknowledgement stay in the dialog, locked, and a fresh preview is offered.
+function settleRejectedApply(preview, staleMessage) {
+  preview.loading = false;
+  preview.operationId = null;
+  preview.operationState = null;
+  preview.operationRecord = null;
+  preview.recoveryAcknowledged = false;
+  preview.receipt = null;
+  preview.operationMessage = "";
+  preview.error = "";
+  preview.previewId = null;
+  if (preview.payload) preview.payload.applicable = false;
+  if (staleMessage) preview.staleReason = staleMessage;
+  if (state.transitionPreview === preview) renderTransitionDialog(false);
+  if (staleMessage) announce(staleMessage);
+}
+function previewConnectedAgain(preview) {
+  if (!preview || state.transitionPreview !== preview || preview.loading) return;
+  const node = nodesById[preview.featureId];
+  if (!node || node.type !== "feature" || connectedHumanAction(node) !== preview.action) return;
+  preview.staleReason = "";
+  preview.error = "";
+  preview.payload = null;
+  preview.previewId = null;
+  preview.semanticAcknowledged = false;
+  preview.proposalDirty = false;
+  preview.sourceStatus = node.status;
+  preview.sourceOwner = node.owner;
+  preview.sourcePath = node.path;
+  refreshConnectedPreview(preview, false);
 }
 function applyConnectedPreview(preview) {
   if (!preview || state.transitionPreview !== preview || !preview.previewId || !preview.payload || preview.payload.applicable !== true ||
@@ -1930,6 +2057,8 @@ function applyConnectedPreview(preview) {
   boardJsonRequest("/api/board/v1/apply", "POST", { preview_id: preview.previewId, operation_id: preview.operationId }).then(receipt => {
     acceptBoardOperationReceipt(preview, receipt);
   }).catch(error => {
+    if (error && error.status === 401) { settleRejectedApply(preview, ""); return; }
+    if (connectedApplyRejected(error)) { settleRejectedApply(preview, error.message || "The service rejected this preview. Review a new preview before applying."); return; }
     preview.loading = false;
     preview.operationState = "outcome unknown";
     preview.error = error && error.message || "The apply response was lost. Check the same operation ID before retrying.";
@@ -2035,6 +2164,7 @@ function renderBoardOperationsDialog(focus) {
   const preview = state.transitionPreview;
   if (!wrap || !preview) return;
   const hadModalFocus = !!(wrap.contains && wrap.contains(document.activeElement));
+  const savedFocus = captureDialogFocus(wrap);
   setTransitionBackgroundInert(true);
   const operations = Array.isArray(preview.operations) ? preview.operations : [];
   const listHtml = operations.length ? operations.map(item => {
@@ -2074,10 +2204,9 @@ function renderBoardOperationsDialog(focus) {
   });
   wrap.querySelectorAll("[data-operation-recover]").forEach(button => button.addEventListener("click", () => recoverBoardOperation(preview, button.dataset.operationRecover)));
   const dialog = wrap.querySelector(".transition-dialog");
-  if (dialog) dialog.addEventListener("keydown", e => {
-    if (e.key === "Escape") { e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); closeTransitionPreview("Operation review closed."); }
-  });
-  if (focus || hadModalFocus) {
+  bindDialogKeyboard(dialog, "Operation review closed.");
+  // A re-render that is not a fresh open keeps the control the person was on.
+  if ((focus || hadModalFocus) && (focus || !restoreDialogFocus(wrap, savedFocus))) {
     const heading = wrap.querySelector("#transition-dialog-title");
     if (heading && heading.focus) heading.focus();
     else if (dialog && dialog.focus) dialog.focus();
@@ -2196,6 +2325,9 @@ function reconcileTransitionPreview() {
   if (!preview) return;
   if (preview.kind === "connected") {
     if (preview.operationState === "applied") { renderTransitionDialog(false); return; }
+    // Once Apply has been sent the preview is no longer awaiting approval: the operation's own outcome decides what the
+    // dialog says, and the stage change a live update reports is that operation's effect, not a competing edit.
+    if (preview.operationId) { renderTransitionDialog(false); return; }
     const node = nodesById[preview.featureId];
     if (!node || node.type !== "feature") {
       preview.staleReason = "Feature source was removed while this connected preview was open. No apply is allowed.";
@@ -2297,7 +2429,17 @@ function onBoardDragStart(e) {
   }
   announce(`Dragging ${canonicalFeatureId(node)}. Drop on a supported workflow destination to preview a request.`);
 }
-function onBoardDragEnd() { cancelDrag("Workflow drag canceled."); }
+const UNSUPPORTED_DROP_TOAST = "Unsupported drop - card stayed in its source stage";
+function onBoardDragEnd() {
+  // The browser never fires `drop` on a column that refused the drag (dropEffect "none"), so the refusal is explained
+  // here from the last column the card hovered. The browser clears the column's drop marker just before it ends the
+  // drag, so the hover is tracked in the drag state instead.
+  const drag = state.drag;
+  const hover = drag && drag.hover;
+  const refused = !!(hover && !hover.valid && hover.stage !== drag.sourceStatus);
+  cancelDrag(refused ? "No workflow action targets this destination; the card stayed in its source stage." : "Workflow drag canceled.");
+  if (refused) toast(UNSUPPORTED_DROP_TOAST);
+}
 function onBoardDragOver(e) {
   if (!state.drag) return;
   e.preventDefault();
@@ -2306,12 +2448,16 @@ function onBoardDragOver(e) {
   const connectedDrop = !!(state.drag.connectedAction && ACTION_CONTRACTS[state.drag.connectedAction] && ACTION_CONTRACTS[state.drag.connectedAction].target_status === stage);
   const targetIndex = connectedDrop ? -1 : transitionIndexForTarget(node, stage);
   const valid = !!(node && stage !== state.drag.sourceStatus && (connectedDrop || (targetIndex >= 0 && transitionDragOpenable(node, targetIndex))));
+  state.drag.hover = { stage, valid };
   e.currentTarget.classList.toggle("drop-ready", valid);
   e.currentTarget.classList.toggle("drop-invalid", !valid);
   if (e.dataTransfer) e.dataTransfer.dropEffect = valid ? "move" : "none";
 }
 function onBoardDragLeave(e) {
   if (e.currentTarget && e.currentTarget.classList) e.currentTarget.classList.remove("drop-ready", "drop-invalid");
+  // Leaving for something that is not a column (when the browser says where) means nothing is hovered any more.
+  const next = e.relatedTarget;
+  if (state.drag && next && typeof next.closest === "function" && !next.closest(".column[data-stage]")) state.drag.hover = null;
 }
 function onBoardDrop(e) {
   if (!state.drag) return;
@@ -2328,14 +2474,14 @@ function onBoardDrop(e) {
       showConnectedTransitionPreview(drag.featureId, drag.element, drag.connectedAction);
     } else {
       announce("No connected human action targets this destination; the card stayed in its source stage.");
-      toast("Unsupported drop - card stayed in its source stage");
+      toast(UNSUPPORTED_DROP_TOAST);
     }
     return;
   }
   const actionIndex = transitionIndexForTarget(node, stage);
   if (!node || actionIndex < 0 || !transitionDragOpenable(node, actionIndex)) {
     announce("No supported workflow request targets this destination; the card stayed in its source stage.");
-    toast("Unsupported drop - card stayed in its source stage");
+    toast(UNSUPPORTED_DROP_TOAST);
     return;
   }
   showTransitionPreview(drag.featureId, drag.element, actionIndex);
@@ -3283,6 +3429,11 @@ searchInput.addEventListener("keydown", e => {
 document.addEventListener("keydown", e => {
   if (state.transitionPreview) {
     if (e.key === "Escape") { closeTransitionPreview("Workflow preview canceled."); }
+    else if (e.key === "Tab") {
+      // The dialog's own handler covers focus inside it; this keeps Tab inside the modal when focus has fallen to the page.
+      const modal = document.querySelector("#transition-dialog .transition-dialog");
+      if (modal && !(e.target && modal.contains(e.target))) trapDialogTab(e, modal);
+    }
     return;
   }
   if (e.key === "/" && document.activeElement !== searchInput) { e.preventDefault(); searchInput.focus(); }
@@ -3336,6 +3487,7 @@ function adoptData(envelope) {
     else if (state.selected) closePanel();
     reconcileTransitionPreview();
     pulseSpectrum();
+    confirmPendingAppliedStage();
   } catch (error) {
     state.data = previousData;
     state.liveRefreshError = previousLiveError;
@@ -3371,6 +3523,13 @@ function initLive() {
     const request = { id: ++requestSequence, version: requestedVersion };
     refreshInFlight = request;
     fetch("/data.json").then(response => {
+      if (response && response.status === 401) {
+        // The session ended (revoked grant or restarted server): say so instead of retrying a request that cannot succeed.
+        invalidateBoardSession();
+        const expired = new Error("board session expired");
+        expired.sessionExpired = true;
+        throw expired;
+      }
       if (!response || response.ok === false || typeof response.json !== "function") throw new Error("live response missing JSON");
       return response.json();
     }).then(payload => {
@@ -3399,9 +3558,10 @@ function initLive() {
       if (pendingVersion !== null && pendingVersion <= payloadVersion) pendingVersion = null;
       toast("Wiki changed - dashboard updated");
       pump();
-    }).catch(() => {
+    }).catch(error => {
       if (refreshInFlight !== request) return;
       refreshInFlight = null;
+      if (error && error.sessionExpired) { markLiveRefreshUnavailable(requestedVersion); return; }
       pendingVersion = maxVersion(pendingVersion, requestedVersion);
       markLiveRefreshUnavailable(requestedVersion);
       scheduleRetry();
@@ -3429,6 +3589,9 @@ function initLive() {
   };
   source.onerror = () => {
     markLiveRefreshUnavailable("disconnected");
+    // The stream gives no status. A restarted server or a revoked grant answers it with 401 and the browser stops
+    // retrying, so ask the session endpoint: a 401 there shows "Board session expired" instead of a silent STALE.
+    if (connectedBoardExpected() && state.boardConnection !== "unauthenticated") boardJsonRequest("/api/board/v1/auth/session", "GET").catch(() => {});
   };
   setInterval(renderStatusline, 30000);
 }

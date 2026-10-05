@@ -17,17 +17,20 @@ import secrets
 import stat
 import tempfile
 import threading
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Iterator, Mapping
 from uuid import UUID, uuid4
 
 import yaml
 
 from prism_cli.board_store import BoardLockError, BoardStore
+from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError, reparse_kind
+from prism_cli.wiki_model import api_surface_declared, section_text, within_wiki_read_scope
 
 
 _MAX_TEXT_FILE = 512 * 1024
 _MAX_READ_TOTAL = 2 * 1024 * 1024
 _MAX_READ_PATHS = 64
+_MCP_CONTRACT = 2
 _TEXT_FILE_SUFFIXES = (".md", ".txt", ".yaml", ".yml")
 _MAX_PREVIEW_CHANGES = 128
 _HUMAN_ACTIONS = {"po-handoff", "design-start", "dev-start"}
@@ -46,7 +49,9 @@ _LIFECYCLE_SKILLS = {
     "dev-done": "dev-done",
     "feature-reopen": None,
 }
-_QUESTION_SKILLS = {"po-clarify": "po", "design-clarify": "designer", "ask": None}
+_DEV_CLARIFY_REQUIREMENT_ORDER = ("What to build", "Technical constraints", "API contract reference", "Acceptance criteria")
+_DEV_CLARIFY_REQUIREMENT_SECTIONS = set(_DEV_CLARIFY_REQUIREMENT_ORDER)
+_QUESTION_SKILLS = {"po-clarify": "po", "design-clarify": "designer", "dev-clarify": "dev", "ask": None}
 _INTAKE_SKILLS = {"po-intake", "design-intake"}
 _WRITE_SKILLS = frozenset((*_LIFECYCLE_SKILLS, *_QUESTION_SKILLS, *_INTAKE_SKILLS))
 _WIKI_DIRS = (
@@ -66,11 +71,76 @@ _FRONTMATTER = re.compile(r"\A\ufeff?---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTA
 class BoardError(Exception):
     """A safe, transport-ready service error."""
 
-    def __init__(self, code: str, message: str, status: int = 400) -> None:
+    def __init__(self, code: str, message: str, status: int = 400, details: Mapping[str, Any] | None = None) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.status = status
+        self.details = _error_details(details)
+
+
+_MAX_ERROR_DETAILS_CHARS = 1200
+
+
+def _error_details(details: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Return a small JSON-safe copy of structured error details, or None."""
+
+    if not isinstance(details, Mapping) or not details:
+        return None
+    try:
+        encoded = json.dumps(dict(details), ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return None
+    if len(encoded) > _MAX_ERROR_DETAILS_CHARS:
+        return None
+    return json.loads(encoded)
+
+
+def _clip(value: Any, limit: int) -> str:
+    """Collapse whitespace and truncate to at most `limit` characters."""
+
+    text = re.sub(r"\s+", " ", str(value)).strip()
+    return text if len(text) <= limit else text[: max(limit - 3, 0)].rstrip() + "..."
+
+
+def _names(values: Iterable[Any], *, limit: int = 20) -> list[str]:
+    """Sorted, clipped field names for an error message or details mapping."""
+
+    return sorted({_clip(value, 60) for value in values})[:limit]
+
+
+def _quoted(values: Iterable[str]) -> str:
+    return ", ".join(f"`{value}`" for value in values)
+
+
+def _shape_details(
+    index: int,
+    item: Any,
+    expected: tuple[str, ...],
+    *,
+    string_fields: tuple[str, ...],
+) -> tuple[str, dict[str, Any]]:
+    """Describe what is wrong with one change or move item."""
+
+    if not isinstance(item, Mapping):
+        problems = [f"is a {type(item).__name__}, not an object"]
+        missing, unexpected, wrong_type = list(expected), [], []
+    else:
+        keys = {str(key) for key in item}
+        missing = [name for name in expected if name not in keys]
+        unexpected = _names(keys - set(expected))
+        wrong_type = [name for name in string_fields if name in item and not isinstance(item[name], str)]
+        problems = []
+        if missing:
+            problems.append(f"is missing {_quoted(missing)}")
+        if unexpected:
+            problems.append(f"has unexpected field(s) {_quoted(unexpected)}")
+        if wrong_type:
+            problems.append(f"needs string values for {_quoted(wrong_type)}")
+    details: dict[str, Any] = {"index": index, "missing": missing, "unexpected": unexpected, "expected": list(expected)}
+    if wrong_type:
+        details["not_string"] = wrong_type
+    return "; ".join(problems), details
 
 
 @dataclass(frozen=True)
@@ -108,6 +178,15 @@ class BoardService:
         except (OSError, RuntimeError) as exc:
             raise BoardError("invalid_workspace", "The workspace root cannot be resolved safely.", 400) from exc
         self._lock = threading.RLock()
+        # Digests this service returned from read_workspace, per path, so a
+        # digest that was never returned can be told from one that went stale.
+        self._served_lock = threading.Lock()
+        self._served_digests: dict[str, list[str]] = {}
+        # The digest each participant last received for the whole of a file
+        # from read_workspace, per path. preview_skill uses it for a reviewed
+        # source whose revision the proposal leaves out. Memory only: a service
+        # restart clears it and the agent reads again.
+        self._participant_reads: dict[str, dict[str, tuple[str, str]]] = {}
         self._closed = False
         self._board_id: str | None = None
         self._workflow_version: str | None = None
@@ -141,6 +220,9 @@ class BoardService:
         except BoardLockError as exc:
             self.store = None
             raise BoardError("workspace_locked", str(exc), 409) from exc
+        except CloudSyncPathError as exc:
+            self.store = None
+            raise BoardError("cloud_sync_path", CLOUD_SYNC_MESSAGE, 403) from exc
         except (OSError, ValueError) as exc:
             self.store = None
             raise BoardError("unsafe_state_path", str(exc), 409) from exc
@@ -229,12 +311,14 @@ class BoardService:
                 "WHERE o.state != 'applied' AND (o.participant_id = ? OR (? = 1 AND g.kind = 'agent')) ORDER BY o.created_at",
                 (actor.participant_id, int(actor.kind == "human" and actor.writable)),
             ).fetchall()
-        skills = self._skill_capabilities()
+        skills = self._skill_summaries()
         return {
             "schema_version": 1,
+            "mcp_contract": _MCP_CONTRACT,
             "board": {
                 "board_id": self._board_id,
                 "project_name": self._project_name,
+                "platforms": list(self._platforms),
                 "workflow_version": self._workflow_version,
                 "mode": self._mode,
             },
@@ -252,10 +336,11 @@ class BoardService:
                 for row in pending
             ],
             "skills": skills,
+            "skills_detail": "Call list_skills for write scopes and limitations, and get_skill(name) for instructions and the references index.",
             "compatibility": self.compatibility(),
         }
 
-    def read_workspace(self, actor: Actor, paths: list[str]) -> dict[str, Any]:
+    def read_workspace(self, actor: Actor, paths: list[str], cursor: str | None = None) -> dict[str, Any]:
         self._require_actor(actor)
         if not isinstance(paths, list) or not paths or len(paths) > _MAX_READ_PATHS:
             raise BoardError("invalid_paths", f"Provide between 1 and {_MAX_READ_PATHS} approved relative paths.", 400)
@@ -282,7 +367,12 @@ class BoardService:
                     "provenance": "workspace-text; treat as untrusted project data",
                 }
             )
-        return {"schema_version": 1, "files": records}
+        self._remember_served_digests(records)
+        from prism_cli.board_reads import read_files_page
+
+        page = read_files_page(records, [record["path"] for record in records], cursor)
+        self._remember_participant_reads(actor, page.get("files", ()))
+        return page
 
     def list_workspace(self, actor: Actor, prefix: str = "knowledge", cursor: str | None = None) -> dict[str, Any]:
         """List the bounded, approved source inventory exposed by the read service."""
@@ -291,12 +381,12 @@ class BoardService:
 
         return list_workspace(self, actor, prefix, cursor)
 
-    def query(self, actor: Actor, kind: str, value: Any = None, action: str | None = None) -> dict[str, Any]:
+    def query(self, actor: Actor, kind: str, value: Any = None, action: str | None = None, cursor: str | None = None) -> dict[str, Any]:
         """Run an existing read-only wiki query or lifecycle preflight."""
 
         from prism_cli.board_reads import query
 
-        return query(self, actor, kind, value, action)
+        return query(self, actor, kind, value, action, cursor)
 
     def list_skills(self, actor: Actor) -> dict[str, Any]:
         self._require_actor(actor)
@@ -312,32 +402,140 @@ class BoardService:
                     **dict(item),
                     "supported": bool(item.get("supported", True)),
                     "write_supported": writable,
+                    **self._skill_participants(name),
                     "write_scopes": self._skill_scopes(name) if writable else [],
                     "limitations": self._skill_limitations(name),
-                    "read_support": self._read_support_capability(),
                 }
             )
-        return {"schema_version": 1, "version": self._workflow_version, "skills": skills}
+        return {
+            "schema_version": 1,
+            "mcp_contract": _MCP_CONTRACT,
+            "version": self._workflow_version,
+            "read_support": self._read_support_capability(),
+            "skills": skills,
+        }
 
-    def get_skill(self, actor: Actor, name: str) -> dict[str, Any]:
+    def get_skill(self, actor: Actor, name: str, cursor: str | None = None) -> dict[str, Any]:
+        """Return a skill's instructions, metadata and references index.
+
+        Reference bodies are fetched with `get_skill_reference`. A result that
+        would exceed the MCP budget continues with `next_cursor`: first the
+        remaining instruction characters, then the remaining required reads.
+        """
+
+        from prism_cli.board_reads import decode_cursor, encode_cursor, fit_units, reference_title, text_digest
+
         self._require_actor(actor)
         catalog = self._asset_get(name)
         if not isinstance(catalog, Mapping) or not isinstance(catalog.get("instructions"), str):
             raise BoardError("skill_not_found", f"Canonical skill `{name}` is unavailable for this workflow version.", 404)
-        return {
-            "schema_version": 1,
-            "skill": {
-                **dict(catalog),
-                "write_supported": name in _WRITE_SKILLS,
-                "write_scopes": self._skill_scopes(name) if name in _WRITE_SKILLS else [],
-                "limitations": self._skill_limitations(name),
-                "read_support": self._read_support_capability(),
-                "required_workspace_reads": sorted(
-                    self._required_skill_revision_paths(name, {}, {}, [])
-                ),
-            },
+        instructions = catalog["instructions"]
+        digest = text_digest(instructions)
+        required_reads = sorted(self._required_skill_revision_paths(name, {}, {}, []))
+        reads_digest = text_digest("\n".join(required_reads))
+        offset = 0
+        if cursor is not None:
+            position = decode_cursor(cursor, "skill", {"n", "d", "w"})
+            if position["n"] != name or position["d"] != digest:
+                raise BoardError("invalid_cursor", "The cursor belongs to a different skill.", 400)
+            if position["w"] != reads_digest:
+                raise BoardError("stale_cursor", "Workspace reads changed since the first page; request the skill again from the first page.", 409)
+            offset = position["o"]
+        references = []
+        for reference in catalog.get("references", []):
+            if not isinstance(reference, Mapping) or not isinstance(reference.get("path"), str) or not isinstance(reference.get("content"), str):
+                raise BoardError("workflow_assets_invalid", "Canonical workflow skill has an invalid reference.", 503)
+            references.append(
+                {
+                    "path": reference["path"],
+                    "title": reference_title(reference["path"], reference["content"]),
+                    "size_chars": len(reference["content"]),
+                    "digest": text_digest(reference["content"]),
+                }
+            )
+        metadata = {
+            key: value
+            for key, value in dict(catalog).items()
+            if key not in {"instructions", "references"}
+        }
+        skill = {
+            **metadata,
+            "write_supported": name in _WRITE_SKILLS,
+            **self._skill_participants(name),
+            "write_scopes": self._skill_scopes(name) if name in _WRITE_SKILLS else [],
+            "limitations": self._skill_limitations(name),
+            "read_support": self._read_support_capability(),
+            "references": references,
+            "references_note": "Fetch each reference body with get_skill_reference(name, path) and follow every next_cursor.",
         }
 
+        # The paged sequence is the instruction characters followed by the
+        # required reads; every page repeats the metadata and references index.
+        text_total = len(instructions)
+
+        def build(end: int) -> dict[str, Any]:
+            following = None
+            if end < text_total + len(required_reads):
+                following = encode_cursor({"t": "skill", "n": name, "d": digest, "w": reads_digest, "o": end})
+            text_start = min(offset, text_total)
+            reads_start = max(offset - text_total, 0)
+            return {
+                "schema_version": 1,
+                "skill": {
+                    **skill,
+                    "instructions": instructions[text_start:min(end, text_total)],
+                    "instructions_chunk": {"offset": text_start, "total_chars": text_total, "digest": digest},
+                    "required_workspace_reads": required_reads[reads_start:max(end - text_total, 0)],
+                    "required_workspace_reads_chunk": {"offset": reads_start, "total": len(required_reads)},
+                },
+                "next_cursor": following,
+            }
+
+        return fit_units(text_total + len(required_reads), offset, build)
+
+    def get_skill_reference(self, actor: Actor, name: str, path: str, cursor: str | None = None) -> dict[str, Any]:
+        """Return one chunk of a packaged reference that belongs to the skill."""
+
+        from prism_cli.board_reads import chunk_text, decode_cursor, encode_cursor, text_digest
+
+        self._require_actor(actor)
+        catalog = self._asset_get(name)
+        if not isinstance(path, str):
+            raise BoardError("invalid_path", "The reference path must be a string.", 400)
+        text = None
+        for reference in catalog.get("references", []):
+            if isinstance(reference, Mapping) and reference.get("path") == path and isinstance(reference.get("content"), str):
+                text = reference["content"]
+                break
+        if text is None:
+            raise BoardError("reference_not_found", f"Skill `{name}` has no reference at that path; use the paths from get_skill.", 404)
+        digest = text_digest(text)
+        offset = 0
+        if cursor is not None:
+            position = decode_cursor(cursor, "reference", {"n", "p", "d"})
+            if position["n"] != name or position["p"] != path or position["d"] != digest:
+                raise BoardError("invalid_cursor", "The cursor belongs to a different reference.", 400)
+            offset = position["o"]
+
+        def build(content: str, end: int) -> dict[str, Any]:
+            following = None
+            if end < len(text):
+                following = encode_cursor({"t": "reference", "n": name, "p": path, "d": digest, "o": end})
+            return {
+                "schema_version": 1,
+                "name": name,
+                "path": path,
+                "content": content,
+                "offset": offset,
+                "total_chars": len(text),
+                "digest": digest,
+                "next_cursor": following,
+                "provenance": "packaged canonical workflow reference; pinned to this workspace's workflow version",
+            }
+
+        return chunk_text(text, offset, build)
+
+    @within_wiki_read_scope
     def preview_transition(
         self,
         actor: Actor,
@@ -389,6 +587,9 @@ class BoardService:
             advisory_override=advisory_override,
             frontmatter_overrides=frontmatter_overrides,
         )
+        from prism_cli.board_reads import relativize_paths
+
+        transition = relativize_paths(transition, [self.root])
         checks = list(transition.get("checks", []))
         semantic_ack = supplied.get("semantic_review_acknowledged") is True
         checks.append(
@@ -446,6 +647,18 @@ class BoardService:
         }
         self._save_preview(payload)
         return self._preview_envelope(payload)
+
+    def get_preview(self, actor: Actor, preview_id: str) -> dict[str, Any]:
+        """Return a stored preview as it was first returned, for the participant that created it."""
+
+        self._require_actor(actor)
+        preview_id = _safe_id(preview_id, "preview_id")
+        store = self._require_store()
+        with store.read() as db:
+            row = db.execute("SELECT participant_id, payload_json FROM previews WHERE preview_id = ?", (preview_id,)).fetchone()
+        if row is None or row[0] != actor.participant_id:
+            raise BoardError("preview_not_found", "No preview with that ID is available to this participant.", 404)
+        return self._preview_envelope(_loads(row[1]))
 
     def preview_skill(
         self,
@@ -519,6 +732,7 @@ class BoardService:
             "relevant_sources": self._fingerprint_paths(relevant_paths),
         }).encode("utf-8"))
 
+    @within_wiki_read_scope
     def recover(
         self,
         actor: Actor,
@@ -559,6 +773,7 @@ class BoardService:
                     )
             return self._roll_forward(actor, operation_id, intent)
 
+    @within_wiki_read_scope
     def apply(self, actor: Actor, preview_id: str, operation_id: str) -> dict[str, Any]:
         self._require_running()
         preview_id = _safe_id(preview_id, "preview_id")
@@ -727,6 +942,8 @@ class BoardService:
         if self.store is None:
             try:
                 self.store = BoardStore(self.root, process_lock=False)
+            except CloudSyncPathError as exc:
+                raise BoardError("cloud_sync_path", CLOUD_SYNC_MESSAGE, 403) from exc
             except (OSError, ValueError) as exc:
                 raise BoardError("unsafe_state_path", "Board state could not be opened safely.", 409) from exc
         return self.store
@@ -737,42 +954,32 @@ class BoardService:
             raise BoardError("service_not_started", "Connected writes require the server-owned workspace lock; call start() first.", 503)
 
     def validate_graph_inputs(self) -> None:
-        """Reject reparse points throughout wiki/intake before graph reads."""
+        """Reject reparse points throughout wiki/intake before graph reads.
+
+        The chain from the drive root down to the workspace root is checked once
+        per call, then every entry below it is classified from a single listing
+        of its directory instead of re-checking all of its ancestors.
+        """
 
         from prism_cli.workspace import COPIER_ANSWERS_FILE, PLATFORM_DIRS
         from prism_cli.wiki_transitions import _capability_paths
 
-        roots = [
-            self.root / "knowledge",
-            self.root / "knowledge" / "wiki",
-            self.root / "knowledge" / "intake" / "pending",
-            self.root / "knowledge" / "intake" / "processed",
-            self.root / "knowledge" / "intake" / "quarantined",
-        ]
         files = [
             self.root / "prism.workspace.yml",
             self.root / COPIER_ANSWERS_FILE,
             *(self.root / directory for directory in PLATFORM_DIRS.values()),
             *(self.root / relative for relative in _capability_paths()),
         ]
+        self._reject_reparse(self.root, include_leaf=True)
+        checked: set[Path] = set()
         for path in files:
-            self._reject_reparse(path, include_leaf=True)
-        for tree in roots:
-            self._reject_reparse(tree, include_leaf=True)
-            if not tree.is_dir():
-                continue
-            pending = [tree]
-            while pending:
-                current = pending.pop()
-                self._reject_reparse(current, include_leaf=True)
-                try:
-                    children = list(current.iterdir())
-                except OSError as exc:
-                    raise BoardError("graph_path_unavailable", "Graph input tree cannot be traversed safely.", 409) from exc
-                for child in children:
-                    self._reject_reparse(child, include_leaf=True)
-                    if child.is_dir():
-                        pending.append(child)
+            self._reject_reparse_below(self.root, path, checked)
+        # ``knowledge`` holds the wiki and every intake queue, so one walk covers all graph input trees.
+        tree = self.root / "knowledge"
+        self._reject_reparse_below(self.root, tree, checked)
+        if tree.is_dir():
+            for _child, _info in self._walk_tree(tree, reject=True):
+                pass
 
     def _actor_from_values(self, participant_id: str, name: str, kind: str, writable: bool, token_hash: str) -> Actor:
         scopes = ("read", "write") if writable else ("read",)
@@ -806,7 +1013,14 @@ class BoardService:
         relative = self._relative_path(raw_path)
         parts = PurePosixPath(relative).parts
         if len(parts) < 3 or parts[0] != "knowledge" or parts[1] not in {"wiki", "intake"}:
-            raise BoardError("path_not_approved", "Read access is limited to approved wiki and intake context.", 403)
+            raise BoardError(
+                "path_not_approved",
+                f"`{_clip(relative, 120)}` cannot be read: read_workspace covers only approved paths under `knowledge/wiki/` and `knowledge/intake/`. "
+                "The workspace identity (board, project and workflow version) comes from discover; `prism.workspace.yml` and `.copier-answers.yml` are not readable. "
+                "Leave the path out and read the rest again.",
+                403,
+                {"path": _clip(relative, 120), "approved": ["knowledge/wiki/", "knowledge/intake/"]},
+            )
         if parts[1] == "wiki" and (len(parts) < 3 or parts[2] not in {*_WIKI_DIRS, "SCHEMA.md", "SETTINGS.md", "index.md", "log.md", "PROJECT_FOUNDATION.md", "CONNECTED.md"}):
             raise BoardError("path_not_approved", "The requested wiki path is outside the approved source folders.", 403)
         if parts[1] == "intake" and not (len(parts) == 3 and parts[2] == "README.md") and (len(parts) < 4 or parts[2] not in {"pending", "processed", "quarantined"}):
@@ -848,6 +1062,8 @@ class BoardService:
             from prism_cli.workflow_assets import get_skill
         except ImportError as exc:
             raise BoardError("workflow_assets_unavailable", "Canonical workflow assets are unavailable in this Prism installation.", 503) from exc
+        if not any(isinstance(item, Mapping) and item.get("name") == name for item in self._asset_list()):
+            raise BoardError("skill_not_found", f"Canonical skill `{name}` is unavailable for this workflow version.", 404)
         try:
             result = get_skill(name, version=str(self._workflow_version))
         except (KeyError, FileNotFoundError) as exc:
@@ -856,55 +1072,135 @@ class BoardService:
             raise BoardError("workflow_assets_invalid", "Canonical workflow skill has an invalid shape.", 503)
         return result
 
-    def _skill_capabilities(self) -> list[dict[str, Any]]:
-        assets = self._asset_list()
-        result: list[dict[str, Any]] = []
-        for item in assets:
-            if not isinstance(item, Mapping) or not isinstance(item.get("name"), str):
-                continue
-            name = item["name"]
-            result.append(
-                {
-                    "name": name,
-                    "supported": bool(item.get("supported", True)),
-                    "write_supported": name in _WRITE_SKILLS,
-                    "write_scopes": self._skill_scopes(name) if name in _WRITE_SKILLS else [],
-                    "limitations": self._skill_limitations(name),
-                    "read_support": self._read_support_capability(),
-                }
+    def _remember_served_digests(self, records: Iterable[Mapping[str, Any]]) -> None:
+        with self._served_lock:
+            for record in records:
+                digests = self._served_digests.setdefault(record["path"].casefold(), [])
+                if record["digest"] not in digests:
+                    digests.append(record["digest"])
+                    del digests[:-8]
+            while len(self._served_digests) > 4096:
+                self._served_digests.pop(next(iter(self._served_digests)))
+
+    def _remember_participant_reads(self, actor: Actor, files: Iterable[Mapping[str, Any]]) -> None:
+        """Record the digest of every file this participant has now received in full.
+
+        A file returned in chunks counts only once its last chunk has been
+        returned. The record is per participant and is never read for another one.
+        """
+
+        complete = [
+            item for item in files
+            if int(item.get("offset", 0)) + len(item["content"]) >= int(item.get("total_chars", len(item["content"])))
+        ]
+        if not complete:
+            return
+        with self._served_lock:
+            reads = self._participant_reads.setdefault(actor.participant_id, {})
+            for item in complete:
+                key = item["path"].casefold()
+                reads.pop(key, None)
+                reads[key] = (item["path"], item["digest"])
+            while len(reads) > 4096:
+                reads.pop(next(iter(reads)))
+            while len(self._participant_reads) > 256:
+                self._participant_reads.pop(next(iter(self._participant_reads)))
+
+    def _participant_read_digests(self, actor: Actor) -> dict[str, str]:
+        """The digests this participant last read, by casefolded path."""
+
+        with self._served_lock:
+            return {key: digest for key, (_path, digest) in self._participant_reads.get(actor.participant_id, {}).items()}
+
+    def _read_revision_error(self, relative: str, supplied: Any, actual: str | None) -> BoardError:
+        """Tell a stale read from a digest that is simply wrong.
+
+        A digest this service returned for the path earlier, which no longer
+        matches, means the file changed after the read. Any other digest was
+        mistyped or copied from somewhere else.
+        """
+
+        with self._served_lock:
+            served = list(self._served_digests.get(relative.casefold(), ()))
+        details = {"path": relative, "supplied": _clip(supplied, 100) if isinstance(supplied, str) else None, "expected": actual}
+        shown = _clip(supplied, 100) if isinstance(supplied, str) else "null"
+        if actual is None:
+            return BoardError(
+                "stale_read_revision",
+                f"Read source `{relative}` no longer exists, so the digest {shown} cannot match. Read the workspace again.",
+                409,
+                details,
             )
-        return result
+        if supplied is None:
+            return BoardError(
+                "stale_read_revision",
+                f"Read source `{relative}` was reported as absent but now exists with digest {actual}. Read it with read_workspace and review it.",
+                409,
+                details,
+            )
+        if supplied in served:
+            return BoardError(
+                "stale_read_revision",
+                f"Read source `{relative}` changed after you read it: its digest was {shown} and is now {actual}. Read it again with read_workspace and review the change.",
+                409,
+                details,
+            )
+        return BoardError(
+            "read_digest_mismatch",
+            f"The digest supplied for `{relative}` ({shown}) is not one this board returned for that file, so it is wrong; the file's current digest is {actual}. "
+            "Copy the digest from read_workspace exactly. If the file was edited after you read it, read it again.",
+            409,
+            details,
+        )
+
+    def _skill_summaries(self) -> list[dict[str, str]]:
+        return [
+            {"name": item["name"], "description": item.get("description", "")}
+            for item in self._asset_list()
+            if isinstance(item, Mapping) and isinstance(item.get("name"), str)
+        ]
+
+    @staticmethod
+    def _skill_participants(name: str) -> dict[str, Any]:
+        """Which participant kinds may write with a skill, and through which tool."""
+
+        if name not in _WRITE_SKILLS:
+            return {"participant_kinds": [], "write_tools": {}}
+        tools: dict[str, list[str]] = {"preview_skill": ["agent"]}
+        if name in _HUMAN_ACTIONS:
+            tools["preview_transition"] = ["human"]
+        return {"participant_kinds": sorted({kind for kinds in tools.values() for kind in kinds}), "write_tools": tools}
 
     @staticmethod
     def _skill_scopes(name: str) -> list[str]:
         if name == "po-intake":
             return [
-                "knowledge/wiki/features/**",
-                "knowledge/wiki/personas/**",
-                "knowledge/wiki/business-rules/**",
+                "knowledge/wiki/features/**/*.md",
+                "knowledge/wiki/personas/**/*.md",
+                "knowledge/wiki/business-rules/**/*.md",
                 "knowledge/intake/processed/**/MANIFEST.md",
                 "knowledge/intake/quarantined/**/CONFLICT.md",
             ]
         if name == "design-intake":
             return [
-                "knowledge/wiki/features/**",
-                "knowledge/wiki/design/**",
+                "knowledge/wiki/features/**/*.md",
+                "knowledge/wiki/design/**/*.md",
                 "knowledge/intake/processed/**/MANIFEST.md",
                 "knowledge/intake/quarantined/**/CONFLICT.md",
             ]
         if name in {"po-clarify", "ask"}:
-            return ["knowledge/wiki/features/**"]
+            return ["knowledge/wiki/features/**/*.md"]
         if name == "design-clarify":
-            return ["knowledge/wiki/features/**", "knowledge/wiki/design/**"]
+            return ["knowledge/wiki/features/**/*.md", "knowledge/wiki/design/**/*.md"]
+        if name == "dev-clarify":
+            return ["knowledge/wiki/features/**/*.md", "knowledge/wiki/platform-requirements/**/*.md"]
         if name in {"po-specify", "po-handoff", "design-start", "dev-start"}:
-            return ["knowledge/wiki/features/**"]
-        if name == "design-handoff":
-            return ["knowledge/wiki/features/**", "knowledge/wiki/platform-requirements/**"]
-        if name in {"dev-done", "feature-reopen"}:
+            return ["knowledge/wiki/features/**/*.md"]
+        if name in {"design-handoff", "dev-done", "feature-reopen"}:
             return [
-                "knowledge/wiki/features/**",
-                "knowledge/wiki/platform-requirements/**",
-                "knowledge/wiki/api-contracts/**",
+                "knowledge/wiki/features/**/*.md",
+                "knowledge/wiki/platform-requirements/**/*.md",
+                "knowledge/wiki/api-contracts/**/*.md",
             ]
         return []
 
@@ -920,11 +1216,42 @@ class BoardService:
                 "The knowledge/intake/pending/ tree is a read-only move source. A proposal may move one pending folder to processed or quarantined; "
                 "only the destination MANIFEST.md or CONFLICT.md may be supplied."
             )
-        if name in {"po-clarify", "design-clarify"}:
+        if name == "po-intake":
+            limitations.append(
+                "New features are created as `raw` + `po`. po-specify then completes the page and moves it to `specified`."
+            )
+        if name in {"po-clarify", "design-clarify", "dev-clarify"}:
             limitations.append(
                 "Every changed requirement or design section must include the full text of at least one answer "
                 "resolved by this proposal (case and whitespace differences are ignored). Paraphrases alone do not pass. "
                 "This is a structural traceability check; the agent and reviewer must still verify that every edit follows the answer."
+            )
+        if name == "dev-clarify":
+            limitations.append(
+                "Resolves only dev-owned open questions, on a feature that is not `done`. It may change the feature's Open questions, "
+                "Acceptance criteria, Platform scope and API surface sections and the What to build, Technical constraints, "
+                "API contract reference and Acceptance criteria sections of that feature's existing platform requirement pages."
+            )
+        if name == "design-handoff":
+            limitations.append(
+                "When the feature's `## API surface` declares API work and no API contract exists yet, the proposal must create "
+                "`knowledge/wiki/api-contracts/F-XXX.md` as a new page with `status: agreed`; the human confirming the preview is the agreement. "
+                "Its endpoints (`METHOD /path`) and data models must trace to the API surface section. Without declared API work no contract may be "
+                "proposed, and an existing contract is never rewritten. A missing, misplaced or untraceable page is rejected with "
+                "`api_contract_required`, `api_contract_not_applicable`, `api_contract_exists`, `api_contract_initial_status` or "
+                "`api_contract_untraceable` and `details`."
+            )
+        if name == "dev-done":
+            limitations.append(
+                "The proposed feature page must carry the delivery evidence: one substantive Implementation, Tests and Release row per "
+                "declared platform in its `## Delivery evidence` table, taken from what the developer reports. A missing or invalid table is rejected "
+                "with `delivery_evidence_required` or `delivery_evidence_invalid` and `details`."
+            )
+        if name in _HUMAN_ACTIONS:
+            limitations.append(
+                "Direct human action: `preview_transition` accepts only a human participant and fails with `participant_kind_required` for an agent, "
+                "so an agent must not call it. The human completes the action in the board; an agent that prepares it uses `preview_skill` "
+                "and the human's confirmation in the host."
             )
         if name in _WRITE_SKILLS:
             limitations.append(
@@ -949,7 +1276,7 @@ class BoardService:
         path = matches[0].page.path
         relative = path.relative_to(self.root).as_posix()
         content = self._read_text(path)
-        parsed = _parse_markdown(content)
+        parsed = _parse_markdown(content, relative)
         return {"path": relative, "content": content, "frontmatter": parsed[0], "body": parsed[1], "feature": matches[0]}
 
     def _feature_context_paths(self, feature_path: str, frontmatter: Mapping[str, Any]) -> set[str]:
@@ -958,7 +1285,7 @@ class BoardService:
 
         feature_full = self._safe_path(feature_path)
         wiki_root = self.root / "knowledge" / "wiki"
-        body = _parse_markdown(self._read_text(feature_full))[1]
+        body = _parse_markdown(self._read_text(feature_full), feature_path)[1]
         sources = frontmatter.get("sources", [])
         if isinstance(sources, list):
             for source in sources:
@@ -1045,7 +1372,7 @@ class BoardService:
         ]
         if additional:
             writes.extend(additional)
-        affected = [_parse_markdown(after_feature)[0]]
+        affected = [_parse_markdown(after_feature, feature_path)[0]]
         feature_id = str(affected[0].get("id", ""))
         expected = {feature_id: self._index_existing_row(feature_id)}
         after_row = _index_row(affected[0])
@@ -1135,49 +1462,114 @@ class BoardService:
         if not include_leaf:
             parts.pop()
         for component in parts:
+            BoardService._reject_reparse_component(component)
+
+    @staticmethod
+    def _reject_reparse_component(component: Path) -> None:
+        try:
+            info = component.lstat()
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            raise BoardError("path_unavailable", "A workspace path cannot be inspected safely.", 403) from exc
+        BoardService._reject_reparse_info(info)
+
+    @staticmethod
+    def _reject_reparse_info(info: os.stat_result) -> None:
+        if reparse_kind(info) == "cloud":
+            raise BoardError("cloud_sync_path", CLOUD_SYNC_MESSAGE, 403)
+        if stat.S_ISLNK(info.st_mode) or _reparse_point(info):
+            raise BoardError("reparse_path", "Symlinks and reparse points are not allowed in BoardService paths.", 403)
+
+    @staticmethod
+    def _reject_reparse_below(base: Path, path: Path, checked: set[Path] | None = None) -> None:
+        """Check each component of ``path`` below ``base``; the chain down to ``base`` is verified by the caller."""
+
+        current = base
+        for part in path.relative_to(base).parts:
+            current = current / part
+            if checked is not None:
+                if current in checked:
+                    continue
+                checked.add(current)
+            BoardService._reject_reparse_component(current)
+
+    @staticmethod
+    def _walk_tree(base: Path, *, reject: bool) -> Iterator[tuple[Path, os.stat_result | None]]:
+        """Yield every entry below ``base`` with its ``lstat`` information from one listing per directory.
+
+        ``base`` and its ancestors must already be verified. Links are never
+        followed: a reparse point is yielded, or rejected when ``reject`` is set,
+        but never entered. An entry that vanished before it could be classified
+        is yielded with ``None``. Each directory is checked again right before
+        it is listed. With ``reject`` unset, a directory that cannot be listed is
+        skipped, as ``Path.rglob`` skips it.
+        """
+
+        pending = [base]
+        while pending:
+            current = pending.pop()
+            BoardService._reject_reparse_component(current)
             try:
-                info = component.lstat()
-            except FileNotFoundError:
-                continue
+                with os.scandir(current) as listing:
+                    entries = list(listing)
             except OSError as exc:
-                raise BoardError("path_unavailable", "A workspace path cannot be inspected safely.", 403) from exc
-            if stat.S_ISLNK(info.st_mode) or _reparse_point(info):
-                raise BoardError("reparse_path", "Symlinks and reparse points are not allowed in BoardService paths.", 403)
+                if not reject:
+                    continue
+                raise BoardError("graph_path_unavailable", "Graph input tree cannot be traversed safely.", 409) from exc
+            for entry in entries:
+                try:
+                    info: os.stat_result | None = entry.stat(follow_symlinks=False)
+                except FileNotFoundError:
+                    info = None
+                except OSError as exc:
+                    raise BoardError("path_unavailable", "A workspace path cannot be inspected safely.", 403) from exc
+                child = Path(entry.path)
+                if info is not None:
+                    if reject:
+                        BoardService._reject_reparse_info(info)
+                    if stat.S_ISDIR(info.st_mode) and reparse_kind(info) == "none" and not stat.S_ISLNK(info.st_mode):
+                        pending.append(child)
+                yield child, info
+
+    def _checked_tree_entries(self, path: Path) -> Iterator[tuple[str, Path, os.stat_result | None]]:
+        """Yield every entry below ``path`` sorted by relative path, rejecting each reparse point as it is reached."""
+
+        self._reject_reparse(path, include_leaf=True)
+        entries = [(child.relative_to(path).as_posix(), child, info) for child, info in self._walk_tree(path, reject=False)]
+        entries.sort(key=lambda item: item[0])
+        for name, child, info in entries:
+            if info is not None:
+                self._reject_reparse_info(info)
+            yield name, child, info
 
     def _tree_digest(self, path: Path) -> str:
-        self._reject_reparse(path, include_leaf=True)
         entries: list[tuple[str, str]] = []
-        for child in sorted(path.rglob("*"), key=lambda item: item.relative_to(path).as_posix()):
-            self._reject_reparse(child, include_leaf=True)
-            if child.is_file():
-                data = child.read_bytes()
-                entries.append((child.relative_to(path).as_posix(), _sha256(data)))
-            elif child.is_dir():
-                entries.append((child.relative_to(path).as_posix() + "/", "directory"))
+        for name, child, info in self._checked_tree_entries(path):
+            if info is not None and stat.S_ISREG(info.st_mode):
+                entries.append((name, _sha256(child.read_bytes())))
+            elif info is not None and stat.S_ISDIR(info.st_mode):
+                entries.append((name + "/", "directory"))
             else:
                 raise BoardError("unsupported_path_type", "Intake trees may contain only regular files and directories.", 409)
         return _revision({name: digest for name, digest in entries})
 
     def _tree_snapshot(self, path: Path) -> dict[str, str]:
-        self._reject_reparse(path, include_leaf=True)
         result: dict[str, str] = {}
-        for child in sorted(path.rglob("*"), key=lambda item: item.relative_to(path).as_posix()):
-            self._reject_reparse(child, include_leaf=True)
-            if child.is_file():
-                result[child.relative_to(path).as_posix()] = _sha256(child.read_bytes())
-            elif not child.is_dir():
+        for name, child, info in self._checked_tree_entries(path):
+            if info is not None and stat.S_ISREG(info.st_mode):
+                result[name] = _sha256(child.read_bytes())
+            elif info is None or not stat.S_ISDIR(info.st_mode):
                 raise BoardError("unsupported_path_type", "Intake trees may contain only regular files and directories.", 409)
         return result
 
     def _tree_directories(self, path: Path) -> list[str]:
         """Return every directory below an intake tree, including empty ones."""
-        self._reject_reparse(path, include_leaf=True)
         result: list[str] = []
-        for child in sorted(path.rglob("*"), key=lambda item: item.relative_to(path).as_posix()):
-            self._reject_reparse(child, include_leaf=True)
-            if child.is_dir():
-                result.append(child.relative_to(path).as_posix())
-            elif not child.is_file():
+        for name, _child, info in self._checked_tree_entries(path):
+            if info is not None and stat.S_ISDIR(info.st_mode):
+                result.append(name)
+            elif info is None or not stat.S_ISREG(info.st_mode):
                 raise BoardError("unsupported_path_type", "Intake trees may contain only regular files and directories.", 409)
         return result
 
@@ -1221,16 +1613,46 @@ class BoardService:
         read_revisions: Mapping[str, str],
     ) -> dict[str, Any]:
         self.validate_graph_inputs()
-        if not isinstance(changes, list) or len(changes) > _MAX_PREVIEW_CHANGES:
-            raise BoardError("invalid_changes", "Skill proposals must contain at most 128 text-file changes.", 400)
-        if not isinstance(moves, list) or len(moves) > 1:
-            raise BoardError("invalid_moves", "A skill proposal may contain at most one approved intake-folder move.", 400)
+        if not isinstance(changes, list):
+            raise BoardError(
+                "invalid_changes",
+                f"`changes` must be a list of {{`path`, `content`}} objects, not a {type(changes).__name__}.",
+                400,
+                {"expected": ["path", "content"], "received": type(changes).__name__},
+            )
+        if len(changes) > _MAX_PREVIEW_CHANGES:
+            raise BoardError(
+                "invalid_changes",
+                f"Skill proposals must contain at most {_MAX_PREVIEW_CHANGES} text-file changes; `changes` has {len(changes)}. Drop `changes[{_MAX_PREVIEW_CHANGES}]` and every later item.",
+                400,
+                {"index": _MAX_PREVIEW_CHANGES, "maximum": _MAX_PREVIEW_CHANGES, "received": len(changes)},
+            )
+        if not isinstance(moves, list):
+            raise BoardError(
+                "invalid_moves",
+                f"`moves` must be a list of {{`source`, `destination`}} objects, not a {type(moves).__name__}.",
+                400,
+                {"expected": ["source", "destination"], "received": type(moves).__name__},
+            )
+        if len(moves) > 1:
+            raise BoardError(
+                "invalid_moves",
+                f"A skill proposal may contain at most one approved intake-folder move; `moves` has {len(moves)}. Drop `moves[1]` and every later item.",
+                400,
+                {"index": 1, "maximum": 1, "received": len(moves)},
+            )
         if not isinstance(read_revisions, Mapping):
             raise BoardError("invalid_read_revisions", "Read revisions must be a path-to-digest mapping.", 400)
         supplied: dict[str, str] = {}
-        for item in changes:
+        for index, item in enumerate(changes):
             if not isinstance(item, Mapping) or set(item) - {"path", "content"} or not isinstance(item.get("path"), str) or not isinstance(item.get("content"), str):
-                raise BoardError("invalid_change", "Each change must contain only a relative `path` and UTF-8 `content` string.", 400)
+                problem, details = _shape_details(index, item, ("path", "content"), string_fields=("path", "content"))
+                raise BoardError(
+                    "invalid_change",
+                    f"`changes[{index}]` {problem}. Each change must contain only a relative `path` string and a UTF-8 `content` string.",
+                    400,
+                    details,
+                )
             relative = self._relative_path(item["path"])
             if relative in supplied:
                 raise BoardError("duplicate_change", f"Path `{relative}` appears more than once in this proposal.", 400)
@@ -1244,9 +1666,15 @@ class BoardService:
             raise BoardError("empty_proposal", "A skill proposal must contain at least one file change.", 400)
 
         normalized_moves: list[dict[str, Any]] = []
-        for item in moves:
+        for index, item in enumerate(moves):
             if not isinstance(item, Mapping) or set(item) != {"source", "destination"}:
-                raise BoardError("invalid_move", "Each move must contain exactly `source` and `destination`.", 400)
+                problem, details = _shape_details(index, item, ("source", "destination"), string_fields=())
+                raise BoardError(
+                    "invalid_move",
+                    f"`moves[{index}]` {problem}. Each move must contain exactly `source` and `destination`.",
+                    400,
+                    details,
+                )
             source = self._relative_path(item["source"])
             destination = self._relative_path(item["destination"])
             self._assert_intake_move(skill, source, destination)
@@ -1275,7 +1703,7 @@ class BoardService:
                 raise BoardError("duplicate_read_revision", f"Path `{relative}` has more than one supplied revision.", 400)
             actual = _sha256(path.read_bytes()) if path.is_file() else None
             if expected_digest != actual:
-                raise BoardError("stale_read_revision", f"Read source `{relative}` changed after it was reviewed.", 409)
+                raise self._read_revision_error(relative, expected_digest, actual)
             normalized_revisions[relative] = expected_digest
 
         before: dict[str, str | None] = {}
@@ -1289,10 +1717,14 @@ class BoardService:
         after_frontmatter: dict[str, dict[str, Any]] = {}
         for relative in feature_changes:
             before_text = before[relative]
-            before_frontmatter[relative] = _parse_markdown(before_text)[0] if before_text is not None else None
+            before_frontmatter[relative] = _parse_markdown(before_text, relative)[0] if before_text is not None else None
             after_frontmatter[relative] = self._validate_feature_output(relative, supplied[relative], skill)
 
-        self._assert_required_skill_revisions(skill, supplied, before, normalized_moves, normalized_revisions)
+        normalized_revisions.update(
+            self._assert_required_skill_revisions(
+                skill, supplied, before, normalized_moves, normalized_revisions, defaults=self._participant_read_digests(actor)
+            )
+        )
 
         operation = self._validate_skill_semantics(
             actor,
@@ -1382,10 +1814,10 @@ class BoardService:
             allowed = {"features", "personas", "business-rules"}
         elif skill == "design-intake":
             allowed = {"features", "design"}
-        elif skill in {"po-clarify", "design-clarify", "ask"}:
-            allowed = {"features"} if skill != "design-clarify" else {"features", "design"}
+        elif skill in {"po-clarify", "design-clarify", "dev-clarify", "ask"}:
+            allowed = {"features", "design"} if skill == "design-clarify" else {"features", "platform-requirements"} if skill == "dev-clarify" else {"features"}
         elif skill == "design-handoff":
-            allowed = {"features", "platform-requirements"}
+            allowed = {"features", "platform-requirements", "api-contracts"}
         elif skill == "dev-done":
             allowed = {"features", "platform-requirements", "api-contracts"}
         elif skill == "feature-reopen":
@@ -1422,11 +1854,11 @@ class BoardService:
             if current is not None:
                 required.add(relative)
             if relative.startswith("knowledge/wiki/features/") and current is not None:
-                frontmatter = _parse_markdown(current)[0]
+                frontmatter = _parse_markdown(current, relative)[0]
                 target_features.append((relative, frontmatter))
                 required.update(self._feature_context_paths(relative, frontmatter))
             elif relative.startswith(("knowledge/wiki/design/", "knowledge/wiki/platform-requirements/", "knowledge/wiki/api-contracts/")):
-                frontmatter = _parse_markdown(current or content)[0]
+                frontmatter = _parse_markdown(current or content, relative)[0]
                 feature_id = frontmatter.get("feature-id")
                 if isinstance(feature_id, str):
                     target = next((item for item in target_features if str(item[1].get("id", "")).casefold() == feature_id.casefold()), None)
@@ -1471,21 +1903,64 @@ class BoardService:
         before: Mapping[str, str | None],
         moves: list[dict[str, Any]],
         read_revisions: Mapping[str, str | None],
-    ) -> None:
+        defaults: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Check the digests of the reviewed sources and return the ones filled from `defaults`.
+
+        `defaults` maps a casefolded path to the digest the participant last
+        read. It fills a required path whose revision was omitted; the filled
+        digest is checked exactly like a supplied one, so a file that changed
+        after that read is rejected as stale. A required path with neither a
+        supplied nor a recorded digest is rejected.
+        """
+
         required = self._required_skill_revision_paths(skill, supplied, before, moves)
         revisions_by_path = {path.casefold(): digest for path, digest in read_revisions.items()}
-        missing = sorted(path for path in required if path.casefold() not in revisions_by_path)
+        filled: dict[str, str] = {}
+        missing: list[str] = []
+        for relative in sorted(required):
+            key = relative.casefold()
+            if key in revisions_by_path:
+                continue
+            recorded = (defaults or {}).get(key)
+            if recorded is None:
+                missing.append(relative)
+            else:
+                filled[relative] = recorded
+                revisions_by_path[key] = recorded
         if missing:
-            raise BoardError(
-                "missing_read_revisions",
-                "Preview requires current digests for the reviewed sources: " + ", ".join(missing),
-                409,
-            )
+            raise self._missing_read_revisions_error(missing)
         for relative in required:
             path = self._safe_path(relative)
             actual = _sha256(path.read_bytes())
             if revisions_by_path[relative.casefold()] != actual:
-                raise BoardError("stale_read_revision", f"Read source `{relative}` changed after it was reviewed.", 409)
+                raise self._read_revision_error(relative, revisions_by_path[relative.casefold()], actual)
+        return filled
+
+    @staticmethod
+    def _missing_read_revisions_error(missing: list[str]) -> BoardError:
+        listed: list[str] = []
+        size = 0
+        for relative in missing:
+            if listed and size + len(relative) > 900:
+                break
+            listed.append(relative)
+            size += len(relative) + 2
+        details: dict[str, Any] = {"paths": listed, "total": len(missing), "read_with": "read_workspace"}
+        while len(json.dumps(details, ensure_ascii=True, separators=(",", ":"))) > _MAX_ERROR_DETAILS_CHARS - 100 and len(listed) > 1:
+            listed = listed[:-1]
+            details["paths"] = listed
+        rest = len(missing) - len(listed)
+        return BoardError(
+            "missing_read_revisions",
+            "Preview requires you to have read these reviewed sources first: "
+            + ", ".join(listed)
+            + (f" and {rest} more" if rest else "")
+            + ". Read them with read_workspace (up to 64 paths per call, following next_cursor), then preview again; "
+            "the board uses the digests of the files you read, or pass them in read_revisions.",
+            409,
+            details,
+        )
 
     @staticmethod
     def _assert_intake_move(skill: str, source: str, destination: str) -> None:
@@ -1569,7 +2044,7 @@ class BoardService:
         )
 
     def _validate_feature_output(self, relative: str, content: str, skill: str) -> dict[str, Any]:
-        frontmatter, body = _parse_markdown(content)
+        frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"id", "title", "status", "owner", "introduced", "last-updated", "platforms", "sources", "advisory-review", "advisory-skip-reason", "design", "design-exemption-reason", "revalidation"}, relative)
         feature_id = frontmatter.get("id")
         if not isinstance(feature_id, str) or not re.fullmatch(r"F-\d+", feature_id):
@@ -1590,7 +2065,23 @@ class BoardService:
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` sources must be relative workspace paths.", 409)
         platforms = frontmatter.get("platforms")
         if not isinstance(platforms, list) or not platforms or any(not isinstance(item, str) for item in platforms) or len(set(platforms)) != len(platforms) or any(item not in self._platforms for item in platforms):
-            raise BoardError("invalid_feature_output", f"Feature `{feature_id}` must declare nonempty platforms within this board scope.", 409)
+            declared = [item for item in platforms if isinstance(item, str)] if isinstance(platforms, list) else []
+            outside = [item for item in declared if item not in self._platforms]
+            details = {"platforms": _names(declared), "board_platforms": _names(self._platforms)}
+            if outside:
+                raise BoardError(
+                    "invalid_feature_output",
+                    f"Feature `{feature_id}` declares platform(s) {_quoted(_names(outside))} that this board does not include; "
+                    f"this board's platforms are {_quoted(_names(self._platforms))}. Declare only those.",
+                    409,
+                    details,
+                )
+            raise BoardError(
+                "invalid_feature_output",
+                f"Feature `{feature_id}` must declare a nonempty `platforms` list of this board's platforms ({_quoted(_names(self._platforms))}), each platform once.",
+                409,
+                details,
+            )
         if frontmatter.get("advisory-review") not in {"not-needed", "pending", "done", "skipped"}:
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` has invalid advisory-review state.", 409)
         if frontmatter.get("advisory-review") == "skipped" and not (isinstance(frontmatter.get("advisory-skip-reason"), str) and frontmatter["advisory-skip-reason"].strip()):
@@ -1604,8 +2095,13 @@ class BoardService:
         if skill == "design-intake":
             if status not in {"specified", "ready-for-design", "in-design"}:
                 raise BoardError("invalid_design_intake", "Design intake may update only a feature already routed to design.", 409)
-        if skill == "po-intake" and (status, owner) != ("specified", "po"):
-            raise BoardError("invalid_intake_feature", "PO intake creates features in `specified` + `po` status.", 409)
+        if skill == "po-intake" and (status, owner) != ("raw", "po"):
+            raise BoardError(
+                "invalid_intake_feature",
+                f"PO intake creates features in `raw` + `po` status, but `{relative}` has `{status}` + `{owner}`. Set `status: raw` and `owner: po`; po-specify completes the feature and moves it to `specified`.",
+                409,
+                {"path": relative, "status": status, "owner": owner, "expected_status": "raw", "expected_owner": "po"},
+            )
         return frontmatter
 
     def _validate_skill_semantics(
@@ -1643,7 +2139,7 @@ class BoardService:
                 if action:
                     actions.append(action)
                 elif old.get("status") != new.get("status") or old.get("owner") != new.get("owner"):
-                    raise BoardError("lifecycle_action_required", "A status or owner change must match one explicitly named Prism lifecycle action.", 409)
+                    raise self._lifecycle_change_error(skill, relative, old, new)
                 if skill in _QUESTION_SKILLS:
                     self._validate_question_change(skill, relative, before[relative] or "", content)
             changed_features.append({"path": relative, "id": new["id"], "before": old, "after": new})
@@ -1658,8 +2154,8 @@ class BoardService:
                 raise BoardError("one_existing_feature_required", "Design intake requires exactly one existing feature.", 409)
             feature = changed_features[0]
             old_text = before[feature["path"]] or ""
-            old_fm, old_body = _parse_markdown(old_text)
-            new_fm, new_body = _parse_markdown(supplied[feature["path"]])
+            old_fm, old_body = _parse_markdown(old_text, feature["path"])
+            new_fm, new_body = _parse_markdown(supplied[feature["path"]], feature["path"])
             if {key: value for key, value in old_fm.items() if key != "last-updated"} != {key: value for key, value in new_fm.items() if key != "last-updated"}:
                 raise BoardError("design_intake_frontmatter_scope", "Design intake preserves feature identity and lifecycle metadata.", 409)
             self._assert_only_body_sections_changed(
@@ -1694,7 +2190,7 @@ class BoardService:
             directory = PurePosixPath(relative).parent.as_posix()
             if directory not in {"knowledge/wiki/personas", "knowledge/wiki/business-rules"}:
                 continue
-            frontmatter, _body = _parse_markdown(content)
+            frontmatter, _body = _parse_markdown(content, relative)
             named_id = frontmatter.get("id")
             if isinstance(named_id, str):
                 key = (directory, named_id.casefold())
@@ -1706,13 +2202,13 @@ class BoardService:
         target_feature = changed_features[0] if len(changed_features) == 1 else None
         for relative, content in supplied.items():
             if relative.startswith("knowledge/wiki/design/"):
-                frontmatter, _body = _parse_markdown(content)
+                frontmatter, _body = _parse_markdown(content, relative)
                 if target_feature is None or not isinstance(frontmatter.get("feature-id"), str) or frontmatter["feature-id"].casefold() not in target_ids:
                     raise BoardError("design_feature_mismatch", f"Design page `{relative}` must link to the feature in this preview.", 409)
                 if not PurePosixPath(relative).stem.casefold().startswith(str(frontmatter["feature-id"]).casefold() + "-"):
                     raise BoardError("design_path_mismatch", f"Design page `{relative}` must be named for its linked feature.", 409)
             elif relative.startswith("knowledge/wiki/platform-requirements/") or relative.startswith("knowledge/wiki/api-contracts/"):
-                frontmatter, _body = _parse_markdown(content)
+                frontmatter, _body = _parse_markdown(content, relative)
                 if target_feature is None or not isinstance(frontmatter.get("feature-id"), str) or frontmatter["feature-id"].casefold() not in target_ids:
                     raise BoardError("feature_context_mismatch", f"Page `{relative}` must belong to a feature in this preview.", 409)
                 feature_id = str(target_feature["id"])
@@ -1726,7 +2222,7 @@ class BoardService:
 
         if skill == "design-handoff" and target_feature is not None:
             requirement_page_list = [
-                _parse_markdown(content)[0].get("platform")
+                _parse_markdown(content, path)[0].get("platform")
                 for path, content in supplied.items()
                 if path.startswith("knowledge/wiki/platform-requirements/")
             ]
@@ -1772,6 +2268,10 @@ class BoardService:
                 before=before,
             )
             self._validate_lifecycle_related_writes(expected_action, supplied, before, target_feature)
+            if expected_action == "design-handoff":
+                self._require_handoff_api_contract(supplied, target_feature)
+            if expected_action == "dev-done":
+                self._validate_dev_done_evidence(target_feature["path"], supplied[target_feature["path"]], target_feature["after"])
             feature_id = target_feature["id"]
             transition = self._evaluate_proposed_action(expected_action, supplied, target_feature)
             checks.extend(transition.get("checks", []))
@@ -1789,31 +2289,32 @@ class BoardService:
                 "blockers": blockers,
             }
 
-        if skill in {"ask", "po-clarify", "design-clarify"}:
+        if skill in {"ask", "po-clarify", "design-clarify", "dev-clarify"}:
             if len(changed_features) != 1:
                 raise BoardError("one_feature_required", f"The `{skill}` skill requires exactly one existing feature per preview.", 409)
             if changed_features[0]["before"] is None:
                 raise BoardError("feature_not_found", f"The `{skill}` skill cannot create a feature.", 409)
             self._validate_question_change(skill, changed_features[0]["path"], before[changed_features[0]["path"]] or "", supplied[changed_features[0]["path"]])
-            question_answers = self._resolved_answers(
-                before[changed_features[0]["path"]] or "", supplied[changed_features[0]["path"]]
+            question_rows = self._resolved_answer_rows(
+                before[changed_features[0]["path"]] or "", supplied[changed_features[0]["path"]], changed_features[0]["path"]
             )
+            question_answers = [answer for _number, answer in question_rows]
             old_feature_frontmatter = changed_features[0]["before"] or {}
-            old_feature_body = _parse_markdown(before[changed_features[0]["path"]] or "")[1]
-            new_feature_body = _parse_markdown(supplied[changed_features[0]["path"]])[1]
+            old_feature_body = _parse_markdown(before[changed_features[0]["path"]] or "", changed_features[0]["path"])[1]
+            new_feature_body = _parse_markdown(supplied[changed_features[0]["path"]], changed_features[0]["path"])[1]
             if skill == "po-clarify":
                 self._assert_only_body_sections_changed(
                     old_feature_body,
                     new_feature_body,
                     {"Open questions", "Summary", "User story", "Acceptance criteria", "Platform scope", "API surface"},
                     "clarify_scope_exceeded",
-                    "PO clarify may update only its question table and requirement-bearing feature sections.",
+                    "PO clarify may update only the feature's Open questions, Summary, User story, Acceptance criteria, Platform scope and API surface sections.",
                 )
                 for section in ("Summary", "User story", "Acceptance criteria", "Platform scope", "API surface"):
                     if _section(old_feature_body, section) != _section(new_feature_body, section) and not self._answers_ground_section(
                         _section(new_feature_body, section), question_answers
                     ):
-                        raise BoardError("clarify_answer_unlinked", f"Updated `{section}` must include the full text of an answer resolved by this proposal; case and whitespace differences are ignored, but paraphrases alone do not pass.", 409)
+                        raise self._unlinked_answer_error("clarify_answer_unlinked", changed_features[0]["path"], [section], question_rows)
             elif skill == "design-clarify":
                 self._assert_only_body_sections_changed(
                     old_feature_body,
@@ -1822,6 +2323,26 @@ class BoardService:
                     "clarify_scope_exceeded",
                     "Design clarify may update the feature's Open questions section only.",
                 )
+            elif skill == "dev-clarify":
+                if old_feature_frontmatter.get("status") == "done":
+                    raise BoardError(
+                        "clarify_stage_unavailable",
+                        f"Skill `dev-clarify` cannot change `{changed_features[0]['path']}` because the feature is `done`. Reopen it with feature-reopen first.",
+                        409,
+                        {"path": changed_features[0]["path"], "status": "done"},
+                    )
+                self._assert_only_body_sections_changed(
+                    old_feature_body,
+                    new_feature_body,
+                    {"Open questions", "Acceptance criteria", "Platform scope", "API surface"},
+                    "clarify_scope_exceeded",
+                    "Dev clarify may update only its question table and the Acceptance criteria, Platform scope and API surface sections of the feature.",
+                )
+                for section in ("Acceptance criteria", "Platform scope", "API surface"):
+                    if _section(old_feature_body, section) != _section(new_feature_body, section) and not self._answers_ground_section(
+                        _section(new_feature_body, section), question_answers
+                    ):
+                        raise self._unlinked_answer_error("clarify_answer_unlinked", changed_features[0]["path"], [section], question_rows, owner="dev")
             for relative, content in supplied.items():
                 if relative.startswith("knowledge/wiki/design/"):
                     old_content = before[relative]
@@ -1829,10 +2350,16 @@ class BoardService:
                         raise BoardError("design_page_unavailable", f"Skill `{skill}` may update only an existing design page linked to its feature.", 409)
                     if skill != "design-clarify":
                         raise BoardError("write_path_unavailable", f"Skill `{skill}` cannot update design pages.", 403)
-                    old_fm, old_design_body = _parse_markdown(old_content)
-                    new_fm, new_design_body = _parse_markdown(content)
+                    old_fm, old_design_body = _parse_markdown(old_content, relative)
+                    new_fm, new_design_body = _parse_markdown(content, relative)
                     if old_fm != new_fm:
-                        raise BoardError("design_frontmatter_change", "Design clarify may not change design identity or metadata.", 409)
+                        changed_fields = _names(key for key in set(old_fm) | set(new_fm) if old_fm.get(key) != new_fm.get(key))
+                        raise BoardError(
+                            "design_frontmatter_change",
+                            f"Design clarify may not change design identity or metadata; `{relative}` changes frontmatter field(s) {_quoted(changed_fields)}. Restore them to their current values.",
+                            409,
+                            {"path": relative, "fields": changed_fields},
+                        )
                     self._assert_only_body_sections_changed(
                         old_design_body,
                         new_design_body,
@@ -1844,8 +2371,45 @@ class BoardService:
                         section for section in ("Summary", "Key design decisions", "States covered", "Open design questions")
                         if _section(old_design_body, section) != _section(new_design_body, section)
                     ]
-                    if not changed_design_sections or any(not self._answers_ground_section(_section(new_design_body, section), question_answers) for section in changed_design_sections):
-                        raise BoardError("design_answer_unlinked", "Each changed design section must include the full text of an answer resolved by this proposal to a designer-owned question; case and whitespace differences are ignored, but paraphrases alone do not pass.", 409)
+                    ungrounded_design_sections = [
+                        section for section in changed_design_sections
+                        if not self._answers_ground_section(_section(new_design_body, section), question_answers)
+                    ]
+                    if not changed_design_sections or ungrounded_design_sections:
+                        raise self._unlinked_answer_error("design_answer_unlinked", relative, ungrounded_design_sections, question_rows, owner="designer")
+                elif relative.startswith("knowledge/wiki/platform-requirements/"):
+                    old_content = before[relative]
+                    if old_content is None or _page_feature_id(old_content, PurePosixPath(relative).stem) != changed_features[0]["id"]:
+                        raise BoardError("requirement_page_unavailable", f"Skill `{skill}` may update only an existing platform requirement page linked to its feature.", 409)
+                    if skill != "dev-clarify":
+                        raise BoardError("write_path_unavailable", f"Skill `{skill}` cannot update platform requirement pages.", 403)
+                    old_fm, old_requirement_body = _parse_markdown(old_content, relative)
+                    new_fm, new_requirement_body = _parse_markdown(content, relative)
+                    if old_fm != new_fm:
+                        changed_fields = _names(key for key in set(old_fm) | set(new_fm) if old_fm.get(key) != new_fm.get(key))
+                        raise BoardError(
+                            "requirement_frontmatter_change",
+                            f"Dev clarify may not change requirement identity or status; `{relative}` changes frontmatter field(s) {_quoted(changed_fields)}. Restore them to their current values.",
+                            409,
+                            {"path": relative, "fields": changed_fields},
+                        )
+                    self._assert_only_body_sections_changed(
+                        old_requirement_body,
+                        new_requirement_body,
+                        _DEV_CLARIFY_REQUIREMENT_SECTIONS,
+                        "requirement_clarify_scope_exceeded",
+                        "Dev clarify may update requirement detail sections only: What to build, Technical constraints, API contract reference and Acceptance criteria.",
+                    )
+                    changed_requirement_sections = [
+                        section for section in _DEV_CLARIFY_REQUIREMENT_ORDER
+                        if _section(old_requirement_body, section) != _section(new_requirement_body, section)
+                    ]
+                    ungrounded_requirement_sections = [
+                        section for section in changed_requirement_sections
+                        if not self._answers_ground_section(_section(new_requirement_body, section), question_answers)
+                    ]
+                    if not changed_requirement_sections or ungrounded_requirement_sections:
+                        raise self._unlinked_answer_error("requirement_answer_unlinked", relative, ungrounded_requirement_sections, question_rows, owner="dev", kind="requirement")
             design_paths = [path for path in supplied if path.startswith("knowledge/wiki/design/")]
             if skill == "design-clarify" and len(design_paths) > 1:
                 raise BoardError("one_design_page_required", "Design clarify may update at most the one existing design page linked to its feature.", 409)
@@ -1859,6 +2423,24 @@ class BoardService:
             "checks": checks,
             "blockers": [],
         }
+
+    @staticmethod
+    def _lifecycle_change_error(skill: str, relative: str, old: Mapping[str, Any], new: Mapping[str, Any]) -> BoardError:
+        spec = _ACTION_BY_NAME.get(_LIFECYCLE_SKILLS.get(skill) or "")
+        if spec is not None:
+            allowed = (
+                f"`{skill}` moves a feature only from `{spec['source_status']}` / `{spec['source_owner']}` "
+                f"to `{spec['target_status']}` / `{spec['target_owner']}`."
+            )
+        else:
+            allowed = f"`{skill}` never changes status or owner; restore both to their current values."
+        return BoardError(
+            "lifecycle_action_required",
+            f"`{relative}` changes status/owner from `{old.get('status')}` / `{old.get('owner')}` to `{new.get('status')}` / `{new.get('owner')}`, "
+            f"which does not match a lifecycle action that `{skill}` performs. {allowed}",
+            409,
+            {"path": relative, "skill": skill, "from": [old.get("status"), old.get("owner")], "to": [new.get("status"), new.get("owner")]},
+        )
 
     def _action_from_feature_change(self, skill: str, old: Mapping[str, Any], new: Mapping[str, Any]) -> str | None:
         if old.get("status") == new.get("status") and old.get("owner") == new.get("owner"):
@@ -1898,8 +2480,17 @@ class BoardService:
         if (new.get("status"), new.get("owner")) != (spec["target_status"], spec["target_owner"]):
             raise BoardError("invalid_transition_target", f"Action `{action}` has a fixed registered destination.", 409)
         if action == "po-specify":
-            _require_headings(_parse_markdown(feature_content)[1], ("Summary", "User story", "Acceptance criteria", "Open questions", "Platform scope", "Design", "Related features", "API surface", "Board review summary", "Post-ship notes"), feature_path)
-            self._validate_substantive_spec(_parse_markdown(feature_content)[1], feature_path)
+            _require_headings(
+                _parse_markdown(feature_content, feature_path)[1],
+                ("Summary", "User story", "Acceptance criteria", "Open questions", "Platform scope", "Design", "Related features", "API surface", "Board review summary", "Post-ship notes"),
+                feature_path,
+                " po-specify completes a raw feature: give each of them one line of supported content or an explicit statement that nothing exists yet, "
+                "for example `Not started.` under Design, `None identified.` under Related features, `None.` under API surface, "
+                "`Not reviewed yet.` under Board review summary and `Not shipped yet.` under Post-ship notes. "
+                "Any API surface text other than `None.` needs an API contract page before dev-start, so write `None.` unless the intake material or an answered question states an API change. "
+                "Keep questions in the Open questions table, never in these sections.",
+            )
+            self._validate_substantive_spec(_parse_markdown(feature_content, feature_path)[1], feature_path)
         if action.startswith("reopen-"):
             domains = new.get("revalidation")
             expected = {
@@ -1909,7 +2500,7 @@ class BoardService:
             }[action]
             if domains != expected:
                 raise BoardError("revalidation_required", "The reopen route must add its exact required revalidation domains.", 409)
-            self._validate_reopen_record(action, original_content, feature_content, old, supplied, before)
+            self._validate_reopen_record(action, original_content, feature_content, old, supplied, before, relative=feature_path)
 
     def _validate_lifecycle_write_scope(
         self,
@@ -1920,8 +2511,8 @@ class BoardService:
         old: Mapping[str, Any],
         new: Mapping[str, Any],
     ) -> None:
-        old_fm, old_body = _parse_markdown(original)
-        new_fm, new_body = _parse_markdown(proposed)
+        old_fm, old_body = _parse_markdown(original, relative)
+        new_fm, new_body = _parse_markdown(proposed, relative)
         allowed_frontmatter = {"status", "owner", "last-updated"}
         if action == "po-handoff":
             allowed_frontmatter |= {"advisory-review", "advisory-skip-reason", "revalidation"}
@@ -1936,7 +2527,14 @@ class BoardService:
             if old_fm.get(key) != new_fm.get(key)
         }
         if changed - allowed_frontmatter:
-            raise BoardError("lifecycle_frontmatter_scope", f"Action `{action}` cannot change frontmatter fields: {', '.join(sorted(changed - allowed_frontmatter))}.", 409)
+            offending = _names(changed - allowed_frontmatter)
+            allowed_names = sorted(allowed_frontmatter)
+            raise BoardError(
+                "lifecycle_frontmatter_scope",
+                f"Action `{action}` cannot change frontmatter fields: {', '.join(offending)} in `{relative}`. Restore them to their current values; this action may change only {_quoted(allowed_names)}.",
+                409,
+                {"path": relative, "fields": offending, "allowed": allowed_names},
+            )
         timestamp = new_fm.get("last-updated")
         if timestamp is not None:
             try:
@@ -1975,6 +2573,10 @@ class BoardService:
 
         if action in {"po-handoff", "design-start", "dev-start", "design-handoff"}:
             if old_body != new_body:
+                # Names the sections and the first line that differ; the body of this action may not change at all.
+                self._assert_only_body_sections_changed(
+                    old_body, new_body, set(), "lifecycle_body_scope", f"Action `{action}` changes only lifecycle metadata on the feature page."
+                )
                 raise BoardError("lifecycle_body_scope", f"Action `{action}` changes only lifecycle metadata on the feature page.", 409)
         elif action == "dev-done":
             self._assert_only_body_sections_changed(
@@ -1996,6 +2598,46 @@ class BoardService:
             if old_fm.get("platforms") != new_fm.get("platforms") or old_fm.get("sources") != new_fm.get("sources"):
                 raise BoardError("specification_identity_change", "PO specify preserves source and platform scope.", 409)
 
+    @staticmethod
+    def _validate_dev_done_evidence(relative: str, content: str, frontmatter: Mapping[str, Any]) -> None:
+        """Require the proposed feature page to carry valid delivery evidence.
+
+        The evidence arrives as part of the proposal, so one preview shows the
+        evidence row beside the status change. The rules are the ones the
+        transition pre-check applies to a recorded table.
+        """
+
+        from prism_cli.wiki_model import parse_delivery_evidence
+
+        declared = [item for item in frontmatter.get("platforms", []) if isinstance(item, str)]
+        _frontmatter, body = _parse_markdown(content, relative)
+        rows, problems = parse_delivery_evidence(body, declared)
+        if not problems:
+            return
+        example = "| " + " | ".join([declared[0] if declared else "backend", "<implementation reference>", "<test command and result>", "<release artifact or target>"]) + " |"
+        details: dict[str, Any] = {
+            "path": relative,
+            "platforms": _names(declared),
+            "missing_platforms": _names(set(item.casefold() for item in declared) - set(rows)),
+            "problems": [_clip(item, 200) for item in problems[:6]],
+        }
+        if not rows:
+            raise BoardError(
+                "delivery_evidence_required",
+                f"Dev done needs the delivery evidence in the proposal: the `## Delivery evidence` table in the proposed `{relative}` has no platform rows. "
+                f"Add one row per declared platform ({_quoted(_names(declared))}) with the implementation, test and release references the developer reports, "
+                f"for example `{example}`. Ask the developer for what is missing; do not invent it.",
+                409,
+                details,
+            )
+        raise BoardError(
+            "delivery_evidence_invalid",
+            f"The `## Delivery evidence` table in the proposed `{relative}` is not valid: {' '.join(_clip(item, 200) for item in problems[:6])} "
+            "It needs exactly one row per declared platform, each with a substantive Implementation, Tests and Release cell.",
+            409,
+            details,
+        )
+
     def _validate_lifecycle_related_writes(
         self,
         action: str,
@@ -2010,7 +2652,7 @@ class BoardService:
         if action in {"po-specify", "po-handoff", "design-start", "dev-start"} and related:
             raise BoardError("lifecycle_write_scope", f"Action `{action}` may change only its feature, managed index, and log.", 409)
         allowed_prefixes = {
-            "design-handoff": ("knowledge/wiki/platform-requirements/",),
+            "design-handoff": ("knowledge/wiki/platform-requirements/", "knowledge/wiki/api-contracts/"),
             "dev-done": ("knowledge/wiki/platform-requirements/", "knowledge/wiki/api-contracts/"),
         }
         if action.startswith("reopen-"):
@@ -2024,13 +2666,14 @@ class BoardService:
             proposed = supplied[relative]
             if action in {"dev-done", "feature-reopen"} and original is None:
                 raise BoardError("linked_page_not_found", f"Action `{action}` can update only existing linked artifact `{relative}`.", 409)
-            new_fm, new_body = _parse_markdown(proposed)
-            old_fm, old_body = _parse_markdown(original) if original is not None else ({}, "")
+            new_fm, new_body = _parse_markdown(proposed, relative)
+            old_fm, old_body = _parse_markdown(original, relative) if original is not None else ({}, "")
             if not isinstance(new_fm.get("feature-id"), str) or new_fm["feature-id"].casefold() != str(feature["id"]).casefold():
                 raise BoardError("feature_context_mismatch", f"Linked artifact `{relative}` does not belong to {feature['id']}.", 409)
             if action == "design-handoff":
                 if relative.startswith("knowledge/wiki/api-contracts/"):
-                    raise BoardError("lifecycle_write_scope", "Design handoff may generate platform requirements, not API contracts.", 403)
+                    self._validate_handoff_api_contract(relative, original, proposed, supplied, feature)
+                    continue
                 if original is None and new_fm.get("status") != "pending":
                     raise BoardError("requirement_initial_status", "Design handoff creates new platform requirements in pending status.", 409)
                 if original is not None and (old_fm != new_fm or old_body != new_body):
@@ -2043,7 +2686,12 @@ class BoardService:
                 elif status not in {old_fm.get("status"), "implemented"}:
                     raise BoardError("api_status_change", "Dev done may preserve an API status or mark that linked contract implemented.", 409)
                 if {key: val for key, val in old_fm.items() if key != "status"} != {key: val for key, val in new_fm.items() if key != "status"} or old_body != new_body:
-                    raise BoardError("linked_page_scope", "Dev done may change only the status of an existing linked requirement or API contract.", 409)
+                    raise BoardError(
+                        "linked_page_scope",
+                        f"Dev done may change only the `status` of an existing linked requirement or API contract, but `{relative}` also changes its text or other fields. Restore everything except `status` to the current text.",
+                        409,
+                        {"path": relative},
+                    )
             elif action.startswith("reopen-"):
                 if relative.startswith("knowledge/wiki/platform-requirements/"):
                     if new_fm.get("status") not in {"pending", "in-progress"}:
@@ -2051,7 +2699,105 @@ class BoardService:
                 elif new_fm.get("status") not in {"draft", "agreed"}:
                     raise BoardError("api_invalidation", "Reopen may invalidate an API contract only to draft or agreed.", 409)
                 if {key: val for key, val in old_fm.items() if key != "status"} != {key: val for key, val in new_fm.items() if key != "status"} or old_body != new_body:
-                    raise BoardError("linked_page_scope", "Reopen may change only the status of an existing linked artifact.", 409)
+                    raise BoardError(
+                        "linked_page_scope",
+                        f"Reopen may change only the `status` of an existing linked artifact, but `{relative}` also changes its text or other fields. Restore everything except `status` to the current text.",
+                        409,
+                        {"path": relative},
+                    )
+
+    def _validate_handoff_api_contract(
+        self,
+        relative: str,
+        original: str | None,
+        proposed: str,
+        supplied: Mapping[str, str],
+        feature: Mapping[str, Any],
+    ) -> None:
+        """Design handoff may create the feature's API contract once, as `agreed`, from the feature's API surface."""
+
+        feature_id = str(feature["id"])
+        new_fm, new_body = _parse_markdown(proposed, relative)
+        if original is not None:
+            old_fm, old_body = _parse_markdown(original, relative)
+            if old_fm != new_fm or old_body != new_body:
+                raise BoardError(
+                    "api_contract_exists",
+                    f"Design handoff creates an API contract only as a new page; `{relative}` already exists and may not be rewritten. Restore its current text or leave it out of the proposal.",
+                    409,
+                    {"path": relative, "feature_id": feature_id},
+                )
+            return
+        surface = section_text(_parse_markdown(supplied[feature["path"]], feature["path"])[1], "API surface")
+        if not api_surface_declared(surface):
+            raise BoardError(
+                "api_contract_not_applicable",
+                f"{feature_id} declares no API work in its `## API surface` section, so design handoff may not create `{relative}`. Leave the page out of the proposal.",
+                409,
+                {"path": relative, "feature_id": feature_id},
+            )
+        if new_fm.get("status") != "agreed":
+            raise BoardError(
+                "api_contract_initial_status",
+                f"Design handoff creates a new API contract as `agreed` (the human confirming the preview is the agreement), but `{relative}` has status `{_clip(new_fm.get('status'), 40)}`. Set `status: agreed`.",
+                409,
+                {"path": relative, "status": _clip(new_fm.get("status"), 40), "expected_status": "agreed"},
+            )
+        others = self._feature_api_contract_paths(feature, supplied) - {relative}
+        if others:
+            raise BoardError(
+                "api_contract_exists",
+                f"{feature_id} already has an API contract at {_quoted(sorted(others)[:3])}; design handoff creates no second one. Leave `{relative}` out of the proposal.",
+                409,
+                {"path": relative, "feature_id": feature_id, "existing": sorted(others)[:3]},
+            )
+        error = _api_contract_scope_error(relative, feature_id, new_body, surface)
+        if error is not None:
+            raise error
+
+    def _require_handoff_api_contract(self, supplied: Mapping[str, str], feature: Mapping[str, Any]) -> None:
+        """Design handoff must carry an API contract when the feature declares API work and none exists yet."""
+
+        surface = section_text(_parse_markdown(supplied[feature["path"]], feature["path"])[1], "API surface")
+        if not api_surface_declared(surface) or self._feature_api_contract_paths(feature, supplied):
+            return
+        feature_id = str(feature["id"])
+        canonical = f"knowledge/wiki/api-contracts/{feature_id}.md"
+        sections = ["Endpoints", "Data models", "Authentication requirements", "Notes"]
+        raise BoardError(
+            "api_contract_required",
+            f"{feature_id} declares API work in its `## API surface` section but has no API contract. Add a new page `{canonical}` to the proposal with "
+            f"`feature-id: {feature_id}`, `version: 1`, `status: agreed` and the sections {_quoted(sections)}, written only from that API surface "
+            "(list each endpoint as `METHOD /path`). The human confirming this preview is the agreement.",
+            409,
+            {"path": canonical, "feature_id": feature_id, "status": "agreed", "sections": sections},
+        )
+
+    def _feature_api_contract_paths(self, feature: Mapping[str, Any], supplied: Mapping[str, str]) -> set[str]:
+        """Workspace paths of the API contracts that cover a feature: its own pages, pages it links and pages in the proposal."""
+
+        from prism_cli.wiki_transitions import api_contract_link_targets
+
+        feature_id = str(feature["id"]).casefold()
+        wiki_root = self.root / "knowledge" / "wiki"
+        found = {path for path in supplied if path.startswith("knowledge/wiki/api-contracts/")}
+        directory = wiki_root / "api-contracts"
+        if directory.is_dir():
+            for path in sorted(directory.glob("*.md")):
+                linked = _page_feature_id(self._read_text(path), path.stem)
+                if isinstance(linked, str) and linked.casefold() == feature_id:
+                    found.add(path.relative_to(self.root).as_posix())
+        sources = [path for path in supplied if path.startswith("knowledge/wiki/platform-requirements/")]
+        resolved_root = self.root.resolve()
+        for relative in [feature["path"], *sources]:
+            body = _parse_markdown(supplied[relative], relative)[1]
+            for target in api_contract_link_targets(body, self.root / relative, wiki_root):
+                if target.is_file():
+                    try:
+                        found.add(target.relative_to(resolved_root).as_posix())
+                    except ValueError:
+                        continue
+        return found
 
     def _validate_reopen_record(
         self,
@@ -2061,9 +2807,10 @@ class BoardService:
         old: Mapping[str, Any],
         supplied: Mapping[str, str],
         before: Mapping[str, str | None],
+        relative: str | None = None,
     ) -> None:
-        _old_fm, old_body = _parse_markdown(original)
-        _new_fm, new_body = _parse_markdown(proposed)
+        _old_fm, old_body = _parse_markdown(original, relative)
+        _new_fm, new_body = _parse_markdown(proposed, relative)
         old_history = _section(old_body, "Reopen history")
         new_history = _section(new_body, "Reopen history")
         if not new_history.startswith(old_history):
@@ -2078,8 +2825,16 @@ class BoardService:
         for label in labels:
             match = re.search(rf"(?im)^\s*-\s*{re.escape(label)}:\s*(.*?)\s*$", addition)
             value = match.group(1).strip() if match else ""
+            if match and label == _ARCHIVE_LABEL:
+                value = _label_block(addition, label, labels)
             if not match or not value or (label != "Affected platforms" and len(value) < 8):
-                raise BoardError("impact_review_required", f"Reopen history must include substantive `{label}` evidence.", 409)
+                hint = ""
+                if label == "Requirement/API invalidations":
+                    hint = (
+                        " Name each invalidated requirement or API page as `knowledge/wiki/.../page.md: done -> in-progress` (its current and new status), "
+                        "or, when no page is invalidated, write a sentence such as `No requirement or API page is invalidated.`"
+                    )
+                raise BoardError("impact_review_required", f"Reopen history must include a `- {label}:` bullet with substantive evidence (at least 8 characters).{hint}", 409, {"label": label})
             values[label] = value
         if any(token in " ".join(values.values()).casefold() for token in ("[reason", "[impact", "[affected", "[prior completion", "todo", "tbd", "placeholder")):
             raise BoardError("impact_review_required", "Reopen history cannot contain copied placeholders or unresolved template text.", 409)
@@ -2091,12 +2846,19 @@ class BoardService:
         prior_rows = _table_rows(old_delivery, expected_columns=4)
         if not prior_rows or {row[0] for row in prior_rows} != set(declared):
             raise BoardError("delivery_evidence_missing", "Reopen must archive the existing active delivery evidence for every declared platform.", 409)
-        archive = values["Prior completion/release evidence"]
-        normalized_archive = re.sub(r"\s+", " ", archive).casefold()
+        normalized_archive = _normalized_table_text(values[_ARCHIVE_LABEL])
         for row in prior_rows:
             row_text = "| " + " | ".join(row) + " |"
-            if re.sub(r"\s+", " ", row_text).casefold() not in normalized_archive:
-                raise BoardError("delivery_evidence_not_archived", "Reopen history must retain each prior delivery-evidence row verbatim.", 409)
+            if _normalized_table_text(row_text) not in normalized_archive:
+                raise BoardError(
+                    "delivery_evidence_not_archived",
+                    f"Reopen history must retain each prior delivery-evidence row verbatim under `- {_ARCHIVE_LABEL}:`, "
+                    "on that line or on the lines directly below it, before the next `- Label:` line or heading. "
+                    "A table row or a list item both work. "
+                    f"Missing row: {_clip(row_text, 300)}",
+                    409,
+                    {"path": relative, "label": _ARCHIVE_LABEL, "missing_row": _clip(row_text, 300)},
+                )
         active_rows = _table_rows(_section(new_body, "Delivery evidence"), expected_columns=4)
         prior_by_platform = {row[0]: row for row in prior_rows}
         for row in active_rows:
@@ -2118,15 +2880,26 @@ class BoardService:
             prior = before.get(relative)
             if prior is None:
                 raise BoardError("linked_page_not_found", f"Reopen may invalidate only existing linked artifact `{relative}`.", 409)
-            old_page_fm, _ = _parse_markdown(prior)
-            new_page_fm, _ = _parse_markdown(supplied[relative])
+            old_page_fm, _ = _parse_markdown(prior, relative)
+            new_page_fm, _ = _parse_markdown(supplied[relative], relative)
             old_status = str(old_page_fm.get("status", ""))
             new_status = str(new_page_fm.get("status", ""))
             status_phrase = re.compile(rf"{re.escape(relative)}\s*:?\s*{re.escape(old_status)}\s*(?:->|→)\s*{re.escape(new_status)}", re.IGNORECASE)
             if old_status == new_status or not status_phrase.search(invalidations):
-                raise BoardError("reopen_invalidation_mismatch", f"Reopen history must record `{relative}` changing exactly from `{old_status}` to `{new_status}`.", 409)
+                raise BoardError(
+                    "reopen_invalidation_mismatch",
+                    f"Reopen history must record `{relative}` changing exactly from `{old_status}` to `{new_status}`. "
+                    f"Write it under `- Requirement/API invalidations:` as `{relative}: {old_status} -> {new_status}` (an arrow, not a sentence).",
+                    409,
+                    {"path": relative, "from": old_status, "to": new_status},
+                )
             if relative not in artifacts:
-                raise BoardError("reopen_artifact_missing", f"Affected artifacts must name invalidated page `{relative}`.", 409)
+                raise BoardError(
+                    "reopen_artifact_missing",
+                    f"`- Affected artifacts:` must also name the invalidated page `{relative}` by its full relative path.",
+                    409,
+                    {"path": relative},
+                )
 
     @staticmethod
     def _assert_only_body_sections_changed(
@@ -2136,24 +2909,101 @@ class BoardService:
         code: str,
         message: str,
     ) -> None:
-        if _body_without_sections(old_body, allowed_sections) != _body_without_sections(new_body, allowed_sections):
-            raise BoardError(code, message, 409)
+        if _body_without_sections(old_body, allowed_sections) == _body_without_sections(new_body, allowed_sections):
+            return
+        allowed = {heading.strip().casefold() for heading in allowed_sections}
+        headings: list[str] = []
+        for body in (old_body, new_body):
+            for match in re.finditer(r"(?m)^##\s+(.+?)\s*#*\s*$", body):
+                name = match.group(1).strip()
+                if name.casefold() not in allowed and name not in headings:
+                    headings.append(name)
+        changed = _names(name for name in headings if _section(old_body, name) != _section(new_body, name))
+        if changed:
+            blank_only = [name for name in changed if _section(old_body, name).split() == _section(new_body, name).split()]
+            note = ""
+            if blank_only:
+                note = (
+                    f" Section(s) {_quoted(blank_only)} differ only in whitespace, such as the file's final newline or its line endings: "
+                    "copy every unchanged section exactly as read_workspace returned it, and end the file the way it ended."
+                )
+                if old_body.endswith("\n") and not new_body.endswith("\n"):
+                    note += " The current file ends with a newline character; end `content` with one."
+            details: dict[str, Any] = {"sections": changed}
+            if blank_only:
+                details["whitespace_only"] = blank_only
+            first = next((name for name in changed if name not in blank_only), None)
+            if first is not None:
+                difference = _first_line_difference(_section(old_body, first), _section(new_body, first))
+                if difference is not None:
+                    note += f" First difference in `{first}`: current line `{_clip(difference[0], 100)}`, proposed line `{_clip(difference[1], 100)}`."
+            raise BoardError(
+                code,
+                f"{message} The proposal changes section(s) {_quoted(changed)}; restore them to their current text.{note}",
+                409,
+                details,
+            )
+        # Every named section matches, so a section heading or the text between sections differs.
+        difference = _first_line_difference(
+            _body_without_sections(old_body, allowed_sections), _body_without_sections(new_body, allowed_sections)
+        )
+        if difference is not None:
+            raise BoardError(
+                code,
+                f"{message} Outside the sections it may change, "
+                + (f"the current page has the line `{_clip(difference[0], 100)}` where the proposal has `{_clip(difference[1], 100)}`" if difference[0] else f"the proposal adds the line `{_clip(difference[1], 100)}`")
+                + "; restore the current text, and add or remove no section heading.",
+                409,
+                {"current_line": _clip(difference[0], 100), "proposed_line": _clip(difference[1], 100)},
+            )
+        raise BoardError(code, message, 409)
 
     @staticmethod
-    def _resolved_answers(before: str, after: str) -> list[str]:
+    def _resolved_answers(before: str, after: str, path: str | None = None) -> list[str]:
+        return [answer for _number, answer in BoardService._resolved_answer_rows(before, after, path)]
+
+    @staticmethod
+    def _resolved_answer_rows(before: str, after: str, path: str | None = None) -> list[tuple[str, str]]:
         from prism_cli.wiki_model import parse_open_question_rows
 
-        old_rows, _ = parse_open_question_rows(_parse_markdown(before)[1])
-        new_rows, _ = parse_open_question_rows(_parse_markdown(after)[1])
+        old_rows, _ = parse_open_question_rows(_parse_markdown(before, path)[1])
+        new_rows, _ = parse_open_question_rows(_parse_markdown(after, path)[1])
         new_by_number = {row["number"]: row for row in new_rows}
-        answers: list[str] = []
+        answers: list[tuple[str, str]] = []
         for row in old_rows:
             new_row = new_by_number.get(row["number"])
             if row["status"] == "open" and new_row and new_row["status"].startswith("resolved:"):
                 answer = new_row["status"][len("resolved:"):].strip()
                 if answer:
-                    answers.append(answer)
+                    answers.append((str(row["number"]), answer))
         return answers
+
+    @staticmethod
+    def _unlinked_answer_error(
+        code: str,
+        path: str,
+        sections: list[str],
+        answers: list[tuple[str, str]],
+        *,
+        owner: str | None = None,
+        kind: str = "design",
+    ) -> BoardError:
+        """Build the traceability rejection that names the section and the answers to paste."""
+
+        numbers = [number for number, _answer in answers][:20]
+        starts = {number: _clip(answer, 160) for number, answer in answers[:5]}
+        where = f"`{sections[0]}` in `{path}`" if sections else f"a {kind} section of `{path}`"
+        subject = f"Updated {where}" if sections else f"This proposal changes no {kind} section of `{path}`; the changed section"
+        owned = f" by this proposal to {owner}-owned question(s)" if owner else " by this proposal to question(s)"
+        message = (
+            f"{subject} must include the full text of an answer resolved{owned} "
+            f"{', '.join(numbers) or 'none'}. Paste one of those answers verbatim into the section "
+            "(case and whitespace differences are ignored, but paraphrases alone do not pass)."
+        )
+        details: dict[str, Any] = {"path": path, "section": sections[0] if sections else None, "resolved_questions": numbers, "resolved_answers": starts}
+        if len(sections) > 1:
+            details["sections"] = sections[:10]
+        return BoardError(code, message, 409, details)
 
     @staticmethod
     def _answers_ground_section(section: str, answers: list[str]) -> bool:
@@ -2161,7 +3011,7 @@ class BoardService:
         return bool(answers) and any(re.sub(r"\s+", " ", answer).casefold() in normalized for answer in answers)
 
     def _validate_feature_shape(self, relative: str, content: str, skill: str) -> None:
-        frontmatter, body = _parse_markdown(content)
+        frontmatter, body = _parse_markdown(content, relative)
         from prism_cli.wiki_model import parse_open_question_rows, REVALIDATION_DOMAINS
 
         questions, errors = parse_open_question_rows(body)
@@ -2187,12 +3037,25 @@ class BoardService:
     def _validate_question_change(self, skill: str, relative: str, before: str, after: str) -> None:
         from prism_cli.wiki_model import parse_open_question_rows
 
-        old_frontmatter, old_body = _parse_markdown(before)
-        new_frontmatter, new_body = _parse_markdown(after)
+        old_frontmatter, old_body = _parse_markdown(before, relative)
+        new_frontmatter, new_body = _parse_markdown(after, relative)
         mutable_frontmatter = {"last-updated"}
         if {key: value for key, value in old_frontmatter.items() if key not in mutable_frontmatter} != {key: value for key, value in new_frontmatter.items() if key not in mutable_frontmatter}:
-            raise BoardError("clarify_frontmatter_change", f"Skill `{skill}` cannot alter feature lifecycle or identity metadata.", 409)
+            changed_fields = _names(
+                key for key in set(old_frontmatter) | set(new_frontmatter)
+                if key not in mutable_frontmatter and old_frontmatter.get(key) != new_frontmatter.get(key)
+            )
+            raise BoardError(
+                "clarify_frontmatter_change",
+                f"Skill `{skill}` cannot alter feature lifecycle or identity metadata; `{relative}` changes frontmatter field(s) {_quoted(changed_fields)}. Restore them; only `last-updated` may change.",
+                409,
+                {"path": relative, "fields": changed_fields},
+            )
         if skill == "ask" and _strip_section(old_body, "Open questions") != _strip_section(new_body, "Open questions"):
+            # Names the sections that differ, and says when they differ only in whitespace such as the final newline.
+            self._assert_only_body_sections_changed(
+                old_body, new_body, {"Open questions"}, "ask_scope_exceeded", "The ask skill may update only the feature Open questions section."
+            )
             raise BoardError("ask_scope_exceeded", "The ask skill may update only the feature Open questions section.", 409)
         old_rows, old_errors = parse_open_question_rows(old_body)
         new_rows, new_errors = parse_open_question_rows(new_body)
@@ -2220,13 +3083,21 @@ class BoardService:
         old_numbers = {row["number"] for row in old_rows}
         for row in new_rows:
             if row["number"] not in old_numbers and row["status"] != "open":
-                raise BoardError("new_question_must_be_open", "New questions must begin with status `open`.", 409)
+                raise BoardError(
+                    "new_question_must_be_open",
+                    f"Question {row['number']} on `{relative}` is not in the current Open questions table (its numbers are {', '.join(sorted(old_numbers, key=lambda number: (len(number), number))) or 'none'}), "
+                    "so it counts as a new question, and a new question must have status `open`. "
+                    "To answer an existing question, keep its number, text and owner and change only its Status to `resolved: <answer>`. "
+                    "A question that is not in the table is added first with the ask skill.",
+                    409,
+                    {"path": relative, "question": row["number"], "existing_questions": sorted(old_numbers, key=lambda number: (len(number), number))[:30]},
+                )
         added = [row for row in new_rows if row["number"] not in old_numbers]
         if skill == "ask" and (len(added) != 1 or resolved_count):
             raise BoardError("question_required", "The ask skill must add exactly one new owned open question and preserve all existing questions.", 409)
         if skill == "ask" and int(added[0]["number"]) != max([int(row["number"]) for row in old_rows if row["number"].isdigit()] or [0]) + 1:
             raise BoardError("question_number_not_next", "The ask skill must use the next sequential question number.", 409)
-        if skill in {"po-clarify", "design-clarify"} and resolved_count == 0:
+        if skill in {"po-clarify", "design-clarify", "dev-clarify"} and resolved_count == 0:
             raise BoardError("answer_required", f"Skill `{skill}` must resolve at least one owned open question.", 409)
 
     def _validate_intake_outputs(
@@ -2257,7 +3128,7 @@ class BoardService:
             manifest_text = manifest.casefold()
             for relative, content in supplied.items():
                 if relative.startswith(("knowledge/wiki/features/", "knowledge/wiki/personas/", "knowledge/wiki/business-rules/")):
-                    frontmatter, _body = _parse_markdown(content)
+                    frontmatter, _body = _parse_markdown(content, relative)
                     named_id = frontmatter.get("id")
                     if relative.casefold() not in manifest_text or (isinstance(named_id, str) and named_id.casefold() not in manifest_text):
                         raise BoardError("intake_manifest_incomplete", f"The processed intake manifest must list `{relative}` and its canonical ID.", 409)
@@ -2271,7 +3142,7 @@ class BoardService:
                 raise BoardError("intake_manifest_scope", "Design intake may write only an optional MANIFEST.md inside the processed intake folder.", 409)
 
     def _validate_persona(self, relative: str, content: str) -> None:
-        frontmatter, body = _parse_markdown(content)
+        frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"id", "name", "introduced", "sources"}, relative)
         if not isinstance(frontmatter.get("id"), str) or not re.fullmatch(r"P-\d+", frontmatter["id"]):
             raise BoardError("invalid_persona", f"Persona `{relative}` requires a P-number id.", 409)
@@ -2284,7 +3155,7 @@ class BoardService:
         _validate_no_placeholders(body, relative)
 
     def _validate_business_rule(self, relative: str, content: str) -> None:
-        frontmatter, body = _parse_markdown(content)
+        frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"id", "title", "introduced", "source"}, relative)
         if not isinstance(frontmatter.get("id"), str) or not re.fullmatch(r"BR-\d+", frontmatter["id"]):
             raise BoardError("invalid_business_rule", f"Business rule `{relative}` requires a BR-number id.", 409)
@@ -2297,7 +3168,7 @@ class BoardService:
         _validate_no_placeholders(body, relative)
 
     def _validate_design(self, relative: str, content: str) -> None:
-        frontmatter, body = _parse_markdown(content)
+        frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"feature-id", "title", "designer", "date", "figma"}, relative)
         if not isinstance(frontmatter.get("feature-id"), str):
             raise BoardError("invalid_design", f"Design page `{relative}` must identify its feature.", 409)
@@ -2307,7 +3178,7 @@ class BoardService:
         _validate_no_placeholders(body, relative)
 
     def _validate_requirement(self, relative: str, content: str) -> None:
-        frontmatter, body = _parse_markdown(content)
+        frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"feature-id", "platform", "status"}, relative)
         if frontmatter.get("platform") not in self._platforms or frontmatter.get("status") not in {"pending", "in-progress", "done"}:
             raise BoardError("invalid_requirement", f"Platform requirement `{relative}` has an invalid platform or status.", 409)
@@ -2315,7 +3186,7 @@ class BoardService:
         _validate_no_placeholders(body, relative)
 
     def _validate_api_contract(self, relative: str, content: str) -> None:
-        frontmatter, body = _parse_markdown(content)
+        frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"feature-id", "version", "status"}, relative)
         if frontmatter.get("version") != 1 or frontmatter.get("status") not in {"draft", "agreed", "implemented"}:
             raise BoardError("invalid_api_contract", f"API contract `{relative}` has an invalid status.", 409)
@@ -2326,7 +3197,13 @@ class BoardService:
     def _assert_frontmatter_fields(frontmatter: Mapping[str, Any], allowed: set[str], relative: str) -> None:
         unknown = set(frontmatter) - allowed
         if unknown:
-            raise BoardError("unknown_frontmatter_fields", f"`{relative}` contains fields outside its canonical schema: {', '.join(sorted(map(str, unknown)))}.", 409)
+            unknown_names = _names(unknown)
+            raise BoardError(
+                "unknown_frontmatter_fields",
+                f"`{relative}` contains fields outside its canonical schema: {', '.join(unknown_names)}. Remove them; the allowed fields are {_quoted(sorted(allowed))}.",
+                409,
+                {"path": relative, "fields": unknown_names, "allowed": sorted(allowed)},
+            )
 
     @staticmethod
     def _valid_iso_date(value: Any) -> bool:
@@ -2356,15 +3233,19 @@ class BoardService:
         spec = _ACTION_BY_NAME[action]
         temporary = tempfile.TemporaryDirectory(prefix="prism-board-preview-")
         self._build_candidate_root(Path(temporary.name), supplied, [])
-        candidate_feature = _parse_markdown(supplied[feature["path"]])[0]
+        candidate_feature = _parse_markdown(supplied[feature["path"]], feature["path"])[0]
         candidate_feature["status"] = spec["source_status"]
         candidate_feature["owner"] = spec["source_owner"]
         candidate_content = self._replace_frontmatter(supplied[feature["path"]], candidate_feature)
         (Path(temporary.name) / feature["path"]).write_text(candidate_content, encoding="utf-8")
         try:
+            from prism_cli.board_reads import relativize_paths
             from prism_cli.wiki_transitions import build_board_transition_preflight
 
-            return build_board_transition_preflight(Path(temporary.name), str(feature["id"]), action)
+            candidate = Path(temporary.name)
+            evaluated = build_board_transition_preflight(candidate, str(feature["id"]), action)
+            # The scratch tree and the workspace are never part of a result.
+            return relativize_paths(evaluated, [candidate, candidate.resolve(), self.root])
         finally:
             temporary.cleanup()
 
@@ -2391,7 +3272,7 @@ class BoardService:
         pending = [(source, destination)]
         while pending:
             current_source, current_destination = pending.pop()
-            self._reject_reparse(current_source, include_leaf=True)
+            self._reject_reparse_component(current_source)
             try:
                 with os.scandir(current_source) as entries:
                     children = sorted(list(entries), key=lambda entry: entry.name)
@@ -2400,13 +3281,20 @@ class BoardService:
             for entry in children:
                 source_child = Path(entry.path)
                 target_child = current_destination / entry.name
-                self._reject_reparse(source_child, include_leaf=True)
+                try:
+                    info: os.stat_result | None = entry.stat(follow_symlinks=False)
+                except FileNotFoundError:
+                    info = None
+                except OSError as exc:
+                    raise BoardError("path_unavailable", "A workspace path cannot be inspected safely.", 403) from exc
+                if info is not None:
+                    self._reject_reparse_info(info)
                 try:
                     if entry.is_dir(follow_symlinks=False):
                         target_child.mkdir(parents=True, exist_ok=True)
                         pending.append((source_child, target_child))
                     elif entry.is_file(follow_symlinks=False):
-                        self._reject_reparse(source_child, include_leaf=True)
+                        self._reject_reparse_component(source_child)
                         target_child.parent.mkdir(parents=True, exist_ok=True)
                         target_child.write_bytes(source_child.read_bytes())
                     else:
@@ -2477,7 +3365,7 @@ class BoardService:
                 revisions[path] = _file_digest(self._optional_text(self._safe_path(path, allow_missing=True)))
         self._assert_required_skill_revisions(payload["skill"], supplied, before, payload.get("moves", []), revisions)
         features = [path for path in supplied if path.startswith("knowledge/wiki/features/")]
-        before_fm = {path: _parse_markdown(before[path])[0] if before[path] is not None else None for path in features}
+        before_fm = {path: _parse_markdown(before[path], path)[0] if before[path] is not None else None for path in features}
         after_fm = {path: self._validate_feature_output(path, supplied[path], payload["skill"]) for path in features}
         current = self._validate_skill_semantics(actor, payload["skill"], supplied, before, before_fm, after_fm, payload.get("moves", []))
         if current.get("classification") != "ready" or current.get("blockers"):
@@ -2511,6 +3399,7 @@ class BoardService:
     def _roll_forward(self, actor: Actor, operation_id: str, intent: Mapping[str, Any]) -> dict[str, Any]:
         store = self._require_store()
         conflicts: list[dict[str, Any]] = []
+        conflict_paths: list[str] = []
         applied: list[str] = []
         moved: list[dict[str, str]] = []
         attribution: dict[str, Any] = {"actor": intent.get("actor")}
@@ -2531,19 +3420,20 @@ class BoardService:
                 states = self._operation_file_states(intent)
                 for item in states:
                     if item["state"] == "conflict":
+                        conflict_paths.append(item["path"])
                         raise BoardError("recovery_conflict", f"`{item['path']}` matches neither the recorded before-state nor after-state.", 409)
                 move_states = [self._move_state(move, intent) for move in intent.get("moves", [])]
                 complete = all(item["state"] == "applied" for item in states) and all(state == "applied" for state in move_states)
                 if not complete:
-                    self._assert_recovery_sources(intent)
+                    self._assert_recovery_sources(intent, conflict_paths)
                     self._revalidate_recovery(actor, intent)
-                    self._assert_recovery_sources(intent)
+                    self._assert_recovery_sources(intent, conflict_paths)
                 for move in intent.get("moves", []):
                     self._require_actor(actor, write=True)
                     source = self._safe_path(move["source"], allow_missing=True)
                     destination = self._safe_path(move["destination"], allow_missing=True)
                     if self._move_state(move, intent) == "pending":
-                        self._assert_recovery_sources(intent)
+                        self._assert_recovery_sources(intent, conflict_paths)
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         self._reject_reparse(destination.parent, include_leaf=True)
                         self._require_actor(actor, write=True)
@@ -2554,14 +3444,17 @@ class BoardService:
                 if not complete:
                     for write in intent.get("writes", []):
                         self._require_actor(actor, write=True)
-                        self._assert_recovery_sources(intent)
+                        self._assert_recovery_sources(intent, conflict_paths)
                         result = self._apply_write(write, actor=actor)
                         if result == "conflict":
+                            conflict_paths.append(write["path"])
                             conflicts.append({"path": write["path"], "reason": "current file matches neither the recorded before-state nor the proposed after-state"})
                             break
                         if result == "applied":
                             applied.append(write["path"])
             except BoardError as exc:
+                if exc.code == "recovery_move_conflict":
+                    conflict_paths.extend(path for move in intent.get("moves", []) for path in (move["source"], move["destination"]))
                 conflicts.append({"path": None, "reason": f"{exc.code}: {exc.message}"})
             except OSError as exc:
                 conflicts.append({"path": None, "reason": f"filesystem error: {type(exc).__name__}"})
@@ -2578,11 +3471,26 @@ class BoardService:
                     "conflicts": conflicts,
                     "recovery_available": True,
                 }
+                reported_paths = list(dict.fromkeys(conflict_paths))
+                already_reported = False
+                if existing is not None and existing[0] == "conflict":
+                    with store.read() as db:
+                        recorded = [
+                            _loads(row[0])
+                            for row in db.execute("SELECT event_json FROM events WHERE operation_id = ? ORDER BY cursor DESC", (operation_id,)).fetchall()
+                        ]
+                    last = next((event for event in recorded if event.get("type") == "operation-conflict"), None)
+                    already_reported = last is not None and last.get("paths") == reported_paths
                 with store.transaction() as db:
                     db.execute(
                         "UPDATE operations SET state = 'conflict', receipt_json = ?, updated_at = ? WHERE operation_id = ?",
                         (_json(receipt), now, operation_id),
                     )
+                    if not already_reported:
+                        db.execute(
+                            "INSERT INTO events(operation_id, participant_id, event_json, created_at) VALUES (?, ?, ?, ?)",
+                            (operation_id, actor.participant_id, _json({"type": "operation-conflict", "operation_id": operation_id, "paths": reported_paths}), now),
+                        )
                 return receipt
 
             receipt = {
@@ -2640,7 +3548,7 @@ class BoardService:
             raise BoardError("recovery_move_conflict", "The moved intake tree contains changed directory structure.", 409)
         return "applied"
 
-    def _assert_recovery_sources(self, intent: Mapping[str, Any]) -> None:
+    def _assert_recovery_sources(self, intent: Mapping[str, Any], conflict_paths: list[str] | None = None) -> None:
         self.validate_graph_inputs()
         writes = {write["path"] for write in intent.get("writes", [])}
         moved_prefixes = []
@@ -2652,9 +3560,13 @@ class BoardService:
                 continue
             actual = self._fingerprint_paths([relative])[relative]
             if actual != expected:
+                if conflict_paths is not None:
+                    conflict_paths.append(relative)
                 raise BoardError("recovery_source_changed", f"Relevant source `{relative}` changed; recorded writes cannot be recovered automatically.", 409)
         for state in self._operation_file_states(intent):
             if state["state"] == "conflict":
+                if conflict_paths is not None:
+                    conflict_paths.append(state["path"])
                 raise BoardError("recovery_conflict", f"`{state['path']}` changed during recovery.", 409)
 
     def _revalidate_recovery(self, actor: Actor, intent: Mapping[str, Any]) -> None:
@@ -2933,16 +3845,44 @@ def _revision(entries: Mapping[str, Any]) -> str:
     return _sha256(_json(dict(sorted(entries.items()))).encode("utf-8"))
 
 
-def _parse_markdown(content: str) -> tuple[dict[str, Any], str]:
+def _parse_markdown(content: str, path: str | None = None) -> tuple[dict[str, Any], str]:
+    where = f" `{path}`" if path else ""
+    base: dict[str, Any] = {"path": path} if path else {}
     match = _FRONTMATTER.match(content)
     if not match:
-        raise BoardError("invalid_markdown", "Proposed wiki page must contain YAML frontmatter.", 409)
+        raise BoardError(
+            "invalid_markdown",
+            f"Proposed wiki page{where} must start with a `---` line, then the YAML mapping of frontmatter fields, then a closing `---` line before the Markdown body.",
+            409,
+            {**base, "problem": "missing opening or closing `---` frontmatter delimiter"},
+        )
     try:
         loaded = yaml.safe_load(match.group(1)) or {}
     except (yaml.YAMLError, ValueError, TypeError) as exc:
-        raise BoardError("invalid_frontmatter", "Proposed wiki page has invalid YAML frontmatter.", 409) from exc
+        text = getattr(exc, "problem", None) or (str(exc).splitlines() or [type(exc).__name__])[0]
+        problem = _clip(text, 120)
+        details: dict[str, Any] = {**base, "problem": problem}
+        position = ""
+        mark = getattr(exc, "problem_mark", None)
+        if mark is not None:
+            # The frontmatter block starts on file line 2, right after the opening `---`.
+            details["line"] = mark.line + 2
+            details["column"] = mark.column + 1
+            position = f" at line {details['line']}, column {details['column']}"
+        raise BoardError(
+            "invalid_frontmatter",
+            f"Proposed wiki page{where} has invalid YAML frontmatter{position}: {problem}. Fix the YAML between the opening and closing `---` lines; quote values that contain `: ` or start with a special character.",
+            409,
+            details,
+        ) from exc
     if not isinstance(loaded, dict):
-        raise BoardError("invalid_frontmatter", "Proposed YAML frontmatter must be a mapping.", 409)
+        kind = type(loaded).__name__
+        raise BoardError(
+            "invalid_frontmatter",
+            f"Proposed YAML frontmatter{' in' + where if where else ''} must be a mapping of `field: value` lines, not a {kind}.",
+            409,
+            {**base, "problem": f"frontmatter is a {kind}, not a mapping"},
+        )
     from prism_cli.wiki_model import parse_iso_date
 
     for field in ("introduced", "last-updated", "date"):
@@ -2985,6 +3925,18 @@ def _strip_section(body: str, heading: str) -> str:
     return "".join(out)
 
 
+def _first_line_difference(old: str, new: str) -> tuple[str, str] | None:
+    """The first pair of lines that differ between two texts (an absent line is empty), or None when only whitespace differs."""
+
+    old_lines, new_lines = old.splitlines(), new.splitlines()
+    for index in range(max(len(old_lines), len(new_lines))):
+        left = old_lines[index].rstrip() if index < len(old_lines) else ""
+        right = new_lines[index].rstrip() if index < len(new_lines) else ""
+        if left != right:
+            return left, right
+    return None
+
+
 def _body_without_sections(body: str, headings: set[str]) -> str:
     wanted = {heading.strip().casefold() for heading in headings}
     lines = body.splitlines(keepends=True)
@@ -3016,10 +3968,102 @@ def _table_rows(section: str, *, expected_columns: int) -> list[list[str]]:
     return rows
 
 
-def _require_headings(body: str, headings: Iterable[str], relative: str) -> None:
+def _require_headings(body: str, headings: Iterable[str], relative: str, hint: str = "") -> None:
     missing = [heading for heading in headings if not _section(body, heading).strip()]
     if missing:
-        raise BoardError("required_section_missing", f"`{relative}` requires substantive sections: {', '.join(missing)}.", 409)
+        raise BoardError(
+            "required_section_missing",
+            f"`{relative}` requires substantive sections: {', '.join(missing)}.{hint}",
+            409,
+            {"path": relative, "sections": _names(missing)} if hint else None,
+        )
+
+
+_API_ENDPOINT = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b[\s`*|:()\[\]-]*(/[A-Za-z0-9_\-./{}:~%]*)")
+_API_SURFACE_PATH = re.compile(r"(?<![\w/.:])(/[A-Za-z0-9_\-./{}:~%]*[A-Za-z0-9_}])")
+
+
+def _api_path_key(path: str) -> str:
+    """A path with its case, query, trailing slash and parameter names normalized, so `/a/{id}` equals `/A/:x/`."""
+
+    segments = [part for part in path.split("?")[0].split("#")[0].strip().rstrip(".,;:").lower().split("/") if part]
+    return "/" + "/".join("{}" if part.startswith(("{", ":")) else part for part in segments)
+
+
+def _api_word(word: str) -> str:
+    if word.endswith("ies") and len(word) > 4:
+        return word[:-3] + "y"
+    return word[:-1] if word.endswith("s") and len(word) > 3 else word
+
+
+def _api_contract_scope_error(relative: str, feature_id: str, body: str, surface: str) -> BoardError | None:
+    """Check that a new contract's endpoints and models stay within the feature's API surface; None when they do.
+
+    Endpoints are the `METHOD /path` entries of `## Endpoints`. When the API surface names paths, every endpoint
+    must be one of them; otherwise each endpoint needs a resource word that the API surface text uses. A data model
+    (a heading or a leading bold or code name in `## Data models`) must be named by the API surface or an endpoint.
+    This is a structural traceability check; the reviewer still confirms that the contract says what the API surface means.
+    """
+
+    endpoints_text = _section(body, "Endpoints")
+    endpoints: list[tuple[str, str]] = []
+    for method, path in _API_ENDPOINT.findall(endpoints_text):
+        entry = (method, _api_path_key(path))
+        if entry not in endpoints:
+            endpoints.append(entry)
+    if not endpoints:
+        return BoardError(
+            "invalid_api_contract",
+            f"API contract `{relative}` must list each endpoint under `## Endpoints` as `METHOD /path`, for example `POST /exports`.",
+            409,
+            {"path": relative, "section": "Endpoints"},
+        )
+    surface_paths = {_api_path_key(path) for path in _API_SURFACE_PATH.findall(surface)}
+    surface_words = {_api_word(word) for word in re.findall(r"[a-z0-9]+", surface.lower())}
+    untraced: list[str] = []
+    for method, key in endpoints:
+        if surface_paths:
+            traced = key in surface_paths
+        else:
+            words = [
+                _api_word(word)
+                for part in key.split("/")
+                if part and part != "{}" and part != "api" and not re.fullmatch(r"v\d+", part)
+                for word in re.findall(r"[a-z0-9]+", part)
+            ]
+            traced = any(word in surface_words for word in words)
+        if not traced:
+            untraced.append(f"{method} {key}")
+    if untraced:
+        if surface_paths:
+            fix = f"The API surface names only {_quoted(sorted(surface_paths)[:6])}; list endpoints with those paths."
+        else:
+            fix = "Each endpoint path needs a resource word that the API surface uses; an endpoint the API surface does not state must be added there first (route a question, then `po-clarify` or `dev-clarify`)."
+        return BoardError(
+            "api_contract_untraceable",
+            f"API contract `{relative}` lists endpoint(s) {_quoted(untraced[:6])} that the `## API surface` of {feature_id} does not support. {fix}",
+            409,
+            {"path": relative, "feature_id": feature_id, "endpoints": [_clip(item, 120) for item in untraced[:10]]},
+        )
+    models_text = _section(body, "Data models")
+    headings = re.findall(r"(?m)^#{3,6}\s+(.+?)\s*#*\s*$", models_text)
+    names = headings or re.findall(r"(?m)^[-*+]\s+(?:\*\*|`)([^*`\n]+)(?:\*\*|`)", models_text)
+    haystack = re.sub(r"[^a-z0-9]", "", (surface + endpoints_text).lower())
+    unreferenced: list[str] = []
+    for name in names:
+        cleaned = re.sub(r"\(.*?\)", "", name).strip().rstrip(":").strip()
+        key = re.sub(r"[^a-z0-9]", "", cleaned.lower())
+        if key and key not in haystack and cleaned not in unreferenced:
+            unreferenced.append(cleaned)
+    if unreferenced:
+        return BoardError(
+            "api_contract_untraceable",
+            f"API contract `{relative}` defines data model(s) {_quoted([_clip(item, 60) for item in unreferenced[:6]])} that neither the `## API surface` of {feature_id} "
+            "nor any listed endpoint names. Remove them, or name them in the endpoint's request or response.",
+            409,
+            {"path": relative, "feature_id": feature_id, "models": [_clip(item, 60) for item in unreferenced[:10]]},
+        )
+    return None
 
 
 def _validate_no_placeholders(body: str, relative: str) -> None:
@@ -3132,6 +4176,40 @@ def _classification(checks: Iterable[Mapping[str, Any]]) -> str:
     return "ready"
 
 
+_ARCHIVE_LABEL = "Prior completion/release evidence"
+_HEADING_LINE = re.compile(r"^\s{0,3}#{1,6}\s")
+
+
+def _label_block(text: str, label: str, labels: Iterable[str]) -> str:
+    """The text of one reopen-record label: its own line and the lines below it.
+
+    The block ends at the next labelled bullet or heading, so evidence rows may
+    follow the label on the lines beneath it as a list or a table.
+    """
+
+    head = re.compile(rf"(?i)^\s*-\s*{re.escape(label)}:[ \t]*(.*)$")
+    next_label = re.compile(r"(?i)^\s*-\s*(?:" + "|".join(re.escape(item) for item in labels) + r"):")
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        found = head.match(line)
+        if found:
+            break
+    else:
+        return ""
+    block = [found.group(1).strip()]
+    for line in lines[index + 1:]:
+        if next_label.match(line) or _HEADING_LINE.match(line):
+            break
+        block.append(line)
+    return "\n".join(block).strip()
+
+
+def _normalized_table_text(text: str) -> str:
+    """Case-folded text with whitespace collapsed and no space around table pipes."""
+
+    return re.sub(r"\s*\|\s*", "|", re.sub(r"\s+", " ", text)).strip().casefold()
+
+
 def _page_feature_id(content: str, filename: str) -> str | None:
     try:
         frontmatter, _body = _parse_markdown(content)
@@ -3153,5 +4231,4 @@ def _move_subject(moves: Iterable[Mapping[str, Any]]) -> str:
 
 
 def _reparse_point(info: os.stat_result) -> bool:
-    attributes = getattr(info, "st_file_attributes", 0)
-    return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+    return reparse_kind(info) != "none"

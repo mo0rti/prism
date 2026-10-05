@@ -13,12 +13,13 @@ from prism_cli.wiki_links import NON_PAGE_FILENAMES, markdown_files, page_refere
 from prism_cli.wiki_model import (
     VALID_PLATFORM_IDS,
     extract_markdown_links,
+    load_markdown_page,
     resolve_relative_markdown_link,
     parse_open_question_rows,
     read_feature_pages,
-    read_markdown_page,
     read_platform_requirement_pages,
     read_wiki_pages,
+    within_wiki_read_scope,
 )
 from prism_cli.wiki_query import build_envelope
 from prism_cli.wiki_transitions import (
@@ -115,6 +116,7 @@ class GraphEdge:
         return {"source": self.source, "target": self.target, "kind": self.kind, "evidence": self.evidence}
 
 
+@within_wiki_read_scope
 def build_graph(root: Path) -> dict[str, Any]:
     workspace_root = root.expanduser().resolve()
     initial_fingerprint = workspace_fingerprint(workspace_root)
@@ -240,7 +242,7 @@ def _collect_nodes(
         for path in markdown_files(wiki_root / directory):
             if path.name in NON_PAGE_FILENAMES:
                 continue
-            page = read_markdown_page(path)
+            page = load_markdown_page(path)
             raw_id = page.frontmatter.get("id")
             preferred_id = raw_id if isinstance(raw_id, str) and raw_id.strip() else f"{prefix}:{path.stem}"
             node_id = _unique_node_id(nodes, preferred_id, path)
@@ -261,7 +263,7 @@ def _collect_nodes(
         for path in markdown_files(wiki_root / directory):
             if path.name in NON_PAGE_FILENAMES:
                 continue
-            page = read_markdown_page(path)
+            page = load_markdown_page(path)
             node_id = _unique_node_id(nodes, f"{prefix}:{path.stem}", path)
             title = page.frontmatter.get("title")
             status = page.frontmatter.get("status")

@@ -58,6 +58,16 @@ export function withBackendSessionCookies(handler: (request: NextRequest) => Pro
   }
 }
 
+// Ends the web session: clears the backend credentials and the Auth.js identity
+// cookie, so server-side gating and the UI both see a signed-out user.
+export async function endSession(request: NextRequest, response: NextResponse) {
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET
+  if (!secret) throw new Error("AUTH_SECRET is not configured")
+  await replaceCookie(response, request.cookies.getAll(), backendCookie, null, secret)
+  await replaceCookie(response, request.cookies.getAll(), sessionCookie, null, secret)
+  return response
+}
+
 export function backendClaims(payload: unknown) {
   const value = payload as { accessToken?: unknown; refreshToken?: unknown; expiresIn?: unknown; user?: { id?: unknown; email?: unknown; displayName?: unknown; role?: unknown } }
   if (!value || typeof value.accessToken !== "string" || !value.accessToken ||
@@ -84,12 +94,18 @@ export async function backendSession(request: NextRequest) {
   if (!secret) throw new Error("AUTH_SECRET is not configured")
   let token = await getToken({ req: request, secret, cookieName: backendCookie.name, salt: backendCookie.name, secureCookie: backendCookie.options.secure })
   const identity = await getToken({ req: request, secret, cookieName: sessionCookie.name, salt: sessionCookie.name, secureCookie: sessionCookie.options.secure })
-  if (!identity?.userId || identity.userId !== token?.userId) token = null
   let changed = false
+  let ended = false
+  if (!identity?.userId || identity.userId !== token?.userId) {
+    token = null
+    // A signed-in identity without matching backend credentials cannot call the API, so it ends too.
+    if (identity?.userId) changed = ended = true
+  }
   if (token && (!token.accessTokenExpires || Date.now() >= token.accessTokenExpires - 30_000)) {
     if (!token.refreshToken) {
       token = null
       changed = true
+      ended = true
     } else {
       const base = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL
       if (!base) throw new Error("API_BASE_URL is not configured")
@@ -101,8 +117,11 @@ export async function backendSession(request: NextRequest) {
         signal: AbortSignal.timeout(5000),
       })
       // A temporary outage must not destroy the retryable encrypted session.
+      // A rejected refresh means the backend ended the session (for example a
+      // login elsewhere or a logout), so the web session ends with it.
       if (response.status === 401 || response.status === 403) {
         token = null
+        ended = true
       } else {
         if (!response.ok) throw new Error("Backend session refresh unavailable")
         const claims = backendClaims(await response.json())
@@ -118,6 +137,7 @@ export async function backendSession(request: NextRequest) {
     async persist(response: NextResponse) {
       if (!changed) return response
       await replaceCookie(response, request.cookies.getAll(), backendCookie, current, secret)
+      if (ended) await replaceCookie(response, request.cookies.getAll(), sessionCookie, null, secret)
       return response
     },
   }

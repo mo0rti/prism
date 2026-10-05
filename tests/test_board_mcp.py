@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -13,6 +14,8 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import MCPError
 
+from prism_cli.board_mcp import SERVER_INSTRUCTIONS, _safe_error
+from prism_cli.board_service import BoardError
 from prism_cli.board_server import create_app
 
 
@@ -60,28 +63,41 @@ class _Service:
     def discover(self, actor: _Actor) -> dict[str, Any]:
         return self._result("discover", actor)
 
-    def read_workspace(self, actor: _Actor, paths: list[str]) -> dict[str, Any]:
-        return self._result("read_workspace", actor, paths)
+    def read_workspace(self, actor: _Actor, paths: list[str], cursor: str | None = None) -> dict[str, Any]:
+        return self._result("read_workspace", actor, paths, cursor)
 
     def list_workspace(self, actor: _Actor, prefix: str = "knowledge", cursor: str | None = None) -> dict[str, Any]:
         return self._result("list_workspace", actor, prefix, cursor)
 
-    def query(self, actor: _Actor, kind: str, value: str | None = None, action: str | None = None) -> dict[str, Any]:
-        return self._result("query", actor, kind, value, action)
+    def query(self, actor: _Actor, kind: str, value: str | None = None, action: str | None = None, cursor: str | None = None) -> dict[str, Any]:
+        return self._result("query", actor, kind, value, action, cursor)
 
     def list_skills(self, actor: _Actor) -> dict[str, Any]:
         return self._result("list_skills", actor)
 
-    def get_skill(self, actor: _Actor, name: str) -> dict[str, Any]:
+    def get_skill(self, actor: _Actor, name: str, cursor: str | None = None) -> dict[str, Any]:
         if name == "leak-error":
             raise _BoardError("skill_unavailable", f"bad token was {self.auth_token}", 409)
-        return self._result("get_skill", actor, name)
+        return self._result("get_skill", actor, name, cursor)
+
+    def get_skill_reference(self, actor: _Actor, name: str, path: str, cursor: str | None = None) -> dict[str, Any]:
+        return self._result("get_skill_reference", actor, name, path, cursor)
 
     def preview_transition(self, actor: _Actor, feature_id: str, action: str, inputs: dict[str, Any] | None = None) -> dict[str, Any]:
         return self._result("preview_transition", actor, feature_id, action, inputs)
 
     def preview_skill(self, actor: _Actor, skill: str, changes: list[dict[str, Any]], moves: list[dict[str, Any]] | None = None, read_revisions: dict[str, str] | None = None) -> dict[str, Any]:
+        if skill == "rejected-details":
+            raise BoardError(
+                "clarify_answer_unlinked",
+                f"Updated `Summary` must include an answer; the credential was {self.auth_token}.",
+                409,
+                {"section": "Summary", "resolved_questions": ["2"], "resolved_answers": {"2": f"Answer starts with {self.auth_token}"}},
+            )
         return self._result("preview_skill", actor, skill, changes, moves, read_revisions)
+
+    def get_preview(self, actor: _Actor, preview_id: str) -> dict[str, Any]:
+        return self._result("get_preview", actor, preview_id)
 
     def apply(self, actor: _Actor, preview_id: str, operation_id: str) -> dict[str, Any]:
         return self._result("apply", actor, preview_id, operation_id)
@@ -143,8 +159,10 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                         "query",
                         "list_skills",
                         "get_skill",
+                        "get_skill_reference",
                         "preview_transition",
                         "preview_skill",
+                        "get_preview",
                         "apply",
                         "operation",
                         "recover",
@@ -157,7 +175,7 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                     set(by_name["query"].input_schema["properties"]["kind"]["enum"]),
                     {"show", "blockers", "owner", "platform", "search", "transition-preflight", "lint"},
                 )
-                for name in {"discover", "read_workspace", "list_workspace", "query", "list_skills", "get_skill", "operation", "changes"}:
+                for name in {"discover", "read_workspace", "list_workspace", "query", "list_skills", "get_skill", "get_skill_reference", "get_preview", "operation", "changes"}:
                     self.assertTrue(by_name[name].annotations.read_only_hint, name)
                     self.assertFalse(by_name[name].annotations.open_world_hint, name)
                 for name in {"preview_transition", "preview_skill", "apply", "recover"}:
@@ -165,7 +183,7 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                 result = await session.call_tool("read_workspace", {"paths": ["knowledge/wiki/BOARD.md"]})
                 self.assertFalse(result.is_error)
                 self.assertEqual(result.structured_content["operation"], "read_workspace")
-                self.assertEqual(self.service.calls[-1][1], (["knowledge/wiki/BOARD.md"],))
+                self.assertEqual(self.service.calls[-1][1], (["knowledge/wiki/BOARD.md"], None))
                 listed = await session.call_tool(
                     "list_workspace",
                     {"prefix": "knowledge/intake", "cursor": "C-1"},
@@ -179,8 +197,129 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertFalse(queried.is_error)
                 self.assertEqual(queried.structured_content["operation"], "query")
-                self.assertEqual(self.service.calls[-1][1], ("transition-preflight", "F-1", "design-start"))
+                self.assertEqual(self.service.calls[-1][1], ("transition-preflight", "F-1", "design-start", None))
                 self.assertGreaterEqual(self.service.auth_calls, 4)
+            finally:
+                await self._disconnect(http, streams, session)
+
+    async def test_results_carry_structured_content_once_with_a_short_text_summary(self) -> None:
+        async with self.app.router.lifespan_context(self.app):
+            http, streams, session = await self._connect()
+            try:
+                await session.initialize()
+                tools = {tool.name: tool for tool in (await session.list_tools()).tools}
+                calls = (
+                    ("discover", {}, ()),
+                    ("list_skills", {}, ()),
+                    ("get_skill", {"name": "po-intake", "cursor": "C-2"}, ("po-intake", "C-2")),
+                    (
+                        "get_skill_reference",
+                        {"name": "po-intake", "path": "knowledge/wiki/SCHEMA.md", "cursor": "C-3"},
+                        ("po-intake", "knowledge/wiki/SCHEMA.md", "C-3"),
+                    ),
+                    ("read_workspace", {"paths": ["knowledge/wiki/index.md"], "cursor": "C-4"}, (["knowledge/wiki/index.md"], "C-4")),
+                    ("query", {"kind": "owner", "value": "po", "cursor": "C-5"}, ("owner", "po", None, "C-5")),
+                    ("changes", {}, (None,)),
+                )
+                for tool, arguments, expected in calls:
+                    with self.subTest(tool=tool):
+                        self.assertIsNotNone(tools[tool].output_schema)
+                        result = await session.call_tool(tool, arguments)
+                        self.assertFalse(result.is_error)
+                        self.assertEqual(tool, result.structured_content["operation"])
+                        self.assertEqual(list(expected), result.structured_content["args"])
+                        texts = [block.text for block in result.content if block.type == "text"]
+                        self.assertEqual(1, len(texts))
+                        self.assertLessEqual(len(texts[0]), 500)
+                        self.assertTrue(texts[0].startswith(tool))
+                        with self.assertRaises(ValueError):
+                            json.loads(texts[0])
+                        self.assertNotIn("schema_version", texts[0])
+            finally:
+                await self._disconnect(http, streams, session)
+
+    async def test_summary_for_a_large_structured_result_stays_short(self) -> None:
+        async with self.app.router.lifespan_context(self.app):
+            http, streams, session = await self._connect()
+            try:
+                await session.initialize()
+                original = self.service.get_skill
+                big = {"schema_version": 1, "skill": {"name": "po-intake", "references": [{"path": f"r{index}"} for index in range(2000)]}, "next_cursor": "C-9"}
+                self.service.get_skill = lambda actor, name, cursor=None: big
+                try:
+                    result = await session.call_tool("get_skill", {"name": "po-intake"})
+                finally:
+                    self.service.get_skill = original
+                self.assertFalse(result.is_error)
+                self.assertEqual(2000, len(result.structured_content["skill"]["references"]))
+                texts = [block.text for block in result.content if block.type == "text"]
+                self.assertEqual(1, len(texts))
+                self.assertLessEqual(len(texts[0]), 500)
+                self.assertIn("next_cursor", texts[0])
+            finally:
+                await self._disconnect(http, streams, session)
+
+    async def test_initialize_publishes_title_description_and_orientation_instructions(self) -> None:
+        async with self.app.router.lifespan_context(self.app):
+            http, streams, session = await self._connect()
+            try:
+                init = await session.initialize()
+                self.assertEqual("Prism Board", init.server_info.title)
+                self.assertTrue(init.server_info.description)
+                self.assertNotIn("\n", init.server_info.description)
+                instructions = init.instructions
+                self.assertIsInstance(instructions, str)
+                self.assertLessEqual(len(instructions), 2000)
+                self.assertEqual(SERVER_INSTRUCTIONS, instructions)
+                for term in ("discover", "get_skill_reference", "next_cursor", "preview_skill", "apply", "operation"):
+                    self.assertIn(term, instructions)
+                self.assertIn("untrusted", instructions)
+                self.assertIn("never approves", instructions)
+                # A rejected proposal may be corrected as the error names, at most 2 more times, without widening it.
+                retry = instructions[instructions.index("If the board rejects a proposal"):]
+                for term in ("exactly what the error names", "at most 2 more times", "without widening the change", "then stop and report"):
+                    self.assertIn(term, retry)
+                # The steps appear in the order an agent should use them.
+                order = ("discover", "list_skills", "get_skill_reference", "next_cursor", "read_workspace", "preview_skill", "apply", "operation", "recover", "updates with changes")
+                positions = [instructions.index(term) for term in order]
+                self.assertEqual(sorted(positions), positions)
+            finally:
+                await self._disconnect(http, streams, session)
+
+    async def test_tool_descriptions_are_distinctive_and_the_contract_is_unchanged(self) -> None:
+        # name -> (all argument names, required argument names)
+        expected = {
+            "discover": (set(), set()),
+            "read_workspace": ({"paths", "cursor"}, {"paths"}),
+            "list_workspace": ({"prefix", "cursor"}, set()),
+            "query": ({"kind", "value", "action", "cursor"}, {"kind"}),
+            "list_skills": (set(), set()),
+            "get_skill": ({"name", "cursor"}, {"name"}),
+            "get_skill_reference": ({"name", "path", "cursor"}, {"name", "path"}),
+            "preview_transition": ({"feature_id", "action", "inputs"}, {"feature_id", "action"}),
+            "preview_skill": ({"skill", "changes", "moves", "read_revisions"}, {"skill", "changes"}),
+            "get_preview": ({"preview_id", "cursor"}, {"preview_id"}),
+            "apply": ({"preview_id", "operation_id"}, {"preview_id", "operation_id"}),
+            "operation": ({"operation_id", "cursor"}, {"operation_id"}),
+            "recover": ({"operation_id", "review_revision", "semantic_review_acknowledged"}, {"operation_id"}),
+            "changes": ({"cursor"}, set()),
+        }
+        async with self.app.router.lifespan_context(self.app):
+            http, streams, session = await self._connect()
+            try:
+                await session.initialize()
+                tools = {tool.name: tool for tool in (await session.list_tools()).tools}
+                self.assertEqual(set(expected), set(tools))
+                for name, (arguments, required) in expected.items():
+                    with self.subTest(tool=name):
+                        tool = tools[name]
+                        self.assertTrue(tool.description.startswith("Prism board:"), tool.description)
+                        self.assertEqual(arguments, set(tool.input_schema.get("properties", {})))
+                        self.assertEqual(required, set(tool.input_schema.get("required", [])))
+                for name in ("read_workspace", "query", "get_skill_reference"):
+                    self.assertIn("next_cursor", tools[name].description, name)
+                self.assertIn("digest", tools["get_skill_reference"].description)
+                self.assertIn("get_skill_reference", tools["get_skill"].description)
             finally:
                 await self._disconnect(http, streams, session)
 
@@ -325,6 +464,42 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("[redacted]", content)
             finally:
                 await self._disconnect(http, streams, session)
+
+    async def test_rejection_details_reach_the_tool_error_text_and_stay_redacted(self) -> None:
+        async with self.app.router.lifespan_context(self.app):
+            http, streams, session = await self._connect()
+            try:
+                await session.initialize()
+                result = await session.call_tool(
+                    "preview_skill",
+                    {"skill": "rejected-details", "changes": [{"path": "knowledge/wiki/features/F-001.md", "content": "x"}]},
+                )
+                self.assertTrue(result.is_error)
+                text = " ".join(block.text for block in result.content if hasattr(block, "text"))
+                self.assertIn("clarify_answer_unlinked: Updated `Summary`", text)
+                self.assertNotIn(self.service.auth_token, text)
+                self.assertIn("[redacted]", text)
+                details = json.loads(text[text.index(' {"'):])
+                self.assertEqual(
+                    {"section": "Summary", "resolved_questions": ["2"], "resolved_answers": {"2": "Answer starts with [redacted]"}},
+                    details,
+                )
+            finally:
+                await self._disconnect(http, streams, session)
+
+    def test_safe_error_appends_compact_details_and_stays_under_the_limit(self) -> None:
+        error = BoardError("invalid_change", "`changes[1]` is missing `content`.", 400, {"index": 1, "missing": ["content"]})
+        self.assertEqual(
+            'invalid_change: `changes[1]` is missing `content`. {"index":1,"missing":["content"]}',
+            _safe_error(error),
+        )
+        self.assertEqual("invalid_change: `changes[1]` is missing `content`.", _safe_error(BoardError("invalid_change", "`changes[1]` is missing `content`.")))
+        # Details that do not fit are dropped; the message always survives within the cap.
+        crowded = BoardError("invalid_change", "m" * 900, 400, {"fields": ["f" * 50] * 20})
+        crowded.message = "m" * 1990
+        text = _safe_error(crowded)
+        self.assertLessEqual(len(text), 2000)
+        self.assertNotIn("fields", text)
 
     async def test_revoked_bearer_is_rejected_for_the_next_tool_call(self) -> None:
         async with self.app.router.lifespan_context(self.app):

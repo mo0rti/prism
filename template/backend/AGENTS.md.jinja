@@ -64,7 +64,7 @@ The `local` profile exists to make first startup succeed without immediately req
 ```
 src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
   bootstrap/         - Framework config (Security, CORS, OAuth2, OpenAPI)
-    security/        - JWT token provider and authentication filter
+    security/        - JWT token provider, authentication filter and 401 entry point
   shared/            - Cross-cutting concerns (exceptions, models, audit)
     audit/           - AuditableEntity base class (createdAt/updatedAt)
     error/           - Typed ErrorCode abstractions and shared/common API error codes
@@ -86,7 +86,7 @@ Detailed conventions are documented in local Codex skills:
 - `$spring-boot-conventions` - module structure, layers, controller/service/DTO patterns
 - `$security-auth` - JWT, route exposure, OAuth2, and current-user access
 - `$error-handling` - `ApiException`, validation responses, and API error codes
-- `$testing-patterns` - JUnit 5, MockK, unit versus integration test conventions
+- `$testing-patterns` - JUnit Jupiter 6, MockK, unit versus integration test conventions
 - `$endpoint` - end-to-end endpoint delivery, including contract updates
 - `$document-entity` - create or update backend entity documentation and keep architecture docs aligned
 - `$generate-clients` - regenerate typed clients after OpenAPI changes
@@ -95,10 +95,15 @@ Detailed conventions are documented in local Codex skills:
 
 - `bootstrap/SecurityConfig.kt` - endpoint security rules, JWT filter
 - `bootstrap/security/JwtTokenProvider.kt` - token generation/validation
+- `bootstrap/security/ApiAuthenticationEntryPoint.kt` - 401 reply for a missing, malformed or expired access token
 - `shared/audit/AuditableEntity.kt` - base entity with timestamps
 - `shared/error/` - typed ErrorCode abstractions and shared/common API error codes
 - `shared/exception/` - ApiException base type, built-in exception files, and global exception mapping
 - `application.yml` - all configuration (DB, JWT, OAuth, CORS)
+- `resources/db/migration/V1__users.sql` - user and auth baseline schema
+- `resources/db/migration/V2__transactions.sql` - transaction domain schema
+- `resources/db/migration/V3__refresh_retry_window.sql` - refresh-token retry window metadata
+- `resources/db/migration/V4__email_case_and_oauth_identity.sql` - lower-cased emails, plus unique indexes on `lower(email)` and on (`auth_provider`, `provider_id`)
 
 ## API
 

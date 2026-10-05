@@ -29,7 +29,7 @@ Apply these rules whenever you change Android app code in this repository.
 - Use `LaunchedEffect` for one-off UI effects such as navigation, snackbar triggers, and scroll reactions. Do not encode one-time navigation as a persistent success state that will retrigger on recomposition or back navigation.
 - Repositories return `AppResult<T>` for fallible work, and ViewModels map `AppResult.Error` into `UiText` before exposing error state.
 - Keep repositories as concrete classes in `feature/*/data/repository/`. Do not introduce repository interfaces or a repository binding module unless explicitly requested.
-- Add Retrofit APIs in `feature/*/data/remote/api/` and provide them from the existing Hilt modules under `core/di/`.
+- Add endpoints to `ApiService` in `core/network/`. A separate Retrofit interface belongs in `feature/*/data/remote/api/` and is provided from the existing Hilt modules under `core/di/`.
 - Use `SessionManager` for auth state and logout flows; keep token reads and refresh wiring inside `TokenStorage`, `AuthInterceptor`, and `TokenAuthenticator`.
 - Put user-facing strings in `app/src/main/res/values/strings.xml`.
 - Move reusable Compose components, modifiers, and drawing helpers into `designsystem/` instead of duplicating them in features.

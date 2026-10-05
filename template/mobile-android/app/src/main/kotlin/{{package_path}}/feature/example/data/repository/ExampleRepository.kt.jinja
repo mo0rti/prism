@@ -4,12 +4,16 @@ import {{ package_identifier }}.core.common.AppResult
 import {{ package_identifier }}.core.common.appResultOf
 import {{ package_identifier }}.core.model.PagedData
 import {{ package_identifier }}.core.network.ApiService
-import {{ package_identifier }}.feature.example.data.remote.dto.CreateExampleRequest
-import {{ package_identifier }}.feature.example.data.remote.dto.UpdateExampleRequest
+import {{ package_identifier }}.feature.example.data.remote.dto.CreateTransactionRequest
+import {{ package_identifier }}.feature.example.data.remote.dto.UpdateTransactionRequest
 import {{ package_identifier }}.feature.example.domain.model.Example
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Sample repository backed by the backend `/transactions` endpoints.
+ * Each transaction is exposed as an [Example] row.
+ */
 @Singleton
 class ExampleRepository @Inject constructor(
     private val apiService: ApiService,
@@ -17,7 +21,7 @@ class ExampleRepository @Inject constructor(
 
     suspend fun list(page: Int = 0, size: Int = 20): AppResult<PagedData<Example>> =
         appResultOf {
-            val response = apiService.listExamples(page = page, size = size)
+            val response = apiService.listTransactions(page = page, size = size)
             PagedData(
                 content = response.content.map { it.toDomain() },
                 page = response.page,
@@ -29,21 +33,21 @@ class ExampleRepository @Inject constructor(
 
     suspend fun getById(id: String): AppResult<Example> =
         appResultOf {
-            apiService.getExample(id).toDomain()
+            apiService.getTransaction(id).toDomain()
         }
 
-    suspend fun create(title: String, description: String?): AppResult<Example> =
+    suspend fun create(amount: Double, currency: String, type: String, description: String?): AppResult<Example> =
         appResultOf {
-            apiService.createExample(CreateExampleRequest(title, description)).toDomain()
+            apiService.createTransaction(CreateTransactionRequest(amount, currency, description, type)).toDomain()
         }
 
-    suspend fun update(id: String, title: String?, description: String?, status: String?): AppResult<Example> =
+    suspend fun update(id: String, description: String?, status: String?): AppResult<Example> =
         appResultOf {
-            apiService.updateExample(id, UpdateExampleRequest(title, description, status)).toDomain()
+            apiService.updateTransaction(id, UpdateTransactionRequest(description, status)).toDomain()
         }
 
     suspend fun delete(id: String): AppResult<Unit> =
         appResultOf {
-            apiService.deleteExample(id)
+            apiService.deleteTransaction(id)
         }
 }

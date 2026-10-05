@@ -2,7 +2,7 @@
 
 This repository is the Copier template itself. Treat the root `AGENTS.md` as maintainer guidance for the template repo, and treat files under `template/` as instructions that will be copied into generated projects.
 
-Prism's core is the workflow and board shared by humans and agents. Application generation is an optional capability. Keep core acceptance independent of application samples; use disposable neutral workspaces for lifecycle writes, adoption, HTTP/MCP and recovery tests. The approved scope and deferred sample work are recorded in `docs/prism-core-workflow-plan.md`.
+Prism's core is the workflow and board shared by humans and agents. Application generation is an optional capability. Keep core acceptance independent of application samples; use disposable neutral workspaces for lifecycle writes, adoption, HTTP/MCP and recovery tests. The scope, contracts and deferred work are in `docs/prism-core-workflow-plan.md`.
 
 ## Two distinct AI context layers
 
@@ -27,7 +27,7 @@ and must not be referenced. They are replaced by the wiki lifecycle system
 - Codex reads `AGENTS.md` from the repo root down to the current working directory.
 - Repository-local Codex skills live in `.agents/skills/`, following the current Codex docs.
 - Generated projects scaffold their own Codex skills from `template/.agents/skills/`.
-- Keep shared facts aligned across `AGENTS.md`, `CLAUDE.md`, `template/AGENTS.md.jinja`, `template/CLAUDE.md.jinja`, and `.cursor/rules/`, but preserve tool-specific syntax instead of forcing identical wording.
+- Keep shared facts aligned across `AGENTS.md`, `CLAUDE.md`, `template/AGENTS.md.jinja`, `template/CLAUDE.md.jinja`, and `template/.cursor/rules/`, but preserve tool-specific syntax instead of forcing identical wording.
 
 ## Model workflow for maintainer work
 
@@ -53,8 +53,7 @@ This applies to work on this repository, not to generated projects. Set the mode
 ## Repository Focus
 
 - This template scaffolds backend, web-user-app, web-admin-portal, mobile-android, and mobile-ios slices.
-- Backend, Android, and iOS are the stronger implemented paths today.
-- User web app, admin web portal, and some auth or deployment combinations remain partial or experimental; keep maturity language explicit and honest.
+- Backend, Android and web samples are verified locally. The iOS sample is verified only by the macOS CI job, and live Cloudflare and Azure deployments are unverified. Apple Sign-In is experimental. Keep maturity language explicit and honest, and keep `docs/current-status.md` equal to the verification that exists.
 - Never leave questionnaire-visible options silently generating broken output.
 
 ## Working Rules
@@ -72,6 +71,10 @@ This applies to work on this repository, not to generated projects. Set the mode
   - any file containing Jinja expressions keeps a `.jinja` suffix
 - Update AI context when commands, paths, maturity, or workflow expectations change.
 - Keep provider-neutral workflow guidance and its packaged assets synchronized. Connected agents use the shared service and pinned standard skills; custom skills retain the direct-file path. Do not add per-agent workflow implementations or an extra board approval queue.
+- The 24 canonical workflow skills (`template/.agents/skills/<name>/SKILL.md.jinja` and `template/.claude/commands/<name>.md.jinja`), everything under `template/knowledge/` and the "Connected board workflow" section of the root guidance templates are packaged into `prism_cli/assets/workflow-v1.json`. After editing one of them, run `python scripts/build-workflow-assets.py` to regenerate the asset; `--check` verifies it. A new asset digest invalidates existing board grants. The asset's `previous_digests` list the earlier shipped versions of each installer-owned file, which lets `prism workflow upgrade` replace an unmodified old copy without a conflict; the build appends to it, so rebuild from the checked-in asset and never delete or hand-edit it.
+- Keep the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md` equal to the CLI and service behaviour. After changing a documented command, message or security check, run it in a disposable workspace and fix the docs to match the real output.
+- Record user-visible changes under `Unreleased` in `CHANGELOG.md`. Version numbers and release tags are chosen at release time, not in the changelog's unreleased section.
+- Instruction and guidance files state the current behaviour only. Keep dates and history in logs, ledgers and the changelog.
 
 ## Repo Skills
 
@@ -83,8 +86,12 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 
 ## Key Files
 
-- `README.md` for the short repository overview
+- `README.md` for the short repository overview and the shared-board quickstart
 - `docs/README.md` for the repo docs index
+- `docs/shared-board.md` for the shared-board usage contract and the MCP tool contract
+- `docs/troubleshooting.md` for symptoms, causes and fixes
+- `SECURITY.md` for the local threat model
+- `CHANGELOG.md` for user-visible changes
 - `docs/maintainer-workflow.md` for template maintenance flow
 - `docs/current-status.md` for maturity and validation context
 - `copier.yml` for questionnaire inputs and exclusions
@@ -97,4 +104,10 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 copier copy --trust . C:\temp\template-test
 copier copy --trust --defaults --data "project_name=Test App" --data "platforms=[backend]" . C:\temp\template-test-backend
 rg -n --hidden --glob '!**/.git/**' "\.agents/skills|AGENTS\.md|CLAUDE\.md" .
+
+# Shared board, in a disposable workspace and never in this repository
+prism workflow install . --name "Scratch" --platform backend --apply --yes
+prism doctor --workspace .
+prism board grant "Tester" --kind human --write --path .
+prism board serve . --port 8765
 ```

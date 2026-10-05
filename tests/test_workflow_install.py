@@ -1,5 +1,6 @@
 """Preview and recovery contracts for non-application workflow adoption."""
 
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -14,8 +15,10 @@ import yaml
 from prism_cli.workflow_assets import asset_digest, bootstrap_files, guidance_pointer
 from prism_cli.board_cli import cmd_workflow
 from prism_cli.board_service import BoardService
+from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE
 from prism_cli.workflow_install import apply_install, plan_install
 import prism_cli.workflow_install as workflow_installer
+from tests.test_fs_safety import CLOUD_TAG, JUNCTION_TAG, fake_reparse
 
 
 class WorkflowInstallTests(unittest.TestCase):
@@ -48,6 +51,7 @@ class WorkflowInstallTests(unittest.TestCase):
             repeat = plan_install(root)
             self.assertEqual([], repeat["conflicts"])
             self.assertEqual([], repeat["changes"])
+            self.assertEqual([], repeat["updated"])
             self.assertEqual(manifest["workflow"]["board_id"], repeat["board_id"])
             self.assertEqual("unchanged", apply_install(root, repeat)["status"])
             self.assertFalse((root / ".prism").exists(), "an unchanged repeat must not create runtime state")
@@ -100,6 +104,91 @@ class WorkflowInstallTests(unittest.TestCase):
             self.assertEqual(before, binding.read_bytes())
             self.assertFalse((root / "prism.workspace.yml").exists())
             self.assertFalse((root / "knowledge/wiki/SCHEMA.md").exists())
+
+    def test_unmodified_earlier_connected_binding_is_replaced_and_listed_as_updated(self):
+        earlier = b"# Connected Prism workflow\nAn earlier canonical text.\n"
+        with tempfile.TemporaryDirectory() as temporary, _shipped_history({CONNECTED: [earlier]}):
+            root = Path(temporary)
+            _adopt_empty_workspace(root)
+            _make_workflow_stale(root)
+            binding = root / CONNECTED
+            binding.write_bytes(earlier)
+
+            plan = plan_install(root, upgrade=True)
+            self.assertEqual([], plan["conflicts"])
+            self.assertEqual([CONNECTED], plan["updated"])
+            change = next(item for item in plan["changes"] if item["path"] == CONNECTED)
+            self.assertEqual(earlier.decode("utf-8"), change["before"])
+            self.assertEqual(_current_text(CONNECTED), change["after"])
+            self.assertEqual(earlier, binding.read_bytes(), "planning must not mutate the workspace")
+
+            receipt = apply_install(root, plan)
+            self.assertEqual("applied", receipt["status"])
+            self.assertIn(CONNECTED, receipt["applied"])
+            self.assertEqual(_current_text(CONNECTED).encode("utf-8"), binding.read_bytes())
+
+            repeat = plan_install(root, upgrade=True)
+            self.assertEqual([], repeat["conflicts"])
+            self.assertEqual([], repeat["updated"])
+            self.assertEqual([], [item for item in repeat["changes"] if item["path"] == CONNECTED])
+
+    def test_install_over_an_unmodified_earlier_connected_binding_does_not_conflict(self):
+        earlier = b"# Connected Prism workflow\nAn earlier canonical text.\n"
+        with tempfile.TemporaryDirectory() as temporary, _shipped_history({CONNECTED: [earlier]}):
+            root = Path(temporary)
+            (root / CONNECTED).parent.mkdir(parents=True)
+            (root / CONNECTED).write_bytes(earlier)
+
+            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            self.assertEqual([], plan["conflicts"])
+            self.assertEqual([CONNECTED], plan["updated"])
+            self.assertEqual("applied", apply_install(root, plan)["status"])
+            self.assertEqual(_current_text(CONNECTED).encode("utf-8"), (root / CONNECTED).read_bytes())
+
+    def test_modified_earlier_connected_binding_still_conflicts_and_is_preserved(self):
+        earlier = b"# Connected Prism workflow\nAn earlier canonical text.\n"
+        edited = earlier + b"A team rule added by the user.\n"
+        with tempfile.TemporaryDirectory() as temporary, _shipped_history({CONNECTED: [earlier]}):
+            root = Path(temporary)
+            (root / CONNECTED).parent.mkdir(parents=True)
+            (root / CONNECTED).write_bytes(edited)
+
+            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            self.assertTrue(any("CONNECTED.md" in item for item in plan["conflicts"]))
+            self.assertEqual([], plan["updated"])
+            receipt = apply_install(root, plan)
+            self.assertEqual("conflict", receipt["status"])
+            self.assertEqual(edited, (root / CONNECTED).read_bytes())
+            self.assertFalse((root / "prism.workspace.yml").exists())
+
+    def test_every_installer_owned_file_follows_the_same_earlier_version_rule(self):
+        earlier_schema = b"# Earlier schema\n"
+        earlier_pointer = b"# Earlier pointer\n"
+        history = {
+            "knowledge/wiki/SCHEMA.md": [earlier_schema],
+            "knowledge/intake/README.md": [b"# Earlier intake guide\n"],
+            "AGENTS.md": [earlier_pointer],
+            "CLAUDE.md": [earlier_pointer],
+        }
+        with tempfile.TemporaryDirectory() as temporary, _shipped_history(history):
+            root = Path(temporary)
+            _adopt_empty_workspace(root)
+            _make_workflow_stale(root)
+            (root / "knowledge/wiki/SCHEMA.md").write_bytes(earlier_schema)
+            (root / "knowledge/intake/README.md").write_bytes(b"# Earlier intake guide\nUser addition.\n")
+            (root / "AGENTS.md").write_bytes(earlier_pointer)
+            custom_claude = b"# Custom Claude guidance\n"
+            (root / "CLAUDE.md").write_bytes(custom_claude)
+
+            plan = plan_install(root, upgrade=True)
+            self.assertEqual([], plan["conflicts"])
+            self.assertEqual(["knowledge/wiki/SCHEMA.md", "AGENTS.md"], plan["updated"])
+            self.assertIn("knowledge/intake/README.md", plan["preserved"])
+            self.assertEqual("applied", apply_install(root, plan)["status"])
+            self.assertEqual(_current_text("knowledge/wiki/SCHEMA.md").encode("utf-8"), (root / "knowledge/wiki/SCHEMA.md").read_bytes())
+            self.assertEqual(guidance_pointer("AGENTS.md").encode("utf-8"), (root / "AGENTS.md").read_bytes())
+            self.assertEqual(b"# Earlier intake guide\nUser addition.\n", (root / "knowledge/intake/README.md").read_bytes())
+            self.assertEqual(custom_claude, (root / "CLAUDE.md").read_bytes())
 
     def test_apply_rechecks_all_before_states_before_writing_anything(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -313,6 +402,47 @@ class WorkflowInstallTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "symlink, junction, or reparse"):
                 plan_install(link, name="Editorial", platforms=["backend"])
 
+    def test_cloud_ancestor_is_rejected_with_cloud_guidance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            root = base / "synced" / "workspace"
+            root.mkdir(parents=True)
+            with fake_reparse(base / "synced", CLOUD_TAG):
+                with self.assertRaises(ValueError) as planned:
+                    plan_install(root, name="Editorial", platforms=["backend"])
+                with self.assertRaises(ValueError) as validated:
+                    workflow_installer._validated_root(root)
+            self.assertIn(CLOUD_SYNC_MESSAGE, str(planned.exception))
+            self.assertEqual(CLOUD_SYNC_MESSAGE, str(validated.exception))
+            self.assertFalse((root / "prism.workspace.yml").exists())
+
+    def test_non_cloud_reparse_ancestor_keeps_the_generic_message(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            root = base / "linked" / "workspace"
+            root.mkdir(parents=True)
+            for tag in (JUNCTION_TAG, 0x80000021, None):
+                with self.subTest(tag=tag), fake_reparse(base / "linked", tag):
+                    with self.assertRaises(ValueError) as raised:
+                        workflow_installer._validated_root(root)
+                    self.assertEqual(
+                        "The workflow workspace path cannot cross a symlink, junction, or reparse point.",
+                        str(raised.exception),
+                    )
+
+    def test_cloud_placeholder_inside_the_workspace_is_reported_without_writing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            wiki = root / "knowledge/wiki"
+            wiki.mkdir(parents=True)
+            placeholder = wiki / "SCHEMA.md"
+            placeholder.write_text("# Schema\n", encoding="utf-8")
+            with fake_reparse(placeholder, CLOUD_TAG):
+                plan = plan_install(root, name="Editorial", platforms=["backend"])
+                self.assertTrue(any(CLOUD_SYNC_MESSAGE in item for item in plan["conflicts"]))
+                self.assertEqual("conflict", apply_install(root, plan)["status"])
+            self.assertFalse((root / "prism.workspace.yml").exists())
+
     def test_symlink_inside_bootstrap_path_is_reported_without_writing(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -329,6 +459,20 @@ class WorkflowInstallTests(unittest.TestCase):
             self.assertEqual("conflict", apply_install(root, plan)["status"])
             self.assertTrue(link.is_symlink())
             self.assertFalse((root / "prism.workspace.yml").exists())
+
+
+CONNECTED = "knowledge/wiki/CONNECTED.md"
+
+
+def _current_text(path: str) -> str:
+    return next(item["content"] for item in bootstrap_files() if item["path"] == path)
+
+
+def _shipped_history(history: dict[str, list[bytes]]):
+    """Pretend the packaged asset recorded these earlier shipped contents."""
+
+    digests = {path: tuple(hashlib.sha256(text).hexdigest() for text in texts) for path, texts in history.items()}
+    return patch.object(workflow_installer, "previous_digests", lambda path, version="1": digests.get(path, ()))
 
 
 def _adopt_empty_workspace(root: Path) -> None:

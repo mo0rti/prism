@@ -34,6 +34,7 @@ Use this skill for repository-wide iOS guardrails.
 - Preserve stable accessibility identifiers on screen roots and critical controls that generated UI tests depend on.
 - Move reusable SwiftUI components into `UI/Common/` and shared styling primitives into `UI/Theme/`.
 - Regenerate the Xcode project after structural `project.yml` changes such as new targets, schemes, Swift Packages, xcconfig wiring, build settings, entitlements, resource bundles, capabilities, or deployment-target changes.
+- Write URLs in `Config/*.xcconfig` as `http:/$()/host/path`, because xcconfig treats `//` as a comment start. `Config/Debug.xcconfig` and `Config/Release.xcconfig` are git-ignored; change the default in the tracked `.example` file as well.
 
 ## Reference files
 

@@ -109,3 +109,57 @@ jobs:
 
       - name: Exercise installed CLI generation and updates
         run: '"$RUNNER_TEMP/prism-wheel-env/bin/python" scripts/check-installed-cli.py --python "$RUNNER_TEMP/prism-wheel-env/bin/python" --template "$GITHUB_WORKSPACE"'
+
+  browser-e2e:
+    name: Browser e2e (ubuntu-latest, 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package and browser test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[e2e]" jsonschema
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run browser tests
+        env:
+          PRISM_BROWSER_E2E: "1"
+          PRISM_BROWSER_E2E_DIR: ${{ runner.temp }}/prism-browser-e2e
+        run: |
+          set -o pipefail
+          mkdir -p "$PRISM_BROWSER_E2E_DIR"
+          python -B -m unittest discover -s tests/browser -t . 2>&1 | tee "$RUNNER_TEMP/prism-browser-e2e.log"
+
+      - name: Require that browser tests ran
+        run: |
+          ran=$(sed -nE 's/^Ran ([0-9]+) tests? in .*/\1/p' "$RUNNER_TEMP/prism-browser-e2e.log" | tail -n 1)
+          skipped=$(sed -nE 's/^(OK|FAILED) .*skipped=([0-9]+).*/\2/p' "$RUNNER_TEMP/prism-browser-e2e.log" | tail -n 1)
+          ran=${ran:-0}
+          skipped=${skipped:-0}
+          echo "Browser tests ran: $ran, skipped: $skipped"
+          if [ "$ran" -eq 0 ]; then
+            echo "::error::The browser test run reported 0 tests."
+            exit 1
+          fi
+          if [ "$skipped" -ge "$ran" ]; then
+            echo "::error::All browser tests were skipped; check PRISM_BROWSER_E2E and the e2e extra."
+            exit 1
+          fi
+
+      - name: Upload browser evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prism-browser-e2e-artifacts
+          path: ${{ runner.temp }}/prism-browser-e2e/artifacts
+          retention-days: 14
+          if-no-files-found: warn

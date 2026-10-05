@@ -21,12 +21,21 @@ Use this skill to work through open PO-owned questions one feature at a time.
    - update the open questions table
    - update the feature spec if the answer introduces a new requirement
    - flag the conflict and leave the question open if the answer contradicts existing wiki content
-6. Update `index.md` if owner or status changes
+6. Leave `status` and `owner` as they are; the index row then stays as it is
 7. Append a single summary entry to `log.md`
 
 ## Rules
 
 - write-capable skill
+- answers only questions owned by `po`; leave designer and dev questions open
+- does not change a feature's `status` or `owner` (`$po-specify` completes a `raw` feature)
+- resolve a question by changing only its Status cell to `resolved: [answer]`; keep its
+  number, text and owner, and add no row except a new open question
+- change only the feature's Open questions, Summary, User story, Acceptance criteria,
+  Platform scope and API surface sections; add no other section (no `## Requirements` or
+  `## Answers`)
+- every requirement-bearing section you change must contain the full text of at least one
+  answer you resolve in the same proposal; a paraphrase alone is not enough
 - present questions one feature at a time, not as one large dump
 - confirm each update before moving to the next question
 - if an answer introduces a new open question, add it immediately
@@ -38,7 +47,7 @@ Use this skill to work through open PO-owned questions one feature at a time.
 
 Mirror the detailed workflow and write behavior from:
 
-- `/.claude/commands/po-clarify.md`
+- `.claude/commands/po-clarify.md`
 
 ## Output behavior
 

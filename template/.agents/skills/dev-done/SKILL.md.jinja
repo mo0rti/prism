@@ -32,15 +32,28 @@ preflight is copy-only and never authorizes a write.
 2. Read SCHEMA, `index.md`, the feature, every declared platform requirement,
    applicable API contract, linked context, workspace identity, delivery evidence,
    advisory state, and active revalidation.
-3. Delivery evidence must already be recorded on the feature page before
-   invoking `$dev-done`. If the current `## Delivery evidence` table is missing
-   or incomplete, keep the feature `in-dev`; record and verify the evidence
-   first, then rerun this action. Do not use this action to invent or
-   implicitly satisfy missing delivery claims.
+3. Delivery evidence is an input to this action. For every declared platform,
+   get the implementation artifact, the test command and result, and the release
+   artifact or target from the developer, or read them from the current
+   `## Delivery evidence` table when it already holds them. Write them into the
+   proposed feature page as that table: one row per declared platform in the
+   `| Platform | Implementation | Tests | Release |` cell order, each cell a
+   substantive reference. The same preview then shows the evidence rows and the
+   status change, and no hand edit is needed first. Ask the developer for any
+   value you do not have; never invent or imply a delivery claim. The
+   connected board rejects a proposal whose table has no rows or an invalid row
+   with `delivery_evidence_required` or `delivery_evidence_invalid` and names
+   the problem. A transition preflight reports the table recorded on the page
+   now; an empty table is expected until the proposal supplies it.
    For every declared platform, verify the actual implementation artifact, test
-   result, and release artifact or target that the current `## Delivery evidence`
-   table names. A substantive table cell, file presence, or clean lint result is
-   not verification. If `revalidation` includes `implementation`, `tests`, or
+   result, and release artifact or target the evidence names. A substantive
+   table cell, file presence, or clean lint result is not verification. When a
+   reference cannot be checked from here, say so in the proposed
+   `## Post-ship notes`: that row is then the developer's attestation, and the
+   developer confirms it with the final confirmation. The attestation stands in
+   for your own check in step 4, so the requirement pages and API contract it
+   covers may be proposed as complete; say in your summary that you did not
+   verify the references yourself. If `revalidation` includes `implementation`, `tests`, or
    `release`, offer to perform fresh checks and prepare a proposal clearing only
    the domains supported by that fresh evidence. Evaluate that proposal while
    the current source is unchanged.
@@ -51,12 +64,15 @@ preflight is copy-only and never authorizes a write.
    proposed as complete only when the verified delivery evidence supports that
    exact change; a draft API contract blocks. Show exact affected requirement/API
    changes; preserve statuses already complete and never apply a blanket update.
-5. Ask the user for deviations, lessons learned, and board-review outcomes. Keep
-   any notes as proposed `## Post-ship notes` content until final confirmation.
+5. Ask the user for deviations, lessons learned, and board-review outcomes unless
+   the request already gives them or says there are none; ask only for what it
+   does not cover, and do not stop for lessons learned: propose the notes you have
+   and say in your summary that no lessons learned were given. Keep any notes as
+   proposed `## Post-ship notes` content until final confirmation.
 6. Show the full proposed write set and wait for explicit confirmation. Reread the
    source and context immediately before confirmation and once again after it.
-7. After confirmation, write the confirmed notes and any reviewed corrections
-   to the existing delivery evidence, update only the exact verified
+7. After confirmation, write the confirmed notes and the confirmed delivery
+   evidence rows, update only the exact verified
    requirement/API pages proposed, update the feature to `done`
    with owner `none`, update `index.md`, and append to `log.md`.
 
@@ -67,7 +83,11 @@ exact observed changes and recover from a fresh reread; no transaction is implie
 ## Rules
 
 - write-capable skill
-- ask for post-ship notes before changing the final status
+- ask for post-ship notes before changing the final status, unless the request already gives them
+- on the feature page change only the lifecycle metadata, `## Delivery evidence` and
+  `## Post-ship notes`; add no other section heading (not even an empty `## Reopen history`)
+  and leave every other line as it is; in a linked requirement or API contract page change
+  only `status`
 - record meaningful deviations from the spec instead of silently dropping them
 - if a board review happened, ask whether any concerns materialized or proved unfounded
 - partial platform delivery remains `in-dev`; do not mark a feature `done` until
@@ -79,7 +99,7 @@ exact observed changes and recover from a fresh reread; no transaction is implie
 
 Mirror the detailed workflow and write behavior from:
 
-- `/.claude/commands/dev-done.md`
+- `.claude/commands/dev-done.md`
 
 ## Output behavior
 

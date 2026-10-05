@@ -59,6 +59,13 @@ jobs:
     env:
       PRISM_RELEASE_CONFIGURED: {% raw %}${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}{% endraw %}
     steps:
+      - name: Report skipped deploy
+        if: env.PRISM_RELEASE_CONFIGURED != 'true'
+        run: |
+          echo "::warning title=Deploy skipped::Set the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets to deploy the user web app. No deploy ran."
+          echo "### Deploy skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "The CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets are not both set, so the user web app was not deployed." >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/checkout@v4
         if: env.PRISM_RELEASE_CONFIGURED == 'true'
 

@@ -30,16 +30,18 @@ app/
 │       ├── home/page.tsx
 │       ├── examples/page.tsx
 │       └── profile/page.tsx
+└── api/
+    ├── auth/[...nextauth]/route.ts
+    ├── session/logout/route.ts
+    └── v1/[...path]/route.ts
+components/
+├── layout/
+└── providers/
+lib/
 ├── api/
-│   ├── auth/[...nextauth]/route.ts
-│   └── v1/[...path]/route.ts
-├── components/
-│   ├── layout/
-│   └── providers/
-└── lib/
-    ├── api/
-    ├── config/
-    └── i18n/
+├── auth/
+├── config/
+└── i18n/
 ```
 
 ## Current Maturity
@@ -52,6 +54,10 @@ app/
 - Backend access and refresh tokens live in a separate encrypted HttpOnly backend cookie.
   The Auth.js cookie and public session contain user identity only. API route handlers refresh and persist the backend cookie;
   server-component session reads do not rotate tokens.
+- Sign-out goes through `signOutEverywhere` (`lib/auth/sign-out.ts`): `POST /api/session/logout` revokes the backend refresh
+  session first, then Auth.js clears the web session. A backend rejection of a refresh ends the web session.
+- The `/api/v1/*` proxy forwards only plain paths under `/api/v1/` (plus the mapped health check) and answers 400 for
+  traversal, encoded traversal and absolute URLs, so the bearer token only reaches API routes.
 - Use `AUTH_URL` (or `NEXTAUTH_URL`) for the public web origin. HTTPS uses Secure cookies.
 - Provider credentials, redirects, and a live sign-in still need validation in the target environment.
 

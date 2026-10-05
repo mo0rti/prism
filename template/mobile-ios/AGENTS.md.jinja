@@ -41,6 +41,8 @@ task mobile-ios:test-unit
 task mobile-ios:test-ui
 ```
 
+`Config/Debug.xcconfig` and `Config/Release.xcconfig` are git-ignored local files. `task mobile-ios:generate-project` creates a missing one from its tracked `.example` file. Write URLs in them as `http:/$()/host/path`, because xcconfig treats `//` as a comment start. Build and test tasks run on `SIMULATOR_NAME` when it is set and on the newest available iPhone simulator otherwise.
+
 ## Architecture Summary
 
 The generated iOS slice uses MVVM with a small, explicit structure:

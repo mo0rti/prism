@@ -1,0 +1,5 @@
+Use Prism's PO specify skill on feature F-001. Work only through your Prism MCP tools and follow the board's guidance.
+
+The product owner's note for the API surface: the backend adds one endpoint, `GET /api/v1/reviews/:reviewId/summary`, which returns the review summary of a finished review as a PDF to the signed-in reviewer who wrote it. Record that under API surface.
+
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would change. If something blocks it, tell me exactly what and stop.

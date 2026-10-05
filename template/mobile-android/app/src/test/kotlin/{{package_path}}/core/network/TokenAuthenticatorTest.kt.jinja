@@ -7,6 +7,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -16,6 +17,7 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
@@ -37,7 +39,10 @@ class TokenAuthenticatorTest {
             state.compareAndSet(expected, StoredTokens(access, refresh, expected.sessionId.takeIf { access != null && refresh != null }))
         }
     }
-    private val authenticator = TokenAuthenticator(tokenStorage, Json { ignoreUnknownKeys = true })
+    private val authenticator = authenticatorFor("https://api.example.com/api/v1/")
+
+    private fun authenticatorFor(baseUrl: String, client: OkHttpClient = OkHttpClient()) =
+        TokenAuthenticator(tokenStorage, Json { ignoreUnknownKeys = true }, baseUrl, client)
 
     private fun response(url: String = "https://api.example.com/data", retry: Boolean = false): Response =
         Response.Builder().request(Request.Builder().url(url)
@@ -70,7 +75,7 @@ class TokenAuthenticatorTest {
 
     @Test
     fun `concurrent 401 responses consume one refresh and both retry`() {
-        withRefreshServer { url, requests ->
+        withRefreshServer { authenticator, url, requests ->
             val pool = Executors.newFixedThreadPool(2)
             try {
                 val start = CountDownLatch(1)
@@ -89,7 +94,7 @@ class TokenAuthenticatorTest {
     fun `delayed refresh cannot replace a new login or resurrect logout`() {
         for (nextState in listOf(StoredTokens("login-access", "login-refresh", "session-b"), emptyTokens)) {
             state.value = originalTokens
-            withRefreshServer(beforeReply = { state.value = nextState }) { url, _ ->
+            withRefreshServer(beforeReply = { state.value = nextState }) { authenticator, url, _ ->
                 val result = authenticator.authenticate(null, response(url))
                 assertEquals(nextState, state.value)
                 assertNull(result)
@@ -113,9 +118,117 @@ class TokenAuthenticatorTest {
         assertEquals(originalTokens, state.value)
     }
 
+    @Test
+    fun `refresh rejected with 400 401 or 403 clears the session`() {
+        for (code in listOf(400, 401, 403)) {
+            state.value = originalTokens
+            withMockServer(MockResponse().setResponseCode(code)) { authenticator, url, _ ->
+                assertNull("status $code", authenticator.authenticate(null, response(url)))
+                assertEquals("status $code", emptyTokens, state.value)
+            }
+        }
+    }
+
+    @Test
+    fun `refresh failing with a server or throttling status keeps the session`() {
+        for (code in listOf(429, 500, 502, 503, 504)) {
+            state.value = originalTokens
+            withMockServer(MockResponse().setResponseCode(code)) { authenticator, url, _ ->
+                assertNull("status $code", authenticator.authenticate(null, response(url)))
+                assertEquals("status $code", originalTokens, state.value)
+            }
+        }
+    }
+
+    @Test
+    fun `refresh dropped by a connection error keeps the session`() {
+        withMockServer(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST)) { authenticator, url, _ ->
+            assertNull(authenticator.authenticate(null, response(url)))
+            assertEquals(originalTokens, state.value)
+        }
+    }
+
+    @Test
+    fun `refresh timeout keeps the session`() {
+        val shortTimeouts = OkHttpClient.Builder()
+            .readTimeout(200, TimeUnit.MILLISECONDS)
+            .callTimeout(5, TimeUnit.SECONDS)
+            .build()
+        withMockServer(
+            MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE),
+            client = shortTimeouts,
+        ) { authenticator, url, _ ->
+            assertNull(authenticator.authenticate(null, response(url)))
+            assertEquals(originalTokens, state.value)
+        }
+    }
+
+    @Test
+    fun `unreadable refresh response keeps the session`() {
+        withMockServer(MockResponse().setResponseCode(200).setBody("not json")) { authenticator, url, _ ->
+            assertNull(authenticator.authenticate(null, response(url)))
+            assertEquals(originalTokens, state.value)
+        }
+    }
+
+    @Test
+    fun `session survives a transient refresh failure and refreshes on the next 401`() {
+        withMockServer(MockResponse().setResponseCode(503), refreshSuccess()) { authenticator, url, requests ->
+            assertNull(authenticator.authenticate(null, response(url)))
+            assertEquals(originalTokens, state.value)
+
+            val retried = authenticator.authenticate(null, response(url))
+            assertEquals("Bearer new-access", retried?.header("Authorization"))
+            assertEquals(refreshedTokens, state.value)
+            assertEquals(2, requests.get())
+        }
+    }
+
+    @Test
+    fun `refresh url is built from the configured base url and not from the failed request`() {
+        val server = MockWebServer()
+        server.enqueue(refreshSuccess())
+        server.start()
+        try {
+            val configured = authenticatorFor(server.url("/custom/v2/").toString())
+            val result = configured.authenticate(null, response("https://elsewhere.invalid/api/v1/data?private=query"))
+
+            val recorded = server.takeRequest(5, TimeUnit.SECONDS)!!
+            assertEquals("POST", recorded.method)
+            assertEquals("/custom/v2/auth/refresh", recorded.path)
+            assertNull(recorded.getHeader("Authorization"))
+            assertEquals("Bearer new-access", result?.header("Authorization"))
+        } finally { server.shutdown() }
+    }
+
+    private fun refreshSuccess() = MockResponse().setResponseCode(200).setBody(
+        """{"accessToken":"new-access","refreshToken":"new-refresh","expiresIn":3600,"user":{"id":"user-1","email":"test@example.com","displayName":"Test","authProvider":"LOCAL","role":"USER"}}"""
+    )
+
+    private fun withMockServer(
+        vararg responses: MockResponse,
+        client: OkHttpClient = OkHttpClient(),
+        test: (TokenAuthenticator, String, AtomicInteger) -> Unit,
+    ) {
+        val requests = AtomicInteger()
+        val server = MockWebServer()
+        val queue = ArrayDeque(responses.toList())
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                requests.incrementAndGet()
+                assertEquals("/api/v1/auth/refresh", request.path)
+                assertTrue(request.body.readUtf8().contains("old-refresh"))
+                return synchronized(queue) { queue.removeFirst() }
+            }
+        }
+        server.start()
+        try { test(authenticatorFor(server.url("/api/v1/").toString(), client), server.url("/data?private=query").toString(), requests) }
+        finally { server.shutdown() }
+    }
+
     private fun withRefreshServer(
         beforeReply: () -> Unit = {},
-        test: (String, AtomicInteger) -> Unit,
+        test: (TokenAuthenticator, String, AtomicInteger) -> Unit,
     ) {
         val requests = AtomicInteger()
         val server = MockWebServer()
@@ -125,13 +238,11 @@ class TokenAuthenticatorTest {
                 assertEquals("/api/v1/auth/refresh", request.path)
                 assertTrue(request.body.readUtf8().contains("old-refresh"))
                 beforeReply()
-                return MockResponse().setResponseCode(200).setBody(
-                    """{"accessToken":"new-access","refreshToken":"new-refresh","expiresIn":3600,"user":{"id":"user-1","email":"test@example.com","displayName":"Test","authProvider":"LOCAL","role":"USER"}}"""
-                )
+                return refreshSuccess()
             }
         }
         server.start()
-        try { test(server.url("/data?private=query").toString(), requests) }
+        try { test(authenticatorFor(server.url("/api/v1/").toString()), server.url("/data?private=query").toString(), requests) }
         finally { server.shutdown() }
     }
 }

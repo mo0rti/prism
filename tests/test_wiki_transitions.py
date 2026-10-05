@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
+import time
 import unittest
 import yaml
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from contextlib import redirect_stdout
 from datetime import date, datetime, timedelta, timezone
 from io import StringIO
@@ -14,12 +16,15 @@ from unittest.mock import Mock, patch
 from prism_cli.wiki_model import parse_advisory_required_actions, parse_delivery_evidence, read_feature_pages
 from prism_cli.wiki_graph import build_graph
 from prism_cli.cli import build_parser
+from prism_cli import wiki_lint
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_transitions import (
     ACTION_SPECS,
     CAPABILITY_FILES,
+    FingerprintCache,
     _OBSERVED_AT_CACHE_LIMIT,
     build_transition_preflight,
+    evaluate_transition_summaries,
     fingerprint_digest,
     workspace_fingerprint,
 )
@@ -425,6 +430,43 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertEqual("ready", ready["classification"])
         self.assertEqual("pass", next(check for check in ready["checks"] if check["code"] == "advisory-actions")["status"])
 
+    def test_design_handoff_is_blocked_by_open_po_and_designer_questions_but_not_by_a_dev_question(self) -> None:
+        self._write_all_capabilities()
+
+        def preflight_with_question(owner: str) -> dict:
+            body = FEATURE_TEMPLATE.format(
+                feature_id="F-001",
+                title="Payout summary",
+                status="in-design",
+                owner="designer",
+                platforms="backend",
+                advisory="not-needed",
+                advisory_reason="",
+            ).replace(
+                "|---|----------|-------|--------|\n",
+                "|---|----------|-------|--------|\n"
+                f"| 1 | Which settlement threshold applies? | {owner} | open |\n",
+            )
+            self._write_feature(status="in-design", owner="designer", body=body)
+            return build_transition_preflight(self.root, "F-001", action="design-handoff")["facts"]["transition"]
+
+        for owner in ("po", "designer"):
+            with self.subTest(owner=owner):
+                blocked = preflight_with_question(owner)
+                self.assertEqual("blocked", blocked["classification"])
+                self.assertEqual("blocked", next(check for check in blocked["checks"] if check["code"] == "open-questions")["status"])
+        ready = preflight_with_question("dev")
+        self.assertEqual("ready", ready["classification"])
+        self.assertEqual("pass", next(check for check in ready["checks"] if check["code"] == "open-questions")["status"])
+
+        # The guidance says the same: only po and designer questions block the handoff.
+        for relative in (".agents/skills/design-handoff/SKILL.md", ".claude/commands/design-handoff.md"):
+            with self.subTest(guidance=relative):
+                text = " ".join((self.root / relative).read_text(encoding="utf-8").split())
+                self.assertIn("owned by `dev` does not block", text)
+                self.assertIn("`po` or `designer`", text)
+                self.assertNotIn("route the question with", text)
+
     def test_advisory_examples_in_comments_or_fences_cannot_satisfy_required_actions(self) -> None:
         examples = [
             """## Actions required before dev starts
@@ -764,6 +806,65 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertEqual("unknown", feature_nodes[0]["transition"]["classification"])
         self.assertFalse(envelope["facts"]["transition_capability"]["snapshot"]["consistent"])
 
+    def _add_features(self, count: int) -> None:
+        for number in range(2, count + 2):
+            self._write_feature(feature_id=f"F-{number:03d}", filename=f"F-{number:03d}-payout-summary.md")
+
+    def test_lint_resolves_each_path_once_per_call(self) -> None:
+        self._add_features(5)
+        real_resolve = Path.resolve
+        resolved: Counter[str] = Counter()
+
+        def counting_resolve(path: Path, *args: object, **kwargs: object) -> Path:
+            resolved[str(path)] += 1
+            return real_resolve(path, *args, **kwargs)
+
+        with patch.object(Path, "resolve", counting_resolve):
+            result = lint_wiki(self.root)
+
+        self.assertEqual({}, {path: count for path, count in resolved.items() if count > 1})
+        self.assertEqual(result.to_dict()["diagnostics"], lint_wiki(self.root).to_dict()["diagnostics"])
+
+    def test_lint_resolve_memo_is_local_to_one_call(self) -> None:
+        lint_wiki(self.root)
+        self.assertIsNone(wiki_lint._RESOLVE_MEMO.get())
+        with patch("prism_cli.wiki_lint.read_wiki_pages", side_effect=RuntimeError("stop")):
+            with self.assertRaises(RuntimeError):
+                lint_wiki(self.root)
+        self.assertIsNone(wiki_lint._RESOLVE_MEMO.get())
+
+    def _count_required_file_reads(self) -> tuple[Counter[str], int]:
+        real_read_text = Path.read_text
+        reads: Counter[str] = Counter()
+
+        def counting_read_text(path: Path, *args: object, **kwargs: object) -> str:
+            if path.name in {"SCHEMA.md", "index.md"} and kwargs.get("encoding") == "utf-8-sig":
+                reads[path.name] += 1
+            return real_read_text(path, *args, **kwargs)
+
+        with patch.object(Path, "read_text", counting_read_text):
+            evaluation = evaluate_transition_summaries(self.root)
+        return reads, len(evaluation.transitions_by_path)
+
+    def test_required_wiki_files_are_read_a_fixed_number_of_times_per_evaluation(self) -> None:
+        one_feature, count_one = self._count_required_file_reads()
+        self._add_features(5)
+        six_features, count_six = self._count_required_file_reads()
+
+        self.assertEqual((1, 6), (count_one, count_six))
+        self.assertEqual(one_feature, six_features, "Reads of SCHEMA.md and index.md must not grow with the feature count.")
+
+    def test_unreadable_required_wiki_file_still_blocks_every_feature(self) -> None:
+        self._add_features(2)
+        (self.wiki_root / "SCHEMA.md").write_bytes(bytes([0xFF, 0xFE, 0x00]) + b" not utf-8")
+
+        evaluation = evaluate_transition_summaries(self.root)
+
+        self.assertEqual(3, len(evaluation.transitions_by_path))
+        for transition in evaluation.transitions_by_path.values():
+            codes = {check["code"] for check in transition["checks"]}
+            self.assertIn("source-integrity:unreadable-required-wiki-file", codes)
+
     def test_fingerprint_includes_capability_files(self) -> None:
         before = workspace_fingerprint(self.root)
         path = self.root / CAPABILITY_FILES["codex"]
@@ -789,6 +890,160 @@ class WikiTransitionTests(unittest.TestCase):
         payload = json.loads(output.getvalue())
         self.assertEqual("wiki transition-preflight", payload["command"])
         self.assertEqual("F-001", payload["facts"]["transition"]["feature_id"])
+
+
+class FingerprintCacheTests(unittest.TestCase):
+    """The poller's stat-gated fingerprint must never hide an edit for longer than its documented bounds."""
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.features = self.root / "knowledge" / "wiki" / "features"
+        self.features.mkdir(parents=True)
+        self.now_ns = time.time_ns()
+        self.monotonic = 1000.0
+        self.cache = FingerprintCache(wall_clock_ns=lambda: self.now_ns, monotonic=lambda: self.monotonic)
+        self.pages = [self.features / f"F-00{number}-page.md" for number in range(1, 4)]
+        for page in self.pages:
+            self.write(page, f"alpha {page.name}\n")
+        self.write(self.root / "knowledge" / "wiki" / "index.md", "# Index\n")
+        self.write(self.root / "prism.workspace.yml", "schema_version: 1\n")
+        self.hashed: list[str] = []
+        from prism_cli import wiki_transitions
+
+        real = wiki_transitions._file_fingerprint
+
+        def recording(path: Path) -> str:
+            self.hashed.append(path.name)
+            return real(path)
+
+        patcher = patch("prism_cli.wiki_transitions._file_fingerprint", recording)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write(self, path: Path, text: str, *, age_seconds: float = 3600.0) -> None:
+        path.write_text(text, encoding="utf-8", newline="\n")
+        self.set_mtime(path, age_seconds)
+
+    def set_mtime(self, path: Path, age_seconds: float) -> None:
+        modified = self.now_ns - int(age_seconds * 1_000_000_000)
+        os.utime(path, ns=(modified, modified))
+
+    def scan(self) -> tuple[tuple[str, str], ...]:
+        self.hashed.clear()
+        return workspace_fingerprint(self.root, cache=self.cache)
+
+    def test_cached_fingerprint_equals_the_full_fingerprint_and_skips_unchanged_files(self) -> None:
+        full = workspace_fingerprint(self.root)
+        self.assertEqual(5, len(self.hashed))
+        first = self.scan()
+        hashed_first = len(self.hashed)
+        second = self.scan()
+
+        self.assertEqual(full, first)
+        self.assertEqual(full, second)
+        self.assertEqual(5, hashed_first)
+        self.assertEqual([], self.hashed)
+
+    def test_edit_that_changes_content_and_size_is_detected_on_the_next_scan(self) -> None:
+        before = self.scan()
+        self.write(self.pages[0], "alpha with a longer body\n")
+
+        after = self.scan()
+        hashed = list(self.hashed)
+
+        self.assertNotEqual(before, after)
+        self.assertEqual(workspace_fingerprint(self.root), after)
+        self.assertEqual([self.pages[0].name], hashed)
+
+    def test_edit_that_keeps_the_size_but_changes_the_modification_time_is_detected(self) -> None:
+        before = self.scan()
+        original = self.pages[1].read_text(encoding="utf-8")
+        self.write(self.pages[1], original.replace("alpha", "bravo"), age_seconds=1800.0)
+        self.assertEqual(len(original), len(self.pages[1].read_text(encoding="utf-8")))
+
+        after = self.scan()
+
+        self.assertNotEqual(before, after)
+        self.assertEqual(workspace_fingerprint(self.root), after)
+
+    def test_edit_that_keeps_size_and_modification_time_is_caught_by_the_backstop(self) -> None:
+        before = self.scan()
+        original = self.pages[2].read_text(encoding="utf-8")
+        self.write(self.pages[2], original.replace("alpha", "bravo"))  # same size, same timestamp as before
+        self.assertEqual(len(original), len(self.pages[2].read_text(encoding="utf-8")))
+
+        self.monotonic += FingerprintCache.FULL_REHASH_SECONDS - 1
+        self.assertEqual(before, self.scan(), "Inside the backstop interval the stat gate trusts the unchanged signature.")
+        self.assertEqual([], self.hashed)
+
+        self.monotonic += 1
+        after = self.scan()
+        hashed = list(self.hashed)
+        self.assertNotEqual(before, after)
+        self.assertEqual(workspace_fingerprint(self.root), after)
+        self.assertEqual(5, len(hashed), "The backstop rehashes every file.")
+
+        self.assertEqual(after, self.scan())
+        self.assertEqual([], self.hashed, "The next scan is gated again.")
+
+    def test_files_inside_the_racy_window_are_rehashed_until_they_age_out(self) -> None:
+        racy = self.features / "F-009-racy.md"
+        self.write(racy, "alpha racy\n", age_seconds=0.5)
+        first = self.scan()
+        self.assertIn("F-009-racy.md", self.hashed)
+
+        # Same size, same timestamp tick as the first hash: only the racy rule can see it.
+        self.write(racy, "bravo racy\n", age_seconds=0.5)
+        second = self.scan()
+        self.assertNotEqual(first, second)
+        self.assertIn("F-009-racy.md", self.hashed)
+
+        self.now_ns += 10 * 1_000_000_000
+        self.scan()
+        self.assertIn("F-009-racy.md", self.hashed, "The first hash taken after the window is stored.")
+        self.scan()
+        self.assertNotIn("F-009-racy.md", self.hashed, "Once it was hashed outside the window it is gated.")
+
+    def test_deleted_and_new_files_are_reflected(self) -> None:
+        before = self.scan()
+        self.pages[0].unlink()
+        extra = self.features / "F-010-new.md"
+        self.write(extra, "alpha new\n")
+
+        after = self.scan()
+        hashed = list(self.hashed)
+
+        self.assertNotEqual(before, after)
+        self.assertEqual(workspace_fingerprint(self.root), after)
+        self.assertEqual(["F-010-new.md"], hashed)
+
+    def test_calendar_day_rollover_still_invalidates_a_cached_scan(self) -> None:
+        before = self.scan()
+        with patch("prism_cli.wiki_transitions.date") as clock:
+            clock.today.return_value = date(2999, 1, 1)
+            after = self.scan()
+
+        self.assertNotEqual(before, after)
+        self.assertEqual("2999-01-01", dict(after)["today"])
+
+    def test_unreadable_files_are_not_cached(self) -> None:
+        self.scan()
+        with patch("prism_cli.wiki_transitions._file_fingerprint", return_value="unreadable"):
+            self.monotonic += FingerprintCache.FULL_REHASH_SECONDS
+            self.scan()
+        self.hashed.clear()
+        self.scan()
+        self.assertEqual(5, len(self.hashed))
+
+    def test_default_fingerprint_never_consults_a_cache(self) -> None:
+        with patch.object(FingerprintCache, "file_fingerprint", side_effect=AssertionError("cache used")):
+            first = workspace_fingerprint(self.root)
+            second = workspace_fingerprint(self.root)
+
+        self.assertEqual(first, second)
+        self.assertEqual(10, len(self.hashed), "Without a cache every call hashes every file.")
 
 
 if __name__ == "__main__":

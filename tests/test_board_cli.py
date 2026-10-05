@@ -3,9 +3,15 @@
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
+import queue
+import socket
 import sqlite3
+import subprocess
+import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -14,6 +20,7 @@ import yaml
 from prism_cli.cli import build_parser
 from prism_cli.board_store import BoardStore
 from prism_cli.workflow_assets import asset_digest
+from prism_cli.workflow_install import apply_install, plan_install
 
 
 class BoardCliTests(unittest.TestCase):
@@ -92,6 +99,24 @@ class BoardCliTests(unittest.TestCase):
                     self.assertIn(r"\u2192", output)
                 stream.close()
 
+    def test_the_text_plan_lists_updated_and_preserved_files(self):
+        plan = {
+            "changes": [],
+            "conflicts": [],
+            "updated": ["knowledge/wiki/SCHEMA.md", "AGENTS.md"],
+            "preserved": ["knowledge/wiki/index.md"],
+        }
+        with patch("prism_cli.workflow_install.plan_install", return_value=plan):
+            code, output, _ = self.run_cli("workflow", "upgrade", ".")
+        self.assertEqual(0, code)
+        lines = output.splitlines()
+        self.assertIn("Updated: knowledge/wiki/SCHEMA.md", lines)
+        self.assertIn("Updated: AGENTS.md", lines)
+        self.assertLess(lines.index("Updated: AGENTS.md"), lines.index("Preserved: knowledge/wiki/index.md"))
+        with patch("prism_cli.workflow_install.plan_install", return_value={"changes": [], "conflicts": []}):
+            _, output, _ = self.run_cli("workflow", "upgrade", ".")
+        self.assertNotIn("Updated:", output)
+
     def test_participant_management_reports_sqlite_contention_without_traceback(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -111,6 +136,129 @@ class BoardCliTests(unittest.TestCase):
                     self.assertEqual("", output)
                     self.assertIn("Participant management failed: database is locked", error)
                     self.assertNotIn("Traceback", error)
+
+
+class _FakeUvicornServer:
+    """Stands in for uvicorn.Server so serving output is tested without a socket."""
+
+    def __init__(self, config) -> None:
+        self.config = config
+        self.started = True
+        self.should_exit = False
+
+    def run(self) -> None:
+        return None
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def _stop_process_tree(process: subprocess.Popen) -> None:
+    """Stop the server and any interpreter it launched (a Windows venv launcher starts a child)."""
+
+    if process.poll() is None:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, check=False)
+        else:
+            process.terminate()
+    try:
+        process.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+class BoardServeFirstRunTests(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.assertEqual(
+            "applied",
+            apply_install(self.root, plan_install(self.root, name="First run", platforms=["backend"]))["status"],
+        )
+
+    def run_cli(self, *argv):
+        args = build_parser().parse_args(argv)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = args.func(args)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_serve_prints_the_board_url_mcp_endpoint_and_grant_hint(self):
+        port = _free_port()
+        with patch("uvicorn.Server", _FakeUvicornServer):
+            code, output, error = self.run_cli("board", "serve", str(self.root), "--port", str(port), "--no-open")
+
+        lines = output.splitlines()
+        self.assertEqual(0, code, error)
+        self.assertEqual(f"Prism board: http://127.0.0.1:{port}/", lines[0])
+        self.assertEqual(f"MCP endpoint: http://127.0.0.1:{port}/mcp", lines[1])
+        self.assertIn('prism board grant "NAME" --kind human|agent [--write] --path ', lines[2])
+        self.assertIn(str(self.root), lines[2])
+        self.assertEqual("Local only. Press Ctrl+C to stop.", lines[3])
+
+    def test_serve_hint_uses_a_dot_path_from_the_workspace_folder(self):
+        from prism_cli.board_server import serve_board
+
+        port = _free_port()
+        previous = Path.cwd()
+        os.chdir(self.root)
+        try:
+            stdout = io.StringIO()
+            with patch("uvicorn.Server", _FakeUvicornServer), redirect_stdout(stdout):
+                code = serve_board(Path("."), port=port, open_browser=False)
+        finally:
+            os.chdir(previous)
+
+        self.assertEqual(0, code)
+        self.assertTrue(stdout.getvalue().splitlines()[2].endswith("--path ."), stdout.getvalue())
+
+    def test_banner_reaches_a_pipe_while_the_server_is_still_running(self):
+        # The subprocess is not unbuffered, so only an explicit flush shows the banner before exit.
+        env = {key: value for key, value in os.environ.items() if key != "PYTHONUNBUFFERED"}
+        repo_root = Path(__file__).resolve().parent.parent
+        port = _free_port()
+        process = subprocess.Popen(
+            [sys.executable, "-B", "-m", "prism_cli", "board", "serve", str(self.root), "--port", str(port), "--no-open"],
+            cwd=repo_root,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        first_line: queue.Queue = queue.Queue()
+        reader = threading.Thread(target=lambda: first_line.put(process.stdout.readline()), daemon=True)
+        reader.start()
+        try:
+            try:
+                line = first_line.get(timeout=30)
+            except queue.Empty:
+                self.fail("The board banner did not reach the pipe while the server was running.")
+            self.assertEqual(f"Prism board: http://127.0.0.1:{port}/", line.strip())
+            self.assertIsNone(process.poll(), "the server must still be running when the banner is read")
+        finally:
+            _stop_process_tree(process)
+            reader.join(timeout=5)
+            process.stdout.close()
+
+    def test_busy_port_gives_one_line_error_and_exit_code_4_without_state(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as busy:
+            busy.bind(("127.0.0.1", 0))
+            busy.listen()
+            port = busy.getsockname()[1]
+            code, output, error = self.run_cli("board", "serve", str(self.root), "--port", str(port), "--no-open")
+
+        self.assertEqual(4, code)
+        self.assertEqual("", output, "the board URL must not be printed when the port is busy")
+        self.assertEqual(1, len(error.strip().splitlines()), error)
+        self.assertIn(f"Cannot start the Prism board on port {port}", error)
+        self.assertIn("already in use", error)
+        self.assertFalse((self.root / ".prism").exists(), "a busy port must not create board state")
 
 
 if __name__ == "__main__":

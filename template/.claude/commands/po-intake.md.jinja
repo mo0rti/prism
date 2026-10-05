@@ -38,7 +38,11 @@ Example: /po-intake meeting-client-2026-04-01
 8. For each new feature identified and confirmed:
    - Assign the next available feature ID
    - Create `knowledge/wiki/features/[F-XXX]-[slug].md` using the feature format from SCHEMA.md
-   - Set status: `specified`, owner: `po`
+   - Set status: `raw`, owner: `po`. A new feature always starts `raw`; `/po-specify [F-XXX]`
+     completes it and moves it to `specified`.
+   - Write the Summary, User story, Acceptance criteria, Open questions and Platform scope
+     sections from the input. Leave Design, Related features, API surface, Board review
+     summary and Post-ship notes empty; `/po-specify` completes them.
    - Set `advisory-review` field based on team confirmation:
      `pending` if domain complexity confirmed, `not-needed` if confirmed simple feature
    - Populate open questions for anything missing from the input
@@ -49,7 +53,10 @@ Example: /po-intake meeting-client-2026-04-01
 11. Update `knowledge/wiki/index.md` status board with new feature rows
 12. Append to `knowledge/wiki/log.md`
 13. Move `knowledge/intake/pending/[folder-name]/` to `knowledge/intake/processed/[folder-name]/`
-    with a `MANIFEST.md` listing what was extracted
+    with a `MANIFEST.md` listing what was extracted. List every page you create by its
+    full relative path and its canonical ID, for example
+    `knowledge/wiki/features/F-001-slug.md (F-001)`; the connected board rejects a
+    manifest that omits one
 
 ## Notes for the agent
 
@@ -58,5 +65,6 @@ Example: /po-intake meeting-client-2026-04-01
 - If the input mentions an existing feature by name or description, check whether it
   updates that feature's spec rather than creating a duplicate.
 - A single input document may produce multiple features, personas, and business rules.
+- Never set a new feature to `specified`. `po-intake` writes `raw` + `po` only.
 - Do not set `advisory-review: not-needed` by default. Ask the user explicitly for any
   feature where domain complexity is ambiguous.

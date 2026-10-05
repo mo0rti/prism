@@ -19,13 +19,13 @@ Copier will walk you through these inputs:
 
 ## Current Notes Per Input
 
-- `Platforms`: backend, Android, and iOS remain the more proven paths; `web-user-app` and `web-admin-portal` now generate initial setup and pass install/build/OpenNext/Wrangler dry-run checks, but they still need live Cloudflare deployment validation.
-- `Auth methods`: Username + Password is the baseline sign-in method in the current Prism model. OAuth providers are additive. Google remains the safest secondary default; Apple remains selectable but still needs more hardening.
-- `Database`, `Backend deployment`, and `Web deployment`: implemented as questionnaire inputs, with one available option each for now.
+- `Platforms`: the backend, Android and web samples are verified locally. The iOS sample is verified only by the macOS CI job. `web-user-app` and `web-admin-portal` pass install, lint, typecheck, the auth check and the Next.js and OpenNext builds locally, the `web-smoke` CI job adds a Wrangler dry run, and live Cloudflare deployment is unverified. [current-status.md](current-status.md) records the verification per platform.
+- `Auth methods`: Username + Password is the baseline sign-in method in the current Prism model. OAuth providers are additive. Google is the secondary default; Apple Sign-In is selectable but experimental.
+- `Database`, `Backend deployment`, and `Web deployment`: implemented as questionnaire inputs, with one available option each.
 - `Supporting services`: Redis is optional and is modeled separately from the primary database choice.
 
 ## Recommended First Selections
 
 - **Backend only** for contract inspection and repository-shape validation
-- **Backend + Mobile** for the validated Android + iOS application path
+- **Backend + Mobile** for the Android and iOS client path; iOS needs macOS and Xcode validation
 - **Backend + Web** to evaluate the combined user-web and admin-portal setup

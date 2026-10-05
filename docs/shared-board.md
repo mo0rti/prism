@@ -1,6 +1,6 @@
 # Shared local board
 
-This is the usage contract for the connected-core implementation. Current acceptance and remaining checks are recorded in the [core plan](prism-core-workflow-plan.md). The first release runs on one computer: one service per workspace serves the browser board and an MCP endpoint. Remote hosting is deferred.
+This is the usage contract for the shared board. [Current status](current-status.md) records what is verified, and the [core plan](prism-core-workflow-plan.md) states the scope and contracts. Prism runs on one computer: one service per workspace serves the browser board and an MCP endpoint. Remote hosting is not supported.
 
 ## Install the workflow
 
@@ -11,7 +11,15 @@ prism workflow install . --name "Document review" --platform backend
 prism workflow install . --name "Document review" --platform backend --apply
 ```
 
-Repeat `--platform` for additional scope IDs. Initially these are `backend`, `web-user-app`, `web-admin-portal`, `mobile-android`, and `mobile-ios`. A workflow-only workspace does not need corresponding application directories. Installation creates workflow assets, a manifest and a local-state ignore rule; it does not generate an application. Existing source code, wiki content and custom agent instructions are preserved. Conflicting owned guidance stops installation and identifies the file for resolution.
+Repeat `--platform` for additional scope IDs. The IDs are `backend`, `web-user-app`, `web-admin-portal`, `mobile-android`, and `mobile-ios`. A workflow-only workspace does not need corresponding application directories. Installation creates workflow assets, a manifest and a local-state ignore rule; it does not generate an application. Existing source code, wiki content and custom agent instructions are preserved. Conflicting owned guidance stops installation and identifies the file for resolution.
+
+The one Prism-owned file that can conflict is `knowledge/wiki/CONNECTED.md`. A copy that equals an earlier packaged version is replaced without a conflict and listed in the preview as `Updated: <path>` (and as `updated` in the JSON plan). When it matches no packaged version, for example after you edited it, `prism workflow install` and `prism workflow upgrade` exit with code 3, write nothing and print:
+
+```text
+Conflict: knowledge/wiki/CONNECTED.md is present with different contents; preserve or reconcile it explicitly before installing the Prism-owned binding.
+```
+
+Copy your version somewhere outside `knowledge/wiki/`, delete the file, run the install again, and keep your own notes in your `AGENTS.md`, `CLAUDE.md` or other pages that Prism does not own. [Troubleshooting](troubleshooting.md#workflow-install-stops-on-a-modified-connectedmd) lists the steps.
 
 Review the plan's optional steps when existing `AGENTS.md` or `CLAUDE.md` files
 are preserved. Add the suggested `knowledge/wiki/CONNECTED.md` pointer to your
@@ -38,9 +46,11 @@ asset digest invalidates existing grants, so issue new participant grants after
 the upgrade. Fresh workflow installation and generated-workspace activation do
 not create runtime state.
 
-Use the existing agent-led `setup-project` skill to initialize product context after installing assets. Setup and advisory-board authoring retain their direct-file workflow in this slice; connected skill discovery must state which operations can actually write through the service.
+Use the existing agent-led `setup-project` skill to initialize product context after installing assets. Setup and advisory-board authoring use the direct-file workflow; connected skill discovery must state which operations can actually write through the service.
 
-Application generation remains available through `prism new`. Its template trust, release selection and update/provenance rules are independent of workflow adoption.
+The manifest `prism.workspace.yml` carries the board identity. If you delete it and install again, the workspace gets a new board identity, so every earlier grant stops counting: calls with an old token fail with `grant_identity_changed`, and `prism doctor --workspace .` warns that grants were issued for an earlier workflow pin. Issue new grants with `prism board grant` and update each agent host's token, or restore the manifest from version control or a backup instead of reinstalling.
+
+Application generation remains available through `prism new`. Its template trust, release selection and update/provenance rules are independent of workflow adoption. Without `--template`, an installed Prism renders the canonical template at the release tag that matches its version and stops with one message and exit code 3 while that tag is not published; pass `--template <path or URL>` instead ([details](troubleshooting.md#prism-new-stops-because-the-template-release-tag-is-missing)).
 
 ## Register participants and run the service
 
@@ -52,6 +62,49 @@ prism board serve . --port 8765
 
 Each grant prints its own token once. Keep it private. Enter the human token in the board's sign-in form; configure an agent's token in that host's environment. Tokens do not belong in URLs, repository files or prompts. Without `--write`, a grant is read-only. Participant names identify locally registered grants; they do not independently verify a person's identity or assign a workflow role.
 
+Press Ctrl+C to stop the service. It stops promptly even while a browser is connected.
+
+When the server starts, its first line is the board URL. The next lines give the MCP endpoint for agent hosts and the grant command to run if you have no token yet:
+
+```text
+Prism board: http://127.0.0.1:8765/
+MCP endpoint: http://127.0.0.1:8765/mcp
+Issue a participant grant (the token is printed once): prism board grant "NAME" --kind human|agent [--write] --path .
+Local only. Press Ctrl+C to stop.
+```
+
+The lines are flushed as they are printed, so a pipe or a log file shows them while the service runs.
+
+The `--path` in the hint is the folder being served. If the port is already in use, the command prints one line, `Cannot start the Prism board on port 8765: it is already in use. Choose another with --port.`, and exits with code 4 without creating any board state. `prism wiki graph --serve` exits with code 4 and one line in the same way.
+
+### Check readiness with doctor
+
+Run `prism doctor --workspace .` before the first `prism board serve`. Its "Shared board" section is read-only: it never creates board state, grants or files. Each line starts with `[ok]`, `[warn]`, `[fail]` or `[skip]`, and a line that needs action is followed by a `Fix:` line. Plain `prism doctor`, run inside a workflow or generated workspace folder, gives the next step "Run `prism doctor --workspace .` to check this workspace." instead of the generation hint.
+
+| Check | Passes when | Otherwise |
+| --- | --- | --- |
+| Workspace is outside cloud-synced folders | No part of the path is a cloud-files placeholder. | `[fail]` with the cloud-sync guidance. |
+| Workflow pin is compatible with this Prism installation | The manifest pin matches this installation, using the same check as `prism board status` and the server. | `[fail]` with the reason and a preview of `prism workflow upgrade`. A workspace with no workflow pin gets `[warn]` and a preview of `prism workflow install`, or of `prism workflow upgrade` for a generated project; the checks below do not run for it. |
+| At least one active board grant exists | An unrevoked grant was issued for the current pin. | `[warn]` with the `prism board grant` command when there are no grants yet (`No grants yet.`), every grant is revoked (`No active grants (N revoked).`) or all of them predate the current pin. `[fail]` when the board state cannot be read safely. |
+| Default board port 8765 is free | A loopback bind on the port succeeds and is released at once. | `[warn]` naming the busy port. This is expected while the board is running. |
+| `.prism/state` is ignored by git | `git check-ignore` ignores the state directory. | `[fail]` with the `.gitignore` rule to add. `[skip]` when git is unavailable or the folder is not a git repository. |
+
+Only `[fail]` lines change the exit code: doctor exits with code 3 and ends with a count of failures. Warnings and skips leave it at 0.
+
+```text
+Shared board
+[ok] Workspace is outside cloud-synced folders
+[ok] Workflow pin is compatible with this Prism installation
+  Workflow version 1 matches this installation.
+[warn] At least one active board grant exists
+  No grants yet.
+  Fix: Issue one with `prism board grant "NAME" --kind human|agent --write --path D:/work/editorial`.
+[ok] Default board port 8765 is free
+[fail] `.prism/state` is ignored by git
+  Grants and the operation journal could be committed by mistake.
+  Fix: Add `.prism/state/` to .gitignore.
+```
+
 The server binds to loopback. The browser uses an HttpOnly session cookie and same-origin request checks. MCP uses its participant Bearer token. Revoke access with the participant ID returned when the grant was created:
 
 ```text
@@ -60,6 +113,10 @@ prism board revoke PARTICIPANT_ID --path .
 
 Connected workspaces require ordinary local files and directories. The service
 rejects symbolic links, junctions and other reparse points in the workspace paths.
+
+### Cloud-synced folders
+
+On Windows, OneDrive and Dropbox Files On-Demand mark synced files and folders as reparse points. Windows Known Folder Move puts Documents and Desktop under OneDrive by default, so a workspace there is refused: `prism workflow install`, `prism workflow upgrade` and the `prism board` commands fail with a cloud-sync message, and connected HTTP and MCP calls return the `cloud_sync_path` error. Prism cannot guarantee atomic writes while a sync engine may rewrite or dehydrate the files. Move the workspace to a local folder that is not synced, then retry. `prism doctor --workspace PATH` reports "Workspace is outside cloud-synced folders" and fails with this guidance when the path or one of its ancestors is a cloud placeholder.
 
 The `.prism/state/` journal holds grants, previews and operation receipts. It is local operational state, not the board's source of truth. Wiki files remain authoritative. Do not copy this state directory into another workspace or commit it.
 
@@ -95,21 +152,21 @@ The environment reference follows Claude Code's [MCP configuration rules](https:
 
 ## Work together
 
-Direct an agent in its CLI, for example: “Use Prism's PO intake skill to refine the pending document-review brief.” The agent discovers the board, retrieves its pinned skill and references, reads current workspace data, and follows the skill's required conflict checks, semantic review and confirmation. It sends a bounded proposal to `preview_skill`, shows the exact changes for confirmation, and applies the returned preview with an operation ID. There is no second approval queue in the board.
+Direct an agent in its CLI, for example: “Use Prism's PO intake skill to refine the pending document-review brief.” The agent discovers the board, retrieves its pinned skill and each reference it needs, reads current workspace data, and follows the skill's required conflict checks, semantic review and confirmation. It sends a bounded proposal to `preview_skill`, shows the exact changes for confirmation, and applies the returned preview with an operation ID. There is no second approval queue in the board.
 
 `list_workspace` discovers approved wiki and intake paths in pages;
-`read_workspace` returns their text and content digests. `query` reuses Prism's
+`read_workspace` returns their text and content digests, paged to the result limit. `query` reuses Prism's
 existing feature, owner, platform, blocker, search, lint and lifecycle preflight
 facts. These read operations work with read-only participant grants.
 
-Connected intake in this release supports UTF-8 `.md`, `.txt`, `.yaml` and `.yml`
+Connected intake supports UTF-8 `.md`, `.txt`, `.yaml` and `.yml`
 sources up to 512 KiB per file. Inventory results identify unsupported attachments
 and oversized files. PDF/image extraction is deferred; an intake containing a
 required unreadable source stops with a clear limitation instead of ignoring it.
 Agents read every `required_workspace_reads` path returned by `get_skill`, plus
 the operation's target, linked context and intake evidence, through the service.
 
-The board directly supports human `po-handoff`, `design-start` and `dev-start`. Dragging and the action controls enter the same preview. The human reviews the evidence and exact changes, supplies the required review acknowledgement and any permitted PO advisory skip reason, then confirms. A blocked mapped drop explains the blockers with confirmation disabled. Specification, design handoff, Done and reopening continue through the existing agent skills. A gesture alone never moves canonical state or manufactures evidence.
+The board directly supports human `po-handoff`, `design-start` and `dev-start`. Through MCP, `preview_transition` accepts only a human participant: an agent that calls it gets `participant_kind_required`. `list_skills` and `get_skill` report, for every skill, `participant_kinds` and `write_tools` (which tool each kind may use) and add a "Direct human action" limitation to these three. An agent that needs one of them prepares it with `preview_skill` and the human's confirmation in the host, or asks the human to complete it in the board. Dragging and the action controls enter the same preview. The human reviews the evidence and exact changes, supplies the required review acknowledgement and any permitted PO advisory skip reason, then confirms. A blocked mapped drop explains the blockers with confirmation disabled. Specification, design handoff, Done and reopening continue through the existing agent skills. A gesture alone never moves canonical state or manufactures evidence.
 
 Direct human transitions preserve frontmatter values outside the action's scope,
 but serialize the complete YAML frontmatter block. Formatting, quoting and YAML
@@ -124,23 +181,209 @@ Claude instruction folders are not required. Copying dispatches no agent and
 writes no lifecycle state. A stale or unavailable connection disables copying;
 static and legacy boards retain their existing tool-specific copy behavior.
 
-Skill discovery exposes 23 complete canonical skills. Connected writes are
+Skill discovery exposes 24 complete canonical skills. Connected writes are
 available for `po-intake`, `design-intake`, `ask`, `po-clarify`, `design-clarify`,
-`po-specify`, `po-handoff`, `design-start`, `design-handoff`, `dev-start`,
-`dev-done`, and `feature-reopen`. The three reopen routes are actions of the
-last skill. Other skills provide guidance or read operations: always inspect
-`write_supported` and `limitations`. An unavailable or rejected connected write
-stops that attempt. A direct-file compatibility workflow requires an explicit
-human choice and follows the original skill's complete review and confirmation.
+`dev-clarify`, `po-specify`, `po-handoff`, `design-start`, `design-handoff`,
+`dev-start`, `dev-done`, and `feature-reopen`. The three reopen routes are actions
+of the last skill. Other skills provide guidance or read operations: always
+inspect `write_supported` and `limitations`. An unavailable connected write stops
+that attempt. When the board rejects a proposal, the agent may correct exactly what
+the error names and preview again, at most 2 more times, without widening the
+change; it then stops and reports the rejection
+([Rejected proposals](#rejected-proposals)). A direct-file compatibility workflow
+requires an explicit human choice and follows the original skill's complete review
+and confirmation.
+
+### Intake, dev answers and delivery evidence
+
+- **`po-intake` writes `raw` features.** Every new feature is `raw` + `po`, with its
+  Summary, User story, Acceptance criteria, Open questions and Platform scope. A
+  proposal that creates a feature in another status is rejected with
+  `invalid_intake_feature`. `po-specify` completes the page and moves it to
+  `specified`: Design, Related features, API surface, Board review summary and
+  Post-ship notes each get one line of supported content or an explicit statement
+  such as `Not started.` (`None.` under API surface unless an API change is stated; any other
+  API surface text needs an API contract page before `dev-start`, which `design-handoff` creates, and open questions stay in the question table), and `po-handoff` accepts only
+  `specified`. A page that leaves one of those sections empty is rejected with
+  `required_section_missing`, which names the sections. Features that were
+  `specified` before stay valid.
+- **`dev-clarify` answers dev-owned questions**, as `po-clarify` does for `po` and
+  `design-clarify` for `designer`. It resolves only questions owned by `dev`, on any
+  feature that is not `done`, and cannot change the feature's status or owner. Next
+  to the question table it may change the feature's Acceptance criteria, Platform
+  scope and API surface sections and, on that feature's existing platform
+  requirement pages, What to build, Technical constraints, API contract reference
+  and Acceptance criteria. It leaves a requirement page's frontmatter, including
+  `status`, unchanged. Every section it changes must contain the full text of an
+  answer it resolves in the same proposal. Open dev-owned questions block
+  `dev-start` and `dev-done`.
+- **`dev-done` takes the delivery evidence in its proposal.** The agent asks the
+  developer for the implementation, test and release references of every declared
+  platform, or reads them from the page, and writes them as the `## Delivery
+  evidence` table of the proposed feature page. The preview shows the evidence rows
+  with the status change, so nothing has to be edited by hand first. A table with no
+  platform rows is rejected with `delivery_evidence_required`; an invalid row, a
+  placeholder cell, a duplicate or an undeclared platform with
+  `delivery_evidence_invalid`. A reference the agent cannot check is recorded in the
+  proposed Post-ship notes as the developer's attestation. `dev-done` stays an agent
+  skill: the board offers no direct human `dev-done`.
+- **`design-handoff` creates the API contract.** When the feature's API surface declares
+  API work (any text other than an empty section or a plain statement that there is none,
+  such as `None.`) and no contract covers the feature yet, the proposal must add
+  `knowledge/wiki/api-contracts/F-XXX.md` as a new page with `feature-id`, `version: 1`,
+  `status: agreed` and the sections Endpoints, Data models, Authentication requirements
+  and Notes; the human confirming the preview is the agreement, and `dev-start` then
+  finds an agreed contract. A page is rejected for another feature, a path other than
+  `F-XXX.md`, a status other than `agreed`, a feature without declared API work, or a
+  feature that an existing or linked contract already covers; the handoff never rewrites
+  an existing contract. The page is written only from the API surface: each endpoint is a
+  `METHOD /path` line, every path matches a path the API surface names (when it names none,
+  each endpoint needs a resource word the API surface uses), and every data model is named
+  by the API surface or by a listed endpoint. This is a structural check; the reviewer still
+  confirms that the contract says what the API surface means. A declared API surface with no
+  page is rejected with `api_contract_required`.
 
 Relevant source changes invalidate the preview. Unrelated index rows and log additions are preserved. Direct filesystem edits are external changes with no invented participant attribution. Service access controls do not restrict a coding agent's independent filesystem permissions.
 
+### Live updates and expired sessions
+
+One change poller per service watches the workspace for every connected viewer. It reuses the stored hash of a file whose size and modification time are unchanged and rehashes every file at least every 60 seconds. An external edit that keeps both a file's size and modification time can therefore go unnoticed by the poller for up to 60 seconds. Preview and apply always re-read the files they depend on, so a late view never lets an unreviewed change through.
+
+When an apply is rejected because its sources changed, the board shows the service's reason and a **Preview again** action. Nothing was written. **Preview again** builds a new preview from the current files, and you review and confirm that one. The rejection happens before an operation exists, so there is no operation to look up.
+
+A browser session ends after 12 hours, when the board service restarts, when the grant is revoked or when the workflow identity changes. The board then shows "Board session expired" with a **Reconnect** action, and an apply that runs after expiry shows the same message in its dialog. **Reconnect** reloads the page and asks for the human token again.
+
 Connected clarification has a deterministic traceability requirement: each changed
-requirement or design section includes the full text of at least one answer
-resolved in that proposal. Case and whitespace differences are ignored;
+requirement-bearing section of a feature, a platform requirement page or a design
+page includes the full text of at least one answer resolved in that proposal. Case and whitespace differences are ignored;
 paraphrases alone do not pass. Skill discovery reports this limitation. Including
 an answer does not establish that every edit follows it: the agent and reviewer
 still perform that semantic check before confirmation.
+
+### Rejected proposals
+
+A rejected proposal keeps its stable error code and status. The message names
+the exact place and the fix. A rejection can also carry a small `details`
+object: HTTP returns it as `error.details`, and MCP appends it as compact JSON
+after the message in the tool error text. Both transports redact the
+participant token everywhere, and the whole error stays under 2,000 characters.
+Only short excerpts of workspace text appear in an error.
+
+| Code | `details` |
+| --- | --- |
+| `clarify_answer_unlinked`, `design_answer_unlinked`, `requirement_answer_unlinked` | `path`, `section`, `resolved_questions` (numbers), `resolved_answers` (question number to the first 160 characters of its answer). One of those answers must appear verbatim in that section; case and whitespace are ignored. |
+| `invalid_markdown`, `invalid_frontmatter` | `path`, `problem`, and for a YAML error `line` and `column` within the file. A page starts with `---`, a YAML mapping and a closing `---`. |
+| `invalid_change`, `invalid_move` | `index` of the item in `changes` or `moves`, `missing` and `unexpected` field names, `expected` field names (`path`, `content` or `source`, `destination`), and `not_string` for fields with the wrong type. |
+| `invalid_changes`, `invalid_moves` | `index` of the first item over the limit, `maximum` and `received`; or `expected` and `received` when the value is not a list. |
+| `lifecycle_frontmatter_scope`, `unknown_frontmatter_fields`, `clarify_frontmatter_change`, `design_frontmatter_change`, `requirement_frontmatter_change` | `path` and the offending `fields`; the first two also list the `allowed` fields. |
+| `lifecycle_body_scope`, `clarify_scope_exceeded`, `design_clarify_scope_exceeded`, `requirement_clarify_scope_exceeded`, `ask_scope_exceeded` | `sections`: the sections outside the action's scope that the proposal changed. Restore them to their current text. `whitespace_only` lists the sections that differ from the current text only in whitespace, usually the file's missing final newline: send unchanged sections exactly as `read_workspace` returned them. |
+| `linked_page_scope` | `path`: the linked requirement or API contract that changes more than its `status`. Restore everything else to the current text. |
+| `invalid_intake_feature` | `path`, `status`, `owner` and the expected `expected_status` (`raw`) and `expected_owner` (`po`). |
+| `required_section_missing` | For `po-specify`: `path` and `sections`, the empty sections to fill. The message gives a line to write under each. |
+| `clarify_stage_unavailable` | `path` and `status` (`done`): `dev-clarify` does not change a done feature; reopen it first. |
+| `api_contract_required` | `path` (the contract page to add), `feature_id`, `status` (`agreed`) and `sections` (the four required sections). |
+| `api_contract_not_applicable`, `api_contract_exists` | `path` and `feature_id`. `api_contract_exists` for a second contract also lists the `existing` pages. |
+| `api_contract_initial_status` | `path`, `status` and `expected_status` (`agreed`). |
+| `api_contract_untraceable` | `path`, `feature_id` and `endpoints` (the `METHOD /normalized/path` entries that the API surface does not support) or `models` (the data models that neither the API surface nor an endpoint names). |
+| `delivery_evidence_required`, `delivery_evidence_invalid` | `path`, `platforms` (the declared platforms), `missing_platforms` and `problems` (up to six parse problems). The message shows the row to add: `\| platform \| implementation reference \| test command and result \| release artifact or target \|`. |
+| `missing_read_revisions` | `paths` (the sources to read, as many as fit), `total` (how many are missing) and `read_with` (`read_workspace`). A required source has neither a digest in `read_revisions` nor a read by this participant. Read those paths with `read_workspace` and preview again. |
+| `read_digest_mismatch`, `stale_read_revision` | `path`, `supplied` (the digest you sent or the one recorded from your read, shortened) and `expected` (the file's current digest). `read_digest_mismatch` means the board never returned the digest you sent for that file, so it is mistyped or copied wrongly; leave `read_revisions` out or copy it from `read_workspace` exactly. `stale_read_revision` means the board returned that digest and the file has changed since; read it again and review the change. |
+| `invalid_feature_output` | For a platform outside the board's scope: `platforms` (the declared ones) and `board_platforms`; `discover` reports the same list under `board.platforms`. |
+| `lifecycle_action_required` | For a status or owner change that the skill does not perform: `path`, `skill`, `from` and `to` (status and owner pairs). A clarify skill never changes either. |
+| `new_question_must_be_open` | `path`, `question` (the number that is not in the current table) and `existing_questions`. A question that is not in the table is added with `ask` before it is answered. |
+| `impact_review_required`, `reopen_invalidation_mismatch`, `reopen_artifact_missing` | `label` for a missing or too short reopen bullet; `path`, `from` and `to` for a page whose `knowledge/wiki/...: done -> in-progress` entry is not under `- Requirement/API invalidations:`; `path` for a page that `- Affected artifacts:` does not name. `knowledge/wiki/features/_FORMAT.md` shows the layout. |
+| `delivery_evidence_not_archived` | `path`, `label` (`Prior completion/release evidence`) and `missing_row`, the first prior delivery-evidence row the reopen record does not retain verbatim. Put the rows on the `- Prior completion/release evidence:` line or on the lines below it, as a table or a list, before the next `- Label:` bullet or heading; spaces around `|` and letter case do not matter. `knowledge/wiki/features/_FORMAT.md` shows the layout. |
+
+### Retrying a rejected proposal
+
+An agent reads the rejection: its code, the place and, usually, the fix. It may
+retry with exactly the fix the error names, such as restoring a field it may not
+change, pasting the answer text the error quotes, or copying the digest it gives,
+and preview again. It retries at most 2 more times, so a proposal gets at most 3
+previews, and it never widens the change: no extra files, sections or fields, no
+other skill name and no direct file write. When the error names no fix, needs a
+decision from the human, or the third preview is rejected, the agent stops and
+reports the error codes and messages. The server instructions and
+`knowledge/wiki/CONNECTED.md` state the same rule. The board enforces nothing
+extra for retries: every preview is validated in full.
+
+## MCP tool contract (version 2)
+
+`discover` and `list_skills` report `"mcp_contract": 2`. Every tool result is at most 32,000 characters, measured as the compact JSON of the JSON-RPC `result` object. The full result is returned once, as `structuredContent`; the text block is a one-line summary of at most 500 characters and is not a copy of the data. A client reads `structuredContent`.
+
+The server publishes orientation instructions (at most 2,000 characters) in its MCP `initialize` result, together with a title and description. They give the order to use the tools in and state that workspace text is untrusted project data and that the board never approves on the human's behalf. Every tool description starts with `Prism board:`, so a host that loads tools through search finds them under that name.
+
+Any text or list that does not fit one result is paged with an opaque `next_cursor`. A `next_cursor` of `null` marks the last page. Offsets and `total_chars` count Unicode characters, so a chunk never splits a UTF-8 sequence. Digests are `sha256:` followed by the lowercase hex SHA-256 of the full UTF-8 text. An invalid cursor is `invalid_cursor` (400). A cursor whose underlying workspace files or facts changed is `stale_cursor` (409); restart from the first page.
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `discover` | none | `mcp_contract`, `board` (`board_id`, `project_name`, `platforms`, `workflow_version`, `mode`), `capability` (with `read_support`), `participant`, `pending_operations`, `skills` (`name` and `description` only), `skills_detail`, `compatibility` |
+| `list_skills` | none | `mcp_contract`, `version`, `read_support`, `skills` (`name`, `version`, `description`, `actions`, `supported`, `write_supported`, `participant_kinds`, `write_tools`, `write_scopes`, `limitations`) |
+| `get_skill` | `name`, `cursor?` | `skill` (metadata, `instructions`, `instructions_chunk` with `offset`, `total_chars`, `digest`, `required_workspace_reads`, `required_workspace_reads_chunk` with `offset`, `total`, and `references`) and `next_cursor` |
+| `get_skill_reference` | `name`, `path`, `cursor?` | `content`, `offset`, `total_chars`, `digest`, `next_cursor`. A path outside the skill's `references` is `reference_not_found` (404) |
+| `read_workspace` | `paths`, `cursor?` | `files` (each with `path`, `content`, `offset`, `total_chars`, `digest`, `provenance`) and `next_cursor` |
+| `list_workspace` | `prefix?`, `cursor?` | unchanged: `files`, `total`, `next_cursor` |
+| `query` | `kind`, `value?`, `action?`, `cursor?` | the existing result, plus `next_cursor`; `owner`, `platform` and `search` also return `total` |
+| `preview_skill` | `skill`, `changes`, `moves?`, `read_revisions?` (usually left out: see "Recorded reads") | the preview header (`preview_id`, `classification`, `applicable`, `checks`, `blockers`, `source`, `target`, `source_revision`, `moves`), `writes` and `writes_chunk` (`offset`, `count`, `total`), and `next_cursor` |
+| `preview_transition` | `feature_id`, `action`, `inputs?` | the same as `preview_skill`; only a human participant may call it |
+| `get_preview` | `preview_id`, `cursor?` | the same result as the preview call, for a preview the caller created. An unknown preview or another participant's is `preview_not_found` (404) |
+| `apply` | `preview_id`, `operation_id` | the receipt |
+| `operation` | `operation_id`, `cursor?` | `state`, `receipt`, and for an unfinished operation `actor`, `moves`, `recovery_review_revision`, `remaining_changes` and `remaining_changes_chunk`, and `next_cursor` |
+| `recover` | `operation_id`, `review_revision?`, `semantic_review_acknowledged?` | the receipt |
+| `changes` | `cursor?` | `cursor`, `head_cursor`, `board_revision`, `changes`, `has_more` |
+
+`references` is an index: each entry has `path`, `title` (the first Markdown heading, or the file name), `size_chars` and `digest`. It never carries the reference text.
+
+`get_skill` continues first through its `instructions` and then through `required_workspace_reads`. Every page repeats the metadata and the references index. Join the `instructions` chunks and concatenate the `required_workspace_reads` lists across the pages.
+
+`read_workspace` returns whole files in request order until the next file would not fit, then a `next_cursor`. A file larger than one result is returned in chunks. Resend the same `paths` with each cursor. The 64-path, approved-path and 2 MiB limits of the request are unchanged.
+
+**Recorded reads.** The service records, for each participant, the digest of every file `read_workspace` returned in full (the last chunk of a chunked file counts). When a `preview_skill` proposal omits `read_revisions`, or omits a source the skill requires, the service uses that participant's recorded digest for the source. The stale check is the same as for a digest the caller sends: a file that changed after the read is rejected as `stale_read_revision`. A required source the participant never read, including one only another participant read, is rejected as `missing_read_revisions` with `details.paths` listing what to read. The record is held in memory per participant and is empty after a service restart, so the agent reads again. A digest the caller does send is checked as before.
+
+Every path in the `references` of `get_skill`, and every path an instructions text lists as a canonical reference (`.claude/commands/<name>.md`), resolves with `get_skill_reference` exactly as written.
+
+`query` pages `owner`, `platform` and `search`. For `owner` the pages walk `facts.features` and then `facts.open_questions`; for `platform`, `facts.features` and then `facts.platform_requirements`; for `search`, `facts.results`. `total` counts those items, and every item appears on exactly one page. `facts.feature_count` and the other counts stay totals. `sources` lists the paths of the page's items.
+
+Results contain no absolute paths: preview checks, `root` and `sources` of query results and every other path are relative to the workspace, with forward slashes.
+
+#### Previews, operation records and change feeds
+
+A preview carries the exact before and after text of every write, which can exceed one result. `preview_skill`, `preview_transition` and `get_preview` return the preview in pages. Every page repeats the header and lists a window of `writes`. Each write has `path`, `role` (`canonical`, `index` or `log`), `before_digest`, `after_digest`, `merge`, `before_chars`, `after_chars`, `before` and `after`. A write whose text does not fit one page is split: each slice carries `before_chunk` or `after_chunk` (`offset` and `total_chars`), and a side whose key is absent was sent on an earlier page or arrives on a later one. Follow `next_cursor` with `get_preview(preview_id, cursor)` until it is `null`, join the slices of each `path` in order and compare the joined text with its digest. A preview that fits one result has `next_cursor: null`, whole `before` and `after` text and no `*_chunk` keys.
+
+The result leaves out `proposed_changes` and `read_revisions`, which copy the caller's own input (`read_revisions_count` keeps the count), and the internal `source_map` (`source_count` keeps the count). `moves` lists `source`, `destination`, `source_digest` and `source_file_count`. A cursor belongs to one preview: another preview's cursor is `invalid_cursor`. A preview is immutable, so its cursors do not go stale.
+
+`operation` pages `remaining_changes` of an unfinished operation the same way, with `before` and `after` text per path, and the same header (`state`, `actor`, `recovery_review_revision`) on every page. A cursor for an operation whose state or files changed since the first page is `stale_cursor`. `changes` returns the events that fit one result, oldest first, and sets `cursor` to the last event returned and `has_more` to whether events remain; call it again with that `cursor`. `apply`, `recover`, `discover`, `query` and `list_skills` return their whole result when it fits. When it does not, the tail of the longest lists is cut and every cut is named in `truncated` with the number of items left out.
+
+A client loop that reads every chunk and checks its digest:
+
+```python
+import hashlib
+
+def read_all(call_tool, tool, arguments, field="content"):
+    """Fetch every chunk of a text and verify it against the digest."""
+    parts, cursor = [], None
+    while True:
+        result = call_tool(tool, {**arguments, **({"cursor": cursor} if cursor else {})})
+        data = result["structuredContent"]
+        parts.append(data[field])
+        cursor = data["next_cursor"]
+        if cursor is None:
+            break
+    text = "".join(parts)
+    if "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest() != data["digest"]:
+        raise ValueError("The reassembled text does not match its digest.")
+    if len(text) != data["total_chars"]:
+        raise ValueError("The reassembled text has the wrong length.")
+    return text
+
+schema = read_all(call_tool, "get_skill_reference", {"name": "po-intake", "path": "knowledge/wiki/SCHEMA.md"})
+```
+
+For `read_workspace`, group the chunks of each file by `path` and compare the joined text with that file's `digest`; `offset + len(content) == total_chars` marks a file's last chunk.
+
+### Upgrading to contract 2
+
+The packaged workflow asset carries contract 2, so its digest differs from every earlier asset. A workspace pinned to an earlier digest opens read-only until it is upgraded, and grants record the digest they were issued under, so every earlier grant stops working after the upgrade (`grant_identity_changed`). For each workspace, stop the board service, run `prism workflow upgrade . --apply`, issue new grants with `prism board grant`, and update each agent host's token. Reference text is available only through `get_skill_reference`.
 
 ## Interrupted operations
 
@@ -154,5 +397,17 @@ remaining changes and an explicit acknowledgement. Relevant changes invalidate
 that confirmation. The receipt preserves the original actor and records the
 recovering human separately; other agents, read-only participants and unrelated
 human operations do not gain this recovery permission.
+
+### Changes
+
+`changes` returns durable board events after an optional cursor, each as `cursor`, `operation_id`, `event` and `created_at`. The event `type` is one of:
+
+| Event type | Recorded when | Event fields |
+| --- | --- | --- |
+| `operation-applied` | An operation finishes. | `receipt` |
+| `operation-recovery-started` | A writable human starts recovering another participant's operation. | `actor`, `operation_id` |
+| `operation-conflict` | An operation ends in `conflict`. | `operation_id`, `paths` |
+
+`paths` lists the workspace paths that block the operation, such as a file edited outside the board after it was journaled. It is empty when no single path is at fault. An event carries paths only, never file content. Repeating `recover` on an operation that is still in conflict for the same paths records no further event; a later conflict with different paths records a new one. Clients that read the event type should ignore types they do not recognize.
 
 Static exports and `prism wiki graph --open` retain the legacy read-only preview/copy behavior. They do not gain write authority from a displayed action or a Prism version string.

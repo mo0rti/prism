@@ -24,9 +24,9 @@ Use this skill when backend-facing Android code changes.
 ## Retrofit and service rules
 
 - Retrofit API interfaces live in `feature/*/data/remote/api/` or `core/network/`.
-- API base URL comes from `ApiService` configuration in `core/network/`; do not hardcode URLs.
+- API base URL comes from `BuildConfig.API_BASE_URL` through `NetworkModule` in `core/di/`; do not hardcode URLs.
 - Auth headers come from `AuthInterceptor` reading `TokenStorage`; do not add ad hoc token plumbing in features.
-- Token refresh is handled by `TokenAuthenticator` (OkHttp Authenticator), and refresh failure falls back to `SessionManager.onLogout()`. Features do not handle 401s directly.
+- Token refresh is handled by `TokenAuthenticator` (OkHttp Authenticator), and a rejected refresh token (400, 401 or 403) falls back to `SessionManager.onLogout()`, while timeouts, I/O errors and 5xx keep the session. Features do not handle 401s directly.
 
 ## Cross-check sources
 

@@ -71,6 +71,18 @@ required feature sections, including:
 - `## Board review summary`
 - `## Post-ship notes`
 
+A raw page written by `po-intake` already carries Summary, User story, Acceptance
+criteria, Open questions, and Platform scope, and leaves Design, Related features,
+API surface, Board review summary, and Post-ship notes empty. Complete those five with
+one line each: supported content, or an explicit statement that nothing exists yet
+(for example `Not started.`, `None identified.`, `None.` under API surface,
+`Not reviewed yet.`, `Not shipped yet.`). Any API surface text other than `None.`
+declares API work and needs an API contract page before `dev-start`, so write `None.`
+unless the intake material or an answered question states an API change. Keep open
+questions in the Open questions table, never in these five sections. The connected
+board rejects an empty required section with `required_section_missing` and names
+the section.
+
 Unknown facts remain explicit owned questions for `po`, `designer`, or `dev`.
 An open question is valid structured output; `TODO`, `TBD`, copied template
 filler, and empty placeholder requirements are not. Show the complete proposed

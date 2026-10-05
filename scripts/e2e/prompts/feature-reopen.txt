@@ -1,0 +1,9 @@
+I am the developer. Feature F-001 shipped, but the PDF export fails for reviews whose comments contain right-to-left text. Use Prism's feature reopen skill to reopen F-001 on the in-dev route. Work only through your Prism MCP tools and follow the board's guidance.
+
+My impact review, which I confirm:
+- Why: the PDF renderer breaks on right-to-left comment text, which the original specification did not cover.
+- Route: in-dev. Affected platform: backend.
+- Affected artifacts: the backend PDF renderer and its tests.
+- Prior completion and release evidence: archive the current delivery evidence as it is.
+
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would change. If something blocks it, tell me exactly what and stop.

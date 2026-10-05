@@ -22,24 +22,77 @@ It helps product and engineering teams:
 This repository contains Prism's CLI, workflow service, board, and application template.
 It is the maintainer repository, not a workspace for running product lifecycle actions.
 
-Start with the [shared board guide](docs/shared-board.md) to adopt the workflow in
-an existing repository or an empty workspace. See [current status](docs/current-status.md)
-for the implementation's acceptance boundary.
+Follow the [quickstart](#quickstart-a-shared-board-for-you-and-your-agents) to adopt the
+workflow in an existing repository or an empty workspace. The
+[shared board guide](docs/shared-board.md) has the details, and
+[current status](docs/current-status.md) records what is verified and what is open.
 
-If you want to see Prism applied to a concrete product story, follow the
-[local wiki visualization guide](docs/wiki-visualization.md). It builds a
-synthetic TreasuryFlow fixture that is safe to regenerate for dashboard
-inspection.
+## Quickstart: a shared board for you and your agents
+
+Prism runs on one computer. One local service per workspace serves the browser board and an MCP endpoint, so you and your coding agents work on the same wiki. You need Python 3.10 or later. Prism is not published to a package index yet, so install it from this checkout:
+
+```bash
+pip install -e .
+prism --version
+```
+
+Run the remaining steps in a separate workspace folder, not in this maintainer checkout and not in a cloud-synced folder such as OneDrive.
+
+**1. Add the workflow.** Use an empty folder or an existing repository. Choose a display name and one scope; `--platform` takes one of the five platform IDs and does not generate an application. The first command previews every file. The second asks you to confirm before it writes (`--apply --yes` skips the question for automation).
+
+```bash
+cd path/to/your-workspace
+prism workflow install . --name "My workspace" --platform backend
+prism workflow install . --name "My workspace" --platform backend --apply
+```
+
+**2. Check readiness.** The "Shared board" section lists what needs attention, each with a `Fix:` line. A warning that no grant exists yet is expected at this point.
+
+```bash
+prism doctor --workspace .
+```
+
+**3. Register a person and an agent.** Each command prints JSON whose `token` appears once. Keep tokens private and out of files and prompts. A grant without `--write` is read-only.
+
+```bash
+prism board grant "Product owner" --kind human --write --path .
+prism board grant "Coding agent" --kind agent --write --path .
+```
+
+Put the agent's token in an environment variable before you start the agent host:
+
+```bash
+export PRISM_BOARD_TOKEN="<the agent's token>"      # macOS, Linux, Git Bash
+$env:PRISM_BOARD_TOKEN = "<the agent's token>"      # PowerShell
+```
+
+**4. Start the board.**
+
+```bash
+prism board serve . --port 8765
+```
+
+It prints the board URL, the MCP endpoint (`http://127.0.0.1:8765/mcp`) and a hint for issuing another grant, then opens your browser (`--no-open` skips that). Sign in with the human token. Press Ctrl+C to stop. The service listens on loopback only.
+
+**5. Connect Claude Code and Codex.** Both use their standard Streamable HTTP MCP configuration with that endpoint and `PRISM_BOARD_TOKEN`. The exact entries are in [Connect an agent host](docs/shared-board.md#connect-an-agent-host). Give each host its own grant, and start the host from a shell where the variable is set.
+
+**6. Run a first journey.**
+
+1. Ask the agent to run Prism's `setup-project` skill. Setup is an interview that writes the product context directly into the workspace, so it does not go through the board.
+2. Create a folder such as `knowledge/intake/pending/my-first-feature/` and put your brief in it as a Markdown file, using `knowledge/intake/pending/PO_BRIEF_TEMPLATE.md` as a guide. Then ask the agent: "Use Prism's PO intake skill to refine the pending brief." The agent shows the exact file changes, you confirm them in the agent, and it applies them. A new feature appears on the board.
+3. In the board, move the feature with `po-handoff` (drag its card or use its action control). Review the evidence and exact changes, acknowledge them and confirm. The board offers the same human action for `design-start` and `dev-start`. The remaining steps run through the agent's skills.
+
+If a step fails, [docs/troubleshooting.md](docs/troubleshooting.md) lists the symptom, cause and fix for the common cases. The [shared board guide](docs/shared-board.md) covers every command, the MCP tools and recovery of interrupted operations, and [SECURITY.md](SECURITY.md) describes what the local service protects.
 
 ![Prism wiki visualization Graph view](docs/media/wiki-dashboard-graph.png)
 
 _Graph view from the synthetic local TreasuryFlow fixture._
 
-![Prism home screen](docs/media/prism-menu.png)
+To explore a populated example first, follow the [local wiki visualization guide](docs/wiki-visualization.md). It builds a synthetic TreasuryFlow fixture that is safe to regenerate.
 
-The Prism launcher provides workspace actions, generation, validation, and orientation.
+## Optional: generate an application
 
-## What Prism Generates
+Application generation is separate from the shared board. Run `prism` for the home screen, or `prism new` for the guided flow.
 
 A Prism-generated repository can include:
 
@@ -56,40 +109,15 @@ Every generated repository also includes:
 - lifecycle commands for PO, design, dev, and advisory review
 - project docs, generators, and workflow wiring
 
-## Quick Start
-
-Install Prism from this checkout:
-
-```bash
-pip install -e .
-```
-
-To preview workflow adoption, first open a separate existing or newly created
-workspace directory. Choose its display name and relevant scope. The current
-scope identifiers remain the five platform IDs; selecting one does not generate
-an application. Do not install the workflow into this maintainer checkout.
-
-```bash
-prism workflow install . --name "My workspace" --platform backend
-```
-
-Review the diff, then apply with the same inputs:
-
-```bash
-prism workflow install . --name "My workspace" --platform backend --apply
-```
-
-The [shared board guide](docs/shared-board.md)
-covers participant access, starting the local service, and standard MCP setup.
-For optional application generation, run `prism` and choose `New Project`.
-
-![Prism guided project creation](docs/media/prism-new-project.png)
+![Prism home screen](docs/media/prism-menu.png)
 
 From the Prism home screen:
 
 - choose `Doctor` to check prerequisites
 - choose `New Project` to generate a sample repo
-- choose `Presets` if you want to browse the recommended starting paths first
+- choose `Browse Presets` if you want to browse the recommended starting paths first
+
+![Prism guided project creation](docs/media/prism-new-project.png)
 
 After generating a project:
 
@@ -101,7 +129,7 @@ After generating a project:
    - Cursor: ask the agent to run `setup-project`
 4. to enable the shared board and MCP writes, preview `prism workflow upgrade .`,
    then confirm with `prism workflow upgrade . --apply` and register participants
-   as described in the [shared board guide](docs/shared-board.md).
+   as in the quickstart above.
 
 For the full first-run path, read [docs/getting-started.md](docs/getting-started.md).
 
@@ -148,15 +176,12 @@ Start with:
 
 ## Current Status
 
-- Core workflow and human/agent board implementation follows the
-  [approved plan](docs/prism-core-workflow-plan.md); current acceptance is recorded separately from sample builds.
-- Application scaffolds remain partial. Generated web build checks are configured
-  in CI; this does not establish runtime or deployment acceptance for the current changes.
-- Apple Sign-In remains experimental.
-- Core acceptance uses disposable neutral workspaces. Template changes also receive
-  generated-output validation; sample behavior does not define the core workflow.
+- The workflow, the shared board, the MCP tool contract and the human board actions are implemented and tested; the [plan](docs/prism-core-workflow-plan.md) states their scope and contracts.
+- Application samples: backend, Android and web are verified locally, and the iOS sample is verified only by the macOS CI job, which has not run yet. Live Cloudflare and Azure deployments are unverified, and Apple Sign-In is experimental.
+- Core acceptance uses disposable neutral workspaces. Sample behavior does not define the core workflow.
+- Public release, including license terms, version, tag and publication, is not established.
 
-For the detailed maturity snapshot, read [docs/current-status.md](docs/current-status.md).
+For the detailed status, read [docs/current-status.md](docs/current-status.md).
 
 ## Learn More
 

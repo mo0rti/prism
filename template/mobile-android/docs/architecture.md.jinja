@@ -112,15 +112,15 @@ fun ExampleListScreen(
 
 - `SessionManager` in `core/session/` exposes `StateFlow<AuthState>`.
 - `AuthState.Authenticated` is a marker state derived from token presence, not a placeholder `User`.
-- `AuthInterceptor` reads the access token from `TokenStorage` and adds it to requests.
-- `TokenAuthenticator` handles 401 -> refresh -> retry automatically, and clears session state on refresh failure.
-- `TokenStorage` persists tokens in encrypted DataStore.
-- NavGraph observes `AuthState` to switch between auth and main root flows.
+- `AuthInterceptor` reads the access token from `TokenStorage` and adds it to requests, including `auth/me`; only the public auth endpoints (`login`, `register`, `refresh`, `oauth/*`) go without it.
+- `TokenAuthenticator` handles 401 -> refresh -> retry automatically. It clears session state only when the backend rejects the refresh token (400, 401 or 403); a timeout, I/O error or 5xx keeps the session.
+- `TokenStorage` persists tokens in plaintext DataStore (`auth_prefs`) inside the app sandbox. `android:allowBackup` is `false`, so the file stays out of cloud and device-transfer backups. Wrap the values with Android Keystore encryption when the app needs more than the sandbox.
+- `MainActivityViewModel` turns `AuthState` and the stored welcome flag into a launch destination, and `NavGraph` switches between the welcome, auth and main root flows from it.
 - Sign-in and logout update session state; screens do not own auth routing callbacks.
 
 ## Key rules
 
-- Do not hardcode API URLs - use the configured base URL in `ApiService`.
+- Do not hardcode API URLs - use the configured `BuildConfig.API_BASE_URL`, which `NetworkModule` gives to Retrofit.
 - Do not bypass `SessionManager` for auth state decisions or logout flows.
 - Do not bypass `TokenStorage`, `AuthInterceptor`, or `TokenAuthenticator` with feature-level token plumbing.
 - Do not import UI types (Compose, Android) in repository or domain layers.

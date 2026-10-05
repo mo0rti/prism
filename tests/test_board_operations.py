@@ -257,6 +257,20 @@ class BoardOperationTests(unittest.TestCase):
         self.assertEqual("conflict", receipt["state"])
         self.assertEqual(edited, self.read(self.feature))
 
+    def test_conflict_is_reported_once_in_changes_and_survives_repeated_recovery(self):
+        preview = self.preview()
+        self.partial(preview, crash=True)
+        edited = self.read(self.feature) + "\nHuman correction after interruption.\n"
+        self.put(self.feature, edited)
+        for _ in range(3):
+            receipt = self.service.recover(self.actor, "test-operation")
+            self.assertEqual("conflict", receipt["state"])
+        conflicts = [item for item in self.service.changes(self.actor)["changes"] if item["event"]["type"] == "operation-conflict"]
+        self.assertEqual(1, len(conflicts))
+        self.assertEqual("test-operation", conflicts[0]["operation_id"])
+        self.assertEqual({"type": "operation-conflict", "operation_id": "test-operation", "paths": [self.feature]}, conflicts[0]["event"])
+        self.assertNotIn("Human correction", str(conflicts[0]))
+
     def test_unrelated_operation_can_finish_while_first_is_pending(self):
         feature2 = "knowledge/wiki/features/F-002-another-review.md"
         self.put(feature2, self.read(self.feature).replace("F-001", "F-002"))
@@ -267,7 +281,7 @@ class BoardOperationTests(unittest.TestCase):
         self.assertEqual("applied", receipt["state"], receipt)
         self.assertEqual("applied", self.service.recover(self.actor, "first")["state"])
         self.assertIn("status: in-design", self.read(feature2))
-        self.assertEqual(2, self.service.store.connection.execute("SELECT COUNT(*) FROM events").fetchone()[0])
+        self.assertEqual(3, self.service.store.connection.execute("SELECT COUNT(*) FROM events").fetchone()[0])
 
     def test_completed_files_can_finalize_receipt_after_later_source_change(self):
         preview = self.preview()

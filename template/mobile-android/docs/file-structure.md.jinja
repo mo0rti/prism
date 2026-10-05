@@ -28,8 +28,10 @@ mobile-android/
 
 | Path | Purpose |
 |------|---------|
-| `app/{{ project_name }}Application.kt` | `@HiltAndroidApp` application class. |
-| `app/MainActivity.kt` | Single activity; sets theme and hosts NavGraph. |
+| `app/App.kt` | `@HiltAndroidApp` application class. |
+| `app/MainActivity.kt` | Single activity; keeps the splash screen up until the launch state is ready, sets the theme and hosts `AppRoot`. |
+| `app/MainActivityViewModel.kt` | Combines auth state and the welcome flag into the launch state. |
+| `app/AppRoot.kt` | Passes the launch state to `NavGraph`. |
 
 ### `core/` - Cross-cutting infrastructure
 
@@ -37,7 +39,8 @@ mobile-android/
 |---------|---------|
 | `core/common/` | `AppResult<T>` wrapper. |
 | `core/session/` | `SessionManager` - auth state and token access. |
-| `core/network/` | `ApiService`, `AuthInterceptor`, `TokenAuthenticator`. |
+| `core/launch/` | `LaunchUiState`, `LaunchDestination`, `LaunchPreferencesStorage` (welcome-completed flag). |
+| `core/network/` | `ApiService`, `AuthInterceptor`, `TokenAuthenticator`, `NetworkMonitor`. |
 | `core/datastore/` | `TokenStorage` (DataStore-backed token persistence). |
 | `core/database/` | `AppDatabase`, `Converters` (shared Room infrastructure). |
 | `core/di/` | Hilt modules: `NetworkModule`, `DatabaseModule`, `DispatcherModule`, `AppModule`. |
@@ -49,12 +52,13 @@ Each feature follows: `feature/<name>/data/` + `feature/<name>/domain/` + `featu
 
 | Feature | Contents |
 |---------|----------|
+| `feature/welcome/ui/` | `WelcomeRoute`, `WelcomeScreen`, `WelcomeViewModel`, `WelcomeUiState`, `WelcomePage`. |
 | `feature/auth/` | `AuthConfig` and auth mode selection for unauthenticated navigation. |
 | `feature/auth/domain/` | `AuthCredentials`, `AuthProvider`, `SignInInputValidator`. |
-| `feature/auth/data/` | `AuthRepository`, `AuthDtos`. |
+| `feature/auth/data/` | `AuthRepository`, `AuthDtos` (under `remote/dto/`). |
 | `feature/auth/ui/` | `SocialSignInRoute`, `SocialSignInScreen`, `SignInRoute`, `SignInScreen`, `SignInViewModel`, `components/`. |
 | `feature/example/domain/` | `Example` model. |
-| `feature/example/data/` | `ExampleRepository`, `ExampleDtos`, `ExampleEntity`, `ExampleDao`, Mappers. |
+| `feature/example/data/` | `ExampleRepository` (backed by the backend `/transactions` endpoints), `TransactionDtos`, `ExampleEntity`, `ExampleDao`, Mappers. |
 | `feature/example/ui/` | `ExampleListRoute`, `ExampleListScreen`, `ExampleListViewModel`, `components/`. |
 
 ### `designsystem/` - Theme and reusable UI
@@ -64,7 +68,7 @@ Each feature follows: `feature/<name>/data/` + `feature/<name>/domain/` + `featu
 | `designsystem/theme/` | `AppTheme`, Color, Type, Shape, Dimensions. |
 | `designsystem/preview/` | Shared day/night preview annotations for Compose screens. |
 | `designsystem/text/` | `UiText` (framework-light string wrapper). |
-| `designsystem/components/` | Shared composables: `LoadingIndicator`, `ErrorView`. |
+| `designsystem/components/` | Shared composables: `LoadingIndicator`, `ErrorView`, `StepNavigationButtons`. |
 
 ### `navigation/` - Routes and nav host
 

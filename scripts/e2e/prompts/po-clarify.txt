@@ -1,0 +1,8 @@
+I am the product owner. Use Prism's PO clarify skill to resolve the open product-owner questions on feature F-001 with my answers below. Work only through your Prism MCP tools and follow the board's guidance.
+
+- Format and channel of the summary: A downloaded PDF file. The system only produces it; the reviewer sends it on themselves.
+- Comments that do not fit on one page: One page stays the limit. Show as many whole comments as fit and end with a line saying how many more comments are not shown.
+- Date or version on the summary: The header shows the date the review was finished. It does not show a document version.
+- Whether the summary has to be available in more than one language: No. English only; no other language is needed for this feature.
+
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would change. If something blocks it, tell me exactly what and stop.

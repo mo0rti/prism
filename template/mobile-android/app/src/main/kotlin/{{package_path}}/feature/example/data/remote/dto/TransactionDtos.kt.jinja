@@ -2,12 +2,19 @@ package {{ package_identifier }}.feature.example.data.remote.dto
 
 import {{ package_identifier }}.feature.example.domain.model.Example
 import kotlinx.serialization.Serializable
+import java.util.Locale
+
+// Wire shapes of the backend `/transactions` endpoints (see shared/api-contracts/openapi.yml).
+// The sample feature shows each transaction as an `Example` row.
 
 @Serializable
-data class ExampleResponse(
+data class TransactionResponse(
     val id: String,
-    val title: String,
+    val reference: String,
+    val amount: Double,
+    val currency: String,
     val description: String? = null,
+    val type: String,
     val status: String,
     val createdBy: String,
     val createdAt: String,
@@ -15,7 +22,7 @@ data class ExampleResponse(
 ) {
     fun toDomain(): Example = Example(
         id = id,
-        title = title,
+        title = "$type ${String.format(Locale.ROOT, "%.2f", amount)} $currency",
         description = description,
         status = status,
         createdBy = createdBy,
@@ -25,8 +32,8 @@ data class ExampleResponse(
 }
 
 @Serializable
-data class ExampleListResponse(
-    val content: List<ExampleResponse>,
+data class TransactionListResponse(
+    val content: List<TransactionResponse>,
     val page: Int,
     val size: Int,
     val totalElements: Long,
@@ -34,14 +41,15 @@ data class ExampleListResponse(
 )
 
 @Serializable
-data class CreateExampleRequest(
-    val title: String,
+data class CreateTransactionRequest(
+    val amount: Double,
+    val currency: String,
     val description: String? = null,
+    val type: String,
 )
 
 @Serializable
-data class UpdateExampleRequest(
-    val title: String? = null,
+data class UpdateTransactionRequest(
     val description: String? = null,
     val status: String? = null,
 )

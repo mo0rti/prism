@@ -1,10 +1,10 @@
 # Prism Core and Application Template
 
-Prism's core is the workflow and board shared by humans and agents. Application generation is an optional capability. Follow `docs/prism-core-workflow-plan.md` for the approved scope and deferred sample findings. Test lifecycle writes, workflow adoption and the shared HTTP/MCP service only in disposable neutral workspaces, never in this maintainer repository. Connected agents use pinned standard skills through one provider-neutral service; custom skills retain the direct-file path, with no extra board approval queue.
+Prism's core is the workflow and board shared by humans and agents. Application generation is an optional capability. Follow `docs/prism-core-workflow-plan.md` for the scope, contracts and deferred work. Test lifecycle writes, workflow adoption and the shared HTTP/MCP service only in disposable neutral workspaces, never in this maintainer repository. Connected agents use pinned standard skills through one provider-neutral service; custom skills retain the direct-file path, with no extra board approval queue.
 
 Copier template that scaffolds multi-platform workspaces with Backend (Spring Boot 4), User Web App (Next.js), Admin Web Portal (Next.js), Android (Kotlin/Compose), and iOS (Swift/SwiftUI).
 
-The questionnaire keeps roadmap-facing options visible. Backend, Android, and iOS are the primary implemented slices today; the user web app, admin web portal, and some auth/deployment choices remain intentionally visible while their end-to-end support continues to evolve.
+The questionnaire keeps roadmap-facing options visible. Backend, Android and web samples are verified locally; the iOS sample is verified only by the macOS CI job, and live deployments are unverified. Apple Sign-In is experimental. `docs/current-status.md` records the verification per platform.
 
 ## Project Structure
 
@@ -44,6 +44,10 @@ wiki commands from a generated project against this repository.
 - **Documentation organization**: Template-repo docs live in root `docs/`. Generated-project docs stay in `template/docs/`. Platform-specific technical docs live inside each platform directory (`template/mobile-android/docs/`, `template/backend/docs/`, `template/mobile-ios/docs/`). Entity docs are backend-specific (`template/backend/docs/entities/`). Platform docs are auto-excluded with their platform via `_exclude` rules.
 - **Test with `copier copy`** after changes: `copier copy --trust . C:\temp\template-test`
 - **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
+- **User docs match behaviour**: keep the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md` equal to the CLI and service. After changing a documented command, message or security check, run it in a disposable workspace and fix the docs to match the real output
+- **Packaged workflow assets**: the 24 canonical workflow skills, `template/knowledge/` and the "Connected board workflow" section of the root guidance templates are packaged into `prism_cli/assets/workflow-v1.json`; run `python scripts/build-workflow-assets.py` after editing them (`--check` verifies), because a new digest invalidates existing board grants; the asset's `previous_digests` keep the earlier shipped versions of each installer-owned file so `prism workflow upgrade` can replace an unmodified old copy, so rebuild from the checked-in asset and never delete or hand-edit it
+- **Changelog**: record user-visible changes under `Unreleased` in `CHANGELOG.md`; version numbers and release tags are chosen at release time
+- **Current state only**: instruction and guidance files describe current behaviour; dates and history belong in logs, ledgers and the changelog
 - **Model and effort**: follow the maintainer model workflow in `AGENTS.md`. Launch with an explicit model and effort, keep the full output limit, and use `max` only for one bounded hard problem
 
 ## Common Commands
@@ -58,11 +62,21 @@ copier copy --trust --data 'project_name=TestApp' --data 'platforms=[backend, mo
 # Update an existing generated project through Prism's manifest/provenance checks
 cd /path/to/generated-project
 prism update
+
+# Shared board, in a disposable workspace and never in this repository
+prism workflow install . --name "Scratch" --platform backend --apply --yes
+prism doctor --workspace .
+prism board grant "Tester" --kind human --write --path .
+prism board serve . --port 8765
 ```
 
 ## Reference
 
 - `docs/README.md` - root documentation index for this template repo
+- `docs/shared-board.md` - shared-board usage contract and MCP tool contract
+- `docs/troubleshooting.md` - symptoms, causes and fixes
+- `SECURITY.md` - local threat model
+- `CHANGELOG.md` - user-visible changes
 - `docs/maintainer-workflow.md` - template maintenance workflow and validation variants
 - `docs/questionnaire.md` - questionnaire inputs and maturity notes
 - `copier.yml` - template configuration and questionnaire

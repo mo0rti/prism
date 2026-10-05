@@ -21,3 +21,7 @@ Auth method, required scopes or roles.
 ## Notes
 Design decisions, backwards-compatibility concerns.
 ```
+
+`design-handoff` creates this page at `status: agreed` when the feature's API surface
+declares API work; `dev-done` moves it to `implemented`. List each endpoint as
+`METHOD /path` and define only data models that the API surface or an endpoint names.

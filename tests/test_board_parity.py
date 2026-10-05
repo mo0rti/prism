@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -64,6 +65,27 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             return result.structured_content
         return json.loads(next(part.text for part in result.content if getattr(part, "type", None) == "text"))
 
+    async def read_every_page(self, client, paths: list[str]) -> list[dict]:
+        """Follow read_workspace cursors and return one record per file with its full text."""
+
+        files: dict[str, dict] = {}
+        cursor = None
+        while True:
+            arguments = {"paths": paths} if cursor is None else {"paths": paths, "cursor": cursor}
+            page = self.tool_data(await client.call_tool("read_workspace", arguments))
+            for record in page["files"]:
+                held = files.setdefault(record["path"], {**record, "content": ""})
+                self.assertEqual(len(held["content"]), record["offset"])
+                held["content"] += record["content"]
+            cursor = page["next_cursor"]
+            if cursor is None:
+                break
+        self.assertEqual(sorted(paths), sorted(files))
+        for item in files.values():
+            self.assertEqual(item["total_chars"], len(item["content"]))
+            self.assertEqual("sha256:" + hashlib.sha256(item["content"].encode("utf-8")).hexdigest(), item["digest"])
+        return [files[path] for path in paths]
+
     async def exercise(self, root: Path, action: tuple[str, ...], kind: str, *, blocked: bool) -> dict:
         self.prepare(root, action, blocked=blocked)
         before = self.snapshot(root)
@@ -101,12 +123,14 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                         async with streamable_http_client(ORIGIN + "/mcp", http_client=http) as (reader, writer):
                             async with ClientSession(reader, writer) as client:
                                 await client.initialize()
-                                skill = self.tool_data(await client.call_tool("get_skill", {"name": action[0]}))["skill"]
+                                skill_page = self.tool_data(await client.call_tool("get_skill", {"name": action[0]}))
+                                self.assertIsNone(skill_page["next_cursor"])
+                                skill = skill_page["skill"]
                                 inventory = self.tool_data(await client.call_tool("list_workspace", {}))
                                 self.assertIsNone(inventory["next_cursor"])
                                 paths = set(skill["required_workspace_reads"])
                                 paths.update(item["path"] for item in inventory["files"] if item["read_support"] == "eligible")
-                                reads = self.tool_data(await client.call_tool("read_workspace", {"paths": sorted(paths)}))["files"]
+                                reads = await self.read_every_page(client, sorted(paths))
                                 revisions = {item["path"]: item["digest"] for item in reads}
                                 preview = self.tool_data(await client.call_tool("preview_skill", {"skill": action[0], "changes": [{"path": FEATURE_PATH.as_posix(), "content": proposal}], "read_revisions": revisions}))
                                 self.assertEqual(not blocked, preview["applicable"])
@@ -166,3 +190,224 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(action=action[0]), tempfile.TemporaryDirectory() as temporary:
                 for kind in ("human", "agent"):
                     await self.exercise(Path(temporary) / kind, action, kind, blocked=True)
+
+    async def test_dev_clarify_and_dev_done_are_agent_skills_and_the_human_transport_refuses_them(self) -> None:
+        """The two skills exist on the agent transport only; the human transport answers with the service's own refusals."""
+
+        from tests.test_board_service import (
+            _journey_feature_page,
+            _journey_requirement_page,
+            _replace_body_section,
+            _set_feature_stage,
+            _set_requirement_status,
+            _unquote_yaml_date_fields,
+            _write_index_rows,
+        )
+
+        feature_relative = FEATURE_PATH.as_posix()
+        requirement_relative = "knowledge/wiki/platform-requirements/F-001-backend.md"
+        question = "| 2 | Is there a limit on the number of comments in one summary? | dev | open |"
+        answer = "At most 200 comments are exported; the rest are summarized as a count."
+        evidence = (
+            "| Platform | Implementation | Tests | Release |\n|---|---|---|---|\n"
+            "| backend | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | Version 1.4.0 deployed |"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "workspace"
+            create_core_workflow_fixture(root)
+            self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))["status"])
+            (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/document-review-brief")
+            page = _unquote_yaml_date_fields(
+                _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/document-review-brief"], [
+                    "| 1 | Which points should a review summary highlight? | po | resolved: Key points. |", question,
+                ])
+            )
+            (root / feature_relative).write_bytes(page.encode("utf-8"))
+            (root / requirement_relative).write_bytes(_journey_requirement_page("in-progress").encode("utf-8"))
+            _write_index_rows(root, [("F-001", "Document review", "in-dev", "dev")])
+
+            service = BoardService(root)
+            human = service.create_participant("Parity human", "human", writable=True)
+            agent = service.create_participant("Parity agent", "agent", writable=True)
+            app = create_app(root, port=8765, service=service)
+            try:
+                async with app.router.lifespan_context(app):
+                    transport = httpx2.ASGITransport(app=app)
+                    async with httpx2.AsyncClient(transport=transport, base_url=ORIGIN) as http:
+                        login = await http.post("/api/board/v1/auth/exchange", json={"token": human["token"]}, headers={"Origin": ORIGIN})
+                        self.assertEqual(200, login.status_code, login.text)
+                        headers = {"Origin": ORIGIN, "X-Prism-CSRF": login.json()["csrf_token"]}
+                        refused = await http.post("/api/board/v1/previews/transition", json={"feature_id": "F-001", "action": "dev-done", "inputs": {"semantic_review_acknowledged": True}}, headers=headers)
+                        self.assertEqual((403, "human_action_unavailable"), (refused.status_code, refused.json()["error"]["code"]))
+                        proposal = {"skill": "dev-clarify", "changes": [{"path": feature_relative, "content": page}]}
+                        refused = await http.post("/api/board/v1/previews/skill", json=proposal, headers=headers)
+                        self.assertEqual((403, "participant_kind_required"), (refused.status_code, refused.json()["error"]["code"]))
+                    before = self.snapshot(root)
+
+                    async with httpx2.AsyncClient(transport=transport, base_url=ORIGIN, headers={"Authorization": "Bearer " + agent["token"]}) as http:
+                        async with streamable_http_client(ORIGIN + "/mcp", http_client=http) as (reader, writer):
+                            async with ClientSession(reader, writer) as client:
+                                await client.initialize()
+                                listed = {item["name"]: item for item in self.tool_data(await client.call_tool("list_skills", {}))["skills"]}
+                                for name in ("dev-clarify", "dev-done"):
+                                    self.assertEqual((True, ["agent"], {"preview_skill": ["agent"]}), (listed[name]["write_supported"], listed[name]["participant_kinds"], listed[name]["write_tools"]))
+                                transition = await client.call_tool("preview_transition", {"feature_id": "F-001", "action": "dev-done", "inputs": {"semantic_review_acknowledged": True}})
+                                self.assertTrue(transition.is_error)
+                                self.assertIn("participant_kind_required", " ".join(part.text for part in transition.content if getattr(part, "type", None) == "text"))
+                                self.assertEqual(before, self.snapshot(root))
+
+                                async def propose(skill: str, changes: list[dict]):
+                                    page_data = self.tool_data(await client.call_tool("get_skill", {"name": skill}))
+                                    paths = set(page_data["skill"]["required_workspace_reads"])
+                                    inventory = self.tool_data(await client.call_tool("list_workspace", {}))
+                                    paths.update(item["path"] for item in inventory["files"] if item["read_support"] == "eligible")
+                                    reads = await self.read_every_page(client, sorted(paths))
+                                    revisions = {item["path"]: item["digest"] for item in reads}
+                                    return await client.call_tool("preview_skill", {"skill": skill, "changes": changes, "read_revisions": revisions})
+
+                                clarified = page.replace(question, f"| 2 | Is there a limit on the number of comments in one summary? | dev | resolved: {answer} |")
+                                clarified = _replace_body_section(service, clarified, "Platform scope", f"- **backend**: Store the review summary and recorded outcome. {answer}")
+                                requirement = _replace_body_section(service, _journey_requirement_page("in-progress"), "Technical constraints", f"Use the existing workspace storage. {answer}")
+                                preview = self.tool_data(await propose("dev-clarify", [{"path": feature_relative, "content": clarified}, {"path": requirement_relative, "content": requirement}]))
+                                self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]))
+                                applied = await client.call_tool("apply", {"preview_id": preview["preview_id"], "operation_id": "agent-dev-clarify"})
+                                self.assertEqual("applied", self.tool_data(applied)["state"])
+                                self.assertIn(answer, (root / requirement_relative).read_text(encoding="utf-8"))
+
+                                done = _set_feature_stage(clarified, "done", "none", service)
+                                missing = _replace_body_section(service, done, "Post-ship notes", "Shipped.")
+                                requirement_done = _set_requirement_status(requirement, "done")
+                                rejected = await propose("dev-done", [{"path": feature_relative, "content": missing}, {"path": requirement_relative, "content": requirement_done}])
+                                self.assertTrue(rejected.is_error)
+                                text = " ".join(part.text for part in rejected.content if getattr(part, "type", None) == "text")
+                                self.assertIn("delivery_evidence_required", text)
+                                self.assertIn('"missing_platforms":["backend"]', text)
+
+                                complete = _replace_body_section(service, missing, "Delivery evidence", evidence)
+                                preview = self.tool_data(await propose("dev-done", [{"path": feature_relative, "content": complete}, {"path": requirement_relative, "content": requirement_done}]))
+                                self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]))
+                                applied = await client.call_tool("apply", {"preview_id": preview["preview_id"], "operation_id": "agent-dev-done"})
+                                self.assertEqual("applied", self.tool_data(applied)["state"])
+            finally:
+                service.close()
+            final = yaml.safe_load((root / feature_relative).read_text(encoding="utf-8").split("---", 2)[1])
+            self.assertEqual(("done", "none"), (final["status"], final["owner"]))
+            self.assertIn("Pull request 42 merged as 3f9c2ab", (root / feature_relative).read_text(encoding="utf-8"))
+
+    async def test_design_handoff_creates_the_agreed_api_contract_the_same_way_over_http_and_mcp(self) -> None:
+        """An agent's design-handoff with declared API work needs the contract page on both transports, and the human then starts dev over HTTP."""
+
+        from tests.test_board_service import (
+            _journey_feature_page,
+            _journey_requirement_page,
+            _read_revisions,
+            _replace_body_section,
+            _set_feature_stage,
+            _unquote_yaml_date_fields,
+            _write_index_rows,
+        )
+
+        feature_relative = FEATURE_PATH.as_posix()
+        requirement_relative = "knowledge/wiki/platform-requirements/F-001-backend.md"
+        contract_relative = "knowledge/wiki/api-contracts/F-001.md"
+        surface = "A new endpoint `POST /api/v1/reviews/{id}/exports` returns the review summary as a PDF export."
+        contract = (
+            "---\nfeature-id: F-001\nversion: 1\nstatus: agreed\n---\n\n"
+            "## Endpoints\n- `POST /api/v1/reviews/{reviewId}/exports` creates a review export. Response body: `ReviewExport` (201). Errors: 401, 404.\n\n"
+            "## Data models\n### ReviewExport\n- `url`: string\n\n"
+            "## Authentication requirements\nBearer token of the signed-in reviewer.\n\n"
+            "## Notes\nThe export is generated when it is requested.\n"
+        )
+        question = "| 1 | Which points should a review summary highlight? | po | resolved: Key points. |"
+        outcomes: list[dict] = []
+        for transport in ("http", "mcp"):
+            with self.subTest(transport=transport), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary) / "workspace"
+                create_core_workflow_fixture(root)
+                self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))["status"])
+                (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/document-review-brief")
+                page = _unquote_yaml_date_fields(
+                    _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/document-review-brief"], [question])
+                )
+                page = _replace_body_section(None, page, "API surface", surface)
+                (root / feature_relative).write_bytes(page.encode("utf-8"))
+                _write_index_rows(root, [("F-001", "Document review", "in-design", "designer")])
+
+                service = BoardService(root)
+                human = service.create_participant("Parity human", "human", writable=True)
+                agent = service.create_participant("Parity agent", "agent", writable=True)
+                app = create_app(root, port=8765, service=service)
+                handoff = _set_feature_stage(page, "ready-for-dev", "dev", service)
+                requirement = _replace_body_section(
+                    service, _journey_requirement_page("pending"), "API contract reference", "See [the API contract](../api-contracts/F-001.md) for the export endpoint."
+                )
+                without = [{"path": feature_relative, "content": handoff}, {"path": requirement_relative, "content": requirement.replace("See [the API contract](../api-contracts/F-001.md) for", "No contract exists for")}]
+                with_contract = [*without[:1], {"path": requirement_relative, "content": requirement}, {"path": contract_relative, "content": contract}]
+                try:
+                    async with app.router.lifespan_context(app):
+                        asgi = httpx2.ASGITransport(app=app)
+                        if transport == "http":
+                            async with httpx2.AsyncClient(transport=asgi, base_url=ORIGIN, headers={"Authorization": "Bearer " + agent["token"]}) as http:
+                                async def propose(changes: list[dict]):
+                                    revisions = _read_revisions(service, service.authenticate(agent["token"]), "design-handoff", changes)
+                                    return await http.post("/api/board/v1/previews/skill", json={"skill": "design-handoff", "changes": changes, "read_revisions": revisions})
+
+                                missing = await propose(without)
+                                self.assertEqual(409, missing.status_code, missing.text)
+                                error = missing.json()["error"]
+                                self.assertEqual("api_contract_required", error["code"])
+                                self.assertEqual(contract_relative, error["details"]["path"])
+                                self.assertNotIn("knowledge/wiki/api-contracts/F-001.md", self.snapshot(root))
+                                response = await propose(with_contract)
+                                self.assertEqual(200, response.status_code, response.text)
+                                preview = response.json()
+                                self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]))
+                                applied = await http.post("/api/board/v1/apply", json={"preview_id": preview["preview_id"], "operation_id": "agent-http-handoff"})
+                                self.assertEqual("applied", applied.json()["state"], applied.text)
+                        else:
+                            async with httpx2.AsyncClient(transport=asgi, base_url=ORIGIN, headers={"Authorization": "Bearer " + agent["token"]}) as http:
+                                async with streamable_http_client(ORIGIN + "/mcp", http_client=http) as (reader, writer):
+                                    async with ClientSession(reader, writer) as client:
+                                        await client.initialize()
+
+                                        async def propose(changes: list[dict]):
+                                            skill = self.tool_data(await client.call_tool("get_skill", {"name": "design-handoff"}))["skill"]
+                                            paths = set(skill["required_workspace_reads"])
+                                            inventory = self.tool_data(await client.call_tool("list_workspace", {}))
+                                            paths.update(item["path"] for item in inventory["files"] if item["read_support"] == "eligible")
+                                            revisions = {item["path"]: item["digest"] for item in await self.read_every_page(client, sorted(paths))}
+                                            return await client.call_tool("preview_skill", {"skill": "design-handoff", "changes": changes, "read_revisions": revisions})
+
+                                        missing = await propose(without)
+                                        self.assertTrue(missing.is_error)
+                                        text = " ".join(part.text for part in missing.content if getattr(part, "type", None) == "text")
+                                        self.assertIn("api_contract_required", text)
+                                        self.assertIn(contract_relative, text)
+                                        self.assertNotIn(contract_relative, self.snapshot(root))
+                                        preview = self.tool_data(await propose(with_contract))
+                                        self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]))
+                                        applied = await client.call_tool("apply", {"preview_id": preview["preview_id"], "operation_id": "agent-mcp-handoff"})
+                                        self.assertEqual("applied", self.tool_data(applied)["state"])
+
+                        async with httpx2.AsyncClient(transport=asgi, base_url=ORIGIN) as http:
+                            login = await http.post("/api/board/v1/auth/exchange", json={"token": human["token"]}, headers={"Origin": ORIGIN})
+                            self.assertEqual(200, login.status_code, login.text)
+                            headers = {"Origin": ORIGIN, "X-Prism-CSRF": login.json()["csrf_token"]}
+                            refused = await http.post("/api/board/v1/previews/skill", json={"skill": "design-handoff", "changes": with_contract}, headers=headers)
+                            self.assertEqual((403, "participant_kind_required"), (refused.status_code, refused.json()["error"]["code"]))
+                            start = await http.post("/api/board/v1/previews/transition", json={"feature_id": "F-001", "action": "dev-start", "inputs": {"semantic_review_acknowledged": True}}, headers=headers)
+                            self.assertEqual(200, start.status_code, start.text)
+                            self.assertEqual(("ready", True), (start.json()["classification"], start.json()["applicable"]))
+                            check = next(item for item in start.json()["checks"] if item["code"] == "api-contract")
+                            self.assertEqual("pass", check["status"])
+                            applied = await http.post("/api/board/v1/apply", json={"preview_id": start.json()["preview_id"], "operation_id": "human-http-dev-start"}, headers=headers)
+                            self.assertEqual("applied", applied.json()["state"], applied.text)
+                finally:
+                    service.close()
+                after = self.snapshot(root)
+                self.assertEqual(contract.encode("utf-8"), after[contract_relative])
+                self.assertEqual(requirement.encode("utf-8"), after[requirement_relative])
+                final = yaml.safe_load(after[feature_relative].decode("utf-8").split("---", 2)[1])
+                self.assertEqual(("in-dev", "dev"), (final["status"], final["owner"]))
+                outcomes.append({path: after[path] for path in (contract_relative, requirement_relative)})
+        self.assertEqual(outcomes[0], outcomes[1])

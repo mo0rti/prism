@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import redirect_stderr, redirect_stdout
 import hashlib
+import io
 import json
+import threading
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
+from unittest.mock import Mock, patch
 
 from starlette.testclient import TestClient
 
-from prism_cli.board_server import MAX_REQUEST_BYTES, create_app
-from prism_cli.board_service import BoardService
+from prism_cli.board_server import MAX_REQUEST_BYTES, _LiveGraph, _SnapshotRefreshingService, create_app, quiet_connection_reset_handler
+from prism_cli.board_service import BoardError, BoardService
+from prism_cli.wiki_transitions import FingerprintCache
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 
@@ -88,6 +94,13 @@ class _Service:
         return self._result("preview_transition", actor, feature_id, action, inputs)
 
     def preview_skill(self, actor: _Actor, skill: str, changes: list[dict[str, Any]], moves: list[dict[str, Any]] | None = None, read_revisions: dict[str, str] | None = None) -> dict[str, Any]:
+        if skill == "rejected-details":
+            raise BoardError(
+                "clarify_answer_unlinked",
+                "Updated `Summary` must include an answer; the credential was secret-token.",
+                409,
+                {"section": "Summary", "resolved_questions": ["2"], "resolved_answers": {"2": "Answer starts with secret-token"}},
+            )
         return self._result("preview_skill", actor, skill, changes, moves, read_revisions)
 
     def apply(self, actor: _Actor, preview_id: str, operation_id: str) -> dict[str, Any]:
@@ -207,6 +220,24 @@ class BoardServerTests(unittest.TestCase):
         self.assertEqual(revoked_write.status_code, 401)
         self.assertFalse(any(call[0] == "apply" and call[1] == "participant-1" for call in self.service.calls[2:]))
 
+    def test_token_exchange_removes_expired_sessions_and_keeps_live_ones(self) -> None:
+        sessions = self.app.state.board_sessions
+        self.login()
+        self.client.cookies.clear()
+        self.login()
+        self.client.cookies.clear()
+        expired_id, live_id = list(sessions)
+        sessions[expired_id].expires_at = 0.0
+
+        result, _cookie = self.login()
+
+        self.assertNotIn(expired_id, sessions)
+        self.assertIn(live_id, sessions)
+        self.assertEqual(2, len(sessions))
+        new_id = next(session_id for session_id in sessions if session_id != live_id)
+        self.assertEqual(result["csrf_token"], sessions[new_id].csrf)
+        self.assertEqual(200, self.client.get("/api/board/v1/discover").status_code)
+
     def test_changed_contract_invalidates_browser_session(self) -> None:
         self.login()
         self.service.version = "2"
@@ -307,6 +338,145 @@ class BoardServerTests(unittest.TestCase):
                 self.assertEqual("read-only", queried.json()["capability"]["mode"])
                 self.assertEqual(original_feature, feature.read_text(encoding="utf-8"))
 
+    def test_apply_refreshes_the_graph_snapshot_before_the_response_returns(self) -> None:
+        # A one-hour poll interval keeps the background poller out of the way,
+        # so only the write path can make the snapshot current.
+        with TemporaryDirectory() as temporary, patch("prism_cli.board_server.GRAPH_POLL_SECONDS", 3600.0):
+            root = Path(temporary)
+            apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))
+            source = root / "knowledge/intake/processed/document-review-brief/brief.md"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
+            feature = root / "knowledge/wiki/features/F-001-document-review.md"
+            feature.write_bytes(
+                _feature_page()
+                .replace("status: raw", "status: ready-for-design")
+                .replace("owner: po", "owner: designer")
+                .replace("| po | open |", "| po | resolved: Summarize key points. |")
+                .encode("utf-8")
+            )
+            _write_index(root, "ready-for-design", "designer")
+
+            service = BoardService(root)
+            self.addCleanup(service.close)
+            grant = service.create_participant("Refresh test human", "human", True)
+            app = create_app(root, port=8767, service=service)
+            with TestClient(app, base_url="http://127.0.0.1:8767") as client:
+                headers = {"Authorization": f"Bearer {grant['token']}"}
+
+                def stage() -> tuple[int, str]:
+                    response = client.get("/data.json", headers=headers)
+                    self.assertEqual(200, response.status_code, response.text)
+                    payload = response.json()
+                    node = next(item for item in payload["envelope"]["facts"]["nodes"] if item["id"] == "F-001")
+                    return payload["version"], node["status"]
+
+                version_before, status_before = stage()
+                self.assertEqual("ready-for-design", status_before)
+                preview = client.post(
+                    "/api/board/v1/previews/transition",
+                    json={"feature_id": "F-001", "action": "design-start", "inputs": {"semantic_review_acknowledged": True}},
+                    headers=headers,
+                )
+                self.assertEqual(200, preview.status_code, preview.text)
+                self.assertTrue(preview.json()["applicable"], preview.text)
+                self.assertEqual((version_before, status_before), stage(), "Previewing must not change the snapshot.")
+
+                applied = client.post(
+                    "/api/board/v1/apply",
+                    json={"preview_id": preview.json()["preview_id"], "operation_id": "refresh-operation"},
+                    headers=headers,
+                )
+                self.assertEqual(200, applied.status_code, applied.text)
+                self.assertEqual("applied", applied.json()["state"])
+                # No sleep: the very next read already reflects the applied write.
+                version_after, status_after = stage()
+                self.assertEqual("in-design", status_after)
+                self.assertGreater(version_after, version_before)
+                self.assertEqual((version_after, status_after), stage(), "A read after the refresh must not rebuild the snapshot again.")
+
+    def test_only_the_graph_poller_reuses_file_hashes(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))
+            source = root / "knowledge/intake/processed/document-review-brief/brief.md"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
+            feature = root / "knowledge/wiki/features/F-001-document-review.md"
+            feature.write_bytes(
+                _feature_page()
+                .replace("status: raw", "status: ready-for-design")
+                .replace("owner: po", "owner: designer")
+                .replace("| po | open |", "| po | resolved: Summarize key points. |")
+                .encode("utf-8")
+            )
+            _write_index(root, "ready-for-design", "designer")
+
+            service = BoardService(root).start()
+            try:
+                self.assert_poller_alone_reuses_file_hashes(root, service)
+            finally:
+                service.close()
+
+    def assert_poller_alone_reuses_file_hashes(self, root: Path, service: BoardService) -> None:
+        grant = service.create_participant("Cache test human", "human", True)
+        actor = service.authenticate(grant["token"])
+        scans: list[FingerprintCache] = []
+        real_scan = FingerprintCache.scan
+
+        def recording_scan(cache: FingerprintCache) -> Any:
+            scans.append(cache)
+            return real_scan(cache)
+
+        with patch.object(FingerprintCache, "scan", recording_scan):
+            graph = _LiveGraph(root, service.validate_graph_inputs)
+            self.assertEqual(1, len(scans), "The poller's own fingerprint goes through its cache.")
+            scans.clear()
+
+            preview = service.preview_transition(actor, feature_id="F-001", action="design-start", inputs={"semantic_review_acknowledged": True})
+            self.assertTrue(preview["applicable"], preview)
+            service.query(actor, "blockers")
+            receipt = service.apply(actor, preview["preview_id"], "cache-operation")
+            self.assertEqual("applied", receipt["state"])
+            self.assertEqual([], scans, "Preview, query and apply hash every file themselves.")
+
+            graph.refresh_now()
+            self.assertEqual(1, len(scans))
+            graph.refresh_now()
+            self.assertEqual(2, len(scans))
+            self.assertIs(scans[0], scans[1], "The poller keeps one cache.")
+
+    def test_snapshot_refresh_wrapper_covers_writes_and_leaves_reads_alone(self) -> None:
+        class Graph:
+            refreshes = 0
+
+            def refresh_now(self) -> None:
+                self.refreshes += 1
+
+        class Service:
+            def apply(self, actor: Any, preview_id: str, operation_id: str) -> dict[str, Any]:
+                if preview_id == "bad":
+                    raise _BoardError("preview_blocked", "blocked", 409)
+                return {"state": "applied"}
+
+            def recover(self, actor: Any, operation_id: str) -> dict[str, Any]:
+                return {"state": "applied"}
+
+            def discover(self, actor: Any) -> dict[str, Any]:
+                return {}
+
+        graph = Graph()
+        wrapped = _SnapshotRefreshingService(Service(), graph)  # type: ignore[arg-type]
+        wrapped.discover(None)
+        self.assertEqual(0, graph.refreshes)
+        self.assertEqual({"state": "applied"}, wrapped.apply(None, "good", "op-1"))
+        self.assertEqual(1, graph.refreshes)
+        self.assertEqual({"state": "applied"}, wrapped.recover(None, "op-1"))
+        self.assertEqual(2, graph.refreshes)
+        with self.assertRaises(_BoardError):
+            wrapped.apply(None, "bad", "op-2")
+        self.assertEqual(3, graph.refreshes, "A failed write may still have touched files, so it refreshes too.")
+
     def test_host_origin_mixed_credential_and_body_size_guards(self) -> None:
         wrong_host = self.client.get("/api/board/v1/discover", headers={"Host": "attacker.example"})
         self.assertEqual(wrong_host.status_code, 400)
@@ -345,6 +515,27 @@ class BoardServerTests(unittest.TestCase):
         )
         self.assertEqual(oversized.status_code, 413)
 
+    def test_rejection_details_reach_the_http_error_body_and_stay_redacted(self) -> None:
+        response = self.client.post(
+            "/api/board/v1/previews/skill",
+            json={"skill": "rejected-details", "changes": []},
+            headers={"Authorization": "Bearer secret-token"},
+        )
+        self.assertEqual(409, response.status_code, response.text)
+        error = response.json()["error"]
+        self.assertEqual("clarify_answer_unlinked", error["code"])
+        self.assertIn("`Summary`", error["message"])
+        self.assertEqual(
+            {"section": "Summary", "resolved_questions": ["2"], "resolved_answers": {"2": "Answer starts with [redacted]"}},
+            error["details"],
+        )
+        self.assertNotIn("secret-token", response.text)
+
+        # Errors without structured details keep the original two-field body.
+        plain = self.client.get("/api/board/v1/discover", headers={"Authorization": "Bearer unknown-token"})
+        self.assertEqual(401, plain.status_code)
+        self.assertEqual({"code", "message"}, set(plain.json()["error"]))
+
     def test_browser_exchange_rejects_agent_grants_and_redacts_credentials(self) -> None:
         agent = self.client.post(
             "/api/board/v1/auth/exchange",
@@ -361,6 +552,92 @@ class BoardServerTests(unittest.TestCase):
         )
         self.assertEqual(invalid.status_code, 401)
         self.assertNotIn(raw, invalid.text)
+
+    def test_event_stream_ends_when_the_server_is_stopping(self) -> None:
+        stopping = threading.Event()
+        app = create_app(self.root, port=8765, service=self.service, should_stop=stopping.is_set)
+        with TestClient(app, base_url=self.origin) as client:
+            exchange = client.post("/api/board/v1/auth/exchange", json={"token": "human-token"}, headers={"Origin": self.origin})
+            self.assertEqual(200, exchange.status_code, exchange.text)
+            responses: list[Any] = []
+            reader = threading.Thread(target=lambda: responses.append(client.get("/events")), daemon=True)
+            reader.start()
+            # Without a stop signal the stream never ends, so the reader stays blocked until it is set.
+            reader.join(timeout=1.5)
+            self.assertTrue(reader.is_alive(), "The event stream ended before the server was stopping.")
+            stopping.set()
+            reader.join(timeout=20)
+            self.assertFalse(reader.is_alive(), "An open event stream held the server after it began stopping.")
+        self.assertEqual(200, responses[0].status_code)
+        self.assertTrue(responses[0].text.startswith("id: "), responses[0].text)
+
+
+def _free_port() -> int:
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+class ConnectionResetHandlerTests(unittest.TestCase):
+    """A client that drops its connection costs one quiet line, not a traceback."""
+
+    def test_a_reset_connection_is_reported_once_and_never_as_a_traceback(self) -> None:
+        handler = quiet_connection_reset_handler()
+        loop = Mock()
+        context = {"message": "Exception in callback _call_connection_lost", "exception": ConnectionResetError(10054, "reset by peer")}
+        with redirect_stderr(io.StringIO()) as stderr:
+            for _ in range(3):
+                handler(loop, context)
+        loop.default_exception_handler.assert_not_called()
+        lines = stderr.getvalue().splitlines()
+        self.assertEqual(1, len(lines), lines)
+        self.assertIn("connection reset", lines[0])
+        self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_every_other_exception_keeps_the_default_reporting(self) -> None:
+        handler = quiet_connection_reset_handler()
+        loop = Mock()
+        for exception in (ValueError("boom"), ConnectionAbortedError("aborted"), BrokenPipeError("pipe"), None):
+            context = {"message": "unexpected", "exception": exception}
+            with redirect_stderr(io.StringIO()) as stderr:
+                handler(loop, context)
+            loop.default_exception_handler.assert_called_with(context)
+            self.assertEqual("", stderr.getvalue())
+        self.assertEqual(4, loop.default_exception_handler.call_count)
+
+    def test_serve_board_runs_its_event_loop_with_the_handler(self) -> None:
+        import uvicorn
+
+        from prism_cli.board_server import serve_board
+
+        installed: list[Any] = []
+
+        async def fake_serve(self: Any, sockets: Any = None) -> None:
+            installed.append(asyncio.get_running_loop().get_exception_handler())
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))
+            with patch.object(uvicorn.Server, "serve", fake_serve), redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
+                serve_board(root, port=_free_port(), open_browser=False)
+        self.assertEqual(1, len(installed))
+        self.assertIn("quiet_connection_reset_handler", installed[0].__qualname__)
+
+    def test_the_handler_works_as_a_real_event_loop_exception_handler(self) -> None:
+        async def run() -> None:
+            asyncio.get_running_loop().set_exception_handler(quiet_connection_reset_handler())
+
+            def reset() -> None:
+                raise ConnectionResetError(10054, "reset by peer")
+
+            asyncio.get_running_loop().call_soon(reset)
+            await asyncio.sleep(0.05)
+
+        with redirect_stderr(io.StringIO()) as stderr, self.assertNoLogs("asyncio", level="ERROR"):
+            asyncio.run(run())
+        self.assertEqual(1, len(stderr.getvalue().splitlines()))
 
 
 if __name__ == "__main__":

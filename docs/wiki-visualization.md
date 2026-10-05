@@ -5,6 +5,11 @@ workspace. It derives its facts from `knowledge/wiki/`, intake queues, the
 workspace manifest and answers, and selected platform directories. The wiki
 files remain the source of truth. The dashboard does not edit them.
 
+This page describes the dashboard that `prism wiki graph` serves and exports. It is
+read-only and copy-only. The board that `prism board serve` serves shows the same
+views and also performs `po-handoff`, `design-start` and `dev-start` after a human
+confirms the exact changes; [shared-board.md](shared-board.md) describes it.
+
 ## Try the TreasuryFlow demo
 
 The repository includes a repeatable synthetic fixture for the TreasuryFlow
@@ -60,7 +65,7 @@ malformed pages.
 
 ## Transition requests are copy-only
 
-The dashboard's current transition controls prepare a source-valid request for
+The dashboard's transition controls prepare a source-valid request for
 one unique feature. For `po-handoff`, the source fields are exactly
 `status: specified` and `owner: po`, and its destination is
 `status: ready-for-design` with `owner: designer`. The other lifecycle actions

@@ -15,8 +15,9 @@ from uuid import UUID, uuid4
 import yaml
 
 from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, PLATFORM_DIRS
-from prism_cli.workflow_assets import asset_digest, bootstrap_files, guidance_pointer
+from prism_cli.workflow_assets import asset_digest, bootstrap_files, guidance_pointer, previous_digests
 from prism_cli.board_store import BoardLockError, unresolved_board_operations, workspace_process_lock
+from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, reparse_kind
 
 
 WORKFLOW_VERSION = "1"
@@ -43,6 +44,7 @@ def plan_install(
     conflicts: list[str] = []
     unchanged: list[str] = []
     preserved: list[str] = []
+    updated: list[str] = []
     optional_steps: list[str] = []
     changes: list[dict[str, str | None]] = []
     manifest_bytes: bytes | None = None
@@ -153,24 +155,25 @@ def plan_install(
             relative = bootstrap["path"]
             source_content = bootstrap["content"]
             existing = _read_path_bytes(workspace, relative, allow_missing=True)
-            if relative == "knowledge/wiki/CONNECTED.md" and existing is not None:
-                if existing != source_content.encode("utf-8"):
-                    conflicts.append(
-                        "knowledge/wiki/CONNECTED.md is present with different contents; preserve or reconcile it explicitly before installing the Prism-owned binding."
-                    )
-                else:
-                    unchanged.append(relative)
-                continue
             if existing is None:
                 _check_missing_parent_chain(workspace, relative)
                 changes.append({"path": relative, "before": None, "after": source_content})
             elif existing == source_content.encode("utf-8"):
                 unchanged.append(relative)
+            elif _is_earlier_shipped_copy(relative, existing):
+                # An untouched copy of an earlier canonical version is Prism's own
+                # text, so it is replaced without asking.
+                changes.append({"path": relative, "before": existing.decode("utf-8"), "after": source_content})
+                updated.append(relative)
+            elif relative == "knowledge/wiki/CONNECTED.md":
+                conflicts.append(
+                    "knowledge/wiki/CONNECTED.md is present with different contents; preserve or reconcile it explicitly before installing the Prism-owned binding."
+                )
             else:
                 preserved.append(relative)
 
-        _plan_guidance_pointer(workspace, "AGENTS.md", changes, preserved, optional_steps, conflicts)
-        _plan_guidance_pointer(workspace, "CLAUDE.md", changes, preserved, optional_steps, conflicts)
+        _plan_guidance_pointer(workspace, "AGENTS.md", changes, preserved, updated, optional_steps, conflicts)
+        _plan_guidance_pointer(workspace, "CLAUDE.md", changes, preserved, updated, optional_steps, conflicts)
         _plan_gitignore(workspace, changes, unchanged, conflicts)
 
         # Keep the workflow manifest last so a partially applied scaffold never
@@ -191,6 +194,7 @@ def plan_install(
             "conflicts": _unique(conflicts),
             "unchanged": _unique(unchanged),
             "preserved": _unique(preserved),
+            "updated": _unique(updated),
             "optional_steps": optional_steps,
             "directories": missing_directories,
             "source_manifest_digest": _raw_digest(manifest_bytes),
@@ -218,6 +222,7 @@ def plan_install(
             "conflicts": _unique(conflicts),
             "unchanged": [],
             "preserved": [],
+            "updated": [],
             "optional_steps": optional_steps,
             "directories": [],
             "source_manifest_digest": _raw_digest(manifest_bytes),
@@ -397,6 +402,7 @@ def _validated_root(root: Path) -> Path:
                 raise ValueError(f"Workflow workspace directory is unavailable: {exc}") from exc
             raise ValueError(f"Workflow workspace path contains an unavailable component: {current}") from exc
         if _is_link_or_reparse(current, mode):
+            _raise_if_cloud(current)
             raise ValueError("The workflow workspace path cannot cross a symlink, junction, or reparse point.")
     mode = candidate.lstat().st_mode
     if not stat.S_ISDIR(mode):
@@ -419,10 +425,20 @@ def _is_link_or_reparse(path: Path, mode: int | None = None) -> bool:
     if callable(is_junction) and is_junction():
         return True
     try:
-        attributes = path.lstat().st_file_attributes
-    except (AttributeError, OSError):
-        attributes = 0
-    return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+        return reparse_kind(path.lstat()) != "none"
+    except OSError:
+        return False
+
+
+def _raise_if_cloud(path: Path) -> None:
+    """Explain cloud-synced paths; call only where a reparse point is already being rejected."""
+
+    try:
+        info = path.lstat()
+    except OSError:
+        return
+    if reparse_kind(info) == "cloud":
+        raise ValueError(CLOUD_SYNC_MESSAGE)
 
 
 def _safe_target(root: Path, relative: Any) -> Path:
@@ -452,6 +468,7 @@ def _check_path_components(root: Path, target: Path) -> None:
         except OSError as exc:
             raise ValueError(f"Unable to inspect workflow path {current.relative_to(root).as_posix()}: {exc}") from exc
         if _is_link_or_reparse(current, mode):
+            _raise_if_cloud(current)
             raise ValueError(f"Workflow path {current.relative_to(root).as_posix()} crosses a symlink, junction, or reparse point.")
 
 
@@ -474,6 +491,7 @@ def _read_path_bytes(
             return None
         raise FileNotFoundError(target)
     if _is_link_or_reparse(target):
+        _raise_if_cloud(target)
         raise ValueError(f"Workflow file {relative} is a symlink, junction, or reparse point.")
     if not target.is_file():
         raise ValueError(f"Workflow file {relative} is not a regular file.")
@@ -696,6 +714,7 @@ def _plan_guidance_pointer(
     relative: str,
     changes: list[dict[str, str | None]],
     preserved: list[str],
+    updated: list[str],
     optional_steps: list[str],
     conflicts: list[str],
 ) -> None:
@@ -705,6 +724,11 @@ def _plan_guidance_pointer(
         conflicts.append(f"Unable to inspect optional {relative} guidance: {exc}")
         return
     if current is not None:
+        pointer = guidance_pointer(relative, WORKFLOW_VERSION)
+        if current != pointer.encode("utf-8") and _is_earlier_shipped_copy(relative, current):
+            changes.append({"path": relative, "before": current.decode("utf-8"), "after": pointer})
+            updated.append(relative)
+            return
         preserved.append(f"{relative} (existing guidance left unchanged; a CONNECTED.md pointer is optional)")
         try:
             has_pointer = "knowledge/wiki/CONNECTED.md" in current.decode("utf-8")
@@ -717,6 +741,12 @@ def _plan_guidance_pointer(
         return
     _check_missing_parent_chain(root, relative)
     changes.append({"path": relative, "before": None, "after": guidance_pointer(relative, WORKFLOW_VERSION)})
+
+
+def _is_earlier_shipped_copy(relative: str, content: bytes) -> bool:
+    """Tell whether workspace bytes equal an earlier packaged version of a Prism-owned file."""
+
+    return hashlib.sha256(content).hexdigest() in previous_digests(relative, WORKFLOW_VERSION)
 
 
 def _plan_gitignore(
@@ -787,6 +817,8 @@ def _ensure_parent_directories(root: Path, parent: Path) -> list[str]:
         current = current / part
         if current.exists() or current.is_symlink():
             if _is_link_or_reparse(current) or not current.is_dir():
+                if _is_link_or_reparse(current):
+                    _raise_if_cloud(current)
                 raise ValueError(f"Workflow parent {current.relative_to(root).as_posix()} is not a safe directory.")
             continue
         current.mkdir()

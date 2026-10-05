@@ -81,23 +81,23 @@ final class UITestAuthRepository: AuthRepository, Sendable {
 }
 
 final class UITestExampleRepository: ExampleRepository, Sendable {
-    func list(page: Int, size: Int) async throws -> ExampleListResponse {
-        ExampleListResponse(
+    func list(page: Int, size: Int) async throws -> ExamplePage {
+        ExamplePage(
             content: [
-                ExampleResponse(
+                Example(
                     id: "1",
                     title: "Example 1",
                     description: "UI test example one",
-                    status: "DRAFT",
+                    status: "PENDING",
                     createdBy: "ui-user-1",
                     createdAt: "2025-01-01",
                     updatedAt: "2025-01-01"
                 ),
-                ExampleResponse(
+                Example(
                     id: "2",
                     title: "Example 2",
                     description: "UI test example two",
-                    status: "PUBLISHED",
+                    status: "SETTLED",
                     createdBy: "ui-user-1",
                     createdAt: "2025-01-02",
                     updatedAt: "2025-01-02"
@@ -110,7 +110,7 @@ final class UITestExampleRepository: ExampleRepository, Sendable {
         )
     }
 
-    func getById(_ id: String) async throws -> ExampleResponse {
+    func getById(_ id: String) async throws -> Example {
         let response = try await list(page: 0, size: 20)
         guard let example = response.content.first(where: { $0.id == id }) else {
             throw APIError.notFound
@@ -118,24 +118,24 @@ final class UITestExampleRepository: ExampleRepository, Sendable {
         return example
     }
 
-    func create(title: String, description: String?) async throws -> ExampleResponse {
-        ExampleResponse(
+    func create(amount: Double, currency: String, type: String, description: String?) async throws -> Example {
+        Example(
             id: "new",
-            title: title,
+            title: "\(type) \(String(format: "%.2f", amount)) \(currency)",
             description: description,
-            status: "DRAFT",
+            status: "PENDING",
             createdBy: "ui-user-1",
             createdAt: "2025-01-01",
             updatedAt: "2025-01-01"
         )
     }
 
-    func update(id: String, title: String?, description: String?, status: String?) async throws -> ExampleResponse {
-        ExampleResponse(
+    func update(id: String, description: String?, status: String?) async throws -> Example {
+        Example(
             id: id,
-            title: title ?? "Updated Example",
+            title: "Updated Example",
             description: description,
-            status: status ?? "DRAFT",
+            status: status ?? "PENDING",
             createdBy: "ui-user-1",
             createdAt: "2025-01-01",
             updatedAt: "2025-01-01"

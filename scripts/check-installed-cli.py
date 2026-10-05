@@ -75,7 +75,7 @@ def main() -> None:
         run(root, cli + ["board", "status", str(adopted)])
         again = json.loads(run(root, cli + adoption + ["--apply", "--yes", "--json"]).stdout)
         assert again["status"] == "unchanged", again
-        run(root, [executable, "-c", "from prism_cli.workflow_assets import list_skills,get_skill,asset_digest; import prism_cli.board_reads,prism_cli.board_mcp,prism_cli.board_server; assert len(list_skills()) == 23; assert get_skill('po-intake')['references']; assert len(asset_digest()) == 64"])
+        run(root, [executable, "-c", "from prism_cli.workflow_assets import list_skills,get_skill,asset_digest; import prism_cli.board_reads,prism_cli.board_mcp,prism_cli.board_server; assert len(list_skills()) == 24; assert get_skill('po-intake')['references']; assert len(asset_digest()) == 64"])
         grant = json.loads(run(root, cli + ["board", "grant", "Installed test reader", "--path", str(adopted), "--kind", "agent"]).stdout)
         assert not grant["participant"]["writable"]
         assert len(grant["token"]) >= 32
@@ -218,8 +218,8 @@ def main() -> None:
         # installed default ref selection and the real Copier tag checkout.
         pin_cli = [executable, "-c", "import sys; from prism_cli import cli; cli.DEFAULT_TEMPLATE_URL=sys.argv.pop(1); raise SystemExit(cli.main(sys.argv[1:]))", "git+" + template.as_uri()]
         pin_args = ["new", "--preset", "backend-only", "--project-name", "Pinned Smoke", "--yes"]
-        missing = run(root, pin_cli + pin_args + ["--dest", str(root / "missing-tag")], expected=5)
-        assert "v0.2.0" in missing.stdout
+        missing = run(root, pin_cli + pin_args + ["--dest", str(root / "missing-tag")], expected=3)
+        assert "v0.2.0" in missing.stderr and "is not published" in missing.stderr, missing.stderr
         run(template, ["git", "tag", "v0.2.0", "v1.0.0"])
         pinned = root / "pinned-project"
         run(root, pin_cli + pin_args + ["--dest", str(pinned)])

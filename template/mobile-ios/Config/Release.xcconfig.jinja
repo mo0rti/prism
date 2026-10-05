@@ -1,5 +1,8 @@
 // Prism generated this local iOS Release config.
 // Replace this placeholder before production or TestFlight builds.
 // `copier update` will not overwrite this file.
+// This file is git-ignored; `Release.xcconfig.example` is the tracked copy that CI and fresh clones start from.
+//
+// xcconfig treats `//` as a comment start, so the `$()` below keeps the scheme separator from being cut off.
 
-API_BASE_URL = https://api.example.com/api/v1/
+API_BASE_URL = https:/$()/api.example.com/api/v1

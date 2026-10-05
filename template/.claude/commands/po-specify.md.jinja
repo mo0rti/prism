@@ -61,6 +61,17 @@ comparison requires a fresh preview.
    facts from the raw page and linked context. Keep unknowns as explicit owned
    questions for `po`, `designer`, or `dev`; do not invent substance. `TODO`,
    `TBD`, template filler, and empty placeholder requirements are invalid.
+   A raw page written by `po-intake` already carries Summary, User story, Acceptance
+   criteria, Open questions, and Platform scope, and leaves Design, Related features,
+   API surface, Board review summary, and Post-ship notes empty. Complete those five
+   with one line each: supported content, or an explicit statement that nothing exists
+   yet (for example `Not started.`, `None identified.`, `None.` under API surface,
+   `Not reviewed yet.`, `Not shipped yet.`). Any API surface text other than `None.`
+   declares API work and needs an API contract page before `/dev-start`, so write `None.`
+   unless the intake material or an answered question states an API change. Keep open
+   questions in the Open questions table, never in these five sections. The connected
+   board rejects an empty required section with `required_section_missing` and names
+   the section.
 3. If the raw page already satisfies the complete structured-output gate, the
    proposed body may preserve it unchanged after verification. Otherwise fill
    the missing required sections from supported facts and explicit owned

@@ -54,7 +54,7 @@
 2. Verify the API contract in [shared/api-contracts/openapi.yml](../../shared/api-contracts/openapi.yml).
 3. Plan the layers: DTOs, API interface, repository, ViewModel, Screen, navigation, resources.
 4. Implement:
-   a. DTOs and API interface in `feature/<name>/data/remote/`.
+   a. DTOs in `feature/<name>/data/remote/dto/` and the endpoint in `ApiService` (`core/network/`).
    b. Domain model in `feature/<name>/domain/`.
    c. Repository in `feature/<name>/data/repository/`.
    d. ViewModel with UiState in `feature/<name>/ui/`.

@@ -12,7 +12,7 @@ enum ExampleListViewState: Equatable {
 @Observable
 final class ExampleListViewModel {
     var viewState: ExampleListViewState = .idle
-    var examples: [ExampleResponse] = []
+    var examples: [Example] = []
     var currentPage: Int = 0
     var totalPages: Int = 0
     var isLoadingMore: Bool = false

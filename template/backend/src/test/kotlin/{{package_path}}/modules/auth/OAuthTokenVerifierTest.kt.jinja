@@ -41,7 +41,7 @@ class OAuthTokenVerifierTest {
 {% endif %}
     )
 
-    private fun signedToken(issuer: String, invalid: String = ""): String {
+    private fun signedToken(issuer: String, invalid: String = "", authorizedParty: String? = null): String {
         val claims = JWTClaimsSet.Builder()
             .issuer(if (invalid == "issuer") "https://attacker.example" else issuer)
             .audience(if (invalid == "audience") "other-client" else "test-client")
@@ -51,6 +51,7 @@ class OAuthTokenVerifierTest {
             .claim("email_verified", invalid != "unverified")
             .claim("tid", tenant)
             .claim("oid", "provider-user")
+            .apply { if (authorizedParty != null) claim("azp", authorizedParty) }
             .build()
         val jwt = SignedJWT(JWSHeader.Builder(JWSAlgorithm.RS256).keyID(key.keyID).type(JOSEObjectType.JWT).build(), claims)
         val signingKey = if (invalid == "signature") RSAKeyGenerator(2048).generate() else key
@@ -76,6 +77,36 @@ class OAuthTokenVerifierTest {
             }
         }
     }
+
+{% if "google" in auth_methods %}
+    @Test
+    fun `google accepts a native client as authorized party only when it is allowlisted`() {
+        val cases = listOf(
+            Triple(emptyList<String>(), "android-client", false),
+            Triple(listOf("android-client"), "android-client", true),
+            Triple(listOf("android-client"), "other-client", false),
+            Triple(listOf("android-client"), "test-client", true)
+        )
+        for ((allowlist, authorizedParty, accepted) in cases) {
+            val client = RestTemplate()
+            val server = MockRestServiceServer.bindTo(client).build()
+            server.expect(requestTo("https://www.googleapis.com/oauth2/v3/certs"))
+                .andRespond(withSuccess(JWKSet(key.toPublicJWK()).toString(), MediaType.APPLICATION_JSON))
+            val verifier = OAuthTokenVerifier(
+                OAuthProperties(google = GoogleProperties(clientId = "test-client", clientSecret = "test-secret", authorizedParties = allowlist)),
+                client
+            )
+            val token = signedToken("https://accounts.google.com", authorizedParty = authorizedParty)
+            val label = "allowlist=$allowlist azp=$authorizedParty"
+            if (accepted) {
+                assertEquals("provider-user", verifier.verify(AuthProvider.GOOGLE, token, null).providerId, label)
+            } else {
+                assertThrows(UnauthorizedException::class.java, { verifier.verify(AuthProvider.GOOGLE, token, null) }, label)
+            }
+            server.verify()
+        }
+    }
+{% endif %}
 
     @Test
     fun `local credentials are never accepted as a provider token`() {

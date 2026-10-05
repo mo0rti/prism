@@ -25,6 +25,8 @@ Apply this skill when a backend change affects route exposure, JWT handling, or 
 - Method-security annotations are not enabled by default in this template
 - When business authorization grows beyond route exposure, enable and model it intentionally through `authorization-rules` rather than widening route rules alone
 - Refresh tokens carry a version claim and are rotated on every successful login, OAuth callback, and refresh
+- Missing, malformed or expired access tokens get 401 from `ApiAuthenticationEntryPoint`; an authenticated user without permission gets 403
+- Accounts are identified by email without regard to case: `normalizedEmail()` lower-cases it for storage and lookups, and a unique index on `lower(email)` enforces it
 - Local email/password registration does not include a full email-verification workflow by default
 - Auth endpoints are not rate-limited by a distributed/shared store in this scaffold
 
@@ -102,6 +104,7 @@ Use `SecurityContextHolder` only when controller-level injection is not practica
 - `bootstrap/properties/JwtProperties.kt` - JWT configuration
 - `bootstrap/properties/CorsProperties.kt` - CORS configuration
 - `bootstrap/security/JwtAuthenticationFilter.kt` - request filter that validates JWT
+- `bootstrap/security/ApiAuthenticationEntryPoint.kt` - 401 reply for requests without a valid access token
 - `application.yml` - JWT secret, token expiry, OAuth client IDs
 
 ## Minimum Checks

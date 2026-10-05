@@ -1,18 +1,23 @@
 """The packaged workflow catalog is complete, self-contained, and reproducible."""
 
+from copy import deepcopy
 import hashlib
+import importlib.util
+import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
-from prism_cli.workflow_assets import asset_digest, bootstrap_files, get_skill, list_skills
+from prism_cli.workflow_assets import asset_digest, bootstrap_files, get_skill, guidance_pointer, list_skills, previous_digests
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_SKILLS = {
     "ask", "audit-feature", "board-review", "design-clarify", "design-handoff",
-    "design-intake", "design-start", "dev-done", "dev-start", "feature-reopen",
+    "design-intake", "design-start", "dev-clarify", "dev-done", "dev-start", "feature-reopen",
     "feature-status", "lint-wiki", "po-clarify", "po-handoff", "po-intake",
     "po-specify", "prep-sprint", "setup-project", "wiki-blockers", "wiki-owner",
     "wiki-platform", "wiki-query", "wiki-show",
@@ -36,6 +41,63 @@ class WorkflowAssetsTests(unittest.TestCase):
         self.assertNotIn("knowledge/wiki/index.md", {item["path"] for item in skill["references"]})
         for item in skill["references"]:
             self.assertEqual(hashlib.sha256(item["content"].encode("utf-8")).hexdigest(), item["digest"])
+
+    def test_canonical_format_references_are_written_as_the_listed_reference_paths(self):
+        for item in list_skills():
+            name = item["name"]
+            with self.subTest(skill=name):
+                skill = get_skill(name)
+                references = {reference["path"] for reference in skill["references"]}
+                self.assertIn(f".claude/commands/{name}.md", references)
+                instructions = skill["instructions"]
+                self.assertNotIn("`/.claude/commands/", instructions)
+                if "## Canonical format reference" in instructions:
+                    section = instructions.split("## Canonical format reference", 1)[1].split("\n## ", 1)[0]
+                    named = [line[3:-1] for line in section.splitlines() if line.startswith("- `") and line.endswith("`")]
+                    self.assertTrue(named)
+                    self.assertLessEqual(set(named), references)
+
+    def test_connected_guide_teaches_reference_fetching_cursors_and_digests(self):
+        guide = {item["path"]: item for item in get_skill("po-intake")["references"]}["knowledge/wiki/CONNECTED.md"]["content"]
+        for term in ("get_skill_reference", "next_cursor", "total_chars", "digest", "32,000", "required_workspace_reads"):
+            self.assertIn(term, guide)
+        template = (REPO_ROOT / "template/knowledge/wiki/CONNECTED.md").read_text(encoding="utf-8")
+        self.assertEqual(template.splitlines(), guide.splitlines())
+
+    def test_connected_guide_allows_a_bounded_retry_with_the_fix_the_error_names(self):
+        guide = {item["path"]: item for item in get_skill("po-intake")["references"]}["knowledge/wiki/CONNECTED.md"]["content"]
+        text = " ".join(guide.split())
+        for term in ("exactly the fix the error names", "at most 2 more times", "Never widen the change", "stop and report"):
+            self.assertIn(term, text)
+        self.assertNotIn("shrinking the proposed write set", text)
+        schema = {item["path"]: item for item in get_skill("po-intake")["references"]}["knowledge/wiki/SCHEMA.md"]["content"]
+        self.assertIn("at most 2 more times", " ".join(schema.split()))
+
+    def test_dev_clarify_follows_the_other_clarify_skills(self):
+        skill = get_skill("dev-clarify")
+        references = {item["path"] for item in skill["references"]}
+        self.assertEqual({"knowledge/wiki/features/_FORMAT.md", "knowledge/wiki/platform-requirements/_FORMAT.md"}, {path for path in references if path.endswith("_FORMAT.md")})
+        self.assertIn(".claude/commands/dev-clarify.md", references)
+        self.assertEqual([], skill["actions"])
+        self.assertIn("$dev-clarify", skill["instructions"])
+        self.assertIn("owner = `dev`", skill["instructions"])
+        for sibling in ("po-clarify", "design-clarify"):
+            self.assertEqual(
+                [line for line in get_skill(sibling)["instructions"].splitlines() if line.startswith("#")],
+                [line.replace("Dev", {"po-clarify": "PO", "design-clarify": "Design"}[sibling]) for line in skill["instructions"].splitlines() if line.startswith("#")],
+            )
+
+    def test_intake_and_delivery_guidance_state_raw_features_and_evidence_as_input(self):
+        intake = get_skill("po-intake")
+        self.assertIn("status: raw", intake["instructions"])
+        claude = {item["path"]: item["content"] for item in intake["references"]}[".claude/commands/po-intake.md"]
+        self.assertIn("Set status: `raw`, owner: `po`", claude)
+        self.assertNotIn("Set status: `specified`", claude)
+        done = get_skill("dev-done")
+        self.assertIn("Delivery evidence is an input to this action", done["instructions"])
+        self.assertNotIn("must already be recorded", done["instructions"])
+        schema = {item["path"]: item["content"] for item in done["references"]}["knowledge/wiki/SCHEMA.md"]
+        self.assertIn("Delivery evidence is an input to `dev-done`", schema)
 
     def test_skill_references_never_substitute_template_workspace_state(self):
         workspace_state = {
@@ -61,6 +123,86 @@ class WorkflowAssetsTests(unittest.TestCase):
         self.assertTrue(all(path.startswith("knowledge/") for path in paths))
         self.assertGreaterEqual(len(files), 20)
 
+    def test_pointer_states_the_one_retry_rule_the_connected_guide_gives(self):
+        for name in ("AGENTS.md", "CLAUDE.md"):
+            with self.subTest(pointer=name):
+                text = " ".join(guidance_pointer(name).split())
+                for term in ("exactly the fix the error names", "at most 2 more times", "never widen the change", "then stop and report"):
+                    self.assertIn(term, text)
+                self.assertNotIn("Stop on denied or unavailable connected writes", text)
+
+    def test_design_handoff_keeps_open_questions_out_of_requirement_dependencies(self):
+        skill = get_skill("design-handoff")
+        guidance = [skill["instructions"]] + [
+            item["content"] for item in skill["references"]
+            if item["path"] in (".claude/commands/design-handoff.md", "knowledge/wiki/platform-requirements/_FORMAT.md")
+        ]
+        self.assertEqual(3, len(guidance))
+        for text in guidance:
+            flat = " ".join(text.split())
+            self.assertIn("Dependencies", flat)
+            self.assertIn("open question", flat.lower())
+            self.assertIn("Open questions table", flat)
+        instructions = " ".join(skill["instructions"].split())
+        self.assertIn("lists only real dependencies", instructions)
+        self.assertIn("`ask`", instructions)
+
+    def test_asset_records_earlier_shipped_digests_of_installer_owned_files(self):
+        connected = "knowledge/wiki/CONNECTED.md"
+        earlier = previous_digests(connected)
+        self.assertTrue(earlier, "the previous canonical CONNECTED.md must be recognisable offline")
+        current = {item["path"]: item["digest"] for item in bootstrap_files()}
+        self.assertNotIn(current[connected], earlier)
+        for digest in earlier:
+            self.assertRegex(digest, r"^[0-9a-f]{64}$")
+        self.assertEqual((), previous_digests("knowledge/wiki/never-shipped.md"))
+
+    def test_rebuild_keeps_every_earlier_digest_and_appends_the_ones_it_replaces(self):
+        build = _load_build_script()
+        connected = "knowledge/wiki/CONNECTED.md"
+        earlier_connected = "# Connected\nan earlier shipped text\n"
+        earlier_pointer = "# Prism workspace guidance\nan earlier pointer\n"
+        kept = "a" * 64
+        removed = "b" * 64
+        with tempfile.TemporaryDirectory() as temporary:
+            shipped_path = Path(temporary) / "workflow-v1.json"
+            shipped = json.loads((REPO_ROOT / "prism_cli/assets/workflow-v1.json").read_text(encoding="utf-8"))
+            for item in shipped["files"]:
+                if item["path"] == connected:
+                    item["content"] = earlier_connected
+                    item["digest"] = hashlib.sha256(earlier_connected.encode("utf-8")).hexdigest()
+            shipped["guidance_pointers"]["AGENTS.md"] = earlier_pointer
+            shipped["previous_digests"] = {connected: [kept], "knowledge/wiki/no-longer-shipped.md": [removed]}
+            shipped_path.write_text(json.dumps(shipped, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+            with patch.object(build, "ASSET_PATH", shipped_path):
+                rebuilt = build.build_asset()
+                history = rebuilt["previous_digests"]
+                self.assertEqual([kept, hashlib.sha256(earlier_connected.encode("utf-8")).hexdigest()], history[connected])
+                self.assertEqual([removed], history["knowledge/wiki/no-longer-shipped.md"])
+                self.assertEqual([hashlib.sha256(earlier_pointer.encode("utf-8")).hexdigest()], history["AGENTS.md"])
+                self.assertNotIn("CLAUDE.md", history, "an unchanged pointer is not history")
+                self.assertEqual(sorted(history), list(history))
+                current = {item["path"]: item["digest"] for item in rebuilt["files"]}
+                self.assertTrue(all(current[connected] not in digests for digests in history.values()))
+
+                # Rebuilding the rebuilt asset changes nothing and drops nothing.
+                shipped_path.write_text(json.dumps(rebuilt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                self.assertEqual(rebuilt, build.build_asset())
+
+    def test_rebuild_refuses_to_continue_when_the_existing_history_is_unreadable(self):
+        build = _load_build_script()
+        with tempfile.TemporaryDirectory() as temporary:
+            broken = Path(temporary) / "workflow-v1.json"
+            broken.write_text("{not json", encoding="utf-8")
+            with patch.object(build, "ASSET_PATH", broken), self.assertRaises(ValueError):
+                build.build_asset()
+            malformed = deepcopy(json.loads((REPO_ROOT / "prism_cli/assets/workflow-v1.json").read_text(encoding="utf-8")))
+            malformed["previous_digests"] = ["not", "a", "mapping"]
+            broken.write_text(json.dumps(malformed), encoding="utf-8")
+            with patch.object(build, "ASSET_PATH", broken), self.assertRaises(ValueError):
+                build.build_asset()
+
     def test_checked_in_asset_matches_maintained_template_sources(self):
         result = subprocess.run(
             [sys.executable, "scripts/build-workflow-assets.py", "--check"],
@@ -71,6 +213,13 @@ class WorkflowAssetsTests(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
         self.assertIn("matches maintained template skill and knowledge sources", result.stdout)
+
+
+def _load_build_script():
+    spec = importlib.util.spec_from_file_location("build_workflow_assets_under_test", REPO_ROOT / "scripts/build-workflow-assets.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 if __name__ == "__main__":

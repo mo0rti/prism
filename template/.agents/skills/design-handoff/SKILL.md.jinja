@@ -40,7 +40,8 @@ The preflight is copy-only and never authorizes a write.
    it while the source remains unchanged. Pending advisory review remains an
    unresolved blocker; use only the existing board-review or explicit skip policy.
 5. If incomplete, show the missing evidence and stop. If complete, show the full
-   proposed status/owner change, generated platform-requirement pages, and write set.
+   proposed status/owner change, generated platform-requirement pages, the API
+   contract page when one is required, and the write set.
 6. Reread immediately before asking for confirmation and once again after it.
    After confirmation, update the feature, generate requirements, update `index.md`,
    and append to `log.md`.
@@ -60,6 +61,28 @@ exact observed changes and recover from a fresh reread; no transaction is implie
 - if `advisory-review: pending`, stop and route through board review or require an explicit skip reason
 - if board review actions required before development remain open, list them before proceeding
 - do not write status changes or platform requirements until the user confirms the handoff
+- on the feature page change only the lifecycle metadata (`status`, `owner`, `last-updated`
+  and the verified `design` revalidation domain); leave every body section, including
+  `## Design`, exactly as it is
+- if `## API surface` declares API work (anything other than an empty section or a plain
+  statement that there is none, such as `None.`) and no API contract exists for the
+  feature, also create `knowledge/wiki/api-contracts/F-XXX.md` as a new page with
+  `feature-id: F-XXX`, `version: 1`, `status: agreed` and the sections Endpoints, Data
+  models, Authentication requirements and Notes (`knowledge/wiki/api-contracts/_FORMAT.md`);
+  the user confirming this handoff is the agreement
+- write that contract only from the API surface text: each endpoint as `METHOD /path` with
+  the paths the API surface names, and only data models that the API surface or a listed
+  endpoint names; an API surface too vague to write from needs `ask` and `po-clarify` or
+  `dev-clarify` first
+- link the contract from each generated requirement's `## API contract reference`; never
+  rewrite an existing contract, and write none when the API surface declares none
+- in each generated requirement page, `## Dependencies` lists only real dependencies
+  (other feature IDs or platform-requirement files that must complete first) or says
+  `None.`; never write an open question, note or caveat there
+- open questions owned by `po` or `designer` block this handoff: resolve them first with
+  `po-clarify` or `design-clarify`. An open question owned by `dev` does not block it: it
+  stays open in the feature's Open questions table, which this handoff cannot change, and
+  `dev-clarify` resolves it before `dev-start`
 - a partial multi-file write must be reported with the exact observed changes and
   recovered from a fresh reread; no transaction is implied
 
@@ -67,7 +90,7 @@ exact observed changes and recover from a fresh reread; no transaction is implie
 
 Mirror the detailed workflow and write behavior from:
 
-- `/.claude/commands/design-handoff.md`
+- `.claude/commands/design-handoff.md`
 
 ## Output behavior
 
@@ -77,7 +100,7 @@ Return:
 - advisory-review result
 - any blocking missing items
 - proposed status and owner change
-- generated platform-requirements targets after confirmation
+- generated platform-requirements targets and the API contract page, if one is required, after confirmation
 
 ## Error and stop conditions
 

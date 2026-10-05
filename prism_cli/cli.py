@@ -22,6 +22,7 @@ from typing import Any
 import yaml
 
 from prism_cli import __version__
+from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, find_cloud_placeholder
 from prism_cli.manifest_update import ManifestUpdateError, prepare_manifest_update
 from prism_cli.presets import (
     ALL_AUTH_CHOICES,
@@ -32,7 +33,7 @@ from prism_cli.presets import (
     get_preset,
     merge_answers,
 )
-from prism_cli.status import build_status
+from prism_cli.status import BoardCheck, build_board_checks, build_status
 from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind, inspect_workspace, write_workspace_manifest
 from prism_cli.wiki_model import VALID_FEATURE_OWNERS, VALID_PLATFORM_IDS
 from prism_cli.wiki_graph import build_graph, render_mermaid
@@ -534,14 +535,31 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     if workflow_only:
         checks = [check for check in checks if check.label == "Python"]
     results = evaluate_doctor_checks(checks, system, target_platforms)
-    summary = summarize_doctor_results(results, selected_preset)
+    summary = summarize_doctor_results(results, selected_preset, folder_is_workspace=folder_is_prism_workspace(_args))
     core_missing = any(result.status == "missing" and result.check.blocking for result in results)
     print(panel("Summary", summary))
     print()
 
+    cloud_synced = False
+    board_failures: list[BoardCheck] = []
     if getattr(_args, "workspace", None):
         assert workspace_status is not None
         render_status_result(workspace_status, full=False)
+        print()
+        cloud_placeholder = find_cloud_placeholder(Path(_args.workspace))
+        cloud_synced = cloud_placeholder is not None
+        print(section("Shared board"))
+        if cloud_placeholder is None:
+            print(f"{board_check_badge('pass')} Workspace is outside cloud-synced folders")
+        else:
+            print(f"{board_check_badge('fail')} Workspace is outside cloud-synced folders")
+            print(f"  {CLOUD_SYNC_MESSAGE}")
+            print(f"  Detected at: {cloud_placeholder}")
+        board_checks = build_board_checks(Path(_args.workspace))
+        for board_check in board_checks:
+            for line in render_board_check(board_check):
+                print(line)
+        board_failures = [board_check for board_check in board_checks if board_check.state == "fail"]
         print()
 
     for title, category_key in (
@@ -561,7 +579,7 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
                 print(line)
         print()
 
-    workspace_errors = bool(
+    workspace_errors = cloud_synced or bool(board_failures) or bool(
         workspace_status
         and (
             workspace_status.confidence == "error"
@@ -569,6 +587,8 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
         )
     )
     if workspace_errors:
+        if board_failures:
+            print(error(f"Shared board checks found {len(board_failures)} failure(s); apply the fixes above."))
         diagnostics = workspace_status.to_dict()["diagnostics"]
         blockers = [item for item in diagnostics if item["code"] in WIKI_BLOCKER_CODES]
         integrity = [item for item in diagnostics if item["severity"] == "error" and item["code"] not in WIKI_BLOCKER_CODES]
@@ -756,13 +776,28 @@ def evaluate_doctor_checks(checks: list[DoctorCheck], system: str, target_platfo
     return results
 
 
-def summarize_doctor_results(results: list[DoctorResult], selected_preset: Preset | None) -> list[str]:
+def folder_is_prism_workspace(args: argparse.Namespace) -> bool:
+    """True when doctor runs without a target inside a Prism workspace folder."""
+
+    if getattr(args, "workspace", None) or getattr(args, "preset", None):
+        return False
+    try:
+        return detect_workspace_kind(Path.cwd()) in {"workflow-project", "generated-project"}
+    except (OSError, ValueError):
+        return False
+
+
+def summarize_doctor_results(results: list[DoctorResult], selected_preset: Preset | None, *, folder_is_workspace: bool = False) -> list[str]:
     core_missing = any(result.status == "missing" and result.check.blocking for result in results)
     workflow_missing = sum(1 for result in results if result.check.category == "workflow" and result.status == "missing")
     platform_missing = sum(
         1 for result in results if result.check.category in {"backend", "web", "build", "ios"} and result.status == "missing"
     )
-    next_step = "You can generate a Prism project now."
+    next_step = (
+        "Run `prism doctor --workspace .` to check this workspace."
+        if folder_is_workspace
+        else "You can generate a Prism project now."
+    )
     next_result = choose_next_doctor_result(results, set(selected_preset.answers.get("platforms", [])) if selected_preset else set())
     if next_result:
         next_step = next_doctor_step(next_result)
@@ -833,6 +868,26 @@ def doctor_status_badge(status: str) -> str:
     }
     label, styles = labels.get(status, ("[info]", (STYLE.white,)))
     return colorize(label, *styles)
+
+
+def board_check_badge(state: str) -> str:
+    labels = {
+        "pass": ("[ok]", (STYLE.green, STYLE.bold)),
+        "warn": ("[warn]", (STYLE.yellow, STYLE.bold)),
+        "fail": ("[fail]", (STYLE.red, STYLE.bold)),
+        "skip": ("[skip]", (STYLE.dim,)),
+    }
+    label, styles = labels.get(state, ("[info]", (STYLE.white,)))
+    return colorize(label, *styles)
+
+
+def render_board_check(check: BoardCheck) -> list[str]:
+    lines = [f"{board_check_badge(check.state)} {check.label}"]
+    if check.detail:
+        lines.append(f"  {check.detail}")
+    if check.fix and check.state != "pass":
+        lines.append(f"  {colorize('Fix:', STYLE.dim)} {check.fix}")
+    return lines
 
 
 def render_doctor_result(result: DoctorResult) -> list[str]:
@@ -1778,7 +1833,12 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, 
         # provenance even when the manifest post-processing step is skipped.
         command.extend(["--data", f"_prism_cli_version={__version__}"])
         command.extend([str(effective_template), str(dest_path)])
-        result = run_copier_generation_process(command, REPO_ROOT)
+        result = run_copier_generation_process(command, REPO_ROOT, capture_stderr=bool(vcs_ref))
+        if result["returncode"] != 0 and vcs_ref and is_missing_template_tag_failure(vcs_ref, result):
+            print(error(missing_template_tag_message(vcs_ref)), file=sys.stderr)
+            return EXIT_VALIDATION
+        if result.get("stderr"):
+            print(result["stderr"], end="", file=sys.stderr)
         if result["returncode"] != 0:
             print(error("Copier generation failed."), file=sys.stderr)
             if result["tail"]:
@@ -1852,8 +1912,26 @@ def finish_live_progress_line() -> None:
     sys.stdout.flush()
 
 
-def run_copier_generation_process(command: list[str], cwd: Path) -> dict[str, Any]:
+def is_missing_template_tag_failure(vcs_ref: str, result: dict[str, Any]) -> bool:
+    """Tell a missing release tag apart from other Copier failures (network, trust, answers)."""
+
+    text = "\n".join([str(result.get("stderr") or ""), *map(str, result.get("tail") or [])])
+    return "invalid reference" in text and vcs_ref in text
+
+
+def missing_template_tag_message(vcs_ref: str) -> str:
+    return (
+        f"The template release tag `{vcs_ref}` is not published, so the default template cannot be used. "
+        "Pass `--template <path or URL>` or install a released version of Prism."
+    )
+
+
+def run_copier_generation_process(command: list[str], cwd: Path, *, capture_stderr: bool = False) -> dict[str, Any]:
     if not sys.stdout.isatty():
+        if capture_stderr:
+            # Captured so a missing release tag becomes one message, not a Copier traceback.
+            result = subprocess.run(command, cwd=str(cwd), stderr=subprocess.PIPE, text=True, errors="replace")
+            return {"returncode": result.returncode, "event_count": 0, "tail": [], "stderr": result.stderr or ""}
         result = subprocess.run(command, cwd=str(cwd))
         return {"returncode": result.returncode, "event_count": 0, "tail": []}
 

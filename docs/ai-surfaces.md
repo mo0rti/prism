@@ -16,9 +16,8 @@ The practical status is:
 
 - wiki read/query guidance is present in both generated surfaces
 - the nine core lifecycle actions are present in both generated surfaces
-- the backend production guidance surface is now materially deeper on the
-  Claude side, while Codex remains intentionally narrower and more
-  implementation-focused
+- the backend production guidance surface is deeper on the Claude side, while
+  Codex is intentionally narrower and more implementation-focused
 
 The important framing is:
 
@@ -89,6 +88,7 @@ The following areas are available in structured form across both tools:
 - project setup
 - advisory board review
 - lifecycle operations for PO, design, and dev handoff
+- one clarify skill per owner: `po-clarify`, `design-clarify` and `dev-clarify`
 - feature status and wiki health checks
 - wiki read/query operations
 - backend endpoint work at different abstraction levels
@@ -105,6 +105,7 @@ Claude exposes the Prism workflow mainly through slash commands such as:
 
 - `/setup-project`
 - `/po-intake`
+- `/dev-clarify`
 - `/design-handoff`
 - `/dev-done`
 - `/feature-status`
@@ -118,6 +119,7 @@ Codex exposes those same workflow operations as skills such as:
 
 - `$setup-project`
 - `$po-intake`
+- `$dev-clarify`
 - `$design-handoff`
 - `$dev-done`
 - `$feature-status`

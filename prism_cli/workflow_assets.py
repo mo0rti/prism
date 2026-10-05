@@ -7,7 +7,10 @@ from functools import lru_cache
 from importlib.resources import files
 import hashlib
 import json
+import re
 from typing import Any
+
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 def _asset_name(version: str) -> str:
@@ -93,6 +96,21 @@ def _validate_asset(asset: dict[str, Any], name: str) -> None:
         for path in ("AGENTS.md", "CLAUDE.md")
     ):
         raise ValueError(f"Packaged workflow asset {name} has invalid root guidance pointers.")
+
+    history = asset.get("previous_digests")
+    if not isinstance(history, dict):
+        raise ValueError(f"Packaged workflow asset {name} has no digest history for earlier shipped files.")
+    for path, digests in history.items():
+        if (
+            not isinstance(path, str)
+            or not path
+            or path.startswith("/")
+            or "\\" in path
+            or not isinstance(digests, list)
+            or len(set(digests)) != len(digests)
+            or any(not isinstance(item, str) or _SHA256.fullmatch(item) is None for item in digests)
+        ):
+            raise ValueError(f"Packaged workflow asset {name} has an invalid digest history for {path!r}.")
 
     recorded_digest = asset.get("asset_digest")
     canonical_source = {key: value for key, value in asset.items() if key != "asset_digest"}
@@ -191,3 +209,16 @@ def guidance_pointer(name: str, version: str = "1") -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Packaged workflow asset version {version!r} has no {name} pointer.")
     return value
+
+
+def previous_digests(path: str, version: str = "1") -> tuple[str, ...]:
+    """Return the SHA-256 digests of every earlier shipped content of one installer-managed file.
+
+    The history covers the bootstrap files and the generated root pointers
+    (`AGENTS.md`, `CLAUDE.md`). It lets an installer recognise an untouched copy
+    of an earlier canonical version without network access.
+    """
+
+    history = _load(version).get("previous_digests")
+    digests = history.get(path) if isinstance(history, dict) else None
+    return tuple(digests) if isinstance(digests, list) else ()

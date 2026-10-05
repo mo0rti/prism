@@ -118,6 +118,8 @@ On push to `main`, GitHub Actions automatically:
 2. Builds Docker image and pushes to ACR
 3. Deploys new revision to Container Apps
 
+The image push and the deploy need the secrets listed below. When one is missing, the job reports **Image push skipped** or **Deploy skipped** as a workflow warning, names the secrets to set and does not push or deploy.
+
 See `.github/workflows/backend.yml` and `docs/deployment/ci-cd.md`.
 
 ## Required GitHub Secrets

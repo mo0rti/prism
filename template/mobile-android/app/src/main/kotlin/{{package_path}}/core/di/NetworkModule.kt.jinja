@@ -14,11 +14,22 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import javax.inject.Qualifier
 import javax.inject.Singleton
+
+/** The configured API base URL (`BuildConfig.API_BASE_URL`), with a trailing slash. */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class ApiBaseUrl
 
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
+
+    @Provides
+    @Singleton
+    @ApiBaseUrl
+    fun provideApiBaseUrl(): String = BuildConfig.API_BASE_URL
 
     @Provides
     @Singleton
@@ -47,9 +58,13 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideRetrofit(okHttpClient: OkHttpClient, json: Json): Retrofit =
+    fun provideRetrofit(
+        okHttpClient: OkHttpClient,
+        json: Json,
+        @ApiBaseUrl apiBaseUrl: String,
+    ): Retrofit =
         Retrofit.Builder()
-            .baseUrl(BuildConfig.API_BASE_URL)
+            .baseUrl(apiBaseUrl)
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()

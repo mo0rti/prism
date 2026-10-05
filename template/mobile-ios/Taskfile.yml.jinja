@@ -1,15 +1,24 @@
+{% set go_project_name = project_name | replace("\\", "\\\\") | replace('"', '\\"') | replace("'", "''") -%}
 version: "3"
 
 vars:
-  PROJECT_NAME: '{{'{{'}} .PROJECT_NAME | default "{{ project_name }}" {{'}}'}}'
+  PROJECT_NAME: '{{'{{'}} .PROJECT_NAME | default "{{ go_project_name }}" {{'}}'}}'
   SCHEME: '{{'{{'}} .SCHEME | default "{{ ios_module_name }}" {{'}}'}}'
-  SIMULATOR_NAME: '{{'{{'}} .SIMULATOR_NAME | default "iPhone 16" {{'}}'}}'
+  # Empty selects the newest available iPhone simulator.
+  SIMULATOR_NAME: '{{'{{'}} .SIMULATOR_NAME | default "" {{'}}'}}'
+
+# The project name reaches the shell through the environment, so characters such as
+# quotes or `$` in it are never parsed as shell syntax.
+env:
+  PRISM_PROJECT_NAME: '{{'{{'}} .PROJECT_NAME {{'}}'}}'
 
 tasks:
   generate-project:
     desc: Generate Xcode project from project.yml
     platforms: [darwin]
     cmds:
+      - test -f Config/Debug.xcconfig || cp Config/Debug.xcconfig.example Config/Debug.xcconfig
+      - test -f Config/Release.xcconfig || cp Config/Release.xcconfig.example Config/Release.xcconfig
       - xcodegen generate
 
   build:
@@ -19,9 +28,25 @@ tasks:
     vars:
       SIMULATOR_ID:
         sh: |
-          xcrun simctl list devices available | awk '/{{'{{'}} .SIMULATOR_NAME {{'}}'}} \(/ { line = $0 } END { if (line == "") { print "No available iOS simulator matched SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } if (!match(line, /\([A-Fa-f0-9-]+\)/)) { print "Could not parse simulator identifier for SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } print substr(line, RSTART + 1, RLENGTH - 2) }'
+          name='{{'{{'}} .SIMULATOR_NAME {{'}}'}}'
+          devices=$(xcrun simctl list devices available)
+          if [ -n "$name" ]; then
+            line=$(printf '%s\n' "$devices" | grep -F -- " $name (" | tail -n 1)
+          else
+            line=$(printf '%s\n' "$devices" | grep -E '^ +iPhone ' | tail -n 1)
+          fi
+          id=$(printf '%s\n' "$line" | grep -Eo '[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}' | tail -n 1)
+          if [ -z "$id" ]; then
+            if [ -n "$name" ]; then
+              echo "No available iOS simulator matched SIMULATOR_NAME=$name" >&2
+            else
+              echo "No available iPhone simulator found. Install a simulator runtime in Xcode or set SIMULATOR_NAME." >&2
+            fi
+            exit 1
+          fi
+          echo "$id"
     cmds:
-      - xcodebuild build -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}" -configuration Debug
+      - xcodebuild build -project "$PRISM_PROJECT_NAME.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}" -configuration Debug
 
   test:
     desc: Run all iOS tests
@@ -30,9 +55,25 @@ tasks:
     vars:
       SIMULATOR_ID:
         sh: |
-          xcrun simctl list devices available | awk '/{{'{{'}} .SIMULATOR_NAME {{'}}'}} \(/ { line = $0 } END { if (line == "") { print "No available iOS simulator matched SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } if (!match(line, /\([A-Fa-f0-9-]+\)/)) { print "Could not parse simulator identifier for SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } print substr(line, RSTART + 1, RLENGTH - 2) }'
+          name='{{'{{'}} .SIMULATOR_NAME {{'}}'}}'
+          devices=$(xcrun simctl list devices available)
+          if [ -n "$name" ]; then
+            line=$(printf '%s\n' "$devices" | grep -F -- " $name (" | tail -n 1)
+          else
+            line=$(printf '%s\n' "$devices" | grep -E '^ +iPhone ' | tail -n 1)
+          fi
+          id=$(printf '%s\n' "$line" | grep -Eo '[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}' | tail -n 1)
+          if [ -z "$id" ]; then
+            if [ -n "$name" ]; then
+              echo "No available iOS simulator matched SIMULATOR_NAME=$name" >&2
+            else
+              echo "No available iPhone simulator found. Install a simulator runtime in Xcode or set SIMULATOR_NAME." >&2
+            fi
+            exit 1
+          fi
+          echo "$id"
     cmds:
-      - xcodebuild test -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}"
+      - xcodebuild test -project "$PRISM_PROJECT_NAME.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}"
 
   test-unit:
     desc: Run iOS unit tests only
@@ -41,9 +82,25 @@ tasks:
     vars:
       SIMULATOR_ID:
         sh: |
-          xcrun simctl list devices available | awk '/{{'{{'}} .SIMULATOR_NAME {{'}}'}} \(/ { line = $0 } END { if (line == "") { print "No available iOS simulator matched SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } if (!match(line, /\([A-Fa-f0-9-]+\)/)) { print "Could not parse simulator identifier for SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } print substr(line, RSTART + 1, RLENGTH - 2) }'
+          name='{{'{{'}} .SIMULATOR_NAME {{'}}'}}'
+          devices=$(xcrun simctl list devices available)
+          if [ -n "$name" ]; then
+            line=$(printf '%s\n' "$devices" | grep -F -- " $name (" | tail -n 1)
+          else
+            line=$(printf '%s\n' "$devices" | grep -E '^ +iPhone ' | tail -n 1)
+          fi
+          id=$(printf '%s\n' "$line" | grep -Eo '[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}' | tail -n 1)
+          if [ -z "$id" ]; then
+            if [ -n "$name" ]; then
+              echo "No available iOS simulator matched SIMULATOR_NAME=$name" >&2
+            else
+              echo "No available iPhone simulator found. Install a simulator runtime in Xcode or set SIMULATOR_NAME." >&2
+            fi
+            exit 1
+          fi
+          echo "$id"
     cmds:
-      - xcodebuild test -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}" -only-testing:"{{'{{'}} .SCHEME {{'}}'}}Tests"
+      - xcodebuild test -project "$PRISM_PROJECT_NAME.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}" -only-testing:"{{'{{'}} .SCHEME {{'}}'}}Tests"
 
   test-ui:
     desc: Run iOS UI tests only
@@ -52,13 +109,29 @@ tasks:
     vars:
       SIMULATOR_ID:
         sh: |
-          xcrun simctl list devices available | awk '/{{'{{'}} .SIMULATOR_NAME {{'}}'}} \(/ { line = $0 } END { if (line == "") { print "No available iOS simulator matched SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } if (!match(line, /\([A-Fa-f0-9-]+\)/)) { print "Could not parse simulator identifier for SIMULATOR_NAME={{'{{'}} .SIMULATOR_NAME {{'}}'}}" > "/dev/stderr"; exit 1 } print substr(line, RSTART + 1, RLENGTH - 2) }'
+          name='{{'{{'}} .SIMULATOR_NAME {{'}}'}}'
+          devices=$(xcrun simctl list devices available)
+          if [ -n "$name" ]; then
+            line=$(printf '%s\n' "$devices" | grep -F -- " $name (" | tail -n 1)
+          else
+            line=$(printf '%s\n' "$devices" | grep -E '^ +iPhone ' | tail -n 1)
+          fi
+          id=$(printf '%s\n' "$line" | grep -Eo '[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}' | tail -n 1)
+          if [ -z "$id" ]; then
+            if [ -n "$name" ]; then
+              echo "No available iOS simulator matched SIMULATOR_NAME=$name" >&2
+            else
+              echo "No available iPhone simulator found. Install a simulator runtime in Xcode or set SIMULATOR_NAME." >&2
+            fi
+            exit 1
+          fi
+          echo "$id"
     cmds:
-      - xcodebuild test -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}" -only-testing:"{{'{{'}} .SCHEME {{'}}'}}UITests"
+      - xcodebuild test -project "$PRISM_PROJECT_NAME.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" -destination "platform=iOS Simulator,id={{'{{'}} .SIMULATOR_ID {{'}}'}}" -only-testing:"{{'{{'}} .SCHEME {{'}}'}}UITests"
 
   clean:
     desc: Clean build artifacts
     platforms: [darwin]
     cmds:
       - rm -rf build/
-      - xcodebuild clean -project "{{'{{'}} .PROJECT_NAME {{'}}'}}.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" 2>/dev/null || true
+      - xcodebuild clean -project "$PRISM_PROJECT_NAME.xcodeproj" -scheme "{{'{{'}} .SCHEME {{'}}'}}" 2>/dev/null || true

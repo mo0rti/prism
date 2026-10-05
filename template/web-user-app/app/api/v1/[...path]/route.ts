@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { backendSession } from "@/lib/auth/backend-session"
-import { getBackendPath } from "@/lib/config/api-routes"
+import { resolveProxyPath } from "@/lib/config/api-routes"
 
 export async function GET(
   request: NextRequest,
@@ -44,6 +44,13 @@ async function proxyRequest(
 ) {
   let persist = async (response: NextResponse) => response
   try {
+    // Reject before any session work so a crafted path never reaches the backend
+    // with a bearer token.
+    const backendPath = resolveProxyPath(pathSegments)
+    if (!backendPath) {
+      return NextResponse.json({ error: "Invalid API path" }, { status: 400 })
+    }
+
     const apiBaseUrl = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL
     if (!apiBaseUrl) {
       return NextResponse.json({ error: "API_BASE_URL is not configured." }, { status: 500 })
@@ -51,8 +58,6 @@ async function proxyRequest(
 
     const session = await backendSession(request)
     persist = session.persist
-    const frontendPath = `/api/v1/${pathSegments.join("/")}`
-    const backendPath = getBackendPath(frontendPath)
     const targetUrl = `${apiBaseUrl}${backendPath}${request.nextUrl.search}`
 
     const headers = new Headers()

@@ -1,35 +1,32 @@
 # Design Tokens
 
-Shared visual language across all platforms. Edit `tokens.json` to change the design system - all platforms should reference these values.
+`tokens.json` is the shared reference for the visual language. No script reads it: each platform keeps its own copy of the values in its theme files, and you update them by hand when `tokens.json` changes.
 
-## How Each Platform Consumes Tokens
+## How Each Platform Uses Tokens
 
 ### Web / Admin (Tailwind CSS)
-Tokens are mapped to CSS custom properties in `globals.css`:
+The web apps define their own theme as HSL custom properties in `app/globals.css`, which the Tailwind config references. They do not import `tokens.json`, so copy any token change into those variables:
 ```css
 :root {
-  --color-primary: #6366F1;
-  --spacing-md: 16px;
+  --accent: 145 63% 42%;
 }
 ```
-Referenced in Tailwind config `extend.colors` and `extend.spacing`.
 
 ### Android (Jetpack Compose)
-Tokens are mapped to Kotlin constants in `ui/theme/Color.kt` and `ui/theme/Theme.kt`:
+The primary and secondary colors in `designsystem/theme/Color.kt` use the token values:
 ```kotlin
 val Primary = Color(0xFF6366F1)
 ```
 
 ### iOS (SwiftUI)
-Tokens are mapped to Swift extensions in `UI/Theme/AppTheme.swift`:
+The same colors are Swift extensions in `UI/Theme/AppTheme.swift`:
 ```swift
 extension Color {
-    static let primary = Color(hex: "#6366F1")
+    static let appPrimary = Color(dynamicLight: "#6366F1", dark: "#818CF8")
 }
 ```
 
 ## Updating Tokens
 
 1. Edit `tokens.json`
-2. Manually update the platform-specific theme files to match
-3. (Future: automated token-to-platform script)
+2. Update the platform-specific theme files to match

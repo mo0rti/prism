@@ -69,6 +69,39 @@ class AuthServiceTest {
     }
 
     @Test
+    fun `register stores the email in lower case`() {
+        val response = authService.register(RegisterRequest(
+            email = "  Mixed.Case@Example.COM ",
+            password = "password123",
+            displayName = "Mixed Case"
+        ))
+
+        assertEquals("mixed.case@example.com", response.user.email)
+        assertNotNull(userRepository.findByEmail("mixed.case@example.com"))
+    }
+
+    @Test
+    fun `register rejects an email that differs only by case`() {
+        authService.register(RegisterRequest("Alice@Example.com", "password123", "Alice"))
+
+        assertThrows(ConflictException::class.java) {
+            authService.register(RegisterRequest("alice@example.com", "password123", "Alice Again"))
+        }
+        assertThrows(ConflictException::class.java) {
+            authService.register(RegisterRequest("ALICE@EXAMPLE.COM", "password123", "Alice Again"))
+        }
+        assertEquals(1, userRepository.count())
+    }
+
+    @Test
+    fun `login matches the email regardless of case`() {
+        authService.register(RegisterRequest("Bob@Example.com", "password123", "Bob"))
+
+        assertEquals("bob@example.com", authService.login(LoginRequest("BOB@example.COM", "password123")).user.email)
+        assertEquals("bob@example.com", authService.login(LoginRequest("bob@example.com", "password123")).user.email)
+    }
+
+    @Test
     fun `login with valid credentials returns tokens`() {
         authService.register(RegisterRequest(
             email = "test@example.com",

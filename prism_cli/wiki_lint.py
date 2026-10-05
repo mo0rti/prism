@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date
 from functools import cached_property
@@ -30,6 +31,7 @@ from prism_cli.wiki_model import (
     parse_iso_date,
     parse_open_question_rows,
     parse_delivery_evidence,
+    api_surface_declared,
     parse_advisory_required_actions,
     parse_revalidation,
     read_feature_pages,
@@ -37,6 +39,7 @@ from prism_cli.wiki_model import (
     read_wiki_settings,
     read_wiki_pages,
     section_text,
+    within_wiki_read_scope,
 )
 from prism_cli.workspace import detect_workspace_kind, inspect_workspace
 
@@ -193,7 +196,35 @@ class WikiLintResult:
         }
 
 
+# One lint call resolves the same wiki paths many times (every check re-resolves
+# every page and the wiki folders). Resolving is a pair of syscalls, so a call
+# keeps its answers here. The memo is local to one ``lint_wiki`` call.
+_RESOLVE_MEMO: ContextVar[dict[str, Path] | None] = ContextVar("prism_lint_resolve_memo", default=None)
+
+
+def _resolve(path: Path) -> Path:
+    """Return ``path.resolve()``, remembered for the rest of the current lint call."""
+
+    memo = _RESOLVE_MEMO.get()
+    if memo is None:
+        return path.resolve()
+    key = str(path)
+    resolved = memo.get(key)
+    if resolved is None:
+        resolved = memo[key] = path.resolve()
+    return resolved
+
+
+@within_wiki_read_scope
 def lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintResult:
+    token = _RESOLVE_MEMO.set({})
+    try:
+        return _lint_wiki(workspace_root, today=today)
+    finally:
+        _RESOLVE_MEMO.reset(token)
+
+
+def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintResult:
     root = workspace_root.expanduser().resolve()
     wiki_root = root / "knowledge" / "wiki"
     diagnostics: list[WikiDiagnostic] = []
@@ -263,10 +294,10 @@ def lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRes
     # so a malformed design, contract, or decision cannot silently disappear
     # from the read surface.
     feature_and_requirement_paths = {
-        page.page.path.resolve() for page in feature_pages
-    } | {page.page.path.resolve() for page in requirement_pages}
+        _resolve(page.page.path) for page in feature_pages
+    } | {_resolve(page.page.path) for page in requirement_pages}
     for page in all_pages:
-        if page.path.resolve() in feature_and_requirement_paths:
+        if _resolve(page.path) in feature_and_requirement_paths:
             continue
         diagnostics.extend(_lint_auxiliary_page(page, wiki_root))
 
@@ -425,8 +456,7 @@ def _lint_done_completion(
             )
 
     api_pages = _api_contract_pages_for_feature(feature, requirement_pages, pages, wiki_root)
-    api_section = re.sub(r"\s+", " ", section_text(feature.page.body, "API surface")).strip().lower()
-    api_applicable = bool(api_section) and api_section not in {"none", "no api", "not applicable", "n/a"}
+    api_applicable = api_surface_declared(section_text(feature.page.body, "API surface"))
     if api_applicable and not api_pages:
         diagnostics.append(
             _diag(
@@ -449,7 +479,7 @@ def _lint_done_completion(
                 )
             )
     if feature.advisory_review == "done":
-        advisory_root = (wiki_root / "advisory").resolve()
+        advisory_root = _resolve(wiki_root / "advisory")
         reviews: list[MarkdownPage] = []
         for page in pages:
             if not _is_under(page.path, advisory_root):
@@ -492,8 +522,8 @@ def _api_contract_pages_for_feature(
     pages: list[MarkdownPage],
     wiki_root: Path,
 ) -> list[MarkdownPage]:
-    api_root = (wiki_root / "api-contracts").resolve()
-    by_path = {page.path.resolve(): page for page in pages if _is_under(page.path, api_root)}
+    api_root = _resolve(wiki_root / "api-contracts")
+    by_path = {_resolve(page.path): page for page in pages if _is_under(page.path, api_root)}
     feature_id = normalize_feature_id(feature.feature_id)
     result: list[MarkdownPage] = []
     for page in by_path.values():
@@ -523,7 +553,7 @@ def _api_contract_pages_for_feature(
 
 def _is_under(path: Path, root: Path) -> bool:
     try:
-        path.resolve().relative_to(root.resolve())
+        _resolve(path).relative_to(_resolve(root))
     except (OSError, RuntimeError, ValueError):
         return False
     return True
@@ -622,10 +652,10 @@ def _has_valid_design_exemption(feature: FeaturePage) -> bool:
 
 def _design_pages_by_feature(pages: list[MarkdownPage], wiki_root: Path) -> dict[str, list[MarkdownPage]]:
     designs: dict[str, list[MarkdownPage]] = {}
-    design_root = (wiki_root / "design").resolve()
+    design_root = _resolve(wiki_root / "design")
     for page in pages:
         try:
-            page.path.resolve().relative_to(design_root)
+            _resolve(page.path).relative_to(design_root)
         except ValueError:
             continue
         feature_id = page.frontmatter.get("feature-id")
@@ -642,15 +672,15 @@ def _lint_api_contract_blockers(
     pages: list[MarkdownPage],
     wiki_root: Path,
 ) -> list[WikiDiagnostic]:
-    api_root = (wiki_root / "api-contracts").resolve()
+    api_root = _resolve(wiki_root / "api-contracts")
     api_pages: list[MarkdownPage] = []
     for page in pages:
         try:
-            page.path.resolve().relative_to(api_root)
+            _resolve(page.path).relative_to(api_root)
         except ValueError:
             continue
         api_pages.append(page)
-    api_by_path = {page.path.resolve(): page for page in api_pages}
+    api_by_path = {_resolve(page.path): page for page in api_pages}
     api_by_feature: dict[str, list[MarkdownPage]] = {}
     for page in api_pages:
         feature_id = page.frontmatter.get("feature-id")
@@ -709,9 +739,9 @@ def _lint_cross_platform_dependencies(
     feature_pages: list[FeaturePage],
     wiki_root: Path,
 ) -> list[WikiDiagnostic]:
-    features_by_path = {feature.page.path.resolve(): feature for feature in feature_pages}
+    features_by_path = {_resolve(feature.page.path): feature for feature in feature_pages}
     features_by_id = {normalize_feature_id(feature.feature_id): feature for feature in feature_pages}
-    requirements_by_path = {requirement.page.path.resolve(): requirement for requirement in requirement_pages}
+    requirements_by_path = {_resolve(requirement.page.path): requirement for requirement in requirement_pages}
     diagnostics: list[WikiDiagnostic] = []
 
     for requirement in requirement_pages:
@@ -759,6 +789,17 @@ def _lint_cross_platform_dependencies(
             target_feature = features_by_id.get(normalize_feature_id(feature_id))
             if target_feature is not None and _is_unfinished_feature(target_feature):
                 unfinished.add(("feature", feature_id))
+
+        # A requirement page links its own feature page; that link is context,
+        # not a dependency, and the requirement is never its own dependency.
+        own_feature = normalize_feature_id(requirement.feature_id) if isinstance(requirement.feature_id, str) else None
+        own_label = _requirement_label(requirement)
+        unfinished = {
+            (kind, target)
+            for kind, target in unfinished
+            if not (kind == "feature" and own_feature is not None and normalize_feature_id(target) == own_feature)
+            and not (kind == "platform requirement" and target == own_label)
+        }
 
         for kind, target in sorted(unfinished):
             diagnostics.append(
@@ -848,9 +889,9 @@ def _lint_relative_links(
     feature_pages: list[FeaturePage],
     requirement_pages: list[PlatformRequirementPage],
 ) -> list[WikiDiagnostic]:
-    wiki_root = wiki_root.resolve()
-    feature_by_path = {feature.page.path.resolve(): feature for feature in feature_pages}
-    requirement_by_path = {requirement.page.path.resolve(): requirement for requirement in requirement_pages}
+    wiki_root = _resolve(wiki_root)
+    feature_by_path = {_resolve(feature.page.path): feature for feature in feature_pages}
+    requirement_by_path = {_resolve(requirement.page.path): requirement for requirement in requirement_pages}
     diagnostics: list[WikiDiagnostic] = []
     for page in pages:
         if _is_non_source_page(page.path, wiki_root):
@@ -900,14 +941,14 @@ def _reference_path(source_path: Path, raw_target: str, wiki_root: Path, directo
         target = normalized.split(marker, 1)[1]
         if not target.startswith(f"{directory}/"):
             return None
-        return (wiki_root / target).resolve()
+        return _resolve(wiki_root / target)
     if normalized.startswith("wiki/"):
         target = normalized.split("wiki/", 1)[1]
         if not target.startswith(f"{directory}/"):
             return None
-        return (wiki_root / target).resolve()
+        return _resolve(wiki_root / target)
     if normalized.startswith(f"{directory}/"):
-        return (wiki_root / normalized).resolve()
+        return _resolve(wiki_root / normalized)
     return _candidate_relative_link(source_path, normalized)
 
 
@@ -915,7 +956,7 @@ def _is_non_source_page(path: Path, wiki_root: Path) -> bool:
     if path.name.startswith("_") or path.name in _NON_SOURCE_FILENAMES:
         return True
     try:
-        relative = path.resolve().relative_to(wiki_root.resolve())
+        relative = _resolve(path).relative_to(_resolve(wiki_root))
     except ValueError:
         return True
     return not relative.parts or relative.parts[0] not in {
@@ -936,10 +977,10 @@ def _page_feature_id(
     feature_by_path: dict[Path, FeaturePage],
     requirement_by_path: dict[Path, PlatformRequirementPage],
 ) -> str | None:
-    feature = feature_by_path.get(page.path.resolve())
+    feature = feature_by_path.get(_resolve(page.path))
     if feature is not None:
         return feature.feature_id
-    requirement = requirement_by_path.get(page.path.resolve())
+    requirement = requirement_by_path.get(_resolve(page.path))
     if requirement is not None:
         return requirement.feature_id
     value = page.frontmatter.get("feature-id")
@@ -959,7 +1000,7 @@ def _lint_auxiliary_page(page: MarkdownPage, wiki_root: Path) -> list[WikiDiagno
         ]
 
     try:
-        relative = page.path.resolve().relative_to(wiki_root.resolve())
+        relative = _resolve(page.path).relative_to(_resolve(wiki_root))
     except ValueError:
         return []
     directory = relative.parts[0]
@@ -1107,7 +1148,7 @@ def _lint_aux_enum(
 
 def _requires_frontmatter(path: Path, wiki_root: Path) -> bool:
     try:
-        relative = path.resolve().relative_to(wiki_root.resolve())
+        relative = _resolve(path).relative_to(_resolve(wiki_root))
     except ValueError:
         return False
     if len(relative.parts) < 2:

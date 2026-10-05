@@ -17,6 +17,7 @@ All CI/CD runs on **GitHub Actions** with **path-based triggers** - each platfor
 
 ## Required GitHub Secrets
 
+{% if "backend" in platforms %}
 ### Azure
 | Secret | Description |
 |--------|-------------|
@@ -24,6 +25,9 @@ All CI/CD runs on **GitHub Actions** with **path-based triggers** - each platfor
 | `AZURE_CONTAINER_REGISTRY` | ACR login server |
 | `AZURE_CONTAINER_APP_NAME` | Container App name |
 | `AZURE_RESOURCE_GROUP` | Resource group |
+| `ACR_USERNAME` | Registry username used to push the backend image |
+| `ACR_PASSWORD` | Registry password used to push the backend image |
+{% endif %}
 
 {% if "web-user-app" in platforms or "web-admin-portal" in platforms %}
 ### Cloudflare
@@ -48,6 +52,16 @@ All CI/CD runs on **GitHub Actions** with **path-based triggers** - each platfor
 ### iOS
 | Secret | Description |
 |--------|-------------|
+| `ASC_KEY_ID` | App Store Connect API key ID |
+| `ASC_ISSUER_ID` | App Store Connect issuer ID |
+| `ASC_KEY_CONTENT` | App Store Connect API key content (base64) |
 | `MATCH_PASSWORD` | Fastlane match encryption password |
-| `APP_STORE_CONNECT_API_KEY` | App Store Connect API key JSON |
+| `MATCH_GIT_URL` | Git URL of the Fastlane match certificate repository |
+{% endif %}
+
+## Skipped Deploys
+
+A release job needs every secret listed for its platform. When one is missing, the job does not deploy. It reports **Deploy skipped** as a workflow warning and in the job summary, names the secrets to set, and still succeeds.{% if "backend" in platforms %} The backend image push reports **Image push skipped** the same way, and the backend deploy job does not run after it.{% endif %}
+{% if "mobile-ios" in platforms %}
+The iOS CI jobs create `mobile-ios/Config/Debug.xcconfig` and `Release.xcconfig` from the tracked `.example` files. Set the production API URL in `Release.xcconfig.example` before tagging a release.
 {% endif %}

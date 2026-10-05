@@ -25,12 +25,13 @@ If you discover information during implementation that should update the wiki, p
 the update and ask for confirmation before writing, or route a question using the `ask`
 command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
 
-This slice is based on the reference-app back-office web reference app:
+This slice has this structure:
 
 - `/admin` route space with protected dashboard pages
 - credentials-first auth for operators
 - management tables and workflow-oriented screens
-- a same-origin `/api/v1/*` proxy for backend calls
+- a same-origin `/api/v1/*` proxy for backend calls; it forwards only plain paths under `/api/v1/`
+- sign-out through `signOutEverywhere` (`lib/auth/sign-out.ts`), which revokes the backend refresh session before Auth.js clears the web session
 - Cloudflare/OpenNext deployment
 
 ## Focus Areas

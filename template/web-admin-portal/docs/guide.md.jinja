@@ -29,15 +29,17 @@ app/
 │       ├── page.tsx
 │       ├── users/page.tsx
 │       └── content/page.tsx
+└── api/
+    ├── auth/[...nextauth]/route.ts
+    ├── session/logout/route.ts
+    └── v1/[...path]/route.ts
+components/
+├── layout/
+└── providers/
+lib/
 ├── api/
-│   ├── auth/[...nextauth]/route.ts
-│   └── v1/[...path]/route.ts
-├── components/
-│   ├── layout/
-│   └── providers/
-└── lib/
-    ├── api/
-    └── config/
+├── auth/
+└── config/
 ```
 
 ## Current Maturity
@@ -48,6 +50,10 @@ app/
   the exact backend role `ADMIN`. A rejected user login does not rotate that user's session.
 - Backend credentials remain in a separate encrypted HttpOnly backend cookie and are refreshed by API route
   handlers. The Auth.js cookie and public session contain user identity only.
+- Sign-out goes through `signOutEverywhere` (`lib/auth/sign-out.ts`): `POST /api/session/logout` revokes the backend refresh
+  session first, then Auth.js clears the web session. A backend rejection of a refresh ends the web session.
+- The `/api/v1/*` proxy forwards only plain paths under `/api/v1/` (plus the mapped health check) and answers 400 for
+  traversal, encoded traversal and absolute URLs, so the bearer token only reaches API routes.
 - Use `AUTH_URL` (or `NEXTAUTH_URL`) for the public portal origin. HTTPS uses Secure cookies.
 - Extend domain-specific authorization and operational workflows for your product.
 

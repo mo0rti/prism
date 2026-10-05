@@ -9,7 +9,7 @@ Use a layered approach so fast checks run often and slower checks run when they 
 | Compile | `./gradlew compileDebugKotlin` | Fast confidence for Kotlin, Compose, DI, and navigation changes. |
 | Unit tests | `./gradlew testDebugUnitTest` | ViewModel, repository, session, mapper, and helper behavior. |
 | Android test compile | `./gradlew compileDebugAndroidTestKotlin` | Cheap signal for screen APIs, Compose test fixtures, and instrumentation-only dependencies. |
-| Instrumentation / Compose UI tests | `./gradlew connectedDebugAndroidTest` | Baseline auth-gate and key screen-state verification on a device or emulator. |
+| Instrumentation / Compose UI tests | `./gradlew connectedDebugAndroidTest` | Baseline sign-in, cleartext-policy and key screen-state verification on a device or emulator. |
 | Lint | `./gradlew lintDebug` | Android resource, manifest, and platform lint checks. |
 
 On Windows, use `gradlew.bat` instead of `./gradlew`.
@@ -29,22 +29,31 @@ Add an API 35 or API 29 phone emulator spot-check when the change touches auth, 
 
 ## Instrumentation Test Scope
 
-The generated template scaffolds a small baseline instrumentation suite. Today it covers:
+The generated template scaffolds a small baseline instrumentation suite. It covers:
 
-- auth gate routing
 - social sign-in provider rendering
 - sign-in error rendering
 - password form enablement
 - example list empty, error, and success state rendering
 - retry wiring from the example error state
+- debug-only cleartext policy: `10.0.2.2` and `localhost` are permitted, other hosts are not (`CleartextPolicyTest`)
 
 Extend that baseline when a project adds richer navigation flows, submit flows, or device-specific UI behavior. Keep instrumentation tests focused. Prefer unit tests for ViewModel logic and repository mapping.
+
+## Unit Test Scope
+
+Security-sensitive networking and manifest behavior has unit coverage that runs without a device:
+
+- `MainActivityViewModelTest`: the launch state is loading while auth resolves, an unauthenticated first launch routes to the welcome slides, a returning unauthenticated user routes to auth, and an authenticated user routes to the main screen.
+- `TokenAuthenticatorTest`: a refresh rejected with 400, 401 or 403 clears the session; a timeout, connection error, 5xx, 429 or unreadable response keeps it; the refresh URL is built from `API_BASE_URL`.
+- `AuthInterceptorTest`: `auth/me` and `auth/logout` carry the bearer; only the public auth endpoints go without it.
+- `NetworkSecurityConfigTest`: backups are off, `src/main` sets no cleartext or network security config, and the debug overlay permits cleartext only for `10.0.2.2` and `localhost`.
 
 ## Hilt-aware instrumentation
 
 The generated template includes Hilt Android testing support for instrumentation:
 
-- `dagger.hilt.android.testing.HiltTestRunner`
+- `HiltTestRunner` in `app/src/androidTest/` (an `AndroidJUnitRunner` that starts `HiltTestApplication`)
 - `hilt-android-testing`
 - `kspAndroidTest(libs.hilt.compiler)`
 

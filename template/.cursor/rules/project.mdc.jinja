@@ -31,9 +31,11 @@ Monorepo, MVVM on all platforms, API-first (OpenAPI -> typed clients).
 For a connected Prism board, read `knowledge/wiki/CONNECTED.md` and retrieve the
 workspace-pinned standard skills through MCP. Keep their human confirmations in
 this host, check `write_supported` and `limitations`, then use the shared
-preview/apply/receipt flow for supported writes. Stop on denied or unavailable
-connected writes. No separate UI approval
-is required for agent actions. Custom local skills use the existing direct-file
+preview/apply/receipt flow for supported writes. When the service rejects a
+proposal, retry only with exactly the fix the error names, at most 2 more times,
+and never widen the change; then stop and report. Stop and report at once when a
+connected write is unavailable, denied or its error names no fix. No separate UI
+approval is required for agent actions. Custom local skills use the existing direct-file
 workflow. Older workspaces require explicit `prism workflow upgrade` before writes.
 
 Read wiki pages before implementing. Check `knowledge/wiki/index.md` first.

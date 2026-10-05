@@ -25,6 +25,7 @@ services:
 {% if "google" in auth_methods %}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_AUTHORIZED_PARTIES: ${GOOGLE_AUTHORIZED_PARTIES:-}
 {% endif %}
 {% if "apple" in auth_methods %}
       APPLE_CLIENT_ID: ${APPLE_CLIENT_ID}

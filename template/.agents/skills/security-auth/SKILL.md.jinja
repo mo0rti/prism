@@ -24,6 +24,8 @@ Use this skill for backend auth exposure, JWT, and security-boundary decisions.
 - Route access is defined with request matchers in `bootstrap/SecurityConfig.kt`
 - Method-security annotations are not enabled by default in this template
 - Refresh tokens carry a version claim and are rotated on every successful login, OAuth callback, and refresh
+- Missing, malformed or expired access tokens get 401 from `ApiAuthenticationEntryPoint`; an authenticated user without permission gets 403
+- Accounts are identified by email without regard to case: `normalizedEmail()` lower-cases it for storage and lookups, and a unique index on `lower(email)` enforces it
 - Local email/password registration does not include a full email-verification workflow by default
 - Auth endpoints are not rate-limited by a distributed/shared store in this scaffold
 
@@ -84,6 +86,7 @@ Use this skill for backend auth exposure, JWT, and security-boundary decisions.
 - `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/properties/JwtProperties.kt`
 - `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/properties/OAuthProperties.kt`
 - `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/JwtAuthenticationFilter.kt`
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/ApiAuthenticationEntryPoint.kt`
 - `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/JwtTokenProvider.kt`
 {% if auth_methods | length > 1 or "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
 - `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/OAuth2Config.kt`

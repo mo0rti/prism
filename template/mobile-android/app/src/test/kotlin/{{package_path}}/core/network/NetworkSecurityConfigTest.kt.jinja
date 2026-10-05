@@ -1,0 +1,65 @@
+package {{ package_identifier }}.core.network
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
+
+/**
+ * Guards the manifest-level security settings. Gradle runs unit tests from the `app/` module
+ * directory, so the source-set files are read directly.
+ */
+class NetworkSecurityConfigTest {
+
+    private fun sourceFile(path: String): File =
+        listOf(File("src/$path"), File("app/src/$path")).firstOrNull { it.exists() }
+            ?: error("Missing source file: src/$path")
+
+    private fun parse(file: File) = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        .newDocumentBuilder().parse(file).documentElement
+
+    private val androidNs = "http://schemas.android.com/apk/res/android"
+
+    private fun application(path: String) =
+        parse(sourceFile(path)).getElementsByTagName("application").item(0) as org.w3c.dom.Element
+
+    @Test
+    fun `main manifest disables backups so the refresh token never leaves the device`() {
+        val application = application("main/AndroidManifest.xml")
+        assertEquals("false", application.getAttributeNS(androidNs, "allowBackup"))
+    }
+
+    @Test
+    fun `main manifest keeps release HTTPS only`() {
+        val application = application("main/AndroidManifest.xml")
+        assertFalse(application.hasAttributeNS(androidNs, "usesCleartextTraffic"))
+        assertFalse(application.hasAttributeNS(androidNs, "networkSecurityConfig"))
+        assertFalse(sourceFile("main").resolve("res/xml").resolve("network_security_config.xml").exists())
+    }
+
+    @Test
+    fun `debug overlay references the network security config`() {
+        val application = application("debug/AndroidManifest.xml")
+        assertEquals("@xml/network_security_config", application.getAttributeNS(androidNs, "networkSecurityConfig"))
+    }
+
+    @Test
+    fun `debug config allows cleartext only for the emulator host and localhost`() {
+        val root = parse(sourceFile("debug/res/xml/network_security_config.xml"))
+        val base = root.getElementsByTagName("base-config").item(0) as org.w3c.dom.Element
+        assertEquals("false", base.getAttribute("cleartextTrafficPermitted"))
+
+        val domainConfigs = root.getElementsByTagName("domain-config")
+        val permitted = (0 until domainConfigs.length)
+            .map { domainConfigs.item(it) as org.w3c.dom.Element }
+            .filter { it.getAttribute("cleartextTrafficPermitted") == "true" }
+        assertTrue(permitted.isNotEmpty())
+        val hosts = permitted.flatMap { config ->
+            val domains = config.getElementsByTagName("domain")
+            (0 until domains.length).map { domains.item(it).textContent.trim() }
+        }
+        assertEquals(setOf("10.0.2.2", "localhost"), hosts.toSet())
+    }
+}

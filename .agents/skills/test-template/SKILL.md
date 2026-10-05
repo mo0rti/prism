@@ -23,8 +23,9 @@ Use this skill to validate that template changes still render a coherent generat
    - `shared/`
 4. Search for leftover `{{`, `{%`, or unescaped EJS markers in rendered non-template files.
 5. If the change touched platform gating, generate at least one focused subset variant as well.
-6. Summarize what was validated and any failures found.
-7. Clean up temporary output unless the user wants to inspect it.
+6. Run `./scripts/validate-template.ps1 -Mode contract`, which checks rendered files and workflows (it needs actionlint on PATH or `-ActionlintPath`).
+7. Summarize what was validated and any failures found.
+8. Clean up temporary output unless the user wants to inspect it.
 
 ## Output
 

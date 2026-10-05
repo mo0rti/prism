@@ -62,12 +62,19 @@ prism wiki graph --serve   # live dashboard: intake -> lifecycle -> platforms
 prism wiki graph --open    # one-off snapshot in the browser
 ```
 
-The dashboard is read-only: your agent is where you act, the dashboard is where
+This dashboard is read-only: your agent is where you act, the dashboard is where
 you look. Its Graph, Board, Platforms, and Guide views derive their facts from
 `knowledge/wiki/`, intake queues, and workspace metadata. Source paths,
 confidence, workflow blockers, and page-health diagnostics stay inspectable.
 On a fresh workspace it walks you through setup, your first intake brief, and
 `po-intake` so your first feature appears on the board as it is born.
+
+To let a human perform `po-handoff`, `design-start` and `dev-start` directly in the
+board, and to connect agents over MCP, run `prism workflow upgrade .` to preview and
+`prism workflow upgrade . --apply` to apply, issue grants with `prism board grant`, and
+start the service with `prism board serve .`. `docs/shared-board.md` in the Prism
+repository has the steps, and `knowledge/wiki/CONNECTED.md` describes how agents use
+the connection.
 
 For terminal output, use `prism wiki graph --json` or
 `prism wiki graph --mermaid --view lifecycle`. The dashboard and these
@@ -80,8 +87,9 @@ above when you intend to edit it.
 # Review local configuration
 {% if "backend" in platforms %}# Backend and local infrastructure defaults are already generated in `.env`
 {% endif %}{% if "mobile-android" in platforms %}# Android API config is already generated in `mobile-android/local.config.properties`
-{% endif %}{% if "mobile-ios" in platforms %}# iOS API config is already generated in `mobile-ios/Config/Debug.xcconfig`
-# Update `mobile-ios/Config/Release.xcconfig` before production or TestFlight builds
+{% endif %}{% if "mobile-ios" in platforms %}# iOS API config is already generated in the git-ignored `mobile-ios/Config/Debug.xcconfig`
+# On a fresh clone, `task mobile-ios:generate-project` creates it from `Config/Debug.xcconfig.example`
+# Update `mobile-ios/Config/Release.xcconfig` and its `.example` copy, which CI builds from, before production or TestFlight builds
 {% endif %}{% if "web-user-app" in platforms %}cp web-user-app/.env.example web-user-app/.env.local
 {% endif %}{% if "web-admin-portal" in platforms %}cp web-admin-portal/.env.example web-admin-portal/.env.local
 {% endif %}# Edit the local config files as needed for your machine and credentials

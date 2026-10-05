@@ -6,6 +6,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
+import subprocess
 from typing import Any
 
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, lint_wiki
@@ -215,6 +216,203 @@ class WorkspaceStatus:
         if self.settings_health:
             paths.append(str(self.settings_health.path))
         return list(dict.fromkeys(paths))
+
+
+@dataclass(frozen=True)
+class BoardCheck:
+    """One read-only shared-board readiness check for ``prism doctor --workspace``.
+
+    ``state`` is ``pass``, ``warn``, ``fail`` or ``skip``. Only ``fail`` makes
+    doctor exit with a validation error.
+    """
+
+    code: str
+    label: str
+    state: str
+    detail: str = ""
+    fix: str = ""
+
+
+def _shell_path(path: Path) -> str:
+    text = str(path)
+    return f'"{text}"' if " " in text else text
+
+
+def build_board_checks(root: Path, port: int | None = None) -> list[BoardCheck]:
+    """Run the shared-board readiness checks without writing anything.
+
+    A workspace with no workflow pin has not adopted the board, so it gets one
+    warning instead of checks that cannot apply. Nothing here creates board
+    state, grants or files.
+    """
+
+    from prism_cli.board_server import DEFAULT_BOARD_PORT
+
+    workspace = Path(root).expanduser().resolve()
+    board_port = DEFAULT_BOARD_PORT if port is None else port
+    manifest = inspect_workspace(workspace).manifest
+    workflow = manifest.workflow if manifest else {}
+    if not workflow:
+        # A generated project needs the explicit upgrade; install refuses it.
+        answers = workspace / COPIER_ANSWERS_FILE
+        generated = bool(manifest and isinstance(manifest.data.get("generated_by"), dict)) or answers.exists() or answers.is_symlink()
+        command = "upgrade" if generated else "install"
+        return [
+            BoardCheck(
+                "workflow-pin",
+                "Workflow pin is compatible with this Prism installation",
+                "warn",
+                "This workspace has no workflow pin, so the shared board is unavailable.",
+                f"Preview adoption with `prism workflow {command} {_shell_path(workspace)}`; nothing changes until you add --apply.",
+            )
+        ]
+
+    pin = _workflow_pin_check(workspace, workflow)
+    return [
+        pin,
+        _active_grant_check(workspace, workflow, pin.state == "pass"),
+        _board_port_check(board_port),
+        _state_ignored_check(workspace),
+    ]
+
+
+def _workflow_pin_check(workspace: Path, workflow: dict[str, Any]) -> BoardCheck:
+    from prism_cli.board_service import BoardError, BoardService
+
+    label = "Workflow pin is compatible with this Prism installation"
+    try:
+        # The service constructor is read-only; its compatibility verdict is the
+        # same one `prism board status` and the server use.
+        with BoardService(workspace) as service:
+            compatibility = service.compatibility()
+    except BoardError as exc:
+        reason = exc.message
+    except (OSError, ValueError) as exc:
+        reason = str(exc)
+    else:
+        if not compatibility["read_only"]:
+            return BoardCheck("workflow-pin", label, "pass", f"Workflow version {workflow.get('version')} matches this installation.")
+        reason = compatibility.get("reason") or "The workflow pin is not compatible."
+    return BoardCheck(
+        "workflow-pin",
+        label,
+        "fail",
+        str(reason),
+        f"Preview `prism workflow upgrade {_shell_path(workspace)}` and apply it after review. "
+        "If the message asks for a newer Prism, upgrade Prism first.",
+    )
+
+
+def _active_grant_check(workspace: Path, workflow: dict[str, Any], pin_ok: bool) -> BoardCheck:
+    from prism_cli.board_store import count_active_grants
+
+    label = "At least one active board grant exists"
+    grant_fix = f'Issue one with `prism board grant "NAME" --kind human|agent --write --path {_shell_path(workspace)}`.'
+    if not pin_ok:
+        return BoardCheck("active-grant", label, "skip", "Needs a compatible workflow pin first.")
+    identity = (
+        str(workflow.get("board_id")),
+        str(workflow.get("version")),
+        str(workflow.get("asset_digest") or ""),
+    )
+    try:
+        counts = count_active_grants(workspace, identity)
+    except (OSError, ValueError) as exc:
+        return BoardCheck(
+            "active-grant",
+            label,
+            "fail",
+            f"The board state cannot be read safely: {exc}",
+            "Resolve the state path problem, then run doctor again.",
+        )
+    if counts is None or counts[0] == 0:
+        revoked = _revoked_grant_count(workspace) if counts is not None else 0
+        message = f"No active grants ({revoked} revoked)." if revoked else "No grants yet."
+        return BoardCheck("active-grant", label, "warn", message, grant_fix)
+    active, current = counts
+    if current == 0:
+        return BoardCheck(
+            "active-grant",
+            label,
+            "warn",
+            f"{active} grant(s) were issued for an earlier workflow pin and no longer work.",
+            grant_fix,
+        )
+    return BoardCheck("active-grant", label, "pass", f"{current} active grant(s).")
+
+
+def _revoked_grant_count(workspace: Path) -> int:
+    """Count revoked grants in a journal `count_active_grants` already accepted.
+
+    The journal is opened read-only; any problem reads as zero revoked grants,
+    which leaves the plain "No grants yet." message.
+    """
+
+    import sqlite3
+    from urllib.parse import quote
+
+    try:
+        database = (workspace / ".prism" / "state" / "board.sqlite3").resolve(strict=True)
+        connection = sqlite3.connect(f"file:{quote(str(database).replace(chr(92), '/'), safe='/:')}?mode=ro", uri=True, timeout=1)
+        try:
+            return int(connection.execute("SELECT COUNT(*) FROM grants WHERE active = 0").fetchone()[0])
+        finally:
+            connection.close()
+    except (OSError, ValueError, sqlite3.Error):
+        return 0
+
+
+def _board_port_check(port: int) -> BoardCheck:
+    from prism_cli.board_server import loopback_port_problem
+
+    label = f"Default board port {port} is free"
+    problem = loopback_port_problem(port)
+    if problem is None:
+        return BoardCheck("board-port", label, "pass")
+    return BoardCheck(
+        "board-port",
+        label,
+        "warn",
+        f"Port {port} cannot be used: {problem}.",
+        "If the board is already running, this is expected. Otherwise run `prism board serve --port <other port>`.",
+    )
+
+
+def _state_ignored_check(workspace: Path) -> BoardCheck:
+    label = "`.prism/state` is ignored by git"
+    probe = ".prism/state/board.sqlite3"
+
+    def run_git(*args: str) -> subprocess.CompletedProcess[str] | None:
+        try:
+            return subprocess.run(
+                ["git", "-C", str(workspace), *args],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    inside = run_git("rev-parse", "--is-inside-work-tree")
+    if inside is None:
+        return BoardCheck("state-ignored", label, "skip", "Git is not available, so this check was skipped.")
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        return BoardCheck("state-ignored", label, "skip", "This folder is not a git repository, so this check was skipped.")
+    ignored = run_git("check-ignore", "-q", "--", probe)
+    if ignored is None:
+        return BoardCheck("state-ignored", label, "skip", "Git could not be run, so this check was skipped.")
+    if ignored.returncode == 0:
+        return BoardCheck("state-ignored", label, "pass")
+    if ignored.returncode == 1:
+        return BoardCheck(
+            "state-ignored",
+            label,
+            "fail",
+            "Grants and the operation journal could be committed by mistake.",
+            "Add `.prism/state/` to .gitignore.",
+        )
+    return BoardCheck("state-ignored", label, "skip", "Git could not evaluate the ignore rules, so this check was skipped.")
 
 
 def build_status(root: Path) -> WorkspaceStatus:

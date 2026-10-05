@@ -64,7 +64,7 @@ The `local` profile exists to make first startup succeed without immediately req
 ```
 src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
   bootstrap/         - Framework config (Security, CORS, OAuth2, OpenAPI)
-    security/        - JWT token provider and authentication filter
+    security/        - JWT token provider, authentication filter and 401 entry point
   shared/            - Cross-cutting concerns (exceptions, models, audit)
     audit/           - AuditableEntity base class (createdAt/updatedAt)
     error/           - Typed ErrorCode abstractions and shared/common API error codes
@@ -104,7 +104,7 @@ Detailed conventions are documented in skills - Claude loads these automatically
 - @.claude/skills/jpa-kotlin-patterns/SKILL.md - entity patterns, AuditableEntity, relationships, N+1 prevention
 - @.claude/skills/error-handling/SKILL.md - ApiException, GlobalExceptionHandler, error codes
 - @.claude/skills/security-auth/SKILL.md - JWT, endpoint security, OAuth2, public vs authenticated
-- @.claude/skills/testing-patterns/SKILL.md - JUnit 5, MockK, unit vs integration test conventions
+- @.claude/skills/testing-patterns/SKILL.md - JUnit Jupiter 6, MockK, unit vs integration test conventions
 - @.claude/skills/test-endpoint/SKILL.md - generate curl and Postman requests for manual endpoint checks; complements `testing-patterns`
 
 ## Backend Claude Commands
@@ -123,12 +123,15 @@ Detailed conventions are documented in skills - Claude loads these automatically
 - `bootstrap/SecurityConfig.kt` - endpoint security rules, JWT filter
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `bootstrap/OAuth2Config.kt` - OAuth provider credentials
 {% endif %}- `bootstrap/security/JwtTokenProvider.kt` - token generation/validation
+- `bootstrap/security/ApiAuthenticationEntryPoint.kt` - 401 reply for a missing, malformed or expired access token
 - `shared/audit/AuditableEntity.kt` - base entity with timestamps
 - `shared/error/` - typed ErrorCode abstractions and shared/common API error codes
 - `shared/exception/` - ApiException base type, built-in exception files, and global exception mapping
 - `application.yml` - all configuration (DB, JWT, OAuth, CORS)
 - `resources/db/migration/V1__users.sql` - user and auth baseline schema
 - `resources/db/migration/V2__transactions.sql` - transaction domain schema
+- `resources/db/migration/V3__refresh_retry_window.sql` - refresh-token retry window metadata
+- `resources/db/migration/V4__email_case_and_oauth_identity.sql` - lower-cased emails, plus unique indexes on `lower(email)` and on (`auth_provider`, `provider_id`)
 
 ## API
 

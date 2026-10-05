@@ -22,29 +22,32 @@ See [architecture.md](architecture.md) for full architectural detail.
 
 ```
 app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-├── app/             # Application + MainActivity
+├── app/             # App, MainActivity, MainActivityViewModel, AppRoot
 ├── core/
 │   ├── common/      # AppResult
+│   ├── launch/      # LaunchUiState, LaunchDestination, LaunchPreferencesStorage
 │   ├── session/     # SessionManager (concrete class)
-│   ├── network/     # ApiService, AuthInterceptor, TokenAuthenticator
+│   ├── network/     # ApiService, AuthInterceptor, TokenAuthenticator, NetworkMonitor
 │   ├── datastore/   # TokenStorage (DataStore)
 │   ├── database/    # AppDatabase, Converters (shared only)
 │   ├── di/          # NetworkModule, DatabaseModule, DispatcherModule, AppModule
 │   └── model/       # Cross-feature models: User, Session (AuthState), Paging
 ├── navigation/      # Screen routes, NavGraph
 ├── feature/
+│   ├── welcome/
+│   │   └── ui/      # WelcomeRoute, WelcomeScreen, WelcomeViewModel
 │   ├── auth/
 │   │   ├── domain/  # AuthCredentials model
 │   │   ├── data/    # AuthRepository, AuthDtos
-│   │   └── ui/      # SignInRoute, SignInScreen, SignInViewModel
+│   │   └── ui/      # SignInRoute, SignInScreen, SignInViewModel, SocialSignInRoute, SocialSignInScreen
 │   └── example/
 │       ├── domain/  # Example model
-│       ├── data/    # ExampleRepository, ExampleDtos, ExampleEntity, ExampleDao, Mappers
+│       ├── data/    # ExampleRepository, TransactionDtos, ExampleEntity, ExampleDao, Mappers
 │       └── ui/      # ExampleListRoute, ExampleListScreen, ExampleListViewModel, components/
 └── designsystem/
     ├── theme/       # Color, Type, Shape, Dimensions, Theme
     ├── text/        # UiText (framework-light string wrapper)
-    └── components/  # LoadingIndicator, ErrorView
+    └── components/  # LoadingIndicator, ErrorView, StepNavigationButtons
 ```
 
 See [file-structure.md](file-structure.md) for the full package map.

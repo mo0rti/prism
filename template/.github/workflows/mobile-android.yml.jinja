@@ -171,6 +171,13 @@ jobs:
     env:
       PRISM_RELEASE_CONFIGURED: {% raw %}${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' && secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}{% endraw %}
     steps:
+      - name: Report skipped deploy
+        if: env.PRISM_RELEASE_CONFIGURED != 'true'
+        run: |
+          echo "::warning title=Deploy skipped::Set the ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD and GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secrets to deploy the Android app to the Play Store. No deploy ran."
+          echo "### Deploy skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "The ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD and GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secrets are not all set, so the Android app was not deployed to the Play Store." >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/checkout@v4
         if: env.PRISM_RELEASE_CONFIGURED == 'true'
 

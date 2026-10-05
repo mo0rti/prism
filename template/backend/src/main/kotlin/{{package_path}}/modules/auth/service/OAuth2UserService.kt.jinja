@@ -5,6 +5,7 @@ import {{ package_identifier }}.modules.auth.error.AuthErrorCode
 import {{ package_identifier }}.modules.auth.model.AuthProvider
 import {{ package_identifier }}.modules.auth.model.OAuthUserProfile
 import {{ package_identifier }}.modules.auth.model.User
+import {{ package_identifier }}.shared.exception.ConflictException
 import {{ package_identifier }}.shared.exception.UnauthorizedException
 {% if "apple" in auth_methods %}
 import org.slf4j.LoggerFactory
@@ -74,8 +75,10 @@ class OAuth2UserService(
         return try {
             userProvisioningService.provisionOAuthUser(authProvider, userProfile)
         } catch (ex: DataIntegrityViolationException) {
+            // A concurrent first sign-in for the same identity committed first:
+            // return its account. Without one, another account owns the email.
             userProvisioningService.findExistingOAuthUser(authProvider, userProfile)
-                ?: throw ex
+                ?: throw ConflictException(AuthErrorCode.OAUTH_ACCOUNT_LINK_REQUIRED)
         }
     }
 {% if "google" in auth_methods %}

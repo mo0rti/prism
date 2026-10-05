@@ -5,8 +5,8 @@
 - XcodeGen generates the Xcode project from `project.yml`
 - Taskfile provides `mobile-ios:generate-project`, `mobile-ios:build`, `mobile-ios:test`, `mobile-ios:test-unit`, and `mobile-ios:test-ui`
 - iOS tasks are Mac-only and are guarded with `platforms: [darwin]`
-- Only the build and test tasks resolve a simulator ID from the available devices whose name exactly matches `SIMULATOR_NAME` before the UUID, defaulting to `iPhone 16`, before calling `xcodebuild`
-- When multiple exact-name simulators exist, the lookup uses the last available match reported by `simctl`, which is typically the newest installed runtime for that device name
+- Only the build and test tasks resolve a simulator ID before calling `xcodebuild`: the available device whose name exactly matches `SIMULATOR_NAME` before the UUID, or the newest available iPhone when `SIMULATOR_NAME` is not set
+- When several simulators match, the lookup uses the last one `simctl` reports, which is typically the newest installed runtime
 - Release automation lives in `fastlane/Fastfile` and CI, with `bundle exec fastlane beta` as the TestFlight-oriented path
 
 ## Generated Project Settings
@@ -15,8 +15,8 @@
 - Swift version: 6.0
 - Xcode version: 26.0
 - Default bundle identifier: `{{ package_identifier }}`
-- Debug runtime base URL: `http://localhost:8080/api/v1/`
-- Release runtime base URL placeholder: `https://api.example.com/api/v1/`
+- Debug runtime base URL: `http://localhost:8080/api/v1`
+- Release runtime base URL placeholder: `https://api.example.com/api/v1`
 
 ## Commands
 
@@ -45,7 +45,7 @@ You can override the simulator lookup when needed:
 - `SIMULATOR_NAME="iPhone 17" task mobile-ios:test`
 - `SIMULATOR_NAME="iPhone 17" task mobile-ios:test-ui`
 
-If no available simulator matches `SIMULATOR_NAME`, the build or test task exits with a lookup error before invoking `xcodebuild`.
+If no available simulator matches `SIMULATOR_NAME`, or no iPhone simulator is available when it is not set, the build or test task exits with a lookup error before invoking `xcodebuild`. The `fastlane test` lane picks its device the same way.
 
 The generated project keeps `{{ project_slug }}` for filesystem paths and uses `{{ ios_module_name }}` for the Swift/Xcode target and scheme.
 
@@ -67,9 +67,13 @@ When `project.yml` changes structure rather than just source contents, regenerat
 ## Runtime Configuration
 
 - `project.yml` wires `Config/Debug.xcconfig` and `Config/Release.xcconfig` through XcodeGen `configFiles`.
+- Both files are git-ignored local files. The tracked `Config/Debug.xcconfig.example` and `Config/Release.xcconfig.example` are their starting point.
+- On a fresh clone or in CI, create the local files before `xcodegen generate`: `cp Config/Debug.xcconfig.example Config/Debug.xcconfig` and `cp Config/Release.xcconfig.example Config/Release.xcconfig`. `task mobile-ios:generate-project` does this when a file is missing.
+- XcodeGen fails on a missing config file, so the generated CI workflow creates them in a step before `xcodegen generate`.
+- xcconfig treats `//` as the start of a comment. Write URLs as `http:/$()/host/path`; the empty `$()` keeps the scheme separator from being cut off.
 - `Info.plist` reads `$(API_BASE_URL)`.
-- `APIClient` defaults to the Info.plist value and falls back to `http://localhost:8080/api/v1/` if needed.
-- Update `Config/Release.xcconfig` before building a production or TestFlight release.
+- `APIClient` defaults to the Info.plist value and falls back to `http://localhost:8080/api/v1` if the value is missing or empty. It joins the base URL and each endpoint path with exactly one `/`, and a base URL without a scheme or host fails the request as an invalid URL.
+- Update `Config/Release.xcconfig` before building a production or TestFlight release. CI creates that file from `Config/Release.xcconfig.example`, so set the production URL there as well before tagging a release.
 
 ## Current Scope
 

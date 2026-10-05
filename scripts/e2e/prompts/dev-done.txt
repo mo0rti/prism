@@ -1,0 +1,12 @@
+I am the developer. Feature F-001 is implemented and shipped. Use Prism's dev-done skill to mark it done. Work only through your Prism MCP tools and follow the board's guidance.
+
+Delivery evidence for the backend platform (record it in the feature's delivery evidence table):
+- Implementation: pull request #42 in the review-summary-service repository, merged as commit 3f9c2ab.
+- Tests: CI run 1187 on that commit, 31 tests passed, 0 failed.
+- Release: version 1.4.0, deployed to production.
+
+Post-ship notes: no deviations from the specification.
+
+You cannot open the repository or the CI run from here, so record this evidence as I gave it and say clearly in your summary that you did not verify it.
+
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would change. If something blocks it, tell me exactly what and stop.

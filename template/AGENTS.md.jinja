@@ -19,7 +19,10 @@ workspace's pinned standard skills and retrieve their complete instructions thro
 that connection. Keep required semantic reviews and confirmations in this CLI;
 there is no second board approval queue. Check `write_supported` and `limitations`;
 preview supported writes through the shared service, confirm and apply, then check
-its durable receipt. Stop on denied or unavailable connected writes. Custom local skills keep their direct-file
+its durable receipt. When the service rejects a proposal, retry only with exactly the
+fix the error names, at most 2 more times, and never widen the change; then stop and
+report. Stop and report at once when a connected write is unavailable, denied or its
+error names no fix. Custom local skills keep their direct-file
 workflow. An older workspace needs an explicit `prism workflow upgrade` before
 connected writes are enabled; the read-only board and existing skills remain usable.
 
@@ -91,7 +94,7 @@ docs/          -> Human-readable reference documentation
 - `$wiki-show F-XXX` - focused context bundle for one feature
 - `$wiki-blockers` - blockers view using the canonical blocker categories
 - `$wiki-query "text"` - retrieval-assisted wiki search across features, rules, design, and requirements
-- `$wiki-owner po|designer|dev` - role dashboard for open questions, waiting work, and stale items
+- `$wiki-owner po|designer|dev|none` - role dashboard for open questions, waiting work, and stale items
 - `$wiki-platform <platform-id>` - platform queue for active features, requirement state, and blockers
 
 Read `knowledge/wiki/WIKI_REPORT.md` first when present. If it is absent, run
@@ -119,6 +122,7 @@ installed Prism CLI.
 - `$design-clarify` - answer open questions assigned to Designer
 - `$design-start [F-XXX]` - move confirmed `ready-for-design` work to `in-design`
 - `$design-handoff [F-XXX]` - move feature to ready-for-dev
+- `$dev-clarify` - answer open questions assigned to Dev
 - `$dev-start [F-XXX]` - move confirmed `ready-for-dev` work to `in-dev`
 - `$dev-done [F-XXX]` - mark a feature as shipped
 - `$feature-reopen [F-XXX] [specified|in-design|in-dev]` - reopen one shipped feature after impact review
@@ -143,7 +147,10 @@ Use the canonical selected-surface instructions and shared contract:
 - Shared protocol, evidence, exemptions, and reopen rules: `knowledge/wiki/SCHEMA.md`
 
 Each action resolves one feature, rereads its source and context, shows a
-complete proposed write set, and waits for final confirmation. Copy, clipboard,
+complete proposed write set, and waits for final confirmation. In the board that
+`prism board serve` provides, a human performs `po-handoff`, `design-start` and
+`dev-start` directly after reviewing the exact changes; every other action stays
+with the skills. Copy, clipboard,
 dashboard, and preflight output are read-only; cancel means no mutation. The
 selected generated file must carry its matching `prism:<command>-contract:v1`
 marker. The other surface is optional.
@@ -247,7 +254,8 @@ Each platform has its own `AGENTS.md` with detailed patterns:
    then `$po-handoff [F-XXX]` after PO completeness is verified.
 4. Start design with `$design-start [F-XXX]`; after design is complete, run
    `$design-handoff [F-XXX]` to generate platform-requirements.
-5. Start implementation with `$dev-start [F-XXX]`, add endpoints to
+5. Answer open dev questions with `$dev-clarify`; they block `$dev-start` until resolved.
+   Start implementation with `$dev-start [F-XXX]`, add endpoints to
    `shared/api-contracts/openapi.yml`, and run `task generate-clients` as needed.
 6. Implement the selected platform slices per `knowledge/wiki/platform-requirements/`.
 7. When shipped, verify delivery evidence and run `$dev-done [F-XXX]`. Use

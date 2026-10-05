@@ -1,11 +1,12 @@
 "use client"
 
 import { BarChart3, Database, LogOut, Menu, Moon, Sun, Users, X } from "lucide-react"
-import { signOut, useSession } from "next-auth/react"
+import { useSession } from "next-auth/react"
 import { useTheme } from "next-themes"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
+import { signOutEverywhere } from "@/lib/auth/sign-out"
 import { cn } from "@/lib/utils"
 
 const navigation = [
@@ -19,6 +20,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession()
   const { resolvedTheme, setTheme } = useTheme()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [signOutFailed, setSignOutFailed] = useState(false)
+
+  async function handleSignOut() {
+    setSignOutFailed(false)
+    setSignOutFailed(!(await signOutEverywhere("/admin/login")))
+  }
 
   const sidebar = (
     <div className="flex h-full flex-col bg-slate-950 px-4 py-6 text-white">
@@ -49,12 +56,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
         <button
           type="button"
-          onClick={() => signOut({ callbackUrl: "/admin/login" })}
+          onClick={handleSignOut}
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-slate-100"
         >
           <LogOut className="h-4 w-4" />
           Sign out
         </button>
+        {signOutFailed ? (
+          <p role="alert" className="text-xs text-rose-300">
+            Sign out could not be completed. Try again.
+          </p>
+        ) : null}
       </div>
     </div>
   )

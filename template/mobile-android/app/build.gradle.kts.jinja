@@ -29,7 +29,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        testInstrumentationRunner = "dagger.hilt.android.testing.HiltTestRunner"
+        testInstrumentationRunner = "{{ package_identifier }}.HiltTestRunner"
 
         buildConfigField(
             "String",

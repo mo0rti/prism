@@ -26,5 +26,6 @@ Link to api-contracts/F-XXX.md. List endpoints or data shapes this platform cons
 Platform-specific done conditions.
 
 ## Dependencies
-Other feature IDs or platform-requirement files that must complete first.
+Other feature IDs or platform-requirement files that must complete first, or `None.`
+Open questions never go here; they stay in the feature's Open questions table.
 ```

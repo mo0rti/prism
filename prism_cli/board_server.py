@@ -9,11 +9,16 @@ without the transport extra.
 from __future__ import annotations
 
 import asyncio
+import errno
+import functools
 import hashlib
 import hmac
+import itertools
 import json
+import os
 import re
 import secrets
+import socket
 import sys
 import threading
 import time
@@ -25,10 +30,15 @@ from typing import Any, Callable
 from urllib.parse import urlsplit
 
 
+DEFAULT_BOARD_PORT = 8765
 MAX_REQUEST_BYTES = 1_048_576
 SESSION_TTL_SECONDS = 43_200
 GRAPH_POLL_SECONDS = 1.5
 SESSION_RECHECK_SECONDS = 15.0
+# How often an open event stream checks whether the server is shutting down.
+STREAM_STOP_CHECK_SECONDS = 0.25
+# Longest an interrupt waits for open connections before they are cancelled.
+SHUTDOWN_GRACE_SECONDS = 5
 API_PREFIX = "/api/board/v1"
 
 
@@ -60,12 +70,13 @@ class _LiveGraph:
 
     def __init__(self, root: Path, validate_inputs: Callable[[], None]) -> None:
         from prism_cli.wiki_graph import build_graph
-        from prism_cli.wiki_transitions import workspace_fingerprint
+        from prism_cli.wiki_transitions import FingerprintCache, workspace_fingerprint
 
         self.root = root
         self._validate_inputs = validate_inputs
         self._build_graph: Callable[[Path], dict[str, Any]] = build_graph
-        self._fingerprint_fn: Callable[[Path], Any] = workspace_fingerprint
+        # Only this poller reuses file hashes between scans; request paths hash every file.
+        self._fingerprint_fn: Callable[[Path], Any] = functools.partial(workspace_fingerprint, cache=FingerprintCache())
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -94,32 +105,72 @@ class _LiveGraph:
 
     def _poll(self) -> None:
         while not self._stop.wait(GRAPH_POLL_SECONDS):
-            try:
+            self.refresh_now()
+
+    def refresh_now(self) -> None:
+        """Rebuild the snapshot now when the workspace changed since the last one.
+
+        The poller and the write path share this. It reuses the fingerprint, so
+        an unchanged workspace costs one fingerprint read and no graph build.
+        """
+
+        try:
+            self._validate_inputs()
+            fingerprint = self._fingerprint_fn(self.root)
+            with self._lock:
+                if fingerprint == self.fingerprint and self.valid:
+                    return
                 self._validate_inputs()
-                fingerprint = self._fingerprint_fn(self.root)
-                with self._lock:
-                    if fingerprint == self.fingerprint and self.valid:
-                        continue
-                    self._validate_inputs()
-                    envelope = self._build_graph(self.root)
-                    self._validate_inputs()
-                    self.envelope = envelope
-                    self.fingerprint = fingerprint
-                    self.version += 1
-                    self.valid = True
-            except Exception:
-                # A failed refresh leaves the last known graph intact.  The
-                # next shared poll retries.  Mark it unavailable so no stale
-                # snapshot masks an unsafe current workspace tree.
-                with self._lock:
-                    self.valid = False
-                continue
+                envelope = self._build_graph(self.root)
+                self._validate_inputs()
+                self.envelope = envelope
+                self.fingerprint = fingerprint
+                self.version += 1
+                self.valid = True
+        except Exception:
+            # A failed refresh leaves the last known graph intact.  The
+            # next shared poll retries.  Mark it unavailable so no stale
+            # snapshot masks an unsafe current workspace tree.
+            with self._lock:
+                self.valid = False
 
     def snapshot(self) -> tuple[str, int, dict[str, Any]]:
         with self._lock:
             if not self.valid:
                 raise GraphUnavailable
             return self.epoch, self.version, self.envelope
+
+
+class _SnapshotRefreshingService:
+    """Delegate to the shared BoardService and refresh the graph snapshot as soon
+    as a write call returns, so the next /data.json read and the next event
+    already include the write. HTTP and MCP both call through this wrapper.
+    The poller still covers edits made outside the service."""
+
+    _WRITE_METHODS = frozenset({"apply", "recover"})
+
+    def __init__(self, service: Any, graph: _LiveGraph) -> None:
+        self._service = service
+        self._graph = graph
+
+    def __getattr__(self, name: str) -> Any:
+        attribute = getattr(self._service, name)
+        if name not in self._WRITE_METHODS or not callable(attribute):
+            return attribute
+
+        def call(*args: Any, **kwargs: Any) -> Any:
+            from prism_cli.wiki_model import wiki_read_scope
+
+            # One request: the write and the graph refresh that follows it share
+            # parsed pages, and the scope ends when the request does.
+            with wiki_read_scope():
+                try:
+                    return attribute(*args, **kwargs)
+                finally:
+                    # Runs after the service releases its lock; never raises.
+                    self._graph.refresh_now()
+
+        return call
 
 
 class _BoundaryMiddleware:
@@ -293,6 +344,18 @@ def _is_board_error(exc: Exception) -> bool:
     return hasattr(exc, "code") and hasattr(exc, "message") and isinstance(getattr(exc, "status", None), int)
 
 
+def _redact_details(value: Any, token: str | None) -> Any:
+    if not token:
+        return value
+    if isinstance(value, str):
+        return value.replace(token, "[redacted]")
+    if isinstance(value, list):
+        return [_redact_details(item, token) for item in value]
+    if isinstance(value, dict):
+        return {_redact_details(key, token): _redact_details(item, token) for key, item in value.items()}
+    return value
+
+
 def _error_payload(exc: Exception, *, token: str | None = None) -> tuple[int, dict[str, Any]]:
     if isinstance(exc, RequestError):
         return exc.status, {"error": {"code": exc.code, "message": exc.message}}
@@ -306,16 +369,22 @@ def _error_payload(exc: Exception, *, token: str | None = None) -> tuple[int, di
             message = "The board request could not be completed."
         if token:
             message = message.replace(token, "[redacted]")
-        return status if 400 <= status <= 599 else 500, {"error": {"code": code, "message": message}}
+        error: dict[str, Any] = {"code": code, "message": message}
+        details = getattr(exc, "details", None)
+        if isinstance(details, dict) and details:
+            error["details"] = _redact_details(details, token)
+        return status if 400 <= status <= 599 else 500, {"error": error}
     return 500, {"error": {"code": "internal_error", "message": "The board request could not be completed."}}
 
 
-def create_app(root: Path, *, port: int, service: Any | None = None) -> Any:
+def create_app(root: Path, *, port: int, service: Any | None = None, should_stop: Callable[[], bool] | None = None) -> Any:
     """Create the local ASGI app for one workspace and one BoardService.
 
     Bind the returned app to ``127.0.0.1`` on the same ``port`` passed here.
     ``port`` must be the actual listening port; it is part of Host and Origin
-    validation and the SDK's DNS-rebinding allow list.
+    validation and the SDK's DNS-rebinding allow list. ``should_stop`` reports
+    that the server is shutting down: open event streams end at once instead of
+    holding the process until the browser hangs up.
     """
 
     try:
@@ -350,7 +419,8 @@ def create_app(root: Path, *, port: int, service: Any | None = None) -> Any:
 
     from prism_cli.board_mcp import create_mcp_server
 
-    mcp_server = create_mcp_server(service)
+    board_api = _SnapshotRefreshingService(service, graph)
+    mcp_server = create_mcp_server(board_api)
     allowed_hosts = [f"127.0.0.1:{port}", f"localhost:{port}"]
     if port == 80:
         allowed_hosts.extend(("127.0.0.1", "localhost"))
@@ -477,7 +547,7 @@ def create_app(root: Path, *, port: int, service: Any | None = None) -> Any:
         token: str | None = None
         try:
             actor, token, _session, _session_id = await actor_for(request, mutation=mutation)
-            result = await asyncio.to_thread(getattr(service, method), actor, *args, **kwargs)
+            result = await asyncio.to_thread(getattr(board_api, method), actor, *args, **kwargs)
             if not isinstance(result, dict):
                 raise RuntimeError("invalid BoardService response")
             return JSONResponse(result)
@@ -569,10 +639,21 @@ def create_app(root: Path, *, port: int, service: Any | None = None) -> Any:
         except GraphUnavailable:
             return JSONResponse({"error": {"code": "graph_unavailable", "message": "Workspace graph inputs are temporarily unavailable."}}, status_code=503)
 
+        def stopping() -> bool:
+            return should_stop is not None and bool(should_stop())
+
+        async def pause(seconds: float) -> None:
+            deadline = time.monotonic() + seconds
+            while not stopping():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return
+                await asyncio.sleep(min(STREAM_STOP_CHECK_SECONDS, remaining))
+
         async def event_stream() -> Any:
             last_version = -1
             last_check = time.monotonic()
-            while not await request.is_disconnected():
+            while not stopping() and not await request.is_disconnected():
                 if time.monotonic() - last_check >= SESSION_RECHECK_SECONDS:
                     try:
                         # Do not use a fabricated actor; resolve the same token
@@ -596,15 +677,25 @@ def create_app(root: Path, *, port: int, service: Any | None = None) -> Any:
                     yield f"id: {epoch}:{version}\ndata: {version}\n\n"
                 else:
                     yield ": keep-alive\n\n"
-                await asyncio.sleep(GRAPH_POLL_SECONDS)
+                await pause(GRAPH_POLL_SECONDS)
 
         response = StreamingResponse(event_stream(), media_type="text/event-stream")
         return response
+
+    def scavenge_sessions() -> None:
+        """Drop expired sessions. Every session has the same lifetime and is
+        inserted in order, so the oldest come first and the scan stops at the
+        first live one: the work is proportional to the expired count."""
+        now = time.time()
+        with sessions_lock:
+            for session_id, session in list(itertools.takewhile(lambda item: item[1].expires_at <= now, sessions.items())):
+                del sessions[session_id]
 
     async def exchange(request: Request) -> Any:
         token: str | None = None
         try:
             _require_origin(request)
+            scavenge_sessions()
             if bearer_value(request) is not None or cookie_value(request) is not None:
                 raise RequestError(400, "ambiguous_credentials", "Sign out before exchanging another participant token.")
             payload = await json_body(request)
@@ -835,7 +926,65 @@ def create_app(root: Path, *, port: int, service: Any | None = None) -> Any:
 create_board_app = create_app
 
 
-def serve_board(root: Path, port: int = 8765, open_browser: bool = True) -> int:
+def loopback_port_problem(port: int) -> str | None:
+    """Return why ``port`` cannot be bound on loopback, or ``None`` when it is free.
+
+    The probe binds and releases immediately. POSIX listeners set
+    ``SO_REUSEADDR`` as Uvicorn does, so a socket in TIME_WAIT is not reported
+    as busy; Windows must not set it, because there it allows binding over an
+    active listener.
+    """
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if os.name != "nt":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.bind(("127.0.0.1", port))
+    except OSError as exc:
+        if exc.errno == errno.EADDRINUSE:
+            return "it is already in use"
+        return str(exc.strerror or exc).strip() or "it cannot be bound"
+    except OverflowError:
+        return "it is not a valid port"
+    finally:
+        probe.close()
+    return None
+
+
+def _grant_command_hint(root: Path) -> str:
+    try:
+        path = "." if root.samefile(Path.cwd()) else str(root)
+    except OSError:
+        path = str(root)
+    if " " in path:
+        path = f'"{path}"'
+    return f'prism board grant "NAME" --kind human|agent [--write] --path {path}'
+
+
+def quiet_connection_reset_handler() -> Callable[[Any, dict[str, Any]], None]:
+    """An asyncio exception handler that reports a client's reset connection once.
+
+    A client that closes its connection abruptly makes the Windows event loop
+    log a `ConnectionResetError` traceback. That case alone is reduced to one
+    quiet line for the whole run; every other exception keeps the loop's
+    default reporting.
+    """
+
+    reported = False
+
+    def handle(loop: Any, context: dict[str, Any]) -> None:
+        nonlocal reported
+        if isinstance(context.get("exception"), ConnectionResetError):
+            if not reported:
+                reported = True
+                print("A client closed its connection abruptly (connection reset); this is harmless and is not logged again.", file=sys.stderr, flush=True)
+            return
+        loop.default_exception_handler(context)
+
+    return handle
+
+
+def serve_board(root: Path, port: int = DEFAULT_BOARD_PORT, open_browser: bool = True) -> int:
     """Run the local board app on loopback using Uvicorn."""
 
     try:
@@ -844,12 +993,24 @@ def serve_board(root: Path, port: int = 8765, open_browser: bool = True) -> int:
     except ImportError as exc:  # pragma: no cover - depends on install profile
         print("The board server requires the optional uvicorn transport dependency.", file=sys.stderr)
         return 4
+    # Fail before any workspace state is touched or a URL is printed.
+    port_problem = loopback_port_problem(port)
+    if port_problem is not None:
+        print(f"Cannot start the Prism board on port {port}: {port_problem}. Choose another with --port.", file=sys.stderr)
+        return 4
     service: Any | None = None
+    running: list[Any] = []
     try:
         supplied_workspace = Path(root).expanduser().absolute()
         service = BoardService(supplied_workspace)
         service.start()
-        app = create_app(supplied_workspace, port=port, service=service)
+        # An interrupt sets the server's exit flag; open event streams watch it so a connected browser cannot hold the process.
+        app = create_app(
+            supplied_workspace,
+            port=port,
+            service=service,
+            should_stop=lambda: bool(running) and bool(running[0].should_exit),
+        )
         config = uvicorn.Config(
             app,
             host="127.0.0.1",
@@ -858,8 +1019,16 @@ def serve_board(root: Path, port: int = 8765, open_browser: bool = True) -> int:
             access_log=False,
             server_header=False,
             date_header=False,
+            timeout_graceful_shutdown=SHUTDOWN_GRACE_SECONDS,
         )
-        server = uvicorn.Server(config)
+
+        class _BoardServer(uvicorn.Server):
+            async def serve(self, sockets: Any = None) -> None:
+                asyncio.get_running_loop().set_exception_handler(quiet_connection_reset_handler())
+                await super().serve(sockets=sockets)
+
+        server = _BoardServer(config)
+        running.append(server)
     except BoardError as exc:
         if service is not None:
             service.close()
@@ -872,8 +1041,11 @@ def serve_board(root: Path, port: int = 8765, open_browser: bool = True) -> int:
         return 4
 
     url = f"http://127.0.0.1:{port}/"
-    print(f"Prism board: {url}")
-    print("Local only. Press Ctrl+C to stop.")
+    # Flushed so a pipe or log file shows the banner while the server runs.
+    print(f"Prism board: {url}", flush=True)
+    print(f"MCP endpoint: http://127.0.0.1:{port}/mcp", flush=True)
+    print(f"Issue a participant grant (the token is printed once): {_grant_command_hint(supplied_workspace)}", flush=True)
+    print("Local only. Press Ctrl+C to stop.", flush=True)
 
     opener: threading.Thread | None = None
     if open_browser:

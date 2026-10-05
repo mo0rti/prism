@@ -110,6 +110,8 @@ MVVM in a single `:app` module. See **docs/architecture.md** for full detail.
 
 - MVVM: `StateFlow` for UI state, `SharedFlow` for one-off events, explicit `onXxx(...)` ViewModel methods.
 - Hilt for DI; Retrofit in `core/di/NetworkModule.kt`; use `SessionManager` for auth state and `AppResult` for fallible repository work.
+- `TokenAuthenticator` clears the session only when the backend rejects the refresh token (400, 401 or 403); timeouts, I/O errors and 5xx keep it.
+- Cleartext HTTP is allowed only in debug builds, for `10.0.2.2` and `localhost`, through `app/src/debug/`; the main manifest sets no cleartext, so release builds stay HTTPS-only.
 - Strings in `strings.xml`; use `stringResource` or `UiText`.
 - Keep navigation in `Screen.kt` and `NavGraph.kt`.
 - Keep reusable Compose components in `designsystem/` instead of feature-local files.

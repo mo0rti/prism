@@ -1,0 +1,97 @@
+package {{ package_identifier }}.core.network
+
+import {{ package_identifier }}.core.datastore.StoredTokens
+import {{ package_identifier }}.core.datastore.TokenStorage
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Before
+import org.junit.Test
+import java.util.concurrent.TimeUnit
+
+class AuthInterceptorTest {
+    private val tokenStorage = mockk<TokenStorage> {
+        every { tokens } returns MutableStateFlow(StoredTokens("access-1", "refresh-1", "session-1"))
+    }
+    private val server = MockWebServer()
+    private var sent: Request? = null
+    private lateinit var client: OkHttpClient
+
+    @Before
+    fun setUp() {
+        server.start()
+        val interceptor = AuthInterceptor(tokenStorage, server.url("/api/v1/").toString())
+        client = OkHttpClient.Builder()
+            .addInterceptor(interceptor)
+            .addInterceptor { chain -> chain.request().also { sent = it }.let(chain::proceed) }
+            .build()
+    }
+
+    @After
+    fun tearDown() {
+        server.shutdown()
+    }
+
+    private fun call(method: String, path: String): RecordedRequest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        val builder = Request.Builder().url(server.url(path))
+        if (method == "POST") builder.post("{}".toRequestBody()) else builder.get()
+        client.newCall(builder.build()).execute().close()
+        return server.takeRequest(5, TimeUnit.SECONDS)!!
+    }
+
+    @Test
+    fun `auth me carries the bearer and the session tag`() {
+        val recorded = call("GET", "/api/v1/auth/me")
+        assertEquals("Bearer access-1", recorded.getHeader("Authorization"))
+        assertEquals(SessionIdentity("session-1"), sent?.tag(SessionIdentity::class.java))
+    }
+
+    @Test
+    fun `auth logout carries the bearer`() {
+        val recorded = call("POST", "/api/v1/auth/logout")
+        assertEquals("Bearer access-1", recorded.getHeader("Authorization"))
+    }
+
+    @Test
+    fun `regular api requests carry the bearer`() {
+        val recorded = call("GET", "/api/v1/transactions")
+        assertEquals("Bearer access-1", recorded.getHeader("Authorization"))
+        assertEquals(SessionIdentity("session-1"), sent?.tag(SessionIdentity::class.java))
+    }
+
+    @Test
+    fun `public auth endpoints go out without a bearer or session tag`() {
+        for (endpoint in AuthInterceptor.PUBLIC_AUTH_PATHS) {
+            val recorded = call("POST", "/api/v1/$endpoint")
+            assertNull(endpoint, recorded.getHeader("Authorization"))
+            assertNull(endpoint, sent?.tag(SessionIdentity::class.java))
+        }
+    }
+
+    @Test
+    fun `public auth endpoints match exactly`() {
+        assertEquals(
+            setOf(
+                "auth/oauth/callback",
+                "auth/oauth/token",
+                "auth/register",
+                "auth/login",
+                "auth/admin/login",
+                "auth/refresh",
+            ),
+            AuthInterceptor.PUBLIC_AUTH_PATHS,
+        )
+        val recorded = call("POST", "/api/v1/auth/login/extra")
+        assertEquals("Bearer access-1", recorded.getHeader("Authorization"))
+    }
+}

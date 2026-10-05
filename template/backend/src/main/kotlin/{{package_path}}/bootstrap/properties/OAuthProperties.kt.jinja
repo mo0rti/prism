@@ -23,6 +23,12 @@ data class GoogleProperties(
     val clientId: String = "",
     @field:NotBlank
     val clientSecret: String = "",
+    /**
+     * Client IDs allowed as the `azp` claim of a Google ID token. Native sign-in
+     * with a server client ID yields `aud` = the server client and `azp` = the
+     * Android or iOS client, so list those client IDs here.
+     */
+    val authorizedParties: List<String> = emptyList(),
     val tokenUri: String = "https://oauth2.googleapis.com/token",
     val userInfoUri: String = "https://www.googleapis.com/oauth2/v3/userinfo"
 )

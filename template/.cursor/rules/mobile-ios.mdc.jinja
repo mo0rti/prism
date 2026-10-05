@@ -41,3 +41,6 @@ globs: "mobile-ios/**"
 - SwiftData `@Model` classes for local caching
 - NavigationStack + Route enum for navigation
 - Tests use XCTest with mock repositories
+- `Config/Debug.xcconfig` and `Config/Release.xcconfig` are git-ignored; `task mobile-ios:generate-project` creates a missing one from its tracked `.example` file
+- Write URLs in xcconfig files as `http:/$()/host/path`, because `//` starts a comment
+- Build and test tasks use `SIMULATOR_NAME` when set, otherwise the newest available iPhone simulator

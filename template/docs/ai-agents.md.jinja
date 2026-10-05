@@ -107,7 +107,7 @@ Key command groups:
 - design workflow: `design-intake`, `design-clarify`, `design-start`, `design-handoff`
 - development helpers: `add-endpoint`, `add-integration`, `document-entity`, `generate-clients`, `create-migration`
 - backend review and debugging: `review-query`, `review-security-surface`, `debug-prod-issue`
-- delivery workflow: `prep-sprint`, `dev-start`, `dev-done`, `feature-reopen`
+- delivery workflow: `prep-sprint`, `dev-clarify`, `dev-start`, `dev-done`, `feature-reopen`
 - governance and support: `board-review`, `feature-status`, `ask`, `audit-feature`, `lint-wiki`, `wiki-*`
 
 Read [`CONTEXT.md`](../CONTEXT.md) for the command list by tool surface.
@@ -121,6 +121,17 @@ inspector exposes source paths, confidence, workflow blockers, and page-health
 diagnostics so an agent can follow the evidence before changing project state.
 For a terminal fallback, use `prism wiki graph --json` or
 `prism wiki graph --mermaid --view lifecycle`.
+
+### Connected board
+
+After `prism workflow upgrade . --apply`, `prism board serve .` runs one local service
+that serves the browser board and a standard MCP endpoint. Agents that connect to it
+read the same canonical skills through the endpoint and need no `.claude/` or
+`.agents/` folder; [`knowledge/wiki/CONNECTED.md`](../knowledge/wiki/CONNECTED.md)
+describes how they use it. In that board a human performs `po-handoff`,
+`design-start` and `dev-start` directly after reviewing the exact changes. The other
+actions, and every agent action, keep the confirmation of the skill in the agent's
+own interface. The board adds no approval queue.
 
 ### Feature lifecycle boundary
 
@@ -174,6 +185,7 @@ mirror much of the Claude command surface for Codex:
 | `design-start` | Confirmation-gated `ready-for-design` + `designer` to `in-design` + `designer` transition |
 | `design-handoff` | Finalizes design guidance for development |
 | `prep-sprint` | Read-only session view showing what is ready to build, blocked, or awaiting board review |
+| `dev-clarify` | Answers open questions owned by `dev`, one feature at a time; open dev questions block `dev-start` and `dev-done` |
 | `dev-start` | Confirmation-gated `ready-for-dev` + `dev` to `in-dev` + `dev` transition |
 | `dev-done` | Wraps up delivery and updates project state |
 | `feature-reopen` | Reopens one shipped feature through a specified impact-review route and active revalidation |
@@ -183,7 +195,7 @@ mirror much of the Claude command surface for Codex:
 | `feature-status` | Shows the full feature pipeline and may refresh only `WIKI_REPORT.md`; it does not change lifecycle state |
 | `lint-wiki` | Checks the wiki for structure or consistency problems |
 | `wiki-blockers` | Surfaces unresolved blockers from the wiki |
-| `wiki-owner` | Read-only owner dashboard showing open questions, waiting work, and stale items for `po`, `designer`, or `dev` |
+| `wiki-owner` | Read-only owner dashboard showing open questions, waiting work, and stale items for `po`, `designer`, `dev`, or `none` |
 | `wiki-platform` | Focuses a feature view by platform |
 | `wiki-query` | Searches and summarizes wiki content |
 | `wiki-show` | Opens a specific feature or wiki record |

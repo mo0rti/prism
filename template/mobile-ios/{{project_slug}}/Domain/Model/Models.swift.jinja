@@ -41,9 +41,68 @@ struct UserResponse: Codable, Identifiable {
     let role: String
 }
 
-// MARK: - Examples
+// MARK: - Transactions
+// Wire shapes of the backend `/transactions` endpoints (see shared/api-contracts/openapi.yml).
+// The sample feature shows each transaction as an `Example` row.
 
-struct ExampleResponse: Codable, Identifiable {
+struct TransactionResponse: Codable, Identifiable {
+    let id: String
+    let reference: String
+    let amount: Double
+    let currency: String
+    let description: String?
+    let type: String
+    let status: String
+    let createdBy: String
+    let createdAt: String
+    let updatedAt: String
+
+    func toDomain() -> Example {
+        Example(
+            id: id,
+            title: "\(type) \(String(format: "%.2f", amount)) \(currency)",
+            description: description,
+            status: status,
+            createdBy: createdBy,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+}
+
+struct TransactionListResponse: Codable {
+    let content: [TransactionResponse]
+    let page: Int
+    let size: Int
+    let totalElements: Int
+    let totalPages: Int
+
+    func toDomain() -> ExamplePage {
+        ExamplePage(
+            content: content.map { $0.toDomain() },
+            page: page,
+            size: size,
+            totalElements: totalElements,
+            totalPages: totalPages
+        )
+    }
+}
+
+struct CreateTransactionRequest: Codable {
+    let amount: Double
+    let currency: String
+    let description: String?
+    let type: String
+}
+
+struct UpdateTransactionRequest: Codable {
+    let description: String?
+    let status: String?
+}
+
+// MARK: - Examples (sample feature domain models)
+
+struct Example: Identifiable {
     let id: String
     let title: String
     let description: String?
@@ -53,21 +112,10 @@ struct ExampleResponse: Codable, Identifiable {
     let updatedAt: String
 }
 
-struct ExampleListResponse: Codable {
-    let content: [ExampleResponse]
+struct ExamplePage {
+    let content: [Example]
     let page: Int
     let size: Int
     let totalElements: Int
     let totalPages: Int
-}
-
-struct CreateExampleRequest: Codable {
-    let title: String
-    let description: String?
-}
-
-struct UpdateExampleRequest: Codable {
-    let title: String?
-    let description: String?
-    let status: String?
 }

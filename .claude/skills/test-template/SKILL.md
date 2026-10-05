@@ -33,6 +33,11 @@ Test the Copier template by generating a project and verifying the output.
    - Verify excluded platform directories are absent
    - Verify CLAUDE.md doesn't reference excluded platforms
 
-5. Report results: list any issues found or confirm all checks passed.
+5. Run the contract validation, which checks rendered files and workflows (it needs actionlint on PATH or `-ActionlintPath`):
+   ```bash
+   ./scripts/validate-template.ps1 -Mode contract
+   ```
 
-6. Clean up temp directories.
+6. Report results: list any issues found or confirm all checks passed.
+
+7. Clean up temp directories.

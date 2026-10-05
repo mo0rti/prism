@@ -169,6 +169,7 @@ This setup flow:
 ### Developer
 
 - inspect readiness with `prep-sprint`
+- resolve dev-owned open questions with `dev-clarify`
 - start confirmed implementation with `dev-start`
 - read feature and platform requirement context before implementing
 - mark shipped work with `dev-done`

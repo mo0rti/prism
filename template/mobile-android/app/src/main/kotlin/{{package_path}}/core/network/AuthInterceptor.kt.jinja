@@ -1,9 +1,12 @@
 package {{ package_identifier }}.core.network
 
 import {{ package_identifier }}.core.datastore.TokenStorage
+import {{ package_identifier }}.core.di.ApiBaseUrl
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
+import okhttp3.Request
 import okhttp3.Response
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -14,12 +17,15 @@ data class SessionIdentity(val id: String)
 @Singleton
 class AuthInterceptor @Inject constructor(
     private val tokenStorage: TokenStorage,
+    @ApiBaseUrl apiBaseUrl: String,
 ) : Interceptor {
+
+    private val basePath = apiBaseUrl.toHttpUrl().encodedPath.let { if (it.endsWith("/")) it else "$it/" }
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
 
-        if (original.url.encodedPath.contains("/auth/")) {
+        if (isPublicAuthRequest(original)) {
             return chain.proceed(original)
         }
 
@@ -35,5 +41,24 @@ class AuthInterceptor @Inject constructor(
         }
 
         return chain.proceed(request)
+    }
+
+    // Only the endpoints the backend serves without a bearer skip it. Every other
+    // `auth/*` call (`auth/me`, `auth/logout`) is authenticated like any API call.
+    private fun isPublicAuthRequest(request: Request): Boolean {
+        val path = request.url.encodedPath
+        if (!path.startsWith(basePath)) return false
+        return path.removePrefix(basePath).trimEnd('/') in PUBLIC_AUTH_PATHS
+    }
+
+    companion object {
+        val PUBLIC_AUTH_PATHS = setOf(
+            "auth/oauth/callback",
+            "auth/oauth/token",
+            "auth/register",
+            "auth/login",
+            "auth/admin/login",
+            "auth/refresh",
+        )
     }
 }

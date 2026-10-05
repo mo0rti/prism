@@ -1,0 +1,60 @@
+---
+name: dev-clarify
+description: Resolve open questions assigned to dev across the wiki. Use when gathering answers from the developer and updating feature specs, platform requirements, question tables, and logs accordingly.
+---
+
+# Dev Clarify
+
+Use this skill to work through open dev-owned questions one feature at a time.
+
+## Usage
+
+`$dev-clarify`
+
+## Workflow
+
+1. Read `knowledge/wiki/SCHEMA.md`
+2. Read all feature files
+3. Collect open questions where owner = `dev` and status = `open`
+4. Present the questions grouped by feature, one feature at a time
+5. For each answer:
+   - update the open questions table in the feature file
+   - update the feature's Acceptance criteria, Platform scope or API surface section if the answer introduces a new requirement
+   - update the feature's platform requirement page (What to build, Technical constraints, API contract reference or Acceptance criteria) if the answer changes what that platform must build
+   - flag the conflict and leave the question open if the answer contradicts existing wiki content
+6. Append a single summary entry to `log.md`
+
+## Rules
+
+- write-capable skill
+- answers only questions owned by `dev`; leave PO and designer questions open
+- does not change a feature's status or owner, and does not change a feature that is `done`; reopen it first
+- present questions one feature at a time, not as one large dump
+- confirm each update before moving to the next question
+- every requirement-bearing section you change must contain the full text of at least one answer you resolve in the same proposal; a paraphrase alone is not enough
+- change only the sections named above; leave platform requirement frontmatter, including `status`, unchanged
+- if an answer introduces a new open question, add it immediately
+- treat board-generated questions with the same priority as other open questions
+- if one feature hits a contradiction, skip that conflicting answer and leave the question open for that feature only
+- do not stop the whole clarify session unless the user asks to stop
+
+## Canonical format reference
+
+Mirror the detailed workflow and write behavior from:
+
+- `.claude/commands/dev-clarify.md`
+
+## Output behavior
+
+Return:
+
+- current feature being clarified
+- open dev questions for that feature
+- resolved answers and resulting feature and requirement updates
+- any newly added open questions
+- final summary of questions resolved
+
+## Error and stop conditions
+
+- if there are no open dev questions, return a clean empty-state response
+- if a user answer conflicts with existing wiki content, report the conflict, leave that question open, and stop the conflicting update for that feature, then continue with the next feature unless the user wants to stop

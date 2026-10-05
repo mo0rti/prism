@@ -20,7 +20,7 @@ export default function AdminDashboardPage() {
         <p className="text-sm uppercase tracking-[0.2em] text-teal-600">Admin Web Portal</p>
         <h1 className="text-3xl font-semibold text-slate-950">Operations dashboard</h1>
         <p className="max-w-3xl text-slate-600">
-          This shell is modeled on the reference-app back-office web reference app: a protected `/admin` space with quick access to management workflows.
+          This shell provides a protected `/admin` space with quick access to management workflows.
         </p>
       </div>
       <div className="grid gap-4 lg:grid-cols-3">

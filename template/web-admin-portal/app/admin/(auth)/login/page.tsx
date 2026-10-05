@@ -36,7 +36,7 @@ export default function AdminLoginPage() {
           <p className="text-sm uppercase tracking-[0.2em] text-teal-300">Admin Web Portal</p>
           <h1 className="text-3xl font-semibold">Operations sign-in</h1>
           <p className="text-sm leading-7 text-slate-300">
-            This scaffold mirrors the reference-app admin direction: a dedicated `/admin` workspace with credentials-based access and operational screens.
+            This scaffold provides a dedicated `/admin` workspace with credentials-based access and operational screens.
           </p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-5 rounded-[1.5rem] border border-slate-200 p-6">

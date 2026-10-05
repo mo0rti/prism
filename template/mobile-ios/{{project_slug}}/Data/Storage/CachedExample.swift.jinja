@@ -32,22 +32,22 @@ final class CachedExample {
         self.cachedAt = cachedAt
     }
 
-    /// Convert from API response
-    static func from(_ response: ExampleResponse) -> CachedExample {
+    /// Convert from the domain model
+    static func from(_ example: Example) -> CachedExample {
         CachedExample(
-            id: response.id,
-            title: response.title,
-            descriptionText: response.description,
-            status: response.status,
-            createdBy: response.createdBy,
-            createdAt: response.createdAt,
-            updatedAt: response.updatedAt
+            id: example.id,
+            title: example.title,
+            descriptionText: example.description,
+            status: example.status,
+            createdBy: example.createdBy,
+            createdAt: example.createdAt,
+            updatedAt: example.updatedAt
         )
     }
 
-    /// Convert to API response format
-    func toResponse() -> ExampleResponse {
-        ExampleResponse(
+    /// Convert to the domain model
+    func toExample() -> Example {
+        Example(
             id: id,
             title: title,
             description: descriptionText,

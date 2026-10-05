@@ -1,14 +1,17 @@
 # Wiki Validation
 
-This page summarizes how the Prism wiki usability layer was validated and what confidence
-that gives you today.
+This page summarizes how the Prism wiki usability layer is validated and what confidence
+that gives you.
 
-## What Was Validated
+## What Is Validated
 
-The wiki usability layer was validated in two ways:
+The wiki usability layer is validated in three ways:
 
 - template-render validation
 - runtime-style fixture validation against a seeded wiki corpus
+- Python regression tests of the CLI read layer (`prism wiki lint`, `show`, `blockers`,
+  `owner`, `platform`, `search`, `transition-preflight` and `graph`), which the generated
+  commands use as their primary path when a compatible CLI is installed
 
 ## Validation Method
 
@@ -28,7 +31,7 @@ resulting files.
 
 ## Fixture Approach
 
-Validation used a reusable fixture builder:
+The runtime-style validation uses a reusable fixture builder:
 
 - `scripts/build-runtime-validation-fixture.ps1`
 
@@ -77,9 +80,10 @@ Required generated sections validated:
 
 Validated:
 
+- reports diagnostics in the response and writes no wiki file by default
 - does not rewrite `WIKI_REPORT.md`
-- creates a dated lint report
-- appends to `knowledge/wiki/log.md`
+- creates a dated lint report and appends to `knowledge/wiki/log.md` only when the user
+  explicitly asks for a persisted report
 
 ### `wiki-show`
 
@@ -138,7 +142,7 @@ This gives the wiki usability layer stronger support than a purely theoretical s
 
 The current confidence level is:
 
-- the template renders the wiki layer correctly
+- the template renders the wiki layer correctly (`scripts/validate-template.ps1 -Mode contract` checks the rendered files)
 - the command/skill contracts were exercised against a realistic seeded corpus
 - write/read boundaries were inspected explicitly
 
@@ -168,16 +172,14 @@ That is a tuning question rather than a correctness question.
 
 ## Bottom Line
 
-The wiki usability layer is no longer just planned behavior.
+The wiki usability layer has:
 
-It has:
-
-- shipped command/skill support
+- command and skill support in generated projects
 - template-render validation
 - fixture-based runtime validation
+- Python regression tests for the CLI read layer
 
-So the main remaining work in this area is documentation and long-term tuning, not basic
-proof that the workflow exists.
+The remaining work in this area is documentation and long-term tuning.
 
 ## Related Docs
 

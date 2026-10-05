@@ -121,3 +121,159 @@ jobs:
             npx wrangler deploy --dry-run
             popd >/dev/null
           done
+
+  android-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Copier
+        run: python -m pip install --upgrade pip copier jinja2-time
+
+      - name: Generate Android Validation Sample
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET="$RUNNER_TEMP/prism-android-validation"
+          rm -rf "$TARGET"
+          copier copy --trust --defaults \
+            --data "project_name=Review Android" \
+            --data "platforms=[backend, mobile-android]" \
+            . "$TARGET"
+          echo "PRISM_ANDROID_TARGET=$TARGET" >> "$GITHUB_ENV"
+
+      - name: Test, Assemble and Lint Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PRISM_ANDROID_TARGET/mobile-android"
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest assembleDebug lintDebug
+
+  ios-build:
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Copier and XcodeGen
+        run: |
+          python -m pip install --upgrade pip copier jinja2-time
+          brew install xcodegen
+
+      - name: Generate iOS Validation Sample
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET="$RUNNER_TEMP/prism-ios-validation"
+          rm -rf "$TARGET"
+          copier copy --trust --defaults \
+            --data "project_name=Review App" \
+            --data "platforms=[backend, mobile-ios]" \
+            . "$TARGET"
+          # Commit the sample and clone it, so git-ignored files such as the local xcconfigs are absent,
+          # as they are on a fresh checkout in CI.
+          git -C "$TARGET" init -q
+          git -C "$TARGET" add -A
+          git -C "$TARGET" -c user.name=prism-validation -c user.email=prism-validation@example.invalid commit -q -m "Generated sample"
+          CLONE="$RUNNER_TEMP/prism-ios-clone"
+          rm -rf "$CLONE"
+          git clone -q "$TARGET" "$CLONE"
+          echo "PRISM_IOS_TARGET=$CLONE" >> "$GITHUB_ENV"
+
+      - name: Create local xcconfig files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PRISM_IOS_TARGET/mobile-ios"
+          test ! -e Config/Debug.xcconfig
+          test ! -e Config/Release.xcconfig
+          cp Config/Debug.xcconfig.example Config/Debug.xcconfig
+          cp Config/Release.xcconfig.example Config/Release.xcconfig
+
+      - name: Generate Xcode project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PRISM_IOS_TARGET/mobile-ios"
+          xcodegen generate
+
+      - name: Select iPhone simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIMULATOR_ID=$(xcrun simctl list devices available | grep -E '^ +iPhone ' | grep -Eo '[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}' | tail -n 1)
+          if [ -z "$SIMULATOR_ID" ]; then
+            echo "No available iPhone simulator found." >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          echo "Using simulator $SIMULATOR_ID"
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+
+      - name: Build iOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PRISM_IOS_TARGET/mobile-ios"
+          xcodebuild build \
+            -project "Review App.xcodeproj" \
+            -scheme "ReviewApp" \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -configuration Debug \
+            -derivedDataPath build/DerivedData
+
+      - name: Check built API base URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PRISM_IOS_TARGET/mobile-ios"
+          PLIST=$(find build/DerivedData/Build/Products -path '*/ReviewApp.app/Info.plist' | head -n 1)
+          test -n "$PLIST"
+          BASE_URL=$(/usr/libexec/PlistBuddy -c "Print :API_BASE_URL" "$PLIST")
+          echo "API_BASE_URL in the built app: $BASE_URL"
+          test "$BASE_URL" = "http://localhost:8080/api/v1"
+
+      - name: Test iOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PRISM_IOS_TARGET/mobile-ios"
+          xcodebuild test \
+            -project "Review App.xcodeproj" \
+            -scheme "ReviewApp" \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath build/DerivedData \
+            -resultBundlePath build/TestResults.xcresult
+
+      - name: Upload iOS test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-validation-test-results
+          path: ${{ env.PRISM_IOS_TARGET }}/mobile-ios/build/TestResults.xcresult
+          if-no-files-found: ignore

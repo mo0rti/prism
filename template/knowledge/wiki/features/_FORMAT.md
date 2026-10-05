@@ -68,14 +68,16 @@ High-level description of API changes required. Empty if no API changes.
 Populated by /board-review. Empty until then.
 
 ## Post-ship notes
-Populated by /dev-done. Empty until then.
+Populated by /dev-done. Empty until then. Record a delivery reference the agent could
+not check as the developer's attestation.
 
 ## Delivery evidence
 | Platform | Implementation | Tests | Release |
 |---|---|---|---|
 | [declared platform] | [verified artifact or source reference] | [test command and result] | [release artifact or target] |
 
-Include exactly one substantive row per declared platform before `dev-done`.
+Include exactly one substantive row per declared platform in the `dev-done`
+proposal; the developer supplies the references.
 Agents must verify the referenced artifacts and results; file presence or lint
 alone is not shipment evidence. Partial delivery stays `in-dev`.
 
@@ -91,3 +93,44 @@ Delivery evidence here and remove it from the active table on confirmation.
 - Prior completion/release evidence: [archived evidence]
 - Requirement/API invalidations: [exact affected pages and proposed statuses]
 ```
+
+## Raw and specified pages
+
+`/po-intake` creates every new feature as `status: raw`, `owner: po`. Its page has
+substantive Summary, User story, Acceptance criteria, Open questions and Platform
+scope sections; Design, Related features, API surface, Board review summary and
+Post-ship notes stay empty. `/po-specify` completes the page and sets
+`status: specified`: each of those five sections gets one line of supported content
+or an explicit statement that nothing exists yet (`Not started.`, `None identified.`,
+`None.` under API surface, `Not reviewed yet.`, `Not shipped yet.`). API surface text
+other than `None.` declares API work and needs an API contract page before
+`/dev-start`, so write `None.` unless the intake material or an answered question
+states an API change. Keep open questions in the Open questions table, never in these
+sections. A later action replaces that line with its real content.
+
+## Reopen record layout
+
+Each reopen record has one `###` heading and the six bullets above, with the label
+text unchanged. Under `- Prior completion/release evidence:` keep every prior
+Delivery evidence row verbatim, one row per declared platform, in the same
+`| Platform | Implementation | Tests | Release |` cell order. Put the rows on that
+line, or on the lines directly below it as a table or a list, indented or not.
+They must come before the next `- Label:` bullet or heading. Rows after the next
+bullet or under another heading are not found, and the connected board rejects the
+record with `delivery_evidence_not_archived` and the first missing row. Letter case
+and spaces around `|` do not matter; the cell text does.
+
+```markdown
+- Prior completion/release evidence: Archived unchanged from the active table.
+
+  | Platform | Implementation | Tests | Release |
+  |---|---|---|---|
+  | backend | PR #42 merged as 3f9c2ab | CI run 1187: 31 passed | v1.4.0 deployed |
+- Requirement/API invalidations: knowledge/wiki/platform-requirements/F-001-backend.md: done -> in-progress
+```
+
+Under `- Requirement/API invalidations:` write each invalidated requirement or API page as
+its full relative path, a colon, its current status, `->` and its new status, and name
+the same path under `- Affected artifacts:`. When no page is invalidated, write a
+sentence such as `No requirement or API page is invalidated.`; a bare `None` is too short
+and the connected board rejects it with `impact_review_required`.

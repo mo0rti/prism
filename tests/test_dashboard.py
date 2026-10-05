@@ -57,6 +57,7 @@ class DashboardBootRegressionTests(unittest.TestCase):
                     "--check-unknown-stage",
                     "--check-transitions",
                     "--check-connected-board",
+                    "--check-board-defects",
                 ],
                 cwd=repo_root,
                 capture_output=True,
@@ -73,6 +74,7 @@ class DashboardBootRegressionTests(unittest.TestCase):
         self.assertIn("LIVE RECOVERY OK", result.stdout)
         self.assertIn("TRANSITIONS OK", result.stdout)
         self.assertIn("CONNECTED BOARD OK", result.stdout)
+        self.assertIn("BOARD DEFECTS OK", result.stdout)
 
 
 if __name__ == "__main__":

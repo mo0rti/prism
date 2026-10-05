@@ -25,7 +25,7 @@ Represents a registered user in the system. Users can always register with email
 
 ## Validation Rules
 
-- `email`: must be valid email format, unique across all users
+- `email`: must be valid email format, unique across all users without regard to case; stored and looked up in lower case
 - `displayName`: 1-100 characters
 - `authProvider`: defaults to `LOCAL` for password-based accounts
 - `passwordHash`: required for locally registered users and absent for pure OAuth users
@@ -42,8 +42,8 @@ Represents a registered user in the system. Users can always register with email
 ## Database
 
 - **Table name**: `users`
-- **Indexes**: unique on `email`, index on `auth_provider`
-- **Migrations**: `V1__users.sql`
+- **Indexes**: unique on `email` and on `lower(email)`, unique on (`auth_provider`, `provider_id`), index on `auth_provider`
+- **Migrations**: `V1__users.sql`, `V4__email_case_and_oauth_identity.sql`
 
 ## API Exposure
 

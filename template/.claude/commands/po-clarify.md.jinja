@@ -18,11 +18,17 @@
    - Update the open questions table: change status to `resolved: [answer]`
    - If the answer reveals a new requirement, update the feature spec
    - If the answer contradicts an existing wiki entry, flag and quarantine
-6. Update `index.md` if any feature's owner or status changes
+6. Leave `status` and `owner` as they are; the index row then stays as it is
 7. Append a single log entry summarizing all questions resolved
 
 ## Notes for the agent
 
+- Answer only questions owned by `po`. Resolve one by changing only its Status cell to
+  `resolved: [answer]`; keep its number, text and owner.
+- Change only the feature's Open questions, Summary, User story, Acceptance criteria,
+  Platform scope and API surface sections, and add no other section. Every
+  requirement-bearing section you change must contain the full text of at least one
+  answer you resolve in the same proposal; a paraphrase alone is not enough.
 - Present questions one feature at a time. Do not dump all questions at once.
 - After each answer, confirm what you updated before moving to the next.
 - If the user's answer introduces a new open question, add it immediately.

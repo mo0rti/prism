@@ -95,6 +95,37 @@ class UserProvisioningServiceTest {
     }
 
     @Test
+    fun `oauth provisioning detects an existing account whose email differs only by case`() {
+        userRepository.save(
+            User(
+                email = "existing@example.com",
+                displayName = "Existing User",
+                passwordHash = "stored-password-hash",
+                authProvider = AuthProvider.LOCAL
+            )
+        )
+
+        val exception = assertThrows(ConflictException::class.java) {
+            userProvisioningService.provisionOAuthUser(
+                AuthProvider.GOOGLE,
+                OAuthUserProfile("google-subject", "Existing@Example.COM", "Google User", null)
+            )
+        }
+
+        assertEquals(AuthErrorCode.OAUTH_ACCOUNT_LINK_REQUIRED.code, exception.code)
+    }
+
+    @Test
+    fun `oauth provisioning stores a new user's email in lower case`() {
+        val created = userProvisioningService.provisionOAuthUser(
+            AuthProvider.GOOGLE,
+            OAuthUserProfile("mixed-case-subject", "Mixed.Case@Example.COM", "Mixed Case", null)
+        )
+
+        assertEquals("mixed.case@example.com", created.email)
+    }
+
+    @Test
     fun `oauth provisioning updates an existing user matched by provider id`() {
         val existing = userRepository.save(
             User(

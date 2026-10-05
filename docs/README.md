@@ -9,9 +9,12 @@ If you are not sure where to start, choose the path that matches your goal.
 
 ### I want a shared board in an existing or empty workspace
 
-Start with [shared-board.md](shared-board.md) for adoption, participant access,
-the local service, and standard MCP configuration. Read
-[current-status.md](current-status.md) for the current validation boundary.
+Start with the [README quickstart](../README.md#quickstart-a-shared-board-for-you-and-your-agents),
+then [shared-board.md](shared-board.md) for adoption, participant access, the local
+service, and standard MCP configuration. When something fails, read
+[troubleshooting.md](troubleshooting.md). [`SECURITY.md`](../SECURITY.md) describes what the
+local service protects. Read [current-status.md](current-status.md) for the current
+validation boundary.
 
 ### I want to install Prism, generate a project, and try it
 
@@ -54,6 +57,7 @@ These are the best pages for understanding Prism quickly.
 | Document | Best for | Purpose |
 |----------|----------|---------|
 | [shared-board.md](shared-board.md) | Humans and agents sharing a workspace | Adopt the workflow, connect through MCP, and use supported human board actions |
+| [troubleshooting.md](troubleshooting.md) | Anyone whose setup or connection fails | Symptom, cause and fix for cloud-synced folders, a busy port, stale previews, upgraded grants, cursor errors, missing tools and the doctor checks |
 | [getting-started.md](getting-started.md) | Builders and evaluators | Install Prism, generate a first sample, validate it, and enter the generated workflow |
 | [generated-projects.md](generated-projects.md) | Generated-project users | What a generated repo contains and what is safe to do first |
 | [prism-model.md](prism-model.md) | Evaluators and role leads | What Prism is, what problem it solves, and how the wiki-driven lifecycle works |
@@ -68,8 +72,8 @@ Use these once you already understand the basic flow.
 |----------|----------|---------|
 | [questionnaire.md](questionnaire.md) | Builders and maintainers | Generation inputs, defaults, and maturity notes |
 | [ai-surfaces.md](ai-surfaces.md) | Users comparing tool surfaces | How Claude, Codex, and Cursor surfaces are packaged and why some differences are intentional |
-| [wiki-validation.md](wiki-validation.md) | Evaluators and maintainers | How the wiki usability layer was validated and what confidence boundaries apply today |
-| [current-status.md](current-status.md) | Evaluators and maintainers | Current maturity, validated paths, and safest evaluation routes |
+| [wiki-validation.md](wiki-validation.md) | Evaluators and maintainers | How the wiki usability layer is validated and what confidence boundaries apply |
+| [current-status.md](current-status.md) | Evaluators and maintainers | Maturity, validation suites, board performance, sample status and safest evaluation routes |
 
 ## Maintainer Docs
 
@@ -78,16 +82,26 @@ inside a generated project.
 
 | Document | Purpose |
 |----------|---------|
-| [prism-core-workflow-plan.md](prism-core-workflow-plan.md) | Approved core direction, implementation scope, and acceptance requirements |
-| [connected-core-acceptance.md](connected-core-acceptance.md) | Current connected-core tests, actual-host evidence and remaining acceptance limits |
+| [prism-core-workflow-plan.md](prism-core-workflow-plan.md) | Core scope, contracts, human and agent entry paths, verification layers and deferred work |
 | [maintainer-workflow.md](maintainer-workflow.md) | Template structure, CLI/template workflow, and validation guidance |
-| [questionnaire.md](questionnaire.md) | Generation inputs, defaults, and the current option-specific caveats maintainers need to track |
 | [cli-release.md](cli-release.md) | Local CLI release preparation, wheel checks, and publication boundary |
+
+## Acceptance Records
+
+These pages record the evidence and limits of one delivery at the time it was written.
+
+| Document | Purpose |
+|----------|---------|
+| [connected-core-acceptance.md](connected-core-acceptance.md) | The connected-core acceptance run: tests, actual-host evidence and remaining limits |
+| [lifecycle-transitions-acceptance.md](lifecycle-transitions-acceptance.md) | Acceptance of the nine lifecycle actions through the read-only preview and agent-skill path |
+| [board-transitions-acceptance.md](board-transitions-acceptance.md) | Local evidence and acceptance boundaries for the first Board handoff slice |
 | [cli-v2-acceptance.md](cli-v2-acceptance.md) | CLI v2 acceptance evidence and the remaining release review boundary |
-| [board-transitions-acceptance.md](board-transitions-acceptance.md) | Local evidence and acceptance boundaries for Board transition implementation |
+| [reviews/](reviews/) | Dated independent reviews and their provenance records |
 
 ## Related Root Files
 
-- [`README.md`](../README.md) for the short product overview and fastest entry path
+- [`README.md`](../README.md) for the short product overview and the quickstart
+- [`SECURITY.md`](../SECURITY.md) for the local threat model and how to report a vulnerability
+- [`CHANGELOG.md`](../CHANGELOG.md) for user-visible changes
 - [`AGENTS.md`](../AGENTS.md) for Codex maintainer guidance in this repo
 - [`CLAUDE.md`](../CLAUDE.md) for Claude maintainer guidance in this repo

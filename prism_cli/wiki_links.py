@@ -44,14 +44,14 @@ def page_references_feature(frontmatter: dict[str, Any], body: str, filename: st
 
 
 def linked_context_for_feature(wiki_root: Path, feature_id: str) -> dict[str, list[str]]:
-    from prism_cli.wiki_model import read_markdown_page
+    from prism_cli.wiki_model import load_markdown_page
 
     linked_context: dict[str, list[str]] = {key: [] for key in LINKED_CONTEXT_DIRECTORIES}
     for context_key, directory in LINKED_CONTEXT_DIRECTORIES.items():
         for path in markdown_files(wiki_root / directory):
             if path.name in NON_PAGE_FILENAMES:
                 continue
-            page = read_markdown_page(path)
+            page = load_markdown_page(path)
             if page_references_feature(page.frontmatter, page.body, path.name, feature_id):
                 linked_context[context_key].append(str(path))
     return linked_context
