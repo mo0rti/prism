@@ -197,7 +197,7 @@ class Journey:
             if result.status != "passed":
                 result.status = "failed"
                 tainted_by = step.id
-            if step.kind == "agent" and result.first_attempt_success is None:
+            if step.kind == "agent" and result.first_attempt_success is None and not result.not_applicable:
                 result.first_attempt_success = False
 
     def seed(self, through: str | None) -> bool:
@@ -218,6 +218,14 @@ class Journey:
         model = config.TIERS[self.options.tier][host]
         result.expected_model, result.expected_effort = model.model, model.effort
         before = ws.read_feature(self.env.workspace)
+        role = answers.CLARIFY_ROLES.get(step.id)
+        if role is not None and before is not None and not before.open_questions(role):
+            # A clarify step with no open question for its role has nothing to do; the journey
+            # continues instead of counting the agent's correct refusal as a failure.
+            result.status = "passed"
+            result.not_applicable = True
+            result.notes.append(f"nothing to do: no open {role}-owned question on the feature, so no host was launched")
+            return
         runs: list[HostRun] = []
 
         preview = self._launch(host, "preview", build_preview_prompt(step.id, self.options.fixtures, before), number, step, result, runs)

@@ -40,6 +40,7 @@ class StepResult:
     usage: dict[str, int] | None = None
     cost_usd: float | None = None
     notes: list[str] = field(default_factory=list)
+    not_applicable: bool = False  # passed without launching a host: there was nothing for the step to do
 
     def fail(self, reason: str) -> None:
         self.status = "failed"

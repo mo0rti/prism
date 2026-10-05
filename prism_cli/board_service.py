@@ -3057,8 +3057,11 @@ class BoardService:
     def _answers_ground_section(section: str, answers: list[str]) -> bool:
         normalized = re.sub(r"\s+", " ", section).casefold()
         # The answer must stand as whole words: `no` is not found inside `not` or `know`.
+        def whole_words(answer: str) -> str:
+            return r"(?<!\w)" + re.escape(re.sub(r"\s+", " ", answer).strip().casefold()) + r"(?!\w)"
+
         return bool(answers) and any(
-            re.search(rf"(?<!\w){re.escape(re.sub(r'\s+', ' ', answer).strip().casefold())}(?!\w)", normalized)
+            re.search(whole_words(answer), normalized)
             for answer in answers
             if answer.strip()
         )
