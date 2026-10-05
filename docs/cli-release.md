@@ -170,7 +170,7 @@ CI does the same on Ubuntu, macOS and Windows (job `npm-launcher` in `cli-valida
 npm accepts a trusted publisher only for a package that exists, so **the owner publishes the first version by hand**:
 
 1. After the Release workflow has put `prism-kit==<version>` on PyPI, run `npm login`, then `npm publish --access public` in `npm/`. npm asks for the one-time code from your authenticator.
-2. On <https://www.npmjs.com/package/@mortitech/prism>, open Settings, Trusted Publisher, choose GitHub Actions and enter: organization or user `mo0rti`, repository `prism`, workflow filename `npm-release.yml`, environment name `npm`.
+2. On <https://www.npmjs.com/package/@mortitech/prism>, open Settings, Trusted Publisher, choose GitHub Actions and enter: organization or user `mo0rti`, repository `prism`, workflow filename `npm-release.yml`, environment name `npm`. Tick **Allow npm publish**: without it the connection permits only `npm stage publish`, and the workflow's `npm publish` is refused. Saving asks for the one-time code.
 3. Optionally set the package's publishing access to require two-factor authentication and disallow tokens.
 
 Until the package exists, the npm release workflow ends with a warning and publishes nothing. Between the first publish and step 2, a new version fails at the publish step. Afterwards every tag publishes through the workflow.
