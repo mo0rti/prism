@@ -6,7 +6,7 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [0.3.0]
 
-Release date: set when tagged
+Release date: 2026-10-05
 
 ### Upgrade notes
 
