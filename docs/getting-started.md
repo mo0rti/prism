@@ -46,10 +46,10 @@ uv tool install prism-kit
 prism --version
 ```
 
-`pipx install prism-kit` and `pip install prism-kit` work as well. Without installing
-anything yourself, `npx @mortitech/prism <command>` (Node.js 22 or later) runs the same
-release through uv, which the launcher downloads once and checks against uv's published
-SHA-256 when uv is not already installed; use it in place of `prism <command>` below.
+`pipx install prism-kit` and `pip install prism-kit` work as well. If `prism` is not
+found after `uv tool install`, run `uv tool update-shell` and open a new terminal; upgrade
+later with `uv tool upgrade prism-kit`. The npm launcher `@mortitech/prism` is not
+published yet.
 The distribution is `prism-kit` and the import package remains `prism_cli`. The install
 brings the CLI's generation dependencies (`copier`, `jinja2-time` and `PyYAML`) and the
 shared-board runtime dependencies (`mcp==2.2.0`, `starlette` and `uvicorn`); `pyproject.toml`

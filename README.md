@@ -1,7 +1,7 @@
 # Prism: One spec. Every platform.
 
 ![Version](https://img.shields.io/badge/version-0.3.0-blue)
-![Status](https://img.shields.io/badge/status-in%20development-2ea44f)
+![PyPI](https://img.shields.io/pypi/v/prism-kit)
 ![Template Validation](https://github.com/mo0rti/prism/actions/workflows/template-validation.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-3776AB?logo=python&logoColor=white)
 ![Repo Type](https://img.shields.io/badge/repo-template%20%2B%20CLI-6f42c1)
@@ -37,7 +37,7 @@ uv tool install prism-kit
 prism --version
 ```
 
-`pipx install prism-kit` and `pip install prism-kit` work as well. To run Prism without installing Python tooling, use the npm launcher: `npx @mortitech/prism <command>` runs the same release through uv, which it downloads once after checking its SHA-256 when uv is not already installed. The rest of this page writes `prism <command>`.
+`pipx install prism-kit` and `pip install prism-kit` work as well. If `prism` is not found after `uv tool install`, run `uv tool update-shell` and open a new terminal. To upgrade later, run `uv tool upgrade prism-kit`. The npm launcher `@mortitech/prism` is not published yet; use one of the commands above. The rest of this page writes `prism <command>`.
 
 **From source (contributors).** Clone the repository and install it in editable mode:
 
@@ -188,7 +188,8 @@ Start with:
 ## Current Status
 
 - The workflow, the shared board, the MCP tool contract and the human board actions are implemented and tested; the [plan](https://github.com/mo0rti/prism/blob/main/docs/prism-core-workflow-plan.md) states their scope and contracts.
-- Application samples: backend, Android and web are verified locally, and the iOS sample is verified only by the macOS CI job, which has not run yet. Live Cloudflare and Azure deployments are unverified, and Apple Sign-In is experimental.
+- Prism 0.3.0 is released: `prism-kit` on [PyPI](https://pypi.org/project/prism-kit/) and the [GitHub release](https://github.com/mo0rti/prism/releases/tag/v0.3.0) with checksums.
+- Application samples: backend, Android and web are verified locally and in CI, and the iOS sample is built and tested by the macOS CI job. Live Cloudflare and Azure deployments are unverified, and Apple Sign-In is experimental.
 - Core acceptance uses disposable neutral workspaces. Sample behavior does not define the core workflow.
 - Prism is released under the MIT license and published to PyPI as `prism-kit`, with the `@mortitech/prism` launcher on npm. The [changelog](https://github.com/mo0rti/prism/blob/main/CHANGELOG.md) lists what each version contains.
 
