@@ -131,8 +131,19 @@ class BoardPage:
         test can inspect the column's drop marker; call ``page.mouse.up()`` to finish.
         """
 
-        source = self.card(feature_id).get_by_text(title, exact=True).bounding_box()
-        target = self.column_heading(stage).bounding_box()
+        # A live re-render can replace the board between lookups, so wait for both
+        # elements and measure them again until a measurement is not interrupted.
+        card_title = self.card(feature_id).get_by_text(title, exact=True)
+        heading = self.column_heading(stage)
+        source = target = None
+        for _attempt in range(20):
+            card_title.wait_for(state="visible")
+            heading.wait_for(state="visible")
+            source = card_title.bounding_box()
+            target = heading.bounding_box()
+            if source is not None and target is not None:
+                break
+            self.page.wait_for_timeout(100)
         if source is None or target is None:
             raise AssertionError("The card or the destination column is not visible to drag between.")
         mouse = self.page.mouse
