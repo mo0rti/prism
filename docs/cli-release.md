@@ -68,11 +68,7 @@ The browser tests under `tests/browser` are skipped unless the `e2e` extra is
 installed and `PRISM_BROWSER_E2E=1` is set; [current-status.md](current-status.md#validation)
 describes how to run them.
 
-The connected core's acceptance run, artifact hashes and remaining limits are recorded in
-[connected-core-acceptance.md](connected-core-acceptance.md). Those hashes describe the
-snapshot they name; build and hash the wheel again for every release candidate.
-[Board handoff acceptance](board-transitions-acceptance.md) and
-[CLI V2 acceptance](cli-v2-acceptance.md) are dated milestone records.
+Build and hash the wheel again for every release candidate.
 
 Run a broad Copier render outside the repository and inspect the generated
 `prism.workspace.yml`. It should parse as YAML, carry `min_prism_cli_version: "0.3.0"`,

@@ -48,7 +48,7 @@ wiki commands from a generated project against this repository.
 - **Packaged workflow assets**: the 24 canonical workflow skills, `template/knowledge/` and the "Connected board workflow" section of the root guidance templates are packaged into `prism_cli/assets/workflow-v1.json`; run `python scripts/build-workflow-assets.py` after editing them (`--check` verifies), because a new digest invalidates existing board grants; the asset's `previous_digests` keep the earlier shipped versions of each installer-owned file so `prism workflow upgrade` can replace an unmodified old copy, so rebuild from the checked-in asset and never delete or hand-edit it
 - **Changelog**: record user-visible changes under `Unreleased` in `CHANGELOG.md`; version numbers and release tags are chosen at release time
 - **Current state only**: instruction and guidance files describe current behaviour; dates and history belong in logs, ledgers and the changelog
-- **Model and effort**: follow the maintainer model workflow in `AGENTS.md`. Launch with an explicit model and effort, keep the full output limit, and use `max` only for one bounded hard problem
+- **Model and effort**: launch every agent run with an explicit model and effort, and keep the full output limit
 
 ## Common Commands
 

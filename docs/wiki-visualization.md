@@ -139,8 +139,7 @@ prior active evidence, marks route-specific `revalidation` domains, and names
 affected requirement/API status changes before downstream readiness can be
 re-established. UI design exemptions and the full confirmation/write protocol
 are defined in the generated `knowledge/wiki/SCHEMA.md`. Browser controls for
-these action previews have a recorded local acceptance in
-[Lifecycle Transitions Acceptance](lifecycle-transitions-acceptance.md). The controls remain copy-only and never
+these action previews are covered by the browser tests. The controls remain copy-only and never
 execute the agent writes.
 
 ## Snapshot, live state, and confidence
@@ -186,13 +185,10 @@ JSON or Mermaid output before replacing the committed diagram.
 
 ## Capture references and boundaries
 
-The local acceptance captures are kept at:
+The dashboard captures are kept at:
 
 - [Board dashboard capture](media/wiki-dashboard-board.png)
 - [Graph dashboard capture](media/wiki-dashboard-graph.png)
-
-The implementation and local verification record is [Board Handoff Local
-Acceptance](board-transitions-acceptance.md).
 
 Optional PNG/SVG graph export remains deferred. Public package installation or
 release remains deferred as well; this guide describes the repository-local

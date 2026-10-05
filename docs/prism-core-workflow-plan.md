@@ -1,6 +1,6 @@
 # Prism core workflow and board
 
-This document states Prism's core scope and the contracts that the CLI, the board service, the browser board and the MCP adapter implement. [Current status](current-status.md) records what is verified and what is open. [Shared board](shared-board.md) is the usage guide. [Connected-core acceptance](connected-core-acceptance.md) is the dated record of the connected service's acceptance run, and [reviews](reviews/) holds the dated independent reviews.
+This document states Prism's core scope and the contracts that the CLI, the board service, the browser board and the MCP adapter implement. [Current status](current-status.md) records what is verified and what is open. [Shared board](shared-board.md) is the usage guide.
 
 The core is implemented: workflow adoption, MCP tool contract 2, the shared local service, the human board actions `po-handoff`, `design-start` and `dev-start`, and recovery of interrupted operations. A real-browser test suite exercises the board. Remote access, the six agent-led lifecycle actions as direct human actions, named assignment and arbitrary component labels are deferred. The release tag and publication are separate release gates; the license is MIT and the version is 0.3.0.
 

@@ -14,7 +14,7 @@ from prism_e2e.runner import build_preview_prompt, load_prompt  # noqa: E402
 FEATURE_PAGE = "knowledge/wiki/features/F-001-review-summary-export.md"
 CHECK_INSTALLED_CLI = config.REPO_ROOT / "scripts" / "check-installed-cli.py"
 
-# The question set one live po-intake wrote (the full-tier journey of the product-readiness run), not the recorded fixture's.
+# A question set a live po-intake wrote, which differs from the recorded fixture.
 LIVE_TABLE = """## Open questions
 | # | Question | Owner | Status |
 |---|----------|-------|--------|

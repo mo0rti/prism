@@ -136,5 +136,48 @@ class RepositoryHygieneTests(unittest.TestCase):
         )
 
 
+_PRIVATE_RECORD_PATTERNS = (
+    # Maintainer-only records live in the private plans repository, never here.
+    re.compile(r"^docs/reviews/"),
+    re.compile(r"^docs/[^/]*-acceptance\.md$"),
+    re.compile(r"^\.claude/agents/"),
+    re.compile(r"(?i)(?:^|/)[^/]*(?:fable|opus|sonnet|haiku|astra|luna|gpt-?\d)[^/]*review[^/]*$"),
+)
+
+
+def private_record_paths(names):
+    return [name for name in names if any(pattern.search(name) for pattern in _PRIVATE_RECORD_PATTERNS)]
+
+
+class PrivateRecordTests(unittest.TestCase):
+    def test_the_matcher_flags_review_and_acceptance_records(self):
+        flagged = private_record_paths([
+            "docs/reviews/2026-09-22-plan-review.md",
+            "docs/connected-core-acceptance.md",
+            ".claude/agents/prism-implementer.md",
+            "notes/2026-09-24-fable5-implementation-review.json",
+            "notes/opus-review.md",
+        ])
+        self.assertEqual(5, len(flagged))
+        self.assertEqual([], private_record_paths([
+            "docs/shared-board.md",
+            "docs/agent-hosts.md",
+            "scripts/e2e/journey.py",
+            "tests/test_board_review_fixes.py",
+            "template/.claude/agents/README.md.jinja",
+        ]))
+
+    def test_no_maintainer_review_or_acceptance_record_is_tracked(self):
+        files = _tracked_files()
+        if files is None:
+            self.skipTest("git is unavailable or the repository has no git metadata")
+        found = private_record_paths(files)
+        self.assertEqual(
+            [], found,
+            "Maintainer review, acceptance and agent-definition records belong in the private plans "
+            "repository, not in this public repository:\n" + "\n".join(found),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

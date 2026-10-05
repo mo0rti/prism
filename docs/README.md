@@ -88,18 +88,6 @@ inside a generated project.
 | [maintainer-workflow.md](maintainer-workflow.md) | Template structure, CLI/template workflow, and validation guidance |
 | [cli-release.md](cli-release.md) | Local CLI release preparation, wheel checks, and publication boundary |
 
-## Acceptance Records
-
-These pages record the evidence and limits of one delivery at the time it was written.
-
-| Document | Purpose |
-|----------|---------|
-| [connected-core-acceptance.md](connected-core-acceptance.md) | The connected-core acceptance run: tests, actual-host evidence and remaining limits |
-| [lifecycle-transitions-acceptance.md](lifecycle-transitions-acceptance.md) | Acceptance of the nine lifecycle actions through the read-only preview and agent-skill path |
-| [board-transitions-acceptance.md](board-transitions-acceptance.md) | Local evidence and acceptance boundaries for the first Board handoff slice |
-| [cli-v2-acceptance.md](cli-v2-acceptance.md) | CLI v2 acceptance evidence and the remaining release review boundary |
-| [reviews/](reviews/) | Dated independent reviews and their provenance records |
-
 ## Related Root Files
 
 - [`README.md`](../README.md) for the short product overview and the quickstart

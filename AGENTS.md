@@ -29,27 +29,6 @@ and must not be referenced. They are replaced by the wiki lifecycle system
 - Generated projects scaffold their own Codex skills from `template/.agents/skills/`.
 - Keep shared facts aligned across `AGENTS.md`, `CLAUDE.md`, `template/AGENTS.md.jinja`, `template/CLAUDE.md.jinja`, and `template/.cursor/rules/`, but preserve tool-specific syntax instead of forcing identical wording.
 
-## Model workflow for maintainer work
-
-This applies to work on this repository, not to generated projects. Set the model and effort explicitly in every launch, because tool defaults differ. For example, Codex runs GPT-6.1 Sol at low effort when none is set.
-
-| Role | Claude | Codex |
-| --- | --- | --- |
-| Planning, orchestration and review | Claude Opus 5.5, xhigh | GPT-6 Astra, xhigh |
-| Implementation | Claude Sonnet 5.5, high; medium for a well-scoped change | GPT-6.1 Sol, high; medium for a well-scoped change |
-| Narrow lookups and small fixes | Claude Sonnet 5.5, medium | GPT-6 Luna, high |
-| One bounded hard problem | Claude Opus 5.5, max | GPT-6 Astra, max |
-
-- **Why these levels:**
-  - In a blind comparison that included a Prism ticket, Sonnet 5.5 at medium and high met every acceptance criterion that xhigh met, at about half the cost.
-  - OpenAI's coding benchmark puts GPT-6.1 Sol at high level with GPT-6 Astra at about a seventh of the cost per task. Sol's score drops at xhigh and max.
-- **Output limit:** keep Claude's full 128,000-token output limit and never set a smaller per-run cap. Thinking and the written result share it. At max, Claude can spend the whole limit thinking on open-ended work and return nothing. If a run returns nothing, rerun it one level lower with a narrower brief.
-- **Effort ceiling:** do not use `ultra` effort for workers; it fans out into parallel subagents.
-- **Implementer agent:** `.claude/agents/prism-implementer.md` runs Sonnet 5.5 at high for one written brief at a time.
-- **Headless runs on Windows:** call the Claude Code executable directly and pass the prompt on stdin. The npm `claude.cmd` shim cuts a multi-line argument at its first newline and drops the flags after it.
-- **Checking a run:** read the transcript, not the prompt. Claude Code transcripts record the model and effort on each message, and Codex rollout files record them in `turn_context`.
-- **Evidence:** keep run logs, traces and screenshots in a durable folder outside the repository, never only in the operating system's temp directory.
-
 ## Repository Focus
 
 - This template scaffolds backend, web-user-app, web-admin-portal, mobile-android, and mobile-ios slices.

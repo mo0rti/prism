@@ -1,6 +1,6 @@
 # Current Status
 
-Prism's core is the workflow and the shared board that humans and agents use together. It runs on one computer: `prism board serve` starts one local service per workspace that serves the browser board and a standard MCP endpoint. Application generation is an optional way to start a workspace. The [core plan](prism-core-workflow-plan.md) states the scope and contracts. [Shared board](shared-board.md) is the usage guide, [troubleshooting](troubleshooting.md) covers failures, and [SECURITY.md](../SECURITY.md) is the threat model. [Connected-core acceptance](connected-core-acceptance.md) is the dated record of the connected service's acceptance run.
+Prism's core is the workflow and the shared board that humans and agents use together. It runs on one computer: `prism board serve` starts one local service per workspace that serves the browser board and a standard MCP endpoint. Application generation is an optional way to start a workspace. The [core plan](prism-core-workflow-plan.md) states the scope and contracts. [Shared board](shared-board.md) is the usage guide, [troubleshooting](troubleshooting.md) covers failures, and [SECURITY.md](../SECURITY.md) is the threat model.
 
 ## Core
 
