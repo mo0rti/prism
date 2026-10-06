@@ -11,8 +11,8 @@ from tests.manifest_fixtures import manifest_text
 FEATURE_ID = "F-001"
 FEATURE_SLUG = "document-review"
 FEATURE_PATH = Path("knowledge/wiki/features/F-001-document-review.md")
-INTAKE_ITEM = Path("knowledge/intake/pending/document-review-brief/brief.md")
-PROCESSED_INTAKE_ITEM = Path("knowledge/intake/processed/document-review-brief/brief.md")
+INTAKE_ITEM = Path("knowledge/intake/pending/2026-10-06-document-review-brief/brief.md")
+PROCESSED_INTAKE_ITEM = Path("knowledge/intake/processed/2026-10-06-document-review-brief/brief.md")
 
 
 def create_core_workflow_fixture(root: Path) -> Path:

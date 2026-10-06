@@ -62,6 +62,9 @@ Use this format for board review output files in `wiki/advisory/`. Filename: `F-
 This is intentionally short, one page maximum. The purpose is to give the team something
 they can read together in 15 minutes and act on.
 
+A review is a dated record (`reviewed`). It is not edited to follow later events: the
+current state lives on the feature and the pages that link the review as evidence.
+
 ```markdown
 ---
 feature-id: F-XXX

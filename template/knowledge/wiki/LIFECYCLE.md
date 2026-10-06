@@ -36,13 +36,15 @@ revalidation: [specification | design | implementation | tests | release]
 ## Summary
 One paragraph. What this feature does, why it exists, and what user problem it solves.
 Written in business language, not technical language.
+- **Observed:** [what the source shows] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
+- **Assumed:** [what is taken as true without evidence]
 
 ## User story
 As a [persona from personas/], I want to [action], so that [business outcome].
 
 ## Acceptance criteria
-- [ ] Condition 1 (testable, unambiguous)
-- [ ] Condition 2
+- [ ] **Decided:** Condition 1 (testable, unambiguous) ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
+- [ ] **Proposed:** Condition 2
 
 ## Open questions
 | # | Question | Owner | Status |
@@ -50,6 +52,9 @@ As a [persona from personas/], I want to [action], so that [business outcome].
 | 1 | What is the fallback when the user is offline? | po | open |
 | 2 | What does the empty state look like? | designer | open |
 | 3 | Is real-time sync feasible without WebSockets? | dev | resolved: use polling |
+
+This table is the Unknown form of the evidence labels in `SCHEMA.md`: write a gap here,
+not as an `**Unknown:**` item.
 
 ## App scope
 - **backend**: [what backend must implement, or "not in scope"]
@@ -115,6 +120,12 @@ section so it cannot satisfy a later `/dev-done` automatically.
 
 Owner values in the open-questions table must be one of: `po`, `designer`, `dev`.
 Open-question status values must be one of: `open`, `resolved: [answer]`.
+
+The open-questions table is the Unknown form of the evidence labels in `SCHEMA.md`.
+Summary, Acceptance criteria and the other sections carry the Decided, Observed,
+Proposed and Assumed labels, and a Decided or Observed claim links its evidence: the
+processed intake item, a record or a URL. A later source that changes a claim replaces
+the item in place.
 
 Each owner has one clarify action that resolves only that owner's open questions:
 `/po-clarify` (`po`), `/design-clarify` (`designer`) and `/dev-clarify` (`dev`).

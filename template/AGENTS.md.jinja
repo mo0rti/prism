@@ -60,9 +60,15 @@ If you discover information during implementation that should update the wiki, p
 update and ask for confirmation before writing, or route a question using
 `$ask F-XXX "..." --to po`.
 
-Wiki pages state the current state and carry no date about the page itself. When something
-was written, decided, verified or amended goes in `knowledge/wiki/log.md`, in the entry
-format that `knowledge/wiki/SCHEMA.md` defines.
+Wiki pages state the current state and carry no date about the page itself. When a source
+or a decision changes a fact, replace the superseded content in place and state rationale as
+a current fact. When something was written, decided, verified or amended goes in
+`knowledge/wiki/log.md`, in the entry format that `knowledge/wiki/SCHEMA.md` defines, and in
+the records (ADRs, advisory reviews and processed intake items), which are never rewritten.
+Mark each claim Decided, Observed, Proposed, Assumed or Unknown, and link the evidence of
+every Decided and Observed claim. Raw sources are `knowledge/intake/pending/YYYY-MM-DD-slug/`
+folders and are immutable once processed; an incoming source that contradicts a page is
+quarantined with a `CONFLICT.md` and the page stays untouched until a human decides.
 
 ## Architecture
 

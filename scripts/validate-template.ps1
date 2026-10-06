@@ -372,6 +372,17 @@ function Validate-WikiStructure {
     Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\features\_FORMAT.md") -Needle "last-updated" -Message "The feature format must not carry a history date."
     Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\LIFECYCLE.md") -Needle "last-updated: YYYY-MM-DD" -Message "The feature page format must not carry a history date."
 
+    # SCHEMA.md defines the evidence labels, records and decision supersession, raw sources and the conflict format
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Evidence labels" -Message "SCHEMA.md must define the evidence labels."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Records and decision supersession" -Message "SCHEMA.md must define records and decision supersession."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Conflict quarantine" -Message "SCHEMA.md must define the conflict quarantine format."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "Write the current state." -Message "SCHEMA.md must state the current-state operational rule."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\decisions\_FORMAT.md") -Needle "superseded-by: ADR-MMM" -Message "The ADR format must define superseded-by."
+    Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\decisions\_FORMAT.md") -Needle "superseded-by ADR-XXX" -Message "The ADR format must not carry the inline superseded-by status."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\intake\README.md") -Needle "YYYY-MM-DD-slug" -Message "intake/README.md must name the dated intake folder form."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\intake\pending\PO_BRIEF_TEMPLATE.md") -Needle "Captured: YYYY-MM-DD" -Message "The PO brief template must carry a Captured line."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\intake\pending\DESIGN_HANDOFF_TEMPLATE.md") -Needle "Captured: YYYY-MM-DD" -Message "The design handoff template must carry a Captured line."
+
     # CONTEXT.md must render with setup instructions for all three tools and no unrendered Jinja2
     Assert-FileContains -Path (Join-Path $Root "CONTEXT.md") -Needle "setup-project" -Message "Rendered CONTEXT.md must reference setup-project."
     Assert-FileContains -Path (Join-Path $Root "CONTEXT.md") -Needle "Claude Code" -Message "Rendered CONTEXT.md must include Claude Code setup instruction."

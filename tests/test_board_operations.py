@@ -26,7 +26,7 @@ class BoardOperationTests(unittest.TestCase):
         self.feature = "knowledge/wiki/features/F-001-document-review.md"
         self.index = "knowledge/wiki/index.md"
         self.log = "knowledge/wiki/log.md"
-        source = self.root / "knowledge/intake/processed/document-review-brief/brief.md"
+        source = self.root / "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
         source.parent.mkdir(parents=True)
         source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
         self.put(self.feature, _feature_page().replace("status: raw", "status: ready-for-design").replace("owner: po", "owner: designer").replace("| po | open |", "| po | resolved: Summarize key points. |"))

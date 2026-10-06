@@ -28,5 +28,7 @@ Examples:
 
 ## Open design questions
 
-## Date
-YYYY-MM-DD
+## Captured
+Captured: YYYY-MM-DD
+The day this handoff was captured. It matches the date in this folder's name,
+`intake/pending/YYYY-MM-DD-slug/`: a raw source is a record, so it keeps its date.

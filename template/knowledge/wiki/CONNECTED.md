@@ -149,7 +149,7 @@ The request objects have exact field names; do not add other fields:
 ```json
 {
   "changes": [{"path": "knowledge/wiki/features/F-001-example.md", "content": "complete proposed file text"}],
-  "moves": [{"source": "knowledge/intake/pending/example", "destination": "knowledge/intake/processed/example"}]
+  "moves": [{"source": "knowledge/intake/pending/2026-10-06-example", "destination": "knowledge/intake/processed/2026-10-06-example"}]
 }
 ```
 
@@ -161,6 +161,12 @@ and complete contents; leave `read_revisions` out after reading every required
 source (see "Read the current workspace state"). Omit `moves` when the skill
 does not move an intake folder. In particular, a move uses `source` and
 `destination`, not `from` and `to`.
+
+The moved folder is named `YYYY-MM-DD-slug` (`intake_name_invalid` otherwise), and its
+processed destination must not exist yet: a write into an existing processed item is
+rejected with `processed_source_immutable`. A quarantine move carries only a
+`CONFLICT.md` in the format `SCHEMA.md` defines, with `status: open`
+(`conflict_report_invalid`), and changes no wiki page.
 
 Send each changed file as its complete text. Copy every unchanged line and section
 exactly as `read_workspace` returned it, including the file's final newline and its

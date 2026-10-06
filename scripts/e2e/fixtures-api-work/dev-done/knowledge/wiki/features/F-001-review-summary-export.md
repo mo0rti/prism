@@ -6,7 +6,7 @@ owner: none
 apps:
 - backend
 sources:
-- knowledge/intake/processed/review-summary
+- knowledge/intake/processed/2026-09-30-review-summary
 advisory-review: not-needed
 ---
 

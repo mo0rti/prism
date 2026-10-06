@@ -47,7 +47,7 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
         self.assertEqual([".gitkeep"], [path.name for path in (self.root / "backend").iterdir()])
         self.assertFalse((self.root / "backend" / "src").exists())
         self.assertEqual(
-            ["document-review-brief"],
+            ["2026-10-06-document-review-brief"],
             build_graph(self.root)["facts"]["intake"]["pending"],
         )
 
@@ -67,7 +67,7 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
         self.assertEqual("raw", feature["status"])
         self.assertEqual("open", feature["open_questions"][0]["status"])
         self.assertEqual(
-            ["knowledge/intake/processed/document-review-brief/brief.md"],
+            ["knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"],
             feature["frontmatter"]["sources"],
         )
         self.assertFalse(lint_wiki(self.root).error_count)

@@ -4,7 +4,7 @@ title: Review summary export
 status: specified
 owner: po
 apps: [backend]
-sources: [knowledge/intake/processed/review-summary]
+sources: [knowledge/intake/processed/2026-09-30-review-summary]
 advisory-review: not-needed
 ---
 

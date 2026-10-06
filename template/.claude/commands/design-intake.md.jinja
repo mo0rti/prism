@@ -3,6 +3,9 @@
 ## Usage
 /design-intake [F-XXX] [folder-name]
 
+The folder is named `YYYY-MM-DD-slug`: the day the source was captured, then lowercase words
+joined by hyphens. The connected board rejects any other name.
+
 ## What this command does
 
 1. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
@@ -18,11 +21,19 @@
    - Does any design decision conflict with the feature spec, business rules, ADRs,
      or board review findings?
    **Wait for confirmation before proceeding.**
-7. Create `knowledge/wiki/design/[F-XXX]-[slug].md`
+7. Create `knowledge/wiki/design/[F-XXX]-[slug].md`. Mark each claim with an evidence label and link
+   the processed path of the source file as the evidence of every Decided or Observed claim, for
+   example `../../intake/processed/[folder-name]/notes.md`. When the new source changes a claim the
+   page already makes, replace that claim in place
 8. Update the `## Design` section of the feature file
 9. For any UI states not covered, add open questions with owner = `designer`
 10. Update `index.md` and append a `log.md` entry in the log format that the wiki schema defines
-11. Move intake folder to `processed/` or `quarantined/` as appropriate
+11. Move the intake folder, under the same name, to `processed/` with a `MANIFEST.md` that lists the
+    design page and the feature by full relative path. A processed item is never edited afterwards.
+    If the design contradicts the feature spec, a business rule, an ADR or a board review finding,
+    move it to `quarantined/` instead, write a `CONFLICT.md` there in the format that `SCHEMA.md`
+    defines (`status: open`; `## Existing claim` and `## Incoming claim`, each with `**Claim:**`,
+    `**Scope:**` and a linked `**Evidence:**`), and change no wiki page
 
 ## Notes for the agent
 
@@ -30,3 +41,4 @@
   board's concerns. If a board concern is unaddressed by the design, flag it as an
   open question with owner = `designer`.
 - Figma links cannot be read directly. Note the URL and proceed with written descriptions.
+- write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)

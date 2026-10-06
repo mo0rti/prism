@@ -11,26 +11,31 @@ Use this skill to process one pending design intake folder for one feature.
 
 `$design-intake [F-XXX] [folder-name]`
 
+`[folder-name]` is a pending folder named `YYYY-MM-DD-slug`, for example `2026-10-06-checkout-design`.
+
 ## Workflow
 
 1. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
 2. Read the feature file
 3. Read `knowledge/wiki/business-rules/`
 4. Read the advisory review for the feature if one exists
-5. Read all files in `knowledge/intake/pending/[folder-name]/`
-6. Show the user an interpretation summary and wait for confirmation
-7. If confirmed, create the design page
+5. Read all files in `knowledge/intake/pending/[folder-name]/`; if the folder is not named `YYYY-MM-DD-slug`, stop and ask the user to rename it
+6. Run a conflict check, then show the user an interpretation summary and wait for confirmation
+7. If confirmed, create the design page, or replace a claim the design page already makes in place when the new source changes it. Label each claim and link the processed path of the source file as the evidence of every Decided or Observed claim
 8. Update the feature file's design section
 9. Add designer-owned open questions for uncovered UI states
-10. Update `index.md`, append a `log.md` entry in the log format that the wiki schema defines, and move the intake folder to `processed/` or `quarantined/` as appropriate
+10. Update `index.md`, append a `log.md` entry in the log format that the wiki schema defines, and move the intake folder, under the same name, to `processed/` with a `MANIFEST.md` that lists the design page and the feature by full relative path, or to `quarantined/` when the design contradicts the feature spec, a business rule, an ADR or a board review finding
 
 ## Rules
 
 - write-capable skill
 - do not write anything until the user confirms the interpretation summary
 - flag any conflicts with the feature spec, business rules, ADRs, or board review findings before writing
+- on a contradiction, quarantine the folder under `knowledge/intake/quarantined/[folder-name]/` with a `CONFLICT.md` in the format that `SCHEMA.md` defines (Conflict quarantine): front matter `status: open`, then an `## Existing claim` and an `## Incoming claim` section, each with `**Claim:**`, `**Scope:**` and a linked `**Evidence:**`; change no wiki page and stop
+- never edit a processed intake item; corrected material is a new dated pending folder
 - if a board review exists, check whether the design addresses those concerns
 - note Figma links as references even when the content cannot be read directly
+- write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
 
 ## Canonical format reference
 

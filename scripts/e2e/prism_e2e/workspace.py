@@ -37,8 +37,8 @@ JOURNEY_FOLDERS = (
     "knowledge/wiki/decisions",
 )
 KEEP_NAMES = {"_FORMAT.md", ".gitkeep"}
-PENDING_INTAKE = "knowledge/intake/pending/review-summary"
-PROCESSED_BRIEF = "knowledge/intake/processed/review-summary/brief.md"
+PENDING_INTAKE = "knowledge/intake/pending/2026-09-30-review-summary"
+PROCESSED_BRIEF = "knowledge/intake/processed/2026-09-30-review-summary/brief.md"
 
 
 class SetupError(RuntimeError):

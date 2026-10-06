@@ -20,6 +20,7 @@ Auth method, required scopes or roles.
 
 ## Notes
 Design decisions, backwards-compatibility concerns.
+- **Decided:** [a decision about this contract] ([ADR-001](../decisions/ADR-001-slug.md))
 ```
 
 `design-handoff` creates this page at `status: agreed` when the feature's API surface

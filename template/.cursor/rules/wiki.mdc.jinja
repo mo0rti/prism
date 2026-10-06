@@ -108,3 +108,14 @@ Open questions owned by `dev` block `dev-start` and `dev-done`; ask for
 Do not implement a feature without a wiki page. Ask for `po-intake` first. If
 implementation reveals product information that belongs in the wiki, propose the
 update and ask before writing it. Separate facts from advice in every response.
+
+## Writing wiki pages
+
+Pages state the current state: replace superseded content in place, state rationale as a
+current fact, and keep history in `knowledge/wiki/log.md` and the records (ADRs, advisory
+reviews, processed intake items), which are never rewritten. Mark each claim Decided,
+Observed, Proposed, Assumed or Unknown, and link the evidence of every Decided and Observed
+claim. A raw source is a `knowledge/intake/pending/YYYY-MM-DD-slug/` folder and is immutable
+once processed. An incoming source that contradicts a page is quarantined with a
+`CONFLICT.md`, and the page stays untouched until a human decides. A decision is replaced by
+a new ADR through the supersession workflow in `knowledge/wiki/SCHEMA.md`.

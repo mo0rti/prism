@@ -11,28 +11,34 @@ Use this skill to process one pending intake folder into structured wiki content
 
 `$po-intake [folder-name]`
 
+`[folder-name]` is a pending folder named `YYYY-MM-DD-slug`, for example `2026-10-06-client-call`.
+
 ## Workflow
 
 1. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
 2. Read `knowledge/wiki/index.md`
 3. Read `knowledge/wiki/personas/`
 4. Read `knowledge/wiki/business-rules/`
-5. Read all files in `knowledge/intake/pending/[folder-name]/`
-6. Run a conflict check before any writes
+5. Read all files in `knowledge/intake/pending/[folder-name]/`; if the folder is not named `YYYY-MM-DD-slug`, stop and ask the user to rename it
+6. Run a conflict check before any writes: compare every claim in the input with the existing features, personas, business rules and ADRs
 7. Show the user an interpretation summary and wait for confirmation
 8. If confirmed, create or update the required wiki files. Every new feature is written as `status: raw`, `owner: po` with its Summary, User story, Acceptance criteria, Open questions and App scope sections; `$po-specify` completes it and moves it to `specified`. List only active apps of the workspace in `apps`: a retired app is rejected with `app-retired` (`app_retired` on the connected board)
-9. Update `knowledge/wiki/index.md` and append a `knowledge/wiki/log.md` entry in the log format that the wiki schema defines. The new pages carry no date field; the log entry records when they were written
-10. Move the intake folder to `knowledge/intake/processed/[folder-name]/` and add `MANIFEST.md`, which lists every page you create by its full relative path and its canonical ID (for example `knowledge/wiki/features/F-001-slug.md (F-001)`); the connected board rejects a manifest that omits one
+9. Write every claim you take from the input with an evidence label, and link the processed path of the source file as the evidence of each Decided or Observed claim, for example `../../intake/processed/[folder-name]/notes.md` from a feature page. `**Decided:**` is for what the user confirmed in the interpretation summary; gaps stay in the Open questions table
+10. Update `knowledge/wiki/index.md` and append a `knowledge/wiki/log.md` entry in the log format that the wiki schema defines. The new pages carry no date field; the log entry records when they were written
+11. Move the intake folder, under the same name, to `knowledge/intake/processed/[folder-name]/` and add `MANIFEST.md`, which lists every page you create by its full relative path and its canonical ID (for example `knowledge/wiki/features/F-001-slug.md (F-001)`); the connected board rejects a manifest that omits one
 
 ## Rules
 
 - write-capable skill
 - do not write anything until the conflict check passes
-- if conflicts exist, quarantine the intake folder and stop
+- if the input contradicts an existing page, quarantine the intake folder and stop: move it to `knowledge/intake/quarantined/[folder-name]/` with a `CONFLICT.md` in the format that `SCHEMA.md` defines (Conflict quarantine): front matter `status: open`, then an `## Existing claim` and an `## Incoming claim` section, each with `**Claim:**`, `**Scope:**` and a linked `**Evidence:**`; change no wiki page, index row or other file, and tell the user which pages the human must decide on
 - do not write anything until the user confirms the interpretation summary
 - never create a feature in any status other than `raw`
+- update or conflict: a source that refines a claim, or replaces an Observed claim with a newer observation, updates the page in place; a source that contradicts a Decided claim, a business rule or an ADR is a conflict, and when unsure you quarantine
+- never edit a processed intake item; corrected material is a new dated pending folder
 - do not invent requirements that are missing from the intake material
 - turn gaps or ambiguity into open questions instead of invented spec text
+- write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
 
 ## Canonical format reference
 
@@ -53,5 +59,5 @@ Return:
 ## Error and stop conditions
 
 - if the intake folder does not exist, return a clean missing-folder response
-- if the input conflicts with existing wiki content, quarantine and stop
+- if the input contradicts existing wiki content, quarantine it with a `CONFLICT.md` and stop
 - if the user does not confirm the interpretation summary, stop without writing

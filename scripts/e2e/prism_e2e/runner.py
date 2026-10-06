@@ -391,7 +391,7 @@ class Journey:
         if feature is None:
             return
         if step.id == "po-intake":
-            result.add_check("intake_moved", (self.env.workspace / "knowledge/intake/processed/review-summary").is_dir() and not (self.env.workspace / ws.PENDING_INTAKE).exists(), "the pending folder moved to processed")
+            result.add_check("intake_moved", (self.env.workspace / "knowledge/intake/processed/2026-09-30-review-summary").is_dir() and not (self.env.workspace / ws.PENDING_INTAKE).exists(), "the pending folder moved to processed")
             owners = {owner: sum(1 for question in feature.questions if question.owner == owner) for owner in ("po", "designer", "dev")}
             if not owners["designer"] or not owners["dev"]:
                 result.notes.append(

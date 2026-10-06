@@ -32,7 +32,11 @@ Use "No" for: authentication flows, settings screens, CRUD operations, admin too
 notification preferences, infrastructure changes.
 
 ## Source
-Where did this come from? Date: YYYY-MM-DD
+Where did this come from?
+
+Captured: YYYY-MM-DD
+The day this material was captured. It matches the date in this folder's name,
+`intake/pending/YYYY-MM-DD-slug/`: a raw source is a record, so it keeps its date.
 
 ## Raw notes
 Paste any raw meeting notes, customer quotes, or feedback here.

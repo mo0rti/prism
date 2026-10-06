@@ -276,7 +276,7 @@ class BoardHistoryTests(unittest.TestCase):
         self.root = Path(temporary.name)
         apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))
         self.feature = "knowledge/wiki/features/F-001-document-review.md"
-        source = self.root / "knowledge/intake/processed/document-review-brief/brief.md"
+        source = self.root / "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
         source.parent.mkdir(parents=True)
         source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
         page = _feature_page().replace("status: raw", "status: ready-for-design").replace("owner: po", "owner: designer").replace("| po | open |", "| po | resolved: Summarize key points. |")

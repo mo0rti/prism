@@ -157,6 +157,40 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 **Fix.** List the processed path, such as `knowledge/intake/processed/<folder>/brief.md`, or another path that exists, then preview again.
 
+## An intake proposal is rejected for its folder name or a processed item
+
+**Symptom.** `preview_skill` for `po-intake` or `design-intake` fails with `intake_name_invalid` or `processed_source_immutable` (409). The `details` name the `path` and, for `processed_source_immutable`, the existing `item`.
+
+**Cause.** The folder an intake proposal moves must be named `YYYY-MM-DD-slug`: the day the source was captured, then lowercase words joined by hyphens, with a real calendar date, for example `2026-10-06-client-call`. A processed intake item is immutable once processed, so a proposal that writes a file into an existing `knowledge/intake/processed/<folder>/`, or moves a pending folder onto it, is rejected.
+
+**Fix.** Rename the pending folder to the dated form, then preview again. Put new or corrected material in a new dated folder under `knowledge/intake/pending/` and process that folder; never edit a processed item.
+
+## A quarantine proposal is rejected
+
+**Symptom.** `preview_skill` for `po-intake` or `design-intake`, moving a folder to `knowledge/intake/quarantined/`, fails with `conflict_report_invalid` or `quarantine_write_scope` (409). The `details` of `conflict_report_invalid` list the `problems`.
+
+**Cause.** A quarantine holds the incoming source and writes one file, `CONFLICT.md`, and changes no wiki page. The file needs front matter `status: open`, an `## Existing claim` and an `## Incoming claim` section, each with a `**Claim:**` item, a `**Scope:**` item and an `**Evidence:**` item that links the page or the file. A `resolved` status, a missing section or field, an evidence item without a link, or any other written file is rejected.
+
+**Fix.** Write the `CONFLICT.md` in the format that `SCHEMA.md` defines (Conflict quarantine) and propose only that file with the move. The existing page stays untouched until a human decides.
+
+## Lint reports an evidence label, a decision, a source or a conflict
+
+**Symptom.** `prism wiki lint` reports one of `unlinked-claim`, `unknown-evidence-label`, `supersession-mismatch`, `superseded-decision-cited`, `processed-source-without-manifest`, `unresolved-conflict` or `malformed-conflict`. `supersession-mismatch` and `malformed-conflict` are errors; the others are warnings.
+
+**Cause.** Lint checks the form of the records and never judges meaning:
+
+| Code | Cause |
+| --- | --- |
+| `unlinked-claim` | A `**Decided:**` or `**Observed:**` item has no markdown link or URL to its evidence. |
+| `unknown-evidence-label` | A bold run-in label such as `**Note:**` at the start of a list item or paragraph is not `Decided`, `Observed`, `Proposed`, `Assumed` or `Unknown`. |
+| `supersession-mismatch` | Two ADRs disagree: the new ADR's `supersedes: ADR-NNN` needs the old ADR to carry `status: superseded` and `superseded-by` naming the new one, and the reverse. |
+| `superseded-decision-cited` | A current-state page links an ADR that a newer ADR supersedes. |
+| `processed-source-without-manifest` | A `knowledge/intake/processed/<folder>/` has no `MANIFEST.md`. |
+| `unresolved-conflict` | A quarantined `CONFLICT.md` still has `status: open`. A non-empty quarantine is not a gate. |
+| `malformed-conflict` | A quarantined item has no `CONFLICT.md`, or the file lacks a valid status, a claim section or a linked `**Evidence:**`. |
+
+**Fix.** Link the evidence (a processed intake item, a record or a URL) or change the label. For a supersession, set both links (`supersedes` on the new ADR; `status: superseded` and `superseded-by` on the old one) and update the pages that cite the old ADR to link the new one. Add the manifest in a new, separate operation; processed items are not edited. Resolve a conflict by deciding which claim holds, making that edit to the page, setting `status: resolved` and adding a `## Resolution` section. Fix a malformed `CONFLICT.md` to the format in `SCHEMA.md`.
+
 ## dev-start or dev-done is blocked by an open dev question
 
 **Symptom.** The preflight says `1 open action-relevant question remains: question 4.` and the question's owner is `dev`.

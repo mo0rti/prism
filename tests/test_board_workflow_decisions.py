@@ -264,7 +264,7 @@ class DevClarifyTests(_BoardWorkspace):
     def set_stage(self, status: str, owner: str, questions: list[str] | None = None, requirement: bool = True) -> None:
         questions = questions or [PO_QUESTION.replace("| po | open |", "| po | resolved: Key points and follow-up. |"), DEV_QUESTION, DESIGNER_QUESTION]
         page = _unquote_yaml_date_fields(
-            _journey_feature_page("F-001", "Document review", status, owner, ["knowledge/intake/processed/document-review-brief"], questions)
+            _journey_feature_page("F-001", "Document review", status, owner, ["knowledge/intake/processed/2026-10-06-document-review-brief"], questions)
         )
         self.write(FEATURE, page)
         _write_index_rows(self.root, [("F-001", "Document review", status, owner)])
@@ -468,7 +468,7 @@ class _DevDoneWorkspace(_BoardWorkspace):
     def setUp(self) -> None:
         super().setUp()
         page = _unquote_yaml_date_fields(
-            _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/document-review-brief"], [PO_QUESTION.replace("| po | open |", "| po | resolved: Key points. |")])
+            _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [PO_QUESTION.replace("| po | open |", "| po | resolved: Key points. |")])
         )
         self.write(FEATURE, page)
         self.write(REQUIREMENT, _journey_requirement_page("in-progress"))
@@ -625,7 +625,7 @@ class HandoffApiContractTests(_BoardWorkspace):
             DEV_QUESTION.replace("| dev | open |", "| dev | resolved: At most 200 comments. |"),
         ]
         page = _unquote_yaml_date_fields(
-            _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/document-review-brief"], questions)
+            _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/2026-10-06-document-review-brief"], questions)
         )
         self.write(FEATURE, _replace_body_section(None, page, "API surface", surface))
         _write_index_rows(self.root, [("F-001", "Document review", "in-design", "designer")])

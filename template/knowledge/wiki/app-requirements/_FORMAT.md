@@ -15,6 +15,8 @@ Written for the AI agent working in this app's code.
 
 ## Technical constraints
 App-specific constraints, existing patterns to follow, library choices.
+- **Observed:** [an existing pattern or constraint] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
+- **Assumed:** [what is taken as true without evidence]
 
 ## Design reference
 Link to design/F-XXX-[slug].md for an app with a UI. Not applicable to an app without a UI.

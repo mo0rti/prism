@@ -96,3 +96,7 @@ If the user declines or cancels, make no feature, index, or log mutation. If a
 multi-file write is partially applied, report the exact observed changes and stop
 for fresh recovery; do not claim a transaction. This action does not prove
 semantic completeness, design, implementation, testing, or shipment.
+
+## Page rules
+
+- write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)

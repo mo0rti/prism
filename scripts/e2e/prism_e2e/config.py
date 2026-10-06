@@ -76,7 +76,7 @@ class Step:
 
 # The canonical order. Agent steps alternate between the two hosts.
 STEPS: tuple[Step, ...] = (
-    Step("po-intake", "agent", "claude", "raw", "po", "the po-intake of the pending review-summary folder"),
+    Step("po-intake", "agent", "claude", "raw", "po", "the po-intake of the pending 2026-09-30-review-summary folder"),
     Step("ask", "agent", "codex", "raw", "po", "the ask skill adding one question to F-001"),
     Step("po-clarify", "agent", "claude", "raw", "po", "the po-clarify answers for F-001"),
     Step("po-specify", "agent", "codex", "specified", "po", "the po-specify of F-001"),

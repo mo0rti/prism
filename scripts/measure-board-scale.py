@@ -65,7 +65,7 @@ WARMUP_REQUESTS = 5
 VIEWER_WINDOW_SECONDS = 10.0
 VIEWER_COUNTS = (1, 5)
 POLL_INTERVAL_SECONDS = 1.5  # matches GRAPH_POLL_SECONDS, the browser refresh cadence
-PROCESSED_SOURCE = "knowledge/intake/processed/document-review-brief/brief.md"
+PROCESSED_SOURCE = "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
 READY_FEATURE = "F-001"
 MCP_ORIGIN_PORT = 8765  # ASGI transport only; the port feeds Host/Origin validation
 
@@ -378,7 +378,7 @@ def build_workspace(root: Path, count: int, seed: int = SEED) -> dict[str, Any]:
     if receipt["status"] != "applied":
         raise RuntimeError(f"workflow installer did not apply: {receipt.get('status')}")
     # The brief becomes a processed source so feature pages can cite it.
-    (root / "knowledge/intake/pending/document-review-brief").rename(root / "knowledge/intake/processed/document-review-brief")
+    (root / "knowledge/intake/pending/2026-10-06-document-review-brief").rename(root / "knowledge/intake/processed/2026-10-06-document-review-brief")
     # Use the shipped wiki schema for realistic sizes; the fixture has a placeholder.
     shutil.copyfile(REPO_ROOT / "template/knowledge/wiki/SCHEMA.md", root / "knowledge/wiki/SCHEMA.md")
 

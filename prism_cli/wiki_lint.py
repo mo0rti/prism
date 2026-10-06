@@ -34,6 +34,7 @@ from prism_cli.wiki_model import (
     normalize_feature_id,
     feature_id_from_path,
     history_date_fields,
+    parse_conflict_report,
     parse_index_feature_rows,
     parse_iso_date,
     parse_open_question_rows,
@@ -97,6 +98,20 @@ _SCHEMA_VERSION_FILES = ("SCHEMA.md", "LIFECYCLE.md")
 SUPPORTED_SCHEMA_VERSION = 1
 # A dated record keeps its own date field; every other page kind carries none.
 _RECORD_DATE_FIELDS = {"decisions": "date"}
+# The five evidence labels a current-state page uses as a bold run-in label.
+EVIDENCE_LABELS = ("Decided", "Observed", "Proposed", "Assumed", "Unknown")
+# A claim that rests on evidence must link it.
+_LINKED_EVIDENCE_LABELS = frozenset({"Decided", "Observed"})
+# `**Label:** text` at the start of a list item or paragraph. A bold word whose colon sits
+# outside the bold (`**backend**: ...`) is a name, not a label.
+_EVIDENCE_LABEL_LINE = re.compile(r"^(?P<indent>[ \t]*)(?P<marker>(?:[-*+]|\d+[.)])[ \t]+)?(?:\[[ xX]\][ \t]+)?\*\*(?P<label>[^*\n:]+):\*\*")
+_LIST_ITEM_LINE = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+")
+_CLAIM_EVIDENCE_LINK = re.compile(r"\[[^\]]+\]\(\s*<?[^)\s>]+|https?://\S+")
+# Pages that state what is true now. Decisions and advisory reviews are records.
+_CURRENT_STATE_DIRECTORIES = frozenset(
+    {"api-contracts", "app-requirements", "business-rules", "design", "features", "personas"}
+)
+_ADR_ID_PATTERN = re.compile(r"^ADR-\d+$", re.IGNORECASE)
 _FRONTMATTER_PAGE_DIRECTORIES = {
     "api-contracts",
     "business-rules",
@@ -332,6 +347,10 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
     diagnostics.extend(_lint_history_dates(all_pages, wiki_root))
     diagnostics.extend(_lint_schema_versions(all_pages, wiki_root))
     diagnostics.extend(_lint_log_entries(wiki_root / "log.md"))
+    diagnostics.extend(_lint_evidence_labels(all_pages, wiki_root))
+    diagnostics.extend(_lint_decision_supersession(all_pages, wiki_root))
+    diagnostics.extend(_lint_superseded_decision_citations(all_pages, wiki_root))
+    diagnostics.extend(_lint_intake_items(root))
     diagnostics.extend(
         _lint_relative_links(
             all_pages,
@@ -981,6 +1000,239 @@ def _log_entry_problem(heading: str, body: list[str]) -> str | None:
     return None
 
 
+def _wiki_directory(path: Path, wiki_root: Path) -> str | None:
+    """The wiki folder a page sits directly in, or ``None`` for a page elsewhere."""
+
+    try:
+        relative = _resolve(path).relative_to(_resolve(wiki_root))
+    except ValueError:
+        return None
+    return relative.parts[0] if len(relative.parts) == 2 else None
+
+
+def _lint_evidence_labels(pages: list[MarkdownPage], wiki_root: Path) -> list[WikiDiagnostic]:
+    """Check the evidence labels of the current-state pages, mechanically.
+
+    A bold run-in label at the start of a list item or paragraph must be one of the
+    five labels, and a Decided or Observed claim must link its evidence. Whether the
+    link supports the claim is not judged here.
+    """
+
+    diagnostics: list[WikiDiagnostic] = []
+    for page in pages:
+        if _wiki_directory(page.path, wiki_root) not in _CURRENT_STATE_DIRECTORIES or page.path.name.startswith("_"):
+            continue
+        feature_id = _page_feature_id(page, {}, {})
+        lines = page.body.splitlines()
+        in_fence = False
+        for index, line in enumerate(lines):
+            if line.lstrip().startswith(("```", "~~~")):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            match = _EVIDENCE_LABEL_LINE.match(line)
+            if match is None:
+                continue
+            label = match.group("label").strip()
+            if label not in EVIDENCE_LABELS:
+                diagnostics.append(
+                    _diag(
+                        "unknown-evidence-label",
+                        "warning",
+                        page.path,
+                        f"`**{label}:**` (body line {index + 1}) is not an evidence label. Use one of {', '.join(f'`{item}`' for item in EVIDENCE_LABELS)}. See Evidence labels in SCHEMA.md.",
+                        feature_id,
+                    )
+                )
+                continue
+            if label not in _LINKED_EVIDENCE_LABELS:
+                continue
+            if not _CLAIM_EVIDENCE_LINK.search(_claim_block(lines, index, len(match.group("indent")))):
+                diagnostics.append(
+                    _diag(
+                        "unlinked-claim",
+                        "warning",
+                        page.path,
+                        f"The `{label}` claim at body line {index + 1} links no evidence. Link a processed intake item, a record or a URL. See Evidence labels in SCHEMA.md.",
+                        feature_id,
+                    )
+                )
+    return diagnostics
+
+
+def _claim_block(lines: list[str], start: int, indent: int) -> str:
+    """The text of the list item or paragraph that begins at ``lines[start]``."""
+
+    block = [lines[start]]
+    for line in lines[start + 1 :]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            break
+        if _EVIDENCE_LABEL_LINE.match(line) or (_LIST_ITEM_LINE.match(line) and len(line) - len(line.lstrip()) <= indent):
+            break
+        block.append(line)
+    return "\n".join(block)
+
+
+def _decision_pages(pages: list[MarkdownPage], wiki_root: Path) -> list[MarkdownPage]:
+    return [
+        page
+        for page in pages
+        if _wiki_directory(page.path, wiki_root) == "decisions" and not page.path.name.startswith("_") and not page.parse_errors
+    ]
+
+
+def _adr_key(value: Any) -> str | None:
+    return value.strip().upper() if isinstance(value, str) and _ADR_ID_PATTERN.match(value.strip()) else None
+
+
+def _lint_decision_supersession(pages: list[MarkdownPage], wiki_root: Path) -> list[WikiDiagnostic]:
+    """The two sides of a supersession agree: `supersedes` on the new ADR, `superseded-by` and `status: superseded` on the old one."""
+
+    decisions = _decision_pages(pages, wiki_root)
+    by_id: dict[str, MarkdownPage] = {}
+    for page in decisions:
+        key = _adr_key(page.frontmatter.get("id"))
+        if key is not None:
+            by_id.setdefault(key, page)
+
+    diagnostics: list[WikiDiagnostic] = []
+
+    def mismatch(page: MarkdownPage, message: str) -> None:
+        diagnostics.append(_diag("supersession-mismatch", "error", page.path, message, None))
+
+    for page in decisions:
+        own = _adr_key(page.frontmatter.get("id"))
+        if own is None:
+            continue  # an invalid id is reported by the decision page checks
+        status = page.frontmatter.get("status")
+        if "supersedes" in page.frontmatter:
+            target_key = _adr_key(page.frontmatter["supersedes"])
+            if target_key is None:
+                mismatch(page, f"{own} has `supersedes: {page.frontmatter['supersedes']}`, which is not one ADR ID such as `ADR-001`.")
+            elif target_key == own:
+                mismatch(page, f"{own} cannot supersede itself.")
+            elif target_key not in by_id:
+                mismatch(page, f"{own} supersedes {target_key}, but no decision page has that ID.")
+            else:
+                target = by_id[target_key]
+                if target.frontmatter.get("status") != "superseded" or _adr_key(target.frontmatter.get("superseded-by")) != own:
+                    mismatch(
+                        page,
+                        f"{own} supersedes {target_key}, but {target_key} does not carry `status: superseded` and `superseded-by: {own}`.",
+                    )
+        if "superseded-by" in page.frontmatter or status == "superseded":
+            if status != "superseded":
+                mismatch(page, f"{own} has `superseded-by` but its status is `{status}`, not `superseded`.")
+            successor_key = _adr_key(page.frontmatter.get("superseded-by"))
+            if "superseded-by" not in page.frontmatter:
+                mismatch(page, f"{own} has `status: superseded` but no `superseded-by: ADR-NNN`.")
+            elif successor_key is None:
+                mismatch(page, f"{own} has `superseded-by: {page.frontmatter['superseded-by']}`, which is not one ADR ID such as `ADR-002`.")
+            elif successor_key == own:
+                mismatch(page, f"{own} cannot be superseded by itself.")
+            elif successor_key not in by_id:
+                mismatch(page, f"{own} is superseded by {successor_key}, but no decision page has that ID.")
+            elif _adr_key(by_id[successor_key].frontmatter.get("supersedes")) != own:
+                mismatch(page, f"{own} is superseded by {successor_key}, but {successor_key} does not declare `supersedes: {own}`.")
+    return diagnostics
+
+
+def _lint_superseded_decision_citations(pages: list[MarkdownPage], wiki_root: Path) -> list[WikiDiagnostic]:
+    """Warn when a current-state page links a decision that a newer decision supersedes."""
+
+    superseded: dict[Path, tuple[str, str | None]] = {}
+    for page in _decision_pages(pages, wiki_root):
+        if page.frontmatter.get("status") == "superseded":
+            key = _adr_key(page.frontmatter.get("id")) or page.path.stem
+            superseded[_resolve(page.path)] = (key, _adr_key(page.frontmatter.get("superseded-by")))
+    if not superseded:
+        return []
+
+    diagnostics: list[WikiDiagnostic] = []
+    for page in pages:
+        if _wiki_directory(page.path, wiki_root) not in _CURRENT_STATE_DIRECTORIES or page.path.name.startswith("_"):
+            continue
+        cited: set[Path] = set()
+        for raw_target in extract_markdown_links(page.body):
+            candidate = _candidate_relative_link(page.path, raw_target)
+            if candidate is not None and candidate in superseded and candidate not in cited:
+                cited.add(candidate)
+                key, successor = superseded[candidate]
+                current = f"link {successor}" if successor else "link the decision that replaces it"
+                diagnostics.append(
+                    _diag(
+                        "superseded-decision-cited",
+                        "warning",
+                        page.path,
+                        f"This page links {key}, which is superseded. Update the page to {current} and state the current decision.",
+                        _page_feature_id(page, {}, {}),
+                    )
+                )
+    return diagnostics
+
+
+def _intake_item_directories(queue: Path) -> list[Path]:
+    """The item folders directly inside an intake queue, in name order. Files and links are not items."""
+
+    try:
+        children = sorted(queue.iterdir(), key=lambda item: item.name)
+    except OSError:
+        return []
+    items: list[Path] = []
+    for child in children:
+        try:
+            if child.is_dir() and not child.is_symlink():
+                items.append(child)
+        except OSError:
+            continue
+    return items
+
+
+def _lint_intake_items(root: Path) -> list[WikiDiagnostic]:
+    """Check the processed and quarantined intake items. Processed sources are never judged, only their record files."""
+
+    diagnostics: list[WikiDiagnostic] = []
+    intake = root / "knowledge" / "intake"
+    for item in _intake_item_directories(intake / "processed"):
+        if not (item / "MANIFEST.md").is_file():
+            diagnostics.append(
+                _diag(
+                    "processed-source-without-manifest",
+                    "warning",
+                    item,
+                    f"Processed intake item `{item.name}` has no MANIFEST.md listing what was extracted from it. Processed items are immutable: add the manifest in a new, separate operation.",
+                )
+            )
+    for item in _intake_item_directories(intake / "quarantined"):
+        report = item / "CONFLICT.md"
+        relative = report.relative_to(root).as_posix()
+        if not report.is_file():
+            diagnostics.append(
+                _diag("malformed-conflict", "error", item, f"Quarantined intake item `{item.name}` has no CONFLICT.md. See Conflict quarantine in SCHEMA.md.")
+            )
+            continue
+        try:
+            text = report.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeError) as exc:
+            diagnostics.append(_diag("malformed-conflict", "error", report, f"`{relative}` cannot be read: {exc}"))
+            continue
+        status, problems = parse_conflict_report(text)
+        for problem in problems:
+            diagnostics.append(_diag("malformed-conflict", "error", report, f"`{relative}` is not a valid conflict record: {problem} See Conflict quarantine in SCHEMA.md."))
+        if status == "open":
+            diagnostics.append(
+                _diag(
+                    "unresolved-conflict",
+                    "warning",
+                    report,
+                    f"[{relative}]({relative}) records an open conflict. A human resolves it, then sets `status: resolved` in that file.",
+                )
+            )
+    return diagnostics
+
+
 def _lint_relative_links(
     pages: list[MarkdownPage],
     wiki_root: Path,
@@ -1179,9 +1431,8 @@ def _lint_decision_page(page: MarkdownPage) -> list[WikiDiagnostic]:
             page,
             "status",
             "decision-status",
-            {"proposed", "accepted", "deprecated"},
+            {"proposed", "accepted", "deprecated", "superseded"},
             None,
-            allow_superseded=True,
         )
     )
     return diagnostics
@@ -1227,15 +1478,11 @@ def _lint_aux_enum(
     code: str,
     allowed: set[str],
     feature_id: str | None,
-    *,
-    allow_superseded: bool = False,
 ) -> list[WikiDiagnostic]:
     if field_name not in page.frontmatter:
         return [_diag(f"missing-{code}", "error", page.path, f"Required frontmatter field `{field_name}` is missing.", feature_id)]
     value = page.frontmatter[field_name]
     valid = isinstance(value, str) and value in allowed
-    if allow_superseded:
-        valid = valid or (isinstance(value, str) and re.fullmatch(r"superseded-by\s+ADR-\d+", value) is not None)
     if not valid:
         return [_diag(f"invalid-{code}", "error", page.path, f"`{field_name}` has an unsupported value.", feature_id)]
     return []

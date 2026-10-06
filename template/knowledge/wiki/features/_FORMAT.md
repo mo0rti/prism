@@ -23,13 +23,15 @@ revalidation: [specification | design | implementation | tests | release]
 ## Summary
 One paragraph. What this feature does, why it exists, and what user problem it solves.
 Written in business language, not technical language.
+- **Observed:** [what the source shows] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
+- **Assumed:** [what is taken as true without evidence]
 
 ## User story
 As a [persona from personas/], I want to [action], so that [business outcome].
 
 ## Acceptance criteria
-- [ ] Condition 1 (testable, unambiguous)
-- [ ] Condition 2
+- [ ] **Decided:** Condition 1 (testable, unambiguous) ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
+- [ ] **Proposed:** Condition 2
 
 ## Open questions
 | # | Question | Owner | Status |
@@ -38,6 +40,8 @@ As a [persona from personas/], I want to [action], so that [business outcome].
 
 Owner must be one of: po | designer | dev
 Status must be one of: open | resolved: [answer]
+This table is the Unknown form of the evidence labels in SCHEMA.md: write a gap here, not
+as an `**Unknown:**` item.
 
 ## App scope
 - **backend**: [what backend must implement, or "not in scope"]
@@ -98,6 +102,13 @@ Delivery evidence here and remove it from the active table on confirmation.
 - Prior completion/release evidence: [archived evidence]
 - Requirement/API invalidations: [exact affected pages and proposed statuses]
 ```
+
+## Evidence labels
+
+Claims in Summary, Acceptance criteria and the other sections carry the evidence labels
+that `SCHEMA.md` defines (Decided, Observed, Proposed, Assumed, Unknown) as a bold run-in
+label. A Decided or Observed claim links its evidence: the processed intake item, a record
+or a URL. A later source that changes a claim replaces the item in place.
 
 ## Raw and specified pages
 

@@ -17,9 +17,9 @@ file, for lifecycle operations.
 ```text
 knowledge/
 ├── intake/
-│   ├── pending/          # PO and Designer drop raw docs here. LLM treats as read-only.
-│   ├── processed/        # Items after AI has processed them (with MANIFEST.md)
-│   ├── quarantined/      # Items conflicting with wiki; needs human resolution (with CONFLICT.md)
+│   ├── pending/          # Raw sources dropped as YYYY-MM-DD-slug/ folders. LLM treats as read-only.
+│   ├── processed/        # Processed raw sources, YYYY-MM-DD-slug/ with MANIFEST.md. Immutable.
+│   ├── quarantined/      # Sources that contradict the wiki, YYYY-MM-DD-slug/ with CONFLICT.md
 │   └── README.md         # Instructions for all three roles
 └── wiki/
     ├── features/         # One file per feature: F-XXX-[slug].md
@@ -61,12 +61,15 @@ sources: [intake sources that established this persona]
 
 ## Who they are
 A paragraph describing this type of user: their role, context, and relationship to the product.
+- **Observed:** [what the intake shows about this user type] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
+- **Assumed:** [what is taken as true without evidence]
 
 ## Goals
 What they are trying to accomplish. Bulleted list.
 
 ## Pain points
-What currently frustrates them or slows them down.
+What currently frustrates them or slows them down. Label each one **Observed** (with its
+link) or **Assumed**.
 
 ## Features that serve this persona
 Links to feature IDs tagged for this persona.
@@ -87,6 +90,7 @@ source: [intake source or board review that established this rule]
 
 ## Rule
 One unambiguous statement of the rule.
+- **Decided:** [the rule as confirmed] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
 
 ## Rationale
 Why this rule exists (legal, business, product decision, board recommendation).
@@ -117,6 +121,7 @@ What this design covers and what decisions were made.
 
 ## Key design decisions
 Decisions that affect implementation (not just aesthetics).
+- **Decided:** [a decision that affects implementation] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
 
 ## States covered
 List all UI states designed: empty, loading, error, success, edge cases.
@@ -126,7 +131,8 @@ Flag any states not designed that the developer will need to handle.
 Links to relevant entries in design/ for reused components or patterns.
 
 ## Open design questions
-Questions for the Designer that affect implementation.
+Questions for the Designer that affect implementation. This section is the Unknown form of
+the evidence labels.
 ```
 
 ---
@@ -148,6 +154,8 @@ Written for the AI agent working in this app's code.
 
 ## Technical constraints
 App-specific constraints, existing patterns to follow, library choices.
+- **Observed:** [an existing pattern or constraint] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
+- **Assumed:** [what is taken as true without evidence]
 
 ## Design reference
 Link to design/F-XXX-[slug].md for an app with a UI. Not applicable to an app without a UI.
@@ -190,6 +198,7 @@ Auth method, required scopes or roles.
 
 ## Notes
 Design decisions, backwards-compatibility concerns.
+- **Decided:** [a decision about this contract] ([ADR-001](../decisions/ADR-001-slug.md))
 ```
 
 `design-handoff` creates the page at `status: agreed` when the feature's API surface
@@ -208,7 +217,11 @@ Every file in `wiki/decisions/` must follow this format:
 id: ADR-XXX
 title: [Decision title]
 date: YYYY-MM-DD
-status: proposed | accepted | deprecated | superseded-by ADR-XXX
+status: proposed | accepted | deprecated | superseded
+# Only on an ADR that replaces an earlier decision:
+supersedes: ADR-NNN
+# Only on an ADR that a later decision replaced (its status is `superseded`):
+superseded-by: ADR-MMM
 ---
 
 ## Context
@@ -224,8 +237,154 @@ Why this option over alternatives.
 What becomes easier, what becomes harder.
 ```
 
+An ADR is a dated record (see "Records and decision supersession" below).
+
 ---
 
+
+## Evidence labels
+
+A current-state page that makes claims (a feature, persona, business rule, design page,
+app requirement or API contract) says what kind of statement each claim is. The label is
+a bold run-in label with the colon inside the bold, at the start of a list item or
+paragraph:
+
+```markdown
+- **Observed:** Reviewers copy case outcomes into a spreadsheet by hand ([client call](../../intake/processed/2026-10-06-client-call/notes.md)).
+- **Assumed:** One review covers one document.
+```
+
+| Label | Means | Evidence link |
+|-------|-------|---------------|
+| **Decided** | A human confirmed it: an intake interpretation the user confirmed, an ADR or a review record. | Required |
+| **Observed** | A source or a running system shows it. | Required |
+| **Proposed** | Someone suggests it and nobody has confirmed it. | Link the source when there is one |
+| **Assumed** | Taken as true without evidence. Say what would confirm it. | None |
+| **Unknown** | A gap nobody has filled. | None |
+
+- A **Decided** or **Observed** claim links its evidence: a processed intake item
+  (`knowledge/intake/processed/YYYY-MM-DD-slug/...`), a record (an ADR or a review) or a
+  URL. Use relative markdown links, and link the processed path, never the pending one.
+- Feature pages keep their `## Open questions` table as the **Unknown** form. A gap that
+  is in that table is not written a second time as `**Unknown:**`. Other pages with no
+  such table use `**Unknown:**` items.
+- Text without a label is structure: headings, links to related pages, the app scope
+  list. Anything that rests on evidence, an assumption or a suggestion carries a label.
+- When a later source changes a claim, replace the item in place with its new label and
+  its new link. The old claim and its old evidence do not stay on the page; the
+  operation's `log.md` entry lists the changed paths and links the evidence.
+- `prism wiki lint` checks the form only and never whether the evidence supports the
+  claim: `unlinked-claim` (warning) for a Decided or Observed item without a link, and
+  `unknown-evidence-label` (warning) for a bold run-in label that is none of the five.
+
+---
+
+## Records and decision supersession
+
+ADRs in `wiki/decisions/` and advisory reviews in `wiki/advisory/` are records. A record
+is dated, is never rewritten, and changes only its status fields. A later event adds a
+new record; it does not edit an old one.
+
+**Decision-supersession workflow.** One operation, confirmed by the user before it
+writes, replaces a decision:
+
+1. Create the new ADR with the next number, `status: accepted`, and
+   `supersedes: ADR-NNN`.
+2. In the old ADR change only the front matter: `status: superseded` and
+   `superseded-by: ADR-MMM`. Its body stays unchanged.
+3. In the same operation update every current-state page that relied on the old
+   decision: state the current decision as a current fact and link the new ADR instead
+   of the old one. In `index.md` give the new ADR a row and change the old ADR's summary
+   to say that ADR-MMM supersedes it.
+4. Append one `log.md` entry that lists every changed path and links the new ADR as
+   evidence.
+
+`prism wiki lint` reports `supersession-mismatch` (error) when the two links disagree or
+one is missing, and `superseded-decision-cited` (warning) when a current-state page
+links a superseded ADR. A record's body is not compared with earlier versions; version
+control shows a rewritten record.
+
+---
+
+## Raw sources: intake
+
+`intake/` holds raw sources, which an agent reads and never edits.
+
+- **Name.** Every item is a folder `YYYY-MM-DD-slug/`: the day the source was captured,
+  then lowercase words joined by hyphens, such as `2026-10-06-client-call/`. A raw
+  source is a record, so it keeps its date; the folder name and the template's
+  `Captured:` line say when it was captured.
+- **Pending.** A person or an agent drops the folder in `intake/pending/`. Pending
+  folders are read-only input.
+- **Processed.** After processing, the folder moves unchanged to
+  `intake/processed/<same name>/` with a `MANIFEST.md` that lists every page the item
+  produced, by full relative path and canonical ID. Lint reports a processed item without
+  a manifest as `processed-source-without-manifest` (warning).
+- **Immutable.** A processed item is never edited. New or corrected material is a new
+  dated folder. The connected board rejects a proposal that writes into an existing
+  processed item with `processed_source_immutable`, and requires the date-slug name for
+  the folder a proposal moves (`intake_name_invalid`).
+- **Archived agent output.** An agent review packet or an agent output is archived the
+  same way: as a dated item with a `MANIFEST.md` (see `intake/README.md`).
+
+---
+
+## Conflict quarantine
+
+Contradiction detection is the ingest skill's job; lint never judges meaning. A source
+that refines a claim, or replaces an Observed claim with a newer observation, updates the
+page in place. A source that contradicts a Decided claim, a business rule or an ADR, or
+contradicts a claim of equal standing that it does not claim to replace, is a conflict.
+When unsure, quarantine: an open conflict costs one human decision, a silent merge costs
+trust. When an incoming source contradicts an existing page:
+
+1. Move the pending folder to `intake/quarantined/<same name>/` and write a
+   `CONFLICT.md` there. Write nothing else: the existing page, the index and every other
+   wiki page stay untouched. The operation's `log.md` entry records the quarantine.
+2. A human decides which claim holds. The existing page changes only through that
+   decision, as an explicit edit the user confirmed.
+3. After the decision, set `status: resolved` in `CONFLICT.md` and add a `## Resolution`
+   section that says which claim holds and links the pages the decision changed. The
+   resolved record stays in `intake/quarantined/` as history.
+4. A source that should still be ingested is dropped again as a new, corrected
+   `YYYY-MM-DD-slug/` pending item.
+
+`CONFLICT.md` format:
+
+```markdown
+---
+status: open
+---
+
+# Conflict: [what the two claims disagree about]
+
+## Existing claim
+- **Claim:** What the existing page says.
+- **Scope:** Where and for whom it holds: feature, app, audience, period.
+- **Evidence:** [F-001](../../../wiki/features/F-001-slug.md)
+
+## Incoming claim
+- **Claim:** What the quarantined source says.
+- **Scope:** Where and for whom it holds.
+- **Evidence:** [notes.md](notes.md)
+
+## Decision needed
+What the human decides, and which pages change under each outcome.
+
+## Resolution
+Added when `status` becomes `resolved`: which claim holds, and links to the changed pages.
+```
+
+- `status` is `open` or `resolved`. A new quarantine is always `open`.
+- Both claim sections carry `**Claim:**`, `**Scope:**` and an `**Evidence:**` item with at
+  least one link.
+- A non-empty quarantine is not a gate. Lint reports each open conflict as
+  `unresolved-conflict` (warning, naming the file) and a `CONFLICT.md` that does not
+  follow this format as `malformed-conflict` (error). The connected board accepts a
+  quarantine only when its proposal is a valid `CONFLICT.md` with `status: open` and no
+  wiki change (`conflict_report_invalid`, `quarantine_write_scope`).
+
+---
 
 ## index.md conventions - status board format
 
@@ -376,12 +535,13 @@ Follow these rules in every wiki operation:
 
 2. **Always read [`index.md`](index.md)** before creating a new page to check whether it already exists.
 
-3. **Never modify files in `intake/pending/`**. Treat them as read-only inputs.
+3. **Never modify files in `intake/pending/`**. Treat them as read-only inputs. A
+   processed item is immutable too: never edit it.
 
-4. **After processing intake:** move items to `intake/processed/[name]/` on success
-   (with a `MANIFEST.md` listing what was extracted), or to
-   `intake/quarantined/[name]/` if the content conflicts with existing wiki entries
-   (with a `CONFLICT.md` explaining what to resolve).
+4. **After processing intake:** move the item, under its `YYYY-MM-DD-slug` name, to
+   `intake/processed/[name]/` on success (with a `MANIFEST.md` listing what was
+   extracted), or to `intake/quarantined/[name]/` if the content contradicts an
+   existing wiki page (with a `CONFLICT.md`; see "Conflict quarantine").
 
 5. **Always update [`index.md`](index.md) and append a `log.md` entry** in the log
    format above after any write operation.
@@ -413,9 +573,10 @@ Follow these rules in every wiki operation:
       the page body, and in front matter under a name that says what it dates (for
       example `effective-date`).
     - A **dated record** states what was decided or observed at one point in time: an
-      ADR (`date`), an advisory review (`reviewed`) and each entry under a feature's
-      `## Reopen history`. A record keeps its own date because the date is part of
-      what it records. It is not edited to follow later events; a later record
+      ADR (`date`), an advisory review (`reviewed`), each entry under a feature's
+      `## Reopen history` and a processed intake item (its `YYYY-MM-DD-slug` name). A
+      record keeps its own date because the date is part of what it records. It is not
+      edited to follow later events, except for its status fields; a later record
       supersedes it.
     - **History lives in `log.md`.** When a page was written, decided, verified or
       amended is recorded there as a log entry, and nowhere on a current-state page.
@@ -424,6 +585,27 @@ Follow these rules in every wiki operation:
       current-state page as the error `history-date-on-page`. Remove the field and
       record the event in `log.md`. A record's own date field (an ADR's `date`, a
       review's `reviewed`) is not reported.
+
+12. **Write the current state.** A page describes what is true now. When a source or a
+    decision changes a fact, replace the superseded content in place; never append
+    "was" or "now" notes. State rationale as a current fact ("The export is CSV because
+    finance imports CSV"), not as the story of how the decision came about. History
+    lives in `log.md` and in the records: ADRs, advisory reviews and processed intake
+    items.
+
+13. **Label claims and link their evidence.** Mark each claim on a current-state page
+    Decided, Observed, Proposed, Assumed or Unknown (see "Evidence labels"), and link
+    the evidence of every Decided and Observed claim.
+
+14. **Never rewrite a record or a raw source.** An ADR or an advisory review changes
+    only its status fields. A decision is replaced through the decision-supersession
+    workflow (see "Records and decision supersession"). A processed intake item is
+    immutable.
+
+15. **Quarantine a contradiction; never merge it silently.** When an incoming source
+    contradicts an existing page, quarantine the source with a `CONFLICT.md` and leave
+    the existing page untouched until a human decides (see "Conflict quarantine").
+    Lint never judges meaning, so detecting the contradiction is the ingest skill's job.
 
 ## Connected workflow and canonical skills
 

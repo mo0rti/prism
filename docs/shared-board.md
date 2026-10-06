@@ -215,6 +215,19 @@ and confirmation.
   names the processed path to use, because the move turns the pending folder into the
   processed one. A path that will not exist after the proposal applies is rejected with
   `source_link_missing`. Links already on a page are not rechecked.
+- **Raw sources are dated and immutable.** The folder an intake proposal moves is named
+  `YYYY-MM-DD-slug`, the same under `pending`, `processed` and `quarantined`; another name
+  is rejected with `intake_name_invalid`. A processed item is never edited: a proposal that
+  writes into an existing processed item, or moves a folder onto one, is rejected with
+  `processed_source_immutable`. Every processed folder carries a `MANIFEST.md`;
+  `design-intake` supplies one too and lists the design page and the feature in it.
+- **A quarantine is a conflict record.** An intake that contradicts an existing page moves
+  its folder to `knowledge/intake/quarantined/YYYY-MM-DD-slug/` and writes only a
+  `CONFLICT.md` with `status: open`, an `## Existing claim` and an `## Incoming claim`
+  section (each with `**Claim:**`, `**Scope:**` and a linked `**Evidence:**`), as `SCHEMA.md`
+  defines. Any other write, or a page that does not follow the format, is rejected with
+  `quarantine_write_scope` or `conflict_report_invalid`, so the existing page stays
+  untouched until a human resolves the conflict.
 - **`dev-clarify` answers dev-owned questions**, as `po-clarify` does for `po` and
   `design-clarify` for `designer`. It resolves only questions owned by `dev`, on any
   feature that is not `done`, and cannot change the feature's status or owner. Next
@@ -309,6 +322,11 @@ Only short excerpts of workspace text appear in an error.
 | `linked_page_scope` | `path`: the linked requirement or API contract that changes more than its `status`. Restore everything else to the current text. |
 | `invalid_intake_feature` | `path`, `status`, `owner` and the expected `expected_status` (`raw`) and `expected_owner` (`po`). |
 | `intake_source_not_processed`, `source_link_missing` | `path` (the page), `source` (the entry) and, for `intake_source_not_processed`, `expected`: the `knowledge/intake/processed/<folder>` path to list instead of the pending one. A feature's `sources`, a persona's `sources` and a business rule's `source` may link only a path that exists on disk, that the proposal writes, or that lies in the processed folder the proposal's own move creates. An entry already on the page, a URL, and a persona or business-rule entry that is not a `knowledge/` path are not checked. Nothing is written. |
+| `intake_name_invalid` | `path` (the destination folder), `name` and `expected` (`YYYY-MM-DD-slug`). The move's folder is not a date, then lowercase words joined by hyphens, with a real calendar date. Rename the pending folder. |
+| `processed_source_immutable` (409) | `path` (the written or destination path) and `item` (the existing `knowledge/intake/processed/<folder>`). A processed intake item is immutable: put new or changed material in a new dated pending folder. |
+| `conflict_report_invalid` | `path`, `status` (the status found, or `null`) and `problems` (up to ten). A quarantine's `CONFLICT.md` needs `status: open`, an `## Existing claim` and an `## Incoming claim` section each with `**Claim:**`, `**Scope:**` and a linked `**Evidence:**`. |
+| `quarantine_write_scope` | A quarantine writes only its `CONFLICT.md`, with substantive text, and changes no wiki page. |
+| `intake_manifest_required`, `intake_manifest_scope`, `intake_manifest_incomplete` | A processed folder gets exactly one written file, `MANIFEST.md`. `po-intake` lists every page it creates by path and canonical ID; `design-intake` lists the design page and the feature. |
 | `required_section_missing` | For `po-specify`: `path` and `sections`, the empty sections to fill. The message gives a line to write under each. |
 | `clarify_stage_unavailable` | `path` and `status` (`done`): `dev-clarify` does not change a done feature; reopen it first. |
 | `api_contract_required` | `path` (the contract page to add), `feature_id`, `status` (`agreed`) and `sections` (the four required sections). |

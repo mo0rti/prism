@@ -111,6 +111,7 @@ exact observed changes and recover from a fresh reread; no transaction is implie
   attestation in its `Release` cell, never a commit or pull request alone
 - if a multi-file write is partial, report exact observed changes and recover from
   a fresh reread; no transaction is implied
+- write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
 
 ## Canonical format reference
 

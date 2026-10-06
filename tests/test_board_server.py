@@ -319,7 +319,7 @@ class BoardServerTests(unittest.TestCase):
             root = Path(temporary)
             receipt = apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
             self.assertEqual("applied", receipt["status"])
-            pending = root / "knowledge/intake/pending/document-review-brief"
+            pending = root / "knowledge/intake/pending/2026-10-06-document-review-brief"
             pending.mkdir(parents=True)
             (pending / "brief.md").write_text("# Document review\n", encoding="utf-8")
             feature = root / "knowledge/wiki/features/F-001-document-review.md"
@@ -339,7 +339,7 @@ class BoardServerTests(unittest.TestCase):
                     headers=headers,
                 )
                 self.assertEqual(200, listed.status_code, listed.text)
-                self.assertIn("knowledge/intake/pending/document-review-brief/brief.md", [item["path"] for item in listed.json()["files"]])
+                self.assertIn("knowledge/intake/pending/2026-10-06-document-review-brief/brief.md", [item["path"] for item in listed.json()["files"]])
 
                 queried = client.post(
                     "/api/board/v1/query",
@@ -435,7 +435,7 @@ class BoardServerTests(unittest.TestCase):
         with TemporaryDirectory() as temporary, patch("prism_cli.board_server.GRAPH_POLL_SECONDS", 3600.0):
             root = Path(temporary)
             apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
-            source = root / "knowledge/intake/processed/document-review-brief/brief.md"
+            source = root / "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
             source.parent.mkdir(parents=True)
             source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
             feature = root / "knowledge/wiki/features/F-001-document-review.md"
@@ -490,7 +490,7 @@ class BoardServerTests(unittest.TestCase):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
             apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
-            source = root / "knowledge/intake/processed/document-review-brief/brief.md"
+            source = root / "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
             source.parent.mkdir(parents=True)
             source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
             feature = root / "knowledge/wiki/features/F-001-document-review.md"

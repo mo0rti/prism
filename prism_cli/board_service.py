@@ -35,7 +35,9 @@ from prism_cli.board_store import BoardLockError, BoardStore
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError, reparse_kind
 from prism_cli.wiki_model import (
     api_surface_declared,
+    intake_item_name_problem,
     is_pending_intake_source,
+    parse_conflict_report,
     processed_source_path,
     section_text,
     source_link_parts,
@@ -1282,8 +1284,10 @@ class BoardService:
                 "Unsupported attachments and oversized files appear as metadata only and block processing; they cannot be omitted."
             )
             limitations.append(
-                "The knowledge/intake/pending/ tree is a read-only move source. A proposal may move one pending folder to processed or quarantined; "
-                "only the destination MANIFEST.md or CONFLICT.md may be supplied."
+                "The knowledge/intake/pending/ tree is a read-only move source. A proposal may move one pending folder, named `YYYY-MM-DD-slug`, "
+                "to processed or quarantined; only the destination MANIFEST.md or CONFLICT.md may be supplied. A processed item is immutable once processed: "
+                "a proposal that writes into an existing one is rejected with `processed_source_immutable`. A quarantine writes only a valid CONFLICT.md "
+                "with `status: open` and leaves every wiki page unchanged."
             )
         if name == "po-intake":
             limitations.append(
@@ -1808,6 +1812,7 @@ class BoardService:
             self._assert_intake_move(skill, source, destination)
             source_path = self._safe_path(source)
             destination_path = self._safe_path(destination, allow_missing=True)
+            self._assert_processed_item_is_new(destination)
             if not source_path.is_dir() or destination_path.exists():
                 raise BoardError("invalid_move_state", "The pending intake folder must exist and the destination must be absent.", 409)
             if skill in _INTAKE_SKILLS:
@@ -1943,6 +1948,7 @@ class BoardService:
         if len(parts) >= 4 and parts[1:3] in {("intake", "processed"), ("intake", "quarantined")}:
             if skill in _INTAKE_SKILLS:
                 self._safe_path(relative, allow_missing=True)
+                self._assert_processed_item_is_new(relative)
                 return
         allowed: set[str]
         if skill == "po-intake":
@@ -2109,6 +2115,26 @@ class BoardService:
             details,
         )
 
+    def _assert_processed_item_is_new(self, relative: str) -> None:
+        """Reject a write into a processed intake item that already exists.
+
+        A processed item is a raw source and is immutable once processed. New or
+        changed material goes into a new `YYYY-MM-DD-slug` pending folder.
+        """
+
+        parts = PurePosixPath(relative).parts
+        if len(parts) < 4 or parts[:3] != ("knowledge", "intake", "processed"):
+            return
+        item = "/".join(parts[:4])
+        if self._safe_path(item, allow_missing=True).exists():
+            raise BoardError(
+                "processed_source_immutable",
+                f"`{_clip(relative, 120)}` is in the processed intake item `{_clip(item, 120)}`, which is immutable once processed. "
+                "Put new or changed material in a new `YYYY-MM-DD-slug` folder under `knowledge/intake/pending/` and process that folder.",
+                409,
+                {"path": _clip(relative, 120), "item": _clip(item, 120)},
+            )
+
     @staticmethod
     def _assert_intake_move(skill: str, source: str, destination: str) -> None:
         if skill not in _INTAKE_SKILLS:
@@ -2124,6 +2150,14 @@ class BoardService:
             or src[3] in {"", ".", ".."}
         ):
             raise BoardError("invalid_intake_move", "An intake folder may move only from pending to processed or quarantined under the same folder name.", 403)
+        problem = intake_item_name_problem(dst[3])
+        if problem:
+            raise BoardError(
+                "intake_name_invalid",
+                f"`{_clip(destination, 120)}` is not a dated intake item name: {problem} Rename the pending folder and propose the move again.",
+                409,
+                {"path": _clip(destination, 120), "name": _clip(dst[3], 80), "expected": "YYYY-MM-DD-slug"},
+            )
 
     def _validate_intake_source_tree(self, source: Path) -> None:
         """Require every intake source to be readable text before snapshotting it.
@@ -3347,6 +3381,16 @@ class BoardService:
             if set(supplied) != {destination + "/CONFLICT.md"} or len(report.strip()) < 40:
                 raise BoardError("quarantine_write_scope", "A conflict quarantine writes only a substantive CONFLICT.md report; no wiki files may change.", 409)
             _validate_no_placeholders(report, destination + "/CONFLICT.md")
+            status, problems = parse_conflict_report(report)
+            if status != "open" or problems:
+                listed = list(problems) if problems else ["a new conflict has `status: open`; a human sets `resolved`."]
+                raise BoardError(
+                    "conflict_report_invalid",
+                    f"`{_clip(destination, 120)}/CONFLICT.md` is not a valid open conflict record: {' '.join(listed)} "
+                    "It needs front matter `status: open`, an `## Existing claim` and an `## Incoming claim` section, each with `**Claim:**`, `**Scope:**` and a linked `**Evidence:**` item (see Conflict quarantine in SCHEMA.md).",
+                    409,
+                    {"path": _clip(destination, 120) + "/CONFLICT.md", "status": status, "problems": [_clip(item, 200) for item in listed[:10]]},
+                )
             return
         if any(path.startswith("knowledge/intake/") and not path.startswith(destination + "/") for path in supplied):
             raise BoardError("intake_write_scope", "An intake proposal may write only its final destination manifest.", 403)
@@ -3370,8 +3414,12 @@ class BoardService:
             designs = [path for path in supplied if path.startswith("knowledge/wiki/design/")]
             if len(designs) != 1:
                 raise BoardError("design_page_required", "Design intake must propose exactly one design page.", 409)
-            if set(destination_files) - {"MANIFEST.md"}:
-                raise BoardError("intake_manifest_scope", "Design intake may write only an optional MANIFEST.md inside the processed intake folder.", 409)
+            if set(destination_files) != {"MANIFEST.md"}:
+                raise BoardError("intake_manifest_scope", "Design intake may write only MANIFEST.md inside the processed intake folder, and a processed folder needs one.", 409)
+            manifest_text = destination_files["MANIFEST.md"].casefold()
+            for relative in (*designs, features[0]["path"]):
+                if relative.casefold() not in manifest_text:
+                    raise BoardError("intake_manifest_incomplete", f"The processed intake manifest must list `{relative}`.", 409)
 
     def _validate_source_links(
         self,

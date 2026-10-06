@@ -84,7 +84,7 @@ knowledge/
   intake/
     pending/
     processed/
-    quarantined/      # conflict-resolution state for intake that cannot be applied safely
+    quarantined/      # sources that contradict the wiki, with a CONFLICT.md each
     README.md
   wiki/
     advisory/
@@ -105,9 +105,12 @@ knowledge/
 
 Important meanings:
 
-- `quarantined/` is the conflict-resolution state for intake that cannot be applied safely
+- `pending/`, `processed/` and `quarantined/` hold raw sources as `YYYY-MM-DD-slug/` folders; a processed item has a `MANIFEST.md` and is immutable
+- `quarantined/` holds a source that contradicts an existing page, with a `CONFLICT.md` (`status: open | resolved`) that gives both claims with their scope and links; the existing page stays untouched until a human resolves it
 - `SETTINGS.md` holds project-level wiki behavior settings such as `wiki-stale-after-days`
-- pages state the current state and carry no date about themselves; when something was written, decided, verified or amended is a `log.md` entry (`## YYYY-MM-DD <operation> | <subject>` with `paths`, `evidence` and `by` lines), while an ADR, an advisory review and each reopen-history entry keep their own date as dated records
+- pages state the current state and carry no date about themselves; superseded content is replaced in place and rationale is a current fact; when something was written, decided, verified or amended is a `log.md` entry (`## YYYY-MM-DD <operation> | <subject>` with `paths`, `evidence` and `by` lines), while an ADR, an advisory review, each reopen-history entry and a processed intake item keep their own date as dated records, which are never rewritten
+- claims on current-state pages carry one of five evidence labels (`**Decided:**`, `**Observed:**`, `**Proposed:**`, `**Assumed:**`, `**Unknown:**`), and a Decided or Observed claim links its evidence
+- a decision is replaced by a new ADR with `supersedes: ADR-NNN`; the old ADR gets `status: superseded` and `superseded-by: ADR-MMM`
 - `SCHEMA.md` and `LIFECYCLE.md` start with front matter `schema-version: 1`
 - `WIKI_REPORT.md` is a generated orientation artifact, not a source-of-truth document
 
@@ -156,7 +159,7 @@ This setup flow:
 
 ### Product Owner
 
-- drop raw notes into `knowledge/intake/pending/`
+- drop raw notes into a dated folder, `knowledge/intake/pending/YYYY-MM-DD-slug/`
 - run `po-intake`
 - answer PO-owned open questions with `po-clarify`
 - author a raw feature as a structured draft with `po-specify`
@@ -235,8 +238,9 @@ planned write set and wait for confirmation before writing.
 
 ### Never silently overwrite on conflict
 
-If new intake conflicts with the current wiki, move the intake folder to
-`knowledge/intake/quarantined/` with an explanation instead of guessing.
+If new intake contradicts the current wiki, move the intake folder to
+`knowledge/intake/quarantined/` with a `CONFLICT.md` that records both claims and their
+scope, and leave the existing page untouched, instead of guessing.
 
 ### Use exact app IDs
 

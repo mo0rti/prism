@@ -76,8 +76,8 @@ class WikiDemoBuilderTests(unittest.TestCase):
             populated = Path(metadata["stages"]["populated"])
             self.assertEqual("not-initialized", build_graph(fresh)["facts"]["setup_state"])
             self.assertEqual([], build_graph(fresh)["facts"]["intake"]["pending"])
-            self.assertEqual(["payout-approval-brief"], build_graph(intake)["facts"]["intake"]["pending"])
-            self.assertEqual(["duplicate-settlement-brief"], build_graph(intake)["facts"]["intake"]["quarantined"])
+            self.assertEqual(["2026-09-29-payout-approval-brief"], build_graph(intake)["facts"]["intake"]["pending"])
+            self.assertEqual(["2026-09-28-duplicate-settlement-brief"], build_graph(intake)["facts"]["intake"]["quarantined"])
 
             lint_result = lint_wiki(populated, today=CHECK_DATE)
             blocker_codes = {diagnostic.code for diagnostic in lint_result.diagnostics} & WIKI_BLOCKER_CODES
@@ -90,8 +90,8 @@ class WikiDemoBuilderTests(unittest.TestCase):
             self.assertEqual({"F-001", "F-002", "F-003"}, feature_ids)
             edge_kinds = {edge["kind"] for edge in graph["facts"]["edges"]}
             self.assertTrue({"related", "has-design", "has-contract", "has-requirement", "has-review", "constrained-by", "serves"} <= edge_kinds)
-            self.assertEqual(["future-refund-brief"], graph["facts"]["intake"]["pending"])
-            self.assertEqual(["duplicate-settlement-brief"], graph["facts"]["intake"]["quarantined"])
+            self.assertEqual(["2026-09-30-future-refund-brief"], graph["facts"]["intake"]["pending"])
+            self.assertEqual(["2026-09-28-duplicate-settlement-brief"], graph["facts"]["intake"]["quarantined"])
             self.assertEqual(
                 {"pending-board-review", "unresolved-open-questions"},
                 {fact["code"] for fact in graph["blocker_facts"]},

@@ -247,7 +247,7 @@ Generated projects include these Hygen generators under `_templates/`:
 
 | Generator | Purpose |
 |-----------|---------|
-| `feature new` | Scaffold a backend + Android + iOS feature slice and create an intake note in `knowledge/intake/pending/` for `po-intake` to process |
+| `feature new` | Scaffold a backend + Android + iOS feature slice and create a dated intake note in `knowledge/intake/pending/YYYY-MM-DD-feature-name/` for `po-intake` to process |
 | `screen new` | Scaffold a new Android or iOS screen |
 | `endpoint new` | Scaffold an OpenAPI path snippet and backend endpoint starter |
 | `page new` | Scaffold a new page for generated web slices when `web-user-app` or `web-admin-portal` is included |

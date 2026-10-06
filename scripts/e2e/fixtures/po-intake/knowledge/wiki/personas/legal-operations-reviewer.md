@@ -1,7 +1,7 @@
 ---
 id: P-001
 name: Legal operations document reviewer
-sources: [knowledge/intake/processed/review-summary]
+sources: [knowledge/intake/processed/2026-09-30-review-summary]
 ---
 
 ## Who they are

@@ -1047,8 +1047,8 @@ class BoardServiceValidatorTests(unittest.TestCase):
         feature_relative = "knowledge/wiki/features/F-002-document-review.md"
         feature = _feature_page().replace("F-001", "F-002").replace("Document review", "Second document review")
         feature = _set_feature_stage(feature, "raw", "po").replace(
-            "knowledge/intake/processed/document-review-brief/brief.md",
-            "knowledge/intake/processed/document-review-brief/brief.md",
+            "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md",
+            "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md",
         )
         persona_one = _persona_page("Reviewer")
         persona_two = _persona_page("Reader")
@@ -1056,7 +1056,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
             "knowledge/wiki/personas/P-001-reviewer.md",
             "knowledge/wiki/personas/P-001-reader.md",
         ]
-        manifest_relative = "knowledge/intake/processed/document-review-brief/MANIFEST.md"
+        manifest_relative = "knowledge/intake/processed/2026-10-06-document-review-brief/MANIFEST.md"
         manifest = (
             "# Processed intake\n\n"
             f"- {feature_relative} (F-002)\n"
@@ -1153,7 +1153,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
             (pending, processed),
             (pending + "/", processed),
             (INTAKE_ITEM.as_posix(), PROCESSED_INTAKE_ITEM.as_posix()),
-            ("intake/pending/document-review-brief", processed),
+            ("intake/pending/2026-10-06-document-review-brief", processed),
             ("knowledge/intake/pending/other-folder", "knowledge/intake/processed/other-folder"),
         )
         for entry, expected in cases:
@@ -1183,7 +1183,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
             processed + "/notes",
             processed + "/notes/context.md",
             processed + "/MANIFEST.md",
-            "intake/processed/document-review-brief/brief.md",
+            "intake/processed/2026-10-06-document-review-brief/brief.md",
         ):
             with self.subTest(entry=entry):
                 preview = self._preview_po_intake([entry])
@@ -1200,7 +1200,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
             processed + "/absent.md",
             processed + "/notes",
             "knowledge/intake/processed/other-folder",
-            "knowledge/intake/quarantined/document-review-brief",
+            "knowledge/intake/quarantined/2026-10-06-document-review-brief",
             "knowledge/wiki/features/F-099-absent.md",
             "brief.md",
         ):
@@ -1273,7 +1273,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
         specified = _set_feature_stage(self._write_feature_page(), "specified", "po", self.service)
         (self.root / FEATURE_PATH).write_bytes(specified.encode("utf-8"))
         _write_index(self.root, "specified", "po")
-        design_source = "knowledge/intake/pending/design-notes"
+        design_source = "knowledge/intake/pending/2026-10-06-design-notes"
         (self.root / design_source).mkdir(parents=True)
         (self.root / design_source / "notes.md").write_text("Make the saved outcome easy to find.\n", encoding="utf-8")
         frontmatter, _body = _parse_markdown(specified)
@@ -1399,8 +1399,8 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
 
         # Process a design note in a folder with an empty nested directory; the
         # journal must preserve both file and directory membership at apply.
-        design_source = "knowledge/intake/pending/design-notes"
-        design_destination = "knowledge/intake/processed/design-notes"
+        design_source = "knowledge/intake/pending/2026-10-06-design-notes"
+        design_destination = "knowledge/intake/processed/2026-10-06-design-notes"
         source_dir = self.root / design_source / "references" / "unused"
         source_dir.mkdir(parents=True, exist_ok=True)
         (self.root / design_source / "notes.md").write_bytes(
@@ -1424,6 +1424,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             [
                 {"path": feature_path, "content": design_intake_feature},
                 {"path": design_path, "content": _unquote_yaml_date_fields(_journey_design_page())},
+                {"path": design_destination + "/MANIFEST.md", "content": f"# Processed intake\n\n- {design_path} (design for F-001)\n- {feature_path} (F-001)\n"},
             ],
             [{"source": design_source, "destination": design_destination}],
         )
@@ -1718,9 +1719,9 @@ class BoardServiceReopenRecordTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = create_core_workflow_fixture(Path(temporary.name) / "generated-project")
         self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))["status"])
-        (self.root / INTAKE_ITEM).parent.rename(self.root / "knowledge/intake/processed/document-review-brief")
+        (self.root / INTAKE_ITEM).parent.rename(self.root / "knowledge/intake/processed/2026-10-06-document-review-brief")
         for relative, content in (
-            (self.FEATURE, _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/document-review-brief"], ["| 1 | Which points should a review summary highlight? | po | resolved: The key points. |"])),
+            (self.FEATURE, _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/2026-10-06-document-review-brief"], ["| 1 | Which points should a review summary highlight? | po | resolved: The key points. |"])),
             (self.REQUIREMENT, _journey_requirement_page("in-progress")),
             (self.DESIGN, _journey_design_page()),
         ):
@@ -1946,7 +1947,7 @@ def _persona_page(name: str) -> str:
     return (
         "---\nid: P-001\n"
         f"name: {name}\n"
-        "sources:\n- knowledge/intake/processed/document-review-brief/brief.md\n"
+        "sources:\n- knowledge/intake/processed/2026-10-06-document-review-brief/brief.md\n"
         "---\n\n"
         "## Who they are\nA person assigned to review a document.\n\n"
         "## Goals\nRecord key points, an outcome, and follow-up.\n\n"
@@ -2055,7 +2056,7 @@ def _set_stage_and_revalidation(
 def _journey_persona_page() -> str:
     return (
         "---\nid: P-001\nname: Reviewer\n"
-        "sources:\n- knowledge/intake/processed/document-review-brief/brief.md\n"
+        "sources:\n- knowledge/intake/processed/2026-10-06-document-review-brief/brief.md\n"
         "---\n\n"
         "## Who they are\nA person assigned to review a document.\n\n"
         "## Goals\nRecord key points, an outcome, and follow-up.\n\n"
@@ -2067,7 +2068,7 @@ def _journey_persona_page() -> str:
 def _journey_business_rule_page() -> str:
     return (
         "---\nid: BR-001\ntitle: Retain review outcome\n"
-        "source: knowledge/intake/processed/document-review-brief/brief.md\n"
+        "source: knowledge/intake/processed/2026-10-06-document-review-brief/brief.md\n"
         "---\n\n"
         "## Rule\nA recorded review keeps its outcome and requested follow-up together.\n\n"
         "## Rationale\nReviewers need to find the decision after the review is complete.\n\n"

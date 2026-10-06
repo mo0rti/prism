@@ -45,7 +45,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
         create_core_workflow_fixture(root)
         self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
         pending = root / INTAKE_ITEM.parent
-        pending.rename(root / "knowledge/intake/processed/document-review-brief")
+        pending.rename(root / "knowledge/intake/processed/2026-10-06-document-review-brief")
         content = _feature_page().replace("status: raw\n", f"status: {action[1]}\n").replace("owner: po\n", f"owner: {action[2]}\n")
         if not blocked:
             content = content.replace("| po | open |", "| po | resolved: Capture key points and requested follow-up. |")
@@ -222,9 +222,9 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             root = Path(temporary) / "workspace"
             create_core_workflow_fixture(root)
             self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
-            (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/document-review-brief")
+            (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/2026-10-06-document-review-brief")
             page = _unquote_yaml_date_fields(
-                _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/document-review-brief"], [
+                _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [
                     "| 1 | Which points should a review summary highlight? | po | resolved: Key points. |", question,
                 ])
             )
@@ -331,9 +331,9 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                 root = Path(temporary) / "workspace"
                 create_core_workflow_fixture(root)
                 self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
-                (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/document-review-brief")
+                (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/2026-10-06-document-review-brief")
                 page = _unquote_yaml_date_fields(
-                    _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/document-review-brief"], [question])
+                    _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [question])
                 )
                 page = _replace_body_section(None, page, "API surface", surface)
                 (root / feature_relative).write_bytes(page.encode("utf-8"))

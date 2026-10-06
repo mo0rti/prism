@@ -1,6 +1,6 @@
-# Intake manifest - review-summary
+# Intake manifest - 2026-09-30-review-summary
 
-Processed from `knowledge/intake/pending/review-summary/` (source: legal operations feedback round, 2026-09-30).
+Processed from `knowledge/intake/pending/2026-09-30-review-summary/` (source: legal operations feedback round, 2026-09-30).
 
 ## Features created
 - `knowledge/wiki/features/F-001-review-summary-export.md` (F-001) - Review summary export; status raw, owner po, advisory-review not-needed (the brief states no advisory board review is needed)

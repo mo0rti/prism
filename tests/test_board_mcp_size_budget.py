@@ -41,7 +41,7 @@ RESULT_BUDGET = 32000
 SUMMARY_LIMIT = 500
 FEATURE_COUNT = 500
 TODAY = date.today().isoformat()
-PROCESSED_SOURCE = "knowledge/intake/processed/document-review-brief/brief.md"
+PROCESSED_SOURCE = "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
 
 
 class _TeeStream(httpx2.AsyncByteStream):
@@ -147,7 +147,7 @@ def build_workspace(root: Path, feature_count: int) -> None:
     receipt = apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
     if receipt["status"] != "applied":
         raise RuntimeError(f"installer did not apply: {receipt}")
-    (root / "knowledge/intake/pending/document-review-brief").rename(root / "knowledge/intake/processed/document-review-brief")
+    (root / "knowledge/intake/pending/2026-10-06-document-review-brief").rename(root / "knowledge/intake/processed/2026-10-06-document-review-brief")
     # A generated project ships the real wiki schema; the fixture has a placeholder.
     shutil.copyfile(REPO_ROOT / "template/knowledge/wiki/SCHEMA.md", root / "knowledge/wiki/SCHEMA.md")
     shutil.copyfile(REPO_ROOT / "template/knowledge/wiki/LIFECYCLE.md", root / "knowledge/wiki/LIFECYCLE.md")
@@ -501,7 +501,7 @@ def build_dev_done_workspace(root: Path, platforms: list[str], bulk: str, large_
     receipt = apply_install(root, plan_install(root, name="Document review", apps=platforms))
     if receipt["status"] != "applied":
         raise RuntimeError(f"installer did not apply: {receipt}")
-    (root / "knowledge/intake/pending/document-review-brief").rename(root / "knowledge/intake/processed/document-review-brief")
+    (root / "knowledge/intake/pending/2026-10-06-document-review-brief").rename(root / "knowledge/intake/processed/2026-10-06-document-review-brief")
     wiki = root / "knowledge/wiki"
 
     def write(relative: str, content: str) -> None:

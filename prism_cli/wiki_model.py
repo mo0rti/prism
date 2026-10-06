@@ -906,6 +906,67 @@ def processed_source_path(parts: tuple[str, ...]) -> str:
     return "/".join(("knowledge", "intake", "processed", *(parts[3:] or ("<folder>",))))
 
 
+_INTAKE_ITEM_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)$")
+
+
+def intake_item_name_problem(name: str) -> str | None:
+    """Why `name` is not a `YYYY-MM-DD-slug` intake item name, or ``None`` when it is one.
+
+    The date is the day the source was captured and must be a real calendar day;
+    the slug is lowercase words joined by single hyphens.
+    """
+
+    match = _INTAKE_ITEM_NAME.match(name)
+    if match is None:
+        return "an intake item folder is named `YYYY-MM-DD-slug`: a date, then lowercase words joined by single hyphens, such as `2026-10-06-client-call`."
+    if parse_iso_date(match.group(1)) is None:
+        return f"`{match.group(1)}` is not a calendar date; an intake item folder is named `YYYY-MM-DD-slug`."
+    return None
+
+
+CONFLICT_STATUSES = ("open", "resolved")
+CONFLICT_CLAIM_SECTIONS = ("Existing claim", "Incoming claim")
+CONFLICT_CLAIM_FIELDS = ("Claim", "Scope", "Evidence")
+_BOLD_RUN_IN = r"^\s*(?:[-*+]\s+)?\*\*{label}:\*\*[ \t]*(.*)$"
+_LINK_OR_URL = re.compile(r"\[[^\]]+\]\(\s*<?[^)\s>]+|https?://\S+")
+
+
+def parse_conflict_report(text: str) -> tuple[str | None, list[str]]:
+    """Check a `CONFLICT.md` against the format `SCHEMA.md` defines.
+
+    Returns its `status` (``None`` when the front matter has no valid one) and the
+    structural problems, each one sentence. The check is mechanical: it never
+    judges whether the two claims really contradict each other.
+    """
+
+    page = parse_markdown_text(Path("CONFLICT.md"), text)
+    if page.parse_errors:
+        return None, list(page.parse_errors)
+    problems: list[str] = []
+    status = page.frontmatter.get("status")
+    if not isinstance(status, str) or status not in CONFLICT_STATUSES:
+        problems.append("front matter `status` must be `open` or `resolved`.")
+        status = None
+    for heading in CONFLICT_CLAIM_SECTIONS:
+        section = section_text(page.body, heading)
+        if not section.strip():
+            problems.append(f"the `## {heading}` section is missing or empty.")
+            continue
+        for label in CONFLICT_CLAIM_FIELDS:
+            values = [
+                match.group(1).strip()
+                for line in section.splitlines()
+                if (match := re.match(_BOLD_RUN_IN.format(label=label), line))
+            ]
+            if not any(values):
+                problems.append(f"`## {heading}` needs a `**{label}:**` item with text.")
+            elif label == "Evidence" and not any(_LINK_OR_URL.search(value) for value in values):
+                problems.append(f"`## {heading}` needs a link in its `**Evidence:**` item.")
+    if status == "resolved" and not section_text(page.body, "Resolution").strip():
+        problems.append("a `resolved` conflict needs a non-empty `## Resolution` section.")
+    return status, problems
+
+
 def feature_id_from_path(path: Path) -> str | None:
     """Extract a canonical feature ID from a feature-like filename."""
 

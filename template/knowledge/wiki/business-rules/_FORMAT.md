@@ -12,6 +12,7 @@ source: [intake source or board review that established this rule]
 
 ## Rule
 One unambiguous statement of the rule.
+- **Decided:** [the rule as confirmed] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
 
 ## Rationale
 Why this rule exists: legal, business, product decision, board recommendation, or

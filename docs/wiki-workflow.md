@@ -43,9 +43,12 @@ persona, business-rule, design, app-requirement and API-contract pages have no
 date about the world, such as an effective date or a deadline, is a domain fact and
 may appear in a page.
 
-Two kinds of record keep their own date, because the date is part of what they
-record: an ADR (`date`), an advisory review (`reviewed`) and each entry under a
-feature's `## Reopen history`.
+Records keep their own date, because the date is part of what they record: an ADR
+(`date`), an advisory review (`reviewed`), each entry under a feature's
+`## Reopen history` and a processed intake item (its `YYYY-MM-DD-slug` folder name). A
+record is never rewritten, except for its status fields. A source or a decision that
+changes a fact replaces the superseded content on the page in place; rationale is
+stated as a current fact.
 
 When something was written, decided, verified or amended is recorded in
 `knowledge/wiki/log.md`, which is append-only and the only home for history. Every
@@ -54,7 +57,7 @@ entry has the same shape:
 ```text
 ## 2026-10-06 po-handoff | F-001
 - paths: knowledge/wiki/features/F-001-review-summary-export.md, knowledge/wiki/index.md
-- evidence: knowledge/intake/processed/review-summary
+- evidence: knowledge/intake/processed/2026-10-01-review-summary
 - by: Claude Code (confirmed by Riley)
 Handed to design after the board review.
 ```
@@ -72,6 +75,75 @@ comments inside the entry. `SCHEMA.md` defines the format.
 | `history-date-on-page` | error | A history-date field (`introduced`, `last-updated`, `created`, `updated`, `date-updated` and similar) in the front matter of a current-state page. The message points to `log.md`. |
 | `malformed-log-entry` | warning | A `log.md` entry that is not in the format. Lint reports it and never rewrites the log. |
 | `missing-schema-version` | error | `SCHEMA.md` or `LIFECYCLE.md` without the front matter `schema-version: 1`. |
+| `unlinked-claim` | warning | A `**Decided:**` or `**Observed:**` item that links no evidence. |
+| `unknown-evidence-label` | warning | A bold run-in label such as `**Note:**` that is none of the five evidence labels. |
+| `supersession-mismatch` | error | The `supersedes` and `superseded-by` links of two ADRs disagree, or one is missing, or `status: superseded` and `superseded-by` do not go together. |
+| `superseded-decision-cited` | warning | A current-state page links an ADR that a newer ADR supersedes. |
+| `processed-source-without-manifest` | warning | A processed intake item without a `MANIFEST.md`. |
+| `unresolved-conflict` | warning | A quarantined `CONFLICT.md` with `status: open`. The message links the file. A non-empty quarantine is not a gate. |
+| `malformed-conflict` | error | A quarantined item without a `CONFLICT.md`, or one that does not follow the format. |
+
+Lint is mechanical: it checks the form of labels, links and records and never judges
+whether evidence supports a claim or whether two claims contradict each other.
+Detecting a contradiction is the ingest skill's job.
+
+### Evidence labels
+
+A claim on a feature, persona, business-rule, design, app-requirement or API-contract page
+starts with a bold run-in label: `**Decided:**`, `**Observed:**`, `**Proposed:**`,
+`**Assumed:**` or `**Unknown:**`.
+
+```markdown
+- **Observed:** Reviewers keep outcomes in informal notes ([review brief](../../intake/processed/2026-10-06-review-brief/brief.md)).
+- **Assumed:** A review covers exactly one document.
+```
+
+A Decided or Observed claim links its evidence: a processed intake item, a record or a URL.
+A feature's `## Open questions` table is its Unknown form. When a later source changes a
+claim, the item is replaced in place and the log entry lists the changed paths and the new
+evidence.
+
+### Decisions and supersession
+
+An ADR is a record. A decision is replaced by a new ADR, in one operation: the new ADR has
+`supersedes: ADR-NNN`; the old ADR gets `status: superseded` and `superseded-by: ADR-MMM`
+and its body stays unchanged; every current-state page that relied on the old decision is
+updated to link the new one; one log entry lists the paths. No board skill writes an ADR, so
+this is a direct-file operation that the user confirms.
+
+### Raw sources and conflicts
+
+A raw source is a folder `knowledge/intake/pending/YYYY-MM-DD-slug/`; the date is the day
+it was captured. `po-intake` and `design-intake` move it, under the same name, to
+`knowledge/intake/processed/YYYY-MM-DD-slug/` with a `MANIFEST.md`. A processed item is
+immutable: new or corrected material is a new dated folder. Agent review packets and agent
+outputs are archived the same way (see `knowledge/intake/README.md` in a generated
+workspace).
+
+When an incoming source contradicts an existing page, the ingest skill moves the folder to
+`knowledge/intake/quarantined/YYYY-MM-DD-slug/` and writes a `CONFLICT.md` there:
+
+```markdown
+---
+status: open
+---
+
+# Conflict: payout cadence
+
+## Existing claim
+- **Claim:** The page says payouts settle once per day.
+- **Scope:** Checkout payouts for the web app.
+- **Evidence:** [F-001](../../../wiki/features/F-001-checkout.md)
+
+## Incoming claim
+- **Claim:** The note says payouts settle twice per day.
+- **Scope:** Checkout payouts for the web app.
+- **Evidence:** [notes.md](notes.md)
+```
+
+The existing page is not touched. A human decides, makes the chosen edit to the page,
+sets `status: resolved` and adds a `## Resolution` section that links the changed pages.
+The resolved record stays in `quarantined/`.
 
 ## Feature Lifecycle Actions
 
@@ -178,7 +250,7 @@ integrity errors and action-specific prerequisites gate lifecycle requests.
 
 Typical flow:
 
-1. place raw notes in `knowledge/intake/pending/`
+1. place raw notes in a dated folder, `knowledge/intake/pending/YYYY-MM-DD-slug/`
 2. run `po-intake`
 3. review the generated feature pages and open questions
 4. use `po-clarify` to answer PO-owned questions

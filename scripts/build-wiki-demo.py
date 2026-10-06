@@ -325,8 +325,23 @@ def _write_intake_item(destination: Path, name: str, *, quarantined: bool) -> No
     if quarantined:
         _write_text(
             item_root / "CONFLICT.md",
-            """# Synthetic quarantine marker
+            """---
+status: resolved
+---
 
+# Conflict: synthetic quarantine record
+
+## Existing claim
+- **Claim:** The existing page says payouts settle once per day.
+- **Scope:** Synthetic dashboard QA data; no real feature.
+- **Evidence:** [F-001](../../../wiki/features/F-001-example.md)
+
+## Incoming claim
+- **Claim:** The quarantined brief says payouts settle twice per day.
+- **Scope:** Synthetic dashboard QA data; no real feature.
+- **Evidence:** [brief.md](brief.md)
+
+## Resolution
 This item is visible in quarantine for dashboard QA. It does not represent an observed conflict,
 human resolution, or accepted product decision.
 """,
@@ -624,11 +639,11 @@ def _build_stage(destination: Path, stage: str, today: date) -> None:
     _write_workspace_contract(destination, today)
     _write_wiki_skeleton(destination, stage, today)
     if stage in {"intake", "populated"}:
-        _write_intake_item(destination, "duplicate-settlement-brief", quarantined=True)
+        _write_intake_item(destination, "2026-09-28-duplicate-settlement-brief", quarantined=True)
     if stage == "intake":
-        _write_intake_item(destination, "payout-approval-brief", quarantined=False)
+        _write_intake_item(destination, "2026-09-29-payout-approval-brief", quarantined=False)
     if stage == "populated":
-        _write_intake_item(destination, "future-refund-brief", quarantined=False)
+        _write_intake_item(destination, "2026-09-30-future-refund-brief", quarantined=False)
         _write_feature_pages(destination, today)
         _write_linked_context(destination, today)
         _write_populated_index(destination, today)
