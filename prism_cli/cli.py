@@ -37,7 +37,13 @@ from prism_cli.presets import (
 )
 from prism_cli.render import render_or_print_wiki_query, render_status_result, render_wiki_lint_result
 from prism_cli.status import BoardCheck, build_board_checks, build_status
-from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind, inspect_workspace, write_workspace_manifest
+from prism_cli.workspace import (
+    GENERATION_ANSWER_FIELDS,
+    MANIFEST_FILE,
+    detect_workspace_kind,
+    inspect_workspace,
+    write_workspace_manifest,
+)
 from prism_cli.wiki_model import VALID_FEATURE_OWNERS
 from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_query import wiki_app, wiki_blockers, wiki_owner, wiki_search, wiki_show
@@ -1436,11 +1442,6 @@ def validate_generated_project_structure(path: Path) -> tuple[list[str], list[st
     if not detected_platforms:
         warnings.append("No recognized platform directories were detected.")
 
-    if any(platform_id in detected_platforms for platform_id in ("web-user-app", "web-admin-portal")):
-        cloudflare_doc = path / "docs" / "deployment" / "cloudflare-setup.md"
-        if not cloudflare_doc.exists():
-            errors.append("Web slices were detected but docs/deployment/cloudflare-setup.md is missing.")
-
     return errors, warnings, detected_platforms
 
 
@@ -1598,13 +1599,6 @@ def prompt_advanced_answers() -> dict[str, Any]:
         default_values=auth_default,
         allow_empty=False,
     )
-    supporting_services = prompt_multiselect(
-        "Select supporting services",
-        (("redis", "Redis cache"),),
-        default_values=[],
-        allow_empty=True,
-    )
-    use_docker = prompt_bool("Include Docker Compose?", True)
 
     return {
         "project_name": project_name,
@@ -1613,8 +1607,6 @@ def prompt_advanced_answers() -> dict[str, Any]:
         "github_org": github_org,
         "platforms": platforms,
         "auth_methods": auth_methods,
-        "supporting_services": supporting_services,
-        "use_docker": use_docker,
     }
 
 
@@ -1630,19 +1622,6 @@ def prompt_text(label: str, default: str | None = None) -> str:
         if default is not None:
             return default
         print(warn(f"{label} is required."))
-
-
-def prompt_bool(label: str, default: bool) -> bool:
-    suffix = "Y/n" if default else "y/N"
-    while True:
-        raw = input(f"{label} [{suffix}]: ").strip().lower()
-        if not raw:
-            return default
-        if raw in {"y", "yes"}:
-            return True
-        if raw in {"n", "no"}:
-            return False
-        print(warn("Enter y or n."))
 
 
 def prompt_multiselect(
@@ -1766,6 +1745,10 @@ def is_generation_safe_existing_destination(entries: list[Path]) -> bool:
     return has_git_dir
 
 
+# The questions Copier asks, plus the values it derives from them.
+ANSWER_KEYS = frozenset(GENERATION_ANSWER_FIELDS) | {"ios_module_name", "package_path"}
+
+
 def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -1775,9 +1758,6 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
         "description",
         "package_identifier",
         "github_org",
-        "database",
-        "cloud_provider",
-        "web_hosting",
         "ios_module_name",
     ):
         if field_name in answers and not isinstance(answers[field_name], str):
@@ -1785,22 +1765,15 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
 
     platform_values = answers.get("platforms", [])
     auth_values = answers.get("auth_methods", [])
-    service_values = answers.get("supporting_services", [])
     platforms = validate_choice_list("platforms", platform_values, {value for value, _label in ALL_PLATFORM_CHOICES}, errors)
     auth_methods = validate_choice_list("auth_methods", auth_values, {value for value, _label in ALL_AUTH_CHOICES}, errors)
-    validate_choice_list("supporting_services", service_values, {"redis"}, errors)
 
-    for field_name, allowed in (
-        ("database", {"postgres"}),
-        ("cloud_provider", {"azure"}),
-        ("web_hosting", {"cloudflare"}),
-    ):
-        value = answers.get(field_name)
-        if field_name in answers and isinstance(value, str) and value not in allowed:
-            errors.append(f"Unsupported {field_name}: {value!r}. Allowed values: {', '.join(sorted(allowed))}.")
-
-    if "use_docker" in answers and not isinstance(answers["use_docker"], bool):
-        errors.append("use_docker must be true or false.")
+    unknown_answers = sorted(key for key in answers if not key.startswith("_") and key not in ANSWER_KEYS)
+    if unknown_answers:
+        errors.append(
+            f"Unknown answer(s): {', '.join(unknown_answers)}. "
+            f"Prism asks only for: {', '.join(sorted(ANSWER_KEYS))}."
+        )
 
     project_name = answers.get("project_name")
     if project_name or "project_slug" in answers:
@@ -1826,8 +1799,6 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
         warnings.append("Apple Sign-In remains experimental.")
     if "mobile-ios" in platforms:
         warnings.append("Validate iOS generation locally on macOS before treating it as build-proven.")
-    if any(p in platforms for p in ("web-user-app", "web-admin-portal")):
-        warnings.append("Generated web slices still need live Cloudflare deployment validation.")
     return errors, warnings
 
 
@@ -1879,15 +1850,6 @@ def render_summary(answers: dict[str, Any], dest_path: Path, template_path: str,
             "Auth",
             ", ".join(auth_labels[a] for a in answers.get("auth_methods", [])) or "None",
             STYLE.green if answers.get("auth_methods") else STYLE.yellow,
-        )
-    )
-    docker_enabled = answers.get("use_docker", True)
-    body.extend(
-        review_key_value(
-            "Docker Compose",
-            "Yes" if docker_enabled else "No",
-            STYLE.green if docker_enabled else STYLE.yellow,
-            STYLE.bold,
         )
     )
     if answers.get("github_org"):

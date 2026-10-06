@@ -195,8 +195,8 @@ Then, if the supporting tools are installed:
 
 Platform-specific caution:
 
-- for `web-user-app` and `web-admin-portal`, inspect Next.js routes, auth handlers, and
-  OpenNext/Wrangler config before treating the setup as settled
+- for `web-user-app` and `web-admin-portal`, inspect Next.js routes and auth handlers before
+  treating the setup as settled; hosting is yours to choose (see the `deployment` skill)
 - for `mobile-ios`, validate locally on macOS before treating the slice as build-proven
 
 Do not assume every command, workflow, or platform combination has been fully hardened just

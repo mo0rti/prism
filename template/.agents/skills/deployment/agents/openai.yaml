@@ -1,0 +1,6 @@
+interface:
+  display_name: "Deployment"
+  short_description: "Deploy the generated stacks from worked examples"
+  default_prompt: "Use $deployment when the user asks to deploy, host or release the backend, web or mobile apps."
+policy:
+  allow_implicit_invocation: true

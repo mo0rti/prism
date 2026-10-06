@@ -95,16 +95,15 @@ Generated workspace with the selected platform slices. API-first:
 the implemented platform routes.
 
 ```text
-{% if "backend" in platforms %}backend/       -> Spring Boot 4 (Kotlin 2.2+, Java 21) - Azure Container Apps
-{% endif %}{% if "web-user-app" in platforms %}web-user-app/  -> Next.js + TypeScript user-facing web app - Cloudflare via OpenNext
-{% endif %}{% if "web-admin-portal" in platforms %}web-admin-portal/  -> Next.js + TypeScript admin web portal - Cloudflare via OpenNext
+{% if "backend" in platforms %}backend/       -> Spring Boot 4 (Kotlin 2.2+, Java 21)
+{% endif %}{% if "web-user-app" in platforms %}web-user-app/  -> Next.js + TypeScript user-facing web app
+{% endif %}{% if "web-admin-portal" in platforms %}web-admin-portal/  -> Next.js + TypeScript admin web portal
 {% endif %}{% if "mobile-android" in platforms %}mobile-android/ -> Kotlin + Jetpack Compose (MVVM, Hilt, Room)
 {% endif %}{% if "mobile-ios" in platforms %}mobile-ios/     -> Swift 6 + SwiftUI (MVVM, SwiftData) - Mac/Xcode only
 {% endif %}shared/        -> OpenAPI spec + design tokens
 knowledge/     -> Living product wiki (single source of truth for features)
 docs/          -> Human-readable reference documentation
-{% if "backend" in platforms %}infra/         -> Azure setup and deployment scripts
-{% endif %}```
+```
 
 ## Common Commands
 
@@ -282,13 +281,12 @@ Backend issues JWTs after successful auth. Native clients store them locally; we
 - `docs/ai-agents.md` - how the agent files, commands and skills fit together
 - `docs/architecture.md` - system design, platform map, tech decisions
 - `docs/api/conventions.md` - API naming, pagination, error format
-- `docs/deployment/ci-cd.md` - CI/CD setup
+- `docs/deployment/ci-cd.md` - CI setup (build and test)
+- `.agents/skills/deployment/` - deployment skill with worked examples; Claude Code uses `.claude/skills/deployment/`. Hosting, secrets and deployment belong to the user and their agent
 - `shared/api-contracts/openapi.yml` - API contract (source of truth)
 {% if "backend" in platforms %}- `backend/docs/entities/` - entity definitions, fields, relationships
-- `backend/docs/azure-setup.md` - Azure deployment
-{% endif %}{% if "web-user-app" in platforms %}- `web-user-app/docs/guide.md` - user-facing web app structure, auth flow, deployment
+{% endif %}{% if "web-user-app" in platforms %}- `web-user-app/docs/guide.md` - user-facing web app structure and auth flow
 {% endif %}{% if "web-admin-portal" in platforms %}- `web-admin-portal/docs/guide.md` - admin shell, credentials auth, operational workflows
-{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}- `docs/deployment/cloudflare-setup.md` - Cloudflare/OpenNext deployment
 {% endif %}
 
 ## Conventions

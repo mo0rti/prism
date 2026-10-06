@@ -1,11 +1,11 @@
 ---
 name: jpa-kotlin-patterns
-description: JPA / Kotlin Entity Patterns. Use when creating or modifying entities, relationships, repositories, or working with Hibernate and {{ 'PostgreSQL' if database == 'postgres' else 'MySQL' }}.
+description: JPA / Kotlin Entity Patterns. Use when creating or modifying entities, relationships, repositories, or working with Hibernate and PostgreSQL.
 ---
 
 # JPA / Kotlin Entity Patterns ({{ project_name }} Backend)
 
-Entity, repository, and Hibernate patterns for this **Spring Boot 4 + Kotlin + {% if database == 'postgres' %}PostgreSQL{% else %}MySQL{% endif %}** project.
+Entity, repository, and Hibernate patterns for this **Spring Boot 4 + Kotlin + PostgreSQL** project.
 
 ## Standard Entity Patterns
 
@@ -134,7 +134,6 @@ var enumValues: MutableSet<SomeEnum> = mutableSetOf()
 ```
 
 ## JSONB Columns
-{% if database == 'postgres' %}
 Use `@Type(JsonType::class)` from hypersistence-utils for `List` or `Map` types:
 
 ```kotlin
@@ -142,15 +141,6 @@ Use `@Type(JsonType::class)` from hypersistence-utils for `List` or `Map` types:
 @Column(columnDefinition = "jsonb")
 var metadata: Map<String, Any> = emptyMap()
 ```
-{% else %}
-Use `@Type(JsonType::class)` from hypersistence-utils for `List` or `Map` types:
-
-```kotlin
-@Type(JsonType::class)
-@Column(columnDefinition = "json")
-var metadata: Map<String, Any> = emptyMap()
-```
-{% endif %}
 
 ## Collection Management
 

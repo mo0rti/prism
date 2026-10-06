@@ -109,11 +109,6 @@ def _answers() -> dict[str, Any]:
         "description": DESCRIPTION,
         "platforms": list(PLATFORMS),
         "auth_methods": list(AUTH_METHODS),
-        "database": "postgres",
-        "supporting_services": [],
-        "use_docker": True,
-        "cloud_provider": "azure",
-        "web_hosting": "cloudflare",
         "github_org": "",
     }
 
@@ -278,7 +273,7 @@ Synthetic local dashboard fixture.
 - Description: {DESCRIPTION}
 - Apps: {', '.join(PLATFORMS)}
 - Auth methods: {', '.join(AUTH_METHODS)}
-- Infrastructure choices: Postgres, Docker, Azure
+- Local development services: Postgres through Docker Compose
 - Important correction or note: Synthetic local documentation; no application or compliance claim.
 
 ## Setup interview

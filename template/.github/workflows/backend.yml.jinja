@@ -1,5 +1,5 @@
 {% if "backend" in platforms %}
-name: Backend CI/CD
+name: Backend CI
 
 on:
   push:
@@ -49,77 +49,4 @@ jobs:
           name: test-results
           path: backend/build/reports/tests/
 
-  build-and-push:
-    name: Build & Push Image
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    outputs:
-      image_pushed: {% raw %}${{ steps.push.outcome == 'success' }}{% endraw %}
-    env:
-      PRISM_RELEASE_CONFIGURED: {% raw %}${{ secrets.AZURE_CONTAINER_REGISTRY != '' && secrets.ACR_USERNAME != '' && secrets.ACR_PASSWORD != '' }}{% endraw %}
-    steps:
-      - name: Report skipped image push
-        if: env.PRISM_RELEASE_CONFIGURED != 'true'
-        run: |
-          echo "::warning title=Image push skipped::Set the AZURE_CONTAINER_REGISTRY, ACR_USERNAME and ACR_PASSWORD secrets to build and push the backend image. No image was pushed, so no deploy follows."
-          echo "### Image push skipped" >> "$GITHUB_STEP_SUMMARY"
-          echo "The AZURE_CONTAINER_REGISTRY, ACR_USERNAME and ACR_PASSWORD secrets are not all set, so the backend image was not built or pushed and the deploy job does not run." >> "$GITHUB_STEP_SUMMARY"
-
-      - uses: actions/checkout@v4
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-
-      - name: Login to Azure Container Registry
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        uses: azure/docker-login@v2
-        with:
-          login-server: {% raw %}${{ secrets.AZURE_CONTAINER_REGISTRY }}{% endraw %}
-          username: {% raw %}${{ secrets.ACR_USERNAME }}{% endraw %}
-          password: {% raw %}${{ secrets.ACR_PASSWORD }}{% endraw %}
-
-      - name: Build and push Docker image
-        id: push
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        working-directory: backend
-        run: |
-          IMAGE={% raw %}${{ secrets.AZURE_CONTAINER_REGISTRY }}{% endraw %}/{{ project_slug }}-backend
-          docker build -t $IMAGE:{% raw %}${{ github.sha }}{% endraw %} -t $IMAGE:latest .
-          docker push $IMAGE:{% raw %}${{ github.sha }}{% endraw %}
-          docker push $IMAGE:latest
-
-  deploy:
-    name: Deploy to Azure
-    needs: build-and-push
-    if: needs.build-and-push.outputs.image_pushed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production
-    env:
-      PRISM_RELEASE_CONFIGURED: {% raw %}${{ secrets.AZURE_CREDENTIALS != '' && secrets.AZURE_CONTAINER_REGISTRY != '' && secrets.AZURE_RESOURCE_GROUP != '' && secrets.AZURE_CONTAINER_APP_NAME != '' }}{% endraw %}
-    steps:
-      - name: Report skipped deploy
-        if: env.PRISM_RELEASE_CONFIGURED != 'true'
-        run: |
-          echo "::warning title=Deploy skipped::Set the AZURE_CREDENTIALS, AZURE_CONTAINER_REGISTRY, AZURE_RESOURCE_GROUP and AZURE_CONTAINER_APP_NAME secrets to deploy the backend to Azure Container Apps. No deploy ran."
-          echo "### Deploy skipped" >> "$GITHUB_STEP_SUMMARY"
-          echo "The AZURE_CREDENTIALS, AZURE_CONTAINER_REGISTRY, AZURE_RESOURCE_GROUP and AZURE_CONTAINER_APP_NAME secrets are not all set, so the backend was not deployed to Azure Container Apps." >> "$GITHUB_STEP_SUMMARY"
-
-      - uses: actions/checkout@v4
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-
-      - name: Azure Login
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        uses: azure/login@v2
-        with:
-          creds: {% raw %}${{ secrets.AZURE_CREDENTIALS }}{% endraw %}
-
-      - name: Deploy to Container Apps
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        run: |
-          IMAGE={% raw %}${{ secrets.AZURE_CONTAINER_REGISTRY }}{% endraw %}/{{ project_slug }}-backend:{% raw %}${{ github.sha }}{% endraw %}
-          REVISION="sha-$(echo {% raw %}${{ github.sha }}{% endraw %} | head -c 8)"
-          az containerapp update \
-            --resource-group {% raw %}${{ secrets.AZURE_RESOURCE_GROUP }}{% endraw %} \
-            --name {% raw %}${{ secrets.AZURE_CONTAINER_APP_NAME }}{% endraw %} \
-            --image "$IMAGE" \
-            --revision-suffix "$REVISION"
 {% endif %}

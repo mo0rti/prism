@@ -15,7 +15,7 @@
 - `next-intl` for URL-level locale handling
 - NextAuth for web session management
 - a same-origin `/api/v1/*` proxy for backend calls
-- Cloudflare/OpenNext deployment structure
+- no hosting configuration: deployment is chosen per project (see the `deployment` skill)
 
 ## Suggested Structure
 
@@ -69,11 +69,10 @@ task web-user-app:dev
 task web-user-app:lint
 task web-user-app:typecheck
 task web-user-app:build
-task web-user-app:deploy
 ```
 
 ## Related Docs
 
 - [Architecture Overview](../../docs/architecture.md) for platform map and auth flow
 - [API Conventions](../../docs/api/conventions.md) for proxy and backend contract expectations
-- [Cloudflare Deployment](../../docs/deployment/cloudflare-setup.md) for preview and deploy setup
+- The `deployment` skill (`.agents/skills/deployment/` or `.claude/skills/deployment/`) for worked hosting examples; hosting, secrets and deployment are yours to choose

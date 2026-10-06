@@ -58,10 +58,10 @@ The generated samples are working starting points, not verified products.
 | --- | --- |
 | Backend | The backend tests pass on JDK 21 for each rendered variant, and the `V4` migration is checked on PostgreSQL. The `backend-smoke` CI job packages the boot jar and builds the Docker image. |
 | Android | Unit tests pass, and instrumented tests and an emulator sign-in pass on a local emulator. The `android-build` CI job runs the unit tests, `assembleDebug` and lint. |
-| Web (user app and admin portal) | Install, lint, typecheck, the auth check script, the Next.js build and the Cloudflare build pass locally for both apps. The `web-smoke` CI job adds a Wrangler dry run. No live Cloudflare deployment has been verified. |
+| Web (user app and admin portal) | Install, lint, typecheck, the auth check script and the Next.js build pass locally for both apps, and the `web-smoke` CI job runs the same steps. No hosting configuration is generated. |
 | iOS | Swift compilation and tests are verified by the `ios-build` job on a macOS runner in `template-validation.yml`, which passes. There is no local iOS check on Windows or Linux. |
 
-Sign in with Apple and the native mobile runtime remain experimental. A generated sample build is not evidence that human and agent collaboration works; core acceptance uses disposable neutral workspaces. Azure backend hosting, Cloudflare/OpenNext web hosting and PostgreSQL are the offered deployment and database choices, and Redis is an optional supporting service. No live deployment has been verified.
+Sign in with Apple and the native mobile runtime remain experimental. A generated sample build is not evidence that human and agent collaboration works; core acceptance uses disposable neutral workspaces. The template has no deployment, database or supporting-service questions: a backend app always gets a PostgreSQL development database in Docker Compose, and Azure Container Apps and Cloudflare/OpenNext deployment are worked examples in the generated `deployment` skill. No live deployment has been verified.
 
 ## Public release
 

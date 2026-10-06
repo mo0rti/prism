@@ -224,6 +224,12 @@ mirror much of the Claude command surface for Codex:
 | `document-entity` | Updates or creates backend entity documentation |
 | `generate-clients` | Regenerates API clients from the shared OpenAPI contract |
 
+### Deployment Skill
+
+| Skill | Surface | Purpose |
+|------|---------|---------|
+| `deployment` | Claude, Codex | Worked examples for deploying the generated stacks: the backend container to Azure Container Apps, the web apps to Cloudflare through OpenNext, and notes on mobile store releases. The user and their agent own the cloud choice, the secrets and the deployment; the files are an example for one choice |
+
 {% if "backend" in platforms %}
 ### Backend Skills
 

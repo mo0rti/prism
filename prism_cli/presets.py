@@ -42,7 +42,6 @@ PRESETS: tuple[Preset, ...] = (
             "auth_methods": ["google", "password"],
         },
         notes=(
-            "Cloudflare deployment still needs live-account validation.",
             "Admin Web Portal currently requires password auth.",
         ),
     ),
@@ -86,10 +85,6 @@ ALL_AUTH_CHOICES: tuple[tuple[str, str], ...] = (
 DEFAULT_ANSWERS: dict[str, Any] = {
     "description": "A multi-platform application",
     "auth_methods": ["google", "password"],
-    "database": "postgres",
-    "use_docker": True,
-    "cloud_provider": "azure",
-    "web_hosting": "cloudflare",
     "github_org": "",
 }
 

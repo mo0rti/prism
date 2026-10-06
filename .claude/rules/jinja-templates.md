@@ -13,8 +13,8 @@ When creating or editing `.jinja` files, validate for these common issues:
 - All `{{` have matching `}}`
 - All `{% if %}` have matching `{% endif %}`
 - All `{% for %}` have matching `{% endfor %}`
-- Variables match those in `copier.yml`: `project_name`, `project_slug`, `package_identifier`, `description`, `platforms`, `auth_methods`, `database`, `use_docker`, `github_org`
-- `cloud_provider` and `web_hosting` are questions with one choice each (`azure`; `cloudflare`, asked only when a web platform is selected), so templates can assume those values without conditionals
+- Variables match those in `copier.yml`: `project_name`, `project_slug`, `package_identifier`, `description`, `platforms`, `auth_methods`, `github_org`
+- The template assumes PostgreSQL for a backend's local database and generates `docker-compose.yml` whenever a backend app exists; deployment is the generated `deployment` skill, not a question
 
 ## Platform Conditionals
 - Use `{% if "backend" in platforms %}` (not `{% if backend %}`)

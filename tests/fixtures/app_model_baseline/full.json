@@ -2173,8 +2173,6 @@
                 "google",
                 "password"
               ],
-              "cloud_provider": "azure",
-              "database": "postgres",
               "description": "Baseline full workspace",
               "github_org": "",
               "package_identifier": "com.example.baselinefull",
@@ -2186,10 +2184,7 @@
                 "mobile-ios"
               ],
               "project_name": "Baseline Full",
-              "project_slug": "baseline-full",
-              "supporting_services": [],
-              "use_docker": true,
-              "web_hosting": "cloudflare"
+              "project_slug": "baseline-full"
             },
             "answers_file": "<ROOT>/.copier-answers.yml",
             "answers_present": true,
@@ -2207,8 +2202,6 @@
               "google",
               "password"
             ],
-            "cloud_provider": "azure",
-            "database": "postgres",
             "description": "Baseline full workspace",
             "github_org": "",
             "package_identifier": "com.example.baselinefull",
@@ -2220,10 +2213,7 @@
               "mobile-ios"
             ],
             "project_name": "Baseline Full",
-            "project_slug": "baseline-full",
-            "supporting_services": [],
-            "use_docker": true,
-            "web_hosting": "cloudflare"
+            "project_slug": "baseline-full"
           },
           "intake": {
             "pending": 0,
@@ -2930,8 +2920,6 @@
             "google",
             "password"
           ],
-          "cloud_provider": "azure",
-          "database": "postgres",
           "description": "Baseline full workspace",
           "github_org": "",
           "package_identifier": "com.example.baselinefull",
@@ -2943,10 +2931,7 @@
             "mobile-ios"
           ],
           "project_name": "Baseline Full",
-          "project_slug": "baseline-full",
-          "supporting_services": [],
-          "use_docker": true,
-          "web_hosting": "cloudflare"
+          "project_slug": "baseline-full"
         },
         "answers_file": "<ROOT>/.copier-answers.yml",
         "answers_present": true,
@@ -2964,8 +2949,6 @@
           "google",
           "password"
         ],
-        "cloud_provider": "azure",
-        "database": "postgres",
         "description": "Baseline full workspace",
         "github_org": "",
         "package_identifier": "com.example.baselinefull",
@@ -2977,10 +2960,7 @@
           "mobile-ios"
         ],
         "project_name": "Baseline Full",
-        "project_slug": "baseline-full",
-        "supporting_services": [],
-        "use_docker": true,
-        "web_hosting": "cloudflare"
+        "project_slug": "baseline-full"
       },
       "intake": {
         "pending": 0,

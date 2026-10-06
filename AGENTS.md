@@ -33,7 +33,7 @@ and must not be referenced. They are replaced by the wiki lifecycle system
 ## Repository Focus
 
 - This template scaffolds backend, web-user-app, web-admin-portal, mobile-android, and mobile-ios slices.
-- Backend, Android and web samples are verified locally. The iOS sample is verified only by the macOS CI job, and live Cloudflare and Azure deployments are unverified. Apple Sign-In is experimental. Keep maturity language explicit and honest, and keep `docs/current-status.md` equal to the verification that exists.
+- Backend, Android and web samples are verified locally. The iOS sample is verified only by the macOS CI job. The generated `deployment` skill's Azure and Cloudflare examples are not verified against live accounts. Apple Sign-In is experimental. Keep maturity language explicit and honest, and keep `docs/current-status.md` equal to the verification that exists.
 - Never leave questionnaire-visible options silently generating broken output.
 
 ## Working Rules

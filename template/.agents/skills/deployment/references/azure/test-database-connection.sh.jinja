@@ -44,12 +44,3 @@ echo "  psql not installed. Install PostgreSQL client to test connectivity."
     echo "  Alternatively, check via Azure Portal or use the JDBC URL in your app."
 fi
 
-{% if "redis" in supporting_services %}
-echo ""
-echo "--- Redis Connection Test ---"
-if command -v redis-cli &>/dev/null; then
-    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -a "$REDIS_PASSWORD" --tls PING 2>/dev/null && echo "  Redis connection successful!" || echo "  Redis connection failed"
-else
-    echo "  redis-cli not installed. Install Redis tools to test connectivity."
-fi
-{% endif %}

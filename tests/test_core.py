@@ -90,14 +90,14 @@ class ValidateAnswersTests(unittest.TestCase):
         self.assertEqual([], errors)
         self.assertIn("Apple Sign-In remains experimental.", warnings)
         self.assertIn("Validate iOS generation locally on macOS before treating it as build-proven.", warnings)
-        self.assertIn("Generated web slices still need live Cloudflare deployment validation.", warnings)
+        self.assertEqual(2, len(warnings))
 
 
 class MergeAnswersTests(unittest.TestCase):
     def test_override_wins(self) -> None:
-        merged = merge_answers({"project_name": "Base", "use_docker": True}, {"use_docker": False})
+        merged = merge_answers({"project_name": "Base", "github_org": "base"}, {"github_org": "other"})
         self.assertEqual("Base", merged["project_name"])
-        self.assertFalse(merged["use_docker"])
+        self.assertEqual("other", merged["github_org"])
 
 
 class LoadAnswersFileTests(unittest.TestCase):
@@ -680,7 +680,7 @@ class GeneratedProjectStructureTests(unittest.TestCase):
         self.assertEqual([], warnings)
         self.assertEqual(["backend"], platforms)
 
-    def test_requires_cloudflare_docs_for_web_projects(self) -> None:
+    def test_web_projects_need_no_hosting_docs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "README.md").write_text("", encoding="utf-8")
@@ -696,7 +696,7 @@ class GeneratedProjectStructureTests(unittest.TestCase):
             errors, _warnings, platforms = validate_generated_project_structure(root)
 
         self.assertIn("web-user-app", platforms)
-        self.assertIn("Web slices were detected but docs/deployment/cloudflare-setup.md is missing.", errors)
+        self.assertEqual([], errors)
 
 
 class WorkspaceManifestTests(unittest.TestCase):

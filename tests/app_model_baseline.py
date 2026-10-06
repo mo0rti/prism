@@ -54,11 +54,6 @@ project:
   auth_methods:
   - google
   - password
-  database: postgres
-  supporting_services: []
-  use_docker: true
-  cloud_provider: azure
-  web_hosting: cloudflare
   github_org: ''
 apps:
   - id: backend
@@ -139,11 +134,6 @@ platforms:
 auth_methods:
 - google
 - password
-database: postgres
-supporting_services: []
-use_docker: true
-cloud_provider: azure
-web_hosting: cloudflare
 github_org: ''
 """
 
@@ -162,8 +152,6 @@ def build_full_workspace(root: Path) -> Path:
         (root / ".github" / "workflows" / f"{platform}.yml").write_text("name: ci\n", encoding="utf-8")
     for name in ("README.md", "AGENTS.md", "Taskfile.yml"):
         (root / name).write_text(f"# {name}\n", encoding="utf-8")
-    (root / "docs" / "deployment").mkdir(parents=True)
-    (root / "docs" / "deployment" / "cloudflare-setup.md").write_text("# Cloudflare setup\n", encoding="utf-8")
     _install_workflow(root, "full", upgrade=True)
     add_baseline_wiki_content(root, ["backend", "mobile-android", "web-user-app", "mobile-ios"])
     return root

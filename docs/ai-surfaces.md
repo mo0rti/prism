@@ -155,6 +155,7 @@ Examples:
 - error handling
 - security/auth
 - testing guidance
+- deployment (worked examples for the backend and web apps; the same skill, with the same reference files, in `.claude/skills/` and `.agents/skills/`)
 
 ## Same Capability, Different Packaging
 

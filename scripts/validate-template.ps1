@@ -211,9 +211,7 @@ function Assert-NoCopierPlaceholders {
         "{{ ios_module_name",
         "{{ description",
         "{{ auth_methods",
-        "{{ platforms",
-        "{{ cloud_provider",
-        "{{ web_hosting"
+        "{{ platforms"
     )
 
     foreach ($pattern in $patterns) {
@@ -433,6 +431,85 @@ function Validate-WikiStructure {
     Assert-TreeNotContains -Root $Root -Needle '/advisory-review' -Message "Generated output must not reference the retired /advisory-review command."
 }
 
+function Assert-NoDeploymentArtifacts {
+    param([string]$Root)
+
+    # Deployment is a skill, not generated project files: no infra, hosting config or deploy job.
+    Assert-PathMissing -Path (Join-Path $Root "infra") -Message "Generated project must not contain infra/."
+    Assert-PathMissing -Path (Join-Path $Root "backend\docs\azure-setup.md") -Message "Generated project must not contain backend/docs/azure-setup.md."
+    Assert-PathMissing -Path (Join-Path $Root "docs\deployment\cloudflare-setup.md") -Message "Generated project must not contain docs/deployment/cloudflare-setup.md."
+    foreach ($webApp in @("web-user-app", "web-admin-portal")) {
+        foreach ($hostingFile in @("wrangler.jsonc", "open-next.config.ts", ".dev.vars.example")) {
+            Assert-PathMissing -Path (Join-Path $Root "$webApp\$hostingFile") -Message "Generated project must not contain $webApp/$hostingFile."
+        }
+        $packageJson = Join-Path $Root "$webApp\package.json"
+        if (Test-Path -LiteralPath $packageJson) {
+            foreach ($hostingNeedle in @("opennextjs", "wrangler", "build:cloudflare")) {
+                Assert-FileNotContains -Path $packageJson -Needle $hostingNeedle -Message "$webApp/package.json must not reference $hostingNeedle."
+            }
+        }
+    }
+    foreach ($workflow in Get-ChildItem -LiteralPath (Join-Path $Root ".github\workflows") -Filter "*.yml" -File) {
+        $text = Get-Content -Raw -LiteralPath $workflow.FullName
+        foreach ($deployNeedle in @("secrets.", "wrangler", "az containerapp", "fastlane", "environment: production")) {
+            if ($text.Contains($deployNeedle)) {
+                throw "Generated workflow $($workflow.Name) must build and test only, but it contains '$deployNeedle'."
+            }
+        }
+    }
+    Assert-TreeNotContains -Root $Root -Needle "REDIS_" -Message "Generated output must not contain Redis configuration."
+}
+
+function Assert-DeploymentSkill {
+    param(
+        [string]$Root,
+        [bool]$Backend = $false,
+        [bool]$Web = $false,
+        [bool]$AllAuthMethods = $false
+    )
+
+    foreach ($layer in @(".claude", ".agents")) {
+        $skill = Join-Path $Root "$layer\skills\deployment"
+        Assert-PathExists -Path (Join-Path $skill "SKILL.md") -Message "Generated project missing $layer/skills/deployment/SKILL.md."
+        Assert-FileContains -Path (Join-Path $skill "SKILL.md") -Needle "name: deployment" -Message "$layer deployment skill must be named deployment."
+        Assert-FileContains -Path (Join-Path $skill "SKILL.md") -Needle "belong to the user and their agent" -Message "$layer deployment skill must state who owns the cloud choice, the secrets and the deployment."
+
+        if ($Backend) {
+            Assert-PathExists -Path (Join-Path $skill "references\azure-setup.md") -Message "$layer deployment skill missing the Azure guide."
+            Assert-FileContains -Path (Join-Path $skill "references\azure\app-secrets.env.example") -Needle "JWT_ACCESS_TOKEN_EXPIRY=" -Message "Azure app secrets should use JWT access expiry."
+            Assert-FileContains -Path (Join-Path $skill "references\azure\app-secrets.env.example") -Needle "JWT_REFRESH_TOKEN_EXPIRY=" -Message "Azure app secrets should use JWT refresh expiry."
+            Assert-FileContains -Path (Join-Path $skill "references\azure\06-deploy-backend.sh") -Needle 'JWT_ACCESS_TOKEN_EXPIRY=${JWT_ACCESS_TOKEN_EXPIRY:-3600}' -Message "Azure deploy script should pass JWT access expiry."
+            Assert-FileContains -Path (Join-Path $skill "references\azure\06-deploy-backend.sh") -Needle 'JWT_REFRESH_TOKEN_EXPIRY=${JWT_REFRESH_TOKEN_EXPIRY:-604800}' -Message "Azure deploy script should pass JWT refresh expiry."
+            if ($AllAuthMethods) {
+                Assert-FileContains -Path (Join-Path $skill "references\azure\06-deploy-backend.sh") -Needle 'FACEBOOK_CLIENT_SECRET=secretref:facebook-client-secret' -Message "Azure deploy script should use FACEBOOK_CLIENT_SECRET."
+                Assert-FileContains -Path (Join-Path $skill "references\azure\check-secrets.sh") -Needle 'check_var "FACEBOOK_CLIENT_SECRET"' -Message "Azure secret checks should use FACEBOOK_CLIENT_SECRET."
+            }
+            foreach ($azureScript in Get-ChildItem -LiteralPath (Join-Path $skill "references\azure") -Filter "*.sh") {
+                Assert-FileUsesLfLineEndings -Path $azureScript.FullName -Message "Deployment skill Azure shell scripts should use LF line endings for Bash compatibility."
+            }
+        }
+        else {
+            Assert-PathMissing -Path (Join-Path $skill "references\azure") -Message "$layer deployment skill must not carry the Azure example without a backend."
+        }
+
+        if ($Web) {
+            Assert-FileContains -Path (Join-Path $skill "references\cloudflare-setup.md") -Needle 'Cloudflare Workers' -Message "Cloudflare guide should describe Workers, not Pages."
+            Assert-PathExists -Path (Join-Path $skill "references\cloudflare\open-next.config.ts") -Message "$layer deployment skill missing the OpenNext config example."
+            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.web-user-app.jsonc") -Needle '"observability": {' -Message "User web Wrangler example should enable observability."
+            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.web-user-app.jsonc") -Needle '"upload_source_maps": true' -Message "User web Wrangler example should upload source maps."
+            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.web-user-app.jsonc") -Needle '"API_BASE_URL": "https://api.' -Message "User web Wrangler example should include API_BASE_URL."
+            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.web-admin-portal.jsonc") -Needle '"observability": {' -Message "Admin web Wrangler example should enable observability."
+            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.web-admin-portal.jsonc") -Needle '"API_BASE_URL": "https://api.' -Message "Admin web Wrangler example should include API_BASE_URL."
+            Assert-PathExists -Path (Join-Path $skill "references\cloudflare\dev.vars.web-user-app.example") -Message "$layer deployment skill missing the user web preview variables example."
+            Assert-PathExists -Path (Join-Path $skill "references\cloudflare\dev.vars.web-admin-portal.example") -Message "$layer deployment skill missing the admin web preview variables example."
+        }
+        else {
+            Assert-PathMissing -Path (Join-Path $skill "references\cloudflare") -Message "$layer deployment skill must not carry the Cloudflare example without a web app."
+        }
+    }
+    Assert-PathExists -Path (Join-Path $Root ".agents\skills\deployment\agents\openai.yaml") -Message "Generated project missing .agents/skills/deployment/agents/openai.yaml."
+}
+
 function Validate-BackendOnly {
     param(
         [string]$Root,
@@ -458,8 +535,11 @@ function Validate-BackendOnly {
 
     Assert-PathMissing -Path (Join-Path $Root "web-user-app") -Message "Backend-only sample should not generate web-user-app."
     Assert-PathMissing -Path (Join-Path $Root "web-admin-portal") -Message "Backend-only sample should not generate web-admin-portal."
-    Assert-PathMissing -Path (Join-Path $Root "docs\deployment\cloudflare-setup.md") -Message "Backend-only sample should not include Cloudflare docs."
     Assert-PathMissing -Path (Join-Path $Root "_templates\page") -Message "Backend-only sample should not include page generators."
+    Assert-NoDeploymentArtifacts -Root $Root
+    Assert-DeploymentSkill -Root $Root -Backend $true -Web $false -AllAuthMethods $true
+    Assert-PathExists -Path (Join-Path $Root "docker-compose.yml") -Message "A sample with a backend app must generate docker-compose.yml for the local development database."
+    Assert-FileContains -Path (Join-Path $Root "docker-compose.yml") -Needle "postgres:16-alpine" -Message "docker-compose.yml must run the PostgreSQL development database."
 
     Assert-FileContains -Path (Join-Path $Root ".env.example") -Needle "APPLE_CLIENT_ID=" -Message "Backend-only sample should include Apple env vars when Apple auth is selected."
     Assert-FileContains -Path (Join-Path $Root ".env.example") -Needle "JWT_ACCESS_TOKEN_EXPIRY=" -Message "Backend-only sample should include JWT access expiry env vars."
@@ -478,21 +558,12 @@ function Validate-BackendOnly {
     Assert-PathMissing -Path (Join-Path $Root "docs\features\auth.md") -Message "Generated project must not contain legacy docs/features/auth.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\example-feature.md") -Message "Generated project must not contain legacy docs/features/example-feature.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\_template.md") -Message "Generated project must not contain legacy docs/features/_template.md."
-    Assert-FileContains -Path (Join-Path $Root "infra\azure\app-secrets.env.example") -Needle "JWT_ACCESS_TOKEN_EXPIRY=" -Message "Azure app secrets should use JWT access expiry."
-    Assert-FileContains -Path (Join-Path $Root "infra\azure\app-secrets.env.example") -Needle "JWT_REFRESH_TOKEN_EXPIRY=" -Message "Azure app secrets should use JWT refresh expiry."
-    Assert-FileContains -Path (Join-Path $Root "infra\azure\app-secrets.env.example") -Needle "APPLE_CLIENT_ID=" -Message "Azure app secrets should include Apple variables when Apple auth is selected."
-    Assert-FileContains -Path (Join-Path $Root "infra\azure\06-deploy-backend.sh") -Needle 'JWT_ACCESS_TOKEN_EXPIRY=${JWT_ACCESS_TOKEN_EXPIRY:-3600}' -Message "Azure deploy script should pass JWT access expiry."
-    Assert-FileContains -Path (Join-Path $Root "infra\azure\06-deploy-backend.sh") -Needle 'JWT_REFRESH_TOKEN_EXPIRY=${JWT_REFRESH_TOKEN_EXPIRY:-604800}' -Message "Azure deploy script should pass JWT refresh expiry."
-    Assert-FileContains -Path (Join-Path $Root "infra\azure\06-deploy-backend.sh") -Needle 'FACEBOOK_CLIENT_SECRET=secretref:facebook-client-secret' -Message "Azure deploy script should use FACEBOOK_CLIENT_SECRET."
-    Assert-FileContains -Path (Join-Path $Root "infra\azure\check-secrets.sh") -Needle 'check_var "FACEBOOK_CLIENT_SECRET"' -Message "Azure secret checks should use FACEBOOK_CLIENT_SECRET."
+    Assert-FileContains -Path (Join-Path $Root ".claude\skills\deployment\references\azure\app-secrets.env.example") -Needle "APPLE_CLIENT_ID=" -Message "Azure app secrets should include Apple variables when Apple auth is selected."
 
     Assert-TreeNotContains -Root $Root -Needle "JWT_EXPIRATION_MS" -Message "Generated backend-only output should not contain stale JWT_EXPIRATION_MS wiring."
     Assert-TreeNotContains -Root $Root -Needle "FACEBOOK_APP_SECRET" -Message "Generated backend-only output should not use stale Facebook app-secret names."
 
     Assert-FileUsesLfLineEndings -Path (Join-Path $Root "backend\gradlew") -Message "Generated backend gradlew should use LF line endings for Linux compatibility."
-    foreach ($azureScript in Get-ChildItem -LiteralPath (Join-Path $Root "infra\azure") -Filter "*.sh") {
-        Assert-FileUsesLfLineEndings -Path $azureScript.FullName -Message "Generated Azure shell scripts should use LF line endings for Bash compatibility."
-    }
 
     $javaCommand = Get-Command java -ErrorAction SilentlyContinue
     if ($RunSmoke -and $null -ne $javaCommand) {
@@ -586,6 +657,7 @@ function Validate-BackendPasswordOnly {
     )
 
     Assert-NoCopierPlaceholders -Root $Root
+    Assert-NoDeploymentArtifacts -Root $Root
 
     Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@PostMapping("/register")' -Message "Password-only backend sample must expose the register endpoint."
     Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@PostMapping("/login")' -Message "Password-only backend sample must expose the login endpoint."
@@ -858,24 +930,16 @@ function Validate-WebSample {
     Assert-PathExists -Path (Join-Path $Root "web-admin-portal") -Message "Web sample should generate web-admin-portal."
     Assert-PathExists -Path (Join-Path $Root ".github\workflows\web-user-app.yml") -Message "Web sample should generate the user web workflow."
     Assert-PathExists -Path (Join-Path $Root ".github\workflows\web-admin-portal.yml") -Message "Web sample should generate the admin web workflow."
-    Assert-PathExists -Path (Join-Path $Root "docs\deployment\cloudflare-setup.md") -Message "Web sample should generate Cloudflare docs."
     Assert-PathExists -Path (Join-Path $Root "_templates\page") -Message "Web sample should include page generators."
-    Assert-PathExists -Path (Join-Path $Root "web-user-app\.dev.vars.example") -Message "Web sample should include a Cloudflare preview env example for the user web app."
-    Assert-PathExists -Path (Join-Path $Root "web-admin-portal\.dev.vars.example") -Message "Web sample should include a Cloudflare preview env example for the admin portal."
+    Assert-NoDeploymentArtifacts -Root $Root
+    Assert-DeploymentSkill -Root $Root -Backend $true -Web $true
 
     Assert-PathMissing -Path (Join-Path $Root "docs\advisory-board.md") -Message "Generated project must not contain legacy docs/advisory-board.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\auth.md") -Message "Generated project must not contain legacy docs/features/auth.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\example-feature.md") -Message "Generated project must not contain legacy docs/features/example-feature.md."
     Assert-TreeNotContains -Root $Root -Needle "JWT_EXPIRATION_MS" -Message "Generated web sample should not contain stale JWT_EXPIRATION_MS wiring."
-    Assert-FileContains -Path (Join-Path $Root "web-user-app\wrangler.jsonc") -Needle '"observability": {' -Message "User web Wrangler config should enable observability."
-    Assert-FileContains -Path (Join-Path $Root "web-user-app\wrangler.jsonc") -Needle '"upload_source_maps": true' -Message "User web Wrangler config should upload source maps."
-    Assert-FileContains -Path (Join-Path $Root "web-user-app\wrangler.jsonc") -Needle '"API_BASE_URL": "https://api.review-web.com"' -Message "User web Wrangler config should include API_BASE_URL."
-    Assert-FileContains -Path (Join-Path $Root "web-admin-portal\wrangler.jsonc") -Needle '"observability": {' -Message "Admin web Wrangler config should enable observability."
-    Assert-FileContains -Path (Join-Path $Root "web-admin-portal\wrangler.jsonc") -Needle '"upload_source_maps": true' -Message "Admin web Wrangler config should upload source maps."
-    Assert-FileContains -Path (Join-Path $Root "web-admin-portal\wrangler.jsonc") -Needle '"API_BASE_URL": "https://api.review-web.com"' -Message "Admin web Wrangler config should include API_BASE_URL."
-    Assert-FileContains -Path (Join-Path $Root ".github\workflows\web-user-app.yml") -Needle 'run: npx wrangler deploy --dry-run' -Message "User web workflow should smoke-test Wrangler packaging."
-    Assert-FileContains -Path (Join-Path $Root ".github\workflows\web-admin-portal.yml") -Needle 'run: npx wrangler deploy --dry-run' -Message "Admin web workflow should smoke-test Wrangler packaging."
-    Assert-FileContains -Path (Join-Path $Root "docs\deployment\cloudflare-setup.md") -Needle 'Cloudflare Workers' -Message "Generated Cloudflare docs should describe Workers, not Pages."
+    Assert-FileContains -Path (Join-Path $Root ".github\workflows\web-user-app.yml") -Needle 'run: npm run build' -Message "User web workflow should build the app."
+    Assert-FileContains -Path (Join-Path $Root ".github\workflows\web-admin-portal.yml") -Needle 'run: npm run build' -Message "Admin web workflow should build the app."
 
     $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
     if ($RunSmoke -and $null -ne $npmCommand) {
@@ -901,16 +965,6 @@ function Validate-WebSample {
                 & npm run build | Out-Host
                 if ($LASTEXITCODE -ne 0) {
                     throw "Generated $webApp sample failed 'npm run build'."
-                }
-
-                & npm run build:cloudflare | Out-Host
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Generated $webApp sample failed 'npm run build:cloudflare'."
-                }
-
-                & npx wrangler deploy --dry-run | Out-Host
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Generated $webApp sample failed 'wrangler deploy --dry-run'."
                 }
             }
             finally {
@@ -940,6 +994,9 @@ function Validate-AndroidSample {
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "web-user-app/" -Message "Android-only AGENTS.md should not reference web-user-app/."
 
     Assert-PathExists -Path (Join-Path $Root "mobile-android") -Message "Android sample should generate mobile-android."
+    Assert-NoDeploymentArtifacts -Root $Root
+    Assert-DeploymentSkill -Root $Root -Backend $true -Web $false
+    Assert-PathExists -Path (Join-Path $Root ".claude\skills\deployment\references\mobile-store-release.md") -Message "Android sample should carry the mobile store release notes in the deployment skill."
     Assert-PathExists -Path (Join-Path $Root "backend\gradlew") -Message "Android sample should still include backend Gradle wrapper files."
 }
 
@@ -959,6 +1016,8 @@ function Validate-IosSample {
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-android/" -Message "iOS-only AGENTS.md should not reference mobile-android/."
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "web-user-app/" -Message "iOS-only AGENTS.md should not reference web-user-app/."
 
+    Assert-NoDeploymentArtifacts -Root $Root
+    Assert-DeploymentSkill -Root $Root -Backend $true -Web $false
     Assert-PathExists -Path (Join-Path $Root "mobile-ios\review-app") -Message "iOS sample should keep filesystem-safe project_slug directories."
     Assert-PathExists -Path (Join-Path $Root "mobile-ios\review-appTests") -Message "iOS sample should generate a test directory."
 
@@ -1046,6 +1105,8 @@ switch ($Mode) {
             "auth_methods=[password]"
         )
         Validate-WikiStructure -Root $standaloneRoot
+        Assert-NoDeploymentArtifacts -Root $standaloneRoot
+        Assert-DeploymentSkill -Root $standaloneRoot -Backend $false -Web $true
         foreach ($excluded in @("backend", "infra", "docker-compose.yml", ".github/workflows/backend.yml", ".cursor/rules/backend.mdc")) {
             Assert-PathMissing -Path (Join-Path $standaloneRoot $excluded) -Message "No-backend selection must omit $excluded."
         }

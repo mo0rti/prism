@@ -24,10 +24,12 @@ Generated projects include:
   `mobile-ios/docs/`, `web-user-app/docs/`, and `web-admin-portal/docs/`
 - a generated `AGENTS.md`, the single source of agent rules, and a `CLAUDE.md` that only imports it with `@AGENTS.md`; each platform folder repeats the pattern
 - Cursor rules under `.cursor/rules/`: `project.mdc` references `@AGENTS.md` and the other rules scope stack facts by file path
-- GitHub workflow files
+- GitHub workflow files that build and test; they hold no deploy job and no secrets
 - Hygen generators under `_templates/`
-- deployment docs such as `docs/deployment/cloudflare-setup.md` when web platforms are
-  selected
+- a `docker-compose.yml` with the PostgreSQL development database when a backend app is selected
+- a `deployment` skill in `.claude/skills/deployment/` and `.agents/skills/deployment/` with worked
+  examples for the backend on Azure Container Apps and the web apps on Cloudflare Workers; hosting,
+  secrets and deployment belong to the user and their agent
 
 Treat those outputs as part of the product, not as disposable scaffolding.
 
@@ -271,11 +273,13 @@ The generated workflow set is:
 | Workflow | Generated | Purpose |
 |----------|-----------|---------|
 | `api-contracts.yml` | Always | Validate the OpenAPI contract |
-| `backend.yml` | With `backend` | Backend test, image build, and deployment flow |
-| `mobile-android.yml` | With `mobile-android` | Android test, lint, build, and release flow |
-| `mobile-ios.yml` | With `mobile-ios` | iOS test and release flow |
-| `web-user-app.yml` | With `web-user-app` | User web app install/build/deploy flow |
-| `web-admin-portal.yml` | With `web-admin-portal` | Admin web portal install/build/deploy flow |
+| `backend.yml` | With `backend` | Backend test |
+| `mobile-android.yml` | With `mobile-android` | Android test, lint, instrumented tests and debug build |
+| `mobile-ios.yml` | With `mobile-ios` | iOS test |
+| `web-user-app.yml` | With `web-user-app` | User web app install, lint, typecheck and build |
+| `web-admin-portal.yml` | With `web-admin-portal` | Admin web portal install, lint, typecheck and build |
+
+No workflow deploys. The `deployment` skill describes the deploy jobs to add once you choose a host.
 
 ## What To Read Next
 

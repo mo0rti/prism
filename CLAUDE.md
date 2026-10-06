@@ -4,13 +4,13 @@ Prism's core is the workflow and board shared by humans and agents. Application 
 
 Copier template that scaffolds multi-platform workspaces with Backend (Spring Boot 4), User Web App (Next.js), Admin Web Portal (Next.js), Android (Kotlin/Compose), and iOS (Swift/SwiftUI).
 
-The questionnaire keeps roadmap-facing options visible. Backend, Android and web samples are verified locally; the iOS sample is verified only by the macOS CI job, and live deployments are unverified. Apple Sign-In is experimental. `docs/current-status.md` records the verification per platform.
+The questionnaire keeps roadmap-facing options visible. Backend, Android and web samples are verified locally; the iOS sample is verified only by the macOS CI job. Deployment is a generated skill with worked examples that are not verified against live accounts. Apple Sign-In is experimental. `docs/current-status.md` records the verification per platform.
 
 ## Project Structure
 
 ```
 docs/                    # Documentation for this template repository
-copier.yml              # Template questionnaire (project identity, platforms, auth, database, deployment)
+copier.yml              # Template questionnaire (project identity, platforms, auth)
 template/               # All templated output - Jinja2 files (.jinja suffix stripped on generation)
   backend/              # Spring Boot 4 (Kotlin 2.2+, Java 21)
   web-user-app/         # Next.js user-facing web app

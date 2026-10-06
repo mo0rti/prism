@@ -32,21 +32,6 @@ tasks:
       - npm run typecheck
 
   clean:
-    desc: Clean Next.js and OpenNext artifacts
+    desc: Clean Next.js artifacts
     cmds:
       - npm run clean
-
-  build:cloudflare:
-    desc: Build the Cloudflare worker bundle
-    cmds:
-      - npm run build:cloudflare
-
-  preview:
-    desc: Preview the Cloudflare worker locally
-    cmds:
-      - npm run preview
-
-  deploy:
-    desc: Deploy to Cloudflare
-    cmds:
-      - npm run deploy

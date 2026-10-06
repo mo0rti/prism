@@ -20,8 +20,6 @@ Desktop.ini
 .env
 .env.local
 .env.*.local
-.dev.vars*
-!.dev.vars.example
 
 {% if "backend" in platforms %}
 # =============================================================================
@@ -40,7 +38,6 @@ backend/src/generated/
 # =============================================================================
 web-user-app/node_modules/
 web-user-app/.next/
-web-user-app/.open-next/
 web-user-app/out/
 {% endif %}
 {% if "web-admin-portal" in platforms %}
@@ -49,7 +46,6 @@ web-user-app/out/
 # =============================================================================
 web-admin-portal/node_modules/
 web-admin-portal/.next/
-web-admin-portal/.open-next/
 web-admin-portal/out/
 {% endif %}
 {% if "mobile-android" in platforms %}
@@ -93,21 +89,6 @@ prism-graph*.html
 # Prism per-machine repository checkouts (never commit)
 # =============================================================================
 prism.local.yml
-
-{% if "backend" in platforms %}
-# =============================================================================
-# Azure Infrastructure (generated credentials - never commit)
-# =============================================================================
-infra/azure/azure-config.env
-infra/azure/app-secrets.env
-infra/azure/*-credentials*.env
-infra/azure/postgres-password*.env
-infra/azure/log-analytics*.env
-infra/azure/container-apps-env*.env
-infra/azure/image-tags*.env
-infra/azure/azure-storage*.env
-infra/azure/backend-url*.env
-{% endif %}
 
 # =============================================================================
 # Docker

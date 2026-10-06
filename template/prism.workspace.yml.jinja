@@ -17,13 +17,6 @@ project:
 {% for auth_method in auth_methods %}
     - {{ auth_method }}
 {% endfor %}
-  database: {{ database | tojson }}
-  supporting_services: {{ supporting_services | default([]) | tojson }}
-  use_docker: {{ "true" if use_docker else "false" }}
-  cloud_provider: {{ cloud_provider | tojson }}
-{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}
-  web_hosting: {{ web_hosting | tojson }}
-{% endif %}
   github_org: {{ github_org | tojson }}
 {% set stacks = {"backend": "spring-backend", "web-user-app": "nextjs-web", "web-admin-portal": "nextjs-web", "mobile-android": "android-compose", "mobile-ios": "ios-swiftui"} %}
 {% set labels = {"backend": "Spring Boot Backend", "web-user-app": "User-Facing Web App", "web-admin-portal": "Admin Web Portal", "mobile-android": "Android (Kotlin/Compose)", "mobile-ios": "iOS (Swift/SwiftUI)"} %}
@@ -43,7 +36,7 @@ app_maturity:
     caveat: "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven."
 {% elif platform == "web-user-app" or platform == "web-admin-portal" %}
     level: provisional
-    caveat: "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven."
+    caveat: "Generated web apps are verified by lint, typecheck and build only; hosting is the project owner's choice (see the deployment skill)."
 {% else %}
     level: baseline
     caveat: ""

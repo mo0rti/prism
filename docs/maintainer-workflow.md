@@ -24,7 +24,6 @@ template/             # Files copied into generated projects
   shared/             # OpenAPI and design tokens
   docs/               # Generated-project documentation
   knowledge/          # Generated-project product wiki skeleton
-  infra/              # Infrastructure scripts
   README.md.jinja     # Generated-project README
   Taskfile.yml.jinja  # Generated-project root Taskfile
   AGENTS.md.jinja     # Generated-project agent rules, the single source for every tool
@@ -57,7 +56,7 @@ To check the lifecycle with real Claude Code and Codex sessions and a browser ag
 - `platforms=[backend, web-user-app, web-admin-portal]`
 - default generation as a contract-sanity check, not as the main proof of usability
 
-`./scripts/validate-template.ps1 -Mode contract` checks rendered files and workflows. The default `full` mode also runs backend smoke checks; both modes disable the script's web smoke helper. Generated web install, lint, typecheck, authentication checks, Next.js/OpenNext builds, and Wrangler dry runs run in the separate `web-smoke` CI job in `.github/workflows/template-validation.yml`. A configured job is not evidence of a passing run on the current changes.
+`./scripts/validate-template.ps1 -Mode contract` checks rendered files and workflows. The default `full` mode also runs backend smoke checks; both modes disable the script's web smoke helper. Generated web install, lint, typecheck, authentication checks and Next.js builds run in the separate `web-smoke` CI job in `.github/workflows/template-validation.yml`. A configured job is not evidence of a passing run on the current changes.
 
 ## Reference Commands
 

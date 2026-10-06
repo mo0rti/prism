@@ -1,5 +1,5 @@
 {% if "mobile-ios" in platforms %}
-name: iOS CI/CD
+name: iOS CI
 
 on:
   push:
@@ -7,8 +7,6 @@ on:
     paths:
       - 'mobile-ios/**'
       - 'shared/**'
-    tags:
-      - 'v*'
   pull_request:
     branches: [main]
     paths:
@@ -65,58 +63,4 @@ jobs:
           name: ios-test-results
           path: mobile-ios/TestResults
 
-  release:
-    name: Release to TestFlight
-    needs: test
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: macos-latest
-    environment: production
-    env:
-      PRISM_RELEASE_CONFIGURED: {% raw %}${{ secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.ASC_KEY_CONTENT != '' && secrets.MATCH_PASSWORD != '' && secrets.MATCH_GIT_URL != '' }}{% endraw %}
-    steps:
-      - name: Report skipped deploy
-        if: env.PRISM_RELEASE_CONFIGURED != 'true'
-        run: |
-          echo "::warning title=Deploy skipped::Set the ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_CONTENT, MATCH_PASSWORD and MATCH_GIT_URL secrets to deploy the iOS app to TestFlight. No deploy ran."
-          echo "### Deploy skipped" >> "$GITHUB_STEP_SUMMARY"
-          echo "The ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_CONTENT, MATCH_PASSWORD and MATCH_GIT_URL secrets are not all set, so the iOS app was not deployed to TestFlight." >> "$GITHUB_STEP_SUMMARY"
-
-      - uses: actions/checkout@v4
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-
-      - name: Install XcodeGen
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        run: brew install xcodegen
-
-      - name: Create local xcconfig files
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        working-directory: mobile-ios
-        run: |
-          test -f Config/Debug.xcconfig || cp Config/Debug.xcconfig.example Config/Debug.xcconfig
-          test -f Config/Release.xcconfig || cp Config/Release.xcconfig.example Config/Release.xcconfig
-
-      - name: Generate Xcode project
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        working-directory: mobile-ios
-        run: xcodegen generate
-
-      - name: Set up Ruby
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.2'
-          bundler-cache: true
-          working-directory: mobile-ios
-
-      - name: Deploy to TestFlight
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        working-directory: mobile-ios
-        env:
-          ASC_KEY_ID: {% raw %}${{ secrets.ASC_KEY_ID }}{% endraw %}
-          ASC_ISSUER_ID: {% raw %}${{ secrets.ASC_ISSUER_ID }}{% endraw %}
-          ASC_KEY_CONTENT: {% raw %}${{ secrets.ASC_KEY_CONTENT }}{% endraw %}
-          MATCH_PASSWORD: {% raw %}${{ secrets.MATCH_PASSWORD }}{% endraw %}
-          MATCH_GIT_URL: {% raw %}${{ secrets.MATCH_GIT_URL }}{% endraw %}
-          GITHUB_RUN_NUMBER: {% raw %}${{ github.run_number }}{% endraw %}
-        run: bundle exec fastlane beta
 {% endif %}

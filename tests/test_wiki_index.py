@@ -427,8 +427,7 @@ class ProjectDocsTemplateTests(unittest.TestCase):
         for platforms in (["backend"], ["web-user-app"], ["mobile-ios"], self.ALL_PLATFORMS):
             with self.subTest(platforms=platforms):
                 targets = [entry.target for entry in parse_index_entries(self.rendered_index(platforms)) if is_project_doc_target(entry.target)]
-                web = "web-user-app" in platforms or "web-admin-portal" in platforms
-                expected = [f"../../docs/{page}" for page in self.template_docs() if web or page != "deployment/cloudflare-setup.md"]
+                expected = [f"../../docs/{page}" for page in self.template_docs()]
                 self.assertEqual(sorted(expected), sorted(targets))
 
     def test_the_project_docs_group_sits_before_meta_and_the_workflow_only_form_has_none(self) -> None:

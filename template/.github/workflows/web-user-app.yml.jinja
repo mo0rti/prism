@@ -1,5 +1,5 @@
 {% if "web-user-app" in platforms %}
-name: User Web App CI/CD
+name: User Web App CI
 
 on:
   push:
@@ -42,49 +42,4 @@ jobs:
         working-directory: web-user-app
         run: npm run build
 
-      - name: Build Cloudflare bundle
-        working-directory: web-user-app
-        run: npm run build:cloudflare
-
-      - name: Smoke test Wrangler packaging
-        working-directory: web-user-app
-        run: npx wrangler deploy --dry-run
-
-  deploy:
-    name: Deploy to Cloudflare
-    needs: lint-typecheck-build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production
-    env:
-      PRISM_RELEASE_CONFIGURED: {% raw %}${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}{% endraw %}
-    steps:
-      - name: Report skipped deploy
-        if: env.PRISM_RELEASE_CONFIGURED != 'true'
-        run: |
-          echo "::warning title=Deploy skipped::Set the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets to deploy the user web app. No deploy ran."
-          echo "### Deploy skipped" >> "$GITHUB_STEP_SUMMARY"
-          echo "The CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets are not both set, so the user web app was not deployed." >> "$GITHUB_STEP_SUMMARY"
-
-      - uses: actions/checkout@v4
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-
-      - name: Set up Node.js
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install dependencies
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        working-directory: web-user-app
-        run: npm install
-
-      - name: Deploy worker
-        if: env.PRISM_RELEASE_CONFIGURED == 'true'
-        working-directory: web-user-app
-        run: npm run deploy
-        env:
-          CLOUDFLARE_API_TOKEN: {% raw %}${{ secrets.CLOUDFLARE_API_TOKEN }}{% endraw %}
-          CLOUDFLARE_ACCOUNT_ID: {% raw %}${{ secrets.CLOUDFLARE_ACCOUNT_ID }}{% endraw %}
 {% endif %}

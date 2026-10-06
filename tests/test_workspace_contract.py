@@ -130,8 +130,6 @@ class WorkspaceSchemaContractTests(unittest.TestCase):
                     "platforms=[backend]",
                     "--data",
                     "auth_methods=[password]",
-                    "--data",
-                    "supporting_services=[]",
                     ".",
                     str(output),
                 ],

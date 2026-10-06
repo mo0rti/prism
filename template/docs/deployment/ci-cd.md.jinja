@@ -1,67 +1,22 @@
-# CI/CD - {{ project_name }}
+# CI - {{ project_name }}
 
 ## Overview
 
-All CI/CD runs on **GitHub Actions** with **path-based triggers** - each platform's workflow only runs when its files change.
+All CI runs on **GitHub Actions** with **path-based triggers** - each platform's workflow only runs when its files change. The generated workflows build and test only. They hold no deploy job, no cloud credentials and no secrets.
+
+Hosting, secrets and deployment belong to the user and their agent. The `deployment` skill (`.claude/skills/deployment/` and `.agents/skills/deployment/`) holds worked examples for the backend on Azure Container Apps and the web apps on Cloudflare Workers, including a GitHub Actions deploy job for each, and notes on mobile store releases.
 
 ## Workflows
 
 | Workflow | Trigger Paths | What It Does |
 |----------|--------------|--------------|
-{% if "backend" in platforms %}| `backend.yml` | `backend/**`, `shared/**` | Gradle test + build, Docker push to Azure ACR, deploy to Container Apps |
-{% endif %}{% if "web-user-app" in platforms %}| `web-user-app.yml` | `web-user-app/**`, `shared/**` | npm lint + typecheck + `next build` + OpenNext bundle + `wrangler deploy --dry-run`, then deploy to Cloudflare Workers on `main` |
-{% endif %}{% if "web-admin-portal" in platforms %}| `web-admin-portal.yml` | `web-admin-portal/**`, `shared/**` | npm lint + typecheck + `next build` + OpenNext bundle + `wrangler deploy --dry-run`, then deploy to Cloudflare Workers on `main` |
-{% endif %}{% if "mobile-android" in platforms %}| `mobile-android.yml` | `mobile-android/**`, `shared/**` | Gradle test + assembleDebug, Fastlane deploy on tags |
-{% endif %}{% if "mobile-ios" in platforms %}| `mobile-ios.yml` | `mobile-ios/**`, `shared/**` | xcodebuild test (macOS runner), Fastlane deploy on tags |
+{% if "backend" in platforms %}| `backend.yml` | `backend/**`, `shared/api-contracts/**` | Gradle test, upload test reports |
+{% endif %}{% if "web-user-app" in platforms %}| `web-user-app.yml` | `web-user-app/**`, `shared/**` | npm lint + typecheck + `next build` |
+{% endif %}{% if "web-admin-portal" in platforms %}| `web-admin-portal.yml` | `web-admin-portal/**`, `shared/**` | npm lint + typecheck + `next build` |
+{% endif %}{% if "mobile-android" in platforms %}| `mobile-android.yml` | `mobile-android/**`, `shared/**` | Gradle compile + unit tests, lint, emulator UI tests, assembleDebug |
+{% endif %}{% if "mobile-ios" in platforms %}| `mobile-ios.yml` | `mobile-ios/**`, `shared/**` | xcodebuild test (macOS runner) |
 {% endif %}| `api-contracts.yml` | `shared/api-contracts/**` | Validate OpenAPI spec |
 
-## Required GitHub Secrets
-
-{% if "backend" in platforms %}
-### Azure
-| Secret | Description |
-|--------|-------------|
-| `AZURE_CREDENTIALS` | Service principal JSON |
-| `AZURE_CONTAINER_REGISTRY` | ACR login server |
-| `AZURE_CONTAINER_APP_NAME` | Container App name |
-| `AZURE_RESOURCE_GROUP` | Resource group |
-| `ACR_USERNAME` | Registry username used to push the backend image |
-| `ACR_PASSWORD` | Registry password used to push the backend image |
-{% endif %}
-
-{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}
-### Cloudflare
-| Secret | Description |
-|--------|-------------|
-| `CLOUDFLARE_ACCOUNT_ID` | Account ID |
-| `CLOUDFLARE_API_TOKEN` | API token with Workers edit permissions |
-{% endif %}
-
-{% if "mobile-android" in platforms %}
-### Android
-| Secret | Description |
-|--------|-------------|
-| `ANDROID_KEYSTORE_BASE64` | Signing keystore (base64) |
-| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
-| `ANDROID_KEY_ALIAS` | Key alias |
-| `ANDROID_KEY_PASSWORD` | Key password |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Play Console service account |
-{% endif %}
-
 {% if "mobile-ios" in platforms %}
-### iOS
-| Secret | Description |
-|--------|-------------|
-| `ASC_KEY_ID` | App Store Connect API key ID |
-| `ASC_ISSUER_ID` | App Store Connect issuer ID |
-| `ASC_KEY_CONTENT` | App Store Connect API key content (base64) |
-| `MATCH_PASSWORD` | Fastlane match encryption password |
-| `MATCH_GIT_URL` | Git URL of the Fastlane match certificate repository |
-{% endif %}
-
-## Skipped Deploys
-
-A release job needs every secret listed for its platform. When one is missing, the job does not deploy. It reports **Deploy skipped** as a workflow warning and in the job summary, names the secrets to set, and still succeeds.{% if "backend" in platforms %} The backend image push reports **Image push skipped** the same way, and the backend deploy job does not run after it.{% endif %}
-{% if "mobile-ios" in platforms %}
-The iOS CI jobs create `mobile-ios/Config/Debug.xcconfig` and `Release.xcconfig` from the tracked `.example` files. Set the production API URL in `Release.xcconfig.example` before tagging a release.
+The iOS CI job creates `mobile-ios/Config/Debug.xcconfig` and `Release.xcconfig` from the tracked `.example` files.
 {% endif %}

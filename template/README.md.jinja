@@ -32,16 +32,15 @@ or iOS.
 
 This generated workspace currently includes:
 
-{% if "backend" in platforms %}- **backend/** - Spring Boot 4 (Kotlin) REST API -> Azure Container Apps
-{% endif %}{% if "web-user-app" in platforms %}- **web-user-app/** - Next.js user-facing web app (TypeScript) -> Cloudflare via OpenNext
-{% endif %}{% if "web-admin-portal" in platforms %}- **web-admin-portal/** - Next.js admin web portal (TypeScript) -> Cloudflare via OpenNext
+{% if "backend" in platforms %}- **backend/** - Spring Boot 4 (Kotlin) REST API
+{% endif %}{% if "web-user-app" in platforms %}- **web-user-app/** - Next.js user-facing web app (TypeScript)
+{% endif %}{% if "web-admin-portal" in platforms %}- **web-admin-portal/** - Next.js admin web portal (TypeScript)
 {% endif %}{% if "mobile-android" in platforms %}- **mobile-android/** - Android app (Kotlin/Jetpack Compose, MVVM)
 {% endif %}{% if "mobile-ios" in platforms %}- **mobile-ios/** - iOS app (Swift/SwiftUI, MVVM)
 {% endif %}- **shared/** - OpenAPI contract and shared design tokens
 - **knowledge/** - Product wiki and delivery workflow metadata
 - **docs/** - Human-readable architecture and operations docs
-{% if "backend" in platforms %}- **infra/** - Azure deployment scripts
-{% endif %}
+
 
 ## First-Time Setup
 
@@ -125,7 +124,7 @@ and `$generate-clients`.
 {% endif %}{% if "web-admin-portal" in platforms %}cp web-admin-portal/.env.example web-admin-portal/.env.local
 {% endif %}# Edit the local config files as needed for your machine and credentials
 
-{% if use_docker and "backend" in platforms %}# Start the local database first
+{% if "backend" in platforms %}# Start the local database first
 docker compose up -d db
 
 {% endif %}{% if "backend" in platforms %}# Start the backend locally
@@ -156,13 +155,12 @@ task generate-clients
 - [API Conventions](docs/api/conventions.md) for URL structure, versioning, auth headers, and error responses
 {% if "backend" in platforms %}- [Backend Guide](backend/docs/guide.md) for backend structure, conventions, commands, and local run guidance
 - [Backend Entities](backend/docs/entities/README.md) for user and transaction data-model documentation
-- [Azure Deployment](backend/docs/azure-setup.md) for backend infrastructure setup and deployment steps
 {% endif %}{% if "web-user-app" in platforms %}- [User Web App Guide](web-user-app/docs/guide.md) for web-user-app structure, conventions, and commands
 {% endif %}{% if "web-admin-portal" in platforms %}- [Admin Web Portal Guide](web-admin-portal/docs/guide.md) for internal web structure, conventions, and commands
 {% endif %}{% if "mobile-android" in platforms %}- [Android Guide](mobile-android/docs/guide.md) for Android architecture, setup, and verification workflow
 {% endif %}{% if "mobile-ios" in platforms %}- [iOS Guide](mobile-ios/docs/guide.md) for iOS structure, build setup, and verification workflow
-{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}- [Cloudflare Deployment](docs/deployment/cloudflare-setup.md) for preview and production deployment setup for web slices
-{% endif %}- [CI/CD](docs/deployment/ci-cd.md) for the generated GitHub Actions workflow layout and deployment pipeline
+{% endif %}- [CI/CD](docs/deployment/ci-cd.md) for the generated GitHub Actions workflow layout (build and test)
+- Deployment: the `deployment` skill (`.claude/skills/deployment/`, `.agents/skills/deployment/`) holds worked examples for the backend on Azure Container Apps and the web apps on Cloudflare; hosting, secrets and deployment are yours to choose
 
 ## Common Tasks
 

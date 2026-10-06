@@ -8,12 +8,12 @@
 
 | Platform | Tech Stack | Hosting | Purpose |
 |----------|-----------|---------|---------|
-{% if "backend" in platforms %}| Backend | Spring Boot 4, Kotlin 2.2+, Java 21 | Azure Container Apps | REST API, business logic, auth |
-{% endif %}{% if "web-user-app" in platforms %}| User Web App | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5, next-intl 4 | Cloudflare via OpenNext | User-facing marketing and authenticated dashboard |
-{% endif %}{% if "web-admin-portal" in platforms %}| Admin Web Portal | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5 | Cloudflare via OpenNext | Internal admin operations and management UI |
+{% if "backend" in platforms %}| Backend | Spring Boot 4, Kotlin 2.2+, Java 21 | Project owner's choice (see the `deployment` skill) | REST API, business logic, auth |
+{% endif %}{% if "web-user-app" in platforms %}| User Web App | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5, next-intl 4 | Project owner's choice (see the `deployment` skill) | User-facing marketing and authenticated dashboard |
+{% endif %}{% if "web-admin-portal" in platforms %}| Admin Web Portal | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5 | Project owner's choice (see the `deployment` skill) | Internal admin operations and management UI |
 {% endif %}{% if "mobile-android" in platforms %}| Android | Kotlin 2.2+, Java 21, Jetpack Compose, Hilt, Retrofit 3 | Google Play | Native Android app |
 {% endif %}{% if "mobile-ios" in platforms %}| iOS | Swift 6, SwiftUI, iOS 17+, XcodeGen | App Store | Native iOS app |
-{% endif %}| Database | PostgreSQL 16 | Azure Database | Data persistence |
+{% endif %}| Database | PostgreSQL 16 | Local development in Docker Compose; hosting is the project owner's choice | Data persistence |
 
 ## Architecture Pattern
 

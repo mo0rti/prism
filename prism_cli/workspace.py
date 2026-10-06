@@ -46,11 +46,6 @@ GENERATION_ANSWER_FIELDS = (
     "description",
     "platforms",
     "auth_methods",
-    "database",
-    "supporting_services",
-    "use_docker",
-    "cloud_provider",
-    "web_hosting",
     "github_org",
 )
 
@@ -500,11 +495,6 @@ def write_workspace_manifest(
         "package_identifier": "package_identifier",
         "description": "description",
         "auth_methods": "auth_methods",
-        "database": "database",
-        "supporting_services": "supporting_services",
-        "use_docker": "use_docker",
-        "cloud_provider": "cloud_provider",
-        "web_hosting": "web_hosting",
         "github_org": "github_org",
     }
     for answer_key, project_key in answer_to_project.items():
@@ -556,11 +546,6 @@ def _compare_manifest_answers(
         "package_identifier": "package_identifier",
         "description": "description",
         "auth_methods": "auth_methods",
-        "database": "database",
-        "supporting_services": "supporting_services",
-        "use_docker": "use_docker",
-        "cloud_provider": "cloud_provider",
-        "web_hosting": "web_hosting",
         "github_org": "github_org",
     }
     diagnostics: list[WorkspaceDiagnostic] = []

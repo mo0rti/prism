@@ -117,8 +117,6 @@ jobs:
             npm run typecheck
             node "$GITHUB_WORKSPACE/scripts/check-web-auth.mjs" "$PRISM_WEB_TARGET/$app"
             npm run build
-            npm run build:cloudflare
-            npx wrangler deploy --dry-run
             popd >/dev/null
           done
 

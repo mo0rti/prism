@@ -4,6 +4,23 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- **A `deployment` skill in every generated workspace.** `.claude/skills/deployment/` and `.agents/skills/deployment/` explain how to deploy each generated stack and hold the former scripts and configuration as worked examples under `references/`: the Azure Container Apps scripts and guide (`references/azure/`, `azure-setup.md`) for a backend app, the Cloudflare Workers through OpenNext guide and the Wrangler, OpenNext and preview-variable files (`references/cloudflare/`, `cloudflare-setup.md`) for web apps, and `mobile-store-release.md` for the tag-triggered store release jobs that the mobile workflows no longer carry. Each guide includes the GitHub Actions deploy job that the generated workflow used to hold. The skill states that the user and their agent own the cloud choice, the secrets and the deployment, and that the files are a worked example for one choice. The Codex layer adds `agents/openai.yaml`. The skill is a stack skill like `spring-boot-conventions`, not one of the 26 canonical workflow skills, so the packaged workflow asset and its digest do not change.
+
+### Changed
+
+- **The questionnaire asks for project identity, platforms, auth methods and the GitHub owner.** The `database`, `supporting_services`, `use_docker`, `cloud_provider` and `web_hosting` questions are removed, with their presets, defaults, answers-file validation, advanced prompts, summary lines, manifest fields (`project.database` and the others) and template conditions. A backend app always comes with the PostgreSQL development database in `docker-compose.yml`; the backend skills describe PostgreSQL only. `prism new` rejects an answers file that sets a removed question with an "Unknown answer(s)" error; Copier itself ignores a `--data` value for a question it does not have.
+- **Generated CI builds and tests only.** The backend workflow no longer pushes an image or deploys to Azure, the web workflows no longer build the Cloudflare bundle, run a Wrangler dry run or deploy, and the Android and iOS workflows no longer run on `v*` tags or release to the Play Store or TestFlight. No generated workflow reads a secret.
+- **Web apps build and test without hosting files.** `wrangler.jsonc`, `open-next.config.ts` and `.dev.vars.example` are no longer generated, and the `@opennextjs/cloudflare`, `wrangler` and `esbuild` dependencies and the `build:cloudflare`, `preview` and `deploy` scripts and tasks are removed from `web-user-app` and `web-admin-portal`. The web `.gitignore` entries for `.open-next/` and `.dev.vars*` are gone; the skill lists the lines to add when you adopt the Cloudflare example.
+- **Deployment docs point to the skill.** The generated README, `AGENTS.md`, `docs/README.md`, `docs/architecture.md`, `docs/deployment/ci-cd.md`, the web guides, the Cursor rules and the wiki index no longer describe a hosting target and name the `deployment` skill instead. The web app maturity caveat in `prism.workspace.yml` says that the apps are verified by lint, typecheck and build only.
+
+### Removed
+
+- **The generated `infra/azure/` scripts, `backend/docs/azure-setup.md`, `docs/deployment/cloudflare-setup.md` and the root `infra:*` tasks.** They moved into the `deployment` skill's references. The `.gitignore` block for Azure credential files moved into the Azure guide.
+- **Redis support.** The Redis service in `docker-compose.yml`, its `.env` and `.env.example` variables and every Redis step of the Azure scripts are removed.
+- **The `prism validate` requirement for `docs/deployment/cloudflare-setup.md`** and the "live Cloudflare deployment" warning of `prism new`.
+
 ## [0.5.0]
 
 Release date: 2026-10-06

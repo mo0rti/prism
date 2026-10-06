@@ -30,11 +30,44 @@ class CliAnswerValidationTests(unittest.TestCase):
                 errors, _warnings = cli.validate_answers(answers)
                 self.assertTrue(any(expected in error for error in errors), errors)
 
-    def test_rejects_non_boolean_docker_preset_data(self) -> None:
+    def test_rejects_answers_for_questions_that_no_longer_exist(self) -> None:
+        for removed in ("database", "supporting_services", "use_docker", "cloud_provider", "web_hosting"):
+            with self.subTest(removed=removed):
+                errors, _warnings = cli.validate_answers(
+                    {"platforms": ["backend"], "auth_methods": ["password"], removed: "anything"}
+                )
+                self.assertEqual(1, len(errors), errors)
+                self.assertIn(f"Unknown answer(s): {removed}.", errors[0])
+
+    def test_accepts_every_answer_the_questionnaire_asks_for(self) -> None:
         errors, _warnings = cli.validate_answers(
-            {"platforms": ["backend"], "auth_methods": ["password"], "use_docker": "sometimes"}
+            {
+                "project_name": "Demo",
+                "project_slug": "demo",
+                "package_identifier": "com.example.demo",
+                "description": "Demo",
+                "platforms": ["backend"],
+                "auth_methods": ["password"],
+                "github_org": "",
+                "_prism_private": "ignored",
+            }
         )
-        self.assertIn("use_docker must be true or false.", errors)
+        self.assertEqual([], errors)
+
+    def test_new_rejects_an_answers_file_that_sets_a_removed_question(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            answers_file = Path(temp_dir) / "answers.yml"
+            answers_file.write_text(
+                "schema_version: 1\nanswers:\n  project_name: Demo\n  platforms: [backend]\n  database: mysql\n",
+                encoding="utf-8",
+            )
+            args = cli.build_parser().parse_args(["new", "--answers", str(answers_file), "--dest", str(Path(temp_dir) / "out"), "--yes"])
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
+                result = cli.cmd_new(args)
+            self.assertEqual(cli.EXIT_VALIDATION, result)
+            self.assertIn("Unknown answer(s): database.", stderr.getvalue())
+            self.assertFalse((Path(temp_dir) / "out").exists())
 
     def test_non_interactive_new_requires_answers_or_preset_before_prompting(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

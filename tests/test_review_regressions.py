@@ -138,9 +138,14 @@ class ReviewRegressions(unittest.TestCase):
             self.assertIn("Choose another --port", output.getvalue())
             browser.assert_not_called()
 
-    def test_advanced_flow_exposes_redis(self):
-        with patch.object(cli, "prompt_text", side_effect=["Demo", "Description", "com.example.demo", ""]), patch.object(cli, "prompt_multiselect", side_effect=[["backend"], ["password"], ["redis"]]), patch.object(cli, "prompt_bool", return_value=True), contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(["redis"], cli.prompt_advanced_answers()["supporting_services"])
+    def test_advanced_flow_asks_only_for_identity_platforms_and_auth(self):
+        with patch.object(cli, "prompt_text", side_effect=["Demo", "Description", "com.example.demo", ""]), patch.object(cli, "prompt_multiselect", side_effect=[["backend"], ["password"]]) as multiselect, contextlib.redirect_stdout(io.StringIO()):
+            answers = cli.prompt_advanced_answers()
+        self.assertEqual(2, multiselect.call_count)
+        self.assertEqual(
+            {"project_name", "description", "package_identifier", "github_org", "platforms", "auth_methods"},
+            set(answers),
+        )
 
     def test_open_uses_memory_server_without_creating_a_snapshot(self):
         args = cli.build_parser().parse_args(["wiki", "graph", str(FIXTURE), "--open", "--port", "18322"])
