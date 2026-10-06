@@ -24,6 +24,7 @@ from urllib.parse import unquote, urlsplit
 
 from prism_cli.app_model import (
     CAPABILITY_HAS_UI,
+    GENERATED_PLATFORM_DIRS,
     MANIFEST_SCHEMA_VERSION,
     WorkspaceModel,
     api_surface_without_api_app_message,
@@ -57,7 +58,6 @@ from prism_cli.wiki_query import build_envelope
 from prism_cli.workspace import (
     COPIER_ANSWERS_FILE,
     MANIFEST_FILE,
-    PLATFORM_DIRS,
     WorkspaceInspection,
     detect_workspace_kind,
     inspect_workspace,
@@ -67,7 +67,7 @@ from prism_cli.workspace import (
 TRANSITION_SCHEMA_VERSION = 1
 TRANSITION_CAPABILITY_VERSION = 2
 SUPPORTED_ACTION = "po-handoff"
-SUPPORTED_SOURCE_STATUS = "specified"  # compatibility aliases for old callers
+SUPPORTED_SOURCE_STATUS = "specified"  # the po-handoff action's source and target
 SUPPORTED_SOURCE_OWNER = "po"
 SUPPORTED_TARGET_STATUS = "ready-for-design"
 
@@ -98,8 +98,7 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
 ACTION_BY_ID = {spec.action: spec for spec in ACTION_SPECS}
 SUPPORTED_ACTIONS = tuple(spec.action for spec in ACTION_SPECS)
 
-# Keep this public compatibility mapping stable: earlier callers and fixtures
-# create only the PO-handoff files.  New action surfaces are declared below.
+# The PO-handoff surface files; every other action's surfaces are declared below.
 
 CAPABILITY_FILES = {
     "codex": Path(".agents/skills/po-handoff/SKILL.md"),
@@ -137,9 +136,6 @@ _ACTION_MARKERS = {
     }
     for spec in ACTION_SPECS
 }
-# The existing PO handoff contract was intentionally named before this
-# registry.  Preserve the old private name for callers/tests that inspected it.
-_CAPABILITY_MARKERS = _ACTION_MARKERS[SUPPORTED_ACTION]
 
 
 def _capability_paths() -> tuple[Path, ...]:
@@ -183,7 +179,6 @@ _APP_PLACEHOLDER = re.compile(
     re.IGNORECASE,
 )
 _HARD_IDENTITY_DIAGNOSTIC_CODES = {
-    "answers-filesystem-drift",
     "invalid-copier-answers-shape",
     "invalid-copier-answers-yaml",
     "invalid-min-prism-cli-version",
@@ -359,7 +354,7 @@ def _workspace_fingerprint(root: Path, cache: FingerprintCache | None) -> tuple[
             entries.append((relative, _path_kind(child)))
 
     # The directories the generated apps use; the manifest, hashed above, declares every other app path.
-    for app_id, relative in sorted(PLATFORM_DIRS.items()):
+    for app_id, relative in sorted(GENERATED_PLATFORM_DIRS.items()):
         entries.append((f"app:{app_id}", _path_kind(workspace_root / relative)))
 
     for relative in _capability_paths():
@@ -1890,7 +1885,7 @@ def _workspace_identity_checks(root: Path, inspection: WorkspaceInspection) -> l
     identity_path = inspection.manifest.path if inspection.manifest else inspection.answers_path
     if detect_workspace_kind(root) == "unknown":
         checks.append(_check("workspace-identity", "unknown", "Workspace kind is unknown; transition scope cannot be established.", identity_path))
-    elif inspection.project_name is None or (inspection.manifest is None and not inspection.app_ids):
+    elif inspection.project_name is None:
         checks.append(_check("workspace-identity", "unknown", "Workspace project identity or app scope is incomplete.", identity_path))
     elif hard:
         message = "; ".join(sorted({diagnostic.message for diagnostic in hard}))
@@ -2356,9 +2351,3 @@ def _unique_diagnostics(values: Iterable[WikiDiagnostic]) -> list[WikiDiagnostic
         result.append(diagnostic)
     result.sort(key=lambda item: (item.path, item.code, item.feature_id or "", item.message))
     return result
-
-
-# Short aliases make the evaluator discoverable to callers that use the noun
-# form from the CLI surface while retaining the descriptive public API above.
-transition_preflight = build_transition_preflight
-evaluate_transitions = evaluate_transition_summaries

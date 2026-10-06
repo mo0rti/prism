@@ -87,8 +87,8 @@ The workspace contract is intentionally conservative:
   `external-repository-unresolved`, never an error
 - malformed or unreadable manifests produce diagnostics and are never rewritten by
   read commands
-- a missing manifest falls back to Copier answers and filesystem facts with degraded
-  confidence
+- a missing manifest is the warning `missing-workspace-manifest` with degraded confidence;
+  a workspace without a usable manifest declares no apps
 - `prism status`, `prism status --full`, `prism status --json`,
   `prism doctor --workspace` and `prism app list` are read-only; only explicit
   generation, update, workflow and `prism app add --apply` commands write the manifest,

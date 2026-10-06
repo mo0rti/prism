@@ -17,7 +17,6 @@ import yaml
 
 from prism_cli import board_server
 from prism_cli import cli
-from prism_cli import render
 from prism_cli import __version__
 from prism_cli.board_service import BoardService
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE
@@ -199,7 +198,7 @@ class WorkspaceInspectionTests(unittest.TestCase):
         self.assertEqual(["backend"], inspection.app_ids)
         self.assertEqual(["backend"], inspection.filesystem_platforms)
 
-    def test_inspection_falls_back_to_answers_and_filesystem_when_manifest_is_unsupported(self) -> None:
+    def test_an_unsupported_manifest_gives_no_identity_and_no_apps(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             write_workspace(root, manifest={**manifest_data("Future", ["mobile-ios"]), "schema_version": 3}, answers={"_src_path": "template", "project_name": "Current", "platforms": ["backend"]})
@@ -207,8 +206,9 @@ class WorkspaceInspectionTests(unittest.TestCase):
             inspection = inspect_workspace(root)
 
         self.assertIsNone(inspection.manifest)
-        self.assertEqual("Current", inspection.project_name)
-        self.assertEqual(["backend"], inspection.app_ids)
+        self.assertIsNone(inspection.project_name)
+        self.assertEqual([], inspection.app_ids)
+        self.assertEqual(["backend"], inspection.filesystem_platforms)
         self.assertIn("unsupported-workspace-manifest-schema", {item.code for item in inspection.contract_diagnostics})
 
     def test_write_manifest_records_known_provenance_and_excludes_unknown_answers(self) -> None:
@@ -367,12 +367,6 @@ class WorkspaceStatusContractTests(unittest.TestCase):
 
         self.assertEqual("new-template-ref", data["generated_by"]["template_commit"])
         self.assertEqual("https://github.com/mo0rti/prism.git", data["generated_by"]["template_source"])
-
-
-class ReadSurfaceSplitTests(unittest.TestCase):
-    def test_cli_keeps_v1_render_imports_while_implementation_lives_in_render_module(self) -> None:
-        self.assertIs(cli.render_status_result, render.render_status_result)
-        self.assertEqual("prism_cli.render", cli.render_status_result.__module__)
 
 
 def _free_port() -> int:

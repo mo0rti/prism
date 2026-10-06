@@ -1,13 +1,11 @@
 """The packaged workflow catalog is complete, self-contained, and reproducible."""
 
-from copy import deepcopy
 import hashlib
 import importlib.util
 import json
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -148,61 +146,23 @@ class WorkflowAssetsTests(unittest.TestCase):
         self.assertIn("lists only real dependencies", instructions)
         self.assertIn("`ask`", instructions)
 
-    def test_asset_records_earlier_shipped_digests_of_installer_owned_files(self):
-        connected = "knowledge/wiki/CONNECTED.md"
-        earlier = previous_digests(connected)
-        self.assertTrue(earlier, "the previous canonical CONNECTED.md must be recognisable offline")
-        current = {item["path"]: item["digest"] for item in bootstrap_files()}
-        self.assertNotIn(current[connected], earlier)
-        for digest in earlier:
-            self.assertRegex(digest, r"^[0-9a-f]{64}$")
+    def test_the_asset_records_no_earlier_shipped_digests(self):
+        asset = json.loads((REPO_ROOT / "prism_cli/assets/workflow-v1.json").read_text(encoding="utf-8"))
+        self.assertEqual({}, asset["previous_digests"])
+        for item in bootstrap_files():
+            self.assertEqual((), previous_digests(item["path"]))
         self.assertEqual((), previous_digests("knowledge/wiki/never-shipped.md"))
 
-    def test_rebuild_keeps_every_earlier_digest_and_appends_the_ones_it_replaces(self):
+    def test_the_build_script_writes_exactly_the_declared_history(self):
         build = _load_build_script()
+        self.assertEqual({}, build.PREVIOUS_DIGESTS)
+        self.assertEqual({}, build.build_asset()["previous_digests"])
         connected = "knowledge/wiki/CONNECTED.md"
-        earlier_connected = "# Connected\nan earlier shipped text\n"
-        earlier_pointer = "# Prism workspace guidance\nan earlier pointer\n"
-        kept = "a" * 64
-        removed = "b" * 64
-        with tempfile.TemporaryDirectory() as temporary:
-            shipped_path = Path(temporary) / "workflow-v1.json"
-            shipped = json.loads((REPO_ROOT / "prism_cli/assets/workflow-v1.json").read_text(encoding="utf-8"))
-            for item in shipped["files"]:
-                if item["path"] == connected:
-                    item["content"] = earlier_connected
-                    item["digest"] = hashlib.sha256(earlier_connected.encode("utf-8")).hexdigest()
-            shipped["guidance_pointers"]["AGENTS.md"] = earlier_pointer
-            shipped["previous_digests"] = {connected: [kept], "knowledge/wiki/no-longer-shipped.md": [removed]}
-            shipped_path.write_text(json.dumps(shipped, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-            with patch.object(build, "ASSET_PATH", shipped_path):
-                rebuilt = build.build_asset()
-                history = rebuilt["previous_digests"]
-                self.assertEqual([kept, hashlib.sha256(earlier_connected.encode("utf-8")).hexdigest()], history[connected])
-                self.assertEqual([removed], history["knowledge/wiki/no-longer-shipped.md"])
-                self.assertEqual([hashlib.sha256(earlier_pointer.encode("utf-8")).hexdigest()], history["AGENTS.md"])
-                self.assertNotIn("CLAUDE.md", history, "an unchanged pointer is not history")
-                self.assertEqual(sorted(history), list(history))
-                current = {item["path"]: item["digest"] for item in rebuilt["files"]}
-                self.assertTrue(all(current[connected] not in digests for digests in history.values()))
-
-                # Rebuilding the rebuilt asset changes nothing and drops nothing.
-                shipped_path.write_text(json.dumps(rebuilt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                self.assertEqual(rebuilt, build.build_asset())
-
-    def test_rebuild_refuses_to_continue_when_the_existing_history_is_unreadable(self):
-        build = _load_build_script()
-        with tempfile.TemporaryDirectory() as temporary:
-            broken = Path(temporary) / "workflow-v1.json"
-            broken.write_text("{not json", encoding="utf-8")
-            with patch.object(build, "ASSET_PATH", broken), self.assertRaises(ValueError):
-                build.build_asset()
-            malformed = deepcopy(json.loads((REPO_ROOT / "prism_cli/assets/workflow-v1.json").read_text(encoding="utf-8")))
-            malformed["previous_digests"] = ["not", "a", "mapping"]
-            broken.write_text(json.dumps(malformed), encoding="utf-8")
-            with patch.object(build, "ASSET_PATH", broken), self.assertRaises(ValueError):
-                build.build_asset()
+        digests = ["a" * 64, "b" * 64]
+        with patch.object(build, "PREVIOUS_DIGESTS", {connected: digests, "AGENTS.md": ["c" * 64]}):
+            history = build.build_asset()["previous_digests"]
+        self.assertEqual({"AGENTS.md": ["c" * 64], connected: digests}, history)
+        self.assertEqual(sorted(history), list(history))
 
     def test_checked_in_asset_matches_maintained_template_sources(self):
         result = subprocess.run(

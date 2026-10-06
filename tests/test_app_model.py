@@ -22,7 +22,6 @@ from prism_cli.app_model import (
     resolve_local_repositories,
 )
 from prism_cli import wiki_model
-from prism_cli.workspace import PLATFORM_DIRS
 from tests import real_temp  # noqa: F401
 
 
@@ -84,9 +83,9 @@ class StackRegistryTests(unittest.TestCase):
                 "web-user-app": "web-user-app",
                 "web-admin-portal": "web-admin-portal",
             },
-            PLATFORM_DIRS,
+            GENERATED_PLATFORM_DIRS,
         )
-        self.assertEqual(["backend", "mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"], list(PLATFORM_DIRS))
+        self.assertEqual(["backend", "mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"], list(GENERATED_PLATFORM_DIRS))
         for removed in ("VALID_PLATFORM_IDS", "UI_PLATFORM_IDS"):
             self.assertFalse(hasattr(wiki_model, removed), removed)
         self.assertEqual(

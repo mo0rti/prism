@@ -35,6 +35,7 @@ from prism_cli.presets import (
     get_preset,
     merge_answers,
 )
+from prism_cli.render import render_or_print_wiki_query, render_status_result, render_wiki_lint_result
 from prism_cli.status import BoardCheck, build_board_checks, build_status
 from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind, inspect_workspace, write_workspace_manifest
 from prism_cli.wiki_model import VALID_FEATURE_OWNERS
@@ -2427,22 +2428,3 @@ def confirm(prompt: str, default: bool) -> bool:
         if raw in {"n", "no"}:
             return False
         print(warn("Enter y or n."))
-
-
-# Read-surface renderers live in ``prism_cli.render``.  Keep these names on
-# the CLI module for callers that imported them from V1.
-from prism_cli import render as _read_render
-
-render_or_print_wiki_query = _read_render.render_or_print_wiki_query
-render_wiki_lint_result = _read_render.render_wiki_lint_result
-render_wiki_query_result = _read_render.render_wiki_query_result
-render_wiki_show_facts = _read_render.render_wiki_show_facts
-render_wiki_blocker_facts = _read_render.render_wiki_blocker_facts
-render_wiki_owner_facts = _read_render.render_wiki_owner_facts
-render_wiki_app_facts = _read_render.render_wiki_app_facts
-render_wiki_search_facts = _read_render.render_wiki_search_facts
-render_feature_summaries = _read_render.render_feature_summaries
-render_status_result = _read_render.render_status_result
-format_setup_state = _read_render.format_setup_state
-format_confidence = _read_render.format_confidence
-compact_count_lines = _read_render.compact_count_lines

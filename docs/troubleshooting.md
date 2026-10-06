@@ -196,7 +196,7 @@ If the message asks for a newer Prism, upgrade Prism first. [Upgrading a pinned 
 Conflict: knowledge/wiki/CONNECTED.md is present with different contents; preserve or reconcile it explicitly before installing the Prism-owned binding.
 ```
 
-**Cause.** `knowledge/wiki/CONNECTED.md` is a Prism-owned file: it binds the workspace's wiki workflow to the board service. Prism replaces a copy that equals an earlier packaged version, but never overwrites a copy that matches no packaged version, for example one you edited or truncated. Nothing was written. Line endings do not make a copy different: a Git checkout with `core.autocrlf=true` turns the file into CRLF, and Prism still treats an otherwise unmodified CRLF copy as its own. If the conflict appears right after a fresh clone and nobody edited the file, check what changed with `git diff --ignore-space-at-eol`; only a real text difference needs the fix below.
+**Cause.** `knowledge/wiki/CONNECTED.md` is a Prism-owned file: it binds the workspace's wiki workflow to the board service. Prism never overwrites a copy that differs from the packaged text, for example one you edited or truncated. Nothing was written. Line endings do not make a copy different: a Git checkout with `core.autocrlf=true` turns the file into CRLF, and Prism still treats an otherwise unmodified CRLF copy as its own. If the conflict appears right after a fresh clone and nobody edited the file, check what changed with `git diff --ignore-space-at-eol`; only a real text difference needs the fix below.
 
 **Fix.**
 

@@ -28,8 +28,7 @@ SEARCH_DIRECTORIES = {
     "api-contract": "api-contracts",
     "decision": "decisions",
 }
-from prism_cli.wiki_links import (  # noqa: E402  (kept here so existing imports stay stable)
-    LINKED_CONTEXT_DIRECTORIES,  # noqa: F401 (kept as a compatibility import)
+from prism_cli.wiki_links import (  # noqa: E402
     linked_context_for_feature as _shared_linked_context_for_feature,
     markdown_files as _shared_markdown_files,
     page_references_feature as _shared_page_references_feature,

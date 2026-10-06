@@ -15,13 +15,14 @@ from uuid import UUID, uuid4
 import yaml
 
 from prism_cli.app_model import (
+    GENERATED_PLATFORM_DIRS,
     LOCAL_OVERRIDE_FILE,
     MANIFEST_SCHEMA_VERSION,
     PURPOSE_KNOWLEDGE_ROOT,
     apps_from_platforms,
     normalize_manifest,
 )
-from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, PLATFORM_DIRS
+from prism_cli.workspace import MANIFEST_FILE
 from prism_cli.workflow_assets import asset_digest, bootstrap_files, guidance_pointer, previous_digests
 from prism_cli.board_store import BoardLockError, unresolved_board_operations, workspace_process_lock
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, reparse_kind
@@ -76,7 +77,6 @@ def plan_install(
     try:
         manifest_bytes = _read_path_bytes(workspace, MANIFEST_FILE, allow_missing=True)
         before_manifest = manifest_bytes.decode("utf-8") if manifest_bytes is not None else None
-        answers_present = _safe_exists(workspace, COPIER_ANSWERS_FILE)
         manifest_data, bom = _parse_manifest(manifest_bytes)
         _validate_workspace_binding(manifest_data, conflicts)
         project_value = _mutable_mapping(manifest_data, "project", MANIFEST_FILE)
@@ -97,7 +97,7 @@ def plan_install(
         generated_by = manifest_data.get("generated_by")
         if generated_by is not None and not isinstance(generated_by, dict):
             raise ValueError(f"{MANIFEST_FILE} generated_by must be a mapping before workflow adoption.")
-        is_generated = answers_present or isinstance(generated_by, dict)
+        is_generated = isinstance(generated_by, dict)
         if isinstance(old_workflow, dict) and old_workflow.get("mode") == "generated":
             is_generated = True
         workflow_current = _workflow_is_current(old_workflow, digest)
@@ -133,8 +133,7 @@ def plan_install(
         if old_workflow is not None and old_workflow.get("asset_digest") is None and old_version == WORKFLOW_VERSION and not upgrade:
             conflicts.append("This workflow has no canonical asset digest; use `prism workflow upgrade` to pin its guidance.")
 
-        inferred_answers = _read_copier_answers(workspace, conflicts) if answers_present else {}
-        chosen_name = _choose_name(workspace, project, inferred_answers, name, conflicts)
+        chosen_name = _choose_name(workspace, project, name, conflicts)
         problem_codes = sorted({item.code for item in model_diagnostics if item.severity == "error"})
         if problem_codes:
             conflicts.append(
@@ -146,7 +145,7 @@ def plan_install(
             if selected_apps is not None and set(selected_apps) != set(chosen_apps):
                 conflicts.append(f"`--app` cannot change the apps of this workspace; register another app with `prism app add` or edit `apps` in {MANIFEST_FILE}.")
         else:
-            chosen_apps = _choose_apps(inferred_answers, selected_apps, conflicts)
+            chosen_apps = selected_apps or []
         mode = "generated" if is_generated else "workflow"
         purpose = _choose_purpose(old_workflow, knowledge_root, is_generated, before_manifest is not None, conflicts)
 
@@ -258,7 +257,7 @@ def plan_install(
             "plan_id": str(uuid4()),
             "root": str(workspace),
             "version": WORKFLOW_VERSION,
-            "mode": "generated" if _safe_exists(workspace, COPIER_ANSWERS_FILE) else "workflow",
+            "mode": "workflow",
             "purpose": PURPOSE_KNOWLEDGE_ROOT if knowledge_root else None,
             "asset_digest": digest,
             "board_id": None,
@@ -613,10 +612,10 @@ def _validate_requested_apps(apps: list[str] | None) -> list[str] | None:
         raise ValueError("The apps must be a list of generated app IDs.")
     if len(set(apps)) != len(apps):
         raise ValueError("The apps cannot contain duplicate IDs.")
-    invalid = sorted(set(apps) - set(PLATFORM_DIRS))
+    invalid = sorted(set(apps) - set(GENERATED_PLATFORM_DIRS))
     if invalid:
-        raise ValueError(f"Unsupported app IDs: {', '.join(invalid)}. Choose from {', '.join(PLATFORM_DIRS)}.")
-    return [app_id for app_id in PLATFORM_DIRS if app_id in apps]
+        raise ValueError(f"Unsupported app IDs: {', '.join(invalid)}. Choose from {', '.join(GENERATED_PLATFORM_DIRS)}.")
+    return [app_id for app_id in GENERATED_PLATFORM_DIRS if app_id in apps]
 
 
 def _validate_name(name: str) -> None:
@@ -624,27 +623,9 @@ def _validate_name(name: str) -> None:
         raise ValueError("Workspace name must be a non-empty single-line string.")
 
 
-def _read_copier_answers(root: Path, conflicts: list[str]) -> dict[str, Any]:
-    try:
-        raw = _read_path_bytes(root, COPIER_ANSWERS_FILE, allow_missing=True)
-        if raw is None:
-            return {}
-        answers = yaml.safe_load(raw.decode("utf-8-sig"))
-    except (OSError, UnicodeError, ValueError, yaml.YAMLError) as exc:
-        conflicts.append(f"Unable to inspect existing Copier identity answers: {exc}")
-        return {}
-    if answers is None:
-        return {}
-    if not isinstance(answers, dict):
-        conflicts.append(f"{COPIER_ANSWERS_FILE} must be a YAML mapping before workflow adoption.")
-        return {}
-    return answers
-
-
 def _choose_name(
     root: Path,
     project: dict[str, Any],
-    answers: dict[str, Any],
     requested: str | None,
     conflicts: list[str],
 ) -> str | None:
@@ -653,9 +634,6 @@ def _choose_name(
         return requested.strip()
     if isinstance(old, str) and old.strip():
         return old
-    answer_name = answers.get("project_name")
-    if isinstance(answer_name, str) and answer_name.strip():
-        return answer_name
     substantive_entries = [item for item in root.iterdir() if item.name.lower() != ".git"]
     if not substantive_entries:
         conflicts.append("A new empty workspace needs a display name; provide --name NAME.")
@@ -664,31 +642,6 @@ def _choose_name(
         conflicts.append("The existing project name is not a non-empty string; provide --name NAME to repair it.")
         return None
     return root.name or None
-
-
-def _choose_apps(
-    answers: dict[str, Any],
-    requested: list[str] | None,
-    conflicts: list[str],
-) -> list[str]:
-    """The generated apps to register: the requested ones, else the Copier answers' platforms, else none."""
-
-    if requested is not None:
-        return requested
-    answer_platforms = answers.get("platforms")
-    if answer_platforms is not None and not isinstance(answer_platforms, list):
-        conflicts.append(f"Saved project platform answers must be a list; found {type(answer_platforms).__name__}.")
-        return []
-    if isinstance(answer_platforms, list) and answer_platforms:
-        invalid = [value for value in answer_platforms if not isinstance(value, str) or value not in PLATFORM_DIRS]
-        if invalid:
-            conflicts.append(f"Saved project platform answers contain unsupported values: {invalid!r}; provide a valid --app selection.")
-            return []
-        if len(set(answer_platforms)) != len(answer_platforms):
-            conflicts.append("Saved project platform answers contain duplicates; provide a valid --app selection.")
-            return []
-        return list(answer_platforms)
-    return []
 
 
 def _choose_purpose(
@@ -994,14 +947,6 @@ def _atomic_write(root: Path, relative: str, path: Path, content: bytes, expecte
                 os.close(descriptor)
         with contextlib.suppress(OSError):
             temporary.unlink()
-
-
-def _safe_exists(root: Path, relative: str) -> bool:
-    try:
-        target = _safe_target(root, relative)
-        return target.exists() or target.is_symlink()
-    except ValueError:
-        return True
 
 
 def _unique(values: list[str]) -> list[str]:

@@ -160,9 +160,6 @@ class BoardStore:
             COMMIT;
             """
         )
-        columns = {row[1] for row in self.connection.execute("PRAGMA table_info(grants)")}
-        if "asset_digest" not in columns:
-            self.connection.execute("ALTER TABLE grants ADD COLUMN asset_digest TEXT NOT NULL DEFAULT ''")
 
     def _check_sqlite_paths(self) -> None:
         for suffix in ("", "-journal", "-wal", "-shm"):

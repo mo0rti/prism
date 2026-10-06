@@ -572,17 +572,6 @@ class WorkflowInstallAppsTests(TwoAppWorkspaceCase):
         self.assertEqual([], diagnostics)
         self.assertEqual(["backend", "mobile-ios", "web-admin-portal"], model.active_app_ids)
 
-    def test_a_generated_workspace_without_apps_takes_them_from_the_saved_answers(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / ".copier-answers.yml").write_text(yaml.safe_dump({"_src_path": "x", "project_name": "Gen", "platforms": ["backend", "mobile-android"]}), encoding="utf-8")
-            (root / MANIFEST_FILE).write_text(yaml.safe_dump({"schema_version": 2, "project": {"name": "Gen"}, "generated_by": {"tool": "prism-cli"}}), encoding="utf-8")
-            plan = plan_install(root, upgrade=True)
-            self.assertEqual([], plan["conflicts"])
-            self.assertEqual("applied", apply_install(root, plan)["status"])
-            self.assertEqual(["backend", "mobile-android"], [item["id"] for item in manifest_data(root)["apps"]])
-            self.assertEqual("generated", manifest_data(root)["workflow"]["mode"])
-
     def test_other_schema_versions_are_still_rejected_for_adoption(self) -> None:
         data = manifest_data(self.root)
         data["schema_version"] = 3

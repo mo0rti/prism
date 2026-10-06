@@ -4,7 +4,7 @@ Run [Prism](https://github.com/mo0rti/prism), the shared workflow and board for 
 
 ```bash
 npx @mortitech/prism --version
-npx @mortitech/prism workflow install . --name "My workspace" --platform backend
+npx @mortitech/prism workflow install . --name "My workspace" --app backend
 ```
 
 Or install the command once:

@@ -1,6 +1,6 @@
 """CLI entry points for workflow adoption and the local shared board.
 
-Imports of transport dependencies stay lazy so the legacy read commands do not
+Imports of transport dependencies stay lazy so the read commands do not
 start a service or create any persistent state.
 """
 
@@ -13,8 +13,9 @@ from pathlib import Path
 import sqlite3
 import sys
 
+from prism_cli.app_model import GENERATED_PLATFORM_DIRS
 from prism_cli.arguments import IntermixedParser
-from prism_cli.workspace import PLATFORM_DIRS, inspect_workspace
+from prism_cli.workspace import inspect_workspace
 
 
 def register_commands(subparsers) -> None:
@@ -27,7 +28,7 @@ def register_commands(subparsers) -> None:
         parser.add_argument(
             "--app",
             action="append",
-            choices=sorted(PLATFORM_DIRS),
+            choices=sorted(GENERATED_PLATFORM_DIRS),
             help="Generated app ID to register when the manifest declares no apps; repeat for several. Without it a new workspace has no apps.",
         )
         if action == "install":

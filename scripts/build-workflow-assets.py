@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build or verify the self-contained, pinned workflow-v1 package asset.
 
-The asset also records the digests of earlier shipped versions of the files the
-installer owns. A rebuild appends to that history and never drops an entry.
+The asset's ``previous_digests`` maps each installer-owned file to the digests of
+its earlier shipped versions, so that ``prism workflow upgrade`` can replace an
+unmodified earlier copy. ``PREVIOUS_DIGESTS`` is that history and is empty.
 """
 
 from __future__ import annotations
@@ -23,6 +24,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 ASSET_PATH = ROOT / "prism_cli" / "assets" / "workflow-v1.json"
+# SHA-256 digests of earlier shipped versions of installer-owned files, keyed by workspace path.
+# The first release that has external users records its digests here.
+PREVIOUS_DIGESTS: dict[str, list[str]] = {}
 SKILL_NAMES = (
     "ask",
     "audit-feature",
@@ -197,72 +201,6 @@ def _connected_pointers(agents: str, claude: str) -> tuple[str, str]:
     return pointers[0], pointers[1]
 
 
-def _read_existing_asset() -> dict[str, Any] | None:
-    """Read the checked-in asset so its digests of earlier shipped files can be carried forward."""
-
-    if not ASSET_PATH.exists():
-        return None
-    try:
-        existing = json.loads(ASSET_PATH.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Unable to read the existing workflow asset, whose digest history must not be lost: {exc}") from exc
-    if not isinstance(existing, dict):
-        raise ValueError("The existing workflow asset is not a JSON object, so its digest history cannot be kept.")
-    return existing
-
-
-def _digest_history(
-    existing: dict[str, Any] | None,
-    files_by_path: dict[str, dict[str, str]],
-    pointer_variants: dict[str, dict[str, str]],
-) -> dict[str, list[str]]:
-    """Return every digest the installer treats as an unmodified earlier copy of a Prism-owned file.
-
-    History is append-only: the earlier digests stay, and the content the
-    existing asset carried joins them whenever the rebuilt content differs.
-    """
-
-    history: dict[str, list[str]] = {}
-
-    def remember(path: str, digest: str) -> None:
-        digests = history.setdefault(path, [])
-        if digest not in digests:
-            digests.append(digest)
-
-    if existing is not None:
-        recorded = existing.get("previous_digests", {})
-        if not isinstance(recorded, dict):
-            raise ValueError("The existing workflow asset has an invalid digest history.")
-        for path, digests in recorded.items():
-            if not isinstance(path, str) or not isinstance(digests, list) or any(not isinstance(item, str) for item in digests):
-                raise ValueError(f"The existing workflow asset has an invalid digest history for {path!r}.")
-            history.setdefault(path, [])
-            for digest in digests:
-                remember(path, digest)
-        shipped_files = {
-            item["path"]: item["content"]
-            for item in existing.get("files", [])
-            if isinstance(item, dict) and isinstance(item.get("path"), str) and isinstance(item.get("content"), str)
-        }
-        for path in existing.get("bootstrap_paths", []):
-            content = shipped_files.get(path)
-            if content is not None and (path not in files_by_path or _sha256(content) != files_by_path[path]["digest"]):
-                remember(path, _sha256(content))
-        # A root pointer has one shipped form per variant (workflow workspace, knowledge root).
-        # Every form the existing asset carried joins the history unless it is still shipped.
-        current_pointer_digests: dict[str, set[str]] = {}
-        for variant in pointer_variants.values():
-            for name, content in variant.items():
-                current_pointer_digests.setdefault(name, set()).add(_sha256(content))
-        for key in pointer_variants:
-            shipped_pointers = existing.get(key)
-            if isinstance(shipped_pointers, dict):
-                for name, content in shipped_pointers.items():
-                    if isinstance(content, str) and name in current_pointer_digests and _sha256(content) not in current_pointer_digests[name]:
-                        remember(name, _sha256(content))
-    return {path: history[path] for path in sorted(history)}
-
-
 def build_asset() -> dict[str, Any]:
     from prism_cli.wiki_transitions import ACTION_SPECS
 
@@ -338,7 +276,7 @@ def build_asset() -> dict[str, Any]:
         "bootstrap_paths": bootstrap_paths,
         "guidance_pointers": guidance_pointers,
         "knowledge_root_pointers": knowledge_root_pointers,
-        "previous_digests": _digest_history(_read_existing_asset(), files_by_path, {"guidance_pointers": guidance_pointers, "knowledge_root_pointers": knowledge_root_pointers}),
+        "previous_digests": {path: list(PREVIOUS_DIGESTS[path]) for path in sorted(PREVIOUS_DIGESTS)},
     }
     canonical = json.dumps(asset, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     asset["asset_digest"] = hashlib.sha256(canonical).hexdigest()

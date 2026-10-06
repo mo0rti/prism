@@ -290,7 +290,7 @@ class JsonContractTests(unittest.TestCase):
         self.assertIn("manifest-filesystem-drift", codes)
         self.assertEqual("error", envelope["confidence"])
 
-    def test_query_envelope_uses_answers_and_filesystem_identity_without_manifest(self) -> None:
+    def test_query_envelope_without_a_manifest_has_no_identity_and_no_apps(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             wiki_root = workspace / "knowledge" / "wiki"
@@ -304,8 +304,8 @@ class JsonContractTests(unittest.TestCase):
 
             envelope = wiki_show(workspace, "F-001")
 
-        self.assertEqual("Answers name", envelope["workspace"]["project_name"])
-        self.assertEqual(["mobile-ios"], [app["id"] for app in envelope["workspace"]["apps"]])
+        self.assertIsNone(envelope["workspace"]["project_name"])
+        self.assertEqual([], envelope["workspace"]["apps"])
         self.assertIn("missing-workspace-manifest", {diagnostic["code"] for diagnostic in envelope["diagnostics"]})
 
 

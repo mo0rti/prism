@@ -581,8 +581,8 @@ def _template_metadata(inspection: WorkspaceInspection) -> dict[str, Any]:
             }
         )
 
-    # Older manifests may have no provenance block.  The Copier answers file
-    # is the documented fallback for source and commit metadata only.
+    # The manifest records provenance when the generator knew it.  The Copier
+    # answers file is the documented fallback for source and commit metadata only.
     if metadata["template_source"] is None:
         source = answers.get("_src_path")
         if isinstance(source, str):

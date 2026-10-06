@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import io
 import json
 import shutil
@@ -11,7 +10,6 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from jsonschema import Draft202012Validator
 import yaml
@@ -25,7 +23,7 @@ from prism_cli.status import build_status
 from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_graph_html import render_html
 from prism_cli.wiki_lint import lint_wiki
-from prism_cli.workflow_assets import guidance_pointer, previous_digests
+from prism_cli.workflow_assets import guidance_pointer
 from prism_cli.workflow_install import apply_install, plan_install
 from prism_cli.workspace import MANIFEST_FILE, load_workspace
 from tests import app_model_baseline
@@ -219,7 +217,7 @@ class StartKnowledgeRootTests(unittest.TestCase):
         self.assertEqual(manifest, (plain / MANIFEST_FILE).read_bytes())
 
         generated = self.new_root()
-        (generated / ".copier-answers.yml").write_text("project_name: Generated\nplatforms: [backend]\n", encoding="utf-8")
+        (generated / MANIFEST_FILE).write_text(yaml.safe_dump({"schema_version": 2, "project": {"name": "Generated"}, "generated_by": {"tool": "prism-cli"}}), encoding="utf-8")
         refused = plan_install(generated, name="Generated", knowledge_root=True)
         self.assertTrue(any("generated workspace" in item for item in refused["conflicts"]), refused["conflicts"])
 
@@ -558,21 +556,6 @@ class PackagedGuidanceTests(unittest.TestCase):
                 self.assertNotIn("knowledge root", without)
                 self.assertIn("This workspace is a knowledge root", with_condition)
                 self.assertEqual(without.rstrip(), with_condition[: len(without.rstrip())])
-
-    def test_an_unmodified_earlier_knowledge_root_pointer_is_recognised_after_a_rebuild(self) -> None:
-        build = _load_build_script()
-        earlier = "# Prism workspace guidance\nan earlier knowledge-root pointer\n"
-        with tempfile.TemporaryDirectory() as temporary:
-            shipped_path = Path(temporary) / "workflow-v1.json"
-            shipped = json.loads((REPO_ROOT / "prism_cli/assets/workflow-v1.json").read_text(encoding="utf-8"))
-            shipped["knowledge_root_pointers"]["CLAUDE.md"] = earlier
-            shipped_path.write_text(json.dumps(shipped, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            with patch.object(build, "ASSET_PATH", shipped_path):
-                history = build.build_asset()["previous_digests"]
-
-        self.assertIn(hashlib.sha256(earlier.encode("utf-8")).hexdigest(), history["CLAUDE.md"])
-        self.assertNotIn("AGENTS.md", {path for path, digests in history.items() if hashlib.sha256(earlier.encode("utf-8")).hexdigest() in digests})
-        self.assertEqual((), previous_digests("knowledge/wiki/never-shipped.md"))
 
 
 if __name__ == "__main__":

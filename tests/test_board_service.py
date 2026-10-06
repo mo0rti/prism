@@ -2186,7 +2186,8 @@ def _legacy_validate_graph_inputs(service: BoardService) -> None:
     """The per-entry ancestor walk that ``validate_graph_inputs`` replaced; the oracle for equivalence."""
 
     from prism_cli.wiki_transitions import _capability_paths
-    from prism_cli.workspace import COPIER_ANSWERS_FILE, PLATFORM_DIRS
+    from prism_cli.app_model import GENERATED_PLATFORM_DIRS
+    from prism_cli.workspace import COPIER_ANSWERS_FILE
 
     root = service.root
     roots = [
@@ -2199,7 +2200,7 @@ def _legacy_validate_graph_inputs(service: BoardService) -> None:
     files = [
         root / "prism.workspace.yml",
         root / COPIER_ANSWERS_FILE,
-        *(root / directory for directory in PLATFORM_DIRS.values()),
+        *(root / directory for directory in GENERATED_PLATFORM_DIRS.values()),
         *(root / relative for relative in _capability_paths()),
     ]
     for path in files:

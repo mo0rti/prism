@@ -766,7 +766,7 @@ class WorkspaceStatusTests(unittest.TestCase):
         self.assertEqual(1, result.intake.pending)
         self.assertEqual(1, result.intake.quarantined)
 
-    def test_legacy_generated_workspace_without_manifest_is_degraded_not_error(self) -> None:
+    def test_a_generated_folder_without_a_manifest_is_degraded_not_error(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "README.md").write_text("", encoding="utf-8")
@@ -900,19 +900,23 @@ class WikiQueryTests(unittest.TestCase):
         self.assertNotIn("wiki", data)
         json.dumps(data)
 
-    def test_wiki_show_degrades_when_manifest_is_missing(self) -> None:
+    def test_wiki_show_without_a_manifest_declares_no_apps(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             (root / MANIFEST_FILE).unlink()
             (root / ".copier-answers.yml").write_text("_src_path: test-template\nplatforms: [backend]\n", encoding="utf-8")
+            (root / "backend").mkdir()
             write_feature(root)
             write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
 
             data = wiki_show(root, "F-001")
 
-        self.assertEqual("degraded", data["confidence"])
-        self.assertIn("missing-workspace-manifest", {diagnostic["code"] for diagnostic in data["diagnostics"]})
+        codes = {diagnostic["code"] for diagnostic in data["diagnostics"]}
+        self.assertIn("missing-workspace-manifest", codes)
+        self.assertIn("unknown-app-id", codes)
+        self.assertEqual([], data["workspace"]["apps"])
+        self.assertEqual("error", data["confidence"])
 
     def test_wiki_blockers_returns_blocker_facts(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

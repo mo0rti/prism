@@ -21,7 +21,6 @@ import yaml
 from prism_cli import __version__
 from prism_cli.app_model import (
     GENERATED_PLATFORM_DIRS,
-    GENERATED_PLATFORM_STACKS,
     MANIFEST_SCHEMA_VERSION,
     App,
     WorkspaceDiagnostic,
@@ -54,9 +53,6 @@ GENERATION_ANSWER_FIELDS = (
     "web_hosting",
     "github_org",
 )
-
-# The directories of the generated platforms, derived from the stack registry.
-PLATFORM_DIRS = dict(GENERATED_PLATFORM_DIRS)
 
 _VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?$")
 
@@ -122,36 +118,26 @@ class WorkspaceManifest:
     @property
     def generated_by_prism_cli_version(self) -> str | None:
         value = self.generated_by.get("prism_cli_version")
-        if not isinstance(value, str):
-            value = self.data.get("generated_by_prism_cli_version")
         return value if isinstance(value, str) else None
 
     @property
     def template_source(self) -> str | None:
         value = self.generated_by.get("template_source")
-        if not isinstance(value, str):
-            value = self.data.get("template_source")
         return value if isinstance(value, str) else None
 
     @property
     def template_version(self) -> str | None:
         value = self.generated_by.get("template_version")
-        if not isinstance(value, str):
-            value = self.data.get("template_version")
         return value if isinstance(value, str) else None
 
     @property
     def template_commit(self) -> str | None:
         value = self.generated_by.get("template_commit")
-        if not isinstance(value, str):
-            value = self.data.get("template_commit")
         return value if isinstance(value, str) else None
 
     @property
     def generated_at(self) -> str | None:
         value = self.generated_by.get("generated_at")
-        if not isinstance(value, str):
-            value = self.data.get("generated_at")
         return value if isinstance(value, str) else None
 
     @property
@@ -218,24 +204,15 @@ class WorkspaceInspection:
 
     @property
     def project_name(self) -> str | None:
-        if self.manifest and self.manifest.project_name:
-            return self.manifest.project_name
-        value = self.answers.get("project_name")
-        return value if isinstance(value, str) else None
+        return self.manifest.project_name if self.manifest else None
 
     @property
     def model(self) -> WorkspaceModel:
-        """The application model: the manifest's, else the generated apps the answers or directories name."""
+        """The application model of the manifest; a workspace without a usable manifest has no apps."""
 
         if self.manifest:
             return self.manifest.model
-        answer_platforms = _string_list(self.answers.get("platforms"))
-        generated = [item for item in dict.fromkeys(answer_platforms or self.filesystem_platforms) if item in GENERATED_PLATFORM_STACKS]
-        model, _diagnostics = normalize_manifest(
-            {"schema_version": MANIFEST_SCHEMA_VERSION, "apps": apps_from_platforms(generated)},
-            path=self.answers_path,
-        )
-        return model
+        return WorkspaceModel(schema_version=0)
 
     @property
     def app_ids(self) -> list[str]:
@@ -245,11 +222,7 @@ class WorkspaceInspection:
 
     @property
     def apps(self) -> list[dict[str, Any]]:
-        """Every declared app in the shape workspace-level JSON reports.
-
-        Without a usable manifest the generated apps named by the Copier answers
-        or found as directories are reported with their default stack and path.
-        """
+        """Every declared app in the shape workspace-level JSON reports."""
 
         return app_entries(self.model)
 
@@ -269,12 +242,11 @@ class WorkspaceInspection:
 
 
 def load_workspace(root: Path) -> WorkspaceLoadResult:
-    """Load the generated workspace manifest when present.
+    """Load the workspace manifest when present.
 
-    Missing manifests are allowed during the transition period. Callers should
-    degrade confidence rather than fail hard when the older generated-project
-    shape is otherwise recognizable. Inside one ``wiki_read_scope`` the manifest
-    is read once, so the readers of a request agree on the same model.
+    A missing manifest is reported as a warning diagnostic and the workspace
+    declares no apps. Inside one ``wiki_read_scope`` the manifest is read once, so the
+    readers of a request agree on the same model.
     """
 
     return load_resolved_workspace(root.expanduser().resolve())
@@ -297,7 +269,7 @@ def _load_workspace(workspace_root: Path) -> WorkspaceLoadResult:
                     "missing-workspace-manifest",
                     "warning",
                     manifest_path,
-                    f"Missing {MANIFEST_FILE}; falling back to older generated-project signals.",
+                    f"Missing {MANIFEST_FILE}; the workspace declares no apps.",
                 )
             ],
             manifest_exists=False,
@@ -369,7 +341,6 @@ def _load_workspace(workspace_root: Path) -> WorkspaceLoadResult:
             )
         )
         # Do not interpret fields from a schema this CLI does not understand.
-        # The caller can still fall back to Copier answers and filesystem facts.
         return WorkspaceLoadResult(
             root=workspace_root,
             manifest=None,
@@ -423,8 +394,6 @@ def inspect_workspace(root: Path) -> WorkspaceInspection:
     diagnostics.extend(_compare_manifest_answers(load_result.manifest, answers, answers_path))
     diagnostics.extend(_compare_manifest_filesystem(load_result.manifest, filesystem_platforms, workspace_root))
     diagnostics.extend(_compare_manifest_runtime(load_result.manifest))
-    if load_result.manifest is None:
-        diagnostics.extend(_compare_answers_filesystem(answers, filesystem_platforms, workspace_root))
     return WorkspaceInspection(
         root=workspace_root,
         load_result=load_result,
@@ -437,17 +406,13 @@ def inspect_workspace(root: Path) -> WorkspaceInspection:
 
 
 def workspace_model(root: Path, *, resolved: bool = False) -> WorkspaceModel:
-    """The application model of a workspace: the manifest's, else the generated apps the answers or directories name.
+    """The application model of a workspace: the manifest's, empty without a usable manifest.
 
-    A readable manifest costs one read; without one, the Copier answers and the
-    directories are inspected, as ``WorkspaceInspection.model`` does. Pass
-    ``resolved=True`` for a root that is already resolved.
+    Pass ``resolved=True`` for a root that is already resolved.
     """
 
     manifest = (load_resolved_workspace(root) if resolved else load_workspace(root)).manifest
-    if manifest is not None:
-        return manifest.model
-    return inspect_workspace(root).model
+    return manifest.model if manifest is not None else WorkspaceModel(schema_version=0)
 
 
 def detect_workspace_kind(root: Path) -> str:
@@ -664,7 +629,7 @@ def _compare_app_directories(
     diagnostics: list[WorkspaceDiagnostic] = []
     declared_paths = [app.path for app in manifest.model.workspace_apps()]
     for platform_id in sorted(filesystem_platforms):
-        directory = PLATFORM_DIRS[platform_id]
+        directory = GENERATED_PLATFORM_DIRS[platform_id]
         if not any(path == directory or path.startswith(f"{directory}/") or directory.startswith(f"{path}/") for path in declared_paths):
             diagnostics.append(
                 _diag(
@@ -706,27 +671,6 @@ def _compare_manifest_runtime(manifest: WorkspaceManifest | None) -> list[Worksp
                 )
             )
     return diagnostics
-
-
-def _compare_answers_filesystem(
-    answers: Mapping[str, Any],
-    filesystem_platforms: list[str],
-    root: Path,
-) -> list[WorkspaceDiagnostic]:
-    answer_platforms = set(_string_list(answers.get("platforms")))
-    if not answer_platforms:
-        return []
-    filesystem_set = set(filesystem_platforms)
-    if answer_platforms == filesystem_set:
-        return []
-    return [
-        _diag(
-            "answers-filesystem-drift",
-            "warning",
-            root / COPIER_ANSWERS_FILE,
-            "Copier answers platforms differ from detected platform directories.",
-        )
-    ]
 
 
 def _validate_manifest_shape(data: Mapping[str, Any], path: Path) -> list[WorkspaceDiagnostic]:
@@ -793,13 +737,7 @@ def _validate_manifest_shape(data: Mapping[str, Any], path: Path) -> list[Worksp
 
 
 def _detect_platform_dirs(root: Path) -> list[str]:
-    return [platform_id for platform_id, directory in PLATFORM_DIRS.items() if (root / directory).exists()]
-
-
-def _string_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, str)]
+    return [platform_id for platform_id, directory in GENERATED_PLATFORM_DIRS.items() if (root / directory).exists()]
 
 
 def _comparison_value(value: Any) -> Any:

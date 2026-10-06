@@ -828,57 +828,6 @@
     "AGENTS.md": "# Prism workspace guidance\n\nRead `knowledge/wiki/CONNECTED.md` when using a Prism MCP connection. Discover the\nworkspace's pinned standard skills and retrieve their complete instructions through\nthat connection. Keep required semantic reviews and confirmations in this CLI;\nthere is no second board approval queue. Check `write_supported` and `limitations`;\npreview supported writes through the shared service, confirm and apply, then check\nits durable receipt. When the service rejects a proposal, retry only with exactly the\nfix the error names, at most 2 more times, and never widen the change; then stop and\nreport. Stop and report at once when a connected write is unavailable, denied or its\nerror names no fix. Custom local skills keep their direct-file\nworkflow. An older workspace needs an explicit `prism workflow upgrade` before\nconnected writes are enabled; the read-only board and existing skills remain usable.\n\nThis workspace is a knowledge root: it holds the shared wiki for applications that live\nin other repositories and generates no application code. The wiki governs feature scope,\ndelivery evidence and shared knowledge. Each application repository keeps its own\ninstructions, code and builds; neither set of rules overrides the other, and nothing\nhere writes into a checkout. `prism.local.yml` (untracked, per machine) maps each\nexternal repository to its local checkout. The feature lifecycle is optional: a\nknowledge root may have no features at all.\n",
     "CLAUDE.md": "# Prism workspace guidance\n\nRead `knowledge/wiki/CONNECTED.md` when using a Prism MCP connection. Discover the\nworkspace's pinned standard skills and retrieve their complete instructions through\nthat connection. Keep required semantic reviews and confirmations in this CLI;\nthere is no second board approval queue. Check `write_supported` and `limitations`;\npreview supported writes through the shared service, confirm and apply, then check\nits durable receipt. When the service rejects a proposal, retry only with exactly the\nfix the error names, at most 2 more times, and never widen the change; then stop and\nreport. Stop and report at once when a connected write is unavailable, denied or its\nerror names no fix. Custom local skills keep their direct-file\nworkflow. An older workspace needs an explicit `prism workflow upgrade` before\nconnected writes are enabled; the read-only board and existing skills remain usable.\n\nThis workspace is a knowledge root: it holds the shared wiki for applications that live\nin other repositories and generates no application code. The wiki governs feature scope,\ndelivery evidence and shared knowledge. Each application repository keeps its own\ninstructions, code and builds; neither set of rules overrides the other, and nothing\nhere writes into a checkout. `prism.local.yml` (untracked, per machine) maps each\nexternal repository to its local checkout. The feature lifecycle is optional: a\nknowledge root may have no features at all.\n"
   },
-  "previous_digests": {
-    "AGENTS.md": [
-      "c020615342cc86928fdcaf8a982a7a25b93e638a96150954e657128f0242376e"
-    ],
-    "CLAUDE.md": [
-      "c020615342cc86928fdcaf8a982a7a25b93e638a96150954e657128f0242376e"
-    ],
-    "knowledge/intake/README.md": [
-      "98b79003c3402559a16942f2b05a74bd674896bb8ca2356d221baac5bd6c841c"
-    ],
-    "knowledge/wiki/CONNECTED.md": [
-      "f0494c0b8ed9a214a55a6fad5f4c98e6151b9bd13e47ea0c55e989fc2fddd2d9",
-      "01267353e9d7dd6997efa9c7c474cc10ee5fb683dd1a78a21527e36bac8ddf4b",
-      "22f2db882f61189a64cd8fb11ab9021c9443128f6de8fa650d4cfe84ca62012a",
-      "4d4421060f3a92cffb5b1258a9e9f31ee1272a987c8a23556390c622cd3cffe7",
-      "46f80f0e6222a7540f66d83db8f96a57bdfb2b7e8fcbdc5db3ae0aa11f8cfe7f",
-      "f053f3b4ea64e761ce9f76d64b4962bf8246e004c58a0561b52451bc998bd6bc"
-    ],
-    "knowledge/wiki/LIFECYCLE.md": [
-      "14f3de16637c5bf914b03075e6cf327b08a601516cbaf2f682448e6630c58938",
-      "b106794df79398c7ad4e0b50d02705c6ea809c10b43c6105f8bbae08203b0d2c"
-    ],
-    "knowledge/wiki/SCHEMA.md": [
-      "5856e71b777ff62e7f9a5958e1943261eafc434a54dc5937d2071bdefaf3d0c5",
-      "2cb332c3ee385779270bdecb393c1fd4ba5d11903ac2dea468e4215e056dc399",
-      "dea751a4ac1ee5723e5d0bc81000e23cfca953af37813f53edc008f2cc561e97",
-      "24dbaf09156f55d81f1020dd3bac7133f7c9014616dad8853193fdaf4f8527e4",
-      "7a2fb0ed92f8c6426cd16b29e9cd51edcaeaac4175a2c4047a8d0538acc15fb8"
-    ],
-    "knowledge/wiki/advisory/_FORMAT.md": [
-      "c28458c9a3f5401e11f06e0d8afeec8d23cb6fd14f714dfb9b63e10c063d40aa"
-    ],
-    "knowledge/wiki/api-contracts/_FORMAT.md": [
-      "997f28a9c0b70aa4770b0a3e3617f5a11b2d61c6063d6917e7bcdd44bab4b11c"
-    ],
-    "knowledge/wiki/features/_FORMAT.md": [
-      "dc7512693fd6c448a8191f7d062cbb8975b05a7b7a2f0009a04b50e63722c4c0",
-      "c64b48bd36913866034d84a422357e2d29a9634cc5f4faebc3a1cc1fdab012a5",
-      "3bc1e3fcf938797323931b80610b3872544d98b6bf21bea74ec2bc83d679747e",
-      "060d82e2bff20444cc9c1ed496e48b9f6048012f5d57dc559d098340e531b489"
-    ],
-    "knowledge/wiki/index.md": [
-      "470152553e26fa0ae8d6220523b1103b4e39ec11e6c95ca426fadfe8e9a67a8d"
-    ],
-    "knowledge/wiki/platform-requirements/.gitkeep": [
-      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    ],
-    "knowledge/wiki/platform-requirements/_FORMAT.md": [
-      "5048943ab891e0a3d1a423ce88e7a9abffae4dd0a146edce656f7f2948aa837a",
-      "4c96d8d339e6899773d850d60924ce13ce80aefd752716c7fbf3f8a6b2556f42"
-    ]
-  },
-  "asset_digest": "e4b2d277c22df9b062bb9f4b2ed5db4cfeae12d1d855d9bf7b6234528ed8f27e"
+  "previous_digests": {},
+  "asset_digest": "6b518d42b4d9d65750c206256601909a969000c195e959424fd3ebd635d9e1c8"
 }
