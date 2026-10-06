@@ -74,7 +74,7 @@ class WikiTransitionTests(unittest.TestCase):
             "min_prism_cli_version": "0.2.0",
             "expected_surfaces": {
                 "ai": ["AGENTS.md", "CLAUDE.md", ".agents/skills", ".claude/commands", ".cursor/rules"],
-                "docs": ["README.md", "CONTEXT.md", "docs/"],
+                "docs": ["README.md", "AGENTS.md", "docs/"],
                 "workflows": [".github/workflows/backend.yml"],
             },
         })

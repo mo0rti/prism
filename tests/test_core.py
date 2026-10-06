@@ -342,7 +342,7 @@ class HomeLauncherTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "README.md").write_text("", encoding="utf-8")
-            (root / "CONTEXT.md").write_text("", encoding="utf-8")
+            (root / "AGENTS.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
@@ -426,7 +426,7 @@ class DestinationPreparationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "README.md").write_text("", encoding="utf-8")
-            (root / "CONTEXT.md").write_text("", encoding="utf-8")
+            (root / "AGENTS.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
@@ -641,7 +641,7 @@ class ValidationTargetDetectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "README.md").write_text("", encoding="utf-8")
-            (root / "CONTEXT.md").write_text("", encoding="utf-8")
+            (root / "AGENTS.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
@@ -665,7 +665,7 @@ class GeneratedProjectStructureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "README.md").write_text("", encoding="utf-8")
-            (root / "CONTEXT.md").write_text("", encoding="utf-8")
+            (root / "AGENTS.md").write_text("", encoding="utf-8")
             (root / "Taskfile.yml").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
@@ -684,7 +684,7 @@ class GeneratedProjectStructureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "README.md").write_text("", encoding="utf-8")
-            (root / "CONTEXT.md").write_text("", encoding="utf-8")
+            (root / "AGENTS.md").write_text("", encoding="utf-8")
             (root / "Taskfile.yml").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
@@ -771,7 +771,7 @@ class WorkspaceStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "README.md").write_text("", encoding="utf-8")
-            (root / "CONTEXT.md").write_text("", encoding="utf-8")
+            (root / "AGENTS.md").write_text("", encoding="utf-8")
             create_wiki_skeleton(root)
             (root / MANIFEST_FILE).unlink()
 
@@ -1127,8 +1127,8 @@ class GeneratedPromptContractTests(unittest.TestCase):
         self.assertIn("reports deterministic wiki diagnostics in the response by default", text)
         self.assertIn("only when explicitly requested", text)
 
-    def test_generated_cursor_rules_describe_optional_cli_read_surface(self) -> None:
-        text = (cli_module.REPO_ROOT / "template" / ".cursor" / "rules" / "wiki.mdc.jinja").read_text(encoding="utf-8")
+    def test_generated_agent_instructions_describe_optional_cli_read_surface(self) -> None:
+        text = (cli_module.REPO_ROOT / "template" / "AGENTS.md.jinja").read_text(encoding="utf-8")
         self.assertIn("CLI read surfaces", text)
         self.assertIn("prism wiki show F-XXX --json", text)
         self.assertIn("must not hard-depend on an installed Prism CLI", text)

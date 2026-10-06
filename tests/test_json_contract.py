@@ -230,7 +230,7 @@ class JsonContractTests(unittest.TestCase):
             ),
             REPO_ROOT / "template" / ".claude" / "commands" / "feature-status.md.jinja",
             REPO_ROOT / "template" / ".claude" / "commands" / "prep-sprint.md.jinja",
-            REPO_ROOT / "template" / ".cursor" / "rules" / "wiki.mdc.jinja",
+            REPO_ROOT / "template" / "AGENTS.md.jinja",
         ]
         for path in prompt_paths:
             with self.subTest(prompt=path.as_posix()):

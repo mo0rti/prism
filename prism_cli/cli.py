@@ -1363,7 +1363,7 @@ def validate_generated_project(path: Path) -> int:
 
     checks = [
         "README.md present",
-        "CONTEXT.md present",
+        "AGENTS.md present",
         "knowledge/wiki/SCHEMA.md present",
         "knowledge/wiki/LIFECYCLE.md present",
         "Taskfile.yml present",
@@ -1382,7 +1382,7 @@ def validate_generated_project_structure(path: Path) -> tuple[list[str], list[st
 
     required_paths = [
         ("README.md", path / "README.md"),
-        ("CONTEXT.md", path / "CONTEXT.md"),
+        ("AGENTS.md", path / "AGENTS.md"),
         ("knowledge/wiki/SCHEMA.md", path / "knowledge" / "wiki" / "SCHEMA.md"),
         ("knowledge/wiki/LIFECYCLE.md", path / "knowledge" / "wiki" / "LIFECYCLE.md"),
         ("Taskfile.yml", path / "Taskfile.yml"),
@@ -1929,7 +1929,7 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, 
         print()
     next_steps = [
         f"Open the generated repo: {dest_path}",
-        "Read README.md and CONTEXT.md",
+        "Read README.md and AGENTS.md",
         "Run setup-project inside the generated repository",
         "Watch your product truth take shape: prism wiki graph --serve",
         "Validate the selected platform slices before treating them as settled",

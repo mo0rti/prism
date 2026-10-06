@@ -16,6 +16,7 @@ from prism_cli.workflow_assets import asset_digest, bootstrap_files, guidance_po
 from prism_cli.board_cli import cmd_workflow
 from prism_cli.board_service import BoardService
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE
+from prism_cli.wiki_lint import lint_wiki
 from prism_cli.workflow_install import apply_install, plan_install
 import prism_cli.workflow_install as workflow_installer
 from tests.test_fs_safety import CLOUD_TAG, JUNCTION_TAG, fake_reparse
@@ -52,6 +53,11 @@ class WorkflowInstallTests(unittest.TestCase):
             for source in bootstrap_files():
                 self.assertEqual(source["content"], (root / source["path"]).read_text(encoding="utf-8"))
             self.assertEqual(guidance_pointer("AGENTS.md"), (root / "AGENTS.md").read_text(encoding="utf-8"))
+            # One source of rules: CLAUDE.md imports AGENTS.md and there is no CONTEXT.md.
+            self.assertEqual("@AGENTS.md\n", (root / "CLAUDE.md").read_text(encoding="utf-8"))
+            self.assertIn("knowledge/wiki/CONNECTED.md", (root / "AGENTS.md").read_text(encoding="utf-8"))
+            self.assertNotIn("knowledge/wiki/CONNECTED.md", (root / "CLAUDE.md").read_text(encoding="utf-8"))
+            self.assertFalse((root / "CONTEXT.md").exists())
             self.assertIn(".prism/state/", (root / ".gitignore").read_text(encoding="utf-8"))
 
             repeat = plan_install(root)
@@ -90,9 +96,68 @@ class WorkflowInstallTests(unittest.TestCase):
             self.assertEqual("docs/catalog.md", updated["paths"]["custom_catalog"])
             self.assertEqual({"team": ["README.md"]}, updated["expected_surfaces"])
             self.assertEqual({"keep": True}, updated["local_extension"])
-            self.assertEqual(custom_wiki, (root / "knowledge/wiki/index.md").read_bytes())
+            # The user's index keeps every byte it had; the installer only appends the lines of the pages it installs.
+            index = (root / "knowledge/wiki/index.md").read_bytes()
+            self.assertTrue(index.startswith(custom_wiki))
+            self.assertIn(b"- [SCHEMA.md](SCHEMA.md): ", index)
+            self.assertIn(b"- [Status board](status-board.md): ", index)
             self.assertEqual(custom_agents, (root / "AGENTS.md").read_bytes())
             self.assertTrue((root / "knowledge/wiki/CONNECTED.md").is_file())
+
+    def test_existing_claude_guidance_is_preserved_and_an_import_is_offered(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            custom_claude = b"# My Claude rules\nKeep these rules.\n"
+            (root / "CLAUDE.md").write_bytes(custom_claude)
+
+            plan = plan_install(root, name="Editorial", apps=["backend"])
+            self.assertEqual([], plan["conflicts"])
+            self.assertTrue(any(item.startswith("CLAUDE.md") for item in plan["preserved"]))
+            self.assertTrue(any("@AGENTS.md" in step for step in plan["optional_steps"]))
+            self.assertEqual("applied", apply_install(root, plan)["status"])
+            self.assertEqual(custom_claude, (root / "CLAUDE.md").read_bytes())
+            self.assertEqual(guidance_pointer("AGENTS.md"), (root / "AGENTS.md").read_text(encoding="utf-8"))
+
+            (root / "CLAUDE.md").write_bytes(b"@AGENTS.md\n# More\n")
+            repeat = plan_install(root, upgrade=True)
+            self.assertFalse(any("@AGENTS.md" in step for step in repeat["optional_steps"]))
+
+    def test_an_existing_index_gets_a_line_for_each_page_the_install_adds_and_nothing_else(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "knowledge/wiki").mkdir(parents=True)
+            own_schema_line = "- [Our schema](SCHEMA.md): The team's own words for this page."
+            custom_index = (
+                "# Our index\n\n"
+                "## Meta\n"
+                f"{own_schema_line}\n"
+                "- [Handbook](topics/handbook.md): Written by the team.\n"
+            ).encode("utf-8")
+            (root / "knowledge/wiki/index.md").write_bytes(custom_index)
+            (root / "knowledge/wiki/SCHEMA.md").write_text("# Our own schema\n", encoding="utf-8")
+
+            plan = plan_install(root, name="Editorial", apps=["backend"])
+            self.assertEqual([], plan["conflicts"])
+            self.assertIn("knowledge/wiki/index.md", plan["preserved"])
+            change = next(item for item in plan["changes"] if item["path"] == "knowledge/wiki/index.md")
+            self.assertEqual(custom_index.decode("utf-8"), change["before"])
+            self.assertEqual("applied", apply_install(root, plan)["status"])
+
+            index = (root / "knowledge/wiki/index.md").read_text(encoding="utf-8")
+            # The user's own lines stay exactly as written, including the one for a page they already own.
+            self.assertIn(own_schema_line + "\n", index)
+            self.assertIn("- [Handbook](topics/handbook.md): Written by the team.\n", index)
+            self.assertEqual(1, index.count("(SCHEMA.md)"), "an existing line is never replaced or repeated")
+            # Each page the install created gets one line, in its own group.
+            for page in ("CONNECTED.md", "LIFECYCLE.md", "SETTINGS.md", "status-board.md", "direction.md", "roadmap.md", "advisory/BOARD.md"):
+                self.assertEqual(1, index.count(f"]({page})"), page)
+            self.assertIn("## Advisory\n- [Advisory board](advisory/BOARD.md)", index)
+
+            missing = [item.message for item in lint_wiki(root).diagnostics if item.code == "missing-index-entry"]
+            self.assertEqual([], [message for message in missing if "SCHEMA.md" not in message and "topics" not in message])
+
+            repeat = plan_install(root, upgrade=True)
+            self.assertNotIn("knowledge/wiki/index.md", [item["path"] for item in repeat["changes"]])
 
     def test_custom_connected_binding_blocks_every_write(self):
         with tempfile.TemporaryDirectory() as temporary:

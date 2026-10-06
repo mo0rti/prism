@@ -4,26 +4,12 @@ Kotlin + Jetpack Compose with MVVM, Hilt, Retrofit, Room, and DataStore.
 
 ## Product knowledge wiki
 
-This project uses a shared product wiki at `knowledge/wiki/` as the single source of
-truth for what to build. Before implementing any feature:
+Follow the wiki workflow in the workspace root `AGENTS.md` before implementing a feature:
+the feature must be in `ready-for-dev` or `in-dev` with `advisory-review` not `pending`, and it
+must have a wiki page. For this app, read:
 
-1. Read `knowledge/wiki/status-board.md` - confirm the feature is in `ready-for-dev` or `in-dev`
-   status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
-   stop and inform the human. A board review should happen before implementation.
-2. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context
-3. Read `knowledge/wiki/app-requirements/[feature-id]-mobile-android.md` for
-   Android-specific implementation requirements
-4. Read `knowledge/wiki/api-contracts/[feature-id].md` if this feature has an API surface
-5. Check `knowledge/wiki/business-rules/` for rules that apply to this feature
-6. Read `knowledge/wiki/design/[feature-id]-[slug].md` for UI design decisions
-
-**Do not implement features without a wiki page.** Ask the human to run the `po-intake`
-operation first (Claude: `/po-intake [folder]`, Codex: `$po-intake [folder]`,
-Cursor: ask the agent to "run po-intake on [folder]").
-
-If you discover information during implementation that should update the wiki, propose
-the update and ask for confirmation before writing, or route a question using the `ask`
-command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
+- `knowledge/wiki/app-requirements/[feature-id]-mobile-android.md` for Android-specific implementation requirements
+- `knowledge/wiki/design/[feature-id]-[slug].md` for UI design decisions
 
 ## Documentation
 
@@ -43,8 +29,8 @@ Full project documentation is in `docs/`. Use it as the reference for architectu
 This `mobile-android/` folder is a platform slice inside the generated project, not the
 generated project root.
 
-For Codex work, prefer opening the **generated repository root** so root context files and
-project skills are available together with the Android code.
+Open the **generated repository root** so the root instructions and project skills are
+available together with the Android code.
 
 From `mobile-android/`, the generated repository root is:
 
@@ -53,12 +39,11 @@ From `mobile-android/`, the generated repository root is:
 Important root-level files and folders from here:
 
 - `../README.md` - generated project overview
-- `../CONTEXT.md` - root AI context anchor
-- `../AGENTS.md` - root Codex guidance for the generated repo
+- `../AGENTS.md` - root agent instructions for the generated repo, the single source that `../CLAUDE.md` imports
 - `../.agents/skills/` - project Codex skills shared across the generated repo
 
-If you open only `mobile-android/` as a standalone workspace, do not assume Codex can
-automatically discover skills or root context from the parent repository. In that setup,
+If you open only `mobile-android/` as a standalone workspace, do not assume the agent can
+automatically discover skills or root instructions from the parent repository. In that setup,
 manually check the parent generated-project root when it is available.
 
 ## Build & Run
@@ -105,7 +90,21 @@ MVVM in a single `:app` module.
 
 ## Doc-Sync Rule
 
-When you change code, update the relevant documentation in `docs/` in the same session.
+When you change code, update the relevant documentation in `docs/` in the same session so docs stay accurate:
+
+- If you add, remove, or rename packages, modules, or key files, update `docs/file-structure.md` (and any doc that lists them).
+- If you change architecture, patterns, or layer roles, update `docs/architecture.md`.
+- If you change build commands or environments, update `docs/build-and-environments.md`.
+- If you add or change APIs, DI modules, or networking, update `docs/networking-and-di.md`.
+- If you add or change routes or screens, update `docs/navigation-and-screens.md`.
+- If you change theme, design system, or components, update `docs/design-system-and-theme.md`.
+- If you change conventions or the new-feature workflow, update `docs/conventions-and-workflow.md`.
+
+Documentation style rule:
+
+- Documentation must describe the current state only.
+- Avoid historical phrasing like "was", "used to", "now", "previously".
+- Write implementation notes in present tense as source-of-truth behavior.
 
 ## Workflow: New Feature
 

@@ -2,15 +2,28 @@
 
 {{ description }}
 
+This file is the single source of agent instructions for this workspace. `CLAUDE.md` imports
+it, Codex and Cursor read it directly, and each platform folder repeats the pattern with its
+own `AGENTS.md`. Keep every rule here or in the platform file that owns it, never in both.
+Open the **generated repository root** as the workspace, even when you work in only one
+platform folder.
+
+## Invoking operations
+
+This file names an operation without a prefix, for example `po-intake`. Invoke it as:
+
+- Claude Code: `/po-intake` (`.claude/commands/<operation>.md`)
+- Codex: `$po-intake` (`.agents/skills/<operation>/SKILL.md`)
+- Cursor: ask the agent to "run po-intake"; it follows `.claude/commands/<operation>.md`,
+  `knowledge/wiki/SCHEMA.md` and, for lifecycle operations, `knowledge/wiki/LIFECYCLE.md`
+
 ## First-time setup
 
-If this is a newly scaffolded project, initialize the product wiki before feature work:
+If this is a newly scaffolded project, run `setup-project` before anything else. It
+initializes the wiki, interviews the team about the domain, and generates the advisory board
+configuration. It takes 15-20 minutes and runs once.
 
-- Claude Code: `/setup-project`
-- Codex: `$setup-project`
-- Cursor: ask the agent to "run setup-project"
-
-See `CONTEXT.md`, `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md` for the full cross-tool workflow.
+See `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md` for the full cross-tool workflow.
 
 ## Connected board workflow
 
@@ -40,7 +53,7 @@ This project uses a shared product wiki at `knowledge/wiki/` as the single sourc
 for what to build. Before implementing any feature:
 
 1. Read `knowledge/wiki/WIKI_REPORT.md` if it exists for a quick orientation summary.
-2. If `knowledge/wiki/WIKI_REPORT.md` is absent, run `$feature-status` first to generate it.
+2. If `knowledge/wiki/WIKI_REPORT.md` is absent, run `feature-status` first to generate it.
 3. Read `knowledge/wiki/status-board.md` and confirm the feature is in `ready-for-dev` or `in-dev`
    status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
    stop and inform the human - a board review should happen before implementation.
@@ -49,6 +62,7 @@ for what to build. Before implementing any feature:
    app-specific implementation requirements.
 6. Read `knowledge/wiki/api-contracts/[feature-id].md` if this feature has an API surface.
 7. Check `knowledge/wiki/business-rules/` for rules that apply to this feature.
+8. Check `knowledge/wiki/advisory/BOARD.md` to understand the domain intelligence layer.
 
 `WIKI_REPORT.md` is only an orientation artifact. The underlying feature, design,
 app-requirement, and rule pages remain the source of truth.
@@ -56,12 +70,12 @@ app-requirement, and rule pages remain the source of truth.
 `knowledge/wiki/index.md` lists every wiki page, one line each, grouped by kind. Read it first
 to find the pages a task needs beyond the feature's own context, then read those pages.
 
-**Do not implement features without a wiki page.** Ask the human to run `$po-intake [folder]`
+**Do not implement features without a wiki page.** Ask the human to run `po-intake [folder]`
 first.
 
 If you discover information during implementation that should update the wiki, propose the
 update and ask for confirmation before writing, or route a question using
-`$ask F-XXX "..." --to po`.
+`ask F-XXX "..." --to po`. Separate facts from advice in every response.
 
 Wiki pages state the current state and carry no date about the page itself. When a source
 or a decision changes a fact, replace the superseded content in place and state rationale as
@@ -71,7 +85,8 @@ the records (ADRs, advisory reviews and processed intake items), which are never
 Mark each claim Decided, Observed, Proposed, Assumed or Unknown, and link the evidence of
 every Decided and Observed claim. Raw sources are `knowledge/intake/pending/YYYY-MM-DD-slug/`
 folders and are immutable once processed; an incoming source that contradicts a page is
-quarantined with a `CONFLICT.md` and the page stays untouched until a human decides.
+quarantined with a `CONFLICT.md` and the page stays untouched until a human decides. A decision
+is replaced by a new ADR through the supersession workflow in `knowledge/wiki/SCHEMA.md`.
 
 ## Architecture
 
@@ -110,45 +125,78 @@ docs/          -> Human-readable reference documentation
 
 ### Orient / read-only
 
-- `$feature-status` - pipeline view plus refresh of `knowledge/wiki/WIKI_REPORT.md`
-- `$prep-sprint` - developer session view: what is ready to build, what is blocked, what is pending board review
-- `$wiki-show F-XXX` - focused context bundle for one feature
-- `$wiki-blockers` - blockers view using the canonical blocker categories
-- `$wiki-query "text"` - retrieval-assisted wiki search across features, rules, design, and requirements
-- `$wiki-owner po|designer|dev|none` - role dashboard for open questions, waiting work, and stale items
-- `$wiki-app <app-id>` - app queue for active features, requirement state, and blockers
+- `feature-status` - pipeline view plus refresh of `knowledge/wiki/WIKI_REPORT.md`
+- `prep-sprint` - developer session view: what is ready to build, what is blocked, what is pending board review
+- `wiki-show F-XXX` - focused context bundle for one feature
+- `wiki-blockers` - blockers view using the canonical blocker categories
+- `wiki-query "text"` - retrieval-assisted wiki search across features, rules, design, and requirements
+- `wiki-owner po|designer|dev|none` - role dashboard for open questions, waiting work, and stale items
+- `wiki-app <app-id>` - app queue for active features, requirement state, and blockers
 
 Read `knowledge/wiki/WIKI_REPORT.md` first when present. If it is absent, run
-`$feature-status` before deep reading.
+`feature-status` before deep reading.
 
-`$feature-status` is an orientation/report operation. It may write or refresh only
+`feature-status` is an orientation/report operation. It may write or refresh only
 `knowledge/wiki/WIKI_REPORT.md`; it does not change lifecycle state. The other
 read/query operations listed here are read-only.
 
-For read/query operations (`$wiki-show`, `$wiki-blockers`, `$wiki-query`,
-`$wiki-owner`, `$wiki-app`, `$lint-wiki`), prefer the Prism CLI JSON surface
-when available, for example `prism wiki show F-XXX --json`. If `prism` is missing,
-too old, or lacks the needed subcommand, say the CLI read surface is unavailable
-and fall back to direct wiki reads. Generated projects must not hard-depend on an
-installed Prism CLI.
+### CLI read surfaces
+
+For read/query operations (`wiki-show`, `wiki-blockers`, `wiki-query`, `wiki-owner`,
+`wiki-app`, `lint-wiki`), probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use the CLI only when the probe reports `prism 0.4.0` or newer (the `prism-kit>=0.4.0`
+distribution contract) and the requested command response has `"schema_version": 1`. A
+version probe alone does not prove that a particular command or capability exists. The
+command is `prism`:
+
+- `prism status --json`
+- `prism wiki lint --json`
+- `prism wiki show F-XXX --json`
+- `prism wiki blockers --json`
+- `prism wiki owner po|designer|dev|none --json`
+- `prism wiki app <app-id> --json`
+- `prism wiki search "text" --json`
+
+Use `confidence`, facts, blocker facts, obligations, diagnostics, and sources exactly as
+reported. Returned diagnostics, including errors, are facts to surface and must not be
+replaced with optimistic manual state. If the version probe or schema check fails, or
+`prism` is missing, too old, fails, or lacks a command, say the CLI read surface is
+unavailable and fall back to direct wiki reads. Generated projects
+must not hard-depend on an installed Prism CLI.
+
+### Fallback path
+
+The fallback reads `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md` (to
+find pages), `status-board.md`, feature pages, app requirements, and only the relevant
+design, API, advisory, business-rule, persona, and decision pages. Keep malformed pages
+visible and compute only categories proved by files; the canonical blocker categories are
+`pending-board-review`, `missing-design`, `missing-app-requirements`,
+`unresolved-open-questions`, `api-contract-not-ready`, and `cross-app-dependency`. Read
+`SETTINGS.md` for staleness and use `wiki-stale-after-days: 14` when absent or invalid. All
+reads are read-only.
 
 ### Lifecycle / write
 
-- `$setup-project` - interactive project initialization (run once after scaffolding)
-- `$po-intake [folder]` - process raw PO notes into feature specs
-- `$ingest [folder]` - process raw notes into topics, research, plans, direction, roadmap, personas, business rules, decisions or features (any role)
-- `$po-clarify` - answer open questions assigned to PO
-- `$po-specify [F-XXX]` - author one raw page as a structured `specified` draft
-- `$po-handoff [F-XXX]` - prepare the confirmed `specified` + `po` to `ready-for-design` + `designer` handoff
-- `$design-intake [F-XXX] [folder]` - attach design artifacts to a feature
-- `$design-clarify` - answer open questions assigned to Designer
-- `$design-start [F-XXX]` - move confirmed `ready-for-design` work to `in-design`
-- `$design-handoff [F-XXX]` - move feature to ready-for-dev
-- `$dev-clarify` - answer open questions assigned to Dev
-- `$dev-start [F-XXX]` - move confirmed `ready-for-dev` work to `in-dev`
-- `$dev-done [F-XXX]` - mark a feature as shipped
-- `$feature-reopen [F-XXX] [specified|in-design|in-dev]` - reopen one shipped feature after impact review
-- `$ask [F-XXX] "question" --to po|designer|dev` - route a question
+- `setup-project` - interactive project initialization (run once after scaffolding)
+- `po-intake [folder]` - process raw PO notes into feature specs
+- `ingest [folder]` - process raw notes into topics, research, plans, direction, roadmap, personas, business rules, decisions or features (any role)
+- `po-clarify` - answer open questions assigned to PO
+- `po-specify [F-XXX]` - author one raw page as a structured `specified` draft
+- `po-handoff [F-XXX]` - prepare the confirmed `specified` + `po` to `ready-for-design` + `designer` handoff
+- `design-intake [F-XXX] [folder]` - attach design artifacts to a feature
+- `design-clarify` - answer open questions assigned to Designer
+- `design-start [F-XXX]` - move confirmed `ready-for-design` work to `in-design`
+- `design-handoff [F-XXX]` - move feature to ready-for-dev
+- `dev-clarify` - answer open questions assigned to Dev
+- `dev-start [F-XXX]` - move confirmed `ready-for-dev` work to `in-dev`
+- `dev-done [F-XXX]` - mark a feature as shipped
+- `feature-reopen [F-XXX] [specified|in-design|in-dev]` - reopen one shipped feature after impact review
+- `ask [F-XXX] "question" --to po|designer|dev` - route a question
 
 ### Feature lifecycle contract
 
@@ -158,7 +206,7 @@ The supported action mappings are exact: `po-specify` (`raw` + `po` to
 `designer`), `design-handoff` (`in-design` + `designer` to `ready-for-dev` +
 `dev`), `dev-start` (`ready-for-dev` + `dev` to `in-dev` + `dev`), and
 `dev-done` (`in-dev` + `dev` to `done` + `none`). Reopen uses the selected
-route in `$feature-reopen` and the corresponding `reopen-spec`,
+route in `feature-reopen` and the corresponding `reopen-spec`,
 `reopen-design`, or `reopen-dev` action. `po-specify` authors the structured
 body; no action is a generic status setter.
 
@@ -191,11 +239,21 @@ instructions require the direct-file protocol after the selected surface is
 refreshed. Copy only a ready result; blocked or unknown results require review
 or repair.
 
+Before copying or acting on a request, reread the selected instructions,
+`knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md`, the feature,
+linked context, and workspace identity. Compare the path, identity, feature ID, status,
+owner, advisory state, and fingerprint with current files. Use **Copy request** only for a
+ready result on the selected invocation. The preview is not an "Approve move" action, does
+not execute an agent, move a card, or mutate the wiki. The board derives its columns from
+current source fields and cannot prove which human or agent changed them or whether
+confirmation happened. Delivery evidence, design exemptions, and reopen revalidation follow
+the shared schema.
+
 ### Audit / review
 
-- `$board-review [F-XXX]` - domain expert feature review via the advisory board
-- `$lint-wiki` - structural health check for the knowledge base
-- `$audit-feature [F-XXX]` - cross-check spec against source intake
+- `board-review [F-XXX]` - domain expert feature review via the advisory board
+- `lint-wiki` - structural health check for the knowledge base
+- `audit-feature [F-XXX]` - cross-check spec against source intake
 
 ## Auth
 
@@ -216,6 +274,10 @@ Backend issues JWTs after successful auth. Native clients store them locally; we
 - `knowledge/wiki/status-board.md` - feature status board
 - `knowledge/wiki/WIKI_REPORT.md` - generated orientation summary when present
 - `knowledge/wiki/advisory/BOARD.md` - advisory board composition
+- `knowledge/wiki/decisions/` - architecture decision records for long-lived technical decisions
+- `README.md` - human overview, setup and common commands
+- `docs/README.md` - map of the human-readable docs
+- `docs/ai-agents.md` - how the agent files, commands and skills fit together
 - `docs/architecture.md` - system design, platform map, tech decisions
 - `docs/api/conventions.md` - API naming, pagination, error format
 - `docs/deployment/ci-cd.md` - CI/CD setup
@@ -224,6 +286,7 @@ Backend issues JWTs after successful auth. Native clients store them locally; we
 - `backend/docs/azure-setup.md` - Azure deployment
 {% endif %}{% if "web-user-app" in platforms %}- `web-user-app/docs/guide.md` - user-facing web app structure, auth flow, deployment
 {% endif %}{% if "web-admin-portal" in platforms %}- `web-admin-portal/docs/guide.md` - admin shell, credentials auth, operational workflows
+{% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}- `docs/deployment/cloudflare-setup.md` - Cloudflare/OpenNext deployment
 {% endif %}
 
 ## Conventions
@@ -242,13 +305,15 @@ Workspace-level conventions list only the slices present in the generated worksp
 {% endif %}{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}- **Web platform structure**: keep route, auth, and client-generation rules aligned with the selected web platform guides
 {% endif %}
 
-Codex reads `AGENTS.md` from repo root down to the working directory, so defer to the
-platform-level file when working inside a specific platform folder.
+Instructions load root-first. Codex reads `AGENTS.md` from the repo root down to the working
+directory, Cursor applies a nested `AGENTS.md` to the files below it, and Claude Code loads a
+folder's `CLAUDE.md`, which imports that folder's `AGENTS.md`, when it works there. Defer to
+the platform-level file when working inside a specific platform folder.
 
 Generated-workspace assumption:
 
-- Open the **generated repository root** as the workspace when using Codex.
-- The generated repo keeps shared Codex skills at `.agents/skills/` in the repo root.
+- Open the **generated repository root** as the workspace.
+- The generated repo keeps shared Claude skills at `.claude/skills/` and shared Codex skills at `.agents/skills/` in the repo root.
 - Open root-first even when you plan to work in only one platform folder.
 {% if platforms | length == 1 %}{% if "backend" in platforms %}- This particular generated workspace currently includes `backend/` only as an app platform.
 {% elif "web-user-app" in platforms %}- This particular generated workspace currently includes `web-user-app/` only as an app platform.
@@ -262,7 +327,9 @@ Generated-workspace assumption:
 
 ## Platform-Specific Context
 
-Each platform has its own `AGENTS.md` with detailed patterns:
+Each platform has its own `AGENTS.md` with detailed patterns. Its `CLAUDE.md` imports that file
+and adds only what is specific to Claude Code:
+
 {% if "backend" in platforms %}- `backend/AGENTS.md` - Spring Boot 4, security, JPA, Flyway
 {% endif %}{% if "web-user-app" in platforms %}- `web-user-app/AGENTS.md` - Next.js, next-intl, marketing + dashboard flows
 {% endif %}{% if "web-admin-portal" in platforms %}- `web-admin-portal/AGENTS.md` - Admin web portal, credentials auth, management tables
@@ -272,16 +339,16 @@ Each platform has its own `AGENTS.md` with detailed patterns:
 
 ## Adding Features
 
-1. Read `knowledge/wiki/WIKI_REPORT.md` if present, or run `$feature-status` first.
-2. If no feature page exists, run `$po-intake [folder]` to create one from raw notes.
-3. For a raw feature page, run `$po-specify [F-XXX]` to prepare the structured draft,
-   then `$po-handoff [F-XXX]` after PO completeness is verified.
-4. Start design with `$design-start [F-XXX]`; after design is complete, run
-   `$design-handoff [F-XXX]` to generate app-requirements.
-5. Answer open dev questions with `$dev-clarify`; they block `$dev-start` until resolved.
-   Start implementation with `$dev-start [F-XXX]`, add endpoints to
+1. Read `knowledge/wiki/WIKI_REPORT.md` if present, or run `feature-status` first.
+2. If no feature page exists, run `po-intake [folder]` to create one from raw notes.
+3. For a raw feature page, run `po-specify [F-XXX]` to prepare the structured draft,
+   then `po-handoff [F-XXX]` after PO completeness is verified.
+4. Start design with `design-start [F-XXX]`; after design is complete, run
+   `design-handoff [F-XXX]` to generate app-requirements.
+5. Answer open dev questions with `dev-clarify`; they block `dev-start` until resolved.
+   Start implementation with `dev-start [F-XXX]`, add endpoints to
    `shared/api-contracts/openapi.yml`, and run `task generate-clients` as needed.
 6. Implement the selected platform slices per `knowledge/wiki/app-requirements/`.
 7. When shipped, verify delivery evidence (per app, release evidence or a delivery
-   attestation, never a commit or pull request alone) and run `$dev-done [F-XXX]`. Use
-   `$feature-reopen [F-XXX] [specified|in-design|in-dev]` only after impact review.
+   attestation, never a commit or pull request alone) and run `dev-done [F-XXX]`. Use
+   `feature-reopen [F-XXX] [specified|in-design|in-dev]` only after impact review.

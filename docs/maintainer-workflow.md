@@ -13,7 +13,7 @@ copier.yml            # Questionnaire and generation contract
 template/             # Files copied into generated projects
   .claude/            # Claude project context and slash commands
   .agents/            # Codex project skills
-  .cursor/            # Cursor project rules
+  .cursor/            # Cursor rules: project.mdc references AGENTS.md, the others scope stack facts
   .github/            # Workflow templates
   _templates/         # Hygen generators
   backend/            # Backend scaffold
@@ -25,11 +25,10 @@ template/             # Files copied into generated projects
   docs/               # Generated-project documentation
   knowledge/          # Generated-project product wiki skeleton
   infra/              # Infrastructure scripts
-  CONTEXT.md.jinja    # Generated-project root AI context anchor
   README.md.jinja     # Generated-project README
   Taskfile.yml.jinja  # Generated-project root Taskfile
-  AGENTS.md.jinja     # Generated-project Codex guidance
-  CLAUDE.md.jinja     # Generated-project Claude guidance
+  AGENTS.md.jinja     # Generated-project agent rules, the single source for every tool
+  CLAUDE.md.jinja     # Generated-project Claude Code import of AGENTS.md
 README.md             # Short repository entrypoint and shared-board quickstart
 SECURITY.md           # Local threat model
 CHANGELOG.md          # User-visible changes

@@ -228,7 +228,7 @@ class StatusBoardColumnsTests(unittest.TestCase):
     def test_the_template_status_board_and_index_have_no_dates(self) -> None:
         board = (TEMPLATE_WIKI / "status-board.md").read_text(encoding="utf-8")
         self.assertIn("| ID | Feature | Status | Owner | Board Review |\n", board.replace("\r\n", "\n"))
-        index = (TEMPLATE_WIKI / "index.md").read_text(encoding="utf-8")
+        index = (TEMPLATE_WIKI / "index.md.jinja").read_text(encoding="utf-8")
         for text in (board, index):
             self.assertNotIn("Introduced", text)
             self.assertNotIn("| Date |", text)

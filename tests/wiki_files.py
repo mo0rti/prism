@@ -6,9 +6,34 @@ service uses, so a fixture workspace is lint-clean without hand-written index li
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
+from typing import Any
+
+from jinja2 import Environment, StrictUndefined
 
 from prism_cli.wiki_index import build_index
+
+TEMPLATE_KNOWLEDGE = Path(__file__).resolve().parents[1] / "template" / "knowledge"
+
+
+def render_template_text(source: str, **context: Any) -> str:
+    """Render one template file the way Copier does, with only the given answers (none: the workflow-only form)."""
+
+    return Environment(undefined=StrictUndefined, autoescape=False, keep_trailing_newline=True).from_string(source).render(**context)
+
+
+def copy_template_knowledge(destination: Path, **context: Any) -> None:
+    """Copy `template/knowledge` to `destination`, rendering each `.jinja` file and dropping its suffix.
+
+    With no context the copy is the workflow-only form that `prism workflow install` writes; with
+    ``platforms=[...]`` it is the form a generated workspace gets.
+    """
+
+    shutil.copytree(TEMPLATE_KNOWLEDGE, destination, ignore=shutil.ignore_patterns("*.jinja"))
+    for source in sorted(TEMPLATE_KNOWLEDGE.rglob("*.jinja")):
+        target = destination / source.relative_to(TEMPLATE_KNOWLEDGE).with_suffix("")
+        target.write_text(render_template_text(source.read_text(encoding="utf-8"), **context), encoding="utf-8", newline="\n")
 
 STATUS_BOARD_HEADER = (
     "# Feature Status Board\n\n"

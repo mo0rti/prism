@@ -21,10 +21,13 @@ Conflict: knowledge/wiki/CONNECTED.md is present with different contents; preser
 
 Copy your version somewhere outside `knowledge/wiki/`, delete the file, run the install again, and keep your own notes in your `AGENTS.md`, `CLAUDE.md` or other pages that Prism does not own. [Troubleshooting](troubleshooting.md#workflow-install-stops-on-a-modified-connectedmd) lists the steps.
 
-Review the plan's optional steps when existing `AGENTS.md` or `CLAUDE.md` files
-are preserved. Add the suggested `knowledge/wiki/CONNECTED.md` pointer to your
-own guidance if you want agents to discover the connection there; installation
-does not rewrite those custom files.
+A new workspace gets the same instruction layout as a generated one: `AGENTS.md` holds the
+connected-workflow section and `CLAUDE.md` is only the `@AGENTS.md` import. Review the plan's
+optional steps when existing `AGENTS.md` or `CLAUDE.md` files are preserved. Add the suggested
+`knowledge/wiki/CONNECTED.md` pointer to your own `AGENTS.md`, and `@AGENTS.md` to your own
+`CLAUDE.md`, if you want agents to discover the connection there; installation does not rewrite
+those custom files. When it keeps your `knowledge/wiki/index.md`, it only adds a line for each
+page it installs and leaves every existing line as it is.
 
 Generated workspaces, including a fresh `prism new` result, use an explicit
 upgrade preview to activate connected writes. Generation supplies the wiki and

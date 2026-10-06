@@ -230,7 +230,7 @@ prism validate --kind template --template-mode contract .
 Before treating the generated repo as production-ready, start with structural checks:
 
 - confirm the selected platform directories exist
-- confirm `README.md`, `CONTEXT.md`, and `knowledge/wiki/SCHEMA.md` exist
+- confirm `README.md`, `AGENTS.md`, and `knowledge/wiki/SCHEMA.md` exist
 - inspect the generated root `Taskfile.yml`
 - inspect `.github/workflows/` for the slices you selected
 - inspect the generated platform docs

@@ -157,16 +157,6 @@ _OBSERVED_AT_BY_FINGERPRINT: OrderedDict[str, str] = OrderedDict()
 _OBSERVED_AT_LOCK = Lock()
 # ``evaluate_transition_summaries`` checks the required wiki files once per call, not once per feature.
 _REQUIRED_WIKI_FILE_READS: ContextVar[dict[Path, bool] | None] = ContextVar("prism_required_wiki_file_reads", default=None)
-_WIKI_SOURCE_DIRECTORIES = {
-    "advisory",
-    "api-contracts",
-    "business-rules",
-    "decisions",
-    "design",
-    "features",
-    "personas",
-    "app-requirements",
-}
 _PLACEHOLDER_PATTERNS = (
     re.compile(r"^one paragraph\b", re.IGNORECASE),
     re.compile(r"\[what this feature does, why it exists", re.IGNORECASE),

@@ -3160,7 +3160,7 @@ function renderBoard() {
     intake.pending.map(name =>
       `<div class="card intake" data-intake="pending" data-name="${escapeHtml(name)}" tabindex="0" role="group" aria-label="Pending intake item ${escapeHtml(boundedText(name, 140))}">
         <div class="cid">PENDING BRIEF</div><div class="ctitle">${escapeHtml(name)}</div>
-        <div class="badges"><span class="badge advisory">awaiting po-intake</span></div></div>`).join("");
+        <div class="badges"><span class="badge advisory">awaiting intake</span></div></div>`).join("");
   const intakeCol = `<div class="column intake-col" data-stage="intake"><h3><i style="background:${C.muted}"></i>intake<span class="count">${intake.pending.length + intake.quarantined.length}</span></h3>${intakeCards || '<span style="font-size:10.5px;color:var(--muted);padding:4px 6px;line-height:1.5">Drop briefs into knowledge/intake/pending/</span>'}</div>`;
   const cols = boardStages.map(stage => {
     const items = stage === "unknown stage"
@@ -3368,6 +3368,7 @@ function showIntakePanel(kind, name) {
     ? "This intake conflicts with existing wiki state and needs a human decision. Open its <code>CONFLICT.md</code>, resolve the conflict, then move or re-process it."
     : "A raw brief waiting to become product truth. Your agent reads it, asks you to confirm the interpretation, and writes the feature pages.";
   const cmd = quarantined ? null : surfaceCommand("po-intake");
+  const ingestCmd = quarantined ? null : surfaceCommand("ingest");
   document.getElementById("panel").innerHTML = `
     <div class="panel-head">
       <div class="row"><span class="type-chip" style="border-color:${quarantined ? C.critical : C.muted};color:${quarantined ? C.critical : C.muted}">${quarantined ? "Quarantined" : "Intake"}</span>
@@ -3378,6 +3379,7 @@ function showIntakePanel(kind, name) {
       <div class="section"><h4>${quarantined ? "⛔ Needs human resolution" : "Next step"}</h4>
         <div style="font-size:12.5px;line-height:1.55;color:var(--ink-2)">${guidance}</div>
         ${cmd ? `<div class="unblock" style="margin-top:10px">process with <code>${escapeHtml(cmd)}</code><button class="copy-btn" data-copy="${escapeHtml(cmd)}">Copy</button></div>` : ""}
+        ${ingestCmd ? `<div class="unblock" style="margin-top:8px">or ingest it into topics, research, plans or other pages with <code>${escapeHtml(ingestCmd)}</code><button class="copy-btn" data-copy="${escapeHtml(ingestCmd)}">Copy</button></div>` : ""}
       </div>
       <div class="section"><h4>Location</h4>
         <div class="pathrow"><code>${escapeHtml(dir + name)}</code></div></div>

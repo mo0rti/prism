@@ -35,7 +35,7 @@ class ValidateReadinessTests(unittest.TestCase):
             root = _blocked_workspace(Path(temporary) / "generated")
             for relative, content in (
                 ("README.md", "# Fixture\n"),
-                ("CONTEXT.md", "# Context\n"),
+                ("AGENTS.md", "# Context\n"),
                 ("Taskfile.yml", "version: '3'\n"),
                 (".github/workflows/backend.yml", "name: backend\n"),
             ):

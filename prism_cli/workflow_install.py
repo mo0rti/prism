@@ -24,6 +24,8 @@ from prism_cli.app_model import (
     normalize_manifest,
 )
 from prism_cli.workspace import MANIFEST_FILE
+from prism_cli.wiki_index import INDEX_FILE, index_line, is_page_path, parse_index_entries, render_index_lines
+from prism_cli.wiki_model import parse_markdown_text
 from prism_cli.workflow_assets import asset_digest, bootstrap_files, guidance_pointer, previous_digests
 from prism_cli.board_store import BoardLockError, unresolved_board_operations, workspace_process_lock
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, reparse_kind
@@ -36,6 +38,8 @@ _LOCAL_IGNORE_MARKER = "# Prism per-machine repository checkouts"
 _LOCAL_IGNORE_RULE = LOCAL_OVERRIDE_FILE
 _ATTRIBUTES_MARKER = "# Prism workflow files keep LF line endings"
 _ATTRIBUTES_RULE = "knowledge/** text eol=lf"
+_WIKI_PREFIX = "knowledge/wiki/"
+_INDEX_PATH = f"{_WIKI_PREFIX}{INDEX_FILE}"
 
 
 def plan_install(
@@ -194,6 +198,8 @@ def plan_install(
             chosen_name = chosen_name or (project.get("name") if isinstance(project.get("name"), str) else None)
             chosen_apps = chosen_apps or []
 
+        installed_pages: dict[str, str] = {}
+        existing_index: bytes | None = None
         for bootstrap in bootstrap_files(WORKFLOW_VERSION):
             relative = bootstrap["path"]
             source_content = bootstrap["content"]
@@ -201,6 +207,9 @@ def plan_install(
             if existing is None:
                 _check_missing_parent_chain(workspace, relative)
                 changes.append({"path": relative, "before": None, "after": source_content})
+                wiki_page = relative[len(_WIKI_PREFIX) :] if relative.startswith(_WIKI_PREFIX) else ""
+                if is_page_path(wiki_page):
+                    installed_pages[wiki_page] = source_content
             elif _lf(existing) == _lf(source_content.encode("utf-8")):
                 # A Git checkout with core.autocrlf rewrites line endings; the text is still Prism's own.
                 unchanged.append(relative)
@@ -213,8 +222,13 @@ def plan_install(
                 conflicts.append(
                     "knowledge/wiki/CONNECTED.md is present with different contents; preserve or reconcile it explicitly before installing the Prism-owned binding."
                 )
+            elif relative == _INDEX_PATH:
+                existing_index = existing
             else:
                 preserved.append(relative)
+
+        if existing_index is not None:
+            _plan_index_lines(existing_index, installed_pages, changes, preserved)
 
         _plan_guidance_pointer(workspace, "AGENTS.md", purpose, changes, preserved, updated, optional_steps, conflicts)
         _plan_guidance_pointer(workspace, "CLAUDE.md", purpose, changes, preserved, updated, optional_steps, conflicts)
@@ -748,18 +762,56 @@ def _plan_guidance_pointer(
             changes.append({"path": relative, "before": current.decode("utf-8"), "after": pointer})
             updated.append(relative)
             return
-        preserved.append(f"{relative} (existing guidance left unchanged; a CONNECTED.md pointer is optional)")
         try:
-            has_pointer = "knowledge/wiki/CONNECTED.md" in current.decode("utf-8")
+            text = current.decode("utf-8")
         except UnicodeError:
-            has_pointer = False
-        if not has_pointer:
+            text = ""
+        if relative == "CLAUDE.md":
+            preserved.append(f"{relative} (existing guidance left unchanged; importing AGENTS.md is optional)")
+            if "@AGENTS.md" not in text:
+                optional_steps.append(
+                    "Optionally add `@AGENTS.md` to CLAUDE.md so Claude Code loads the workspace guidance of AGENTS.md; existing guidance was preserved."
+                )
+            return
+        preserved.append(f"{relative} (existing guidance left unchanged; a CONNECTED.md pointer is optional)")
+        if "knowledge/wiki/CONNECTED.md" not in text:
             optional_steps.append(
                 f"Optionally add a short pointer from {relative} to knowledge/wiki/CONNECTED.md; existing guidance was preserved."
             )
         return
     _check_missing_parent_chain(root, relative)
     changes.append({"path": relative, "before": None, "after": guidance_pointer(relative, WORKFLOW_VERSION, purpose)})
+
+
+def _plan_index_lines(
+    existing: bytes,
+    installed_pages: dict[str, str],
+    changes: list[dict[str, str | None]],
+    preserved: list[str],
+) -> None:
+    """Keep the user's index.md, adding a line for each wiki page this plan installs that the index does not list.
+
+    Only the lines of the installed pages are written, in their own groups; no existing line is
+    replaced or reordered, so the user's index stays theirs and lint finds no missing entry.
+    """
+
+    try:
+        text = existing.decode("utf-8")
+    except UnicodeError:
+        preserved.append(_INDEX_PATH)
+        return
+    listed = {entry.target for entry in parse_index_entries(text)}
+    lines: dict[str, str] = {}
+    for page, content in installed_pages.items():
+        if page not in listed:
+            parsed = parse_markdown_text(Path(page), content)
+            lines[page] = index_line(page, parsed.frontmatter, parsed.body)
+    merged = render_index_lines(text, lines) if lines else text
+    if merged == text:
+        preserved.append(_INDEX_PATH)
+        return
+    changes.append({"path": _INDEX_PATH, "before": text, "after": merged})
+    preserved.append(_INDEX_PATH)
 
 
 def _lf(content: bytes) -> bytes:

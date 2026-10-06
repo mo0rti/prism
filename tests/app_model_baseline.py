@@ -115,7 +115,6 @@ expected_surfaces:
   - CLAUDE.md
   docs:
   - README.md
-  - CONTEXT.md
   workflows:
   - .github/workflows/backend.yml
   - .github/workflows/web-user-app.yml
@@ -161,7 +160,7 @@ def build_full_workspace(root: Path) -> Path:
     (root / ".github" / "workflows").mkdir(parents=True)
     for platform in ALL_PLATFORMS:
         (root / ".github" / "workflows" / f"{platform}.yml").write_text("name: ci\n", encoding="utf-8")
-    for name in ("README.md", "CONTEXT.md", "Taskfile.yml"):
+    for name in ("README.md", "AGENTS.md", "Taskfile.yml"):
         (root / name).write_text(f"# {name}\n", encoding="utf-8")
     (root / "docs" / "deployment").mkdir(parents=True)
     (root / "docs" / "deployment" / "cloudflare-setup.md").write_text("# Cloudflare setup\n", encoding="utf-8")

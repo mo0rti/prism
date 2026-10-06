@@ -17,7 +17,7 @@ from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_model import HISTORY_DATE_FIELDS
 from tests import real_temp  # noqa: F401
 from tests.manifest_fixtures import manifest_text
-from tests.wiki_files import write_index
+from tests.wiki_files import copy_template_knowledge, write_index
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_WIKI = REPO_ROOT / "template" / "knowledge" / "wiki"
@@ -55,7 +55,7 @@ class PageKindCase(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        shutil.copytree(REPO_ROOT / "template" / "knowledge", self.root / "knowledge")
+        copy_template_knowledge(self.root / "knowledge")
         (self.root / "prism.workspace.yml").write_text(manifest_text("Kinds", ["backend"], slug="kinds"), encoding="utf-8")
         (self.root / "backend").mkdir()
         self.wiki = self.root / "knowledge" / "wiki"

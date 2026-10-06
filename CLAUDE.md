@@ -21,7 +21,7 @@ template/               # All templated output - Jinja2 files (.jinja suffix str
   docs/                 # Project-wide reference docs (architecture, API conventions, deployment)
   .claude/              # Claude context for generated projects (commands, skills)
   .agents/              # Codex skills for generated projects
-  .cursor/              # Cursor rules for generated projects
+  .cursor/              # Cursor rules for generated projects: project.mdc references AGENTS.md, the others scope stack facts
   .github/              # CI/CD workflow templates
   _templates/           # Hygen in-project generators
 ```
@@ -45,7 +45,8 @@ wiki commands from a generated project against this repository.
 - **Test with `copier copy`** after changes: `copier copy --trust . C:\temp\template-test`
 - **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
 - **User docs match behaviour**: keep the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md` equal to the CLI and service. After changing a documented command, message or security check, run it in a disposable workspace and fix the docs to match the real output
-- **Packaged workflow assets**: the 25 canonical workflow skills, `template/knowledge/` and the "Connected board workflow" section of the root guidance templates are packaged into `prism_cli/assets/workflow-v1.json`; run `python scripts/build-workflow-assets.py` after editing them (`--check` verifies), because a new digest invalidates existing board grants; the asset is generated, so never hand-edit it; its `previous_digests` history is empty, and `PREVIOUS_DIGESTS` in the build script records the digests of earlier shipped installer-owned files from the first release that has external users, so `prism workflow upgrade` can then replace an unmodified copy
+- **One source of generated-project rules**: `template/AGENTS.md.jinja` (and each platform's `AGENTS.md.jinja`) holds the rules; every `CLAUDE.md.jinja` only imports its sibling with `@AGENTS.md` plus Claude Code notes no other tool shares; there is no `CONTEXT.md`; `template/.cursor/rules/project.mdc.jinja` references `@AGENTS.md`; add a rule once, where it belongs
+- **Packaged workflow assets**: the 25 canonical workflow skills, `template/knowledge/` and the "Connected board workflow" section of `template/AGENTS.md.jinja` are packaged into `prism_cli/assets/workflow-v1.json` (a `.jinja` file under `template/knowledge/` ships rendered in its workflow-only form); run `python scripts/build-workflow-assets.py` after editing them (`--check` verifies), because a new digest invalidates existing board grants; the asset is generated, so never hand-edit it; its `previous_digests` history is empty, and `PREVIOUS_DIGESTS` in the build script records the digests of earlier shipped installer-owned files from the first release that has external users, so `prism workflow upgrade` can then replace an unmodified copy
 - **Changelog**: record user-visible changes under `Unreleased` in `CHANGELOG.md`; version numbers and release tags are chosen at release time
 - **Current state only**: instruction and guidance files describe current behaviour; dates and history belong in logs, ledgers and the changelog
 - **Model and effort**: launch every agent run with an explicit model and effort, and keep the full output limit
@@ -83,5 +84,5 @@ prism board serve . --port 8765
 - `docs/maintainer-workflow.md` - template maintenance workflow and validation variants
 - `docs/questionnaire.md` - questionnaire inputs and maturity notes
 - `copier.yml` - template configuration and questionnaire
-- `template/CLAUDE.md.jinja` - Claude context template for generated projects
-- `template/AGENTS.md.jinja` - Codex context template for generated projects
+- `template/AGENTS.md.jinja` - agent rules for generated projects, the single source for every tool
+- `template/CLAUDE.md.jinja` - Claude Code import of `AGENTS.md` for generated projects

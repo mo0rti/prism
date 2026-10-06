@@ -23,6 +23,7 @@ NON_PAGE_FILENAMES = {
     "LIFECYCLE.md",
     "SETTINGS.md",
     "index.md",
+    "status-board.md",
     "log.md",
     "WIKI_REPORT.md",
 }

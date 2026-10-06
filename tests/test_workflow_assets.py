@@ -129,12 +129,14 @@ class WorkflowAssetsTests(unittest.TestCase):
         self.assertGreaterEqual(len(files), 20)
 
     def test_pointer_states_the_one_retry_rule_the_connected_guide_gives(self):
-        for name in ("AGENTS.md", "CLAUDE.md"):
-            with self.subTest(pointer=name):
-                text = " ".join(guidance_pointer(name).split())
-                for term in ("exactly the fix the error names", "at most 2 more times", "never widen the change", "then stop and report"):
-                    self.assertIn(term, text)
-                self.assertNotIn("Stop on denied or unavailable connected writes", text)
+        text = " ".join(guidance_pointer("AGENTS.md").split())
+        for term in ("exactly the fix the error names", "at most 2 more times", "never widen the change", "then stop and report"):
+            self.assertIn(term, text)
+        self.assertNotIn("Stop on denied or unavailable connected writes", text)
+
+    def test_claude_guidance_only_imports_the_agents_guidance(self):
+        self.assertEqual("@AGENTS.md\n", guidance_pointer("CLAUDE.md"))
+        self.assertEqual("@AGENTS.md\n", guidance_pointer("CLAUDE.md", purpose="knowledge-root"))
 
     def test_design_handoff_keeps_open_questions_out_of_requirement_dependencies(self):
         skill = get_skill("design-handoff")

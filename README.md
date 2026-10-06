@@ -143,7 +143,7 @@ From the Prism home screen:
 After generating a project:
 
 1. open the generated repository
-2. inspect `README.md`, `CONTEXT.md`, `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
+2. inspect `README.md`, `AGENTS.md`, `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
 3. initialize the workflow with:
    - Claude Code: `/setup-project`
    - Codex: `$setup-project`
@@ -176,7 +176,7 @@ Read these first:
 Read these first:
 
 1. `README.md` inside the generated repository
-2. `CONTEXT.md` inside the generated repository
+2. `AGENTS.md` inside the generated repository
 3. [docs/generated-projects.md](https://github.com/mo0rti/prism/blob/main/docs/generated-projects.md)
 4. [docs/wiki-workflow.md](https://github.com/mo0rti/prism/blob/main/docs/wiki-workflow.md)
 

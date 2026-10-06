@@ -81,6 +81,37 @@ For terminal output, use `prism wiki graph --json` or
 read-oriented commands do not change wiki state; use the lifecycle commands
 above when you intend to edit it.
 
+## Working With AI Agents
+
+[`AGENTS.md`](AGENTS.md) is the single source of agent rules. Codex and Cursor read it
+directly and [`CLAUDE.md`](CLAUDE.md) imports it, so each rule is written once. Every platform
+folder repeats the pattern with its own `AGENTS.md` and a `CLAUDE.md` that imports it.
+[AI Agents](docs/ai-agents.md) explains how the instruction files, commands and skills fit
+together.
+
+Invoke a workflow operation by name:
+
+- **Claude Code:** `/operation`, for example `/po-intake [folder]`
+- **Codex:** `$operation`, for example `$po-intake [folder]`
+- **Cursor:** ask the agent to "run operation", for example "run po-intake on the folder
+  2026-04-07-client-call". The agent follows `.claude/commands/[command].md` and
+  `knowledge/wiki/SCHEMA.md`, plus `knowledge/wiki/LIFECYCLE.md` for lifecycle operations.
+
+| Category | Operations |
+|----------|------------|
+| Setup | `setup-project` |
+| PO | `po-intake [folder]`, `ingest [folder]`, `po-clarify`, `po-specify [F-XXX]`, `po-handoff [F-XXX]` |
+| Designer | `design-intake [F-XXX] [folder]`, `design-clarify`, `design-start [F-XXX]`, `design-handoff [F-XXX]` |
+| Developer | `prep-sprint`, `dev-clarify`, `dev-start [F-XXX]`, `dev-done [F-XXX]` |
+| Lifecycle | `feature-reopen [F-XXX] [specified\|in-design\|in-dev]` |
+| Board | `board-review [F-XXX]` |
+| Shared | `feature-status`, `ask [F-XXX] "question" --to po\|designer\|dev`, `audit-feature [F-XXX]`, `lint-wiki`, `wiki-show F-XXX`, `wiki-blockers`, `wiki-query "text"`, `wiki-owner po\|designer\|dev\|none`, `wiki-app <app-id>` |
+{% if "backend" in platforms %}
+Backend helpers differ by tool. Claude Code has `/add-endpoint`, `/add-integration`,
+`/create-migration`, `/document-entity`, `/generate-clients`, `/review-query`,
+`/review-security-surface` and `/debug-prod-issue`. Codex has `$endpoint`, `$document-entity`
+and `$generate-clients`.
+{% endif %}
 ## Quick Start
 
 ```bash
@@ -117,7 +148,7 @@ task generate-clients
 
 ## Documentation
 
-- [Product Context](CONTEXT.md) for AI entry points, command surfaces, and workflow expectations
+- [Agent Instructions](AGENTS.md) for the single source of rules that every AI agent follows
 - [Product Wiki Schema](knowledge/wiki/SCHEMA.md) for the structure and rules of the living product wiki
 - [Product Wiki Lifecycle](knowledge/wiki/LIFECYCLE.md) for the feature, board and advisory protocol
 - [AI Agents](docs/ai-agents.md) for the command layer, skill map, and platform guidance structure

@@ -160,23 +160,24 @@ class StartKnowledgeRootTests(unittest.TestCase):
         root = self.new_root()
         apply_install(root, plan_install(root, name="Acme", knowledge_root=True))
 
-        for name in ("AGENTS.md", "CLAUDE.md"):
-            with self.subTest(file=name):
-                text = (root / name).read_text(encoding="utf-8")
-                self.assertEqual(guidance_pointer(name, purpose="knowledge-root"), text)
-                flat = " ".join(text.split())
-                for term in (
-                    "This workspace is a knowledge root",
-                    "applications that live in other repositories",
-                    "generates no application code",
-                    "feature scope, delivery evidence and shared knowledge",
-                    "Each application repository keeps its own instructions",
-                    "neither set of rules overrides the other",
-                    "`prism.local.yml` (untracked, per machine) maps each external repository to its local checkout",
-                    "The feature lifecycle is optional",
-                ):
-                    self.assertIn(term, flat)
-                self.assertTrue(text.startswith(guidance_pointer(name)), "the knowledge-root text extends the standard pointer")
+        text = (root / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertEqual(guidance_pointer("AGENTS.md", purpose="knowledge-root"), text)
+        flat = " ".join(text.split())
+        for term in (
+            "This workspace is a knowledge root",
+            "applications that live in other repositories",
+            "generates no application code",
+            "feature scope, delivery evidence and shared knowledge",
+            "Each application repository keeps its own instructions",
+            "neither set of rules overrides the other",
+            "`prism.local.yml` (untracked, per machine) maps each external repository to its local checkout",
+            "The feature lifecycle is optional",
+        ):
+            self.assertIn(term, flat)
+        self.assertTrue(text.startswith(guidance_pointer("AGENTS.md")), "the knowledge-root text extends the standard pointer")
+        # CLAUDE.md only imports AGENTS.md, so the knowledge-root text lives once.
+        self.assertEqual("@AGENTS.md\n", (root / "CLAUDE.md").read_text(encoding="utf-8"))
+        self.assertEqual(guidance_pointer("CLAUDE.md"), guidance_pointer("CLAUDE.md", purpose="knowledge-root"))
 
     def test_a_plain_workflow_workspace_has_no_purpose_and_no_knowledge_root_guidance(self) -> None:
         root = self.new_root()
@@ -526,33 +527,39 @@ class PresetsTests(unittest.TestCase):
 
 
 class PackagedGuidanceTests(unittest.TestCase):
-    def test_both_pointers_come_from_the_one_connected_section(self) -> None:
+    def test_both_forms_come_from_the_one_connected_section(self) -> None:
         build = _load_build_script()
         agents = (REPO_ROOT / "template" / "AGENTS.md.jinja").read_text(encoding="utf-8")
         claude = (REPO_ROOT / "template" / "CLAUDE.md.jinja").read_text(encoding="utf-8")
 
         plain, knowledge_root = build._connected_pointers(agents, claude)
 
-        self.assertEqual(plain.rstrip("\n") + "\n\n" + knowledge_root[len(plain) + 1:], knowledge_root)
-        self.assertNotIn("knowledge root", plain)
-        self.assertEqual(plain, guidance_pointer("AGENTS.md"))
-        self.assertEqual(knowledge_root, guidance_pointer("CLAUDE.md", purpose="knowledge-root"))
+        self.assertEqual(
+            plain["AGENTS.md"].rstrip("\n") + "\n\n" + knowledge_root["AGENTS.md"][len(plain["AGENTS.md"]) + 1:],
+            knowledge_root["AGENTS.md"],
+        )
+        self.assertNotIn("knowledge root", plain["AGENTS.md"])
+        self.assertEqual(plain["AGENTS.md"], guidance_pointer("AGENTS.md"))
+        self.assertEqual(knowledge_root["AGENTS.md"], guidance_pointer("AGENTS.md", purpose="knowledge-root"))
+        # CLAUDE.md is the import of AGENTS.md in both forms and carries no section of its own.
+        self.assertEqual("@AGENTS.md\n", plain["CLAUDE.md"])
+        self.assertEqual(plain["CLAUDE.md"], knowledge_root["CLAUDE.md"])
+        self.assertEqual(plain["CLAUDE.md"], guidance_pointer("CLAUDE.md"))
+        self.assertEqual("@AGENTS.md\n", claude)
         self.assertEqual(1, agents.count("This workspace is a knowledge root"))
-        self.assertEqual(1, claude.count("This workspace is a knowledge root"))
+        self.assertEqual(0, claude.count("This workspace is a knowledge root"))
 
     def test_a_generated_project_never_gets_the_knowledge_root_paragraph(self) -> None:
         import jinja2
 
-        for name in ("AGENTS.md.jinja", "CLAUDE.md.jinja"):
-            with self.subTest(template=name):
-                source = (REPO_ROOT / "template" / name).read_text(encoding="utf-8")
-                section = source[source.index("## Connected board workflow"):source.index("## Product knowledge wiki")]
-                environment = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
-                without = environment.from_string(section).render()
-                with_condition = environment.from_string(section).render(knowledge_root=True)
-                self.assertNotIn("knowledge root", without)
-                self.assertIn("This workspace is a knowledge root", with_condition)
-                self.assertEqual(without.rstrip(), with_condition[: len(without.rstrip())])
+        source = (REPO_ROOT / "template" / "AGENTS.md.jinja").read_text(encoding="utf-8")
+        section = source[source.index("## Connected board workflow"):source.index("## Product knowledge wiki")]
+        environment = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
+        without = environment.from_string(section).render()
+        with_condition = environment.from_string(section).render(knowledge_root=True)
+        self.assertNotIn("knowledge root", without)
+        self.assertIn("This workspace is a knowledge root", with_condition)
+        self.assertEqual(without.rstrip(), with_condition[: len(without.rstrip())])
 
 
 if __name__ == "__main__":

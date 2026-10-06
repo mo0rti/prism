@@ -1,6 +1,7 @@
 """The general wiki index: one line per page, grouped by kind.
 
-`knowledge/wiki/index.md` lists every wiki page once, as `- [Label](path.md): summary`. This
+`knowledge/wiki/index.md` lists every wiki page once, as `- [Label](path.md): summary`. A generated
+workspace also lists its template-owned `docs/` pages, one line each, under "Project docs". This
 module holds what the readers of that file share: which files are pages, which group a page
 belongs to, how a page's line is derived from its text, and how a line is parsed, replaced and
 inserted. Wiki lint checks the lines, the board service writes them, and `wiki search` reads them.
@@ -22,6 +23,9 @@ INDEX_FILE = "index.md"
 STATUS_BOARD_FILE = "status-board.md"
 # Files in the wiki root that are not pages: the index itself, the ledger and the generated report.
 NON_PAGE_ROOT_FILES = frozenset({"index.md", "log.md", "WIKI_REPORT.md"})
+# A generated workspace's `docs/` folder sits two levels above the wiki. Its pages are listed in the
+# index by this prefix; they are project docs, not wiki pages.
+PROJECT_DOCS_PREFIX = "../../docs/"
 # The wiki folders that hold pages, one level deep.
 PAGE_DIRECTORIES = (
     "features",
@@ -70,6 +74,7 @@ GROUPS = (
     ("api-contracts", "API contracts"),
     ("decisions", "Decisions"),
     ("advisory", "Advisory"),
+    ("project-docs", "Project docs"),
     ("meta", "Meta"),
 )
 GROUP_HEADINGS = dict(GROUPS)
@@ -118,9 +123,18 @@ def is_page_path(relative: str) -> bool:
     return len(parts) == 2 and parts[0] in PAGE_DIRECTORIES
 
 
-def page_group(relative: str) -> str | None:
-    """The index group of a page, or ``None`` when the path is not a page."""
+def is_project_doc_target(target: str) -> bool:
+    """Whether an index target (`../../docs/architecture.md`) names a Markdown page of the workspace `docs/` folder."""
 
+    rest = target[len(PROJECT_DOCS_PREFIX) :] if target.startswith(PROJECT_DOCS_PREFIX) else ""
+    return bool(rest) and rest.lower().endswith(".md") and ".." not in PurePosixPath(rest).parts
+
+
+def page_group(relative: str) -> str | None:
+    """The index group of a page or a project doc, or ``None`` when the path is neither."""
+
+    if is_project_doc_target(relative):
+        return "project-docs"
     if not is_page_path(relative):
         return None
     parts = PurePosixPath(relative).parts
@@ -150,7 +164,10 @@ class IndexEntry:
 
 
 def index_target(raw_target: str) -> str | None:
-    """The wiki-relative path an index link names, or ``None`` for a link that leaves the wiki or is not a file path."""
+    """The wiki-relative path an index link names, or ``None`` for a link that leaves the wiki or is not a file path.
+
+    The one link that may leave the wiki is a project doc, `../../docs/<page>.md`; it is returned as written.
+    """
 
     try:
         parsed = urlsplit(unquote(raw_target))
@@ -159,6 +176,8 @@ def index_target(raw_target: str) -> str | None:
     if parsed.scheme or parsed.netloc or not parsed.path or "\x00" in parsed.path:
         return None
     normalized = posixpath.normpath(parsed.path.replace("\\", "/"))
+    if is_project_doc_target(normalized):
+        return normalized
     if normalized.startswith(("/", "..")) or normalized == ".":
         return None
     return normalized
@@ -358,7 +377,7 @@ def render_index_lines(content: str, after: Mapping[str, str]) -> str:
         line = after[target]
         group = page_group(target)
         if group is None:
-            raise ValueError(f"`{target}` is not a wiki page.")
+            raise ValueError(f"`{target}` is not a wiki page or a project doc.")
         positions = [position for position, found in _entry_positions(lines) if found == target]
         if positions:
             lines[positions[0]] = line + _line_ending(lines[positions[0]], newline)

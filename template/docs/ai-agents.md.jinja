@@ -16,12 +16,13 @@ The agent system in this workspace does four jobs:
 
 | Layer | Where | Purpose |
 |------|-------|---------|
-| Shared context | [`CONTEXT.md`](../CONTEXT.md) | First file to read for project identity, commands, repository layout, and wiki workflow |
-| Root agent guidance | [`AGENTS.md`](../AGENTS.md), [`CLAUDE.md`](../CLAUDE.md) | Workspace-wide operating rules for Codex and Claude |
+| Root agent instructions | [`AGENTS.md`](../AGENTS.md), [`CLAUDE.md`](../CLAUDE.md) | `AGENTS.md` is the single source of workspace rules and the first file an agent reads; `CLAUDE.md` imports it |
+| Human overview | [`README.md`](../README.md) | Setup, repository layout and the operation names by tool |
 | Product wiki | [`knowledge/wiki/SCHEMA.md`](../knowledge/wiki/SCHEMA.md), [`knowledge/wiki/LIFECYCLE.md`](../knowledge/wiki/LIFECYCLE.md) | Source of truth for features, app requirements, contracts, rules, and advisory reviews |
 | Claude commands | [`.claude/commands/`](../.claude/commands/) | Structured project operations such as setup, PO intake, review, handoff, and wiki maintenance |
 | Claude skills | [`.claude/skills/`](../.claude/skills/) | Reusable Claude Code guidance for implementation, conventions, testing, and platform work |
 | Codex skills | [`.agents/skills/`](../.agents/skills/) | Reusable Codex guidance for shared workflows and supported platform work |
+| Cursor rules | [`.cursor/rules/`](../.cursor/rules/) | `project.mdc` points to `AGENTS.md`; the other rules scope stack facts by file path and describe the board review |
 {% if "backend" in platforms %}| Backend guidance | [`backend/AGENTS.md`](../backend/AGENTS.md), [`backend/CLAUDE.md`](../backend/CLAUDE.md), [`backend/docs/guide.md`](../backend/docs/guide.md) | Backend-specific architecture, conventions, and delivery rules |
 {% endif %}{% if "web-user-app" in platforms %}| User web guidance | [`web-user-app/AGENTS.md`](../web-user-app/AGENTS.md), [`web-user-app/CLAUDE.md`](../web-user-app/CLAUDE.md), [`web-user-app/docs/guide.md`](../web-user-app/docs/guide.md) | User web implementation rules and workflow expectations |
 {% endif %}{% if "web-admin-portal" in platforms %}| Admin web guidance | [`web-admin-portal/AGENTS.md`](../web-admin-portal/AGENTS.md), [`web-admin-portal/CLAUDE.md`](../web-admin-portal/CLAUDE.md), [`web-admin-portal/docs/guide.md`](../web-admin-portal/docs/guide.md) | Admin portal implementation rules and workflow expectations |
@@ -33,9 +34,10 @@ The agent system in this workspace does four jobs:
 
 <pre>
 {{ project_slug }}/
-├── CONTEXT.md
 ├── AGENTS.md
 ├── CLAUDE.md
+├── .cursor/
+│   └── rules/
 ├── knowledge/
 │   └── wiki/
 │       ├── SCHEMA.md
@@ -73,6 +75,22 @@ The agent system in this workspace does four jobs:
     ├── architecture.md
     └── ... selective examples; see docs/README.md for the full docs map
 </pre>
+
+## One Source Of Instructions
+
+Each rule is written once, in `AGENTS.md`. The tools load it like this:
+
+- **Codex** reads `AGENTS.md` from the repository root down to the working directory.
+- **Claude Code** loads `CLAUDE.md`, whose first line `@AGENTS.md` imports the sibling `AGENTS.md`.
+  A platform folder's `CLAUDE.md` does the same for that folder's `AGENTS.md` and adds only
+  the Claude Code skills and commands that no other tool shares.
+- **Cursor** applies `AGENTS.md` at the root and in subfolders. Its rule files cannot import an
+  instruction file, so `.cursor/rules/project.mdc` references `@AGENTS.md`, and the other rules
+  carry only stack facts scoped by file path.
+
+Add or change a rule in `AGENTS.md`, or in the platform `AGENTS.md` that owns it, and nowhere
+else. Skills exist in two packagings, `.claude/` and `.agents/`; keep them aligned when you
+change one.
 
 After `setup-project`, the advisory area should contain both `BOARD.md` and
 `PROJECT_FOUNDATION.md`, which preserves the setup interview, risk framing, and
@@ -112,7 +130,7 @@ Key command groups:
 - delivery workflow: `prep-sprint`, `dev-clarify`, `dev-start`, `dev-done`, `feature-reopen`
 - governance and support: `board-review`, `feature-status`, `ask`, `audit-feature`, `lint-wiki`, `wiki-*`
 
-Read [`CONTEXT.md`](../CONTEXT.md) for the command list by tool surface.
+Read [`README.md`](../README.md) for the operation names by tool surface.
 
 When the optional Prism CLI is installed, `prism wiki graph --open` renders an
 interactive dashboard of the wiki (features, lifecycle board, app lanes),
@@ -240,7 +258,7 @@ dedicated web-only skill catalog.
 
 Start with:
 
-- [`CONTEXT.md`](../CONTEXT.md) for workspace-level workflow and command context
+- [`AGENTS.md`](../AGENTS.md) for workspace-level rules, workflow and command context
 - [`docs/api/conventions.md`](api/conventions.md) for API usage rules
 - [`shared/api-contracts/openapi.yml`](../shared/api-contracts/openapi.yml) for the source contract
 {% if "web-user-app" in platforms %}- [`web-user-app/docs/guide.md`](../web-user-app/docs/guide.md) for the user web slice
@@ -277,7 +295,7 @@ Start with:
 
 ## How To Work With The Agents
 
-1. Start with [`CONTEXT.md`](../CONTEXT.md).
+1. Start with [`AGENTS.md`](../AGENTS.md).
 2. Read [`knowledge/wiki/index.md`](../knowledge/wiki/index.md) to find the pages the task needs, [`knowledge/wiki/status-board.md`](../knowledge/wiki/status-board.md) for feature status, and the relevant feature page.
 3. Read the platform-local `AGENTS.md`, `CLAUDE.md`, and `docs/guide.md` files for the slice you are changing.
 4. Use the command layer for lifecycle work such as setup, intake, review, and completion.
@@ -294,7 +312,7 @@ This document is especially useful for:
 ## Related Docs
 
 - [README.md](../README.md) for workspace setup and top-level navigation
-- [CONTEXT.md](../CONTEXT.md) for the shared AI entry point
+- [AGENTS.md](../AGENTS.md) for the single source of agent instructions
 - [docs/architecture.md](architecture.md) for platform boundaries and system design
 - [knowledge/wiki/SCHEMA.md](../knowledge/wiki/SCHEMA.md) for wiki structure and operational rules
 - [knowledge/wiki/LIFECYCLE.md](../knowledge/wiki/LIFECYCLE.md) for the feature, board and advisory protocol

@@ -201,10 +201,12 @@ def bootstrap_files(version: str = "1") -> list[dict[str, str]]:
 
 
 def guidance_pointer(name: str, version: str = "1", purpose: str | None = None) -> str:
-    """Return the generated minimal root pointer for Codex or Claude Code.
+    """Return the generated minimal root guidance for Codex or Claude Code.
 
-    A knowledge root (``purpose="knowledge-root"``) gets the same pointer plus
-    the knowledge-root paragraph, both built from one packaged source.
+    ``AGENTS.md`` carries the connected-workflow section and is the single source of
+    rules; ``CLAUDE.md`` only imports it with ``@AGENTS.md``. A knowledge root
+    (``purpose="knowledge-root"``) gets the same files plus the knowledge-root
+    paragraph in ``AGENTS.md``, both built from one packaged source.
     """
 
     if name not in ("AGENTS.md", "CLAUDE.md"):

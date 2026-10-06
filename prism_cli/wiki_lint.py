@@ -54,6 +54,7 @@ from prism_cli.wiki_index import (
     GENERAL_PAGE_STATUSES,
     ROOT_PAGE_KINDS,
     is_page_path,
+    is_project_doc_target,
     parse_index_entries,
 )
 from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind, inspect_workspace, workspace_model
@@ -1258,6 +1259,9 @@ def _lint_intake_items(root: Path) -> list[WikiDiagnostic]:
 def _lint_index_entries(pages: list[MarkdownPage], wiki_root: Path) -> list[WikiDiagnostic]:
     """Every wiki page has exactly one line in `index.md`, and every line names a page that exists.
 
+    A project doc line (`../../docs/architecture.md`) is held to the same rule from the other side: it
+    names a doc that exists and appears once. Docs the user adds need no line.
+
     The findings are warnings on the index file and carry no feature ID: a missing line is
     housekeeping, so it never blocks a lifecycle action.
     """
@@ -1307,6 +1311,9 @@ def _lint_index_entries(pages: list[MarkdownPage], wiki_root: Path) -> list[Wiki
     for target in sorted(by_target):
         if target in page_paths:
             continue
+        if is_project_doc_target(target):
+            diagnostics.extend(_lint_project_doc_lines(index_path, wiki_root, target, by_target[target]))
+            continue
         try:
             exists = (wiki_root / target).is_file()
         except (OSError, ValueError):
@@ -1320,6 +1327,36 @@ def _lint_index_entries(pages: list[MarkdownPage], wiki_root: Path) -> list[Wiki
                     f"index.md line {by_target[target][0]} links `{target}`, which is not a page of this wiki. Remove the line or restore the page.",
                 )
             )
+    return diagnostics
+
+
+def _lint_project_doc_lines(index_path: Path, wiki_root: Path, target: str, lines: list[int]) -> list[WikiDiagnostic]:
+    """The findings for the index lines of one project doc: a doc that does not exist, or a doc listed twice."""
+
+    diagnostics: list[WikiDiagnostic] = []
+    try:
+        exists = (wiki_root / target).is_file()
+    except (OSError, ValueError):
+        exists = False
+    if not exists:
+        diagnostics.append(
+            _diag(
+                "orphan-index-entry",
+                "warning",
+                index_path,
+                f"index.md line {lines[0]} links the project doc `{target}`, which does not exist. Remove the line or restore the doc.",
+            )
+        )
+    if len(lines) > 1:
+        where = ", ".join(str(number) for number in lines)
+        diagnostics.append(
+            _diag(
+                "duplicate-index-entry",
+                "warning",
+                index_path,
+                f"`{target}` has {len(lines)} lines in index.md (lines {where}). Keep one and remove the others.",
+            )
+        )
     return diagnostics
 
 

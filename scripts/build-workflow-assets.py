@@ -141,6 +141,7 @@ WORKSPACE_STATE_FILES = {
     "knowledge/wiki/advisory/PROJECT_FOUNDATION.md",
 }
 _FRONTMATTER = re.compile(r"\A---\s*\r?\n(.*?)\r?\n---(?:\r?\n|\Z)", re.DOTALL)
+CLAUDE_IMPORT = "@AGENTS.md"
 _CONNECTED_SECTION = re.compile(r"(?m)^## Connected board workflow\s*\r?\n")
 _NEXT_HEADING = re.compile(r"(?m)^## ")
 
@@ -183,31 +184,31 @@ def _skill_metadata(content: str, expected_name: str, source_path: str) -> str:
     return description.strip()
 
 
-def _connected_pointers(agents: str, claude: str) -> tuple[str, str]:
-    """The root pointer of a workflow workspace, and the one of a knowledge root.
+def _connected_pointers(agents: str, claude: str) -> tuple[dict[str, str], dict[str, str]]:
+    """The root guidance of a workflow workspace, and the one of a knowledge root.
 
-    Both come from the one "Connected board workflow" section. Its
-    ``knowledge_root`` condition adds the knowledge-root paragraph, so the two
-    pointers cannot drift apart.
+    ``AGENTS.md`` is the single source of agent rules: it carries the "Connected board
+    workflow" section, and its ``knowledge_root`` condition adds the knowledge-root
+    paragraph, so the two forms cannot drift apart. ``CLAUDE.md`` only imports it, so its
+    packaged text is the import line of ``template/CLAUDE.md.jinja``.
     """
 
-    def extract(text: str, surface: str) -> str:
-        heading = _CONNECTED_SECTION.search(text)
-        if not heading:
-            raise ValueError(f"{surface} root guidance is missing the Connected board workflow section.")
-        next_heading = _NEXT_HEADING.search(text, heading.end())
-        body = text[heading.end() : next_heading.start() if next_heading else len(text)].strip()
-        return body
-
-    agents_body = extract(agents, "Codex")
-    claude_body = extract(claude, "Claude")
-    if agents_body != claude_body:
-        raise ValueError("Connected workflow pointers must match between template/AGENTS.md.jinja and template/CLAUDE.md.jinja.")
-    pointers = [
-        f"# Prism workspace guidance\n\n{_render_text(agents_body, 'the Connected board workflow section', **context)}\n"
+    heading = _CONNECTED_SECTION.search(agents)
+    if not heading:
+        raise ValueError("Root guidance is missing the Connected board workflow section.")
+    next_heading = _NEXT_HEADING.search(agents, heading.end())
+    body = agents[heading.end() : next_heading.start() if next_heading else len(agents)].strip()
+    if claude.strip() != CLAUDE_IMPORT:
+        raise ValueError(f"template/CLAUDE.md.jinja must contain only the {CLAUDE_IMPORT!r} import.")
+    claude_text = f"{CLAUDE_IMPORT}\n"
+    agents_texts = [
+        f"# Prism workspace guidance\n\n{_render_text(body, 'the Connected board workflow section', **context)}\n"
         for context in ({}, {"knowledge_root": True})
     ]
-    return pointers[0], pointers[1]
+    return (
+        {"AGENTS.md": agents_texts[0], "CLAUDE.md": claude_text},
+        {"AGENTS.md": agents_texts[1], "CLAUDE.md": claude_text},
+    )
 
 
 def build_asset() -> dict[str, Any]:
@@ -263,8 +264,13 @@ def build_asset() -> dict[str, Any]:
         if source_path.is_symlink() or not source_path.is_file():
             continue
         relative = source_path.relative_to(knowledge_root).as_posix()
-        workspace_path = f"knowledge/{relative}"
         content = source_path.read_text(encoding="utf-8")
+        if source_path.suffix == ".jinja":
+            # A knowledge file with a Jinja condition ships rendered without Copier's platform answers,
+            # in its workflow-only form (the general index has no "Project docs" group there).
+            relative = relative[: -len(".jinja")]
+            content = _render_text(content, f"template/knowledge/{relative}.jinja")
+        workspace_path = f"knowledge/{relative}"
         if source_path.name == ".gitkeep":
             content = ""
         add_file(workspace_path, content)
@@ -274,9 +280,7 @@ def build_asset() -> dict[str, Any]:
     # root templates contain project-specific Copier expressions.
     agents_root = _read_template("AGENTS.md.jinja")
     claude_root = _read_template("CLAUDE.md.jinja")
-    pointer, knowledge_root_pointer = _connected_pointers(agents_root, claude_root)
-    guidance_pointers = {"AGENTS.md": pointer, "CLAUDE.md": pointer}
-    knowledge_root_pointers = {"AGENTS.md": knowledge_root_pointer, "CLAUDE.md": knowledge_root_pointer}
+    guidance_pointers, knowledge_root_pointers = _connected_pointers(agents_root, claude_root)
 
     asset: dict[str, Any] = {
         "version": "1",

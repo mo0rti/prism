@@ -298,8 +298,11 @@ function Validate-WikiStructure {
     Assert-PathExists -Path (Join-Path $Root "knowledge\intake\processed\.gitkeep") -Message "Generated project missing intake/processed/.gitkeep."
     Assert-PathExists -Path (Join-Path $Root "knowledge\intake\quarantined\.gitkeep") -Message "Generated project missing intake/quarantined/.gitkeep."
 
-    # CONTEXT.md rendered (no .jinja suffix)
-    Assert-PathExists -Path (Join-Path $Root "CONTEXT.md") -Message "Generated project missing rendered CONTEXT.md."
+    # AGENTS.md is the single source of agent rules; CLAUDE.md only imports it; AGENTS.md no longer exists
+    Assert-PathExists -Path (Join-Path $Root "AGENTS.md") -Message "Generated project missing rendered AGENTS.md."
+    Assert-PathExists -Path (Join-Path $Root "CLAUDE.md") -Message "Generated project missing rendered CLAUDE.md."
+    Assert-PathMissing -Path (Join-Path $Root "CONTEXT.md") -Message "Generated project must not contain CONTEXT.md."
+    Assert-FileContains -Path (Join-Path $Root "CLAUDE.md") -Needle "@AGENTS.md" -Message "Root CLAUDE.md must import AGENTS.md."
 
     # Current Claude command surface present (rendered, no .jinja suffix)
     foreach ($cmd in $CurrentClaudeCommands) {
@@ -330,8 +333,9 @@ function Validate-WikiStructure {
     # business-rules/ keeps a .gitkeep alongside its required _FORMAT.md
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\business-rules\.gitkeep") -Message "Generated project missing knowledge/wiki/business-rules/.gitkeep."
 
-    # Cursor wiki rule present
-    Assert-PathExists -Path (Join-Path $Root ".cursor\rules\wiki.mdc") -Message "Generated project missing .cursor/rules/wiki.mdc."
+    # Cursor project rule points to AGENTS.md; the wiki rule is gone
+    Assert-PathExists -Path (Join-Path $Root ".cursor\rules\project.mdc") -Message "Generated project missing .cursor/rules/project.mdc."
+    Assert-PathMissing -Path (Join-Path $Root ".cursor\rules\wiki.mdc") -Message "Generated project must not contain .cursor/rules/wiki.mdc."
 
     # docs/README.md present
     Assert-PathExists -Path (Join-Path $Root "docs\README.md") -Message "Generated project missing docs/README.md."
@@ -350,10 +354,12 @@ function Validate-WikiStructure {
     Assert-FileContains -Path (Join-Path $Root "README.md") -Needle "First-Time Setup" -Message "Generated README.md must include first-time wiki setup guidance."
     Assert-FileContains -Path (Join-Path $Root "README.md") -Needle "setup-project" -Message "Generated README.md must reference setup-project."
     Assert-FileContains -Path (Join-Path $Root "README.md") -Needle "knowledge/wiki" -Message "Generated README.md must reference the product wiki."
+    Assert-FileContains -Path (Join-Path $Root "README.md") -Needle "Working With AI Agents" -Message "Generated README.md must carry the AI agent overview."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "## Project docs" -Message "The generated wiki index must list the docs pages under Project docs."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "(../../docs/architecture.md)" -Message "The generated wiki index must link docs/architecture.md."
 
     # Root context files must not reference old paths
-    Assert-FileNotContains -Path (Join-Path $Root "CLAUDE.md") -Needle "docs/features/" -Message "Root CLAUDE.md should not reference docs/features/."
-    Assert-FileNotContains -Path (Join-Path $Root "CLAUDE.md") -Needle "docs/advisory-board.md" -Message "Root CLAUDE.md should not reference docs/advisory-board.md."
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "docs/features/" -Message "Root AGENTS.md should not reference docs/features/."
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle '$scaffold-feature' -Message "Root AGENTS.md should not reference scaffold-feature."
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "docs/advisory-board.md" -Message "Root AGENTS.md should not reference docs/advisory-board.md."
 
@@ -398,13 +404,14 @@ function Validate-WikiStructure {
     Assert-FileContains -Path (Join-Path $Root "knowledge\intake\pending\PO_BRIEF_TEMPLATE.md") -Needle "Captured: YYYY-MM-DD" -Message "The PO brief template must carry a Captured line."
     Assert-FileContains -Path (Join-Path $Root "knowledge\intake\pending\DESIGN_HANDOFF_TEMPLATE.md") -Needle "Captured: YYYY-MM-DD" -Message "The design handoff template must carry a Captured line."
 
-    # CONTEXT.md must render with setup instructions for all three tools and no unrendered Jinja2
-    Assert-FileContains -Path (Join-Path $Root "CONTEXT.md") -Needle "setup-project" -Message "Rendered CONTEXT.md must reference setup-project."
-    Assert-FileContains -Path (Join-Path $Root "CONTEXT.md") -Needle "Claude Code" -Message "Rendered CONTEXT.md must include Claude Code setup instruction."
-    Assert-FileContains -Path (Join-Path $Root "CONTEXT.md") -Needle "Codex" -Message "Rendered CONTEXT.md must include Codex setup instruction."
+    # AGENTS.md must render with setup instructions for all three tools and no unrendered Jinja2
+    Assert-FileContains -Path (Join-Path $Root "AGENTS.md") -Needle "setup-project" -Message "Rendered AGENTS.md must reference setup-project."
+    Assert-FileContains -Path (Join-Path $Root "AGENTS.md") -Needle "Claude Code" -Message "Rendered AGENTS.md must include Claude Code setup instruction."
+    Assert-FileContains -Path (Join-Path $Root "AGENTS.md") -Needle "Codex" -Message "Rendered AGENTS.md must include Codex setup instruction."
 
     # Cursor project rule must reference knowledge/wiki, not old docs paths
     Assert-FileContains -Path (Join-Path $Root ".cursor\rules\project.mdc") -Needle "knowledge/wiki" -Message "Cursor project rule must reference knowledge/wiki."
+    Assert-FileContains -Path (Join-Path $Root ".cursor\rules\project.mdc") -Needle "@AGENTS.md" -Message "Cursor project rule must reference @AGENTS.md."
     Assert-FileNotContains -Path (Join-Path $Root ".cursor\rules\project.mdc") -Needle "docs/advisory-board.md" -Message "Cursor project rule must not reference docs/advisory-board.md."
     Assert-FileNotContains -Path (Join-Path $Root ".cursor\rules\project.mdc") -Needle "Feature docs in" -Message "Cursor project rule must not use old feature-docs-in phrasing."
 
@@ -432,16 +439,15 @@ function Validate-BackendOnly {
     Assert-NoCopierPlaceholders -Root $Root
     Validate-WikiStructure -Root $Root
 
-    # backend CLAUDE.md and AGENTS.md must have wiki section with app-specific path
-    Assert-FileContains -Path (Join-Path $Root "backend\CLAUDE.md") -Needle "app-requirements/[feature-id]-backend" -Message "backend/CLAUDE.md missing backend app-requirements reference."
-    Assert-FileContains -Path (Join-Path $Root "backend\CLAUDE.md") -Needle "advisory-review" -Message "backend/CLAUDE.md missing advisory-review check."
+    # backend AGENTS.md must have the wiki section and CLAUDE.md must import it with app-specific path
+    Assert-FileContains -Path (Join-Path $Root "backend\CLAUDE.md") -Needle "@AGENTS.md" -Message "backend/CLAUDE.md must import AGENTS.md."
     Assert-FileContains -Path (Join-Path $Root "backend\AGENTS.md") -Needle "app-requirements/[feature-id]-backend" -Message "backend/AGENTS.md missing backend app-requirements reference."
     Assert-FileContains -Path (Join-Path $Root "backend\AGENTS.md") -Needle "advisory-review" -Message "backend/AGENTS.md missing advisory-review check."
 
-    # CONTEXT.md must not contain absent platform directories
-    Assert-FileNotContains -Path (Join-Path $Root "CONTEXT.md") -Needle "mobile-android/" -Message "Backend-only CONTEXT.md should not reference mobile-android/."
-    Assert-FileNotContains -Path (Join-Path $Root "CONTEXT.md") -Needle "mobile-ios/" -Message "Backend-only CONTEXT.md should not reference mobile-ios/."
-    Assert-FileNotContains -Path (Join-Path $Root "CONTEXT.md") -Needle "web-user-app/" -Message "Backend-only CONTEXT.md should not reference web-user-app/."
+    # AGENTS.md must not contain absent platform directories
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-android/" -Message "Backend-only AGENTS.md should not reference mobile-android/."
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-ios/" -Message "Backend-only AGENTS.md should not reference mobile-ios/."
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "web-user-app/" -Message "Backend-only AGENTS.md should not reference web-user-app/."
 
     Assert-PathExists -Path (Join-Path $Root "backend\gradlew") -Message "Backend-only sample is missing gradlew."
     Assert-PathExists -Path (Join-Path $Root "backend\gradlew.bat") -Message "Backend-only sample is missing gradlew.bat."
@@ -834,17 +840,16 @@ function Validate-WebSample {
     Validate-WikiStructure -Root $Root
     Assert-ClientPathsInOpenApi -Root $Root
 
-    # web-user-app and web-admin-portal CLAUDE.md and AGENTS.md must have wiki section
+    # web-user-app and web-admin-portal AGENTS.md must have the wiki section and CLAUDE.md must import it
     foreach ($platform in @("web-user-app", "web-admin-portal")) {
-        Assert-FileContains -Path (Join-Path $Root "$platform\CLAUDE.md") -Needle "knowledge/wiki/app-requirements" -Message "$platform/CLAUDE.md missing wiki app-requirements reference."
-        Assert-FileContains -Path (Join-Path $Root "$platform\CLAUDE.md") -Needle "advisory-review" -Message "$platform/CLAUDE.md missing advisory-review check."
+        Assert-FileContains -Path (Join-Path $Root "$platform\CLAUDE.md") -Needle "@AGENTS.md" -Message "$platform/CLAUDE.md must import AGENTS.md."
         Assert-FileContains -Path (Join-Path $Root "$platform\AGENTS.md") -Needle "knowledge/wiki/app-requirements" -Message "$platform/AGENTS.md missing wiki app-requirements reference."
         Assert-FileContains -Path (Join-Path $Root "$platform\AGENTS.md") -Needle "advisory-review" -Message "$platform/AGENTS.md missing advisory-review check."
     }
 
-    # CONTEXT.md must not contain platform directories for absent platforms
-    Assert-FileNotContains -Path (Join-Path $Root "CONTEXT.md") -Needle "mobile-android/" -Message "Web-only CONTEXT.md should not reference mobile-android/."
-    Assert-FileNotContains -Path (Join-Path $Root "CONTEXT.md") -Needle "mobile-ios/" -Message "Web-only CONTEXT.md should not reference mobile-ios/."
+    # AGENTS.md must not contain platform directories for absent platforms
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-android/" -Message "Web-only AGENTS.md should not reference mobile-android/."
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-ios/" -Message "Web-only AGENTS.md should not reference mobile-ios/."
 
     Assert-PathExists -Path (Join-Path $Root "web-user-app") -Message "Web sample should generate web-user-app."
     Assert-PathExists -Path (Join-Path $Root "web-admin-portal") -Message "Web sample should generate web-admin-portal."
@@ -922,15 +927,14 @@ function Validate-AndroidSample {
     Validate-WikiStructure -Root $Root
     Assert-ClientPathsInOpenApi -Root $Root
 
-    # mobile-android CLAUDE.md and AGENTS.md must have wiki section with app-specific path
-    Assert-FileContains -Path (Join-Path $Root "mobile-android\CLAUDE.md") -Needle "app-requirements/[feature-id]-mobile-android" -Message "mobile-android/CLAUDE.md missing mobile-android app-requirements reference."
-    Assert-FileContains -Path (Join-Path $Root "mobile-android\CLAUDE.md") -Needle "advisory-review" -Message "mobile-android/CLAUDE.md missing advisory-review check."
+    # mobile-android AGENTS.md must have the wiki section and CLAUDE.md must import it with app-specific path
+    Assert-FileContains -Path (Join-Path $Root "mobile-android\CLAUDE.md") -Needle "@AGENTS.md" -Message "mobile-android/CLAUDE.md must import AGENTS.md."
     Assert-FileContains -Path (Join-Path $Root "mobile-android\AGENTS.md") -Needle "app-requirements/[feature-id]-mobile-android" -Message "mobile-android/AGENTS.md missing mobile-android app-requirements reference."
     Assert-FileContains -Path (Join-Path $Root "mobile-android\AGENTS.md") -Needle "advisory-review" -Message "mobile-android/AGENTS.md missing advisory-review check."
 
-    # CONTEXT.md must not contain absent platform directories
-    Assert-FileNotContains -Path (Join-Path $Root "CONTEXT.md") -Needle "mobile-ios/" -Message "Android-only CONTEXT.md should not reference mobile-ios/."
-    Assert-FileNotContains -Path (Join-Path $Root "CONTEXT.md") -Needle "web-user-app/" -Message "Android-only CONTEXT.md should not reference web-user-app/."
+    # AGENTS.md must not contain absent platform directories
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-ios/" -Message "Android-only AGENTS.md should not reference mobile-ios/."
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "web-user-app/" -Message "Android-only AGENTS.md should not reference web-user-app/."
 
     Assert-PathExists -Path (Join-Path $Root "mobile-android") -Message "Android sample should generate mobile-android."
     Assert-PathExists -Path (Join-Path $Root "backend\gradlew") -Message "Android sample should still include backend Gradle wrapper files."
@@ -943,15 +947,14 @@ function Validate-IosSample {
     Validate-WikiStructure -Root $Root
     Assert-ClientPathsInOpenApi -Root $Root
 
-    # mobile-ios CLAUDE.md and AGENTS.md must have wiki section with app-specific path
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\CLAUDE.md") -Needle "app-requirements/[feature-id]-mobile-ios" -Message "mobile-ios/CLAUDE.md missing mobile-ios app-requirements reference."
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\CLAUDE.md") -Needle "advisory-review" -Message "mobile-ios/CLAUDE.md missing advisory-review check."
+    # mobile-ios AGENTS.md must have the wiki section and CLAUDE.md must import it with app-specific path
+    Assert-FileContains -Path (Join-Path $Root "mobile-ios\CLAUDE.md") -Needle "@AGENTS.md" -Message "mobile-ios/CLAUDE.md must import AGENTS.md."
     Assert-FileContains -Path (Join-Path $Root "mobile-ios\AGENTS.md") -Needle "app-requirements/[feature-id]-mobile-ios" -Message "mobile-ios/AGENTS.md missing mobile-ios app-requirements reference."
     Assert-FileContains -Path (Join-Path $Root "mobile-ios\AGENTS.md") -Needle "advisory-review" -Message "mobile-ios/AGENTS.md missing advisory-review check."
 
-    # CONTEXT.md must not contain absent platform directories
-    Assert-FileNotContains -Path (Join-Path $Root "CONTEXT.md") -Needle "mobile-android/" -Message "iOS-only CONTEXT.md should not reference mobile-android/."
-    Assert-FileNotContains -Path (Join-Path $Root "CONTEXT.md") -Needle "web-user-app/" -Message "iOS-only CONTEXT.md should not reference web-user-app/."
+    # AGENTS.md must not contain absent platform directories
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-android/" -Message "iOS-only AGENTS.md should not reference mobile-android/."
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "web-user-app/" -Message "iOS-only AGENTS.md should not reference web-user-app/."
 
     Assert-PathExists -Path (Join-Path $Root "mobile-ios\review-app") -Message "iOS sample should keep filesystem-safe project_slug directories."
     Assert-PathExists -Path (Join-Path $Root "mobile-ios\review-appTests") -Message "iOS sample should generate a test directory."

@@ -19,6 +19,7 @@ from prism_cli.wiki_index import (
     index_line,
     index_target,
     is_page_path,
+    is_project_doc_target,
     page_group,
     parse_index_entries,
     remove_index_lines,
@@ -29,7 +30,7 @@ from prism_cli.wiki_model import parse_markdown_text
 from prism_cli.wiki_query import wiki_search
 from tests import real_temp  # noqa: F401
 from tests.manifest_fixtures import manifest_text
-from tests.wiki_files import write_index, write_status_board
+from tests.wiki_files import copy_template_knowledge, render_template_text, write_index, write_status_board
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_KNOWLEDGE = REPO_ROOT / "template" / "knowledge"
@@ -46,7 +47,7 @@ TOPIC = (
 def workspace(root: Path) -> Path:
     """The template knowledge tree with a manifest and one app: a clean, fully indexed wiki."""
 
-    shutil.copytree(TEMPLATE_KNOWLEDGE, root / "knowledge")
+    copy_template_knowledge(root / "knowledge")
     (root / "prism.workspace.yml").write_text(manifest_text("Index test", ["backend"], slug="index-test"), encoding="utf-8")
     (root / "backend").mkdir()
     return root
@@ -88,11 +89,17 @@ class PageClassificationTests(unittest.TestCase):
             "advisory/BOARD.md": "advisory",
             "SCHEMA.md": "meta",
             "status-board.md": "meta",
+            "../../docs/architecture.md": "project-docs",
+            "../../docs/api/conventions.md": "project-docs",
         }
         for relative, group in expected.items():
             with self.subTest(page=relative):
                 self.assertEqual(group, page_group(relative))
         self.assertIsNone(page_group("index.md"))
+        for not_a_doc in ("../../docs/", "../../docs/notes.txt", "../../docs/../secret.md", "../../backend/docs/guide.md", "docs/architecture.md"):
+            with self.subTest(not_a_doc=not_a_doc):
+                self.assertFalse(is_project_doc_target(not_a_doc))
+                self.assertIsNone(page_group(not_a_doc))
         self.assertEqual(sorted(set(expected.values())), sorted(key for key, _heading in GROUPS))
 
     def test_the_general_page_kind_is_read_from_the_path(self) -> None:
@@ -243,9 +250,27 @@ class IndexMergeTests(unittest.TestCase):
         self.assertEqual(["topics/c.md"], [e.target for e in parse_index_entries(removed)])
 
     def test_the_template_index_is_what_the_derivation_builds_from_the_template_pages(self) -> None:
-        wiki = TEMPLATE_KNOWLEDGE / "wiki"
-        self.assertEqual((wiki / "index.md").read_text(encoding="utf-8"), build_index(wiki))
-        self.assertTrue(build_index(wiki).startswith(INDEX_HEADER))
+        with tempfile.TemporaryDirectory() as temporary:
+            copy_template_knowledge(Path(temporary) / "knowledge")
+            wiki = Path(temporary) / "knowledge" / "wiki"
+            self.assertEqual((wiki / "index.md").read_text(encoding="utf-8"), build_index(wiki))
+            self.assertTrue(build_index(wiki).startswith(INDEX_HEADER))
+
+    def test_a_project_doc_link_is_an_index_target_only_inside_the_docs_folder(self) -> None:
+        self.assertEqual("../../docs/api/conventions.md", index_target("../../docs/api/conventions.md"))
+        self.assertEqual("../../docs/architecture.md", index_target("../../docs/./architecture.md"))
+        for raw in ("../../docs/../secret.md", "../../backend/docs/guide.md", "../../docs/notes.txt", "../docs/architecture.md", "/docs/architecture.md"):
+            with self.subTest(link=raw):
+                self.assertIsNone(index_target(raw))
+        entries = parse_index_entries("## Project docs\n- [Architecture](../../docs/architecture.md): System design.\n")
+        self.assertEqual(["../../docs/architecture.md"], [entry.target for entry in entries])
+
+    def test_a_project_doc_line_is_inserted_in_its_own_group_before_meta(self) -> None:
+        text = "# Wiki index\n\n## Advisory\n- [Advisory board](advisory/BOARD.md): Board.\n\n## Meta\n- [SCHEMA.md](SCHEMA.md): Conventions.\n"
+        merged = render_index_lines(text, {"../../docs/architecture.md": "- [Architecture](../../docs/architecture.md): System design."})
+        self.assertLess(merged.index("## Advisory"), merged.index("## Project docs"))
+        self.assertLess(merged.index("## Project docs"), merged.index("## Meta"))
+        self.assertEqual(merged, render_index_lines(merged, {"../../docs/architecture.md": "- [Architecture](../../docs/architecture.md): System design."}))
 
 
 class IndexLintTests(unittest.TestCase):
@@ -298,9 +323,44 @@ class IndexLintTests(unittest.TestCase):
     def test_a_line_that_leaves_the_wiki_or_names_a_non_page_file_is_not_an_orphan(self) -> None:
         text = (self.wiki / "index.md").read_text(encoding="utf-8")
         (self.wiki / "index.md").write_text(
-            text + "\n## Meta\n- [Docs](../../docs/guide.md): Outside the wiki.\n- [Log](log.md): The ledger is not a page.\n", encoding="utf-8", newline="\n"
+            text + "\n## Meta\n- [Guide](../../backend/docs/guide.md): Outside the wiki.\n- [Log](log.md): The ledger is not a page.\n", encoding="utf-8", newline="\n"
         )
         self.assertEqual([], self.codes())
+
+    def with_project_docs(self, platforms: list[str]) -> list[str]:
+        """Give the workspace the index of a generated workspace and the docs pages it lists; returns the listed doc paths."""
+
+        index = render_template_text((TEMPLATE_KNOWLEDGE / "wiki" / "index.md.jinja").read_text(encoding="utf-8"), platforms=platforms)
+        (self.wiki / "index.md").write_text(index, encoding="utf-8", newline="\n")
+        listed = [entry.target for entry in parse_index_entries(index) if is_project_doc_target(entry.target)]
+        for target in listed:
+            doc = (self.wiki / target).resolve()
+            doc.parent.mkdir(parents=True, exist_ok=True)
+            doc.write_text("# Doc\n", encoding="utf-8")
+        return listed
+
+    def test_the_project_docs_lines_of_a_generated_index_lint_clean(self) -> None:
+        listed = self.with_project_docs(["backend"])
+        self.assertIn("../../docs/architecture.md", listed)
+        self.assertEqual([], self.codes())
+
+    def test_a_project_doc_line_for_a_missing_doc_is_an_orphan_like_any_other_line(self) -> None:
+        listed = self.with_project_docs(["backend"])
+        (self.wiki / listed[0]).resolve().unlink()
+        found = [item for item in lint_wiki(self.root).diagnostics if item.code == "orphan-index-entry"]
+        self.assertEqual(1, len(found))
+        self.assertIn(f"`{listed[0]}`", found[0].message)
+        self.assertEqual("warning", found[0].severity)
+
+    def test_a_project_doc_listed_twice_is_a_duplicate_and_a_doc_without_a_line_is_fine(self) -> None:
+        listed = self.with_project_docs(["backend"])
+        text = (self.wiki / "index.md").read_text(encoding="utf-8")
+        (self.wiki / "index.md").write_text(text + f"- [Again]({listed[0]}): Twice.\n", encoding="utf-8", newline="\n")
+        (self.root / "docs" / "team-notes.md").write_text("# Notes\n", encoding="utf-8")
+        found = [item for item in lint_wiki(self.root).diagnostics if item.code == "duplicate-index-entry"]
+        self.assertEqual(1, len(found))
+        self.assertIn(f"`{listed[0]}`", found[0].message)
+        self.assertNotIn("missing-index-entry", self.codes())
 
     def test_an_unreadable_index_is_an_error_and_a_missing_one_is_a_missing_required_file(self) -> None:
         (self.wiki / "index.md").write_bytes(b"\xff\xfe\xfa")
@@ -346,6 +406,37 @@ class IndexLintTests(unittest.TestCase):
         self.assertNotIn("source-integrity:missing-index-entry", [check["code"] for check in transition["checks"]])
 
 
+class ProjectDocsTemplateTests(unittest.TestCase):
+    """The general index of a generated workspace lists the template-owned `docs/` pages, one line each."""
+
+    ALL_PLATFORMS = ["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"]
+
+    def template_docs(self) -> list[str]:
+        docs = REPO_ROOT / "template" / "docs"
+        return sorted(path.relative_to(docs).as_posix()[: -len(".jinja")] for path in docs.rglob("*.md.jinja"))
+
+    def rendered_index(self, platforms: list[str]) -> str:
+        return render_template_text((TEMPLATE_KNOWLEDGE / "wiki" / "index.md.jinja").read_text(encoding="utf-8"), platforms=platforms)
+
+    def test_every_template_docs_page_has_exactly_one_line(self) -> None:
+        for platforms in (["backend"], ["web-user-app"], ["mobile-ios"], self.ALL_PLATFORMS):
+            with self.subTest(platforms=platforms):
+                targets = [entry.target for entry in parse_index_entries(self.rendered_index(platforms)) if is_project_doc_target(entry.target)]
+                web = "web-user-app" in platforms or "web-admin-portal" in platforms
+                expected = [f"../../docs/{page}" for page in self.template_docs() if web or page != "deployment/cloudflare-setup.md"]
+                self.assertEqual(sorted(expected), sorted(targets))
+
+    def test_the_project_docs_group_sits_before_meta_and_the_workflow_only_form_has_none(self) -> None:
+        text = self.rendered_index(self.ALL_PLATFORMS)
+        self.assertLess(text.index("## Advisory"), text.index("## Project docs"))
+        self.assertLess(text.index("## Project docs"), text.index("## Meta"))
+        with tempfile.TemporaryDirectory() as temporary:
+            copy_template_knowledge(Path(temporary) / "knowledge")
+            workflow_only = (Path(temporary) / "knowledge" / "wiki" / "index.md").read_text(encoding="utf-8")
+        self.assertNotIn("Project docs", workflow_only)
+        self.assertNotIn("../../docs/", workflow_only)
+
+
 class IndexFirstSearchTests(unittest.TestCase):
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()
@@ -359,6 +450,14 @@ class IndexFirstSearchTests(unittest.TestCase):
             newline="\n",
         )
         write_index(self.root)
+
+    def test_a_project_doc_line_is_not_a_search_result(self) -> None:
+        text = (self.wiki / "index.md").read_text(encoding="utf-8")
+        (self.wiki / "index.md").write_text(text + "\n## Project docs\n- [Architecture](../../docs/architecture.md): System design for wire transfer.\n", encoding="utf-8", newline="\n")
+        (self.root / "docs").mkdir()
+        (self.root / "docs" / "architecture.md").write_text("# Architecture\n", encoding="utf-8")
+        paths = [result["path"] for result in wiki_search(self.root, "wire transfer")["facts"]["results"]]
+        self.assertEqual([str(self.topic)], paths)
 
     def test_a_page_whose_index_line_matches_is_found_without_its_text_matching_first(self) -> None:
         # The page text says "wire transfer"; only its index line says "Settlement" in the label.

@@ -50,7 +50,7 @@ carries no date about itself and labels its claims with the evidence labels belo
 
 ## The Index And The Status Board
 
-`index.md` is the general index: one line per page, grouped by kind, in the present tense.
+`index.md` is the general index: one line per page, grouped by kind, in the present tense. A generated workspace also lists the pages of its template-owned `docs/` folder under "Project docs", one line each, linked as `../../docs/<page>.md`; lint checks those lines like the others.
 
 ```markdown
 ## Topics
@@ -128,8 +128,8 @@ comments inside the entry. `SCHEMA.md` defines the format.
 | `unresolved-conflict` | warning | A quarantined `CONFLICT.md` with `status: open`. The message links the file. A non-empty quarantine is not a gate. |
 | `malformed-conflict` | error | A quarantined item without a `CONFLICT.md`, or one that does not follow the format. |
 | `missing-index-entry` | warning | A wiki page with no line in `index.md`. It names the page and never blocks a lifecycle action. |
-| `orphan-index-entry` | warning | An `index.md` line whose target is not a page of the wiki. |
-| `duplicate-index-entry` | warning | A page with more than one line in `index.md`. |
+| `orphan-index-entry` | warning | An `index.md` line whose target is not a page of the wiki, or a "Project docs" line whose `docs/` page does not exist. |
+| `duplicate-index-entry` | warning | A page, or a project doc, with more than one line in `index.md`. |
 | `malformed-index` | error | `index.md` cannot be read. |
 | `malformed-status-board` | error | `status-board.md` cannot be read or has no status table. |
 | `feature-missing-from-status-board` | error | A feature page with no row in `status-board.md`. |

@@ -18,12 +18,12 @@ This page answers two questions:
 
 Generated projects include:
 
-- a generated `README.md`
-- a generated `CONTEXT.md` as the root AI context anchor
+- a generated `README.md` with the human overview, setup and the operation names by tool
 - a required `knowledge/` tree with raw intake and the living product wiki
 - platform-specific docs under `docs/`, `backend/docs/`, `mobile-android/docs/`,
   `mobile-ios/docs/`, `web-user-app/docs/`, and `web-admin-portal/docs/`
-- generated AI context files such as `AGENTS.md` and `CLAUDE.md`
+- a generated `AGENTS.md`, the single source of agent rules, and a `CLAUDE.md` that only imports it with `@AGENTS.md`; each platform folder repeats the pattern
+- Cursor rules under `.cursor/rules/`: `project.mdc` references `@AGENTS.md` and the other rules scope stack facts by file path
 - GitHub workflow files
 - Hygen generators under `_templates/`
 - deployment docs such as `docs/deployment/cloudflare-setup.md` when web platforms are
@@ -92,7 +92,7 @@ production data or observed project history.
 The most important generated areas are:
 
 - root `README.md` for the generated repo overview
-- root `CONTEXT.md` for AI orientation
+- root `AGENTS.md` for AI orientation and the rules every agent follows
 - `knowledge/intake/` for raw human input and workflow state
 - `knowledge/wiki/` for structured product knowledge
 - platform-specific docs and source trees for implementation
@@ -130,7 +130,7 @@ Workspace recommendation:
 - If you open only a platform subfolder as a standalone workspace, do not assume the
   agent will automatically discover parent-level skills or root guidance.
 - In that narrower setup, manually inspect the generated repo root files such as
-  `README.md`, `CONTEXT.md`, `AGENTS.md`, `CLAUDE.md`, `.agents/skills/`, and
+  `README.md`, `AGENTS.md`, `CLAUDE.md`, `.agents/skills/`, and
   `.claude/skills/` when they are available.
 
 For the broader model behind these surfaces, see:
@@ -237,7 +237,7 @@ Important wiki artifacts include:
 - `knowledge/wiki/WIKI_REPORT.md` once `feature-status` has generated it
 - `knowledge/wiki/features/`
 - `knowledge/wiki/app-requirements/`
-- `knowledge/wiki/index.md`
+- `knowledge/wiki/index.md`, which also lists the pages of `docs/` under "Project docs"
 - `knowledge/wiki/status-board.md`
 
 If you are new to the Prism workflow, continue with [wiki-workflow.md](wiki-workflow.md)

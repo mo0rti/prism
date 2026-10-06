@@ -52,8 +52,6 @@ ACTION_TRANSITIONS = {
 }
 CONTEXT_PATHS = (
     REPO_ROOT / "template" / "AGENTS.md.jinja",
-    REPO_ROOT / "template" / "CLAUDE.md.jinja",
-    REPO_ROOT / "template" / ".cursor" / "rules" / "wiki.mdc.jinja",
     REPO_ROOT / "template" / "docs" / "ai-agents.md.jinja",
 )
 
@@ -321,7 +319,7 @@ class TransitionTemplateContractTests(unittest.TestCase):
             for path in (
                 destination / "knowledge" / "wiki" / "LIFECYCLE.md",
                 destination / "knowledge" / "wiki" / "features" / "_FORMAT.md",
-                destination / "CONTEXT.md",
+                destination / "AGENTS.md",
             ):
                 with self.subTest(path=path):
                     rendered = path.read_text(encoding="utf-8")

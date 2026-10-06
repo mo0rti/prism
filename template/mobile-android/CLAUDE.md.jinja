@@ -1,168 +1,17 @@
-# Android - {{ project_name }}
-
-Kotlin + Jetpack Compose with MVVM, Hilt, Retrofit, Room, and DataStore.
-
-## Product knowledge wiki
-
-This project uses a shared product wiki at `knowledge/wiki/` as the single source of
-truth for what to build. Before implementing any feature:
-
-1. Read `knowledge/wiki/status-board.md` - confirm the feature is in `ready-for-dev` or `in-dev`
-   status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
-   stop and inform the human. A board review should happen before implementation.
-2. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context
-3. Read `knowledge/wiki/app-requirements/[feature-id]-mobile-android.md` for
-   Android-specific implementation requirements
-4. Read `knowledge/wiki/api-contracts/[feature-id].md` if this feature has an API surface
-5. Check `knowledge/wiki/business-rules/` for rules that apply to this feature
-6. Read `knowledge/wiki/design/[feature-id]-[slug].md` for UI design decisions
-
-**Do not implement features without a wiki page.** Ask the human to run the `po-intake`
-operation first (Claude: `/po-intake [folder]`, Codex: `$po-intake [folder]`,
-Cursor: ask the agent to "run po-intake on [folder]").
-
-If you discover information during implementation that should update the wiki, propose
-the update and ask for confirmation before writing, or route a question using the `ask`
-command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
-
-## Documentation
-
-**Full project documentation** is in **`docs/`**. Use it as the reference for architecture, file structure, build, networking, navigation, design system, and workflows.
-
-| Doc | Purpose |
-|-----|---------|
-| [docs/architecture.md](docs/architecture.md) | MVVM, layers, DTO-first, repositories, session, navigation. |
-| [docs/file-structure.md](docs/file-structure.md) | Package layout: `feature/`, `core/`, `designsystem/`, `navigation/`. |
-| [docs/build-and-environments.md](docs/build-and-environments.md) | Build commands, SDK versions, troubleshooting. |
-| [docs/testing.md](docs/testing.md) | Compile, unit, instrumentation layers, emulator workflow, CI verification. |
-| [docs/networking-and-di.md](docs/networking-and-di.md) | Retrofit, OkHttp, auth, Hilt modules. |
-| [docs/navigation-and-screens.md](docs/navigation-and-screens.md) | Routes (Screen.kt), NavGraph, auth gate, screen mapping. |
-| [docs/design-system-and-theme.md](docs/design-system-and-theme.md) | AppTheme, colors, typography, design system components, UiText. |
-| [docs/conventions-and-workflow.md](docs/conventions-and-workflow.md) | Strings, dispatchers, SessionManager, new-feature workflow. |
-
-## Workspace Root
-
-This `mobile-android/` folder is a platform slice inside the generated project, not the
-generated project root.
-
-For Claude Code work, prefer opening the **generated repository root** so root context files
-and project skills are available together with the Android code.
-
-From `mobile-android/`, the generated repository root is:
-
-- `../`
-
-Important root-level files and folders from here:
-
-- `../README.md` - generated project overview
-- `../CONTEXT.md` - root AI context anchor
-- `../CLAUDE.md` - root Claude guidance for the generated repo
-- `../.claude/skills/` - project Claude skills shared across the generated repo
-
-If you open only `mobile-android/` as a standalone workspace, do not assume Claude Code can
-automatically discover skills or root context from the parent repository. In that setup,
-manually check the parent generated-project root when it is available.
-
-## Build & Run
-
-```bash
-# Build APK
-./gradlew assembleDebug          # or gradlew.bat on Windows
-
-# Fast compile check
-./gradlew compileDebugKotlin
-
-# Compile instrumentation / Compose UI tests
-./gradlew compileDebugAndroidTestKotlin
-
-# Unit tests
-./gradlew testDebugUnitTest
-
-# Android lint checks
-./gradlew lintDebug
-
-# Instrumentation / Compose UI tests
-./gradlew connectedDebugAndroidTest
-
-# Release APK / shrinker validation
-./gradlew assembleRelease
-
-# Install on device
-./gradlew installDebug
-
-# List connected devices/emulators
-adb devices
-```
-
-**Min SDK**: 29 | **Target SDK**: 36 | **Compile SDK**: 36
-
-## Architecture (summary)
-
-MVVM in a single `:app` module. See **docs/architecture.md** for full detail.
-
-- **Feature code:** `feature/<name>/data/` (API, DTOs, repository), `feature/<name>/domain/` (models), `feature/<name>/ui/` (screens, ViewModels).
-- **Shared UI/theme:** `designsystem/` (theme, components, text).
-- **Cross-cutting:** `core/` (network, database, session, DI, model).
-- **Repositories:** Concrete classes only in `feature/*/data/repository/`; no repository interfaces.
-- **Navigation:** Routes in `navigation/Screen.kt`, host in `navigation/NavGraph.kt`.
-
-## Key Conventions
-
-- MVVM: `StateFlow` for UI state, `SharedFlow` for one-off events, explicit `onXxx(...)` ViewModel methods.
-- Hilt for DI; Retrofit in `core/di/NetworkModule.kt`; use `SessionManager` for auth state and `AppResult` for fallible repository work.
-- `TokenAuthenticator` clears the session only when the backend rejects the refresh token (400, 401 or 403); timeouts, I/O errors and 5xx keep it.
-- Cleartext HTTP is allowed only in debug builds, for `10.0.2.2` and `localhost`, through `app/src/debug/`; the main manifest sets no cleartext, so release builds stay HTTPS-only.
-- Strings in `strings.xml`; use `stringResource` or `UiText`.
-- Keep navigation in `Screen.kt` and `NavGraph.kt`.
-- Keep reusable Compose components in `designsystem/` instead of feature-local files.
-- DTOs (`@Serializable`) in `feature/*/data/remote/dto/`; domain models are framework-light.
-- `AppResult<T>` instead of `kotlin.Result` to avoid naming collision.
-- ViewModels map repository errors into `UiText` before exposing them.
-- Dispatchers: Use `@IoDispatcher`, `@DefaultDispatcher`, `@MainDispatcher` qualifiers from DispatcherModule.
-- Tests: MockK + Turbine for unit tests, Compose UI tests under `app/src/androidTest/`, and Hilt Android testing for instrumentation when DI overrides are needed.
-- Emulator baseline: API 36 phone for normal UI verification; add API 29 phone when changes touch auth, insets, storage, or device behavior.
-
-## Keep documentation in sync
-
-When you change code in this project, **update the relevant documentation in the same session** so docs stay accurate:
-
-- If you add, remove, or rename **packages, modules, or key files** -> update **docs/file-structure.md** (and any doc that lists them).
-- If you change **architecture, patterns, or layer roles** -> update **docs/architecture.md**.
-- If you change **build commands or environments** -> update **docs/build-and-environments.md**.
-- If you add/change **APIs, DI modules, or networking** -> update **docs/networking-and-di.md**.
-- If you add/change **routes or screens** -> update **docs/navigation-and-screens.md**.
-- If you change **theme, design system, or components** -> update **docs/design-system-and-theme.md**.
-- If you change **conventions or the new-feature workflow** -> update **docs/conventions-and-workflow.md**.
-
-Documentation style rule:
-- Documentation must describe the current state only.
-- Avoid historical phrasing like "was", "used to", "now", "previously".
-- Write implementation notes in present tense as source-of-truth behavior.
-
-## Workflow: Implementing a New Feature
-
-1. Check **docs/conventions-and-workflow.md** and existing patterns in `feature/`, `designsystem/`, `core/`.
-2. Verify API/data contract with the OpenAPI spec in `shared/api-contracts/openapi.yml`.
-3. Plan DTO/API/repository/ViewModel/screen/navigation/DI changes.
-4. Implement using existing MVVM and conventions.
-5. Validate with `./gradlew compileDebugKotlin`, targeted tests, `./gradlew lintDebug` when resources or manifests change, and `./gradlew connectedDebugAndroidTest` on an emulator when UI behavior changes.
-6. **Update any affected docs** (see "Keep documentation in sync" above).
+@AGENTS.md
 
 ## Local Claude Skills
 
-Project-specific Claude skills live in **`.claude/skills/`** and follow the current Claude Code project-skill layout.
-In this generated project, that path is relative to the **generated repository root**, not
-inside `mobile-android/`. From this folder, the expected location is:
-
-- `../.claude/skills/`
+Project-specific Claude skills live in `.claude/skills/` and follow the current Claude Code project-skill layout.
+They sit at the generated repository root, so from this folder they are in `../.claude/skills/`.
 
 Keep skill boundaries orthogonal: `android-conventions` is the baseline ruleset, `android-feature-delivery` is the coordinator for cross-layer work, and the remaining skills own specialist domains.
 Use `/android-feature-delivery <feature-description>` when you want the full research, planning, validation, and documentation workflow for a larger feature request.
 
-- @.claude/skills/android-conventions/SKILL.md - repository-wide Kotlin, MVVM, DI, navigation, strings, and doc-sync guardrails
-- @.claude/skills/android-build-verify/SKILL.md - choose the smallest sufficient Gradle compile, test, or assemble task
-- @.claude/skills/android-feature-delivery/SKILL.md - coordinate multi-layer feature work and pull in companion skills
-- @.claude/skills/android-contract-alignment/SKILL.md - own backend-facing DTO, enum, Retrofit, and service-alignment decisions
-- @.claude/skills/android-testing/SKILL.md - own unit-test, Compose UI test, and Hilt-aware instrumentation patterns
-- @.claude/skills/compose-design-system/SKILL.md - own shared Compose UI language, reusable components, and screen-pattern reuse
-- @.claude/skills/deploy-device/SKILL.md - build, install, and launch on a connected Android device
+- `android-conventions` - repository-wide Kotlin, MVVM, DI, navigation, strings, and doc-sync guardrails
+- `android-build-verify` - choose the smallest sufficient Gradle compile, test, or assemble task
+- `android-feature-delivery` - coordinate multi-layer feature work and pull in companion skills
+- `android-contract-alignment` - own backend-facing DTO, enum, Retrofit, and service-alignment decisions
+- `android-testing` - own unit-test, Compose UI test, and Hilt-aware instrumentation patterns
+- `compose-design-system` - own shared Compose UI language, reusable components, and screen-pattern reuse
+- `deploy-device` - build, install, and launch on a connected Android device

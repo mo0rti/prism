@@ -11,6 +11,8 @@ For AI coding agents (and humans) who need to know *what to build next*.
 Contents: feature specs, app requirements, API contracts, design decisions,
 advisory board reviews. Maintained by the AI on every lifecycle operation.
 
+`docs/` stays separate from the wiki; the wiki index links its pages so an agent finds them from one place.
+
 Do not put feature specs or app requirements in `docs/`. They belong in `knowledge/wiki/`.
 Do not put architecture or deployment guides in `knowledge/`. They belong in `docs/`.
 
@@ -39,6 +41,6 @@ The quick summary:
 - `knowledge/wiki/business-rules/` - invariants and constraints
 - `knowledge/wiki/decisions/` - Architecture Decision Records
 - `knowledge/wiki/advisory/` - advisory board configuration and review outputs
-- `knowledge/wiki/index.md` - one line per wiki page, grouped by kind
+- `knowledge/wiki/index.md` - one line per wiki page, grouped by kind, and a Project docs group with one line per page of `docs/`
 - `knowledge/wiki/status-board.md` - feature status board
 - `knowledge/intake/`  -  raw inputs before AI processes them

@@ -307,7 +307,7 @@ def _search_wiki_pages(wiki_root: Path, query: str) -> list[dict[str, Any]]:
     for target, line in index_hits:
         path = wiki_root / target
         group = page_group(target)
-        if group is None or not path.is_file() or path in seen:
+        if group is None or group == "project-docs" or not path.is_file() or path in seen:
             continue
         seen.add(path)
         page = load_markdown_page(path)

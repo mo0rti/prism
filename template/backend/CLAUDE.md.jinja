@@ -1,111 +1,24 @@
-# Backend - {{ project_name }}
+@AGENTS.md
 
-Spring Boot 4 (Kotlin 2.2+, Java 21) backend service.
+## Claude Code skills
 
-## Product knowledge wiki
+Project-specific Claude skills live in `.claude/skills/`; Claude Code loads them when the work matches. Detailed conventions are documented there.
 
-This project uses a shared product wiki at `knowledge/wiki/` as the single source of
-truth for what to build. Before implementing any feature:
-
-1. Read `knowledge/wiki/status-board.md` - confirm the feature is in `ready-for-dev` or `in-dev`
-   status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
-   stop and inform the human. A board review should happen before implementation.
-2. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context
-3. Read `knowledge/wiki/app-requirements/[feature-id]-backend.md` for backend-specific
-   implementation requirements
-4. Read `knowledge/wiki/api-contracts/[feature-id].md` if this feature has an API surface
-5. Check `knowledge/wiki/business-rules/` for rules that apply to this feature
-
-**Do not implement features without a wiki page.** Ask the human to run the `po-intake`
-operation first (Claude: `/po-intake [folder]`, Codex: `$po-intake [folder]`,
-Cursor: ask the agent to "run po-intake on [folder]").
-
-If you discover information during implementation that should update the wiki, propose
-the update and ask for confirmation before writing, or route a question using the `ask`
-command (Claude: `/ask F-XXX "..." --to po`, Codex: `$ask F-XXX "..." --to po`).
-
-## Build & Run
-
-- **Build**: `./gradlew build` (or `gradlew.bat build` on Windows)
-- **Run**: `./gradlew bootRun`
-- **Test**: `./gradlew test`
-- **Port**: 8080 (configurable via `PORT` env var)
-
-### Local Run Prerequisites
-
-Before running the backend locally:
-
-1. Start PostgreSQL with `docker compose up -d db` from the generated project root.
-2. Use the `local` Spring profile for IDE runs, including IntelliJ IDEA run configurations.
-{% if auth_methods | reject("equalto", "password") | list | length > 0 %}
-3. If you want real OAuth locally, replace the placeholder provider values from `application-local.yml` with real credentials through your IDE environment variables or local overrides.
-
-The `local` profile exists to make first startup succeed without immediately requiring real OAuth credentials. OAuth callbacks will not work with the placeholder values.
-{% endif %}
-
-## Critical Rules
-
-### Forbidden Patterns
-
-- `entity -> DTO` imports (entities never depend on API DTOs)
-- `controller -> repository` imports (controllers call services, never repositories directly)
-- `runBlocking` in MVC controllers
-- Jackson annotations on JPA `@Entity` classes (use DTOs as the serialization boundary)
-
-### Gotchas
-
-- **Jackson 3.x split namespace**: core annotations stay at `com.fasterxml.jackson.annotation.*`, runtime classes moved to `tools.jackson.*`. There is NO `tools.jackson.annotation` package.
-- **Entity IDs**: generated entities use `lateinit var id: UUID` in the class body. Application-assigned identity entities such as `User` may use a constructor-backed non-null `UUID`. Do not make IDs nullable unless you are explicitly using `@MapsId`. Use `!::id.isInitialized` in equals/hashCode for `lateinit` IDs.
-- **Inject ObjectMapper**: Spring beans must inject `tools.jackson.databind.ObjectMapper`, never create standalone `jacksonObjectMapper()`.
-- **File granularity**: keep each DTO, entity, enum, and reusable value object in its own Kotlin file. Avoid `*Dtos.kt` aggregator files and avoid nesting reusable enums inside entity files.
-
-## Architecture
-
-```
-src/main/kotlin/{{ package_identifier | replace('.', '/') }}/
-  bootstrap/         - Framework config (Security, CORS, OAuth2, OpenAPI)
-    security/        - JWT token provider, authentication filter and 401 entry point
-  shared/            - Cross-cutting concerns (exceptions, models, audit)
-    audit/           - AuditableEntity base class (createdAt/updatedAt)
-    error/           - Typed ErrorCode abstractions and shared/common API error codes
-    exception/       - ApiException hierarchy + GlobalExceptionHandler
-    model/           - Shared DTOs (ApiErrorResponse, PagedResponse)
-  modules/           - Feature modules
-    auth/            - Authentication (password{% if auth_methods | reject("equalto", "password") | list | length > 0 %} + OAuth{% endif %} + JWT)
-      controller/    - REST endpoints
-      dto/           - Request/response data classes
-      error/         - Auth-specific error codes
-      model/         - User entity + enums
-      repository/    - JPA repository
-      service/       - Auth + OAuth2 business logic
-    transactions/    - Transaction CRUD, visibility, and ownership rules
-      controller/    - REST endpoints
-      dto/           - Request/response data classes
-      error/         - Transaction-specific error codes
-      model/         - Transaction entity + enums
-      repository/    - JPA repository
-      service/       - Business logic + permission checks
-```
-
-## Conventions
-
-Detailed conventions are documented in skills - Claude loads these automatically when relevant:
-
-- @.claude/skills/spring-boot-conventions/SKILL.md - module structure, layers, controller/service/DTO patterns
-- @.claude/skills/backend-feature-delivery/SKILL.md - contract-first backend feature delivery across OpenAPI, DTOs, services, persistence, and schema changes
-- @.claude/skills/observability-and-telemetry/SKILL.md - logs, metrics, traces, Actuator exposure, and async context-propagation guidance
-- @.claude/skills/authorization-rules/SKILL.md - method security, ownership checks, and business-policy access rules
-- @.claude/skills/external-integrations-and-resilience/SKILL.md - timeouts, retries, idempotency, remote error translation, and transaction boundaries around external systems
-- @.claude/skills/auditing-and-actor-context/SKILL.md - entity timestamps, actor attribution, and domain audit trail guidance
-- @.claude/skills/performance-and-query-shaping/SKILL.md - query authoring, fetch strategy, specifications, pagination, and N+1 review expectations
-- @.claude/skills/caching-strategy/SKILL.md - cache suitability, TTL, invalidation, and local versus shared cache tradeoffs
-- @.claude/skills/migration-conventions/SKILL.md - Flyway naming, SQL style, and database migration conventions
-- @.claude/skills/jackson-spring-boot4/SKILL.md - Jackson 3.x split namespace, ObjectMapper injection
-- @.claude/skills/jpa-kotlin-patterns/SKILL.md - entity patterns, AuditableEntity, relationships, N+1 prevention
-- @.claude/skills/error-handling/SKILL.md - ApiException, GlobalExceptionHandler, error codes
-- @.claude/skills/security-auth/SKILL.md - JWT, endpoint security, OAuth2, public vs authenticated
-- @.claude/skills/testing-patterns/SKILL.md - JUnit Jupiter 6, MockK, unit vs integration test conventions
-- @.claude/skills/test-endpoint/SKILL.md - generate curl and Postman requests for manual endpoint checks; complements `testing-patterns`
+- `spring-boot-conventions` - module structure, layers, controller/service/DTO patterns
+- `backend-feature-delivery` - contract-first backend feature delivery across OpenAPI, DTOs, services, persistence, and schema changes
+- `observability-and-telemetry` - logs, metrics, traces, Actuator exposure, and async context-propagation guidance
+- `authorization-rules` - method security, ownership checks, and business-policy access rules
+- `external-integrations-and-resilience` - timeouts, retries, idempotency, remote error translation, and transaction boundaries around external systems
+- `auditing-and-actor-context` - entity timestamps, actor attribution, and domain audit trail guidance
+- `performance-and-query-shaping` - query authoring, fetch strategy, specifications, pagination, and N+1 review expectations
+- `caching-strategy` - cache suitability, TTL, invalidation, and local versus shared cache tradeoffs
+- `migration-conventions` - Flyway naming, SQL style, and database migration conventions
+- `jackson-spring-boot4` - Jackson 3.x split namespace, ObjectMapper injection
+- `jpa-kotlin-patterns` - entity patterns, AuditableEntity, relationships, N+1 prevention
+- `error-handling` - ApiException, GlobalExceptionHandler, error codes
+- `security-auth` - JWT, endpoint security, OAuth2, public vs authenticated
+- `testing-patterns` - JUnit Jupiter 6, MockK, unit vs integration test conventions
+- `test-endpoint` - generate curl and Postman requests for manual endpoint checks; complements `testing-patterns`
 
 ## Backend Claude Commands
 
@@ -117,23 +30,3 @@ Detailed conventions are documented in skills - Claude loads these automatically
 - `/review-query` - review fetch plans, pagination, specifications, and N+1 risk
 - `/review-security-surface` - review route exposure, token handling, and authorization boundaries
 - `/debug-prod-issue` - guide production issue diagnosis across logs, metrics, traces, config, and migrations
-
-## Key Files
-
-- `bootstrap/SecurityConfig.kt` - endpoint security rules, JWT filter
-{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}- `bootstrap/OAuth2Config.kt` - OAuth provider credentials
-{% endif %}- `bootstrap/security/JwtTokenProvider.kt` - token generation/validation
-- `bootstrap/security/ApiAuthenticationEntryPoint.kt` - 401 reply for a missing, malformed or expired access token
-- `shared/audit/AuditableEntity.kt` - base entity with timestamps
-- `shared/error/` - typed ErrorCode abstractions and shared/common API error codes
-- `shared/exception/` - ApiException base type, built-in exception files, and global exception mapping
-- `application.yml` - all configuration (DB, JWT, OAuth, CORS)
-- `resources/db/migration/V1__users.sql` - user and auth baseline schema
-- `resources/db/migration/V2__transactions.sql` - transaction domain schema
-- `resources/db/migration/V3__refresh_retry_window.sql` - refresh-token retry window metadata
-- `resources/db/migration/V4__email_case_and_oauth_identity.sql` - lower-cased emails, plus unique indexes on `lower(email)` and on (`auth_provider`, `provider_id`)
-
-## API
-
-See `docs/api/conventions.md` for REST conventions.
-See `shared/api-contracts/openapi.yml` for the full API spec.

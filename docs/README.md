@@ -31,7 +31,7 @@ Start here:
 Start here:
 
 1. `README.md` inside the generated repository
-2. `CONTEXT.md` inside the generated repository
+2. `AGENTS.md` inside the generated repository
 3. [generated-projects.md](generated-projects.md)
 4. [wiki-workflow.md](wiki-workflow.md)
 

@@ -53,8 +53,10 @@ The real comparison is:
 
 If you are using a generated project:
 
-- use the generated `CLAUDE.md` to understand the Claude command surface
-- use the generated `AGENTS.md` to understand the Codex skill surface
+- use the generated `AGENTS.md` for the rules every tool follows and the operation names; Claude Code
+  loads it through `CLAUDE.md`, which imports it with `@AGENTS.md`
+- invoke an operation as `/name` in Claude Code, `$name` in Codex, or by asking the agent to run it in
+  Cursor; the root `README.md` lists the operations by tool
 - use the project wiki as the product source of truth
 - use `WIKI_REPORT.md` as an orientation artifact, not authority
 
@@ -80,6 +82,20 @@ Codex generated projects use:
 - skills under `.agents/skills/` as the main structured surface
 
 This makes Codex skill-first for workflow orchestration.
+
+## One Source Of Instructions
+
+A generated workspace states each rule once. How each tool loads instructions decides the layout:
+
+| Tool | What it loads | What follows |
+|------|---------------|--------------|
+| Claude Code | `CLAUDE.md`, which expands `@path` imports relative to the file and loads them at launch. A folder's `CLAUDE.md` loads when Claude works in that folder. | Every `CLAUDE.md` is `@AGENTS.md` plus Claude Code notes no other tool shares, such as the platform skills and commands. |
+| Codex | `AGENTS.md` from the repository root down to the working directory, concatenated, up to a size limit of 32 KiB. It has no import. | `AGENTS.md` holds the rules, so the root file and the largest platform file together stay under the limit. |
+| Cursor | `AGENTS.md` at the root and in subfolders, and `.cursor/rules/*.mdc`. A rule may reference a file with `@filename`. | `project.mdc` is the one always-on rule and references `@AGENTS.md`. The other rules scope stack facts by `globs`. |
+
+Sources: Claude Code [memory and imports](https://code.claude.com/docs/en/memory), the Codex [AGENTS.md guide](https://developers.openai.com/codex/guides/agents-md) and the Cursor [rules documentation](https://cursor.com/docs/context/rules).
+
+There is no `CONTEXT.md`. The human overview is the generated `README.md`, the rules are in `AGENTS.md`, and the template-owned `docs/` pages are listed in the "Project docs" group of `knowledge/wiki/index.md`. The skills still exist in two packagings (`.claude/` and `.agents/`) that cannot import each other, so keeping them aligned is a manual check; the repository's `sync-ai-context` skill covers that, the Cursor scoped rules and the import layout.
 
 ## What Is Shared
 
@@ -215,7 +231,7 @@ These are not necessarily bugs, but they should be treated as conscious product 
 When you are orienting in a generated project:
 
 1. read the generated `README.md`
-2. use the generated `AGENTS.md` or `CLAUDE.md` for tool-specific invocation guidance
+2. use the generated `AGENTS.md` for the rules and the invocation of each tool
 3. use the wiki and `WIKI_REPORT.md` to understand product state
 4. use this page only when you need to understand why Claude and Codex surfaces differ
 
