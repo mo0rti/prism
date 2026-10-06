@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 
 import yaml
 
+from prism_cli import __version__
 from prism_cli.app_model import (
     GENERATED_PLATFORM_DIRS,
     LOCAL_OVERRIDE_FILE,
@@ -152,7 +153,7 @@ def plan_install(
         if not conflicts:
             if before_manifest is None:
                 manifest_data["schema_version"] = MANIFEST_SCHEMA_VERSION
-                manifest_data.setdefault("min_prism_cli_version", "0.3.0")
+                manifest_data.setdefault("min_prism_cli_version", __version__)
             project["name"] = chosen_name
             manifest_data["project"] = project
             if not scope_declared:

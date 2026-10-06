@@ -42,7 +42,7 @@ prism wiki transition-preflight F-XXX [path] --action po-handoff --json
 Use its result only when the response explicitly identifies common envelope schema
 version 1 (`schema_version: 1`), the `transition-preflight` command facts, the
 graph capability version 2 with an action-specific `po-handoff` surface, and the
-requested `po-handoff` action. A `0.2.0` version alone does not
+requested `po-handoff` action. A `0.4.0` version alone does not
 prove that this command or capability exists. If the probe, command, response
 schema, action, or capability is missing, unsupported, or fails, say so and use
 the direct-file checks below. The preflight is copy-only and never authorizes a

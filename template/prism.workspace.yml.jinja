@@ -1,5 +1,6 @@
 schema_version: 2
-min_prism_cli_version: "0.3.0"
+{# The CLI passes its own version; a raw Copier run without the CLI names no minimum. #}
+min_prism_cli_version: {{ (_prism_cli_version | default('0.0.0', true) | string) | tojson }}
 generated_by:
   tool: prism-cli
   prism_cli_version: {{ (_prism_cli_version | default('unknown', true) | string) | tojson }}

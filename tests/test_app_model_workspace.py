@@ -7,13 +7,15 @@ import io
 import json
 from argparse import Namespace
 from pathlib import Path
+import re
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import yaml
 
-from prism_cli import cli
+from prism_cli import __version__, cli
 from prism_cli.board_service import BoardError, BoardService, BoardServiceIdentity
 from prism_cli.app_model import apps_from_platforms, normalize_manifest
 from prism_cli.manifest_update import (
@@ -21,6 +23,7 @@ from prism_cli.manifest_update import (
     ManifestUpdateError,
     load_workspace_manifest,
     merge_workspace_manifest,
+    prepare_manifest_update,
     read_workspace_manifest,
 )
 from prism_cli.status import build_status
@@ -662,6 +665,20 @@ class WriteWorkspaceManifestTests(unittest.TestCase):
             self.assertEqual(["mobile-ios", "backend", "extra"], [item["id"] for item in kept["apps"]])
             self.assertEqual("0.3.1", kept["generated_by"]["prism_cli_version"])
 
+    def test_the_minimum_cli_version_is_the_running_cli_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = write_workspace_manifest(root, self.ANSWERS, prism_cli_version="0.0.1")
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            self.assertEqual(__version__, data["min_prism_cli_version"])
+            self.assertEqual("0.0.1", data["generated_by"]["prism_cli_version"])
+
+    def test_workflow_adoption_records_the_running_cli_version_as_the_minimum(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            install_workflow(root)
+            self.assertEqual(__version__, manifest_data(root)["min_prism_cli_version"])
+
     def test_an_existing_version_one_manifest_is_not_rewritten(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -675,7 +692,7 @@ class WriteWorkspaceManifestTests(unittest.TestCase):
 class TemplateManifestTests(unittest.TestCase):
     """The Copier template renders the apps the CLI would write for the same platforms."""
 
-    def render(self, platforms: list[str]) -> dict:
+    def render(self, platforms: list[str], cli_version: str | None = None) -> dict:
         from copier import run_copy
 
         repository = Path(__file__).resolve().parents[1]
@@ -688,12 +705,27 @@ class TemplateManifestTests(unittest.TestCase):
             run_copy(
                 str(source),
                 str(destination),
-                data={"project_name": "Rendered", "project_slug": "rendered", "platforms": platforms, "auth_methods": ["password"]},
+                data={
+                    "project_name": "Rendered",
+                    "project_slug": "rendered",
+                    "platforms": platforms,
+                    "auth_methods": ["password"],
+                    **({"_prism_cli_version": cli_version} if cli_version else {}),
+                },
                 defaults=True,
                 unsafe=True,
                 quiet=True,
             )
             return yaml.safe_load((destination / MANIFEST_FILE).read_text(encoding="utf-8"))
+
+    def test_the_minimum_cli_version_is_the_version_the_cli_passes(self) -> None:
+        data = self.render(["backend"], cli_version=__version__)
+        self.assertEqual(__version__, data["min_prism_cli_version"])
+        self.assertEqual(__version__, data["generated_by"]["prism_cli_version"])
+
+    def test_a_run_without_the_cli_names_no_minimum(self) -> None:
+        data = self.render(["backend"])
+        self.assertEqual("0.0.0", data["min_prism_cli_version"])
 
     def test_all_five_platforms(self) -> None:
         platforms = ["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"]
@@ -711,6 +743,68 @@ class TemplateManifestTests(unittest.TestCase):
         data = self.render(["mobile-android"])
         self.assertEqual(apps_from_platforms(["mobile-android"]), data["apps"])
         self.assertEqual(["mobile-android"], list(data["app_maturity"]))
+
+
+class TemplateMinimumVersionUpdateTests(unittest.TestCase):
+    """`prism update` renders the minimum version the way `prism new` did."""
+
+    def git(self, cwd: Path, *arguments: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.name=Prism test", "-c", "user.email=test@example.invalid", *arguments],
+            cwd=cwd, check=True, capture_output=True, text=True,
+        )
+
+    def build(self, temporary: str) -> Path:
+        """Return a workspace generated from template version one, with version two tagged."""
+
+        from copier import run_copy
+
+        repository = Path(__file__).resolve().parents[1]
+        source = Path(temporary) / "source"
+        (source / "template").mkdir(parents=True)
+        for relative in ("copier.yml", "template/{{ _copier_conf.answers_file }}.jinja", "template/prism.workspace.yml.jinja"):
+            (source / relative).write_bytes((repository / relative).read_bytes())
+        self.git(source, "init", "-q")
+        self.git(source, "add", ".")
+        self.git(source, "commit", "-qm", "version one")
+        self.git(source, "tag", "v1.0.0")
+        destination = Path(temporary) / "workspace"
+        run_copy(
+            str(source),
+            str(destination),
+            data={"project_name": "Update", "project_slug": "update", "platforms": ["backend"], "auth_methods": ["password"], "_prism_cli_version": __version__},
+            vcs_ref="v1.0.0",
+            defaults=True,
+            unsafe=True,
+            quiet=True,
+        )
+        self.assertEqual(__version__, manifest_data(destination)["min_prism_cli_version"])
+        # The CLI records its own version as it writes the manifest.
+        write_workspace_manifest(destination, {}, prism_cli_version=__version__)
+        manifest_template = source / "template" / "prism.workspace.yml.jinja"
+        text = manifest_template.read_bytes().decode("utf-8")
+        text, replaced = re.subn(r"^min_prism_cli_version:[^\r\n]*", 'min_prism_cli_version: "99.1.0"', text, count=1, flags=re.MULTILINE)
+        self.assertEqual(1, replaced)
+        manifest_template.write_bytes(text.encode("utf-8"))
+        self.git(source, "add", ".")
+        self.git(source, "commit", "-qm", "version two")
+        self.git(source, "tag", "v2.0.0")
+        return destination
+
+    def test_an_unedited_minimum_advances_with_the_template(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            plan = prepare_manifest_update(self.build(temporary), "v1.0.0")
+        self.assertEqual("99.1.0", plan.manifest["min_prism_cli_version"])
+
+    def test_a_workspace_edited_minimum_conflicts_with_a_template_change(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = self.build(temporary)
+            data = manifest_data(destination)
+            data["min_prism_cli_version"] = "98.0.0"
+            write_manifest(destination, data)
+            with self.assertRaises(ManifestMergeConflict) as raised:
+                prepare_manifest_update(destination, "v1.0.0")
+        self.assertEqual(["min_prism_cli_version"], raised.exception.fields)
 
 
 class BaselineCompatibilityTests(unittest.TestCase):

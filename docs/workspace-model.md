@@ -48,6 +48,8 @@ An entry in `apps` has these fields.
 
 `prism new` registers the platforms you pick as apps with the IDs `backend`, `web-user-app`, `web-admin-portal`, `mobile-android` and `mobile-ios`, each in the `workspace` repository.
 
+`min_prism_cli_version` is the version of the CLI that wrote the manifest. An older CLI reports `minimum-prism-cli-version-not-met`.
+
 ### Example: one external repository
 
 ```yaml
@@ -193,7 +195,7 @@ Each command also prints the manifest diff, a warning that the repository has no
 
 ```yaml
 schema_version: 2
-min_prism_cli_version: 0.3.0
+min_prism_cli_version: 0.4.0
 project:
   name: Acme knowledge
 repositories:

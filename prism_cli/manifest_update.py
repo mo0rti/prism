@@ -12,8 +12,9 @@ from typing import Any
 
 import yaml
 
+from prism_cli import __version__
 from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, normalize_manifest
-from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE
+from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, _VERSION_PATTERN
 
 
 _PROVENANCE_KEYS = {
@@ -69,6 +70,7 @@ def prepare_manifest_update(project_path: Path, old_revision: str) -> ManifestUp
             shutil.copyfile(project_path / COPIER_ANSWERS_FILE, isolated_project / COPIER_ANSWERS_FILE)
             with Worker(
                 dst_path=isolated_project,
+                data={"_prism_cli_version": __version__},
                 defaults=True,
                 skip_tasks=True,
                 unsafe=True,
@@ -83,6 +85,9 @@ def prepare_manifest_update(project_path: Path, old_revision: str) -> ManifestUp
             with Worker(
                 dst_path=isolated_project,
                 vcs_ref=old_revision,
+                # The saved template rendered with the CLI that last wrote the manifest,
+                # so an unedited minimum CLI version is not read as a workspace edit.
+                data={"_prism_cli_version": _recorded_cli_version(current_manifest)},
                 defaults=True,
                 skip_tasks=True,
                 unsafe=True,
@@ -107,6 +112,14 @@ def prepare_manifest_update(project_path: Path, old_revision: str) -> ManifestUp
         manifest=manifest,
         source_manifest_bytes=source_manifest_bytes,
     )
+
+
+def _recorded_cli_version(manifest: Mapping[str, Any]) -> str:
+    generated_by = manifest.get("generated_by")
+    value = generated_by.get("prism_cli_version") if isinstance(generated_by, Mapping) else None
+    if isinstance(value, str) and _VERSION_PATTERN.fullmatch(value.strip()):
+        return value.strip()
+    return __version__
 
 
 def load_workspace_manifest(path: Path, label: str = "workspace") -> dict[str, Any]:

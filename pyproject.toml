@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "prism-kit"
-version = "0.3.0"
+version = "0.4.0"
 description = "Prism workflows and shared boards for humans and agents, with optional application generation."
 readme = "README.md"
 requires-python = ">=3.10"

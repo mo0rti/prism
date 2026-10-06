@@ -2074,6 +2074,7 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
         temp_answers_path = None
         command = [sys.executable, "-m", "copier", "update", "--trust", "--defaults"]
         command.extend(["--vcs-ref", manifest_plan.target_ref, "--skip", MANIFEST_FILE])
+        command.extend(["--data", f"_prism_cli_version={__version__}"])
     else:
         temp_answers_name = ".copier-answers.prism-recopy.yml"
         temp_answers_path = project_path / temp_answers_name
@@ -2086,6 +2087,7 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
             with temp_answers_path.open("w", encoding="utf-8") as handle:
                 yaml.safe_dump(updated_answers, handle, sort_keys=False)
             command = [sys.executable, "-m", "copier", "recopy", "--trust", "--defaults", "--overwrite", "--answers-file", temp_answers_name]
+            command.extend(["--data", f"_prism_cli_version={__version__}"])
         if using_staged_template:
             print(info(f"Using a temporary clean copy of the local template for {strategy}."))
 

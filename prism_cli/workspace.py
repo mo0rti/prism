@@ -474,7 +474,7 @@ def write_workspace_manifest(
             )
 
     data["schema_version"] = MANIFEST_SCHEMA_VERSION
-    data.setdefault("min_prism_cli_version", "0.3.0")
+    data.setdefault("min_prism_cli_version", __version__)
     generated_by = data.get("generated_by")
     if not isinstance(generated_by, dict):
         generated_by = {}

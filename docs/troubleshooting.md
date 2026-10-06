@@ -24,7 +24,7 @@ Each entry gives the symptom, its cause and the fix. Start with `prism doctor --
 **Symptom.** `prism new` without `--template`, run from an installed Prism, prints the generation review and `Default generation requires the matching template release tag` followed by the tag, then exits with code 3 and one message. No project is created and no Copier traceback appears:
 
 ```text
-The template release tag `v0.3.0` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
+The template release tag `v0.4.0` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
 ```
 
 **Cause.** The default template is the canonical GitHub repository at the tag that matches the installed Prism version, so a generated project is always rendered from the template that release shipped with. The tag does not exist yet for a version that has not been released. Other failures, such as no network, keep the Copier output and exit code 5.

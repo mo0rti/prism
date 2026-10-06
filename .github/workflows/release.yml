@@ -1,6 +1,6 @@
 name: Release
 
-# Pushing a tag such as v0.3.0 builds the package once, publishes it to TestPyPI,
+# Pushing a tag such as v0.4.0 builds the package once, publishes it to TestPyPI,
 # installs it from there, publishes the same files to PyPI and creates the GitHub
 # release. Publishing uses trusted publishing (OIDC); no token is stored.
 # The one-time owner setup is in docs/cli-release.md.
