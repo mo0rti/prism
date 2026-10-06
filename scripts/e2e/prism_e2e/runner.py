@@ -373,9 +373,9 @@ class Journey:
         )
         if feature is not None:
             result.add_check(
-                "index_matches_page",
-                (feature.index_status, feature.index_owner) == (feature.status, feature.owner),
-                f"index row {feature.index_status}/{feature.index_owner}, page {feature.status}/{feature.owner}",
+                "status_board_matches_page",
+                (feature.board_status, feature.board_owner) == (feature.status, feature.owner),
+                f"status board row {feature.board_status}/{feature.board_owner}, page {feature.status}/{feature.owner}",
             )
         lint = ws.run_lint(self.env)
         allowed = ws.ALLOWED_LINT_CODES.get(step.id, frozenset())

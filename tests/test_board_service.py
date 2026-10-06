@@ -27,6 +27,7 @@ from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, PROCESSED_INT
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page, _write_index
 from tests.test_fs_safety import CLOUD_TAG, JUNCTION_TAG, fake_reparse
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 
 
 class BoardServiceValidatorTests(unittest.TestCase):
@@ -61,6 +62,19 @@ class BoardServiceValidatorTests(unittest.TestCase):
             "design-intake": [
                 "knowledge/wiki/features/*.md",
                 "knowledge/wiki/design/*.md",
+                "knowledge/intake/processed/**/MANIFEST.md",
+                "knowledge/intake/quarantined/**/CONFLICT.md",
+            ],
+            "ingest": [
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/personas/*.md",
+                "knowledge/wiki/business-rules/*.md",
+                "knowledge/wiki/decisions/*.md",
+                "knowledge/wiki/topics/*.md",
+                "knowledge/wiki/research/*.md",
+                "knowledge/wiki/plans/*.md",
+                "knowledge/wiki/direction.md",
+                "knowledge/wiki/roadmap.md",
                 "knowledge/intake/processed/**/MANIFEST.md",
                 "knowledge/intake/quarantined/**/CONFLICT.md",
             ],
@@ -105,6 +119,10 @@ class BoardServiceValidatorTests(unittest.TestCase):
             ("po-intake", "knowledge/intake/processed/review/MANIFEST.md"),
             ("design-intake", "knowledge/wiki/design/F-002-review.md"),
             ("design-intake", "knowledge/intake/quarantined/review/CONFLICT.md"),
+            ("ingest", "knowledge/wiki/topics/payment-flows.md"),
+            ("ingest", "knowledge/wiki/direction.md"),
+            ("ingest", "knowledge/intake/processed/review/MANIFEST.md"),
+            ("ingest", "knowledge/intake/quarantined/review/CONFLICT.md"),
             ("design-clarify", "knowledge/wiki/design/F-002-review.md"),
             ("dev-clarify", "knowledge/wiki/app-requirements/F-002-backend.md"),
             ("design-handoff", "knowledge/wiki/app-requirements/backend.md"),
@@ -118,6 +136,11 @@ class BoardServiceValidatorTests(unittest.TestCase):
 
         rejected = (
             ("po-intake", "knowledge/wiki/design/F-002-review.md"),
+            ("po-intake", "knowledge/wiki/topics/payment-flows.md"),
+            ("ingest", "knowledge/wiki/design/F-002-review.md"),
+            ("ingest", "knowledge/wiki/app-requirements/F-002-backend.md"),
+            ("ingest", "knowledge/wiki/advisory/F-002-review.md"),
+            ("ingest", "knowledge/wiki/SCHEMA.md"),
             ("design-intake", "knowledge/wiki/business-rules/BR-001-review.md"),
             ("ask", "knowledge/wiki/design/F-002-review.md"),
             ("po-clarify", "knowledge/wiki/design/F-002-review.md"),
@@ -163,11 +186,11 @@ class BoardServiceValidatorTests(unittest.TestCase):
                     self.assertEqual("write_path_unavailable", error.exception.code)
 
         for skill in expected:
-            for managed in ("knowledge/wiki/index.md", "knowledge/wiki/log.md"):
+            for managed in ("knowledge/wiki/index.md", "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"):
                 with self.subTest(skill=skill, managed_path=managed), self.assertRaises(BoardError) as error:
                     self.service._assert_skill_write_path(skill, managed)
                 self.assertEqual("write_path_unavailable", error.exception.code)
-            if skill in {"po-intake", "design-intake"}:
+            if skill in {"po-intake", "design-intake", "ingest"}:
                 self.assertNotIn("knowledge/intake/pending/**", discovered[skill]["write_scopes"])
                 self.assertTrue(any("read-only move source" in item for item in discovered[skill]["limitations"]))
 
@@ -516,7 +539,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
 
     def test_every_listed_reference_of_every_skill_resolves_through_get_skill_reference(self) -> None:
         names = [item["name"] for item in self.service.list_skills(self.actor)["skills"]]
-        self.assertEqual(24, len(names))
+        self.assertEqual(25, len(names))
         for name in names:
             with self.subTest(skill=name):
                 page = self.service.get_skill(self.actor, name)
@@ -1995,15 +2018,10 @@ def _journey_feature_page(
 
 
 def _write_index_rows(root: Path, rows: list[tuple[str, str, str, str]]) -> None:
-    index = root / "knowledge/wiki/index.md"
-    content = (
-        "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n"
-    )
-    for feature_id, title, status, owner in rows:
-        content += f"| {feature_id} | {title} | {status} | {owner} | not-needed |\n"
-    index.write_text(content, encoding="utf-8")
+    """Write the status board rows, then the general index of the pages that exist now."""
+
+    write_status_board(root, "".join(f"| {feature_id} | {title} | {status} | {owner} | not-needed |\n" for feature_id, title, status, owner in rows))
+    write_index(root)
 
 
 def _replace_body_section(service: BoardService, content: str, heading: str, replacement: str) -> str:

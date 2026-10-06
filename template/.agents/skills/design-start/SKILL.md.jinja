@@ -18,7 +18,7 @@ transition:
 
 Resolve `[F-XXX]` to exactly one existing feature file. Accept only the exact
 source pair above; do not infer a transition from another status or owner.
-Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md`, the feature, linked context, and
+Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md`, the feature, linked context, and
 workspace identity. The feature's declared apps define the design scope.
 
 When available, use the read-only probe:
@@ -43,7 +43,7 @@ or explicit skip policy where that policy applies. Do not invent a new waiver.
 
 Show the proposed `status` change, unchanged owner, evidence, and complete write
 set. Reread the source and context immediately before asking for confirmation and
-again after confirmation. On confirmation, update the feature, matching index row,
+again after confirmation. On confirmation, update the feature, matching status board row,
 and log entry. Cancellation or decline leaves all files unchanged. If a multi-file
 write is partial, report exact changes and stop for fresh recovery; no transaction
 is implied.

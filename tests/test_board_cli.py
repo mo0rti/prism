@@ -38,6 +38,7 @@ class BoardCliTests(unittest.TestCase):
         (root / "knowledge/wiki/SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Schema\n", encoding="utf-8")
         (root / "knowledge/wiki/LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Lifecycle\n", encoding="utf-8")
         (root / "knowledge/wiki/index.md").write_text("# Index\n", encoding="utf-8")
+        (root / "knowledge/wiki/status-board.md").write_text("# Status board\n", encoding="utf-8")
         (root / "prism.workspace.yml").write_text(yaml.safe_dump({
             **manifest_data("Editorial", ["backend"]),
             "workflow": {"version": "1", "mode": "workflow",

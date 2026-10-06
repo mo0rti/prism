@@ -21,6 +21,7 @@ from tests.core_workflow_fixture import (
     create_core_workflow_fixture,
 )
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 
 
 CHECK_DATE = date(2026, 9, 22)
@@ -208,14 +209,8 @@ def _set_stage(root: Path, status: str, owner: str) -> None:
 
 
 def _write_index(root: Path, status: str, owner: str) -> None:
-    index = root / "knowledge/wiki/index.md"
-    index.write_text(
-        "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n"
-        f"| {FEATURE_ID} | Document review | {status} | {owner} | not-needed |\n",
-        encoding="utf-8",
-    )
+    write_status_board(root, f"| {FEATURE_ID} | Document review | {status} | {owner} | not-needed |\n")
+    write_index(root)
 
 
 def _transition(root: Path, action: str) -> dict:

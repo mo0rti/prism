@@ -33,6 +33,7 @@ from prism_cli.workflow_install import apply_install, plan_install
 from tests.core_workflow_fixture import create_core_workflow_fixture
 from tests.test_board_service import _read_revisions
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -157,13 +158,8 @@ def build_workspace(root: Path, feature_count: int) -> None:
         (features / f"F-{number:03d}-document-review.md").write_text(_feature_page(number), encoding="utf-8", newline="\n")
         # The title links the page, as an agent-written index does; the index then spans more than one result page.
         rows.append(f"| F-{number:03d} | [Document review {number:03d}](features/F-{number:03d}-document-review.md) | raw | po | not-needed |\n")
-    (root / "knowledge/wiki/index.md").write_text(
-        "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n" + "".join(rows),
-        encoding="utf-8",
-        newline="\n",
-    )
+    write_status_board(root, "".join(rows))
+    write_index(root)
 
 
 class _Client:
@@ -258,7 +254,7 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
             listed = await client.call("list_skills", {})
             self.assertEqual(3, discovered["mcp_contract"])
             self.assertEqual(3, listed["mcp_contract"])
-            self.assertEqual(24, len(listed["skills"]))
+            self.assertEqual(25, len(listed["skills"]))
             self.assertEqual(listed["read_support"], discovered["capability"]["read_support"])
             for item in discovered["skills"]:
                 self.assertEqual({"name", "description"}, set(item))
@@ -270,7 +266,7 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
     async def test_every_skill_and_reference_chunk_stays_within_budget_and_reassembles_to_its_digest(self) -> None:
         async with connected(self, self.small_root) as client:
             names = [item["name"] for item in (await client.call("list_skills", {}))["skills"]]
-            self.assertEqual(24, len(names))
+            self.assertEqual(25, len(names))
             for name in names:
                 with self.subTest(skill=name):
                     pages = await client.paged("get_skill", {"name": name})
@@ -353,7 +349,9 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
             schema_pages = await client.paged("read_workspace", {"paths": schema_paths})
             self.assertGreater(len(schema_pages), 1)
             index_pages = await client.paged("read_workspace", {"paths": ["knowledge/wiki/index.md"]})
-            self.assertGreater(len(index_pages), 1)
+            self.assertGreaterEqual(len(index_pages), 1)
+            board_pages = await client.paged("read_workspace", {"paths": ["knowledge/wiki/status-board.md"]})
+            self.assertGreater(len(board_pages), 1)
             batch_pages = await client.paged("read_workspace", {"paths": feature_paths})
             self.assertGreater(len(batch_pages), 1)
             self.assertTrue(all(record["offset"] == 0 for page in batch_pages for record in page["files"]))
@@ -516,14 +514,8 @@ def build_dev_done_workspace(root: Path, platforms: list[str], bulk: str, large_
     write(DESIGN_FILE, _dev_design_page())
     for platform in platforms:
         write(f"knowledge/wiki/app-requirements/F-001-{platform}.md", _dev_requirement_page(platform, "in-progress", requirement_bulk(platform)))
-    (wiki / "index.md").write_text(
-        "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n"
-        f"| F-001 | Document review | in-dev | dev | not-needed |\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    write_status_board(root, "| F-001 | Document review | in-dev | dev | not-needed |\n")
+    write_index(root)
     evidence = "\n".join(
         f"| {platform} | Pull request for {platform} merged as commit abc123. {bulk} | CI run on {platform}: 120 tests passed. {bulk} | release: https://example.test/releases/{platform}-1.4.0 {bulk} |"
         for platform in platforms
@@ -596,7 +588,7 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(revisions), first["read_revisions_count"])
             joined = self.reassemble(pages, "writes")
             self.assertEqual([item["path"] for item in truth["writes"]], list(joined))
-            self.assertEqual({"canonical", "index", "log"}, {item["meta"]["role"] for item in joined.values()})
+            self.assertEqual({"canonical", "status-board", "log"}, {item["meta"]["role"] for item in joined.values()})
             for write in truth["writes"]:
                 record = joined[write["path"]]
                 self.assertEqual(write["before"], record["before"], write["path"])
@@ -611,7 +603,7 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
 
             receipt = await client.call("apply", {"preview_id": first["preview_id"], "operation_id": "dev-done-five"})
             self.assertEqual("applied", receipt["state"])
-            self.assertEqual(sorted([*expected, "knowledge/wiki/index.md", "knowledge/wiki/log.md"]), sorted(receipt["applied_paths"]))
+            self.assertEqual(sorted([*expected, "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"]), sorted(receipt["applied_paths"]))
             again = await client.call("operation", {"operation_id": "dev-done-five"})
             self.assertEqual(receipt, again["receipt"])
             feed = await client.call("changes", {})
@@ -725,7 +717,7 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
             original = client.service._apply_write
 
             def interrupted(write: dict[str, Any], **kwargs: Any) -> str:
-                if write["role"] == "index":
+                if write["role"] == "status-board":
                     raise OSError("synthetic write failure")
                 return original(write, **kwargs)
 

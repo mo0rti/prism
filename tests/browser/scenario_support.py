@@ -21,7 +21,7 @@ from tests.browser.agent_client import AgentClient
 from tests.browser.board_page import BoardPage, expect
 from tests.browser.harness import STEP_TIMEOUT_MS, BrowserCase, FixtureFeature
 
-INDEX_PATH = "knowledge/wiki/index.md"
+BOARD_PATH = "knowledge/wiki/status-board.md"
 LOG_PATH = "knowledge/wiki/log.md"
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 # The journal is the board service's own state. Previews legitimately add rows
@@ -164,7 +164,7 @@ class ScenarioCase(BrowserCase):
 
         The agent proposes ``design-start`` through the real MCP client. Its apply
         is interrupted in the service after the feature page is written and
-        before the index and log, exactly as a crash would leave it, then the
+        before the status board and log, exactly as a crash would leave it, then the
         agent's grant is revoked. Nothing in the product is changed or hooked:
         the interruption patches one method of the in-process service for the
         duration of one call.
@@ -179,7 +179,7 @@ class ScenarioCase(BrowserCase):
         original = service._apply_write
 
         def interrupted(write: Any, **kwargs: Any) -> Any:
-            if write["role"] == "index":
+            if write["role"] == "status-board":
                 raise SimulatedCrash()
             return original(write, **kwargs)
 

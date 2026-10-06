@@ -32,7 +32,7 @@ preflight is copy-only and never authorizes a write.
    A feature that lists a retired app (`app-retired-in-scope`) is a stop condition:
    retirement never changes scope by itself, so ask for an explicit edit of the
    feature's `apps` first.
-2. Read SCHEMA, LIFECYCLE, `index.md`, the feature, every declared app requirement,
+2. Read SCHEMA, LIFECYCLE, `status-board.md`, the feature, every declared app requirement,
    applicable API contract, linked context, workspace identity, delivery evidence,
    advisory state, and active revalidation.
 3. Delivery evidence is an input to this action. For every declared app,
@@ -90,7 +90,7 @@ preflight is copy-only and never authorizes a write.
 7. After confirmation, write the confirmed notes and the confirmed delivery
    evidence rows, update only the exact verified
    requirement/API pages proposed, update the feature to `done`
-   with owner `none`, update `index.md`, and append a `log.md` entry in the log format that the wiki schema defines.
+   with owner `none`, update the `status-board.md` row, and append a `log.md` entry in the log format that the wiki schema defines.
 
 Any CLI preflight or copied request is copy-only and never authorizes a write.
 Decline or cancel means no mutation. If a multi-file write is partial, report the

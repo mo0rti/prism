@@ -18,11 +18,6 @@ This file is maintained by the AI agent. Do not edit directly.
 | ID | Feature | Status | Owner | Board Review |
 |----|---------|--------|-------|--------------|
 | F-009 | Old row | raw | po | not-needed |
-
-## Other wiki pages
-| Page | Type | Summary |
-|------|------|---------|
-| [SCHEMA.md](SCHEMA.md) | meta | Wiki conventions and operational rules |
 """
 
 PAGE = """---
@@ -68,18 +63,18 @@ class PageParsingTests(unittest.TestCase):
         self.assertFalse(question.is_open)
 
 
-class IndexTests(unittest.TestCase):
-    def test_rewrite_index_replaces_the_feature_rows_and_keeps_everything_else(self):
+class StatusBoardTests(unittest.TestCase):
+    def test_rewrite_status_board_replaces_the_feature_rows_and_keeps_everything_else(self):
         row = ws.feature_row(ws.parse_front_matter(PAGE))
         self.assertEqual(row, "| F-001 | Review summary export | ready-for-dev | dev | not-needed |")
-        rewritten = ws.rewrite_index(INDEX, row)
+        rewritten = ws.rewrite_status_board(INDEX, row)
         self.assertIn(row, rewritten)
         self.assertNotIn("F-009", rewritten)
-        self.assertIn("| [SCHEMA.md](SCHEMA.md) | meta |", rewritten)
+        self.assertIn("This file is maintained by the AI agent.", rewritten)
         self.assertEqual(rewritten.count("|----|"), 1)
 
-    def test_rewrite_index_without_a_row_leaves_an_empty_table(self):
-        rewritten = ws.rewrite_index(INDEX, None)
+    def test_rewrite_status_board_without_a_row_leaves_an_empty_table(self):
+        rewritten = ws.rewrite_status_board(INDEX, None)
         self.assertNotIn("F-009", rewritten)
         self.assertIn("|----|---------|", rewritten)
 
@@ -129,18 +124,18 @@ class FixtureTests(unittest.TestCase):
             (workspace / "knowledge/wiki/features").mkdir(parents=True)
             (workspace / "knowledge/wiki/features/_FORMAT.md").write_text("format", encoding="utf-8")
             (workspace / "knowledge/wiki/features/F-007-stale.md").write_text("stale", encoding="utf-8")
-            (workspace / "knowledge/wiki/index.md").write_text(INDEX, encoding="utf-8")
+            (workspace / "knowledge/wiki/status-board.md").write_text(INDEX, encoding="utf-8")
             written = ws.seed_state(workspace, "po-specify")
             self.assertTrue((workspace / "knowledge/wiki/features/_FORMAT.md").is_file(), "the installed template stays")
             self.assertFalse((workspace / "knowledge/wiki/features/F-007-stale.md").exists(), "a stale journey page is removed")
             self.assertIn("knowledge/wiki/personas/legal-operations-reviewer.md", written)
             feature = ws.read_feature(workspace)
-            self.assertEqual((feature.status, feature.owner, feature.index_status, feature.index_owner), ("specified", "po", "specified", "po"))
+            self.assertEqual((feature.status, feature.owner, feature.board_status, feature.board_owner), ("specified", "po", "specified", "po"))
             self.assertEqual(len(feature.questions), 6)
             # Seeding the baseline clears the journey again.
             ws.seed_state(workspace, None)
             self.assertIsNone(ws.read_feature(workspace))
-            self.assertNotIn("F-001", (workspace / "knowledge/wiki/index.md").read_text(encoding="utf-8"))
+            self.assertNotIn("F-001", (workspace / "knowledge/wiki/status-board.md").read_text(encoding="utf-8"))
 
     def test_place_pending_brief_copies_the_intake_brief(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -244,12 +239,12 @@ class FixtureSetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             workspace = Path(folder)
             (workspace / "knowledge/wiki").mkdir(parents=True)
-            (workspace / "knowledge/wiki/index.md").write_text(INDEX, encoding="utf-8")
+            (workspace / "knowledge/wiki/status-board.md").write_text(INDEX, encoding="utf-8")
             written = ws.seed_state(workspace, "design-handoff", API_SET)
             self.assertIn(CONTRACT_FILE, written)
             self.assertEqual(ws.read_api_contract(workspace)["status"], "agreed")
             feature = ws.read_feature(workspace)
-            self.assertEqual((feature.status, feature.owner, feature.index_status, feature.index_owner), ("ready-for-dev", "dev", "ready-for-dev", "dev"))
+            self.assertEqual((feature.status, feature.owner, feature.board_status, feature.board_owner), ("ready-for-dev", "dev", "ready-for-dev", "dev"))
             ws.seed_state(workspace, "design-handoff")
             self.assertIsNone(ws.read_api_contract(workspace), "the default set leaves no contract page")
             ws.seed_state(workspace, "dev-done", API_SET)

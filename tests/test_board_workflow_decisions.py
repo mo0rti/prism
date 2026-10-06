@@ -136,7 +136,8 @@ class RawIntakeTests(_BoardWorkspace):
 
         frontmatter, _body = _parse_markdown(self.read(FEATURE))
         self.assertEqual(("raw", "po"), (frontmatter["status"], frontmatter["owner"]))
-        self.assertIn("| F-001 | Document review | raw | po |", self.read("knowledge/wiki/index.md"))
+        self.assertIn("| F-001 | Document review | raw | po |", self.read("knowledge/wiki/status-board.md"))
+        self.assertIn("[F-001 Document review](features/F-001-document-review.md):", self.read("knowledge/wiki/index.md"))
         self.assertEqual(0, lint_wiki(self.root).error_count)
         specify = build_transition_preflight(self.root, "F-001", action="po-specify")["facts"]["transition"]
         self.assertEqual(("po-specify", "raw", "specified", "ready"), (specify["action"], specify["source_status"], specify["target_status"], specify["classification"]))
@@ -233,7 +234,7 @@ class RawIntakeTests(_BoardWorkspace):
 
         frontmatter, _body = _parse_markdown(self.read(FEATURE))
         self.assertEqual(("specified", "po"), (frontmatter["status"], frontmatter["owner"]))
-        self.assertIn("| F-001 | Document review | specified | po |", self.read("knowledge/wiki/index.md"))
+        self.assertIn("| F-001 | Document review | specified | po |", self.read("knowledge/wiki/status-board.md"))
         self.assertEqual(0, lint_wiki(self.root).error_count)
 
     def test_po_specify_keeps_a_complete_raw_body_and_an_existing_specified_feature_stays_valid(self) -> None:
@@ -267,9 +268,9 @@ class DevClarifyTests(_BoardWorkspace):
             _journey_feature_page("F-001", "Document review", status, owner, ["knowledge/intake/processed/2026-10-06-document-review-brief"], questions)
         )
         self.write(FEATURE, page)
-        _write_index_rows(self.root, [("F-001", "Document review", status, owner)])
         if requirement:
             self.write(REQUIREMENT, _journey_requirement_page("in-progress"))
+        _write_index_rows(self.root, [("F-001", "Document review", status, owner)])
 
     def answered(self, content: str, answer: str = DEV_ANSWER) -> str:
         return content.replace(DEV_QUESTION, f"| 2 | Is there a limit on the number of comments in one summary? | dev | resolved: {answer} |")

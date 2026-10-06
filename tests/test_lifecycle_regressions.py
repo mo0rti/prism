@@ -19,6 +19,7 @@ from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_transitions import ACTION_SPECS, build_transition_preflight
 from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -65,12 +66,8 @@ class LifecycleRegressionTests(unittest.TestCase):
             manifest_text("Lifecycle regression", ["backend"], slug="lifecycle-regression"),
             encoding="utf-8",
         )
-        (self.wiki_root / "index.md").write_text(
-            "# Feature Status Board\n\n"
-            "| ID | Feature | Status | Owner | Board Review |\n"
-            "|----|---------|--------|-------|--------------|\n",
-            encoding="utf-8",
-        )
+        write_status_board(self.root)
+        write_index(self.root)
         self._write_feature()
         self._write_all_capabilities()
 
@@ -152,7 +149,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         return path
 
     def _upsert_index(self, feature_id: str, title: str, status: str, owner: str, advisory: str) -> None:
-        index_path = self.wiki_root / "index.md"
+        index_path = self.wiki_root / "status-board.md"
         lines = index_path.read_text(encoding="utf-8").splitlines()
         row = f"| {feature_id} | {title} | {status} | {owner} | {advisory} |"
         replaced = False

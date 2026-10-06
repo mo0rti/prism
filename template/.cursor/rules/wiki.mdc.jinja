@@ -39,7 +39,7 @@ reads. This generated project must not hard-depend on an installed Prism CLI.
 
 ## Fallback path
 
-The fallback reads `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md`, feature pages,
+The fallback reads `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md` (to find pages), `status-board.md`, feature pages,
 app requirements, and only the relevant design, API, advisory,
 business-rule, persona, and decision pages. Keep malformed pages visible and
 compute only categories proved by files; the canonical blocker categories are
@@ -81,7 +81,7 @@ file must contain its matching `prism:<command>-contract:v1` marker; the other
 surface is optional. Refresh old instructions before acting.
 
 Before copying or acting on a request, reread the selected instructions,
-`knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md`, the feature, linked context, and workspace
+`knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md`, the feature, linked context, and workspace
 identity. Compare the path, identity, feature ID, status, owner, advisory state,
 and fingerprint with current files. Use **Copy request** only for a ready result
 on the selected invocation; blocked or unknown results require review or repair.
@@ -94,7 +94,7 @@ the shared schema.
 
 ## Before implementing any feature
 
-1. Read `knowledge/wiki/index.md` and confirm the feature is in `ready-for-dev` or
+1. Read `knowledge/wiki/status-board.md` and confirm the feature is in `ready-for-dev` or
    `in-dev`; a pending advisory review requires human attention first.
 2. Read `knowledge/wiki/features/[feature-id]-[slug].md`.
 3. Read `knowledge/wiki/app-requirements/[feature-id]-[THIS_APP].md`.

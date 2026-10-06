@@ -59,6 +59,7 @@ from prism_cli.wiki_lint import lint_wiki
 from prism_cli.workspace import MANIFEST_FILE, load_workspace
 from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index as write_general_index
 
 
 class ValidateAnswersTests(unittest.TestCase):
@@ -886,7 +887,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root)
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
             write_wiki_page(root, "design", "F-001-checkout.md", "feature-id: F-001\n", "## Summary\nCheckout design.\n")
 
@@ -908,7 +909,7 @@ class WikiQueryTests(unittest.TestCase):
             (root / ".copier-answers.yml").write_text("_src_path: test-template\nplatforms: [backend]\n", encoding="utf-8")
             (root / "backend").mkdir()
             write_feature(root)
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
 
             data = wiki_show(root, "F-001")
 
@@ -923,7 +924,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="in-dev", owner="dev", advisory_review="pending", platforms=["backend"])
-            write_index(root, "| F-001 | Checkout | in-dev | dev | pending |\n")
+            write_status_board(root, "| F-001 | Checkout | in-dev | dev | pending |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
 
             data = wiki_blockers(root)
@@ -946,7 +947,7 @@ class WikiQueryTests(unittest.TestCase):
                     "| 1 | Who approves refunds? | po | open |\n"
                 ),
             )
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
 
             data = wiki_owner(root, "po")
 
@@ -958,7 +959,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="ready-for-dev", owner="dev", advisory_review="done", platforms=["backend"])
-            write_index(root, "| F-001 | Checkout | ready-for-dev | dev | done |\n")
+            write_status_board(root, "| F-001 | Checkout | ready-for-dev | dev | done |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
 
             data = wiki_app(root, "backend")
@@ -971,7 +972,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="raw", owner="po", platforms=["backend"])
-            write_index(root, "| F-001 | Checkout | raw | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | raw | po | not-needed |\n")
 
             data = wiki_app(root, "backend")
 
@@ -982,7 +983,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, extra_body="## Summary\nCheckout supports refunds.\n")
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
 
             data = wiki_search(root, "refund")
 
@@ -1196,7 +1197,7 @@ class WikiLintTests(unittest.TestCase):
 
         self.assertEqual([], duplicate_codes)
 
-    def test_lint_reports_feature_missing_from_index(self) -> None:
+    def test_lint_reports_feature_missing_from_status_board(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
@@ -1205,20 +1206,20 @@ class WikiLintTests(unittest.TestCase):
             result = lint_wiki(root)
             codes = {diagnostic.code for diagnostic in result.diagnostics}
 
-        self.assertIn("feature-missing-from-index", codes)
+        self.assertIn("feature-missing-from-status-board", codes)
 
-    def test_lint_reports_index_frontmatter_drift(self) -> None:
+    def test_lint_reports_status_board_frontmatter_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="ready-for-design", owner="designer", advisory_review="done")
-            write_index(
+            write_status_board(
                 root,
                 "| F-001 | Checkout | specified | po | pending |\n",
             )
 
             result = lint_wiki(root)
-            drift_messages = [diagnostic.message for diagnostic in result.diagnostics if diagnostic.code == "index-frontmatter-drift"]
+            drift_messages = [diagnostic.message for diagnostic in result.diagnostics if diagnostic.code == "status-board-frontmatter-drift"]
 
         self.assertEqual(3, len(drift_messages))
         self.assertTrue(any("status" in message for message in drift_messages))
@@ -1230,7 +1231,7 @@ class WikiLintTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root)
-            write_index(
+            write_status_board(
                 root,
                 "| F-001 | Checkout | specified | po | not-needed |\n",
                 separator="|:---|:---:|---:|:---|:---|:---|\n",
@@ -1239,14 +1240,14 @@ class WikiLintTests(unittest.TestCase):
             result = lint_wiki(root)
             codes = {diagnostic.code for diagnostic in result.diagnostics}
 
-        self.assertNotIn("index-missing-feature", codes)
-        self.assertNotIn("malformed-index", codes)
+        self.assertNotIn("status-board-missing-feature", codes)
+        self.assertNotIn("malformed-status-board", codes)
 
     def test_lint_accepts_utf8_bom_frontmatter(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
             feature_path = root / "knowledge" / "wiki" / "features" / "F-001-checkout.md"
             feature_path.write_text(
                 "\ufeff---\n"
@@ -1344,7 +1345,7 @@ class WikiGraphTests(unittest.TestCase):
             "## Summary\nRefund handling.\n\n## Related features\n- [F-001](F-001-checkout.md) - refunds follow checkout\n- F-999 does not exist\n",
             encoding="utf-8",
         )
-        write_index(
+        write_status_board(
             root,
             "| F-001 | Checkout | ready-for-dev | dev | not-needed |\n"
             "| F-002 | Refunds | raw | po | not-needed |\n",
@@ -1441,7 +1442,7 @@ class WikiGraphTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="in-dev", owner="dev", advisory_review="pending", platforms=["backend"])
-            write_index(root, "| F-001 | Checkout | in-dev | dev | pending |\n")
+            write_status_board(root, "| F-001 | Checkout | in-dev | dev | pending |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
             data = build_graph(root)
             mermaid = render_mermaid(data, "lifecycle")
@@ -1484,7 +1485,7 @@ class WikiGraphTests(unittest.TestCase):
                 "| 1 | What is the offline story? | po | open |\n"
                 "| 2 | Empty state? | designer | resolved: minimal |\n",
             )
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
             data = build_graph(root)
 
         feature = next(node for node in data["facts"]["nodes"] if node["id"] == "F-001")
@@ -1503,7 +1504,7 @@ class WikiGraphHtmlTests(unittest.TestCase):
     def _graph_envelope(self, root: Path) -> dict:
         create_wiki_skeleton(root)
         write_feature(root, status="in-dev", owner="dev", platforms=["backend"])
-        write_index(root, "| F-001 | Checkout | in-dev | dev | not-needed |\n")
+        write_status_board(root, "| F-001 | Checkout | in-dev | dev | not-needed |\n")
         write_platform_requirement(root, feature_id="F-001", platform="backend")
         return build_graph(root)
 
@@ -1594,7 +1595,8 @@ def create_wiki_skeleton(root: Path) -> None:
     (wiki / "SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Schema\n", encoding="utf-8")
     (wiki / "LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Lifecycle\n", encoding="utf-8")
     (wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 14\n---\n", encoding="utf-8")
-    write_index(root)
+    write_status_board(root)
+    write_general_index(root)
     # The features in these tests are scoped to generated apps, which the workspace model must declare.
     write_manifest(root, platforms=["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"])
 
@@ -1609,15 +1611,15 @@ def write_board_placeholder(root: Path) -> None:
         "This file will be generated by /setup-project. Run that command first.\n",
         encoding="utf-8",
     )
+    write_general_index(root)
 
 
-def write_index(root: Path, rows: str = "", separator: str = "|----|---------|--------|-------|--------------|\n") -> None:
-    (root / "knowledge" / "wiki" / "index.md").write_text(
+def write_status_board(root: Path, rows: str = "", separator: str = "|----|---------|--------|-------|--------------|\n") -> None:
+    (root / "knowledge" / "wiki" / "status-board.md").write_text(
         "# Feature Status Board\n\n"
         "| ID | Feature | Status | Owner | Board Review |\n"
         f"{separator}"
-        f"{rows}"
-        "\n## Other wiki pages\n",
+        f"{rows}",
         encoding="utf-8",
     )
 

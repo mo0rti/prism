@@ -33,7 +33,7 @@ and, after explicit confirmation, write one feature-only transition:
 
 ## Read, preview, and confirmation
 
-Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md`, the complete feature, linked context,
+Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md`, the complete feature, linked context,
 and the workspace identity before preparing the preview. If the optional CLI is
 available, use:
 
@@ -50,7 +50,7 @@ the direct-file protocol in `LIFECYCLE.md`.
 Show the observed source fields, structural checks, proposed destination, and
 the complete write set before asking for confirmation. The preview is copy-only;
 it does not authorize a write. Immediately before confirmation, reread the
-source, index, identity, and linked context and compare the recorded path,
+source, status board, identity, and linked context and compare the recorded path,
 identity, status, owner, advisory state, and fingerprint.
 
 ## Structured draft preparation
@@ -86,7 +86,7 @@ the section.
 Unknown facts remain explicit owned questions for `po`, `designer`, or `dev`.
 An open question is valid structured output; `TODO`, `TBD`, copied template
 filler, and empty placeholder requirements are not. Show the complete proposed
-body diff together with the frontmatter, index, and log metadata before asking
+body diff together with the frontmatter, status board, and log metadata before asking
 for confirmation. When structure or content is missing, the confirmed write set
 includes the authored body. When the raw page already meets the structured draft
 contract, preserve that valid body and show that no body rewrite is proposed;
@@ -116,7 +116,7 @@ or authorize the next handoff.
 
 After a second confirmation-gated reread, write the confirmed structured body
 and metadata, update the feature status to `specified`, keep `owner: po`,
-update the matching `index.md` row, and append the required `log.md` entry in the
+update the matching `status-board.md` row and the feature's `index.md` line, and append the required `log.md` entry in the
 log format that the wiki schema defines. Feature pages carry no date field; do not add one.
 Do not move intake folders or write unrelated wiki files. If the user declines
 or cancels, make no feature, index, or log change. If a multi-file write is

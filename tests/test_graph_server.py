@@ -19,6 +19,7 @@ from prism_cli.graph_server import _GraphState, _make_handler, _workspace_finger
 from prism_cli.wiki_transitions import CAPABILITY_FILES
 from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 
 
 def _create_workspace(root: Path) -> None:
@@ -31,13 +32,8 @@ def _create_workspace(root: Path) -> None:
     (wiki / "SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Schema\n", encoding="utf-8")
     (wiki / "LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Lifecycle\n", encoding="utf-8")
     (wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 14\n---\n", encoding="utf-8")
-    (wiki / "index.md").write_text(
-        "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n\n"
-        "## Other wiki pages\n",
-        encoding="utf-8",
-    )
+    write_status_board(root)
+    write_index(root)
     (root / "prism.workspace.yml").write_text(
         manifest_text("Test", ["backend"], slug="test"),
         encoding="utf-8",

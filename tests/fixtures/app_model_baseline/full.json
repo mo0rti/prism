@@ -114,6 +114,7 @@
       "dev-start",
       "feature-reopen",
       "feature-status",
+      "ingest",
       "lint-wiki",
       "po-clarify",
       "po-handoff",
@@ -160,6 +161,7 @@
       "knowledge/wiki/decisions/_FORMAT.md",
       "knowledge/wiki/design/.gitkeep",
       "knowledge/wiki/design/_FORMAT.md",
+      "knowledge/wiki/direction.md",
       "knowledge/wiki/features/.gitkeep",
       "knowledge/wiki/features/F-001-outcome-capture.md",
       "knowledge/wiki/features/F-002-outcome-review.md",
@@ -168,7 +170,15 @@
       "knowledge/wiki/index.md",
       "knowledge/wiki/log.md",
       "knowledge/wiki/personas/.gitkeep",
-      "knowledge/wiki/personas/_FORMAT.md"
+      "knowledge/wiki/personas/_FORMAT.md",
+      "knowledge/wiki/plans/.gitkeep",
+      "knowledge/wiki/plans/_FORMAT.md",
+      "knowledge/wiki/research/.gitkeep",
+      "knowledge/wiki/research/_FORMAT.md",
+      "knowledge/wiki/roadmap.md",
+      "knowledge/wiki/status-board.md",
+      "knowledge/wiki/topics/.gitkeep",
+      "knowledge/wiki/topics/_FORMAT.md"
     ],
     "query-app-backend": {
       "blocker_facts": [
@@ -1605,6 +1615,7 @@
             "knowledge/wiki/SCHEMA.md",
             "knowledge/wiki/LIFECYCLE.md",
             "knowledge/wiki/index.md",
+            "knowledge/wiki/status-board.md",
             ".agents/skills/design-handoff/SKILL.md",
             ".claude/commands/design-handoff.md"
           ],
@@ -1754,6 +1765,7 @@
             "knowledge/wiki/SCHEMA.md",
             "knowledge/wiki/LIFECYCLE.md",
             "knowledge/wiki/index.md",
+            "knowledge/wiki/status-board.md",
             ".agents/skills/dev-done/SKILL.md",
             ".claude/commands/dev-done.md",
             "knowledge/wiki/app-requirements/F-003-backend.md"
@@ -1820,6 +1832,7 @@
             "knowledge/wiki/SCHEMA.md",
             "knowledge/wiki/LIFECYCLE.md",
             "knowledge/wiki/index.md",
+            "knowledge/wiki/status-board.md",
             ".agents/skills/po-handoff/SKILL.md",
             ".claude/commands/po-handoff.md"
           ],

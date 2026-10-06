@@ -413,7 +413,7 @@ if (checkTransitions) {
         version: 1, feature_id: "F-001", source_status: "specified", source_owner: "po", source_path: sourcePath,
         target_status: "ready-for-design", target_owner: "designer", action: "po-handoff", classification: "ready", supported: true,
         checks: [{ code: "source-readable", status: "pass", message: "Feature source is readable.", path: sourcePath }],
-        sources: [sourcePath, "knowledge/wiki/SCHEMA.md", "knowledge/wiki/index.md"],
+        sources: [sourcePath, "knowledge/wiki/SCHEMA.md", "knowledge/wiki/status-board.md"],
         invocations: { codex: "$po-handoff F-001", claude: "/po-handoff F-001" }
       }]
     };
@@ -427,7 +427,7 @@ if (checkTransitions) {
     payload.facts.transition_capability = {
       version: 2, mode: "copy-only", supported_actions: ["po-handoff"],
       snapshot: { fingerprint: "fp-1", observed_at: "2026-09-08T12:00:00+02:00", consistent: true },
-      sources: [sourcePath, "knowledge/wiki/SCHEMA.md", "knowledge/wiki/index.md"],
+      sources: [sourcePath, "knowledge/wiki/SCHEMA.md", "knowledge/wiki/status-board.md"],
       surfaces: [
         { role: "codex", action: "po-handoff", path: "C:\\\\demo\\workspace\\.agents\\skills\\po-handoff\\SKILL.md", available: true, check: "pass", invocation_template: "$po-handoff F-XXX" },
         { role: "claude", action: "po-handoff", path: "C:\\\\demo\\workspace\\.claude\\commands\\po-handoff.md", available: true, check: "pass", invocation_template: "/po-handoff F-XXX" },
@@ -739,7 +739,7 @@ if (checkTransitions) {
       version: 1, feature_id: id, source_status: spec.source_status, source_owner: spec.source_owner, source_path: path,
       target_status: spec.target_status, target_owner: spec.target_owner, action, classification: "ready", supported: true,
       checks: [{ code: "source-readable", status: "pass", message: "Feature source is readable.", path }],
-      sources: [path, "knowledge/wiki/SCHEMA.md", "knowledge/wiki/index.md"],
+      sources: [path, "knowledge/wiki/SCHEMA.md", "knowledge/wiki/status-board.md"],
       invocations: { codex: "$" + spec.command + " " + id + suffix, claude: "/" + spec.command + " " + id + suffix },
     };
   };
@@ -783,7 +783,7 @@ if (checkTransitions) {
     payload.facts.transition_capability = {
       version: 2, mode: "copy-only", supported_actions: supportedActions, surfaces,
       snapshot: { fingerprint: "fp-v2", observed_at: "2026-09-08T12:00:00+02:00", consistent: true },
-      sources: ["knowledge/wiki/SCHEMA.md", "knowledge/wiki/index.md"],
+      sources: ["knowledge/wiki/SCHEMA.md", "knowledge/wiki/status-board.md"],
     };
     payload.blocker_facts = [];
     return payload;
@@ -1070,7 +1070,7 @@ if (checkConnectedBoard) {
         closeTransitionPreview("The dialog closed while Apply was in flight.");
         dataRefreshEnvelope = closedApplyEnvelope;
       } else dataRefreshEnvelope = afterEnvelope;
-      return reply({ schema_version: 1, operation_id: body.operation_id, state: "applied", applied_paths: ["knowledge/wiki/features/F-apply.md", "knowledge/wiki/index.md", "knowledge/wiki/log.md"], recovery_available: false });
+      return reply({ schema_version: 1, operation_id: body.operation_id, state: "applied", applied_paths: ["knowledge/wiki/features/F-apply.md", "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"], recovery_available: false });
     }
     if (url === "/api/board/v1/operations/" + opListId) {
       if (failNextOperationInspection) { failNextOperationInspection = false; return reply({ error: { code: "temporarily_unavailable", message: "Inspection response was unavailable." } }, 503); }
@@ -1094,7 +1094,7 @@ if (checkConnectedBoard) {
       if (operationId === opListId && (!originalAgentGrantRevoked || state.boardActor.participant_id === "agent-9")) return reply({ error: { code: "unauthorized", message: "Only another current human can recover this revoked-agent operation." } }, 403);
       if (operationId === lostOperationId) failGraphRefresh = true;
       discoveredPendingOperations = discoveredPendingOperations.filter(item => item.operation_id !== operationId);
-      const recoveredReceipt = { schema_version: 1, operation_id: operationId, state: "applied", applied_paths: ["knowledge/wiki/features/F-lost.md", "knowledge/wiki/index.md", "knowledge/wiki/log.md"], recovery_available: false, actor: operationId === opListId ? { participant_id: "agent-9", name: "Former Agent", kind: "agent" } : { participant_id: "human-7", name: "Safe Human", kind: "human" } };
+      const recoveredReceipt = { schema_version: 1, operation_id: operationId, state: "applied", applied_paths: ["knowledge/wiki/features/F-lost.md", "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"], recovery_available: false, actor: operationId === opListId ? { participant_id: "agent-9", name: "Former Agent", kind: "agent" } : { participant_id: "human-7", name: "Safe Human", kind: "human" } };
       if (operationId === opListId) recoveredReceipt.recovered_by = { participant_id: "human-7", name: "Safe Human", kind: "human" };
       return reply(recoveredReceipt);
     }
@@ -1468,7 +1468,7 @@ if (checkBoardDefects) {
   let sessionStatus = 200;
   let dataStatus = 200;
   let previewCount = 0;
-  const receiptFor = operationId => ({ schema_version: 1, operation_id: operationId, state: "applied", action: "po-handoff", feature_id: "F-live", applied_paths: ["knowledge/wiki/features/F-live.md", "knowledge/wiki/index.md", "knowledge/wiki/log.md"], recovery_available: false, actor });
+  const receiptFor = operationId => ({ schema_version: 1, operation_id: operationId, state: "applied", action: "po-handoff", feature_id: "F-live", applied_paths: ["knowledge/wiki/features/F-live.md", "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"], recovery_available: false, actor });
   globalThis.fetch = (path, options = {}) => {
     const url = String(path);
     calls.push({ path: url, options });

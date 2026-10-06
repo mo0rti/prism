@@ -19,6 +19,7 @@ from prism_cli.board_service import BoardError, BoardService
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.workflow_install import apply_install, plan_install
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index
 from tests.core_workflow_fixture import INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_board_service import (
     _journey_business_rule_page,
@@ -86,6 +87,8 @@ class BoardWorkspaceCase(unittest.TestCase):
         install = plan_install(self.root, name="Document review", apps=["backend"])
         self.assertEqual([], install["conflicts"])
         self.assertEqual("applied", apply_install(self.root, install)["status"])
+        # The installer adds pages to a wiki whose index it preserves; this workspace's index lists them all.
+        write_index(self.root)
 
         self.service = BoardService(self.root).start()
         self.addCleanup(self.service.close)
@@ -347,11 +350,13 @@ class DecisionSupersessionWorkflowTests(BoardWorkspaceCase):
         log = self.read(LOG_PATH).rstrip("\n")
         self.write(
             LOG_PATH,
-            f"{log}\n\n## 2026-10-08 decision-supersession | ADR-002\n- paths: {ADR_OLD}, {ADR_NEW}, {FEATURE_PATH}\n- evidence: {ADR_NEW}\n- by: Claude Code (confirmed by the maintainer)\n",
+            f"{log}\n\n## 2026-10-08 decision-supersession | ADR-002\n- paths: {ADR_OLD}, {ADR_NEW}, {FEATURE_PATH}, knowledge/wiki/index.md\n- evidence: {ADR_NEW}\n- by: Claude Code (confirmed by the maintainer)\n",
         )
+        write_index(self.root)
 
     def start(self) -> None:
         self.write(ADR_OLD, self.OLD_ADR)
+        write_index(self.root)
         claim = "- **Decided:** Sign-in uses server sessions ([ADR-001](../decisions/ADR-001-auth-sessions.md)).\n"
         self.ingest_feature(summary=SUMMARY + claim)
         self.assert_lint_clean()

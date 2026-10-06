@@ -24,7 +24,7 @@ class BoardOperationTests(unittest.TestCase):
         self.root = Path(temporary.name)
         apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))
         self.feature = "knowledge/wiki/features/F-001-document-review.md"
-        self.index = "knowledge/wiki/index.md"
+        self.board = "knowledge/wiki/status-board.md"
         self.log = "knowledge/wiki/log.md"
         source = self.root / "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
         source.parent.mkdir(parents=True)
@@ -55,7 +55,7 @@ class BoardOperationTests(unittest.TestCase):
     def partial(self, preview, operation="test-operation", crash=False):
         original = self.service._apply_write
         def interrupted(write, **kwargs):
-            if write["role"] == "index":
+            if write["role"] == "status-board":
                 if crash:
                     raise SimulatedCrash()
                 raise OSError("synthetic write failure")
@@ -99,14 +99,14 @@ class BoardOperationTests(unittest.TestCase):
         # Preserve unrelated work that arrives while the human reviews the
         # target row and remaining writes.
         extra = "| F-002 | Keep unrelated work | raw | po | not-needed |\n"
-        self.put(self.index, self.read(self.index) + extra)
+        self.put(self.board, self.read(self.board) + extra)
         self.put(self.log, self.read(self.log) + "\nExternal note during recovery review.\n")
         receipt = self.service.recover(self.actor, "agent-operation", inspected["recovery_review_revision"], True)
         self.assertEqual("applied", receipt["state"], receipt)
         self.assertEqual(agent.participant_id, receipt["actor"]["participant_id"])
         self.assertEqual(self.actor.participant_id, receipt["recovered_by"]["participant_id"])
         self.assertEqual(1, len(receipt["recovery_attempts"]))
-        self.assertIn(extra, self.read(self.index))
+        self.assertIn(extra, self.read(self.board))
         self.assertIn("External note during recovery review.", self.read(self.log))
         self.assertEqual(1, self.read(self.log).count(f"<!-- prism:board-history:v1 preview={preview['preview_id']} -->"))
         self.assertEqual(receipt, self.service.recover(self.actor, "agent-operation", inspected["recovery_review_revision"], True))
@@ -127,7 +127,7 @@ class BoardOperationTests(unittest.TestCase):
         self.put(self.feature, self.read(self.feature).replace("status: in-design", "status: ready-for-design"))
         # Use a distinct feature so unresolved agent work cannot overlap.
         self.put("knowledge/wiki/features/F-002-second-review.md", self.read(self.feature).replace("F-001", "F-002"))
-        self.put(self.index, self.read(self.index) + "| F-002 | Second review | ready-for-design | designer | not-needed |\n")
+        self.put(self.board, self.read(self.board) + "| F-002 | Second review | ready-for-design | designer | not-needed |\n")
         preview = self.preview("F-002")
         self.partial(preview, "human-operation", crash=True)
         other_grant = self.service.create_participant("Other human", "human", True)
@@ -145,11 +145,11 @@ class BoardOperationTests(unittest.TestCase):
             self.service.recover(other, "agent-operation", inspected["recovery_review_revision"], True)
         self.assertEqual("stale_recovery_review", error.exception.code)
         self.put(self.feature, self.read(self.feature) + "\nExternal relevant edit.\n")
-        index, log = self.read(self.index), self.read(self.log)
+        index, log = self.read(self.board), self.read(self.log)
         with self.assertRaises(BoardError) as error:
             self.service.recover(self.actor, "agent-operation", inspected["recovery_review_revision"], True)
         self.assertEqual("stale_recovery_review", error.exception.code)
-        self.assertEqual((index, log), (self.read(self.index), self.read(self.log)))
+        self.assertEqual((index, log), (self.read(self.board), self.read(self.log)))
         self.service.revoke_participant(self.actor.participant_id)
         with self.assertRaises(BoardError) as error:
             self.service.recover(self.actor, "agent-operation", inspected["recovery_review_revision"], True)
@@ -181,7 +181,7 @@ class BoardOperationTests(unittest.TestCase):
         self.assertEqual(2, len(receipt["recovery_attempts"]))
 
     def test_preview_requires_semantic_confirmation_and_does_not_edit_wiki(self):
-        before = {path: self.read(path) for path in (self.feature, self.index, self.log)}
+        before = {path: self.read(path) for path in (self.feature, self.board, self.log)}
         preview = self.service.preview_transition(self.actor, "F-001", "design-start")
         self.assertFalse(preview["applicable"])
         with self.assertRaises(BoardError) as error:
@@ -199,14 +199,14 @@ class BoardOperationTests(unittest.TestCase):
         self.assertEqual(1, self.read(self.log).count(f"<!-- prism:board-history:v1 preview={preview['preview_id']} -->"))
         self.assertEqual(receipts[0], self.service.operation(self.actor, "test-operation")["receipt"])
 
-    def test_unrelated_index_bytes_and_log_append_are_preserved(self):
+    def test_unrelated_status_board_bytes_and_log_append_are_preserved(self):
         preview = self.preview()
         extra = "| F-002 | Keep  exact spacing | raw | po | not-needed |\r\n"
-        self.put(self.index, self.read(self.index).replace("\r\n", "\n").replace("\n", "\r\n") + extra)
+        self.put(self.board, self.read(self.board).replace("\r\n", "\n").replace("\n", "\r\n") + extra)
         old_log = self.read(self.log) + "\r\nExternal human note: preserve these bytes.\r\n"
         self.put(self.log, old_log)
         self.assertEqual("applied", self.apply(preview)["state"])
-        self.assertIn(extra, self.read(self.index))
+        self.assertIn(extra, self.read(self.board))
         self.assertTrue(self.read(self.log).startswith(old_log))
 
     def test_relevant_change_and_target_row_change_reject_before_journaling(self):
@@ -217,10 +217,10 @@ class BoardOperationTests(unittest.TestCase):
         self.assertEqual("stale_preview", error.exception.code)
         self.assertEqual(0, self.service.store.connection.execute("SELECT COUNT(*) FROM operations").fetchone()[0])
         fresh = self.preview()
-        self.put(self.index, self.read(self.index).replace("| designer |", "| po |"))
+        self.put(self.board, self.read(self.board).replace("| designer |", "| po |"))
         with self.assertRaises(BoardError) as error:
             self.apply(fresh)
-        self.assertEqual("stale_index_row", error.exception.code)
+        self.assertEqual("stale_status_row", error.exception.code)
 
     def test_process_crash_recovers_recorded_remaining_files_after_restart(self):
         preview = self.preview()
@@ -234,19 +234,19 @@ class BoardOperationTests(unittest.TestCase):
         self.assertEqual(["applied", "pending", "pending"], [item["state"] for item in pending["remaining_changes"]])
         receipt = self.service.recover(self.actor, "test-operation")
         self.assertEqual("applied", receipt["state"], receipt)
-        self.assertIn("| in-design | designer |", self.read(self.index))
+        self.assertIn("| in-design | designer |", self.read(self.board))
         self.assertEqual(receipt, self.apply(preview))
 
     def test_partial_recovery_rejects_changed_relevant_source_without_more_writes(self):
         preview = self.preview()
         self.partial(preview)
-        index, log = self.read(self.index), self.read(self.log)
+        index, log = self.read(self.board), self.read(self.log)
         settings = "knowledge/wiki/SETTINGS.md"
         self.put(settings, self.read(settings) + "\nChanged relevant policy.\n")
         receipt = self.service.recover(self.actor, "test-operation")
         self.assertEqual("conflict", receipt["state"])
         self.assertIn("recovery_source_changed", receipt["conflicts"][0]["reason"])
-        self.assertEqual(index, self.read(self.index))
+        self.assertEqual(index, self.read(self.board))
         self.assertEqual(log, self.read(self.log))
 
     def test_partial_recovery_preserves_manual_edit_to_already_written_file(self):
@@ -275,7 +275,7 @@ class BoardOperationTests(unittest.TestCase):
     def test_unrelated_operation_can_finish_while_first_is_pending(self):
         feature2 = "knowledge/wiki/features/F-002-another-review.md"
         self.put(feature2, self.read(self.feature).replace("F-001", "F-002"))
-        self.put(self.index, self.read(self.index) + "| F-002 | Document review | ready-for-design | designer | not-needed |\n")
+        self.put(self.board, self.read(self.board) + "| F-002 | Document review | ready-for-design | designer | not-needed |\n")
         first, second = self.preview(), self.preview("F-002")
         self.partial(first, "first")
         receipt = self.apply(second, "second")
@@ -356,7 +356,7 @@ class BoardOperationTests(unittest.TestCase):
         self.put(self.log, self.read(self.log) + marker + "\nTruncated entry\n")
         receipt = self.service.recover(self.actor, "test-operation")
         self.assertEqual("conflict", receipt["state"])
-        self.assertIn("ready-for-design", self.read(self.index))
+        self.assertIn("ready-for-design", self.read(self.board))
 
     def test_calendar_change_rechecks_rules_without_inventing_source_edit(self):
         clock = Mock(wraps=date)

@@ -79,11 +79,11 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 ## An apply is rejected as stale
 
-**Symptom.** `apply` fails with status 409 and one of `stale_preview`, `stale_move`, `stale_write`, `stale_index_row` or `stale_read_revision`. In the board, a preview that was open when its feature changed says that the feature source changed and disables confirmation.
+**Symptom.** `apply` fails with status 409 and one of `stale_preview`, `stale_move`, `stale_write`, `stale_status_row`, `stale_index_entry` or `stale_read_revision`. In the board, a preview that was open when its feature changed says that the feature source changed and disables confirmation.
 
 **Cause.** A file that the preview depended on changed after the preview was made: someone edited the feature page, another operation applied, or new relevant context appeared. A source the skill must read can also appear after the preview, for example a design page created for the feature: `stale_preview` then says "a source this skill must read changed or appeared after the preview; preview again" and `details.paths` names it. Prism refuses to apply a preview whose basis has moved, so a confirmation never covers changes nobody reviewed.
 
-**Fix.** Nothing was written. In the board, choose **Preview again** to build a new preview from the current files; through MCP, read the current files again and create a new preview. Then review and confirm it. Unrelated `index.md` rows and `log.md` additions do not make a preview stale. If an operation was submitted and its outcome is unclear, retrieve its receipt with `operation` before retrying, as described under [Interrupted operations](shared-board.md#interrupted-operations).
+**Fix.** Nothing was written. In the board, choose **Preview again** to build a new preview from the current files; through MCP, read the current files again and create a new preview. Then review and confirm it. Unrelated `status-board.md` rows, `index.md` lines and `log.md` additions do not make a preview stale. If an operation was submitted and its outcome is unclear, retrieve its receipt with `operation` before retrying, as described under [Interrupted operations](shared-board.md#interrupted-operations).
 
 ## A preview is rejected for a digest
 
@@ -175,7 +175,7 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 ## Lint reports an evidence label, a decision, a source or a conflict
 
-**Symptom.** `prism wiki lint` reports one of `unlinked-claim`, `unknown-evidence-label`, `supersession-mismatch`, `superseded-decision-cited`, `processed-source-without-manifest`, `unresolved-conflict` or `malformed-conflict`. `supersession-mismatch` and `malformed-conflict` are errors; the others are warnings.
+**Symptom.** `prism wiki lint` reports one of `unlinked-claim`, `unknown-evidence-label`, `supersession-mismatch`, `superseded-decision-cited`, `processed-source-without-manifest`, `unresolved-conflict`, `malformed-conflict`, `missing-index-entry`, `orphan-index-entry` or `duplicate-index-entry`. `supersession-mismatch` and `malformed-conflict` are errors; the others are warnings.
 
 **Cause.** Lint checks the form of the records and never judges meaning:
 
@@ -188,8 +188,11 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 | `processed-source-without-manifest` | A `knowledge/intake/processed/<folder>/` has no `MANIFEST.md`. |
 | `unresolved-conflict` | A quarantined `CONFLICT.md` still has `status: open`. A non-empty quarantine is not a gate. |
 | `malformed-conflict` | A quarantined item has no `CONFLICT.md`, or the file lacks a valid status, a claim section or a linked `**Evidence:**`. |
+| `missing-index-entry` | A wiki page has no line in `index.md`. The message names the page. |
+| `orphan-index-entry` | An `index.md` line links a wiki path that is not a page of the wiki. |
+| `duplicate-index-entry` | A page has more than one line in `index.md`. |
 
-**Fix.** Link the evidence (a processed intake item, a record or a URL) or change the label. For a supersession, set both links (`supersedes` on the new ADR; `status: superseded` and `superseded-by` on the old one) and update the pages that cite the old ADR to link the new one. Add the manifest in a new, separate operation; processed items are not edited. Resolve a conflict by deciding which claim holds, making that edit to the page, setting `status: resolved` and adding a `## Resolution` section. Fix a malformed `CONFLICT.md` to the format in `SCHEMA.md`.
+**Fix.** Link the evidence (a processed intake item, a record or a URL) or change the label. For a supersession, set both links (`supersedes` on the new ADR; `status: superseded` and `superseded-by` on the old one) and update the pages that cite the old ADR to link the new one. Add the manifest in a new, separate operation; processed items are not edited. Add the missing `- [Label](path.md): one sentence in the present tense` line under the heading of the page's kind, and remove an orphan or duplicate line; the connected board writes these lines itself for every page it writes. A workspace that adopted the workflow with its own `index.md` keeps that file, so it gets one `missing-index-entry` warning for each page the installer added (`CONNECTED.md`, `status-board.md`, `direction.md`, `roadmap.md` and similar). Resolve a conflict by deciding which claim holds, making that edit to the page, setting `status: resolved` and adding a `## Resolution` section. Fix a malformed `CONFLICT.md` to the format in `SCHEMA.md`.
 
 ## dev-start or dev-done is blocked by an open dev question
 

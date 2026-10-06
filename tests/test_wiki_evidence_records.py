@@ -11,6 +11,7 @@ from pathlib import Path
 from prism_cli.wiki_lint import EVIDENCE_LABELS, lint_wiki
 from prism_cli.wiki_model import CONFLICT_STATUSES, intake_item_name_problem, parse_conflict_report
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index
 
 FIXTURES = Path(__file__).parent / "fixtures" / "wiki_contract"
 CHECK_DATE = date(2026, 10, 6)
@@ -42,6 +43,8 @@ class WorkspaceCase(unittest.TestCase):
         return path
 
     def lint(self):
+        # The index checks have their own tests: here every page on disk has its index line.
+        write_index(self.root)
         return lint_wiki(self.root, today=CHECK_DATE)
 
     def diagnostics(self, code: str) -> list:

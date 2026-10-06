@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from prism_cli.wiki_index import INDEX_FILE, ROOT_PAGE_KINDS, page_group, parse_index_entries
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, lint_wiki
 from prism_cli.wiki_model import (
     AppRequirementPage,
@@ -27,6 +28,25 @@ SEARCH_DIRECTORIES = {
     "app-requirement": "app-requirements",
     "api-contract": "api-contracts",
     "decision": "decisions",
+    "topic": "topics",
+    "research": "research",
+    "plan": "plans",
+}
+# The type a search result reports for a page found through the index, by the page's index group.
+_INDEX_GROUP_TYPES = {
+    "features": "feature",
+    "personas": "persona",
+    "business-rules": "business-rule",
+    "design": "design",
+    "app-requirements": "app-requirement",
+    "api-contracts": "api-contract",
+    "decisions": "decision",
+    "topics": "topic",
+    "research": "research",
+    "plans": "plan",
+    "advisory": "advisory",
+    "direction": "direction",
+    "meta": "meta",
 }
 from prism_cli.wiki_links import (  # noqa: E402
     linked_context_for_feature as _shared_linked_context_for_feature,
@@ -161,8 +181,14 @@ def wiki_search(root: Path, query: str) -> dict[str, Any]:
     else:
         results = _search_wiki_pages(wiki_root, normalized_query)
 
-    facts = {"query": query, "result_count": len(results), "results": results}
-    sources = _unique([str(wiki_root), *[result["path"] for result in results]])
+    facts = {
+        "query": query,
+        "result_count": len(results),
+        "index_match_count": sum(1 for result in results if "index_line" in result),
+        "results": results,
+    }
+    index_path = wiki_root / INDEX_FILE
+    sources = _unique([str(wiki_root), *([str(index_path)] if index_path.is_file() else []), *[result["path"] for result in results]])
     return _envelope(workspace_root, "wiki search", diagnostics, facts, sources)
 
 
@@ -259,33 +285,68 @@ def _matched_fields(query: str, fields: dict[str, str]) -> list[str]:
 
 
 def _search_wiki_pages(wiki_root: Path, query: str) -> list[dict[str, Any]]:
+    """Search the wiki, reading the general index first.
+
+    The index lines that contain the query name their pages without opening them. Those pages come
+    first, in index order, each with its index line and `index` among its matched fields; every page
+    of the page folders and the wiki root is then searched by its own fields, as before, so a page
+    that is not indexed, or whose line lacks the query, is still found.
+    """
+
     results: list[dict[str, Any]] = []
+    seen: set[Path] = set()
+
+    index_path = wiki_root / INDEX_FILE
+    index_hits: list[tuple[str, str]] = []
+    if index_path.is_file():
+        try:
+            text = index_path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeError):
+            text = ""
+        index_hits = [(entry.target, entry.line) for entry in parse_index_entries(text) if query in entry.line.lower()]
+    for target, line in index_hits:
+        path = wiki_root / target
+        group = page_group(target)
+        if group is None or not path.is_file() or path in seen:
+            continue
+        seen.add(path)
+        page = load_markdown_page(path)
+        results.append(_search_result(_INDEX_GROUP_TYPES[group], path, page, ["index", *_matched_fields(query, _page_fields(path, page))], line))
+
+    searched: list[tuple[str, Path]] = []
     for page_type, directory in SEARCH_DIRECTORIES.items():
-        for path in _markdown_files(wiki_root / directory):
-            page = load_markdown_page(path)
-            fields = {
-                "filename": path.name,
-                "body": page.body,
-            }
-            for key, value in page.frontmatter.items():
-                if isinstance(value, (str, int, float, bool)):
-                    fields[f"frontmatter.{key}"] = str(value)
-                elif isinstance(value, list):
-                    fields[f"frontmatter.{key}"] = " ".join(str(item) for item in value)
-            matched_fields = _matched_fields(query, fields)
-            if not matched_fields:
-                continue
-            result: dict[str, Any] = {
-                "type": page_type,
-                "path": str(path),
-                "matched_fields": matched_fields,
-            }
-            for key in ("id", "title", "feature-id", "app", "status", "owner"):
-                value = page.frontmatter.get(key)
-                if isinstance(value, str):
-                    result[key.replace("-", "_")] = value
-            results.append(result)
+        searched.extend((page_type, path) for path in _markdown_files(wiki_root / directory))
+    searched.extend((kind, wiki_root / name) for name, kind in ROOT_PAGE_KINDS.items() if (wiki_root / name).is_file())
+    for page_type, path in searched:
+        if path in seen:
+            continue
+        page = load_markdown_page(path)
+        matched_fields = _matched_fields(query, _page_fields(path, page))
+        if matched_fields:
+            seen.add(path)
+            results.append(_search_result(page_type, path, page, matched_fields, None))
     return results
+
+
+def _page_fields(path: Path, page: Any) -> dict[str, str]:
+    fields = {"filename": path.name, "body": page.body}
+    for key, value in page.frontmatter.items():
+        if isinstance(value, (str, int, float, bool)):
+            fields[f"frontmatter.{key}"] = str(value)
+        elif isinstance(value, list):
+            fields[f"frontmatter.{key}"] = " ".join(str(item) for item in value)
+    return fields
+
+
+def _search_result(page_type: str, path: Path, page: Any, matched_fields: list[str], index_line: str | None) -> dict[str, Any]:
+    result: dict[str, Any] = {"type": page_type, "path": str(path), "matched_fields": matched_fields}
+    if index_line is not None:
+        result["index_line"] = index_line
+    for key in ("id", "title", "feature-id", "app", "status", "owner"):
+        value = page.frontmatter.get(key)
+        if isinstance(value, str):
+            result[key.replace("-", "_")] = value
+    return result
 
 
 def _linked_context_for_feature(wiki_root: Path, feature_id: str) -> dict[str, list[str]]:

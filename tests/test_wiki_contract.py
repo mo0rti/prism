@@ -218,9 +218,9 @@ class WikiContractLintTests(unittest.TestCase):
                 any(diagnostic.code == "unresolved-open-questions" and diagnostic.feature_id == "F-001" for diagnostic in result.diagnostics)
             )
 
-    def test_index_drift_fixture_reports_source_of_truth_differences(self) -> None:
+    def test_status_board_drift_fixture_reports_source_of_truth_differences(self) -> None:
         result = self.lint_fixture("drifted")
-        drift = self.diagnostics_for(result, "index-frontmatter-drift")
+        drift = self.diagnostics_for(result, "status-board-frontmatter-drift")
 
         self.assertEqual(3, len(drift))
         self.assertTrue(any("status" in diagnostic.message for diagnostic in drift))

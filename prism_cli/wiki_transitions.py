@@ -957,6 +957,7 @@ def _evaluate_po_handoff(
         str(wiki_root / "SCHEMA.md"),
         str(wiki_root / "LIFECYCLE.md"),
         str(wiki_root / "index.md"),
+        str(wiki_root / "status-board.md"),
         *[str(workspace_root / relative) for relative in CAPABILITY_FILES.values()],
     ]
     for raw_target in extract_markdown_links(feature.page.body):
@@ -1410,6 +1411,7 @@ def _transition_sources(
         str(wiki_root / "SCHEMA.md"),
         str(wiki_root / "LIFECYCLE.md"),
         str(wiki_root / "index.md"),
+        str(wiki_root / "status-board.md"),
         *[str(workspace_root / relative) for relative in _ACTION_SURFACE_PATHS[spec.action].values()],
     ]
     feature_id = normalize_feature_id(feature.feature_id)
@@ -2134,7 +2136,7 @@ def _relevant_integrity_checks(
         if target is not None:
             linked_paths.add(target.resolve())
     relevant: list[WikiDiagnostic] = []
-    for filename in ("SCHEMA.md", "LIFECYCLE.md", "index.md"):
+    for filename in ("SCHEMA.md", "LIFECYCLE.md", "index.md", "status-board.md"):
         required_path = wiki_root / filename
         if _required_wiki_file_unreadable(required_path):
             relevant.append(
@@ -2158,10 +2160,11 @@ def _relevant_integrity_checks(
         if diagnostic.code in {"app-retired-in-scope", "api-surface-without-api-app"} and diagnostic_path == path:
             # The feature's own scope: the app-scope and api-surface checks report these as blocked.
             continue
-        is_global_contract = diagnostic.code in {"missing-required-wiki-file", "malformed-index"} and diagnostic_path.name in {
+        is_global_contract = diagnostic.code in {"missing-required-wiki-file", "malformed-index", "malformed-status-board"} and diagnostic_path.name in {
             "SCHEMA.md",
             "LIFECYCLE.md",
             "index.md",
+            "status-board.md",
         }
         diagnostic_feature_id = feature_id_from_path(diagnostic_path)
         if (

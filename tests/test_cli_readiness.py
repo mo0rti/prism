@@ -14,6 +14,7 @@ from prism_cli import cli
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, PROCESSED_INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 
 
 class ValidateReadinessTests(unittest.TestCase):
@@ -123,13 +124,8 @@ def _blocked_workspace(root: Path) -> Path:
         "---\n" + yaml.safe_dump(frontmatter, sort_keys=False).rstrip() + "\n---" + body,
         encoding="utf-8",
     )
-    (root / "knowledge/wiki/index.md").write_text(
-        "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n"
-        f"| F-001 | Document review | in-dev | dev | pending |\n",
-        encoding="utf-8",
-    )
+    write_status_board(root, "| F-001 | Document review | in-dev | dev | pending |\n")
+    write_index(root)
     return root
 
 

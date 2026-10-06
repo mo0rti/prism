@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_SKILLS = {
     "ask", "audit-feature", "board-review", "design-clarify", "design-handoff",
     "design-intake", "design-start", "dev-clarify", "dev-done", "dev-start", "feature-reopen",
-    "feature-status", "lint-wiki", "po-clarify", "po-handoff", "po-intake",
+    "feature-status", "ingest", "lint-wiki", "po-clarify", "po-handoff", "po-intake",
     "po-specify", "prep-sprint", "setup-project", "wiki-blockers", "wiki-owner",
     "wiki-app", "wiki-query", "wiki-show",
 }
@@ -103,6 +103,9 @@ class WorkflowAssetsTests(unittest.TestCase):
             "knowledge/wiki/SETTINGS.md",
             "knowledge/wiki/WIKI_REPORT.md",
             "knowledge/wiki/index.md",
+            "knowledge/wiki/status-board.md",
+            "knowledge/wiki/direction.md",
+            "knowledge/wiki/roadmap.md",
             "knowledge/wiki/log.md",
             "knowledge/wiki/advisory/BOARD.md",
             "knowledge/wiki/advisory/PROJECT_FOUNDATION.md",
@@ -118,6 +121,9 @@ class WorkflowAssetsTests(unittest.TestCase):
         self.assertIn("knowledge/wiki/SCHEMA.md", paths)
         self.assertIn("knowledge/wiki/CONNECTED.md", paths)
         self.assertIn("knowledge/wiki/index.md", paths)
+        self.assertIn("knowledge/wiki/status-board.md", paths)
+        self.assertIn("knowledge/wiki/topics/_FORMAT.md", paths)
+        self.assertIn("knowledge/wiki/direction.md", paths)
         self.assertIn("knowledge/intake/README.md", paths)
         self.assertTrue(all(path.startswith("knowledge/") for path in paths))
         self.assertGreaterEqual(len(files), 20)
@@ -163,6 +169,68 @@ class WorkflowAssetsTests(unittest.TestCase):
             history = build.build_asset()["previous_digests"]
         self.assertEqual({"AGENTS.md": ["c" * 64], connected: digests}, history)
         self.assertEqual(sorted(history), list(history))
+
+    def test_ingest_is_a_canonical_skill_in_both_layers_and_the_asset(self):
+        template = REPO_ROOT / "template"
+        codex = template / ".agents" / "skills" / "ingest"
+        self.assertTrue((codex / "SKILL.md.jinja").is_file())
+        self.assertTrue((template / ".claude" / "commands" / "ingest.md.jinja").is_file())
+        self.assertIn("allow_implicit_invocation: false", (codex / "agents" / "openai.yaml").read_text(encoding="utf-8"))
+
+        skill = get_skill("ingest")
+        self.assertEqual("ingest", skill["name"])
+        self.assertEqual([], next(item for item in list_skills() if item["name"] == "ingest")["actions"])
+        references = {item["path"] for item in skill["references"]}
+        for path in (
+            "knowledge/wiki/SCHEMA.md",
+            "knowledge/wiki/LIFECYCLE.md",
+            "knowledge/wiki/topics/_FORMAT.md",
+            "knowledge/wiki/research/_FORMAT.md",
+            "knowledge/wiki/plans/_FORMAT.md",
+            "knowledge/wiki/personas/_FORMAT.md",
+            "knowledge/wiki/business-rules/_FORMAT.md",
+            "knowledge/wiki/decisions/_FORMAT.md",
+            "knowledge/wiki/features/_FORMAT.md",
+            "knowledge/intake/README.md",
+            ".claude/commands/ingest.md",
+        ):
+            self.assertIn(path, references)
+        self.assertTrue(references.isdisjoint({"knowledge/wiki/index.md", "knowledge/wiki/status-board.md", "knowledge/wiki/direction.md"}))
+        instructions = skill["instructions"]
+        for needle in (
+            "any role",
+            "knowledge/wiki/index.md",
+            "knowledge/wiki/status-board.md",
+            "CONFLICT.md",
+            "MANIFEST.md",
+            "status: raw",
+            "never rewrite an existing feature, persona, business rule or decision",
+            "**Decided:**",
+        ):
+            self.assertIn(needle, instructions)
+        command = {item["path"]: item["content"] for item in skill["references"]}[".claude/commands/ingest.md"]
+        for needle in ("/ingest [folder-name]", "Any role", "knowledge/wiki/index.md", "CONFLICT.md", "MANIFEST.md"):
+            self.assertIn(needle, command)
+
+    def test_the_query_skills_read_the_index_first_in_both_layers(self):
+        skill = get_skill("wiki-query")
+        command = {item["path"]: item["content"] for item in skill["references"]}[".claude/commands/wiki-query.md"]
+        for text in (skill["instructions"], command):
+            flat = " ".join(text.split())
+            self.assertIn("reads `knowledge/wiki/index.md` first", flat)
+            self.assertIn("index_line", text)
+            self.assertIn("`knowledge/wiki/topics/`", text)
+        fallback = " ".join(skill["instructions"].split()).split("## Fallback path", 1)[1]
+        self.assertLess(fallback.index("`knowledge/wiki/index.md` first"), fallback.index("`knowledge/wiki/features/`"))
+
+    def test_the_lifecycle_skills_read_the_status_board_and_the_writing_skills_maintain_the_index(self):
+        for name in ("po-handoff", "design-start", "dev-start", "dev-done", "feature-status"):
+            with self.subTest(skill=name):
+                text = get_skill(name)["instructions"]
+                self.assertIn("status-board.md", text.replace("status board", "status-board.md"))
+        for name in ("po-intake", "design-intake", "ingest", "po-specify", "design-handoff", "board-review"):
+            with self.subTest(skill=name):
+                self.assertIn("index.md", get_skill(name)["instructions"])
 
     def test_checked_in_asset_matches_maintained_template_sources(self):
         result = subprocess.run(

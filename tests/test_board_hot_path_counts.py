@@ -58,33 +58,35 @@ METRICS = (
 
 # Ceilings per operation and metric as (slope, intercept): count(N) <= slope * N + intercept.
 # They sit just above what the code does today. Lower them when a change removes work.
+# The intercepts include the fixed pages and folders of every workspace: status-board.md, direction.md and
+# roadmap.md, and the topics, research and plans folders. No slope changed.
 CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
     "preview_transition": {
-        "page_parses": (1, 9),
-        "file_opens": (1, 32),
+        "page_parses": (1, 11),
+        "file_opens": (1, 38),
         "workspace_fingerprint": (0, 0),
         "validate_graph_inputs": (0, 2),
         "lint_wiki": (0, 1),
         "build_graph": (0, 0),
-        "scandir": (0, 80),
+        "scandir": (0, 93),
     },
     "query_blockers": {
-        "page_parses": (1, 9),
-        "file_opens": (3, 77),
+        "page_parses": (1, 11),
+        "file_opens": (3, 91),
         "workspace_fingerprint": (0, 2),
         "validate_graph_inputs": (0, 2),
         "lint_wiki": (0, 1),
         "build_graph": (0, 0),
-        "scandir": (0, 90),
+        "scandir": (0, 110),
     },
     "build_graph": {
-        "page_parses": (1, 9),
-        "file_opens": (4, 130),
+        "page_parses": (1, 11),
+        "file_opens": (4, 149),
         "workspace_fingerprint": (0, 3),
         "validate_graph_inputs": (0, 0),
         "lint_wiki": (0, 1),
         "build_graph": (0, 1),
-        "scandir": (0, 106),
+        "scandir": (0, 131),
     },
     # An unchanged workspace opens no file: the poller's stat gate trusts every old, unchanged file.
     "idle_scan": {
@@ -94,16 +96,16 @@ CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
         "validate_graph_inputs": (0, 1),
         "lint_wiki": (0, 0),
         "build_graph": (0, 0),
-        "scandir": (0, 36),
+        "scandir": (0, 42),
     },
     "apply": {
-        "page_parses": (2, 20),
-        "file_opens": (11, 340),
+        "page_parses": (2, 25),
+        "file_opens": (11, 384),
         "workspace_fingerprint": (0, 4),
         "validate_graph_inputs": (0, 13),
         "lint_wiki": (0, 3),
         "build_graph": (0, 1),
-        "scandir": (0, 450),
+        "scandir": (0, 539),
     },
 }
 

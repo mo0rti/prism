@@ -204,7 +204,7 @@ class AppRequirementPage:
 
 
 @dataclass(frozen=True)
-class IndexFeatureRow:
+class StatusBoardRow:
     feature_id: str
     title: str
     status: str
@@ -1024,20 +1024,20 @@ def history_date_fields(page: MarkdownPage) -> list[str]:
     ]
 
 
-def parse_index_feature_rows(index_path: Path) -> tuple[list[IndexFeatureRow], list[str]]:
-    try:
-        text = index_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        return [], [f"Unable to read index.md: {exc}"]
+def parse_status_board_rows(board_path: Path) -> tuple[list[StatusBoardRow], list[str]]:
+    """The feature rows of `status-board.md` and the problems that keep the table from being read."""
 
-    rows: list[IndexFeatureRow] = []
+    try:
+        text = board_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        return [], [f"Unable to read status-board.md: {exc}"]
+
+    rows: list[StatusBoardRow] = []
     errors: list[str] = []
     in_feature_table = False
     header_seen = False
     for raw_line in text.splitlines():
         line = raw_line.strip()
-        if line.startswith("## Other wiki pages"):
-            break
         if not line.startswith("|"):
             continue
         cells = [cell.strip() for cell in line.strip("|").split("|")]
@@ -1053,21 +1053,21 @@ def parse_index_feature_rows(index_path: Path) -> tuple[list[IndexFeatureRow], l
             continue
         feature_id, title, status, owner, advisory_review = cells[:5]
         if not feature_id:
-            errors.append("index.md contains a feature row with an empty ID.")
+            errors.append("status-board.md contains a feature row with an empty ID.")
             continue
         rows.append(
-            IndexFeatureRow(
+            StatusBoardRow(
                 feature_id=feature_id,
                 title=title,
                 status=status,
                 owner=owner,
                 advisory_review=advisory_review,
-                path=index_path,
+                path=board_path,
             )
         )
 
     if not header_seen:
-        errors.append("index.md is missing the feature status board table.")
+        errors.append("status-board.md is missing the feature status board table.")
     return rows, errors
 
 

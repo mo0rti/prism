@@ -21,6 +21,7 @@ from prism_cli.workflow_assets import list_skills
 from prism_cli.workflow_assets import _load as load_workflow_asset
 from tests import app_model_baseline
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 from tests.test_app_model_workspace import declare_two_apps, install_workflow
 
 
@@ -111,12 +112,8 @@ class WikiWorkspaceCase(unittest.TestCase):
         )
         path = self.wiki / "features" / "F-001-payout-summary.md"
         path.write_text(text, encoding="utf-8")
-        (self.wiki / "index.md").write_text(
-            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review |\n"
-            "|----|---------|--------|-------|--------------|\n"
-            f"| F-001 | Payout summary | {status} | {owner} | not-needed |\n",
-            encoding="utf-8",
-        )
+        write_status_board(self.root, f"| F-001 | Payout summary | {status} | {owner} | not-needed |\n")
+        write_index(self.root)
         return path
 
     def write_requirement(self, app: str, status: str = "pending") -> None:

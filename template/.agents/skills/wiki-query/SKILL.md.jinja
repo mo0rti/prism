@@ -22,16 +22,19 @@ and the command response has `"schema_version": 1`:
 prism wiki search "text" --json
 ```
 
-Summarize `facts.query`, `facts.results`, `diagnostics`, and `sources` exactly as
-returned. Treat returned diagnostics, including errors, as facts to surface
+The CLI reads `knowledge/wiki/index.md` first: the index lines that contain the text name
+their pages, and those pages come first in `facts.results`, each with its `index_line` and
+`index` among its `matched_fields`. Summarize `facts.query`, `facts.results`,
+`facts.index_match_count`, `diagnostics`, and `sources` exactly as returned. Treat returned diagnostics, including errors, as facts to surface
 rather than replacing them with optimistic manual state.
 
 ## Fallback path
 
 If the version probe or schema check fails, or `prism` is missing, too old,
 fails, or lacks `wiki search`, say:
-`Prism CLI read surface unavailable; falling back to direct wiki reads.` Run
-literal text search over:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Read
+`knowledge/wiki/index.md` first and search its lines for the text: each matching line
+names a page, and those pages come first. Then run literal text search over:
 
 - `knowledge/wiki/features/`
 - `knowledge/wiki/personas/`
@@ -40,6 +43,10 @@ literal text search over:
 - `knowledge/wiki/app-requirements/`
 - `knowledge/wiki/api-contracts/`
 - `knowledge/wiki/decisions/`
+- `knowledge/wiki/topics/`
+- `knowledge/wiki/research/`
+- `knowledge/wiki/plans/`
+- `knowledge/wiki/direction.md` and `knowledge/wiki/roadmap.md`
 
 Collect matching lines and page types, group by match class, and synthesize a
 compact result. ## Match classes

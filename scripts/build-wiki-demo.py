@@ -24,6 +24,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from prism_cli import __version__  # noqa: E402
+from prism_cli.wiki_index import build_index  # noqa: E402
 from prism_cli.workspace import write_workspace_manifest  # noqa: E402
 from prism_cli.wiki_transitions import ACTION_SPECS  # noqa: E402
 
@@ -612,8 +613,9 @@ def _write_populated_index(destination: Path, today: date) -> None:
         f"| {feature['id']} | [{feature['title']}](features/{feature['id']}-{feature['slug']}.md) | {feature['status']} | {feature['owner']} | {feature['advisory']} |"
         for feature in FEATURES
     ]
+    wiki_root = destination / "knowledge" / "wiki"
     _write_text(
-        destination / "knowledge" / "wiki" / "index.md",
+        wiki_root / "status-board.md",
         """# Feature Status Board
 
 This file is maintained by the AI agent. Do not edit directly.
@@ -622,15 +624,10 @@ This file is maintained by the AI agent. Do not edit directly.
 |----|---------|--------|-------|--------------|
 """
         + "\n".join(rows)
-        + """
-
-## Other wiki pages
-| Page | Type | Summary |
-|------|------|---------|
-| [SCHEMA.md](SCHEMA.md) | meta | Wiki conventions and operational rules |
-| [BOARD.md](advisory/BOARD.md) | config | Synthetic local advisory board state |
-""",
+        + "\n",
     )
+    # The general index lists every page the stage holds, one derived line each.
+    _write_text(wiki_root / "index.md", build_index(wiki_root))
 
 
 def _build_stage(destination: Path, stage: str, today: date) -> None:

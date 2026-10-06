@@ -177,6 +177,7 @@ Recommended first use:
 |------|-------------|-------|---------|
 | Shared | `/setup-project` | `$setup-project` | One-time project initialization that interviews you and builds the advisory board |
 | PO | `/po-intake [folder]` | `$po-intake [folder]` | Process raw PO notes into `raw` feature pages |
+| Shared | `/ingest [folder]` | `$ingest [folder]` | Process a pending folder, for any role, into a topic, research page, plan, direction, roadmap, persona, business rule, decision or feature |
 | PO | `/po-clarify` | `$po-clarify` | Answer open questions assigned to PO |
 | PO | `/po-specify [F-XXX]` | `$po-specify [F-XXX]` | Complete a `raw` feature and move it to `specified` |
 | PO | `/po-handoff [F-XXX]` | `$po-handoff [F-XXX]` | Hand off a feature to design |
@@ -237,6 +238,7 @@ Important wiki artifacts include:
 - `knowledge/wiki/features/`
 - `knowledge/wiki/app-requirements/`
 - `knowledge/wiki/index.md`
+- `knowledge/wiki/status-board.md`
 
 If you are new to the Prism workflow, continue with [wiki-workflow.md](wiki-workflow.md)
 after reading this page.

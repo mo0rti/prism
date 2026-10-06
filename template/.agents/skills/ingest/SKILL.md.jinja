@@ -1,0 +1,66 @@
+---
+name: ingest
+description: Process one pending intake folder into wiki pages of any kind, for any role. Use when turning files from `knowledge/intake/pending/` into a topic, research page, plan, direction, roadmap, persona, business rule, decision or new feature, with index lines and an intake manifest.
+---
+
+# Ingest
+
+Use this skill to process one pending intake folder into wiki pages. Any role can run it, and it can write any page kind. `$po-intake` and `$design-intake` remain the role-specific entry points for feature requests and design handoffs.
+
+## Usage
+
+`$ingest [folder-name]`
+
+`[folder-name]` is a pending folder named `YYYY-MM-DD-slug`, for example `2026-10-06-payments-research`.
+
+## Workflow
+
+1. Read `knowledge/wiki/SCHEMA.md` (its Ingest section lists the page kinds) and `knowledge/wiki/LIFECYCLE.md`
+2. Read `knowledge/wiki/index.md` and `knowledge/wiki/status-board.md`; the index lists every page, so use it to find the pages the source touches and read those pages
+3. Read all files in `knowledge/intake/pending/[folder-name]/`; if the folder is not named `YYYY-MM-DD-slug`, stop and ask the user to rename it
+4. Run a conflict check before any writes: compare every claim in the input with the pages you read, including features, personas, business rules and ADRs
+5. Choose the page kind for each part of the input with the Ingest table in the wiki schema, and read the `_FORMAT.md` of each kind you will write (topics, research, plans, personas, business rules, decisions, features)
+6. Show the user an interpretation summary and wait for confirmation: the pages to create, the pages to replace in place, the new features, the open questions and anything ambiguous
+7. If confirmed, write the pages:
+   - topic, research page, plan, `knowledge/wiki/direction.md` and `knowledge/wiki/roadmap.md`: create the page, or replace the existing page in place when the source changes what it says
+   - persona, business rule and decision: create the page; never rewrite an existing one. A new decision replaces an older one only through the decision-supersession workflow in the wiki schema
+   - feature: create it as `status: raw`, `owner: po` with its Summary, User story, Acceptance criteria, Open questions and App scope sections, under the `$po-intake` rules; `$po-specify` completes it. List only active apps of the workspace in `apps`
+8. Write every claim you take from the input with an evidence label, and link the processed path of the source file as the evidence of each Decided or Observed claim, for example `../../intake/processed/[folder-name]/notes.md` from a page one folder below the wiki root. `**Decided:**` is for what the user confirmed in the interpretation summary; gaps stay in the Open questions table of a feature and become `**Unknown:**` items elsewhere. List the processed path in the page's `sources`
+9. Add or replace the `knowledge/wiki/index.md` line of every page you write, add a `knowledge/wiki/status-board.md` row for each new feature, and append a `knowledge/wiki/log.md` entry in the log format that the wiki schema defines. The pages carry no date field; the log entry records when they were written
+10. Move the intake folder, under the same name, to `knowledge/intake/processed/[folder-name]/` and add `MANIFEST.md`, which lists every page you create or replace by its full relative path and, where the page has one, its canonical ID (for example `knowledge/wiki/features/F-001-slug.md (F-001)` or `knowledge/wiki/topics/payment-flows.md`); the connected board rejects a manifest that omits one
+
+## Rules
+
+- write-capable skill
+- do not write anything until the conflict check passes
+- if the input contradicts an existing page, quarantine the intake folder and stop: move it to `knowledge/intake/quarantined/[folder-name]/` with a `CONFLICT.md` in the format that `SCHEMA.md` defines (Conflict quarantine): front matter `status: open`, then an `## Existing claim` and an `## Incoming claim` section, each with `**Claim:**`, `**Scope:**` and a linked `**Evidence:**`; change no wiki page, index line, status board row or other file, and tell the user which pages the human must decide on
+- do not write anything until the user confirms the interpretation summary
+- never create a feature in any status other than `raw`
+- update or conflict: a source that refines a claim, or replaces an Observed claim with a newer observation, updates the page in place; a source that contradicts a Decided claim, a business rule or an ADR is a conflict, and when unsure you quarantine
+- never rewrite an existing feature, persona, business rule or decision, and never edit a processed intake item; corrected material is a new dated pending folder
+- an `index.md` line is one sentence in the present tense that states what the page says now, with no date and no "was" or "now" wording
+- do not invent requirements that are missing from the intake material
+- turn gaps or ambiguity into open questions instead of invented spec text
+- write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table of a feature) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
+
+## Canonical format reference
+
+Mirror the detailed workflow and write behavior from:
+
+- `.claude/commands/ingest.md`
+
+## Output behavior
+
+Return:
+
+- conflict summary or confirmation summary before writes
+- the pages created or replaced, by path and kind
+- any new feature IDs and titles
+- any open questions added
+- the processed intake folder path
+
+## Error and stop conditions
+
+- if the intake folder does not exist, return a clean missing-folder response
+- if the input contradicts existing wiki content, quarantine it with a `CONFLICT.md` and stop
+- if the user does not confirm the interpretation summary, stop without writing

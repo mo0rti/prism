@@ -24,7 +24,7 @@ source other than `done` + `none`.
 
 ## Read-only review and confirmation
 
-Resolve exactly one feature path and read SCHEMA, LIFECYCLE, index, the complete feature,
+Resolve exactly one feature path and read SCHEMA, LIFECYCLE, status board, the complete feature,
 linked design, requirements, API, delivery evidence, and workspace identity.
 Use the optional probe with the matching action, for example:
 
@@ -70,10 +70,10 @@ in-progress` (on one line). Name each of those pages by the same path in
 `- Affected artifacts:`. When no page changes, write a sentence such as `No requirement
 or API page is invalidated.`; the bullet cannot be empty or a bare `None`.
 
-Reread the feature, index, identity, and linked context immediately before asking
+Reread the feature, status board, identity, and linked context immediately before asking
 for confirmation and once after confirmation. On confirmation, update the feature
 route, set the pending revalidation domains, archive the prior delivery evidence,
-update the index, and append the log. Preserve prior history. Decline or cancel
+update the status board, and append the log. Preserve prior history. Decline or cancel
 means no mutation. If a multi-file write is partial, report exact changes and stop
 for fresh recovery; no transaction is implied.
 

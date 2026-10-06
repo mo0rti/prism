@@ -10,6 +10,7 @@ from typing import Any
 from prism_cli.app_model import WorkspaceModel
 from prism_cli.status import detect_setup_state, list_queue_items
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, lint_wiki
+from prism_cli.wiki_index import general_page_kind
 from prism_cli.wiki_links import NON_PAGE_FILENAMES, markdown_files, page_references_feature
 from prism_cli.wiki_model import (
     extract_markdown_links,
@@ -386,13 +387,23 @@ def _collect_edges(
             resolved = str(target)
             target_id = path_to_id.get(resolved)
             if target_id is None:
-                dangling.append({"from": node_id, "reference": raw_target, "path": node.path})
+                # A topic, research, plan, direction or roadmap page is not a graph node, and a link to one is not dangling.
+                if not _is_general_page(target, wiki_root):
+                    dangling.append({"from": node_id, "reference": raw_target, "path": node.path})
                 continue
             if target_id == node_id or (node_id, target_id) in specific_pairs:
                 continue
             edges.append(GraphEdge(source=node_id, target=target_id, kind="links-to", evidence="markdown-link"))
 
     return edges, dangling
+
+
+def _is_general_page(target: Path, wiki_root: Path) -> bool:
+    try:
+        relative = target.relative_to(wiki_root.resolve()).as_posix()
+    except ValueError:
+        return False
+    return general_page_kind(relative) is not None and target.is_file()
 
 
 def _section_text(body: str, heading_pattern: re.Pattern[str]) -> str:

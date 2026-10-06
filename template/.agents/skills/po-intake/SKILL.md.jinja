@@ -16,7 +16,7 @@ Use this skill to process one pending intake folder into structured wiki content
 ## Workflow
 
 1. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
-2. Read `knowledge/wiki/index.md`
+2. Read `knowledge/wiki/index.md` and `knowledge/wiki/status-board.md`
 3. Read `knowledge/wiki/personas/`
 4. Read `knowledge/wiki/business-rules/`
 5. Read all files in `knowledge/intake/pending/[folder-name]/`; if the folder is not named `YYYY-MM-DD-slug`, stop and ask the user to rename it
@@ -24,7 +24,7 @@ Use this skill to process one pending intake folder into structured wiki content
 7. Show the user an interpretation summary and wait for confirmation
 8. If confirmed, create or update the required wiki files. Every new feature is written as `status: raw`, `owner: po` with its Summary, User story, Acceptance criteria, Open questions and App scope sections; `$po-specify` completes it and moves it to `specified`. List only active apps of the workspace in `apps`: a retired app is rejected with `app-retired` (`app_retired` on the connected board)
 9. Write every claim you take from the input with an evidence label, and link the processed path of the source file as the evidence of each Decided or Observed claim, for example `../../intake/processed/[folder-name]/notes.md` from a feature page. `**Decided:**` is for what the user confirmed in the interpretation summary; gaps stay in the Open questions table
-10. Update `knowledge/wiki/index.md` and append a `knowledge/wiki/log.md` entry in the log format that the wiki schema defines. The new pages carry no date field; the log entry records when they were written
+10. Add the `knowledge/wiki/index.md` line of each page you create, add a `knowledge/wiki/status-board.md` row for each new feature, and append a `knowledge/wiki/log.md` entry in the log format that the wiki schema defines. The new pages carry no date field; the log entry records when they were written
 11. Move the intake folder, under the same name, to `knowledge/intake/processed/[folder-name]/` and add `MANIFEST.md`, which lists every page you create by its full relative path and its canonical ID (for example `knowledge/wiki/features/F-001-slug.md (F-001)`); the connected board rejects a manifest that omits one
 
 ## Rules

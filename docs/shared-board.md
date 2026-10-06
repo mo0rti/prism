@@ -183,8 +183,8 @@ Claude instruction folders are not required. Copying dispatches no agent and
 writes no lifecycle state. A stale or unavailable connection disables copying;
 static and legacy boards retain their existing tool-specific copy behavior.
 
-Skill discovery exposes 24 complete canonical skills. Connected writes are
-available for `po-intake`, `design-intake`, `ask`, `po-clarify`, `design-clarify`,
+Skill discovery exposes 25 complete canonical skills. Connected writes are
+available for `po-intake`, `design-intake`, `ingest`, `ask`, `po-clarify`, `design-clarify`,
 `dev-clarify`, `po-specify`, `po-handoff`, `design-start`, `design-handoff`,
 `dev-start`, `dev-done`, and `feature-reopen`. The three reopen routes are actions
 of the last skill. Other skills provide guidance or read operations: always
@@ -195,6 +195,22 @@ change; it then stops and reports the rejection
 ([Rejected proposals](#rejected-proposals)). A direct-file compatibility workflow
 requires an explicit human choice and follows the original skill's complete review
 and confirmation.
+
+### The index, the status board and the log are service-managed
+
+A proposal never supplies `knowledge/wiki/index.md`, `knowledge/wiki/status-board.md` or
+`knowledge/wiki/log.md` (rejected with `managed_file`); the preview carries their exact before and
+after text. `status-board.md` holds one row per feature, merged by feature ID. `index.md` is the
+general index of the wiki, one line per page: the board adds or replaces the line of each wiki
+page the operation writes, derived from the page's title and the first sentence of its summary
+(a persona uses its `## Who they are` section, a business rule its `## Rule` and a decision its
+`## Decision`; a superseded decision reads "ADR-NNN supersedes this decision."). Both merge by
+key: a row or line that changed after the preview is a conflict (`stale_status_row`,
+`stale_index_entry`), unrelated rows and lines are kept, applying twice changes nothing more,
+and an interrupted operation rolls forward from the recorded rows and lines. The index changes with
+every page the board writes, and a preview requires the participant's read of `index.md`, so an agent
+reads it again before each preview. A workspace needs
+both files, besides `SCHEMA.md` and `LIFECYCLE.md`, or the board stays read-only.
 
 ### Intake, dev answers and delivery evidence
 
@@ -209,6 +225,21 @@ and confirmation.
   `specified`. A page that leaves one of those sections empty is rejected with
   `required_section_missing`, which names the sections. Features that were
   `specified` before stay valid.
+- **`ingest` writes any page kind, for any role.** `po-intake` and `design-intake` stay the
+  role-specific entry points for features and design pages; `ingest` processes one pending
+  folder into a topic, research page, plan, `knowledge/wiki/direction.md`,
+  `knowledge/wiki/roadmap.md`, persona, business rule, decision (ADR) or new feature. The board
+  has participants, not roles, so any writable agent may use it. Its validator is built on the
+  intake validators: the moved folder, its `MANIFEST.md` (every written page listed by path and
+  canonical ID, rejected otherwise with `intake_manifest_required`, `intake_manifest_scope` or
+  `intake_manifest_incomplete`), the processed-source links and the quarantine rules are
+  those of `po-intake`; a new feature is held to every `po-intake` rule (`raw` + `po`, the five
+  required sections, no rewrite of an existing feature). A topic, research page, plan, direction
+  or roadmap page is created, or replaced in place when it exists (the proposal must have read
+  it). A persona, business rule or decision is created and never rewritten, except that a new
+  decision with `supersedes: ADR-NNN` must come with the old ADR changed in its status fields
+  only: `status: superseded` and `superseded-by`, with an unchanged body. `ingest` cannot write
+  design, requirement, API-contract or advisory pages, and a page in a sub-folder is refused.
 - **Intake pages link the processed folder.** A feature's `sources` lists paths under
   `knowledge/intake/processed/`. A proposal that lists a path under
   `knowledge/intake/pending/` is rejected with `intake_source_not_processed`, which
@@ -268,12 +299,12 @@ and confirmation.
   confirms that the contract says what the API surface means. A declared API surface with no
   page is rejected with `api_contract_required`.
 
-A transition changes the lifecycle fields of the feature's front matter (`status` and `owner`, and the advisory and revalidation fields where the action allows it) and writes no date, because pages carry none. It updates the feature's index row, which has no date column. Every apply appends one entry to `knowledge/wiki/log.md` in the log format that `SCHEMA.md` defines. A `design-start` by a participant named Riley wrote:
+A transition changes the lifecycle fields of the feature's front matter (`status` and `owner`, and the advisory and revalidation fields where the action allows it) and writes no date, because pages carry none. It updates the feature's row in `status-board.md`, which has no date column. Every apply appends one entry to `knowledge/wiki/log.md` in the log format that `SCHEMA.md` defines. A `design-start` by a participant named Riley wrote:
 
 ```text
 <!-- prism:board-history:v1 preview=27a3751e-2a5b-45bb-802e-d89658f34609 -->
 ## 2026-10-06 board-design-start | F-001
-- paths: knowledge/wiki/features/F-001-document-review.md, knowledge/wiki/index.md
+- paths: knowledge/wiki/features/F-001-document-review.md, knowledge/wiki/status-board.md
 - evidence: board preview 27a3751e-2a5b-45bb-802e-d89658f34609
 - by: Riley (human)
 <!-- prism:board-actor:v1 {"action":"design-start","kind":"human","name":"Riley","participant_id":"54448713-7e43-4b1d-9b24-e0f2b92bdcb9","preview_id":"27a3751e-2a5b-45bb-802e-d89658f34609"} -->
@@ -281,7 +312,7 @@ A transition changes the lifecycle fields of the feature's front matter (`status
 
 `paths` lists the files the operation wrote (`log.md` itself is left out), `evidence` is the board preview, followed by the processed intake folders a move creates, and `by` is the participant's name and kind. The two comments are the idempotence marker and the recorded actor. Existing entries are never edited.
 
-Relevant source changes invalidate the preview. Unrelated index rows and log additions are preserved. Direct filesystem edits are external changes with no invented participant attribution. Service access controls do not restrict a coding agent's independent filesystem permissions.
+Relevant source changes invalidate the preview. Unrelated status board rows, index lines and log additions are preserved. Direct filesystem edits are external changes with no invented participant attribution. Service access controls do not restrict a coding agent's independent filesystem permissions.
 
 ### Live updates and expired sessions
 
@@ -311,7 +342,8 @@ Only short excerpts of workspace text appear in an error.
 | Code | `details` |
 | --- | --- |
 | `clarify_answer_unlinked`, `design_answer_unlinked`, `requirement_answer_unlinked` | `path`, `section`, `resolved_questions` (numbers), `resolved_answers` (question number to the first 160 characters of its answer). One of those answers must appear verbatim in that section; case and whitespace are ignored. |
-| `write_path_unavailable` (403) | A skill writes Markdown pages directly in its wiki directories, for example `knowledge/wiki/features/F-001-export.md`, and the intake `MANIFEST.md` or `CONFLICT.md` of a processed or quarantined folder. A page in a sub-folder such as `knowledge/wiki/features/2026/F-001-export.md` is refused, because the wiki reads one folder level and would never lint, graph or query it. |
+| `managed_file` (403) | The proposal supplies `index.md`, `status-board.md` or `log.md`. The board derives their changes; leave them out. |
+| `write_path_unavailable` (403) | A skill writes Markdown pages directly in its wiki directories, for example `knowledge/wiki/features/F-001-export.md` (`ingest` also `topics/`, `research/`, `plans/`, `decisions/`, `direction.md` and `roadmap.md`), and the intake `MANIFEST.md` or `CONFLICT.md` of a processed or quarantined folder. A page in a sub-folder such as `knowledge/wiki/features/2026/F-001-export.md` is refused, because the wiki reads one folder level and would never lint, graph or query it. |
 | `stale_preview` (409) at `apply` | The preview's sources changed, or a source this skill must read changed or appeared after the preview. `details.paths` lists the sources that appeared. Nothing was written: read them and preview again. |
 | `invalid_path` (400) | For a path segment that Windows cannot hold: `path`, `segment` and `reason`. A segment may not contain `:` `<` `>` `"` `|` `?` `*` or a control character, end in a dot or a space, or be a reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1` to `COM9`, `LPT1` to `LPT9`, with or without an extension, in any case). Prism applies this on every operating system, so a workspace written on Linux or macOS can be checked out on Windows. The preview is rejected and nothing is written. This applies to paths a caller supplies. A name that already exists on disk and that Windows cannot hold is skipped when the board reads the workspace, as `list_workspace` skips it: it is not listed, read or fingerprinted, and `changes` reports it under `skipped_paths` (`count`, up to five `examples` and a `reason`) instead of failing. Rename such a file. |
 | `invalid_markdown`, `invalid_frontmatter` | `path`, `problem`, and for a YAML error `line` and `column` within the file. A page starts with `---`, a YAML mapping and a closing `---`. |
@@ -326,7 +358,16 @@ Only short excerpts of workspace text appear in an error.
 | `processed_source_immutable` (409) | `path` (the written or destination path) and `item` (the existing `knowledge/intake/processed/<folder>`). A processed intake item is immutable: put new or changed material in a new dated pending folder. |
 | `conflict_report_invalid` | `path`, `status` (the status found, or `null`) and `problems` (up to ten). A quarantine's `CONFLICT.md` needs `status: open`, an `## Existing claim` and an `## Incoming claim` section each with `**Claim:**`, `**Scope:**` and a linked `**Evidence:**`. |
 | `quarantine_write_scope` | A quarantine writes only its `CONFLICT.md`, with substantive text, and changes no wiki page. |
-| `intake_manifest_required`, `intake_manifest_scope`, `intake_manifest_incomplete` | A processed folder gets exactly one written file, `MANIFEST.md`. `po-intake` lists every page it creates by path and canonical ID; `design-intake` lists the design page and the feature. |
+| `intake_manifest_required`, `intake_manifest_scope`, `intake_manifest_incomplete` | A processed folder gets exactly one written file, `MANIFEST.md`. `po-intake` lists every page it creates by path and canonical ID; `design-intake` lists the design page and the feature; `ingest` lists every wiki page it writes by path and, where the page has one, canonical ID. |
+| `intake_existing_feature`, `intake_existing_page` | `po-intake` and `ingest` create features, personas and business rules and never rewrite an existing one. |
+| `invalid_topic`, `invalid_research`, `invalid_plan`, `invalid_direction`, `invalid_roadmap` | `path` and, for a status, `allowed`. The page's `kind` is that of its folder, a topic, research page or plan has a nonblank `title` and a `status` of its kind (topic `draft` or `current`; research `open` or `concluded`; plan `proposed`, `active`, `paused`, `done` or `dropped`), and `sources` is a nonempty list of the intake items, records or URLs it rests on. Other front matter fields are rejected with `unknown_frontmatter_fields`; the required sections (`required_section_missing`) are listed in `SCHEMA.md`. |
+| `wiki_path_invalid` | A topic, research page or plan is named with lowercase words joined by hyphens, such as `payment-flows.md`. |
+| `invalid_decision`, `decision_path_mismatch` | `path`. A new decision has an ADR-number `id` that its file name carries, a title, an ISO `date`, the status `proposed` or `accepted`, and the sections Context, Decision, Rationale and Consequences. |
+| `record_immutable` | `path` and `changed` (the front matter fields that differ). A decision is a record: `ingest` changes only `status: superseded` and `superseded-by` on it, with its body unchanged, and only when a new decision in the same proposal supersedes it. |
+| `supersession_incomplete` | `path`. A new decision's `supersedes` needs the existing old ADR in the proposal with `status: superseded` and `superseded-by` naming the new one, and the reverse. |
+| `stale_status_row`, `stale_index_entry` (409) at `apply` | The status board row of a feature, or the index line of a page, changed after the preview. Nothing was written: preview again. |
+| `duplicate_status_row`, `duplicate_index_entry` (409) | A feature has more than one row in `status-board.md`, or a page more than one line in `index.md`. Remove the duplicates, then preview again. |
+| `invalid_status_board` (409) | `status-board.md` lacks the canonical `\| ID \| Feature \| Status \| Owner \| Board Review \|` table. |
 | `required_section_missing` | For `po-specify`: `path` and `sections`, the empty sections to fill. The message gives a line to write under each. |
 | `clarify_stage_unavailable` | `path` and `status` (`done`): `dev-clarify` does not change a done feature; reopen it first. |
 | `api_contract_required` | `path` (the contract page to add), `feature_id`, `status` (`agreed`) and `sections` (the four required sections). |

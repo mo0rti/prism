@@ -27,6 +27,7 @@ from prism_cli.wiki_lint import lint_wiki
 from prism_cli.workflow_install import apply_install, plan_install
 from prism_cli.workspace import inspect_workspace
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 
 
 CHECK_DATE = date(2026, 9, 22)
@@ -228,12 +229,6 @@ def add_baseline_wiki_content(root: Path, wide_scope: list[str]) -> None:
         rows.append(
             f"| {frontmatter['id']} | {frontmatter['title']} | {frontmatter['status']} | {frontmatter['owner']} | not-needed |"
         )
-    (root / "knowledge/wiki/index.md").write_text(
-        "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n" + "\n".join(rows) + "\n",
-        encoding="utf-8",
-    )
     requirements = root / "knowledge/wiki/app-requirements"
     requirements.mkdir(parents=True, exist_ok=True)
     (requirements / "F-003-backend.md").write_text(
@@ -241,6 +236,8 @@ def add_baseline_wiki_content(root: Path, wide_scope: list[str]) -> None:
         "## What to build\nStore the export request.\n\n## Acceptance criteria\n- The request is stored.\n",
         encoding="utf-8",
     )
+    write_status_board(root, "\n".join(rows) + "\n")
+    write_index(root)
 
 
 def _quiet_clock() -> Mock:

@@ -51,7 +51,7 @@ finally {
 
 $wikiRoot = Join-Path $TargetDir "knowledge\wiki"
 
-Write-Utf8File (Join-Path $wikiRoot "index.md") @'
+Write-Utf8File (Join-Path $wikiRoot "status-board.md") @'
 # Feature Status Board
 
 This file is maintained by the AI agent. Do not edit directly.
@@ -65,13 +65,6 @@ This file is maintained by the AI agent. Do not edit directly.
 | F-014 | Goal Alerts | in-dev | dev | done |
 | F-020 | Auth Session Hardening | ready-for-dev | dev | done |
 | F-099 | Broken Fixture Page | unknown | none | not-needed |
-
-## Other wiki pages
-| Page | Type | Summary |
-|------|------|---------|
-| [SCHEMA.md](SCHEMA.md) | meta | Wiki conventions and operational rules |
-| [SETTINGS.md](SETTINGS.md) | config | Wiki read/query settings |
-| [BOARD.md](advisory/BOARD.md) | config | Advisory board composition |
 '@
 
 Write-Utf8File (Join-Path $wikiRoot "log.md") @'
@@ -1174,6 +1167,13 @@ See `knowledge/wiki/api-contracts/F-020.md`.
 ## Dependencies
 knowledge/wiki/app-requirements/F-020-backend.md
 '@
+
+# The general index lists every page of the wiki, one derived line each.
+$env:PYTHONPATH = $repoRoot
+python -B -c "import sys; from pathlib import Path; from prism_cli.wiki_index import build_index; wiki = Path(sys.argv[1]); (wiki / 'index.md').write_text(build_index(wiki), encoding='utf-8', newline=chr(10))" $wikiRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Writing the wiki index failed."
+}
 
 $timestampMap = @{
     (Join-Path $wikiRoot "features\F-010-saved-checkout.md") = [datetime]"2026-04-08"

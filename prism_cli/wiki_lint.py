@@ -35,7 +35,7 @@ from prism_cli.wiki_model import (
     feature_id_from_path,
     history_date_fields,
     parse_conflict_report,
-    parse_index_feature_rows,
+    parse_status_board_rows,
     parse_iso_date,
     parse_open_question_rows,
     parse_delivery_evidence,
@@ -48,6 +48,13 @@ from prism_cli.wiki_model import (
     read_wiki_pages,
     section_text,
     within_wiki_read_scope,
+)
+from prism_cli.wiki_index import (
+    GENERAL_PAGE_FOLDERS,
+    GENERAL_PAGE_STATUSES,
+    ROOT_PAGE_KINDS,
+    is_page_path,
+    parse_index_entries,
 )
 from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind, inspect_workspace, workspace_model
 
@@ -89,6 +96,7 @@ _NON_SOURCE_FILENAMES = {
     "SETTINGS.md",
     "WIKI_REPORT.md",
     "log.md",
+    "status-board.md",
 }
 # `## YYYY-MM-DD <operation> | <subject>`, then `paths`, `evidence` and `by` lines.
 _LOG_HEADING_PATTERN = re.compile(r"^## (\d{4}-\d{2}-\d{2}) [a-z][a-z0-9-]* \| \S.*$")
@@ -109,7 +117,16 @@ _LIST_ITEM_LINE = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+")
 _CLAIM_EVIDENCE_LINK = re.compile(r"\[[^\]]+\]\(\s*<?[^)\s>]+|https?://\S+")
 # Pages that state what is true now. Decisions and advisory reviews are records.
 _CURRENT_STATE_DIRECTORIES = frozenset(
-    {"api-contracts", "app-requirements", "business-rules", "design", "features", "personas"}
+    {
+        "api-contracts",
+        "app-requirements",
+        "business-rules",
+        "design",
+        "features",
+        "personas",
+        *GENERAL_PAGE_FOLDERS,
+        *ROOT_PAGE_KINDS,
+    }
 )
 _ADR_ID_PATTERN = re.compile(r"^ADR-\d+$", re.IGNORECASE)
 _FRONTMATTER_PAGE_DIRECTORIES = {
@@ -118,6 +135,7 @@ _FRONTMATTER_PAGE_DIRECTORIES = {
     "decisions",
     "design",
     "personas",
+    *GENERAL_PAGE_FOLDERS,
 }
 
 
@@ -264,9 +282,9 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
         diagnostics.append(_diag("missing-wiki-root", "error", wiki_root, "Missing knowledge/wiki directory."))
         return WikiLintResult(root=root, diagnostics=diagnostics)
 
-    # SETTINGS.md is optional by contract. SCHEMA.md, LIFECYCLE.md and index.md
-    # remain the structural files that lint requires before it can reason about the board.
-    for required in ("SCHEMA.md", "LIFECYCLE.md", "index.md"):
+    # SETTINGS.md is optional by contract. SCHEMA.md, LIFECYCLE.md, the index and the status
+    # board remain the structural files that lint requires before it can reason about the wiki.
+    for required in ("SCHEMA.md", "LIFECYCLE.md", "index.md", "status-board.md"):
         required_path = wiki_root / required
         if not required_path.exists():
             diagnostics.append(
@@ -360,33 +378,35 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
         )
     )
 
-    index_path = wiki_root / "index.md"
-    if index_path.exists():
-        index_rows, index_errors = parse_index_feature_rows(index_path)
-        for message in index_errors:
-            diagnostics.append(_diag("malformed-index", "error", index_path, message))
-        if not index_errors:
-            index_feature_ids = {normalize_feature_id(row.feature_id) for row in index_rows}
+    diagnostics.extend(_lint_index_entries(all_pages, wiki_root))
+
+    board_path = wiki_root / "status-board.md"
+    if board_path.exists():
+        board_rows, board_errors = parse_status_board_rows(board_path)
+        for message in board_errors:
+            diagnostics.append(_diag("malformed-status-board", "error", board_path, message))
+        if not board_errors:
+            board_feature_ids = {normalize_feature_id(row.feature_id) for row in board_rows}
             for feature_id, feature in features_by_id.items():
-                if feature_id not in index_feature_ids:
+                if feature_id not in board_feature_ids:
                     diagnostics.append(
                         _diag(
-                            "feature-missing-from-index",
+                            "feature-missing-from-status-board",
                             "error",
-                            index_path,
-                            f"Feature `{feature.feature_id}` has a feature page but no row in index.md.",
+                            board_path,
+                            f"Feature `{feature.feature_id}` has a feature page but no row in status-board.md.",
                             feature.feature_id,
                         )
                     )
-        for row in index_rows:
+        for row in board_rows:
             feature = features_by_id.get(normalize_feature_id(row.feature_id))
             if feature is None:
                 diagnostics.append(
                     _diag(
-                        "index-missing-feature",
+                        "status-board-missing-feature",
                         "error",
-                        index_path,
-                        f"index.md references `{row.feature_id}` but no matching feature page exists.",
+                        board_path,
+                        f"status-board.md references `{row.feature_id}` but no matching feature page exists.",
                         row.feature_id,
                     )
                 )
@@ -394,30 +414,30 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
             if feature.status and row.status != feature.status:
                 diagnostics.append(
                     _diag(
-                        "index-frontmatter-drift",
+                        "status-board-frontmatter-drift",
                         "error",
-                        index_path,
-                        f"index.md status for `{row.feature_id}` is `{row.status}` but feature frontmatter says `{feature.status}`.",
+                        board_path,
+                        f"status-board.md status for `{row.feature_id}` is `{row.status}` but feature frontmatter says `{feature.status}`.",
                         row.feature_id,
                     )
                 )
             if feature.owner and row.owner != feature.owner:
                 diagnostics.append(
                     _diag(
-                        "index-frontmatter-drift",
+                        "status-board-frontmatter-drift",
                         "error",
-                        index_path,
-                        f"index.md owner for `{row.feature_id}` is `{row.owner}` but feature frontmatter says `{feature.owner}`.",
+                        board_path,
+                        f"status-board.md owner for `{row.feature_id}` is `{row.owner}` but feature frontmatter says `{feature.owner}`.",
                         row.feature_id,
                     )
                 )
             if feature.advisory_review and row.advisory_review != feature.advisory_review:
                 diagnostics.append(
                     _diag(
-                        "index-frontmatter-drift",
+                        "status-board-frontmatter-drift",
                         "error",
-                        index_path,
-                        f"index.md board review for `{row.feature_id}` is `{row.advisory_review}` but feature frontmatter says `{feature.advisory_review}`.",
+                        board_path,
+                        f"status-board.md board review for `{row.feature_id}` is `{row.advisory_review}` but feature frontmatter says `{feature.advisory_review}`.",
                         row.feature_id,
                     )
                 )
@@ -1001,13 +1021,15 @@ def _log_entry_problem(heading: str, body: list[str]) -> str | None:
 
 
 def _wiki_directory(path: Path, wiki_root: Path) -> str | None:
-    """The wiki folder a page sits directly in, or ``None`` for a page elsewhere."""
+    """The wiki folder a page sits directly in (`direction.md` and `roadmap.md` stand for themselves), or ``None`` for a page elsewhere."""
 
     try:
         relative = _resolve(path).relative_to(_resolve(wiki_root))
     except ValueError:
         return None
-    return relative.parts[0] if len(relative.parts) == 2 else None
+    if len(relative.parts) == 2:
+        return relative.parts[0]
+    return relative.parts[0] if len(relative.parts) == 1 and relative.parts[0] in ROOT_PAGE_KINDS else None
 
 
 def _lint_evidence_labels(pages: list[MarkdownPage], wiki_root: Path) -> list[WikiDiagnostic]:
@@ -1233,6 +1255,74 @@ def _lint_intake_items(root: Path) -> list[WikiDiagnostic]:
     return diagnostics
 
 
+def _lint_index_entries(pages: list[MarkdownPage], wiki_root: Path) -> list[WikiDiagnostic]:
+    """Every wiki page has exactly one line in `index.md`, and every line names a page that exists.
+
+    The findings are warnings on the index file and carry no feature ID: a missing line is
+    housekeeping, so it never blocks a lifecycle action.
+    """
+
+    index_path = wiki_root / "index.md"
+    if not index_path.exists():
+        return []  # reported as missing-required-wiki-file
+    try:
+        text = index_path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError) as exc:
+        return [_diag("malformed-index", "error", index_path, f"Unable to read index.md: {exc}")]
+
+    by_target: dict[str, list[int]] = {}
+    for entry in parse_index_entries(text):
+        by_target.setdefault(entry.target, []).append(entry.number)
+    root = _resolve(wiki_root)
+    diagnostics: list[WikiDiagnostic] = []
+    page_paths: set[str] = set()
+    for page in pages:
+        try:
+            relative = _resolve(page.path).relative_to(root).as_posix()
+        except ValueError:
+            continue
+        if is_page_path(relative):
+            page_paths.add(relative)
+    for relative in sorted(page_paths):
+        lines = by_target.get(relative, [])
+        if not lines:
+            diagnostics.append(
+                _diag(
+                    "missing-index-entry",
+                    "warning",
+                    index_path,
+                    f"`{relative}` has no line in index.md. Add `- [Label]({relative}): one sentence on what the page says now` under its kind's heading.",
+                )
+            )
+        elif len(lines) > 1:
+            where = ", ".join(str(number) for number in lines)
+            diagnostics.append(
+                _diag(
+                    "duplicate-index-entry",
+                    "warning",
+                    index_path,
+                    f"`{relative}` has {len(lines)} lines in index.md (lines {where}). Keep one and remove the others.",
+                )
+            )
+    for target in sorted(by_target):
+        if target in page_paths:
+            continue
+        try:
+            exists = (wiki_root / target).is_file()
+        except (OSError, ValueError):
+            exists = False
+        if not exists:
+            diagnostics.append(
+                _diag(
+                    "orphan-index-entry",
+                    "warning",
+                    index_path,
+                    f"index.md line {by_target[target][0]} links `{target}`, which is not a page of this wiki. Remove the line or restore the page.",
+                )
+            )
+    return diagnostics
+
+
 def _lint_relative_links(
     pages: list[MarkdownPage],
     wiki_root: Path,
@@ -1316,9 +1406,10 @@ def _is_non_source_page(path: Path, wiki_root: Path) -> bool:
         "decisions",
         "design",
         "features",
-        "index.md",
         "personas",
         "app-requirements",
+        *GENERAL_PAGE_FOLDERS,
+        *ROOT_PAGE_KINDS,
     }
 
 
@@ -1354,6 +1445,10 @@ def _lint_auxiliary_page(page: MarkdownPage, wiki_root: Path) -> list[WikiDiagno
     except ValueError:
         return []
     directory = relative.parts[0]
+    if directory in GENERAL_PAGE_FOLDERS:
+        return _lint_general_page(page, GENERAL_PAGE_FOLDERS[directory])
+    if directory in ROOT_PAGE_KINDS:
+        return _lint_general_page(page, ROOT_PAGE_KINDS[directory])
     if directory == "api-contracts":
         return _lint_api_contract_page(page, feature_id)
     if directory == "design":
@@ -1419,6 +1514,17 @@ def _lint_persona_page(page: MarkdownPage) -> list[WikiDiagnostic]:
     diagnostics = _lint_aux_required_string(page, "id", "persona", None)
     diagnostics.extend(_lint_aux_required_string(page, "name", "persona", None))
     diagnostics.extend(_lint_aux_required_string_list(page, "sources", "persona", None))
+    return diagnostics
+
+
+def _lint_general_page(page: MarkdownPage, kind: str) -> list[WikiDiagnostic]:
+    """Topic, research, plan, direction and roadmap pages: `kind`, then `title` and `status` where the kind has them, and `sources`."""
+
+    diagnostics = _lint_aux_enum(page, "kind", f"{kind}-kind", {kind}, None)
+    if kind in GENERAL_PAGE_STATUSES:
+        diagnostics.extend(_lint_aux_required_string(page, "title", kind, None))
+        diagnostics.extend(_lint_aux_enum(page, "status", f"{kind}-status", set(GENERAL_PAGE_STATUSES[kind]), None))
+    diagnostics.extend(_lint_aux_required_string_list(page, "sources", kind, None))
     return diagnostics
 
 
@@ -1493,8 +1599,8 @@ def _requires_frontmatter(path: Path, wiki_root: Path) -> bool:
         relative = _resolve(path).relative_to(_resolve(wiki_root))
     except ValueError:
         return False
-    if len(relative.parts) < 2:
-        return False
+    if len(relative.parts) == 1:
+        return relative.parts[0] in ROOT_PAGE_KINDS
     directory = relative.parts[0]
     if directory in _FRONTMATTER_PAGE_DIRECTORIES:
         return True

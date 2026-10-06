@@ -21,9 +21,54 @@ The most important directories are:
 - `knowledge/wiki/business-rules/`
 - `knowledge/wiki/api-contracts/`
 - `knowledge/wiki/advisory/`
+- `knowledge/wiki/topics/`, `research/` and `plans/`, and the pages `direction.md` and `roadmap.md`
 
-The lifecycle operations create and refine that state. The read/query operations help
-agents and humans navigate it.
+`knowledge/wiki/index.md` lists every page, one line each; `knowledge/wiki/status-board.md`
+is the feature status board. The lifecycle operations create and refine that state. The
+read/query operations help agents and humans navigate it.
+
+## Page Kinds
+
+The wiki has homes for general knowledge beside the feature pipeline. Each kind has a
+format that `SCHEMA.md` defines, and the three folders also carry a `_FORMAT.md`.
+
+| Kind | Where | Holds |
+|---|---|---|
+| Topic | `topics/[slug].md` | A synthesis of what several sources and pages say about one subject. |
+| Research | `research/[slug].md` | The current answer to one question, and the gaps that remain. |
+| Plan | `plans/[slug].md` | The current status of one plan: goal, status, next steps, blockers. It keeps no history. |
+| Direction | `direction.md` | The current direction and the principles behind it. |
+| Roadmap | `roadmap.md` | What comes next. A date about the world, such as a launch date, may appear in it. |
+
+Every one starts with front matter that carries `kind` (the kind of its folder), `sources`
+(a list of the processed intake items, records or URLs it rests on) and, for a topic,
+research page or plan, a `title` and a `status` (topic: `draft` or `current`; research:
+`open` or `concluded`; plan: `proposed`, `active`, `paused`, `done` or `dropped`). A page
+carries no date about itself and labels its claims with the evidence labels below.
+`prism wiki lint` checks the front matter of each kind: for example `invalid-topic-kind`,
+`invalid-plan-status`, `missing-research-frontmatter` and `invalid-roadmap-sources`.
+
+## The Index And The Status Board
+
+`index.md` is the general index: one line per page, grouped by kind, in the present tense.
+
+```markdown
+## Topics
+- [Payment flows](topics/payment-flows.md): Payments settle within one business day.
+```
+
+Every page of the wiki has exactly one line, including `SCHEMA.md` and `status-board.md`
+(`_FORMAT.md` files, `index.md`, `log.md` and `WIKI_REPORT.md` are not pages). A changed
+page's line is replaced in place; the index has no dates and no narrative. The connected
+board writes the line of each page it writes, from the page's title and the first
+sentence of its summary; a skill that writes files directly maintains the lines itself.
+Agents read the index first to find the pages a task needs, and `prism wiki search` reads
+it before it opens any page.
+
+`status-board.md` is the feature status board, a dedicated view with the columns
+`| ID | Feature | Status | Owner | Board Review |`. The board merges its rows with the same
+guarantees as before: unrelated rows survive a concurrent write, and a row that changed
+after a preview is a conflict.
 
 ## Source-of-Truth Boundary
 
@@ -39,7 +84,7 @@ If `WIKI_REPORT.md` disagrees with the underlying wiki files, the wiki files win
 
 Wiki pages state what is true now. No page carries a date about itself: feature,
 persona, business-rule, design, app-requirement and API-contract pages have no
-`introduced`, `last-updated` or similar field, and `index.md` has no date column. A
+`introduced`, `last-updated` or similar field, and `index.md` and `status-board.md` have no date column. A
 date about the world, such as an effective date or a deadline, is a domain fact and
 may appear in a page.
 
@@ -56,7 +101,7 @@ entry has the same shape:
 
 ```text
 ## 2026-10-06 po-handoff | F-001
-- paths: knowledge/wiki/features/F-001-review-summary-export.md, knowledge/wiki/index.md
+- paths: knowledge/wiki/features/F-001-review-summary-export.md, knowledge/wiki/status-board.md
 - evidence: knowledge/intake/processed/2026-10-01-review-summary
 - by: Claude Code (confirmed by Riley)
 Handed to design after the board review.
@@ -82,6 +127,15 @@ comments inside the entry. `SCHEMA.md` defines the format.
 | `processed-source-without-manifest` | warning | A processed intake item without a `MANIFEST.md`. |
 | `unresolved-conflict` | warning | A quarantined `CONFLICT.md` with `status: open`. The message links the file. A non-empty quarantine is not a gate. |
 | `malformed-conflict` | error | A quarantined item without a `CONFLICT.md`, or one that does not follow the format. |
+| `missing-index-entry` | warning | A wiki page with no line in `index.md`. It names the page and never blocks a lifecycle action. |
+| `orphan-index-entry` | warning | An `index.md` line whose target is not a page of the wiki. |
+| `duplicate-index-entry` | warning | A page with more than one line in `index.md`. |
+| `malformed-index` | error | `index.md` cannot be read. |
+| `malformed-status-board` | error | `status-board.md` cannot be read or has no status table. |
+| `feature-missing-from-status-board` | error | A feature page with no row in `status-board.md`. |
+| `status-board-missing-feature` | error | A `status-board.md` row with no feature page. |
+| `status-board-frontmatter-drift` | error | A row's status, owner or board review differs from the feature's front matter. |
+| `missing-<kind>-frontmatter`, `missing-<kind>-kind`, `invalid-<kind>-kind`, `invalid-<kind>-title`, `missing-<kind>-status`, `invalid-<kind>-status`, `invalid-<kind>-sources` | error | The front matter of a topic, research page, plan, direction or roadmap page (`<kind>` is `topic`, `research`, `plan`, `direction` or `roadmap`). |
 
 Lint is mechanical: it checks the form of labels, links and records and never judges
 whether evidence supports a claim or whether two claims contradict each other.
@@ -89,8 +143,8 @@ Detecting a contradiction is the ingest skill's job.
 
 ### Evidence labels
 
-A claim on a feature, persona, business-rule, design, app-requirement or API-contract page
-starts with a bold run-in label: `**Decided:**`, `**Observed:**`, `**Proposed:**`,
+A claim on a feature, persona, business-rule, design, app-requirement, API-contract, topic,
+research, plan, direction or roadmap page starts with a bold run-in label: `**Decided:**`, `**Observed:**`, `**Proposed:**`,
 `**Assumed:**` or `**Unknown:**`.
 
 ```markdown
@@ -108,13 +162,16 @@ evidence.
 An ADR is a record. A decision is replaced by a new ADR, in one operation: the new ADR has
 `supersedes: ADR-NNN`; the old ADR gets `status: superseded` and `superseded-by: ADR-MMM`
 and its body stays unchanged; every current-state page that relied on the old decision is
-updated to link the new one; one log entry lists the paths. No board skill writes an ADR, so
-this is a direct-file operation that the user confirms.
+updated to link the new one; one log entry lists the paths. The user confirms the operation
+before it writes. Through the connected board, `ingest` creates the new ADR and changes only
+the status fields of the old one; it never rewrites a feature, persona or business rule, so
+those pages are updated by their own operation, and lint lists each one that still links the
+old ADR as `superseded-decision-cited`.
 
 ### Raw sources and conflicts
 
 A raw source is a folder `knowledge/intake/pending/YYYY-MM-DD-slug/`; the date is the day
-it was captured. `po-intake` and `design-intake` move it, under the same name, to
+it was captured. `po-intake`, `design-intake` and `ingest` move it, under the same name, to
 `knowledge/intake/processed/YYYY-MM-DD-slug/` with a `MANIFEST.md`. A processed item is
 immutable: new or corrected material is a new dated folder. Agent review packets and agent
 outputs are archived the same way (see `knowledge/intake/README.md` in a generated
@@ -144,6 +201,29 @@ status: open
 The existing page is not touched. A human decides, makes the chosen edit to the page,
 sets `status: resolved` and adds a `## Resolution` section that links the changed pages.
 The resolved record stays in `quarantined/`.
+
+## Ingest: Any Role, Any Page Kind
+
+`po-intake` and `design-intake` stay the role-specific entry points for feature requests and
+design handoffs. `ingest` is the general operation: any role can run it on a pending folder,
+and it can write any page kind: a topic, research page, plan, `direction.md`, `roadmap.md`,
+persona, business rule, decision or new feature.
+
+1. It reads `index.md`, finds the pages the source touches and reads them.
+2. It compares every claim with those pages. A contradiction is quarantined with a
+   `CONFLICT.md` and nothing else is written.
+3. It shows an interpretation summary and waits for the user's confirmation.
+4. It writes the pages. A topic, research page, plan, direction or roadmap page is created, or
+   replaced in place when it exists. A persona, business rule, decision or feature is created
+   and never rewritten; a new feature follows the `po-intake` rules (`status: raw`,
+   `owner: po`, the five required sections). A new decision may supersede an older one.
+5. The board adds or replaces the index line of every page, adds the status board row of a
+   new feature and appends the log entry.
+6. The folder moves to `processed/` with a `MANIFEST.md` that lists every page by its full
+   relative path and, where it has one, its canonical ID.
+
+The connected board validates this as `po-intake` does, and adds the rules for the new kinds
+(see the rejected-proposals table in [shared-board.md](shared-board.md)).
 
 ## Feature Lifecycle Actions
 
@@ -218,7 +298,7 @@ It is not:
 
 - the source of truth
 - a hand-maintained document
-- a replacement for `index.md` or feature pages
+- a replacement for `index.md`, `status-board.md` or feature pages
 
 ## `SETTINGS.md`
 
@@ -520,7 +600,10 @@ Purpose:
 
 It is not a numeric-ranking search engine. It should:
 
-- search the wiki files first
+- read `index.md` first: the index lines that contain the query name their pages, and those
+  pages come first (`prism wiki search` reports them with their `index_line`, and
+  `index_match_count` counts them)
+- then search the wiki files
 - group candidates by match class
 - return a compact typed result set
 

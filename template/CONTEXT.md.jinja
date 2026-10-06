@@ -53,7 +53,7 @@ Read the root agent file first, then defer to the platform-local guidance inside
 
 All product knowledge lives in `knowledge/wiki/`. Before implementing any feature:
 
-1. Read `knowledge/wiki/index.md` - confirm the feature is in `ready-for-dev` or `in-dev`
+1. Read `knowledge/wiki/status-board.md` - confirm the feature is in `ready-for-dev` or `in-dev`
    status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
    stop and inform the human - a board review should happen before implementation.
 2. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context
@@ -85,7 +85,7 @@ evidence/revalidation rules, proposed write set, and final confirmation.
 | Category | Commands |
 |----------|----------|
 | Setup | `/setup-project` |
-| PO | `/po-intake [folder]`, `/po-clarify`, `/po-specify [F-XXX]`, `/po-handoff [F-XXX]` |
+| PO | `/po-intake [folder]`, `/ingest [folder]`, `/po-clarify`, `/po-specify [F-XXX]`, `/po-handoff [F-XXX]` |
 | Designer | `/design-intake [F-XXX] [folder]`, `/design-clarify`, `/design-start [F-XXX]`, `/design-handoff [F-XXX]` |
 | Developer | `/prep-sprint`, `/dev-clarify`, `/dev-start [F-XXX]`, `/dev-done [F-XXX]` |
 | Lifecycle | `/feature-reopen [F-XXX] [specified\|in-design\|in-dev]` |
@@ -99,7 +99,7 @@ evidence/revalidation rules, proposed write set, and final confirmation.
 | Category | Commands |
 |----------|----------|
 | Setup | `$setup-project` |
-| PO | `$po-intake [folder]`, `$po-clarify`, `$po-specify [F-XXX]`, `$po-handoff [F-XXX]` |
+| PO | `$po-intake [folder]`, `$ingest [folder]`, `$po-clarify`, `$po-specify [F-XXX]`, `$po-handoff [F-XXX]` |
 | Designer | `$design-intake [F-XXX] [folder]`, `$design-clarify`, `$design-start [F-XXX]`, `$design-handoff [F-XXX]` |
 | Developer | `$prep-sprint`, `$dev-clarify`, `$dev-start [F-XXX]`, `$dev-done [F-XXX]` |
 | Lifecycle | `$feature-reopen [F-XXX] [specified\|in-design\|in-dev]` |

@@ -109,7 +109,7 @@ class HumanBrowser:
         expect(dialog).to_be_visible()
         expect(dialog.get_by_role("heading", name=re.compile(r"^Exact file changes"))).to_be_visible()
         feature_page = next((workspace / "knowledge/wiki/features").glob(f"{feature_id}-*.md")).relative_to(workspace).as_posix()
-        writes = board.read_writes(dialog, [feature_page, "knowledge/wiki/index.md", "knowledge/wiki/log.md"])
+        writes = board.read_writes(dialog, [feature_page, "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"])
         preview_text = dialog.inner_text()
         acknowledgement = board.acknowledgement(dialog)
         apply_button = board.apply_button(dialog)

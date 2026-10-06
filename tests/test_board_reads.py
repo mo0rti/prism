@@ -14,6 +14,7 @@ from prism_cli.workflow_install import apply_install, plan_install
 from prism_cli.wiki_query import wiki_show
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 
 
 class BoardReadTests(unittest.TestCase):
@@ -181,6 +182,8 @@ class PagedReadTests(unittest.TestCase):
         for feature_id in self.ids:
             page = _feature_page().replace("F-001", feature_id).replace("Document review", f"Document review {feature_id}")
             (self.root / f"knowledge/wiki/features/{feature_id}-document-review.md").write_text(page, encoding="utf-8", newline="\n")
+        write_status_board(self.root, "".join(f"| {feature_id} | Document review {feature_id} | raw | po | not-needed |\n" for feature_id in self.ids))
+        write_index(self.root)
         self.service = BoardService(self.root)
         self.addCleanup(self.service.close)
         grant = self.service.create_participant("Paging client", "agent")

@@ -372,6 +372,7 @@ def build_workspace(root: Path, count: int, seed: int = SEED) -> dict[str, Any]:
 
     from prism_cli.workflow_install import apply_install, plan_install
     from tests.core_workflow_fixture import create_core_workflow_fixture
+    from tests.wiki_files import write_index, write_status_board
 
     create_core_workflow_fixture(root)
     receipt = apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
@@ -392,13 +393,8 @@ def build_workspace(root: Path, count: int, seed: int = SEED) -> dict[str, Any]:
         index_rows.append(f"| {facts['id']} | {facts['title']} | {facts['status']} | {facts['owner']} | not-needed |\n")
         counts[facts["status"]] += 1
         counts["open_questions"] += sum(1 for _owner, is_open in feature_plan(number)["questions"] if is_open)
-    (root / "knowledge/wiki/index.md").write_text(
-        "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n" + "".join(index_rows),
-        encoding="utf-8",
-        newline="\n",
-    )
+    write_status_board(root, "".join(index_rows))
+    write_index(root)
     files = [path for path in (root / "knowledge").rglob("*") if path.is_file()]
     return {
         "features": count,

@@ -28,6 +28,7 @@ from prism_cli.workflow_install import apply_install, plan_install
 from prism_cli.workspace import MANIFEST_FILE, load_workspace
 from tests import app_model_baseline
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 from tests.test_workflow_assets import _load_build_script
 
 
@@ -435,12 +436,8 @@ class FeatureLaterTests(KnowledgeRootCase):
                 f"---\nfeature-id: F-001\napp: {app}\nstatus: done\n---\n\n## Acceptance criteria\n- The history is shown.\n",
                 encoding="utf-8",
             )
-        (self.wiki / "index.md").write_text(
-            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review |\n"
-            "|----|---------|--------|-------|--------------|\n"
-            "| F-001 | Invoice history | in-dev | dev | not-needed |\n",
-            encoding="utf-8",
-        )
+        write_status_board(self.root, "| F-001 | Invoice history | in-dev | dev | not-needed |\n")
+        write_index(self.root)
 
     def dev_done_checks(self) -> dict[str, dict]:
         """The dev-done checks as the connected board evaluates them for a human writer."""

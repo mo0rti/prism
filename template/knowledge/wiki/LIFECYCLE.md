@@ -143,7 +143,7 @@ unchanged and does not change a `done` feature. Open dev-owned questions block
 
 The `status` and `owner` fields together represent the feature's position in the
 lifecycle. An approved handoff updates both fields together in the feature page;
-updates across the feature page, index, and log are not a filesystem transaction.
+updates across the feature page, status board, and log are not a filesystem transaction.
 
 | Status | Owner | Meaning |
 |--------|-------|---------|
@@ -185,7 +185,7 @@ The PO handoff action is a confirmation-gated transition from
   accepts only `specified` + `po`; use `/po-specify` for the separate raw to
   specified structured-draft action.
   Do not invent a legacy adapter or a generic transition setter.
-- Read the current `SCHEMA.md`, `LIFECYCLE.md`, `index.md`, feature, linked context, workspace
+- Read the current `SCHEMA.md`, `LIFECYCLE.md`, `status-board.md`, feature, linked context, workspace
   identity, and any available source fingerprint before preparing a preview.
   Re-read them immediately before confirmation and once again before writing.
   Compare the unique path, identity, status, owner, advisory state, and fingerprint
@@ -206,8 +206,8 @@ The PO handoff action is a confirmation-gated transition from
   `pending` source unchanged. Never silently skip review.
 - A preview is not an approval or a status write. It must show the observed source
   fields, advisory and completeness checks, identity/fingerprint facts, exact
-  destination fields, and every feature/advisory/index/log file that would change.
-  Decline or cancel means no feature, advisory, index, or log mutation.
+  destination fields, and every feature/advisory/status board/index/log file that would change.
+  Decline or cancel means no feature, advisory, status board, index, or log mutation.
 - A dashboard or clipboard request is copy-only. It must not execute an agent,
   mutate the wiki, or move a board card. The intended process is a confirmed agent
   workflow followed by a fresh source snapshot. The Board derives columns from
@@ -235,7 +235,7 @@ The PO handoff action is a confirmation-gated transition from
 
 The generated workflow exposes these named, feature-only actions. Each action
 requires the exact source status/owner pair and writes only the proposed feature
-and the directly corresponding index/log or evidence records after final user
+and the directly corresponding status board, index, log or evidence records after final user
 confirmation.
 
 | Action | Exact source | Destination | Primary responsibility |
@@ -256,7 +256,7 @@ provide a generic status setter.
 
 #### Common action protocol
 
-1. Resolve one canonical feature path and read `SCHEMA.md`, this file, `index.md`, the
+1. Resolve one canonical feature path and read `SCHEMA.md`, this file, `status-board.md`, the
    feature, linked context, relevant requirements and API contracts, workspace
    identity, and current fingerprints. Intake folders remain outside these
    feature-only actions.
@@ -272,8 +272,8 @@ provide a generic status setter.
    question state, and affected app evidence. Show observed facts and the
    complete proposed body/metadata/write diff. Unknown or blocked checks require
    review or repair guidance.
-4. Every proposed write must name its exact feature, requirement, API, index,
-   log, evidence, revalidation, and reopen-history paths. Preserve unrelated
+4. Every proposed write must name its exact feature, requirement, API, status board,
+   index, log, evidence, revalidation, and reopen-history paths. Preserve unrelated
    statuses and API contracts; never reset a shared contract or all features as
    a convenience.
 5. Reread the source and context immediately before asking for final
@@ -300,11 +300,11 @@ an answered question states an API change. Open questions stay in the Open quest
 sections.
 
 `po-specify` must verify or author the complete required feature body from raw
-input. It must not merely change status, index, and log without showing and
+input. It must not merely change status, status board, index, and log without showing and
 confirming the body. When the raw page is incomplete, the confirmed write set
 includes the authored body. A raw page that already passes the complete
 structured-output gate may be preserved after verification; in that case the
-confirmed write set may contain only status/metadata, index, and log updates.
+confirmed write set may contain only status/metadata, status board, index, and log updates.
 An incomplete raw page is filled from supported facts and explicit questions
 owned by `po`, `designer`, or `dev`. No placeholder text is accepted as a
 requirement. Existing advisory state is preserved, and a pending advisory remains

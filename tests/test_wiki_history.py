@@ -9,10 +9,10 @@ import unittest
 from datetime import date
 from pathlib import Path
 
-from prism_cli.board_service import BoardError, BoardService, _render_index
+from prism_cli.board_service import BoardError, BoardService, _render_status_board
 from prism_cli.workflow_install import apply_install, plan_install
 from prism_cli.wiki_lint import lint_wiki
-from prism_cli.wiki_model import HISTORY_DATE_FIELDS, load_markdown_page, parse_index_feature_rows
+from prism_cli.wiki_model import HISTORY_DATE_FIELDS, load_markdown_page, parse_status_board_rows
 from tests import real_temp  # noqa: F401
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 
@@ -23,7 +23,7 @@ CHECK_DATE = date(2026, 9, 8)
 LOG_HEADER = "# Wiki log\n\nAppend-only.\n\n"
 GOOD_ENTRY = (
     "## 2026-09-01 po-intake | F-001\n"
-    "- paths: knowledge/wiki/features/F-001-checkout.md, knowledge/wiki/index.md\n"
+    "- paths: knowledge/wiki/features/F-001-checkout.md, knowledge/wiki/status-board.md\n"
     "- evidence: knowledge/intake/processed/checkout-brief\n"
     "- by: Claude Code (confirmed by Riley)\n"
 )
@@ -225,12 +225,14 @@ class SchemaVersionTests(WorkspaceCase):
 
 
 class StatusBoardColumnsTests(unittest.TestCase):
-    def test_the_template_board_and_other_pages_have_no_date_columns(self) -> None:
+    def test_the_template_status_board_and_index_have_no_dates(self) -> None:
+        board = (TEMPLATE_WIKI / "status-board.md").read_text(encoding="utf-8")
+        self.assertIn("| ID | Feature | Status | Owner | Board Review |\n", board.replace("\r\n", "\n"))
         index = (TEMPLATE_WIKI / "index.md").read_text(encoding="utf-8")
-        self.assertIn("| ID | Feature | Status | Owner | Board Review |\n", index.replace("\r\n", "\n"))
-        self.assertIn("| Page | Type | Summary |\n", index.replace("\r\n", "\n"))
-        self.assertNotIn("Introduced", index)
-        self.assertNotIn("| Date |", index)
+        for text in (board, index):
+            self.assertNotIn("Introduced", text)
+            self.assertNotIn("| Date |", text)
+            self.assertIsNone(re.search(r"\d{4}-\d{2}-\d{2}", text))
 
     def test_the_template_formats_carry_no_history_dates_outside_records(self) -> None:
         for relative in ("features/_FORMAT.md", "personas/_FORMAT.md", "business-rules/_FORMAT.md", "design/_FORMAT.md", "LIFECYCLE.md", "SCHEMA.md"):
@@ -242,29 +244,29 @@ class StatusBoardColumnsTests(unittest.TestCase):
                         continue  # the ADR (`date`) and advisory review (`reviewed`) records
                     self.assertNotIn(key, HISTORY_DATE_FIELDS, f"{relative}: {line}")
 
-    def test_the_index_parser_reads_the_five_column_board_only(self) -> None:
+    def test_the_status_board_parser_reads_the_five_column_board_only(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            index = Path(temporary) / "index.md"
+            index = Path(temporary) / "status-board.md"
             index.write_text("# Board\n\n| ID | Feature | Status | Owner | Board Review |\n|----|----|----|----|----|\n| F-001 | A | raw | po | not-needed |\n", encoding="utf-8")
-            rows, errors = parse_index_feature_rows(index)
+            rows, errors = parse_status_board_rows(index)
             self.assertEqual([], errors)
             self.assertEqual([("F-001", "A", "raw", "po", "not-needed")], [(r.feature_id, r.title, r.status, r.owner, r.advisory_review) for r in rows])
             index.write_text("# Board\n\n| ID | Feature | Status | Owner | Board Review | Introduced |\n|----|----|----|----|----|----|\n| F-001 | A | raw | po | not-needed | 2026-01-01 |\n", encoding="utf-8")
-            rows, errors = parse_index_feature_rows(index)
+            rows, errors = parse_status_board_rows(index)
             self.assertEqual([], rows)
-            self.assertEqual(["index.md is missing the feature status board table."], errors)
+            self.assertEqual(["status-board.md is missing the feature status board table."], errors)
 
     def test_the_board_renders_rows_without_a_date_and_refuses_a_dated_table(self) -> None:
         board = "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review |\n|----|---------|--------|-------|--------------|\n"
         row = {"id": "F-001", "title": "Checkout", "status": "specified", "owner": "po", "advisory_review": "not-needed"}
-        rendered = _render_index(board, {"F-001": None}, {"F-001": row})
+        rendered = _render_status_board(board, {"F-001": None}, {"F-001": row})
         self.assertIn("| F-001 | Checkout | specified | po | not-needed |\n", rendered)
-        replaced = _render_index(rendered, {"F-001": row}, {"F-001": {**row, "status": "in-design", "owner": "designer"}})
+        replaced = _render_status_board(rendered, {"F-001": row}, {"F-001": {**row, "status": "in-design", "owner": "designer"}})
         self.assertEqual(rendered.replace("specified | po", "in-design | designer"), replaced)
         dated = board.replace("Board Review |", "Board Review | Introduced |").replace("--------------|", "--------------|------------|")
         with self.assertRaises(BoardError) as raised:
-            _render_index(dated, {"F-001": None}, {"F-001": row})
-        self.assertEqual("invalid_index", raised.exception.code)
+            _render_status_board(dated, {"F-001": None}, {"F-001": row})
+        self.assertEqual("invalid_status_board", raised.exception.code)
 
 
 class BoardHistoryTests(unittest.TestCase):
@@ -304,9 +306,9 @@ class BoardHistoryTests(unittest.TestCase):
         self.assertEqual({**before_fields, "status": "in-design"}, dict(after.frontmatter))
         self.assertEqual(before_body, after.body)
         self.assertEqual([], [name for name in after.frontmatter if name in HISTORY_DATE_FIELDS])
-        index = self.read("knowledge/wiki/index.md")
-        self.assertIn("| F-001 | Document review | in-design | designer | not-needed |", index)
-        self.assertNotIn("Introduced", index)
+        board = self.read("knowledge/wiki/status-board.md")
+        self.assertIn("| F-001 | Document review | in-design | designer | not-needed |", board)
+        self.assertNotIn("Introduced", board)
 
         log_after = self.read("knowledge/wiki/log.md")
         self.assertTrue(log_after.startswith(log_before.rstrip("\n")), "The log is append-only.")
@@ -316,7 +318,7 @@ class BoardHistoryTests(unittest.TestCase):
             entry,
             r"\A\n*<!-- prism:board-history:v1 preview=" + re.escape(preview["preview_id"]) + r" -->\n"
             rf"## {today} board-design-start \| F-001\n"
-            r"- paths: knowledge/wiki/features/F-001-document-review\.md, knowledge/wiki/index\.md\n"
+            r"- paths: knowledge/wiki/features/F-001-document-review\.md, knowledge/wiki/status-board\.md\n"
             r"- evidence: board preview " + re.escape(preview["preview_id"]) + r"\n"
             r"- by: Reviewer \(human\)\n"
             r"<!-- prism:board-actor:v1 \{[^\n]*\} -->\n\Z",

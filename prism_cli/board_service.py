@@ -33,11 +33,24 @@ from prism_cli.app_model import (
 )
 from prism_cli.board_store import BoardLockError, BoardStore
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError, reparse_kind
+from prism_cli.wiki_index import (
+    GENERAL_PAGE_FOLDERS,
+    GENERAL_PAGE_SECTIONS,
+    GENERAL_PAGE_STATUSES,
+    ROOT_PAGE_KINDS,
+    general_page_kind,
+    index_line,
+    is_page_path,
+    parse_index_entries,
+    remove_index_lines,
+    render_index_lines,
+)
 from prism_cli.wiki_model import (
     api_surface_declared,
     intake_item_name_problem,
     is_pending_intake_source,
     parse_conflict_report,
+    parse_iso_date,
     processed_source_path,
     section_text,
     source_link_parts,
@@ -76,7 +89,7 @@ _LIFECYCLE_SKILLS = {
 _DEV_CLARIFY_REQUIREMENT_ORDER = ("What to build", "Technical constraints", "API contract reference", "Acceptance criteria")
 _DEV_CLARIFY_REQUIREMENT_SECTIONS = set(_DEV_CLARIFY_REQUIREMENT_ORDER)
 _QUESTION_SKILLS = {"po-clarify": "po", "design-clarify": "designer", "dev-clarify": "dev", "ask": None}
-_INTAKE_SKILLS = {"po-intake", "design-intake"}
+_INTAKE_SKILLS = {"po-intake", "design-intake", "ingest"}
 _WRITE_SKILLS = frozenset((*_LIFECYCLE_SKILLS, *_QUESTION_SKILLS, *_INTAKE_SKILLS))
 _WIKI_DIRS = (
     "features",
@@ -87,9 +100,23 @@ _WIKI_DIRS = (
     "api-contracts",
     "advisory",
     "decisions",
+    *GENERAL_PAGE_FOLDERS,
 )
-_INDEX_ROW = re.compile(r"^\|\s*(F-\d+)\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$", re.IGNORECASE)
-_INDEX_HEADER = re.compile(r"^\s*\|\s*ID\s*\|\s*Feature\s*\|\s*Status\s*\|\s*Owner\s*\|\s*Board Review\s*\|\s*$", re.IGNORECASE)
+# The wiki files the service writes itself: the general index (one line per page), the status board (one row per
+# feature) and the log. A proposal never supplies them.
+_INDEX_PATH = "knowledge/wiki/index.md"
+_STATUS_BOARD_PATH = "knowledge/wiki/status-board.md"
+_LOG_PATH = "knowledge/wiki/log.md"
+_MANAGED_PATHS = frozenset({_INDEX_PATH, _STATUS_BOARD_PATH, _LOG_PATH})
+# The write roles whose merge is by key: a feature row of the status board, a page line of the index.
+_ROW_ROLES = frozenset({"index", "status-board"})
+_WIKI_ROOT_PAGES = frozenset({"SCHEMA.md", "LIFECYCLE.md", "SETTINGS.md", "CONNECTED.md", "index.md", "status-board.md", "log.md", *ROOT_PAGE_KINDS})
+# The page folders where an ingest only creates pages and never rewrites one; a decision changes only by supersession.
+_INGEST_CREATE_ONLY = ("features", "personas", "business-rules", "decisions")
+_ADR_FIELDS = {"id", "title", "date", "status", "supersedes", "superseded-by"}
+_ADR_ID = re.compile(r"^ADR-\d+$")
+_STATUS_ROW = re.compile(r"^\|\s*(F-\d+)\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$", re.IGNORECASE)
+_STATUS_HEADER = re.compile(r"^\s*\|\s*ID\s*\|\s*Feature\s*\|\s*Status\s*\|\s*Owner\s*\|\s*Board Review\s*\|\s*$", re.IGNORECASE)
 _FRONTMATTER = re.compile(r"\A\ufeff?---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 
 
@@ -654,7 +681,7 @@ class BoardService:
                 actor,
                 preview_id,
                 action,
-                merge_index=True,
+                merge_managed=True,
                 merge_log=True,
             )
         source_paths = self._feature_context_paths(feature["path"], feature["frontmatter"])
@@ -752,9 +779,9 @@ class BoardService:
                 path = self._safe_path(move[endpoint], allow_missing=True)
                 current[endpoint] = self._tree_digest(path) if path.is_dir() else ("not-directory" if path.exists() else None)
             moves.append(current)
-        relevant_paths = set(intent.get("source_map", {})) - {"knowledge/wiki/index.md", "knowledge/wiki/log.md"}
+        relevant_paths = set(intent.get("source_map", {})) - _MANAGED_PATHS
         states = states if states is not None else self._operation_file_states(intent)
-        managed = {write["path"] for write in intent.get("writes", []) if write.get("role") in {"index", "log"}}
+        managed = {write["path"] for write in intent.get("writes", []) if write.get("role") in {*_ROW_ROLES, "log"}}
         # Their target-row/entry states are relevant, while unrelated rows and
         # history appended during the review remain independently mergeable.
         reviewed_states = [{key: value for key, value in state.items() if key != "current_digest" or state["path"] not in managed} for state in states]
@@ -976,8 +1003,8 @@ class BoardService:
         if not isinstance(manifest_digest, str) or manifest_digest != expected_digest:
             self._read_only_reason = "The workspace workflow assets do not match the installed canonical version; run the explicit workflow upgrade."
             return
-        if not all((self.root / "knowledge" / "wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "index.md")):
-            self._read_only_reason = "The workspace is missing the canonical wiki schema, lifecycle protocol or index."
+        if not all((self.root / "knowledge" / "wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "index.md", "status-board.md")):
+            self._read_only_reason = "The workspace is missing the canonical wiki schema, lifecycle protocol, index or status board."
             return
         self._board_id = parsed_id
         self._workflow_version = "1"
@@ -1092,7 +1119,7 @@ class BoardService:
                 403,
                 {"path": _clip(relative, 120), "approved": ["knowledge/wiki/", "knowledge/intake/"]},
             )
-        if parts[1] == "wiki" and (len(parts) < 3 or parts[2] not in {*_WIKI_DIRS, "SCHEMA.md", "LIFECYCLE.md", "SETTINGS.md", "index.md", "log.md", "PROJECT_FOUNDATION.md", "CONNECTED.md"}):
+        if parts[1] == "wiki" and (len(parts) < 3 or parts[2] not in {*_WIKI_DIRS, *_WIKI_ROOT_PAGES, "PROJECT_FOUNDATION.md"}):
             raise BoardError("path_not_approved", "The requested wiki path is outside the approved source folders.", 403)
         if parts[1] == "intake" and not (len(parts) == 3 and parts[2] == "README.md") and (len(parts) < 4 or parts[2] not in {"pending", "processed", "quarantined"}):
             raise BoardError("path_not_approved", "Intake access is limited to pending, processed, and quarantined entries.", 403)
@@ -1259,6 +1286,20 @@ class BoardService:
                 "knowledge/intake/processed/**/MANIFEST.md",
                 "knowledge/intake/quarantined/**/CONFLICT.md",
             ]
+        if name == "ingest":
+            return [
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/personas/*.md",
+                "knowledge/wiki/business-rules/*.md",
+                "knowledge/wiki/decisions/*.md",
+                "knowledge/wiki/topics/*.md",
+                "knowledge/wiki/research/*.md",
+                "knowledge/wiki/plans/*.md",
+                "knowledge/wiki/direction.md",
+                "knowledge/wiki/roadmap.md",
+                "knowledge/intake/processed/**/MANIFEST.md",
+                "knowledge/intake/quarantined/**/CONFLICT.md",
+            ]
         if name in {"po-clarify", "ask"}:
             return ["knowledge/wiki/features/*.md"]
         if name == "design-clarify":
@@ -1292,6 +1333,14 @@ class BoardService:
         if name == "po-intake":
             limitations.append(
                 "New features are created as `raw` + `po`. po-specify then completes the page and moves it to `specified`."
+            )
+        if name == "ingest":
+            limitations.append(
+                "Any role may ingest, into any of these page kinds: topic, research, plan, direction, roadmap, persona, business rule, decision (ADR) "
+                "or feature. A new feature meets every po-intake rule: `raw` + `po`, the five required sections, no rewrite of an existing feature. "
+                "A persona, business rule or decision is created, never rewritten, except that a new decision may supersede one by setting `supersedes` "
+                "and changing only the status fields of the old one. A topic, research, plan, direction or roadmap page is created or replaced in place. "
+                "The processed MANIFEST.md lists every page the proposal writes by its full relative path and, where it has one, its canonical ID."
             )
         if name in {"po-clarify", "design-clarify", "dev-clarify"}:
             limitations.append(
@@ -1330,7 +1379,8 @@ class BoardService:
             )
         if name in _WRITE_SKILLS:
             limitations.append(
-                "knowledge/wiki/index.md and knowledge/wiki/log.md are service-managed outputs; do not include them in proposal changes."
+                "knowledge/wiki/index.md (one line per page), knowledge/wiki/status-board.md (one row per feature) and knowledge/wiki/log.md "
+                "are service-managed outputs; do not include them in proposal changes."
             )
             return limitations
         if name in {"board-review", "setup-project"}:
@@ -1439,7 +1489,7 @@ class BoardService:
         preview_id: str,
         operation: str,
         *,
-        merge_index: bool,
+        merge_managed: bool,
         merge_log: bool,
         additional: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
@@ -1451,14 +1501,21 @@ class BoardService:
             writes.extend(additional)
         affected = [_parse_markdown(after_feature, feature_path)[0]]
         feature_id = str(affected[0].get("id", ""))
-        expected = {feature_id: self._index_existing_row(feature_id)}
-        after_row = _index_row(affected[0])
-        index_path = "knowledge/wiki/index.md"
-        index_before = self._read_text(self._safe_path(index_path))
-        index_after = _render_index(index_before, expected, {feature_id: after_row})
-        if merge_index and index_after != index_before:
-            writes.append(self._write_record(index_path, index_before, index_after, role="index", merge={"kind": "index", "expected_rows": expected, "after_rows": {feature_id: after_row}}))
-        log_path = "knowledge/wiki/log.md"
+        expected = {feature_id: self._status_existing_row(feature_id)}
+        after_row = _status_row(affected[0])
+        board_before = self._read_text(self._safe_path(_STATUS_BOARD_PATH))
+        board_after = _render_status_board(board_before, expected, {feature_id: after_row})
+        if merge_managed and board_after != board_before:
+            writes.append(
+                self._write_record(
+                    _STATUS_BOARD_PATH, board_before, board_after, role="status-board",
+                    merge={"kind": "status-board", "expected_rows": expected, "after_rows": {feature_id: after_row}},
+                )
+            )
+        index_write = self._index_merge_write({feature_path: after_feature}) if merge_managed else None
+        if index_write is not None:
+            writes.append(index_write)
+        log_path = _LOG_PATH
         log_before = self._optional_text(self._safe_path(log_path, allow_missing=True))
         log_entry = _actor_log_entry(actor, operation, feature_id, preview_id, [write["path"] for write in writes])
         log_after = _append_once(log_before or "", f"<!-- prism:board-history:v1 preview={preview_id} -->", log_entry)
@@ -1485,15 +1542,62 @@ class BoardService:
             "merge": merge,
         }
 
-    def _index_existing_row(self, feature_id: str) -> dict[str, str] | None:
-        index_path = self.root / "knowledge" / "wiki" / "index.md"
-        content = self._read_text(index_path)
-        matches = [match for line in content.splitlines() if (match := _INDEX_ROW.match(line)) and match.group(1).lower() == feature_id.lower()]
+    def _status_existing_row(self, feature_id: str) -> dict[str, str] | None:
+        content = self._read_text(self.root / "knowledge" / "wiki" / "status-board.md")
+        matches = [match for line in content.splitlines() if (match := _STATUS_ROW.match(line)) and match.group(1).lower() == feature_id.lower()]
         if len(matches) > 1:
-            raise BoardError("duplicate_index_row", f"Feature `{feature_id}` has duplicate rows in index.md.", 409)
+            raise BoardError("duplicate_status_row", f"Feature `{feature_id}` has duplicate rows in status-board.md.", 409)
         if not matches:
             return None
-        return _index_row_from_match(matches[0])
+        return _status_row_from_match(matches[0])
+
+    def _index_existing_line(self, page: str) -> str | None:
+        """The one index line that links the wiki page `page` (a wiki-relative path), or None."""
+
+        content = self._read_text(self.root / "knowledge" / "wiki" / "index.md")
+        matches = [entry.line for entry in parse_index_entries(content) if entry.target == page]
+        if len(matches) > 1:
+            raise BoardError("duplicate_index_entry", f"Wiki page `{_clip(page, 120)}` has more than one line in index.md.", 409)
+        return matches[0] if matches else None
+
+    def _index_merge_write(self, pages: Mapping[str, str]) -> dict[str, Any] | None:
+        """The index.md write that gives each wiki page in `pages` (workspace path to text) its current line, or None when none changes.
+
+        The line comes from the page's own title and summary, so the page and its line are written together.
+        """
+
+        expected: dict[str, str | None] = {}
+        after: dict[str, str] = {}
+        prefix = "knowledge/wiki/"
+        for relative, content in sorted(pages.items()):
+            page = relative[len(prefix):] if relative.startswith(prefix) else ""
+            if not is_page_path(page):
+                continue
+            frontmatter, body = _parse_markdown(content, relative)
+            line = index_line(page, frontmatter, body)
+            current = self._index_existing_line(page)
+            if current != line:
+                expected[page] = current
+                after[page] = line
+        if not after:
+            return None
+        before = self._read_text(self._safe_path(_INDEX_PATH))
+        return self._write_record(
+            _INDEX_PATH, before, render_index_lines(before, after), role="index",
+            merge={"kind": "index", "expected_rows": expected, "after_rows": after},
+        )
+
+    def _managed_rows(self, role: str, keys: Iterable[str]) -> dict[str, Any]:
+        """The current row (status board) or line (index) of each key."""
+
+        reader = self._status_existing_row if role == "status-board" else self._index_existing_line
+        return {key: reader(key) for key in keys}
+
+    @staticmethod
+    def _render_managed(role: str, current: str, expected: Mapping[str, Any], after: Mapping[str, Any]) -> str:
+        if role == "status-board":
+            return _render_status_board(current, expected, after)
+        return render_index_lines(current, after)
 
     def _optional_text(self, path: Path) -> str | None:
         return self._read_text(path) if path.exists() else None
@@ -1717,7 +1821,7 @@ class BoardService:
         return None
 
     def _all_board_revision_paths(self) -> set[str]:
-        paths = {"prism.workspace.yml", "knowledge/wiki/index.md", "knowledge/wiki/log.md"}
+        paths = {"prism.workspace.yml", *_MANAGED_PATHS}
         wiki = self.root / "knowledge" / "wiki"
         for path in wiki.rglob("*.md"):
             if not path.name.startswith("_"):
@@ -1790,8 +1894,8 @@ class BoardService:
                 raise BoardError("duplicate_change", f"Path `{relative}` appears more than once in this proposal.", 400)
             if len(item["content"].encode("utf-8")) > _MAX_TEXT_FILE:
                 raise BoardError("text_file_limit", f"Proposed file `{relative}` exceeds 512 KiB.", 413)
-            if relative in {"knowledge/wiki/index.md", "knowledge/wiki/log.md"}:
-                raise BoardError("managed_file", "index.md and log.md are generated and merged by BoardService.", 403)
+            if relative in _MANAGED_PATHS:
+                raise BoardError("managed_file", "index.md, status-board.md and log.md are generated and merged by BoardService.", 403)
             self._assert_skill_write_path(skill, relative)
             supplied[relative] = item["content"]
         if not supplied:
@@ -1874,23 +1978,30 @@ class BoardService:
             self._write_record(relative, before[relative], content, role="canonical")
             for relative, content in sorted(supplied.items())
         ]
-        index_keys: dict[str, dict[str, str] | None] = {}
-        index_after_rows: dict[str, dict[str, str]] = {}
+        status_keys: dict[str, dict[str, str] | None] = {}
+        status_after_rows: dict[str, dict[str, str]] = {}
         for relative in feature_changes:
             after_fm = after_frontmatter[relative]
             feature_id = str(after_fm.get("id", ""))
             before_fm = before_frontmatter[relative]
             if before_fm is None or any(before_fm.get(key) != after_fm.get(key) for key in ("status", "owner", "advisory-review")):
-                index_keys[feature_id] = self._index_existing_row(feature_id)
-                index_after_rows[feature_id] = _index_row(after_fm)
-        if index_keys:
-            index_path = "knowledge/wiki/index.md"
-            index_before = self._read_text(self._safe_path(index_path))
-            index_after = _render_index(index_before, index_keys, index_after_rows)
-            writes.append(self._write_record(index_path, index_before, index_after, role="index", merge={"kind": "index", "expected_rows": index_keys, "after_rows": index_after_rows}))
+                status_keys[feature_id] = self._status_existing_row(feature_id)
+                status_after_rows[feature_id] = _status_row(after_fm)
+        if status_keys:
+            board_before = self._read_text(self._safe_path(_STATUS_BOARD_PATH))
+            board_after = _render_status_board(board_before, status_keys, status_after_rows)
+            writes.append(
+                self._write_record(
+                    _STATUS_BOARD_PATH, board_before, board_after, role="status-board",
+                    merge={"kind": "status-board", "expected_rows": status_keys, "after_rows": status_after_rows},
+                )
+            )
+        index_write = self._index_merge_write(supplied)
+        if index_write is not None:
+            writes.append(index_write)
 
         log_subject = ", ".join(sorted(str(after_frontmatter[p].get("id")) for p in feature_changes)) or _move_subject(normalized_moves) or skill
-        log_before = self._optional_text(self._safe_path("knowledge/wiki/log.md", allow_missing=True))
+        log_before = self._optional_text(self._safe_path(_LOG_PATH, allow_missing=True))
         log_entry = _actor_log_entry(
             actor,
             skill,
@@ -1900,7 +2011,7 @@ class BoardService:
             [move["destination"] for move in normalized_moves],
         )
         log_after = _append_once(log_before or "", f"<!-- prism:board-history:v1 preview={preview_id} -->", log_entry)
-        writes.append(self._write_record("knowledge/wiki/log.md", log_before, log_after, role="log", merge={"kind": "log", "marker": f"preview={preview_id}", "entry": log_entry}))
+        writes.append(self._write_record(_LOG_PATH, log_before, log_after, role="log", merge={"kind": "log", "marker": f"preview={preview_id}", "entry": log_entry}))
 
         context_paths = {"prism.workspace.yml", "knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md"}
         for relative, text in supplied.items():
@@ -1910,7 +2021,7 @@ class BoardService:
                 context_paths.add(relative)
         for relative in normalized_revisions:
             context_paths.add(relative)
-        source_map = self._fingerprint_paths(context_paths - {"knowledge/wiki/index.md", "knowledge/wiki/log.md", *supplied.keys()})
+        source_map = self._fingerprint_paths(context_paths - {*_MANAGED_PATHS, *supplied.keys()})
         source_revision = _revision(source_map)
         checks = operation["checks"]
         classification = operation["classification"]
@@ -1950,9 +2061,14 @@ class BoardService:
                 self._safe_path(relative, allow_missing=True)
                 self._assert_processed_item_is_new(relative)
                 return
+        if skill == "ingest" and len(parts) == 3 and parts[1] == "wiki" and parts[2] in ROOT_PAGE_KINDS:
+            self._safe_path(relative, allow_missing=True)
+            return
         allowed: set[str]
         if skill == "po-intake":
             allowed = {"features", "personas", "business-rules"}
+        elif skill == "ingest":
+            allowed = {*_INGEST_CREATE_ONLY, *GENERAL_PAGE_FOLDERS}
         elif skill == "design-intake":
             allowed = {"features", "design"}
         elif skill in {"po-clarify", "design-clarify", "dev-clarify", "ask"}:
@@ -2029,6 +2145,15 @@ class BoardService:
                 for path in directory.rglob("*.md"):
                     self._reject_reparse(path, include_leaf=True)
                     required.add(path.relative_to(self.root).as_posix())
+        elif skill == "ingest":
+            # A page of a create-only kind is compared with every existing page of its kind; a replaced page is read above.
+            written = {PurePosixPath(path).parts[2] for path in supplied if path.startswith("knowledge/wiki/") and len(PurePosixPath(path).parts) == 4}
+            for folder in _INGEST_CREATE_ONLY:
+                directory = self._safe_path(f"knowledge/wiki/{folder}", allow_missing=True)
+                if folder in written and directory.is_dir():
+                    for path in directory.rglob("*.md"):
+                        self._reject_reparse(path, include_leaf=True)
+                        required.add(path.relative_to(self.root).as_posix())
 
         for move in moves:
             source = str(move["source"])
@@ -2298,15 +2423,15 @@ class BoardService:
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` requires a design-exemption-reason when design is not applicable.", 409)
         if ("design" in frontmatter) != ("design-exemption-reason" in frontmatter):
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` must keep the design exemption fields together.", 409)
-        if skill in {"po-intake", "po-specify"}:
+        if skill in {"po-intake", "po-specify", "ingest"}:
             _require_headings(body, ("Summary", "User story", "Acceptance criteria", "Open questions", "App scope"), relative)
         if skill == "design-intake":
             if status not in {"specified", "ready-for-design", "in-design"}:
                 raise BoardError("invalid_design_intake", "Design intake may update only a feature already routed to design.", 409)
-        if skill == "po-intake" and (status, owner) != ("raw", "po"):
+        if skill in {"po-intake", "ingest"} and (status, owner) != ("raw", "po"):
             raise BoardError(
                 "invalid_intake_feature",
-                f"PO intake creates features in `raw` + `po` status, but `{relative}` has `{status}` + `{owner}`. Set `status: raw` and `owner: po`; po-specify completes the feature and moves it to `specified`.",
+                f"`{skill}` creates features in `raw` + `po` status, but `{relative}` has `{status}` + `{owner}`. Set `status: raw` and `owner: po`; po-specify completes the feature and moves it to `specified`.",
                 409,
                 {"path": relative, "status": status, "owner": owner, "expected_status": "raw", "expected_owner": "po"},
             )
@@ -2352,11 +2477,11 @@ class BoardService:
                     self._validate_question_change(skill, relative, before[relative] or "", content)
             changed_features.append({"path": relative, "id": new["id"], "before": old, "after": new})
 
-        if skill == "po-intake":
+        if skill in {"po-intake", "ingest"}:
             if any(item["before"] is not None for item in changed_features):
-                raise BoardError("intake_existing_feature", "PO intake may create new canonical features but may not rewrite existing feature pages.", 409)
+                raise BoardError("intake_existing_feature", f"`{skill}` may create new canonical features but may not rewrite existing feature pages.", 409)
             if any(before.get(path) is not None for path in supplied if path.startswith(("knowledge/wiki/personas/", "knowledge/wiki/business-rules/"))):
-                raise BoardError("intake_existing_page", "PO intake may not rewrite an existing persona or business-rule page.", 409)
+                raise BoardError("intake_existing_page", f"`{skill}` may not rewrite an existing persona or business-rule page.", 409)
         elif skill == "design-intake":
             if len(changed_features) != 1 or changed_features[0]["before"] is None:
                 raise BoardError("one_existing_feature_required", "Design intake requires exactly one existing feature.", 409)
@@ -2393,11 +2518,15 @@ class BoardService:
                 self._validate_requirement(relative, content)
             elif relative.startswith("knowledge/wiki/api-contracts/"):
                 self._validate_api_contract(relative, content)
+            elif relative.startswith("knowledge/wiki/decisions/"):
+                self._validate_decision(relative, content, before.get(relative), supplied, before)
+            elif general_page_kind(relative.removeprefix("knowledge/wiki/")) is not None:
+                self._validate_general_page(relative, content)
 
         seen_named_ids: set[tuple[str, str]] = set()
         for relative, content in supplied.items():
             directory = PurePosixPath(relative).parent.as_posix()
-            if directory not in {"knowledge/wiki/personas", "knowledge/wiki/business-rules"}:
+            if directory not in {"knowledge/wiki/personas", "knowledge/wiki/business-rules", "knowledge/wiki/decisions"}:
                 continue
             frontmatter, _body = _parse_markdown(content, relative)
             named_id = frontmatter.get("id")
@@ -3408,6 +3537,18 @@ class BoardService:
                     named_id = frontmatter.get("id")
                     if relative.casefold() not in manifest_text or (isinstance(named_id, str) and named_id.casefold() not in manifest_text):
                         raise BoardError("intake_manifest_incomplete", f"The processed intake manifest must list `{relative}` and its canonical ID.", 409)
+        if skill == "ingest":
+            wiki_pages = {path: content for path, content in supplied.items() if path.startswith("knowledge/wiki/")}
+            manifest = destination_files.get("MANIFEST.md")
+            if not manifest or not wiki_pages:
+                raise BoardError("intake_manifest_required", "A processed ingest needs a MANIFEST.md and at least one wiki page.", 409)
+            if set(destination_files) != {"MANIFEST.md"}:
+                raise BoardError("intake_manifest_scope", "Ingest may write only MANIFEST.md inside the processed intake folder.", 409)
+            manifest_text = manifest.casefold()
+            for relative, content in wiki_pages.items():
+                named_id = _parse_markdown(content, relative)[0].get("id")
+                if relative.casefold() not in manifest_text or (isinstance(named_id, str) and named_id.casefold() not in manifest_text):
+                    raise BoardError("intake_manifest_incomplete", f"The processed intake manifest must list `{relative}` and its canonical ID.", 409)
         if skill == "design-intake":
             if len(features) != 1:
                 raise BoardError("one_feature_required", "Design intake is scoped to one feature per preview.", 409)
@@ -3445,6 +3586,8 @@ class BoardService:
                 field_name, path_only = "sources", False
             elif relative.startswith("knowledge/wiki/business-rules/"):
                 field_name, path_only = "source", False
+            elif general_page_kind(relative.removeprefix("knowledge/wiki/")) is not None:
+                field_name, path_only = "sources", False
             else:
                 continue
             existing = set(self._source_entries(before.get(relative), relative, field_name))
@@ -3520,6 +3663,106 @@ class BoardService:
             if error.code == "invalid_path":
                 return False
             raise
+
+    def _validate_general_page(self, relative: str, content: str) -> None:
+        """A topic, research, plan, direction or roadmap page: its `kind`, `title` and `status` where the kind has them, `sources`, and its sections."""
+
+        page = relative.removeprefix("knowledge/wiki/")
+        kind = general_page_kind(page)
+        frontmatter, body = _parse_markdown(content, relative)
+        statuses = GENERAL_PAGE_STATUSES.get(kind or "")
+        self._assert_frontmatter_fields(frontmatter, {"kind", "sources", *(("title", "status") if statuses else ())}, relative)
+        code = f"invalid_{kind}"
+        if frontmatter.get("kind") != kind:
+            raise BoardError(code, f"`{relative}` is a {kind} page; set `kind: {kind}`.", 409, {"path": relative, "kind": kind})
+        if statuses:
+            if not isinstance(frontmatter.get("title"), str) or not frontmatter["title"].strip():
+                raise BoardError(code, f"`{relative}` requires a nonblank title.", 409, {"path": relative})
+            if frontmatter.get("status") not in statuses:
+                raise BoardError(
+                    code,
+                    f"`{relative}` has status `{_clip(str(frontmatter.get('status')), 40)}`; a {kind} page's status is one of {', '.join(statuses)}.",
+                    409,
+                    {"path": relative, "allowed": list(statuses)},
+                )
+            if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*\.md", PurePosixPath(relative).name):
+                raise BoardError(
+                    "wiki_path_invalid",
+                    f"`{relative}` must be named with lowercase words joined by hyphens, such as `payment-flows.md`.",
+                    409,
+                    {"path": relative},
+                )
+        sources = frontmatter.get("sources")
+        if not isinstance(sources, list) or not sources or any(not isinstance(item, str) or not item.strip() for item in sources):
+            raise BoardError(code, f"`{relative}` requires `sources`: a nonempty list of the processed intake items, records or URLs it rests on.", 409, {"path": relative})
+        _require_headings(body, GENERAL_PAGE_SECTIONS[kind], relative)
+        _validate_no_placeholders(body, relative)
+
+    def _validate_decision(self, relative: str, content: str, before_text: str | None, supplied: Mapping[str, str], before: Mapping[str, str | None]) -> None:
+        """A decision record: a new ADR, or the status flip of the ADR a new ADR in the same proposal supersedes."""
+
+        frontmatter, body = _parse_markdown(content, relative)
+        self._assert_frontmatter_fields(frontmatter, _ADR_FIELDS, relative)
+        adr_id = frontmatter.get("id")
+        if not isinstance(adr_id, str) or not _ADR_ID.fullmatch(adr_id):
+            raise BoardError("invalid_decision", f"Decision `{relative}` requires an ADR-number id such as `ADR-001`.", 409, {"path": relative})
+        if not PurePosixPath(relative).stem.casefold().startswith(adr_id.casefold() + "-"):
+            raise BoardError("decision_path_mismatch", f"Decision `{relative}` must be named for {adr_id}.", 409, {"path": relative})
+        if not isinstance(frontmatter.get("title"), str) or not frontmatter["title"].strip() or parse_iso_date(frontmatter.get("date")) is None:
+            raise BoardError("invalid_decision", f"Decision `{relative}` requires a title and an ISO `date`.", 409, {"path": relative})
+        status = frontmatter.get("status")
+        if status not in {"proposed", "accepted", "deprecated", "superseded"}:
+            raise BoardError("invalid_decision", f"Decision `{relative}` has an invalid status.", 409, {"path": relative})
+
+        def decisions_by_id() -> dict[str, tuple[str, Mapping[str, Any]]]:
+            found: dict[str, tuple[str, Mapping[str, Any]]] = {}
+            for path, text in supplied.items():
+                if path.startswith("knowledge/wiki/decisions/"):
+                    found[str(_parse_markdown(text, path)[0].get("id", "")).casefold()] = (path, _parse_markdown(text, path)[0])
+            return found
+
+        if before_text is None:
+            if status not in {"proposed", "accepted"} or "superseded-by" in frontmatter:
+                raise BoardError(
+                    "invalid_decision",
+                    f"A new decision `{relative}` is `proposed` or `accepted` and has no `superseded-by`; a later decision supersedes it.",
+                    409,
+                    {"path": relative},
+                )
+            self._assert_named_id_available(relative, adr_id, "id")
+            _require_headings(body, ("Context", "Decision", "Rationale", "Consequences"), relative)
+            _validate_no_placeholders(body, relative)
+            replaced = frontmatter.get("supersedes")
+            if replaced is not None:
+                if not isinstance(replaced, str) or not _ADR_ID.fullmatch(replaced) or replaced.casefold() == adr_id.casefold():
+                    raise BoardError("invalid_decision", f"`supersedes` of `{relative}` must name another ADR, such as `ADR-001`.", 409, {"path": relative})
+                old = decisions_by_id().get(replaced.casefold())
+                if old is None or before.get(old[0]) is None:
+                    raise BoardError(
+                        "supersession_incomplete",
+                        f"`{relative}` supersedes {replaced}: include the existing {replaced} page in the proposal with `status: superseded` and `superseded-by: {adr_id}`, its body unchanged.",
+                        409,
+                        {"path": relative, "supersedes": replaced},
+                    )
+            return
+
+        old_frontmatter, old_body = _parse_markdown(before_text, relative)
+        changed = {key for key in set(old_frontmatter) | set(frontmatter) if old_frontmatter.get(key) != frontmatter.get(key)}
+        if body != old_body or changed != {"status", "superseded-by"} or status != "superseded":
+            raise BoardError(
+                "record_immutable",
+                f"Decision `{relative}` is a record: ingest may change only `status: superseded` and `superseded-by` on it, and only when a new decision in the same proposal supersedes it; its body stays unchanged.",
+                409,
+                {"path": relative, "changed": sorted(changed)},
+            )
+        successor = decisions_by_id().get(str(frontmatter.get("superseded-by", "")).casefold())
+        if successor is None or before.get(successor[0]) is not None or str(successor[1].get("supersedes", "")).casefold() != adr_id.casefold():
+            raise BoardError(
+                "supersession_incomplete",
+                f"`{relative}` is superseded by `{_clip(str(frontmatter.get('superseded-by')), 40)}`: include that new decision in the proposal with `supersedes: {adr_id}`.",
+                409,
+                {"path": relative},
+            )
 
     def _validate_persona(self, relative: str, content: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
@@ -3695,7 +3938,7 @@ class BoardService:
             if not source.exists() or destination.exists() or self._tree_digest(source) != move["source_digest"]:
                 raise BoardError("stale_move", f"Intake move `{move['source']}` changed after this preview.", 409)
         for write in payload.get("writes", []):
-            if write.get("role") in {"index", "log"}:
+            if write.get("role") in {*_ROW_ROLES, "log"}:
                 continue
             path = self._safe_path(write["path"], allow_missing=True)
             actual = _sha256(path.read_bytes()) if path.is_file() else None
@@ -3705,8 +3948,8 @@ class BoardService:
             if actual != write.get("before_digest"):
                 raise BoardError("stale_write", f"Proposed target `{write['path']}` changed after this preview.", 409)
         for write in payload.get("writes", []):
-            if write.get("role") == "index":
-                self._assert_index_rows(write["path"], write["merge"].get("expected_rows", {}))
+            if write.get("role") in _ROW_ROLES:
+                self._assert_managed_rows(write["role"], write["merge"].get("expected_rows", {}))
 
     def _revalidate_operation(self, actor: Actor, payload: Mapping[str, Any], *, reviewed: bool = False) -> None:
         """Re-evaluate current deterministic rules, including calendar checks.
@@ -3739,7 +3982,7 @@ class BoardService:
         revisions = dict(payload.get("read_revisions", {}))
         # Target rows and append-only history have their own merge checks. A
         # change to an unrelated row/log entry is not a stale semantic input.
-        for path in ("knowledge/wiki/index.md", "knowledge/wiki/log.md"):
+        for path in sorted(_MANAGED_PATHS):
             if path in revisions:
                 revisions[path] = _file_digest(self._optional_text(self._safe_path(path, allow_missing=True)))
         if reviewed:
@@ -3763,8 +4006,8 @@ class BoardService:
             digest = _file_digest(current)
             state = "applied" if digest == write.get("after_digest") else "pending" if digest == write.get("before_digest") else "conflict"
             merge = write.get("merge") or {}
-            if write.get("role") == "index":
-                rows = {key: self._index_existing_row(key) for key in merge.get("after_rows", {})}
+            if write.get("role") in _ROW_ROLES:
+                rows = self._managed_rows(write["role"], merge.get("after_rows", {}))
                 state = "applied" if rows == merge.get("after_rows") else "pending" if rows == merge.get("expected_rows") else "conflict"
             elif write.get("role") == "log":
                 marker = f"<!-- prism:board-history:v1 {merge.get('marker')} -->"
@@ -3773,11 +4016,14 @@ class BoardService:
             states.append({"path": write["path"], "state": state, "before": write.get("before"), "after": write.get("after"), "current_digest": digest})
         return states
 
-    def _assert_index_rows(self, relative: str, expected: Mapping[str, Any]) -> None:
-        content = self._read_text(self._safe_path(relative))
-        for feature_id, row in expected.items():
-            if self._index_existing_row(feature_id) != row:
-                raise BoardError("stale_index_row", f"The index row for `{feature_id}` changed after preview.", 409)
+    def _assert_managed_rows(self, role: str, expected: Mapping[str, Any]) -> None:
+        """Each key's row (status board) or line (index) is still the one the preview saw."""
+
+        for key, row in expected.items():
+            if self._managed_rows(role, [key])[key] != row:
+                if role == "status-board":
+                    raise BoardError("stale_status_row", f"The status board row for `{key}` changed after preview.", 409)
+                raise BoardError("stale_index_entry", f"The index line for `{_clip(key, 120)}` changed after preview.", 409)
 
     def _recovery_preflight(self, actor: Actor, intent: Mapping[str, Any], conflict_paths: list[str], *, reviewed: bool) -> bool:
         """Run every check that precedes a recovery write and return whether the operation is already complete.
@@ -4087,12 +4333,16 @@ class BoardService:
                         relative = move["source"] + "/" + relative[len(prefix):]
                         break
                 target = candidate_root / relative
-                if write["role"] == "index":
+                if write["role"] in _ROW_ROLES:
                     current = target.read_bytes().decode("utf-8")
                     before_rows = write["merge"]["expected_rows"]
-                    absent = {key.casefold() for key, row in before_rows.items() if row is None}
-                    current = "".join(line for line in current.splitlines(keepends=True) if not ((match := _INDEX_ROW.match(line.rstrip("\r\n"))) and match.group(1).casefold() in absent))
-                    content = _render_index(current, {}, {key: row for key, row in before_rows.items() if row is not None})
+                    kept = {key: row for key, row in before_rows.items() if row is not None}
+                    if write["role"] == "status-board":
+                        absent = {key.casefold() for key, row in before_rows.items() if row is None}
+                        current = "".join(line for line in current.splitlines(keepends=True) if not ((match := _STATUS_ROW.match(line.rstrip("\r\n"))) and match.group(1).casefold() in absent))
+                    else:
+                        current = remove_index_lines(current, [key for key, row in before_rows.items() if row is None])
+                    content = self._render_managed(write["role"], current, {}, kept)
                     target.write_bytes(content.encode("utf-8"))
                 elif write.get("before") is None:
                     target.unlink(missing_ok=True)
@@ -4107,14 +4357,14 @@ class BoardService:
         path = self._safe_path(relative, allow_missing=True)
         role = write.get("role")
         merge = write.get("merge") or {}
-        if role == "index":
+        if role in _ROW_ROLES:
             current = self._read_text(path)
-            actual_rows = {feature_id: self._index_existing_row(feature_id) for feature_id in merge.get("after_rows", {})}
+            actual_rows = self._managed_rows(role, merge.get("after_rows", {}))
             if actual_rows == merge.get("after_rows"):
                 return "already"
             if actual_rows != merge.get("expected_rows"):
                 return "conflict"
-            merged = _render_index(current, merge.get("expected_rows", {}), merge.get("after_rows", {}))
+            merged = self._render_managed(role, current, merge.get("expected_rows", {}), merge.get("after_rows", {}))
             self._atomic_replace(path, merged, expected=current, actor=actor)
             return "applied"
         if role == "log":
@@ -4173,10 +4423,10 @@ class BoardService:
         store = self._require_store()
 
         def targets(payload):
-            paths = {write["path"] for write in payload.get("writes", []) if write.get("role") not in {"index", "log"}}
+            paths = {write["path"] for write in payload.get("writes", []) if write.get("role") not in {*_ROW_ROLES, "log"}}
             for move in payload.get("moves", []):
                 paths.update((move["source"], move["destination"]))
-            keys = {key.casefold() for write in payload.get("writes", []) if write.get("role") == "index" for key in write["merge"]["after_rows"]}
+            keys = {f"{write['role']}:{key.casefold()}" for write in payload.get("writes", []) if write.get("role") in _ROW_ROLES for key in write["merge"]["after_rows"]}
             return paths, keys
 
         def overlaps(left, right):
@@ -4216,9 +4466,9 @@ def BoardServiceIdentity(root: Path) -> tuple[Any, ...] | None:
         workspace_root = Path(root).expanduser().absolute()
         manifest_path = workspace_root / "prism.workspace.yml"
         BoardService._reject_reparse(manifest_path, include_leaf=True)
-        for relative in ("knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", "knowledge/wiki/index.md"):
+        for relative in ("knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", _INDEX_PATH, _STATUS_BOARD_PATH):
             BoardService._reject_reparse(workspace_root / relative, include_leaf=True)
-        if not all((workspace_root / "knowledge/wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "index.md")):
+        if not all((workspace_root / "knowledge/wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "index.md", "status-board.md")):
             return None
         data = yaml.safe_load(manifest_path.read_text(encoding="utf-8-sig")) or {}
         workflow = data.get("workflow") if isinstance(data, dict) else None
@@ -4587,14 +4837,14 @@ def _validate_no_placeholders(body: str, relative: str) -> None:
         raise BoardError("template_placeholder", f"`{relative}` contains unresolved template placeholder text.", 409)
 
 
-def _index_row(frontmatter: Mapping[str, Any]) -> dict[str, str]:
+def _status_row(frontmatter: Mapping[str, Any]) -> dict[str, str]:
     feature_id = frontmatter.get("id")
     title = frontmatter.get("title")
     status = frontmatter.get("status")
     owner = frontmatter.get("owner")
     advisory = frontmatter.get("advisory-review")
     if not all(isinstance(value, str) and value.strip() for value in (feature_id, title, status, owner, advisory)):
-        raise BoardError("invalid_index_fields", "Feature index fields id, title, status, owner, and advisory-review are required.", 409)
+        raise BoardError("invalid_status_fields", "Feature status board fields id, title, status, owner, and advisory-review are required.", 409)
     return {
         "id": feature_id.strip(),
         "title": re.sub(r"\s+", " ", title.strip()).replace("|", "&#124;"),
@@ -4604,7 +4854,7 @@ def _index_row(frontmatter: Mapping[str, Any]) -> dict[str, str]:
     }
 
 
-def _index_row_from_match(match: re.Match[str]) -> dict[str, str]:
+def _status_row_from_match(match: re.Match[str]) -> dict[str, str]:
     return {
         "id": match.group(1).strip(),
         "title": match.group(2).strip(),
@@ -4614,29 +4864,29 @@ def _index_row_from_match(match: re.Match[str]) -> dict[str, str]:
     }
 
 
-def _format_index_row(row: Mapping[str, str]) -> str:
+def _format_status_row(row: Mapping[str, str]) -> str:
     return f"| {row['id']} | {row['title']} | {row['status']} | {row['owner']} | {row['advisory_review']} |"
 
 
-def _render_index(content: str, expected: Mapping[str, Any], after: Mapping[str, Mapping[str, str]]) -> str:
+def _render_status_board(content: str, expected: Mapping[str, Any], after: Mapping[str, Mapping[str, str]]) -> str:
     lines = content.splitlines(keepends=True)
     newline = "\r\n" if "\r\n" in content else "\n"
-    header_index = next((i for i, line in enumerate(lines) if _INDEX_HEADER.match(line.rstrip("\r\n"))), None)
+    header_index = next((i for i, line in enumerate(lines) if _STATUS_HEADER.match(line.rstrip("\r\n"))), None)
     if header_index is None or header_index + 1 >= len(lines) or "---" not in lines[header_index + 1]:
-        raise BoardError("invalid_index", "knowledge/wiki/index.md must contain the canonical feature status table.", 409)
+        raise BoardError("invalid_status_board", "knowledge/wiki/status-board.md must contain the canonical feature status table.", 409)
     end = header_index + 2
     while end < len(lines) and lines[end].lstrip().startswith("|"):
         end += 1
     wanted = {key.casefold(): row for key, row in after.items()}
     found: set[str] = set()
     for index in range(header_index + 2, end):
-        match = _INDEX_ROW.match(lines[index].rstrip("\r\n"))
+        match = _STATUS_ROW.match(lines[index].rstrip("\r\n"))
         if not match:
             continue
         key = match.group(1).casefold()
         if key in wanted:
             ending = "\r\n" if lines[index].endswith("\r\n") else "\n" if lines[index].endswith("\n") else ""
-            lines[index] = _format_index_row(wanted[key]) + ending
+            lines[index] = _format_status_row(wanted[key]) + ending
             found.add(key)
     missing = [row for key, row in wanted.items() if key not in found]
     if missing:
@@ -4644,7 +4894,7 @@ def _render_index(content: str, expected: Mapping[str, Any], after: Mapping[str,
         if insertion and not lines[insertion - 1].endswith("\n"):
             lines[insertion - 1] += newline
         for offset, row in enumerate(sorted(missing, key=lambda item: int(re.search(r"\d+", item["id"]).group(0)))):
-            lines.insert(insertion + offset, _format_index_row(row) + newline)
+            lines.insert(insertion + offset, _format_status_row(row) + newline)
     return "".join(lines)
 
 

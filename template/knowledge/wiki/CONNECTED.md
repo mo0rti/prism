@@ -162,6 +162,13 @@ source (see "Read the current workspace state"). Omit `moves` when the skill
 does not move an intake folder. In particular, a move uses `source` and
 `destination`, not `from` and `to`.
 
+The `ingest` skill writes any page kind from one intake folder: a topic, research page, plan,
+`direction.md`, `roadmap.md`, persona, business rule, decision or new feature. Its manifest
+lists every page it writes by full relative path and canonical ID, and a new feature meets the
+`po-intake` rules. A topic, research page, plan, direction or roadmap page that exists is
+replaced in place, so read it before you propose its new text; a persona, business rule,
+decision or feature is created and never rewritten.
+
 The moved folder is named `YYYY-MM-DD-slug` (`intake_name_invalid` otherwise), and its
 processed destination must not exist yet: a write into an existing processed item is
 rejected with `processed_source_immutable`. A quarantine move carries only a
@@ -191,10 +198,14 @@ never changes `status` or `owner`; a requirement-bearing section it may change m
 contain the full text of an answer it resolves.
 
 The skill describes the complete logical write set. For this transport,
-`knowledge/wiki/index.md` and `knowledge/wiki/log.md` are managed by the service:
-read them when the skill requires that context, but omit them from `changes`.
-BoardService derives the affected index rows and attributed history entry and
-includes their exact before/after contents in the returned preview. Include all
+`knowledge/wiki/index.md`, `knowledge/wiki/status-board.md` and `knowledge/wiki/log.md`
+are managed by the service: read the index first, and the others when the skill requires
+that context, but omit all three from `changes`. BoardService derives the status board row
+of each feature that changes, the index line of every wiki page you write (from its title
+and the first sentence of its summary, so write that sentence in the present tense) and the
+attributed history entry, and includes their exact before/after contents in the returned
+preview. The index changes with every page the board writes, so read `index.md` again
+before each preview; a stale digest of it is rejected like any other source. Include all
 other skill-required feature, evidence, requirement, API, design, and intake
 manifest changes within the advertised scope. Input the workspace does not hold
 yet comes from the human in the host conversation: the answer to a question for

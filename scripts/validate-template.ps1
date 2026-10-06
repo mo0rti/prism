@@ -26,6 +26,7 @@ $CurrentClaudeCommands = @(
     "feature-status",
     "feature-reopen",
     "generate-clients",
+    "ingest",
     "lint-wiki",
     "po-clarify",
     "po-handoff",
@@ -55,6 +56,7 @@ $CurrentWorkflowSkills = @(
     "feature-status",
     "feature-reopen",
     "generate-clients",
+    "ingest",
     "lint-wiki",
     "po-clarify",
     "po-handoff",
@@ -82,6 +84,7 @@ $ExplicitOnlyWorkflowSkills = @(
     "dev-start",
     "document-entity",
     "feature-reopen",
+    "ingest",
     "po-clarify",
     "po-handoff",
     "po-intake",
@@ -270,6 +273,9 @@ function Validate-WikiStructure {
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Message "Generated project missing knowledge/wiki/SCHEMA.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\LIFECYCLE.md") -Message "Generated project missing knowledge/wiki/LIFECYCLE.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\index.md") -Message "Generated project missing knowledge/wiki/index.md."
+    Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\status-board.md") -Message "Generated project missing knowledge/wiki/status-board.md."
+    Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\direction.md") -Message "Generated project missing knowledge/wiki/direction.md."
+    Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\roadmap.md") -Message "Generated project missing knowledge/wiki/roadmap.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\log.md") -Message "Generated project missing knowledge/wiki/log.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\advisory\BOARD.md") -Message "Generated project missing knowledge/wiki/advisory/BOARD.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\advisory\PROJECT_FOUNDATION.md") -Message "Generated project missing knowledge/wiki/advisory/PROJECT_FOUNDATION.md."
@@ -281,6 +287,9 @@ function Validate-WikiStructure {
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\api-contracts\_FORMAT.md") -Message "Generated project missing knowledge/wiki/api-contracts/_FORMAT.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\decisions\_FORMAT.md") -Message "Generated project missing knowledge/wiki/decisions/_FORMAT.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\advisory\_FORMAT.md") -Message "Generated project missing knowledge/wiki/advisory/_FORMAT.md."
+    Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\topics\_FORMAT.md") -Message "Generated project missing knowledge/wiki/topics/_FORMAT.md."
+    Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\research\_FORMAT.md") -Message "Generated project missing knowledge/wiki/research/_FORMAT.md."
+    Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\plans\_FORMAT.md") -Message "Generated project missing knowledge/wiki/plans/_FORMAT.md."
 
     # Intake structure
     Assert-PathExists -Path (Join-Path $Root "knowledge\intake\README.md") -Message "Generated project missing knowledge/intake/README.md."
@@ -361,9 +370,12 @@ function Validate-WikiStructure {
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\advisory\BOARD.md") -Needle "setup-project" -Message "advisory/BOARD.md placeholder must reference setup-project."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\advisory\PROJECT_FOUNDATION.md") -Needle "setup-project" -Message "advisory/PROJECT_FOUNDATION.md placeholder must reference setup-project."
 
-    # index.md must have Board Review column and no date column
-    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "Board Review" -Message "wiki/index.md must include a Board Review column."
-    Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "Introduced" -Message "wiki/index.md must not carry a date column."
+    # status-board.md must have the Board Review column and no date column; index.md lists every page, one line each
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\status-board.md") -Needle "Board Review" -Message "wiki/status-board.md must include a Board Review column."
+    Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\status-board.md") -Needle "Introduced" -Message "wiki/status-board.md must not carry a date column."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "(status-board.md)" -Message "wiki/index.md must list status-board.md."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "(direction.md)" -Message "wiki/index.md must list direction.md."
+    Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "Board Review" -Message "wiki/index.md must not carry the status board."
 
     # SCHEMA.md and LIFECYCLE.md carry a schema version; SCHEMA.md defines the log format, and pages carry no history dates
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "schema-version: 1" -Message "SCHEMA.md must declare schema-version: 1."
@@ -376,6 +388,9 @@ function Validate-WikiStructure {
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Evidence labels" -Message "SCHEMA.md must define the evidence labels."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Records and decision supersession" -Message "SCHEMA.md must define records and decision supersession."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Conflict quarantine" -Message "SCHEMA.md must define the conflict quarantine format."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Topic page format" -Message "SCHEMA.md must define the topic page format."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Ingest: any role, any page kind" -Message "SCHEMA.md must define generic ingest."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## index.md conventions" -Message "SCHEMA.md must define the index conventions."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "Write the current state." -Message "SCHEMA.md must state the current-state operational rule."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\decisions\_FORMAT.md") -Needle "superseded-by: ADR-MMM" -Message "The ADR format must define superseded-by."
     Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\decisions\_FORMAT.md") -Needle "superseded-by ADR-XXX" -Message "The ADR format must not carry the inline superseded-by status."

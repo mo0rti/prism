@@ -63,7 +63,7 @@ template. Do not infer this from the Prism version.
 
 Before using a dashboard or clipboard request, reread this current command, the
 Codex `po-handoff` skill when available, `knowledge/wiki/SCHEMA.md`,
-`knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/index.md`, the feature page, and linked source/context. Compare
+`knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/status-board.md`, the feature page, and linked source/context. Compare
 the current unique path, workspace identity, feature ID, status, owner, advisory
 state, and available source fingerprint with the copied snapshot. Stop and ask for
 a fresh preview if any value differs or is unavailable for comparison.
@@ -81,7 +81,7 @@ a fresh preview if any value differs or is unavailable for comparison.
    this preview, evaluate a non-blank proposed skip as the `skipped` advisory
    outcome while the current `pending` source remains unchanged. Do not write
    either field while asking for the reason, and never silently skip review.
-5. After a board review or an explicit skip proposal, reread the feature, index,
+5. After a board review or an explicit skip proposal, reread the feature, status board,
    identity, and context and rerun the advisory and factual completeness checks.
    Require:
    - a non-empty Summary
@@ -101,7 +101,7 @@ a fresh preview if any value differs or is unavailable for comparison.
    `release` domains active and visible, and do not reset unrelated requirement
    or API pages.
 7. If a check fails, list the exact missing or blocked evidence and stop without
-   changing the feature, advisory, index, or log.
+   changing the feature, advisory, status board, or log.
 8. If checks pass, show a preview containing the unique path, observed source and
    advisory fields, identity/fingerprint facts, any skip/reason proposal, exact
    destination fields, all files that would change, and a concise design brief.
@@ -111,7 +111,7 @@ a fresh preview if any value differs or is unavailable for comparison.
    changed, stop and prepare a fresh preview.
 10. Ask the user to confirm the complete write set. The final handoff confirmation
    and one final matching reread are required before you update the feature, confirmed advisory skip fields
-   when applicable, `knowledge/wiki/index.md`, and `knowledge/wiki/log.md`.
+   when applicable, `knowledge/wiki/status-board.md`, and `knowledge/wiki/log.md`.
 11. If the user declines or cancels, make no feature, advisory, index, or log
     mutation. After a confirmed write, report the resulting fields and the design
     brief; never claim that this action proves design, implementation, or shipment.

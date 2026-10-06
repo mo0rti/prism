@@ -6,6 +6,7 @@ from pathlib import Path
 
 from prism_cli.wiki_transitions import ACTION_SPECS
 from tests.manifest_fixtures import manifest_text
+from tests.wiki_files import write_index, write_status_board
 
 
 FEATURE_ID = "F-001"
@@ -53,12 +54,8 @@ def create_core_workflow_fixture(root: Path) -> Path:
     (wiki_root / "SETTINGS.md").write_text(
         "---\nwiki-stale-after-days: 365\n---\n", encoding="utf-8"
     )
-    (wiki_root / "index.md").write_text(
-        "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n",
-        encoding="utf-8",
-    )
+    write_status_board(root)
+    write_index(root)
     (root / "prism.workspace.yml").write_text(
         manifest_text("Document review", ["backend"], slug="document-review"),
         encoding="utf-8",

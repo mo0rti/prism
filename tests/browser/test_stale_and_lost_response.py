@@ -20,7 +20,7 @@ from prism_cli.board_service import BoardError
 from tests.browser.agent_client import AgentClient
 from tests.browser.board_page import BoardPage, expect
 from tests.browser.harness import EXTRA_FEATURES, FEATURES_BY_ID, requires_browser_e2e
-from tests.browser.scenario_support import INDEX_PATH, LOG_PATH, UUID, ScenarioCase, changed_paths, workspace_tree
+from tests.browser.scenario_support import BOARD_PATH, LOG_PATH, UUID, ScenarioCase, changed_paths, workspace_tree
 
 ADVISORY = EXTRA_FEATURES["advisory"]
 FOLLOW_UP = FEATURES_BY_ID["F-003"]
@@ -257,14 +257,14 @@ class LostResponseTests(ScenarioCase):
             expect(board.card_in("ready-for-design", feature.feature_id)).to_have_count(1)
             run.screenshot(page, "outcome-unknown")
             after_apply = workspace_tree(harness.root)
-            self.assertEqual({feature.path.as_posix(), INDEX_PATH, LOG_PATH}, changed_paths(before, after_apply))
-            run.effect("the service applied the request although the response was lost: feature page, index and log changed")
+            self.assertEqual({feature.path.as_posix(), BOARD_PATH, LOG_PATH}, changed_paths(before, after_apply))
+            run.effect("the service applied the request although the response was lost: feature page, status board and log changed")
 
             # Retrieving the receipt uses the same operation ID and does not apply again.
             dialog.get_by_role("button", name="Inspect operation").click()
             expect(dialog.get_by_text("Operation ID · applied")).to_be_visible()
             expect(dialog.get_by_text(operation_id)).to_be_visible()
-            expect(dialog.get_by_text(f"Applied {feature.path.as_posix()}, {INDEX_PATH}, {LOG_PATH}.")).to_be_visible()
+            expect(dialog.get_by_text(f"Applied {feature.path.as_posix()}, {BOARD_PATH}, {LOG_PATH}.")).to_be_visible()
             expect(board.card_in("ready-for-design", feature.feature_id)).to_have_count(1)
             expect(board.card_in("specified", feature.feature_id)).to_have_count(0)
             self.assertEqual([operation_id, operation_id], [item for item in lookups if item == operation_id][:2])

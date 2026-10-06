@@ -44,6 +44,7 @@ from prism_cli.board_service import BoardService
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.core_workflow_fixture import INTAKE_ITEM, PROCESSED_INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page, _requirement_page
+from tests.wiki_files import write_index
 
 
 ENABLE_VARIABLE = "PRISM_BROWSER_E2E"
@@ -138,7 +139,7 @@ def _feature_page_for(feature: FixtureFeature) -> str:
     return content.replace("| po | open |", "| po | resolved: Capture key points and requested follow-up. |")
 
 
-def _index_text(features: tuple[FixtureFeature, ...]) -> str:
+def _board_text(features: tuple[FixtureFeature, ...]) -> str:
     rows = "".join(
         f"| {feature.feature_id} | {feature.title} | {feature.status} | {feature.owner} | {feature.advisory} |\n"
         for feature in features
@@ -168,9 +169,11 @@ def build_workspace(root: Path, extras: tuple[FixtureFeature, ...] = ()) -> Path
         # Canonical LF bytes keep before/after comparisons independent of the
         # platform's newline translation.
         target.write_bytes(_feature_page_for(feature).encode("utf-8"))
-    (root / "knowledge/wiki/index.md").write_bytes(_index_text(features).encode("utf-8"))
+    (root / "knowledge/wiki/status-board.md").write_bytes(_board_text(features).encode("utf-8"))
     requirement = _requirement_page("pending").replace("feature-id: F-001", "feature-id: F-003", 1)
     (root / "knowledge/wiki/app-requirements/F-003-backend.md").write_bytes(requirement.encode("utf-8"))
+    # The general index lists every page the workspace holds, so lint is clean and the board writes only what an action changes.
+    write_index(root)
     return root
 
 

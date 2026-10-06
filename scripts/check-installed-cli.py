@@ -93,7 +93,7 @@ def main() -> None:
         run(root, cli + ["board", "status", str(adopted)])
         again = json.loads(run(root, cli + adoption + ["--apply", "--yes", "--json"]).stdout)
         assert again["status"] == "unchanged", again
-        run(root, [executable, "-c", "from prism_cli.workflow_assets import list_skills,get_skill,asset_digest; import prism_cli.board_reads,prism_cli.board_mcp,prism_cli.board_server; assert len(list_skills()) == 24; assert get_skill('po-intake')['references']; assert len(asset_digest()) == 64"])
+        run(root, [executable, "-c", "from prism_cli.workflow_assets import list_skills,get_skill,asset_digest; import prism_cli.board_reads,prism_cli.board_mcp,prism_cli.board_server; assert len(list_skills()) == 25; assert get_skill('po-intake')['references']; assert len(asset_digest()) == 64"])
         grant = json.loads(run(root, cli + ["board", "grant", "Installed test reader", "--path", str(adopted), "--kind", "agent"]).stdout)
         assert not grant["participant"]["writable"]
         assert len(grant["token"]) >= 32

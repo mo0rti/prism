@@ -30,6 +30,7 @@ from prism_cli.wiki_transitions import (
 )
 from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -125,13 +126,8 @@ class WikiTransitionTests(unittest.TestCase):
             "---\nwiki-stale-after-days: 14\n---\n",
             encoding="utf-8",
         )
-        (self.wiki_root / "index.md").write_text(
-            "# Feature Status Board\n\n"
-            "| ID | Feature | Status | Owner | Board Review |\n"
-            "|----|---------|--------|-------|--------------|\n"
-            "| F-001 | Payout summary | specified | po | not-needed |\n",
-            encoding="utf-8",
-        )
+        write_status_board(self.root, "| F-001 | Payout summary | specified | po | not-needed |\n")
+        write_index(self.root)
         (self.root / "prism.workspace.yml").write_text(
             manifest_text("Transition test", ["backend"], slug="transition-test"),
             encoding="utf-8",
@@ -163,7 +159,7 @@ class WikiTransitionTests(unittest.TestCase):
                 advisory_reason=advisory_reason,
             )
         path.write_text(body, encoding="utf-8")
-        index_path = self.wiki_root / "index.md"
+        index_path = self.wiki_root / "status-board.md"
         lines = index_path.read_text(encoding="utf-8").splitlines()
         lines = [
             (
@@ -848,7 +844,7 @@ class WikiTransitionTests(unittest.TestCase):
         reads: Counter[str] = Counter()
 
         def counting_read_text(path: Path, *args: object, **kwargs: object) -> str:
-            if path.name in {"SCHEMA.md", "LIFECYCLE.md", "index.md"} and kwargs.get("encoding") == "utf-8-sig":
+            if path.name in {"SCHEMA.md", "LIFECYCLE.md", "index.md", "status-board.md"} and kwargs.get("encoding") == "utf-8-sig":
                 reads[path.name] += 1
             return real_read_text(path, *args, **kwargs)
 
@@ -862,7 +858,7 @@ class WikiTransitionTests(unittest.TestCase):
         six_features, count_six = self._count_required_file_reads()
 
         self.assertEqual((1, 6), (count_one, count_six))
-        self.assertEqual(one_feature, six_features, "Reads of SCHEMA.md, LIFECYCLE.md and index.md must not grow with the feature count.")
+        self.assertEqual(one_feature, six_features, "Reads of SCHEMA.md, LIFECYCLE.md, index.md and status-board.md must not grow with the feature count.")
 
     def test_unreadable_required_wiki_file_still_blocks_every_feature(self) -> None:
         self._add_features(2)

@@ -41,7 +41,7 @@ for what to build. Before implementing any feature:
 
 1. Read `knowledge/wiki/WIKI_REPORT.md` if it exists for a quick orientation summary.
 2. If `knowledge/wiki/WIKI_REPORT.md` is absent, run `/feature-status` first to generate it.
-3. Read `knowledge/wiki/index.md` and confirm the feature is in `ready-for-dev` or `in-dev`
+3. Read `knowledge/wiki/status-board.md` and confirm the feature is in `ready-for-dev` or `in-dev`
    status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
    stop and inform the human - a board review should happen before implementation.
 4. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context.
@@ -52,6 +52,9 @@ for what to build. Before implementing any feature:
 
 `WIKI_REPORT.md` is only an orientation artifact. The underlying feature, design,
 app-requirement, and rule pages remain the source of truth.
+
+`knowledge/wiki/index.md` lists every wiki page, one line each, grouped by kind. Read it first
+to find the pages a task needs beyond the feature's own context, then read those pages.
 
 **Do not implement features without a wiki page.** Ask the human to run `/po-intake [folder]`
 first.
@@ -133,6 +136,7 @@ installed Prism CLI.
 
 - `/setup-project` - interactive project initialization (run once after scaffolding)
 - `/po-intake [folder]` - process raw PO notes into feature specs
+- `/ingest [folder]` - process raw notes into topics, research, plans, direction, roadmap, personas, business rules, decisions or features (any role)
 - `/po-clarify` - answer open questions assigned to PO
 - `/po-specify [F-XXX]` - author one raw page as a structured `specified` draft
 - `/po-handoff [F-XXX]` - prepare the confirmed `specified` + `po` to `ready-for-design` + `designer` handoff
@@ -208,7 +212,8 @@ Backend issues JWTs after successful auth. Native clients store them locally; we
 
 - `knowledge/wiki/SCHEMA.md` - wiki conventions and operational rules
 - `knowledge/wiki/LIFECYCLE.md` - feature, board and advisory protocol, read after `SCHEMA.md` for lifecycle operations
-- `knowledge/wiki/index.md` - feature status board
+- `knowledge/wiki/index.md` - one line per wiki page, grouped by kind; read it first
+- `knowledge/wiki/status-board.md` - feature status board
 - `knowledge/wiki/WIKI_REPORT.md` - generated orientation summary when present
 - `knowledge/wiki/advisory/BOARD.md` - advisory board composition
 - `docs/architecture.md` - system design, platform map, tech decisions

@@ -150,7 +150,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(before, after)
             return {}
         changed = {path: (before.get(path), after.get(path)) for path in before.keys() | after.keys() if before.get(path) != after.get(path)}
-        self.assertEqual({FEATURE_PATH.as_posix(), "knowledge/wiki/index.md", "knowledge/wiki/log.md"}, set(changed))
+        self.assertEqual({FEATURE_PATH.as_posix(), "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"}, set(changed))
         self.assertEqual(proposal.encode("utf-8"), after[FEATURE_PATH.as_posix()])
         metadata = yaml.safe_load(proposal.split("---", 2)[1])
         self.assertEqual((action[3], action[4]), (metadata["status"], metadata["owner"]))

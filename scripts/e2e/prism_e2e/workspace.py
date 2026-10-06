@@ -252,10 +252,10 @@ def fixture_files(steps: list[str], fixture_set: Path | None = None) -> dict[str
 _ROW = re.compile(r"^\|\s*F-\d+\s*\|")
 
 
-def rewrite_index(index_text: str, row: str | None) -> str:
-    """The wiki index with its feature table holding only ``row`` (or no row)."""
+def rewrite_status_board(board_text: str, row: str | None) -> str:
+    """The status board with its feature table holding only ``row`` (or no row)."""
 
-    lines = index_text.split("\n")
+    lines = board_text.split("\n")
     out: list[str] = []
     inserted = False
     for line in lines:
@@ -279,7 +279,12 @@ def feature_row(front_matter: dict[str, str]) -> str:
 
 
 def seed_state(workspace: Path, step: str | None, fixture_set: Path | None = None) -> list[str]:
-    """Rebuild the journey state after ``step`` from the recorded fixtures. Returns the files written."""
+    """Rebuild the journey state after ``step`` from the recorded fixtures. Returns the files written.
+
+    The feature's row in the status board is rebuilt too. The general index is not: it gains a line for
+    each page when the board writes that page, so a seeded page has no line until its step runs, and lint
+    reports that as a warning.
+    """
 
     reset_journey_files(workspace)
     files = fixture_files(fixture_steps_through(step), fixture_set)
@@ -287,10 +292,10 @@ def seed_state(workspace: Path, step: str | None, fixture_set: Path | None = Non
         target = workspace / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
-    index_path = workspace / "knowledge/wiki/index.md"
+    board_path = workspace / "knowledge/wiki/status-board.md"
     feature = find_feature_page(workspace)
     row = feature_row(parse_front_matter(feature.read_text(encoding="utf-8"))) if feature else None
-    index_path.write_text(rewrite_index(index_path.read_text(encoding="utf-8"), row), encoding="utf-8", newline="\n")
+    board_path.write_text(rewrite_status_board(board_path.read_text(encoding="utf-8"), row), encoding="utf-8", newline="\n")
     return sorted(files)
 
 
@@ -352,8 +357,8 @@ def parse_questions(text: str) -> list[Question]:
 class FeatureState:
     status: str
     owner: str
-    index_status: str | None
-    index_owner: str | None
+    board_status: str | None
+    board_owner: str | None
     questions: list[Question]
     text: str
 
@@ -367,15 +372,15 @@ def read_feature(workspace: Path, feature_id: str = config.FEATURE_ID) -> Featur
         return None
     text = page.read_text(encoding="utf-8")
     front = parse_front_matter(text)
-    index_status = index_owner = None
-    index_path = workspace / "knowledge/wiki/index.md"
-    if index_path.is_file():
-        for line in index_path.read_text(encoding="utf-8").split("\n"):
+    board_status = board_owner = None
+    board_path = workspace / "knowledge/wiki/status-board.md"
+    if board_path.is_file():
+        for line in board_path.read_text(encoding="utf-8").split("\n"):
             if _ROW.match(line) and line.split("|")[1].strip() == feature_id:
                 cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
                 if len(cells) >= 4:
-                    index_status, index_owner = cells[2], cells[3]
-    return FeatureState(front.get("status", ""), front.get("owner", ""), index_status, index_owner, parse_questions(text), text)
+                    board_status, board_owner = cells[2], cells[3]
+    return FeatureState(front.get("status", ""), front.get("owner", ""), board_status, board_owner, parse_questions(text), text)
 
 
 def api_surface_section(text: str) -> str:

@@ -16,6 +16,10 @@ PNG/PDF if available.
 **Developer:** technical constraints, feasibility findings, platform-specific edge cases
 discovered during implementation. Drop as a markdown note referencing the feature ID.
 
+**Anyone:** research notes, a plan update, a direction or roadmap statement, an architecture
+decision or any other source that is not a feature request or a design handoff. Drop it as a
+markdown note or any text file; `ingest` decides which page kind it becomes.
+
 **Agents:** a review packet an agent was given, or an output an agent produced, can be
 archived here as a source (see "Archiving agent packets and outputs" below).
 
@@ -30,9 +34,13 @@ archived here as a source (see "Archiving agent packets and outputs" below).
 3. Run the appropriate command:
 
    Command syntax by tool:
-   - Claude Code: `/po-intake [folder]` or `/design-intake [F-XXX] [folder]`
-   - Codex: `$po-intake [folder]` or `$design-intake [F-XXX] [folder]`
-   - Cursor: ask the agent to "run po-intake on [folder]" or "run design-intake on F-XXX [folder]"
+   - Claude Code: `/po-intake [folder]`, `/design-intake [F-XXX] [folder]` or `/ingest [folder]`
+   - Codex: `$po-intake [folder]`, `$design-intake [F-XXX] [folder]` or `$ingest [folder]`
+   - Cursor: ask the agent to "run po-intake on [folder]", "run design-intake on F-XXX [folder]" or "run ingest on [folder]"
+
+   `po-intake` and `design-intake` are the entry points for feature requests and design
+   handoffs. `ingest` is open to any role and writes any page kind: a topic, research page,
+   plan, `direction.md`, `roadmap.md`, persona, business rule, decision or new feature.
 
 The connected board requires the `YYYY-MM-DD-slug` name for the folder it moves; any other
 name is rejected with `intake_name_invalid`.

@@ -32,6 +32,7 @@ from prism_cli.workspace import (
 )
 from tests.manifest_fixtures import manifest_data
 from tests import real_temp  # noqa: F401
+from tests.wiki_files import write_index, write_status_board
 
 
 def write_workspace(root: Path, *, manifest: dict | None = None, answers: dict | None = None) -> None:
@@ -43,13 +44,9 @@ def write_workspace(root: Path, *, manifest: dict | None = None, answers: dict |
     (wiki / "SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Schema\n", encoding="utf-8")
     (wiki / "LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Lifecycle\n", encoding="utf-8")
     (wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 21\n---\n", encoding="utf-8")
-    (wiki / "index.md").write_text(
-        "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n",
-        encoding="utf-8",
-    )
+    write_status_board(root)
     (wiki / "advisory" / "BOARD.md").write_text("# Advisory Board\n", encoding="utf-8")
+    write_index(root)
     if manifest is not None:
         (root / MANIFEST_FILE).write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
     if answers is not None:

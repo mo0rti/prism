@@ -19,7 +19,7 @@ from tests.browser.board_page import REVIEWED_TEXT, BoardPage, expect
 from tests.browser.harness import FEATURES_BY_ID, BrowserCase, FixtureFeature, requires_browser_e2e
 from tests.test_core_workflow_fixture import CHECK_DATE
 
-INDEX_PATH = "knowledge/wiki/index.md"
+BOARD_PATH = "knowledge/wiki/status-board.md"
 LOG_PATH = "knowledge/wiki/log.md"
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n(.*)\Z", re.DOTALL)
@@ -63,7 +63,7 @@ class ApplyScenarioTests(BrowserCase):
         return {path: {key: UUID.sub("<id>", text) for key, text in texts.items()} for path, texts in previewed.items()}
 
     def preview_paths(self, feature: FixtureFeature) -> list[str]:
-        return [feature.path.as_posix(), INDEX_PATH, LOG_PATH]
+        return [feature.path.as_posix(), BOARD_PATH, LOG_PATH]
 
     def sign_in_and_trace(self, board: BoardPage) -> None:
         board.sign_in(self.harness.token("human"))
@@ -199,8 +199,8 @@ class ApplyScenarioTests(BrowserCase):
         before, after = applied.before, applied.after
 
         changed = {path for path in before.keys() | after.keys() if before.get(path) != after.get(path)}
-        self.assertEqual({feature_path, INDEX_PATH, LOG_PATH}, changed)
-        run.effect(f"{feature.feature_id} {action}: only the feature page, index and log changed under knowledge/")
+        self.assertEqual({feature_path, BOARD_PATH, LOG_PATH}, changed)
+        run.effect(f"{feature.feature_id} {action}: only the feature page, status board and log changed under knowledge/")
 
         for path in changed:
             self.assertEqual(before[path].decode("utf-8"), applied.previewed[path]["before"], f"{path} before")
@@ -215,15 +215,15 @@ class ApplyScenarioTests(BrowserCase):
         self.assertEqual(old_body, new_body, "The page body is untouched.")
         run.effect(f"{feature.feature_id} {action}: frontmatter status {source_stage} -> {target_stage}, owner {target_owner}, body unchanged")
 
-        old_rows = before[INDEX_PATH].decode("utf-8").splitlines()
-        new_rows = after[INDEX_PATH].decode("utf-8").splitlines()
+        old_rows = before[BOARD_PATH].decode("utf-8").splitlines()
+        new_rows = after[BOARD_PATH].decode("utf-8").splitlines()
         expected_row = f"| {feature.feature_id} | {feature.title} | {target_stage} | {target_owner} | not-needed |"
         self.assertEqual([expected_row], [row for row in new_rows if row.startswith(f"| {feature.feature_id} ")])
         self.assertEqual(
             [row for row in old_rows if not row.startswith(f"| {feature.feature_id} ")],
             [row for row in new_rows if not row.startswith(f"| {feature.feature_id} ")],
         )
-        run.effect(f"{feature.feature_id} {action}: index row updated, every other row unchanged")
+        run.effect(f"{feature.feature_id} {action}: status board row updated, every other row unchanged")
 
         old_log, new_log = before[LOG_PATH].decode("utf-8"), after[LOG_PATH].decode("utf-8")
         self.assertTrue(new_log.startswith(old_log), "The log is append-only.")
@@ -232,7 +232,7 @@ class ApplyScenarioTests(BrowserCase):
         match = re.fullmatch(
             r"\n?<!-- prism:board-history:v1 preview=(?P<preview>" + UUID.pattern + r") -->\n"
             rf"## {CHECK_DATE.isoformat()} board-{action} \| {feature.feature_id}\n"
-            rf"- paths: {re.escape(feature_path)}, {re.escape(INDEX_PATH)}\n"
+            rf"- paths: {re.escape(feature_path)}, {re.escape(BOARD_PATH)}\n"
             r"- evidence: board preview (?P<evidence>" + UUID.pattern + r")\n"
             r"- by: Browser human \(human\)\n"
             r"<!-- prism:board-actor:v1 (?P<actor>\{[^\n]*\}) -->\n",
@@ -253,7 +253,7 @@ class ApplyScenarioTests(BrowserCase):
         self.assertEqual("applied", receipt["state"])
         self.assertEqual(action, receipt["action"])
         self.assertEqual(feature.feature_id, receipt["feature_id"])
-        self.assertEqual(sorted(changed), receipt["applied_paths"])
+        self.assertEqual(sorted(changed), sorted(receipt["applied_paths"]))
         self.assertEqual(match.group("preview"), receipt["preview_id"])
         self.assertEqual(actor.participant_id, receipt["actor"]["participant_id"])
         self.assertEqual([], receipt["moved_folders"])
@@ -265,7 +265,7 @@ class ApplyScenarioTests(BrowserCase):
         return {
             "feature_before": normal(applied.previewed[feature_path]["before"]),
             "feature_after": normal(applied.previewed[feature_path]["after"]),
-            "index_row": normal(expected_row),
+            "status_board_row": normal(expected_row),
             "log_entry": normal(entry),
             "applied_paths": [normal(path) for path in receipt["applied_paths"]],
         }

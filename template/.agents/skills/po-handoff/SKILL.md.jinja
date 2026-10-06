@@ -21,7 +21,7 @@ transition:
 - Resolve `[F-XXX]` to exactly one existing file at
   `knowledge/wiki/features/[F-XXX]-[slug].md`. An omitted, invalid, missing, or
   ambiguous feature ID is a stop condition.
-- Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/index.md`, the complete feature
+- Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/status-board.md`, the complete feature
   page, and the linked source/context needed for the handoff.
 - This action accepts only the exact source pair `status: specified` and
   `owner: po`. A `raw` feature is unsupported for this action; use the separate
@@ -72,7 +72,7 @@ current template. Do not infer this from the Prism version.
 Record the current workspace root, unique feature path, feature ID, status, owner,
 advisory state, and every identity or source-fingerprint fact that the available
 preflight or direct reads can establish. A copied request or dashboard snapshot is
-only a convenience hint. Before using it, reread the current skill, SCHEMA, LIFECYCLE, index,
+only a convenience hint. Before using it, reread the current skill, SCHEMA, LIFECYCLE, status board,
 feature, workspace identity, and relevant context. Compare the path, identity,
 status, owner, advisory state, and fingerprint with the current files. Stop and
 produce a fresh preview if any value differs or cannot be reconciled.
@@ -86,7 +86,7 @@ produce a fresh preview if any value differs or cannot be reconciled.
    documented criteria. If it is `pending`, offer an independent
    `$board-review F-XXX` first. The board review has its own confirmation and write
    rules; this handoff confirmation does not approve a board review. After a board
-   review that may change the feature, reread the source, index, identity, and
+   review that may change the feature, reread the source, status board, identity, and
    context, then rerun every completeness check.
 3. **Handle an explicit skip.** If the user declines board review while advisory
    review is pending, request a non-empty reason. Keep
@@ -116,14 +116,14 @@ produce a fresh preview if any value differs or cannot be reconciled.
    destination pair, files that would change, and a concise design brief. A preview
    is not a status change and is not an approval.
 7. **Confirm against a fresh reread.** Immediately before asking for confirmation,
-   reread the source, index, workspace identity, and linked context. Recompare all
+   reread the source, status board, workspace identity, and linked context. Recompare all
    recorded identity, path, status, owner, advisory, and fingerprint facts. If the
    workspace changed, stop and prepare a new preview. Ask the user to confirm the
-   complete set of feature, advisory (if applicable), index, and log writes.
+   complete set of feature, advisory (if applicable), status board, and log writes.
 8. **Write only after confirmation.** After confirmation, reread the same sources
    once more. If they still match, update the feature fields atomically as far as
    the available file operations allow, include a confirmed advisory skip reason
-   when applicable, update the matching `index.md` row, and append the required
+   when applicable, update the matching `status-board.md` row, and append the required
    `log.md` entry in the log format that the wiki schema defines. Do not write a design brief as a substitute for those source
    updates. If the user declines or cancels, stop with no feature, advisory, index,
    or log mutation. If a multi-file write is partial, report each observed change,

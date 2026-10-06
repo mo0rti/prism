@@ -34,12 +34,12 @@ If the version probe or schema check fails, or `prism` is missing, too old,
 fails, or lacks `wiki lint`, say:
 `Prism CLI lint unavailable; falling back to direct wiki reads.` Read
 `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/SETTINGS.md` if present,
-`knowledge/wiki/index.md`, all feature and app-requirement files, and
+`knowledge/wiki/index.md`, `knowledge/wiki/status-board.md`, all feature and app-requirement files, and
 related design, API contract, advisory, business-rule, persona, and decision
 files as needed.
 
 Check only provable facts: malformed frontmatter, invalid enums, duplicate IDs,
-orphan and index drift, history dates on pages (`history-date-on-page`), malformed log
+orphan and status board drift, a page with no index line (`missing-index-entry`), an index line for no page (`orphan-index-entry`), history dates on pages (`history-date-on-page`), malformed log
 entries (`malformed-log-entry`), a missing `schema-version` (`missing-schema-version`),
 open conflicts (`unresolved-conflict`) and malformed conflict records (`malformed-conflict`), a processed intake item without a `MANIFEST.md` (`processed-source-without-manifest`), evidence labels (`unknown-evidence-label`, `unlinked-claim`), decision supersession (`supersession-mismatch`, `superseded-decision-cited`), skipped board reviews
 without reasons, and these canonical blockers: `pending-board-review`,

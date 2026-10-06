@@ -24,7 +24,7 @@ and never authorizes a write.
 
 1. Resolve exactly one `knowledge/wiki/features/[F-XXX]-[slug].md` source file
    and require `status: in-design` with `owner: designer`.
-2. Read SCHEMA, LIFECYCLE, `index.md`, the complete feature, linked design/context, workspace
+2. Read SCHEMA, LIFECYCLE, `status-board.md`, the complete feature, linked design/context, workspace
    identity, current requirements/API/advisory evidence, and active revalidation.
 3. Determine whether the feature's scope includes an app with a UI. Read each scoped app's
    `has-ui` capability from `prism.workspace.yml` or `prism app list`; `unknown` counts as true:
@@ -69,9 +69,9 @@ and never authorizes a write.
      section or a plain statement that there is none, such as `None.`) and no API
      contract exists for the feature, create `knowledge/wiki/api-contracts/F-XXX.md` as
      a new page (see "API contract" below)
-   - Update `index.md` and append a `log.md` entry in the log format that the wiki schema defines
+   - Update the feature's row in `status-board.md`, add the `index.md` line of each requirement and API contract page created, and append a `log.md` entry in the log format that the wiki schema defines
 
-Before confirmation show every feature, generated requirement, index, and log
+Before confirmation show every feature, generated requirement, status board, index, and log
 write. Reread the source and context immediately before confirmation and once
 again after it. The preflight and any copied request are copy-only and never
 authorize a write. Decline or cancel means no write. If a multi-file write is partial,

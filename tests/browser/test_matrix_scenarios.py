@@ -18,7 +18,7 @@ from typing import Any
 
 from tests.browser.board_page import BoardPage, expect
 from tests.browser.harness import EXTRA_FEATURES, FEATURES_BY_ID, FixtureFeature, requires_browser_e2e
-from tests.browser.scenario_support import INDEX_PATH, LOG_PATH, ScenarioCase, changed_paths, workspace_tree
+from tests.browser.scenario_support import BOARD_PATH, LOG_PATH, ScenarioCase, changed_paths, workspace_tree
 
 BLOCKED = EXTRA_FEATURES["blocked"]
 VIEWPORTS = {
@@ -118,8 +118,8 @@ class MatrixTests(ScenarioCase):
         run.screenshot(page, f"{prefix}-board-after-apply")
 
         changed = changed_paths(before, workspace_tree(harness.root))
-        self.assertEqual({feature.path.as_posix(), INDEX_PATH, LOG_PATH}, changed)
-        run.effect(f"{prefix}: apply changed only {feature.feature_id}'s page, the index and the log")
+        self.assertEqual({feature.path.as_posix(), BOARD_PATH, LOG_PATH}, changed)
+        run.effect(f"{prefix}: apply changed only {feature.feature_id}'s page, the status board and the log")
 
     def no_write_flow(self, run: Any, board: BoardPage, page: Any, prefix: str) -> None:
         harness = self.harness

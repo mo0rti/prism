@@ -12,7 +12,7 @@
 
 Resolve exactly one existing feature file at
 `knowledge/wiki/features/[F-XXX]-[slug].md`. Stop for a missing, invalid, or
-ambiguous ID, or for any other source status/owner pair. Read SCHEMA, LIFECYCLE, index, the
+ambiguous ID, or for any other source status/owner pair. Read SCHEMA, LIFECYCLE, status board, the
 feature, linked context, and workspace identity. The feature's declared apps
 define its design scope.
 
@@ -37,8 +37,8 @@ review remains an unresolved blocker; follow the existing board-review or
 explicit skip policy instead of inventing a waiver.
 
 Show the observed fields, proposed destination, evidence, and every feature,
-index, and log write. Reread the source and context immediately before asking for
+status board, and log write. Reread the source and context immediately before asking for
 confirmation and once more after confirmation. Only then update `status` to
-`in-design`, keep `owner: designer`, update the index row, and append the log.
+`in-design`, keep `owner: designer`, update the status board row, and append the log.
 Decline or cancel means no writes. If a multi-file write is partial, report the
 exact observed changes and stop for fresh recovery; no transaction is implied.

@@ -13,7 +13,7 @@ from prism_e2e.runner import Journey  # noqa: E402
 
 
 def feature(questions: list[ws.Question]) -> ws.FeatureState:
-    return ws.FeatureState(status="ready-for-dev", owner="dev", index_status=None, index_owner=None, questions=questions, text="")
+    return ws.FeatureState(status="ready-for-dev", owner="dev", board_status=None, board_owner=None, questions=questions, text="")
 
 
 class _Env:

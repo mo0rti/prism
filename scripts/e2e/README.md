@@ -78,7 +78,7 @@ The checks do not change: `no_open_po_questions`, `no_open_designer_questions` a
 
 ## Subsets and seeding
 
-A step runs on the state its predecessor leaves. `--steps` therefore seeds that state from recorded fixtures (`fixtures/<step>/`, the files each step writes) whenever the predecessor is not the step that ran last. `--steps dev-clarify,dev-done` seeds the state after `design-handoff`, runs `dev-clarify`, seeds the state after `dev-start`, and runs `dev-done`. Seeding rebuilds the journey files of the workspace and the feature's row in the wiki index, then runs `prism wiki lint`; a seeded state that lint rejects fails the steps that depend on it. A step that fails marks the steps that depend on it as skipped; a later seed clears the dependency.
+A step runs on the state its predecessor leaves. `--steps` therefore seeds that state from recorded fixtures (`fixtures/<step>/`, the files each step writes) whenever the predecessor is not the step that ran last. `--steps dev-clarify,dev-done` seeds the state after `design-handoff`, runs `dev-clarify`, seeds the state after `dev-start`, and runs `dev-done`. Seeding rebuilds the journey files of the workspace and the feature's row in the status board, then runs `prism wiki lint`; a seeded state that lint rejects fails the steps that depend on it. A step that fails marks the steps that depend on it as skipped; a later seed clears the dependency.
 
 ## Fixture sets
 
@@ -93,7 +93,7 @@ The unit tests validate both sets against the step table and the question tables
 After every apply the script checks, through the board's HTTP API and the workspace files, never through what the agent said:
 
 - the operation receipt reads `applied`;
-- the feature page and the wiki index show the expected stage and owner;
+- the feature page and its status board row show the expected stage and owner;
 - `prism wiki lint` reports no error (the design handoff leaves the developer's open question as the one expected `unresolved-open-questions` error);
 - step-specific facts: intake folder moved, one question added and routed to the product owner, no open question left for the owner who clarified, an agreed API contract page that the requirement page links after a `design-handoff` of a feature whose API surface declares API work, delivery evidence recorded;
 - the host's records name the configured model and effort.

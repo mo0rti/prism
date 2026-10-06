@@ -95,7 +95,13 @@ knowledge/
     features/
     personas/
     app-requirements/
-    index.md        # feature status board and page list, no date columns
+    topics/         # synthesis pages
+    research/       # one question each, current answer and gaps
+    plans/          # current status of one plan each
+    direction.md    # current direction and principles
+    roadmap.md      # what comes next
+    index.md        # general index: one line per page, grouped by kind, no dates
+    status-board.md # feature status board, no date columns
     log.md          # append-only log, the only home for history
     SCHEMA.md       # core wiki conventions, read before every wiki operation
     LIFECYCLE.md    # feature, board and advisory protocol, read for lifecycle operations
@@ -119,6 +125,7 @@ Important meanings:
 The source of truth for what to build is the wiki, especially:
 
 - `knowledge/wiki/index.md`
+- `knowledge/wiki/status-board.md`
 - `knowledge/wiki/features/`
 - `knowledge/wiki/app-requirements/`
 - `knowledge/wiki/business-rules/`
@@ -254,9 +261,17 @@ Use:
 
 Do not invent aliases such as `ios`, `android`, or `web`.
 
-### `index.md` is a status board
+### `index.md` indexes the wiki; `status-board.md` is the status board
 
-`index.md` is for lifecycle coordination, not flat wiki-page listing.
+`index.md` lists every page once, one line in the present tense, grouped by kind, and is the
+first file an agent reads to find pages. `status-board.md` is the feature status board for
+lifecycle coordination. The connected board maintains both next to `log.md`.
+
+### Ingest is open to any role
+
+`ingest` turns a pending intake folder into a topic, research page, plan, direction, roadmap,
+persona, business rule, decision or feature, for any role; `po-intake` and `design-intake`
+remain the entry points for features and design. See [wiki-workflow.md](wiki-workflow.md#ingest-any-role-any-page-kind).
 
 ### Board review must compound into the wiki
 

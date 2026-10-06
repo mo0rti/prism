@@ -41,6 +41,7 @@ The agent system in this workspace does four jobs:
 │       ├── SCHEMA.md
 │       ├── LIFECYCLE.md
 │       ├── index.md
+│       ├── status-board.md
 │       └── advisory/BOARD.md
 ├── .claude/
 │   ├── commands/
@@ -104,7 +105,7 @@ design handoff, delivery prep, and wiki maintenance.
 Key command groups:
 
 - setup: `setup-project`
-- product workflow: `po-intake`, `po-clarify`, `po-specify`, `po-handoff`
+- product workflow: `po-intake`, `ingest`, `po-clarify`, `po-specify`, `po-handoff`
 - design workflow: `design-intake`, `design-clarify`, `design-start`, `design-handoff`
 - development helpers: `add-endpoint`, `add-integration`, `document-entity`, `generate-clients`, `create-migration`
 - backend review and debugging: `review-query`, `review-security-surface`, `debug-prod-issue`
@@ -178,6 +179,7 @@ mirror much of the Claude command surface for Codex:
 |------|---------|
 | `setup-project` | Initializes the workspace wiki, records the setup interview, and generates the advisory board |
 | `po-intake` | Converts raw product input into structured feature intake |
+| `ingest` | Converts a raw source from any role into wiki pages of any kind: topic, research, plan, direction, roadmap, persona, business rule, decision or feature |
 | `po-clarify` | Resolves product ambiguity before implementation starts |
 | `po-specify` | Authors one raw feature page as a structured specified draft |
 | `po-handoff` | Confirmation-gated `specified` + `po` to `ready-for-design` + `designer` handoff |
@@ -276,7 +278,7 @@ Start with:
 ## How To Work With The Agents
 
 1. Start with [`CONTEXT.md`](../CONTEXT.md).
-2. Read [`knowledge/wiki/index.md`](../knowledge/wiki/index.md) and the relevant feature page.
+2. Read [`knowledge/wiki/index.md`](../knowledge/wiki/index.md) to find the pages the task needs, [`knowledge/wiki/status-board.md`](../knowledge/wiki/status-board.md) for feature status, and the relevant feature page.
 3. Read the platform-local `AGENTS.md`, `CLAUDE.md`, and `docs/guide.md` files for the slice you are changing.
 4. Use the command layer for lifecycle work such as setup, intake, review, and completion.
 5. Use the skill folders as implementation guidance, not as a replacement for the wiki.

@@ -21,6 +21,7 @@ from prism_cli.board_service import BoardError, BoardService
 from prism_cli.wiki_transitions import FingerprintCache
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.test_core_workflow_fixture import _feature_page, _write_index
+from tests.wiki_files import write_index, write_status_board
 from tests import real_temp  # noqa: F401
 
 
@@ -382,6 +383,8 @@ class BoardServerTests(unittest.TestCase):
             for feature_id in ids:
                 page = _feature_page().replace("F-001", feature_id).replace("Document review", f"Document review {feature_id}")
                 (root / f"knowledge/wiki/features/{feature_id}-document-review.md").write_text(page, encoding="utf-8", newline="\n")
+            write_status_board(root, "".join(f"| {feature_id} | Document review {feature_id} | raw | po | not-needed |\n" for feature_id in ids))
+            write_index(root)
             large = root / "knowledge/wiki/features/F-001-document-review.md"
             large.write_text(large.read_text(encoding="utf-8") + "\nA long paragraph of review notes. " * 1200 + "\n", encoding="utf-8", newline="\n")
             expected = large.read_text(encoding="utf-8")

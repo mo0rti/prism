@@ -17,7 +17,7 @@ import yaml
 from prism_cli.board_service import BoardError
 from tests.browser.board_page import BoardPage, expect
 from tests.browser.harness import FEATURES_BY_ID, requires_browser_e2e
-from tests.browser.scenario_support import INDEX_PATH, LOG_PATH, UUID, ScenarioCase, changed_paths, workspace_tree
+from tests.browser.scenario_support import BOARD_PATH, LOG_PATH, UUID, ScenarioCase, changed_paths, workspace_tree
 
 ACTOR_COMMENT = re.compile(r"<!-- prism:board-actor:v1 (\{[^\n]*\}) -->")
 
@@ -57,8 +57,8 @@ class TwoViewerTests(ScenarioCase):
             before = workspace_tree(harness.root)
             self.apply_in(first, feature, "handoff", "po-handoff", "ready-for-design")
             after_first = workspace_tree(harness.root)
-            self.assertEqual({feature.path.as_posix(), INDEX_PATH, LOG_PATH}, changed_paths(before, after_first))
-            run.effect("viewer 1's po-handoff changed only the feature page, the index and the log")
+            self.assertEqual({feature.path.as_posix(), BOARD_PATH, LOG_PATH}, changed_paths(before, after_first))
+            run.effect("viewer 1's po-handoff changed only the feature page, the status board and the log")
 
             expect(second.card("F-001")).to_have_count(1)
             expect(pending.get_by_role("alert")).to_contain_text("Feature source changed while this connected preview was open")
@@ -211,8 +211,8 @@ class RecoveryTests(ScenarioCase):
             interrupted = workspace_tree(harness.root)
             self.assertEqual({feature.path.as_posix()}, changed_paths(clean, interrupted))
             self.assertIn("status: in-design", harness.read(feature.path))
-            self.assertNotIn("in-design", harness.read(INDEX_PATH).split(f"| {feature.feature_id} |", 1)[1].split("\n", 1)[0])
-            run.effect("seeded (test-only): the agent's apply was interrupted after the feature page and before the index and log; the agent's grant is revoked")
+            self.assertNotIn("in-design", harness.read(BOARD_PATH).split(f"| {feature.feature_id} |", 1)[1].split("\n", 1)[0])
+            run.effect("seeded (test-only): the agent's apply was interrupted after the feature page and before the status board and log; the agent's grant is revoked")
 
             human = harness.actor("human")
             pending = harness.service.discover(human)["pending_operations"]
@@ -233,13 +233,13 @@ class RecoveryTests(ScenarioCase):
             expect(dialog).to_contain_text(f"Browser agent · agent · {harness.actor('agent').participant_id}")
             expect(dialog.get_by_text("Recorded exact file changes · 3")).to_be_visible()
             expect(dialog.get_by_text(f"{feature.path.as_posix()} · applied")).to_be_visible()
-            expect(dialog.get_by_text(f"{INDEX_PATH} · pending")).to_be_visible()
+            expect(dialog.get_by_text(f"{BOARD_PATH} · pending")).to_be_visible()
             expect(dialog.get_by_text(f"{LOG_PATH} · pending")).to_be_visible()
             recover = dialog.get_by_role("button", name="Recover recorded operation")
             expect(recover).to_be_disabled()
             run.screenshot(page, "inspected")
             self.assertEqual(interrupted, workspace_tree(harness.root), "Inspecting must not write.")
-            run.effect("inspect shows the revoked agent as the original actor and the three recorded writes (feature applied; index and log pending); nothing was written")
+            run.effect("inspect shows the revoked agent as the original actor and the three recorded writes (feature applied; status board and log pending); nothing was written")
 
             # Recovery needs an explicit acknowledgement.
             acknowledgement = dialog.get_by_role("checkbox", name=re.compile(r"^I inspected the original actor"))
@@ -255,10 +255,10 @@ class RecoveryTests(ScenarioCase):
             expect(board.operations_button()).to_have_count(0)
 
             after = workspace_tree(harness.root)
-            self.assertEqual({INDEX_PATH, LOG_PATH}, changed_paths(interrupted, after))
-            run.effect("recovery wrote only the missing index row and the log entry")
-            index_row = [line for line in harness.read(INDEX_PATH).splitlines() if line.startswith(f"| {feature.feature_id} ")]
-            self.assertEqual([f"| {feature.feature_id} | {feature.title} | in-design | designer | not-needed |"], index_row)
+            self.assertEqual({BOARD_PATH, LOG_PATH}, changed_paths(interrupted, after))
+            run.effect("recovery wrote only the missing status board row and the log entry")
+            board_row = [line for line in harness.read(BOARD_PATH).splitlines() if line.startswith(f"| {feature.feature_id} ")]
+            self.assertEqual([f"| {feature.feature_id} | {feature.title} | in-design | designer | not-needed |"], board_row)
             log = harness.read(LOG_PATH)
             self.assertEqual(1, log.count(f"<!-- prism:board-history:v1 preview={preview['preview_id']} -->"))
             comments = actor_comments(log)
