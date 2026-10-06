@@ -140,15 +140,18 @@ def _read_template(relative_path: str) -> str:
     return (ROOT / "template" / Path(relative_path)).read_text(encoding="utf-8")
 
 
-def _render(relative_path: str) -> str:
-    source = _read_template(relative_path)
+def _render_text(source: str, label: str, **context: Any) -> str:
     try:
-        rendered = Environment(undefined=StrictUndefined, autoescape=False, keep_trailing_newline=True).from_string(source).render()
+        rendered = Environment(undefined=StrictUndefined, autoescape=False, keep_trailing_newline=True).from_string(source).render(**context)
     except Exception as exc:
-        raise ValueError(f"Unable to render {relative_path} without project-specific data: {exc}") from exc
+        raise ValueError(f"Unable to render {label} without project-specific data: {exc}") from exc
     if "{{" in rendered or "{%" in rendered or "{#" in rendered:
-        raise ValueError(f"Unresolved Jinja expression in packaged source {relative_path}.")
+        raise ValueError(f"Unresolved Jinja expression in packaged source {label}.")
     return rendered
+
+
+def _render(relative_path: str) -> str:
+    return _render_text(_read_template(relative_path), relative_path)
 
 
 def _skill_metadata(content: str, expected_name: str, source_path: str) -> str:
@@ -167,7 +170,14 @@ def _skill_metadata(content: str, expected_name: str, source_path: str) -> str:
     return description.strip()
 
 
-def _connected_pointer(agents: str, claude: str) -> str:
+def _connected_pointers(agents: str, claude: str) -> tuple[str, str]:
+    """The root pointer of a workflow workspace, and the one of a knowledge root.
+
+    Both come from the one "Connected board workflow" section. Its
+    ``knowledge_root`` condition adds the knowledge-root paragraph, so the two
+    pointers cannot drift apart.
+    """
+
     def extract(text: str, surface: str) -> str:
         heading = _CONNECTED_SECTION.search(text)
         if not heading:
@@ -180,7 +190,11 @@ def _connected_pointer(agents: str, claude: str) -> str:
     claude_body = extract(claude, "Claude")
     if agents_body != claude_body:
         raise ValueError("Connected workflow pointers must match between template/AGENTS.md.jinja and template/CLAUDE.md.jinja.")
-    return f"# Prism workspace guidance\n\n{agents_body}\n"
+    pointers = [
+        f"# Prism workspace guidance\n\n{_render_text(agents_body, 'the Connected board workflow section', **context)}\n"
+        for context in ({}, {"knowledge_root": True})
+    ]
+    return pointers[0], pointers[1]
 
 
 def _read_existing_asset() -> dict[str, Any] | None:
@@ -200,7 +214,7 @@ def _read_existing_asset() -> dict[str, Any] | None:
 def _digest_history(
     existing: dict[str, Any] | None,
     files_by_path: dict[str, dict[str, str]],
-    pointers: dict[str, str],
+    pointer_variants: dict[str, dict[str, str]],
 ) -> dict[str, list[str]]:
     """Return every digest the installer treats as an unmodified earlier copy of a Prism-owned file.
 
@@ -234,11 +248,18 @@ def _digest_history(
             content = shipped_files.get(path)
             if content is not None and (path not in files_by_path or _sha256(content) != files_by_path[path]["digest"]):
                 remember(path, _sha256(content))
-        shipped_pointers = existing.get("guidance_pointers")
-        if isinstance(shipped_pointers, dict):
-            for name, content in shipped_pointers.items():
-                if isinstance(content, str) and name in pointers and _sha256(content) != _sha256(pointers[name]):
-                    remember(name, _sha256(content))
+        # A root pointer has one shipped form per variant (workflow workspace, knowledge root).
+        # Every form the existing asset carried joins the history unless it is still shipped.
+        current_pointer_digests: dict[str, set[str]] = {}
+        for variant in pointer_variants.values():
+            for name, content in variant.items():
+                current_pointer_digests.setdefault(name, set()).add(_sha256(content))
+        for key in pointer_variants:
+            shipped_pointers = existing.get(key)
+            if isinstance(shipped_pointers, dict):
+                for name, content in shipped_pointers.items():
+                    if isinstance(content, str) and name in current_pointer_digests and _sha256(content) not in current_pointer_digests[name]:
+                        remember(name, _sha256(content))
     return {path: history[path] for path in sorted(history)}
 
 
@@ -306,8 +327,9 @@ def build_asset() -> dict[str, Any]:
     # root templates contain project-specific Copier expressions.
     agents_root = _read_template("AGENTS.md.jinja")
     claude_root = _read_template("CLAUDE.md.jinja")
-    pointer = _connected_pointer(agents_root, claude_root)
+    pointer, knowledge_root_pointer = _connected_pointers(agents_root, claude_root)
     guidance_pointers = {"AGENTS.md": pointer, "CLAUDE.md": pointer}
+    knowledge_root_pointers = {"AGENTS.md": knowledge_root_pointer, "CLAUDE.md": knowledge_root_pointer}
 
     asset: dict[str, Any] = {
         "version": "1",
@@ -315,7 +337,8 @@ def build_asset() -> dict[str, Any]:
         "files": [files_by_path[path] for path in sorted(files_by_path)],
         "bootstrap_paths": bootstrap_paths,
         "guidance_pointers": guidance_pointers,
-        "previous_digests": _digest_history(_read_existing_asset(), files_by_path, guidance_pointers),
+        "knowledge_root_pointers": knowledge_root_pointers,
+        "previous_digests": _digest_history(_read_existing_asset(), files_by_path, {"guidance_pointers": guidance_pointers, "knowledge_root_pointers": knowledge_root_pointers}),
     }
     canonical = json.dumps(asset, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     asset["asset_digest"] = hashlib.sha256(canonical).hexdigest()

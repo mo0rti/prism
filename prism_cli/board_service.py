@@ -350,6 +350,7 @@ class BoardService:
             "board": {
                 "board_id": self._board_id,
                 "project_name": self._project_name,
+                **({"purpose": self._model.purpose} if self._model is not None and self._model.purpose else {}),
                 "apps": app_entries(self._model) if self._model is not None else [],
                 "workflow_version": self._workflow_version,
                 "mode": self._mode,
@@ -4223,7 +4224,7 @@ def _board_scope(data: Mapping[str, Any], manifest_path: Path) -> tuple[Workspac
     errors = [item for item in diagnostics if item.severity == "error"]
     if errors:
         codes = ", ".join(sorted({item.code for item in errors}))
-        return None, f"The workspace manifest has invalid repository or app declarations ({codes}); `prism doctor --workspace` lists them, and connected writes are read-only until they are fixed."
+        return None, f"The workspace manifest has invalid repository, app or workflow declarations ({codes}); `prism doctor --workspace` lists them, and connected writes are read-only until they are fixed."
     return model, None
 
 

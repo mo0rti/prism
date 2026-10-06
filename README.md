@@ -65,6 +65,8 @@ prism workflow install . --name "My workspace" --app backend
 prism workflow install . --name "My workspace" --app backend --apply
 ```
 
+For one wiki shared by apps that live in other repositories, use `--knowledge-root` instead of `--app` ([knowledge root over several repositories](https://github.com/mo0rti/prism/blob/main/docs/workspace-model.md#knowledge-root-over-several-repositories)).
+
 **2. Check readiness.** The "Shared board" section lists what needs attention, each with a `Fix:` line. A warning that no grant exists yet is expected at this point.
 
 ```bash

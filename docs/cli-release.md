@@ -80,8 +80,9 @@ The workspace contract is intentionally conservative:
 
 - schema 2 manifests load normally; every other `schema_version` is refused with
   `unsupported-workspace-manifest-schema` and is not migrated
-- invalid repository or app declarations produce error diagnostics with stable codes
-  (for example `duplicate-app-id`, `unknown-app-stack` and `app-path-conflict`), and an
+- invalid repository, app or workflow declarations produce error diagnostics with stable codes
+  (for example `duplicate-app-id`, `unknown-app-stack`, `app-path-conflict` and
+  `invalid-workflow-purpose`), and an
   external repository without a checkout in `prism.local.yml` is the warning
   `external-repository-unresolved`, never an error
 - malformed or unreadable manifests produce diagnostics and are never rewritten by

@@ -24,7 +24,15 @@ fix the error names, at most 2 more times, and never widen the change; then stop
 report. Stop and report at once when a connected write is unavailable, denied or its
 error names no fix. Custom local skills keep their direct-file
 workflow. An older workspace needs an explicit `prism workflow upgrade` before
-connected writes are enabled; the read-only board and existing skills remain usable.
+connected writes are enabled; the read-only board and existing skills remain usable.{% if knowledge_root is defined and knowledge_root %}
+
+This workspace is a knowledge root: it holds the shared wiki for applications that live
+in other repositories and generates no application code. The wiki governs feature scope,
+delivery evidence and shared knowledge. Each application repository keeps its own
+instructions, code and builds; neither set of rules overrides the other, and nothing
+here writes into a checkout. `prism.local.yml` (untracked, per machine) maps each
+external repository to its local checkout. The feature lifecycle is optional: a
+knowledge root may have no features at all.{% endif %}
 
 ## Product knowledge wiki
 

@@ -9,7 +9,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-from prism_cli.app_model import WORKSPACE_REPOSITORY_ID
+from prism_cli.app_model import PURPOSE_KNOWLEDGE_ROOT, WORKSPACE_REPOSITORY_ID
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, lint_wiki
 from prism_cli.wiki_model import (
     VALID_FEATURE_STATUSES,
@@ -121,6 +121,11 @@ class WorkspaceStatus:
     generation_answers: dict[str, Any] = field(default_factory=dict)
     template_metadata: dict[str, Any] = field(default_factory=dict)
     answers_present: bool = False
+    purpose: str | None = None
+
+    @property
+    def knowledge_root(self) -> bool:
+        return self.purpose == PURPOSE_KNOWLEDGE_ROOT
 
     @property
     def workspace_stacks(self) -> set[str]:
@@ -151,6 +156,7 @@ class WorkspaceStatus:
             "workspace": {
                 "kind": self.workspace_kind,
                 "project_name": self.project_name,
+                **({"purpose": self.purpose} if self.purpose else {}),
                 "apps": [dict(app) for app in self.apps],
                 "repositories": [dict(repository) for repository in self.repositories],
                 "setup_state": self.setup_state,
@@ -461,6 +467,7 @@ def build_status(root: Path) -> WorkspaceStatus:
         generation_answers=_safe_generation_answers(answers),
         template_metadata=_template_metadata(inspection),
         answers_present=inspection.answers_present,
+        purpose=inspection.model.purpose,
     )
 
 
