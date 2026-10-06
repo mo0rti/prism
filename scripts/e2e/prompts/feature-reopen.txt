@@ -2,7 +2,7 @@ I am the developer. Feature F-001 shipped, but the PDF export fails for reviews 
 
 My impact review, which I confirm:
 - Why: the PDF renderer breaks on right-to-left comment text, which the original specification did not cover.
-- Route: in-dev. Affected platform: backend.
+- Route: in-dev. Affected app: backend.
 - Affected artifacts: the backend PDF renderer and its tests.
 - Prior completion and release evidence: archive the current delivery evidence as it is.
 

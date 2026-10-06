@@ -7,24 +7,24 @@ from typing import Any
 
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, lint_wiki
 from prism_cli.wiki_model import (
+    AppRequirementPage,
     FeaturePage,
-    PlatformRequirementPage,
     load_markdown_page,
     parse_open_question_rows,
     read_feature_pages,
-    read_platform_requirement_pages,
+    read_app_requirement_pages,
     within_wiki_read_scope,
 )
 from prism_cli.workspace import detect_workspace_kind, inspect_workspace
 
 
-ACTIVE_PLATFORM_STATUSES = {"ready-for-design", "in-design", "ready-for-dev", "in-dev"}
+ACTIVE_APP_STATUSES = {"ready-for-design", "in-design", "ready-for-dev", "in-dev"}
 SEARCH_DIRECTORIES = {
     "feature": "features",
     "persona": "personas",
     "business-rule": "business-rules",
     "design": "design",
-    "platform-requirement": "platform-requirements",
+    "app-requirement": "app-requirements",
     "api-contract": "api-contracts",
     "decision": "decisions",
 }
@@ -60,7 +60,7 @@ def wiki_show(root: Path, feature_id: str) -> dict[str, Any]:
     else:
         requirements = [
             requirement
-            for requirement in read_platform_requirement_pages(wiki_root)
+            for requirement in read_app_requirement_pages(wiki_root)
             if requirement.feature_id == feature.feature_id
         ]
         linked_context = _linked_context_for_feature(wiki_root, feature.feature_id)
@@ -121,31 +121,31 @@ def wiki_owner(root: Path, owner: str) -> dict[str, Any]:
 
 
 @within_wiki_read_scope
-def wiki_platform(root: Path, platform_id: str) -> dict[str, Any]:
+def wiki_app(root: Path, app_id: str) -> dict[str, Any]:
     workspace_root = root.expanduser().resolve()
     wiki_root = workspace_root / "knowledge" / "wiki"
     lint_result = lint_wiki(workspace_root)
     features = [
         feature
         for feature in read_feature_pages(wiki_root)
-        if platform_id in feature.platforms and feature.status in ACTIVE_PLATFORM_STATUSES
+        if app_id in feature.apps and feature.status in ACTIVE_APP_STATUSES
     ]
     requirements = [
         requirement
-        for requirement in read_platform_requirement_pages(wiki_root)
-        if requirement.platform == platform_id
+        for requirement in read_app_requirement_pages(wiki_root)
+        if requirement.app == app_id
     ]
     facts = {
-        "platform": platform_id,
+        "app": app_id,
         "feature_count": len(features),
         "features": [_feature_summary(feature) for feature in features],
-        "platform_requirement_count": len(requirements),
-        "platform_requirements": [_requirement_to_dict(requirement) for requirement in requirements],
+        "app_requirement_count": len(requirements),
+        "app_requirements": [_requirement_to_dict(requirement) for requirement in requirements],
     }
     sources = [str(wiki_root)]
     sources.extend(str(feature.page.path) for feature in features)
     sources.extend(str(requirement.page.path) for requirement in requirements)
-    return _envelope(workspace_root, "wiki platform", lint_result.diagnostics, facts, _unique(sources))
+    return _envelope(workspace_root, "wiki app", lint_result.diagnostics, facts, _unique(sources))
 
 
 @within_wiki_read_scope
@@ -211,7 +211,7 @@ def _envelope(
 
 def _feature_to_dict(
     feature: FeaturePage,
-    requirements: list[PlatformRequirementPage],
+    requirements: list[AppRequirementPage],
     linked_context: dict[str, list[str]],
 ) -> dict[str, Any]:
     rows, errors = parse_open_question_rows(feature.page.body)
@@ -221,7 +221,7 @@ def _feature_to_dict(
         "open_questions": rows,
         "open_question_parse_errors": errors,
         "linked_context": linked_context,
-        "platform_requirements": [_requirement_to_dict(requirement) for requirement in requirements],
+        "app_requirements": [_requirement_to_dict(requirement) for requirement in requirements],
     }
 
 
@@ -232,15 +232,15 @@ def _feature_summary(feature: FeaturePage) -> dict[str, Any]:
         "status": feature.status,
         "owner": feature.owner,
         "advisory_review": feature.advisory_review,
-        "platforms": feature.platforms,
+        "apps": feature.apps,
         "path": str(feature.page.path),
     }
 
 
-def _requirement_to_dict(requirement: PlatformRequirementPage) -> dict[str, Any]:
+def _requirement_to_dict(requirement: AppRequirementPage) -> dict[str, Any]:
     return {
         "feature_id": requirement.feature_id,
-        "platform": requirement.platform,
+        "app": requirement.app,
         "status": requirement.status,
         "path": str(requirement.page.path),
     }
@@ -280,7 +280,7 @@ def _search_wiki_pages(wiki_root: Path, query: str) -> list[dict[str, Any]]:
                 "path": str(path),
                 "matched_fields": matched_fields,
             }
-            for key in ("id", "title", "feature-id", "platform", "status", "owner"):
+            for key in ("id", "title", "feature-id", "app", "status", "owner"):
                 value = page.frontmatter.get(key)
                 if isinstance(value, str):
                     result[key.replace("-", "_")] = value

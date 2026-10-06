@@ -24,7 +24,7 @@ from tests.browser.scenario_support import INDEX_PATH, LOG_PATH, UUID, ScenarioC
 
 ADVISORY = EXTRA_FEATURES["advisory"]
 FOLLOW_UP = FEATURES_BY_ID["F-003"]
-REQUIREMENT_PATH = "knowledge/wiki/platform-requirements/F-003-backend.md"
+REQUIREMENT_PATH = "knowledge/wiki/app-requirements/F-003-backend.md"
 RESOLVED_ROW = "| 1 | Which points should a review summary highlight? | po | resolved: Capture key points and requested follow-up. |"
 SKIP_REASON = "Typed before the change: the advisory review is covered elsewhere."
 

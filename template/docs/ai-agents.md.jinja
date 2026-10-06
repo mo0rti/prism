@@ -18,7 +18,7 @@ The agent system in this workspace does four jobs:
 |------|-------|---------|
 | Shared context | [`CONTEXT.md`](../CONTEXT.md) | First file to read for project identity, commands, repository layout, and wiki workflow |
 | Root agent guidance | [`AGENTS.md`](../AGENTS.md), [`CLAUDE.md`](../CLAUDE.md) | Workspace-wide operating rules for Codex and Claude |
-| Product wiki | [`knowledge/wiki/SCHEMA.md`](../knowledge/wiki/SCHEMA.md), [`knowledge/wiki/LIFECYCLE.md`](../knowledge/wiki/LIFECYCLE.md) | Source of truth for features, platform requirements, contracts, rules, and advisory reviews |
+| Product wiki | [`knowledge/wiki/SCHEMA.md`](../knowledge/wiki/SCHEMA.md), [`knowledge/wiki/LIFECYCLE.md`](../knowledge/wiki/LIFECYCLE.md) | Source of truth for features, app requirements, contracts, rules, and advisory reviews |
 | Claude commands | [`.claude/commands/`](../.claude/commands/) | Structured project operations such as setup, PO intake, review, handoff, and wiki maintenance |
 | Claude skills | [`.claude/skills/`](../.claude/skills/) | Reusable Claude Code guidance for implementation, conventions, testing, and platform work |
 | Codex skills | [`.agents/skills/`](../.agents/skills/) | Reusable Codex guidance for shared workflows and supported platform work |
@@ -114,9 +114,9 @@ Key command groups:
 Read [`CONTEXT.md`](../CONTEXT.md) for the command list by tool surface.
 
 When the optional Prism CLI is installed, `prism wiki graph --open` renders an
-interactive dashboard of the wiki (features, lifecycle board, platform lanes),
+interactive dashboard of the wiki (features, lifecycle board, app lanes),
 and `prism wiki graph --serve` keeps it live-updating as wiki files change.
-The dashboard includes Graph, Board, Platforms, and Guide views. It is
+The dashboard includes Graph, Board, Apps, and Guide views. It is
 read-only and derived; the wiki files remain the source of truth. The
 inspector exposes source paths, confidence, workflow blockers, and page-health
 diagnostics so an agent can follow the evidence before changing project state.
@@ -197,7 +197,7 @@ mirror much of the Claude command surface for Codex:
 | `lint-wiki` | Checks the wiki for structure or consistency problems |
 | `wiki-blockers` | Surfaces unresolved blockers from the wiki |
 | `wiki-owner` | Read-only owner dashboard showing open questions, waiting work, and stale items for `po`, `designer`, `dev`, or `none` |
-| `wiki-platform` | Focuses a feature view by platform |
+| `wiki-app` | Focuses a feature view by app |
 | `wiki-query` | Searches and summarizes wiki content |
 | `wiki-show` | Opens a specific feature or wiki record |
 | `document-entity` | Updates or creates backend entity documentation |

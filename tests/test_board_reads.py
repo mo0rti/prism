@@ -21,7 +21,7 @@ class BoardReadTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        receipt = apply_install(self.root, plan_install(self.root, name="Document review", platforms=["backend"]))
+        receipt = apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))
         self.assertEqual("applied", receipt["status"])
         path = self.root / "knowledge/wiki/features/F-001-document-review.md"
         path.write_text(_feature_page(), encoding="utf-8")
@@ -175,7 +175,7 @@ class PagedReadTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        receipt = apply_install(self.root, plan_install(self.root, name="Document review", platforms=["backend"]))
+        receipt = apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))
         self.assertEqual("applied", receipt["status"])
         self.ids = [f"F-{number:03d}" for number in range(1, 15)]
         for feature_id in self.ids:
@@ -230,7 +230,7 @@ class PagedReadTests(unittest.TestCase):
             path.write_text(path.read_text(encoding="utf-8").replace("status: raw", "status: ready-for-design"), encoding="utf-8", newline="\n")
         # Their missing requirement pages add diagnostics that repeat on every page.
         with patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", 8000):
-            platform = self.pages(lambda cursor: query(self.service, self.actor, "platform", "backend", None, cursor))
+            platform = self.pages(lambda cursor: query(self.service, self.actor, "app", "backend", None, cursor))
         self.assertGreater(len(platform), 1)
         self.assertEqual(self.ids, [item["id"] for page in platform for item in page["facts"]["features"]])
 

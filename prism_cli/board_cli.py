@@ -75,7 +75,7 @@ def cmd_workflow(args: argparse.Namespace) -> int:
 
     try:
         root = Path(args.path).expanduser()
-        plan = plan_install(root, name=args.name, platforms=args.app, upgrade=args.workflow_command == "upgrade")
+        plan = plan_install(root, name=args.name, apps=args.app, upgrade=args.workflow_command == "upgrade")
         if args.json:
             if not args.apply:
                 _json(plan)

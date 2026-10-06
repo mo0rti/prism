@@ -5,7 +5,7 @@ status: raw
 owner: po
 introduced: 2026-10-05
 last-updated: 2026-10-05
-platforms: [backend]
+apps: [backend]
 sources: [knowledge/intake/processed/review-summary]
 advisory-review: not-needed
 ---
@@ -31,10 +31,10 @@ As a [Legal operations document reviewer](../personas/legal-operations-reviewer.
 | 2 | If the comments do not fit on one page, what should happen? | po | open |
 | 3 | Should the summary include the date of the review or the document version? | po | open |
 | 4 | Where does the export control appear and what does the summary look like? | designer | open |
-| 5 | Which platform presents the export control, given that backend is the only platform declared for this project? | dev | open |
+| 5 | Which app presents the export control, given that backend is the only app declared for this project? | dev | open |
 | 6 | Does the summary have to be available in more than one language? | po | open |
 
-## Platform scope
+## App scope
 - **backend**: Produce the review summary for a finished review, containing only the requesting reviewer's own comments, and refuse to produce it while the review is in progress.
 
 ## Design

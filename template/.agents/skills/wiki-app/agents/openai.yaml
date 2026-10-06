@@ -1,0 +1,6 @@
+interface:
+  display_name: "Wiki App"
+  short_description: "Read-only app queue for one app of the workspace"
+  default_prompt: "Use $wiki-app <app-id> to show active features, requirement status, and blockers for one app."
+policy:
+  allow_implicit_invocation: true

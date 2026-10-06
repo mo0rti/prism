@@ -89,7 +89,7 @@ def render_wiki_lint_result(result: WikiLintResult, *, readiness: bool = False) 
 
     print(section("Diagnostics"))
     for diagnostic in result.diagnostics:
-        formatter = error if diagnostic.severity == "error" else warn
+        formatter = error if diagnostic.severity == "error" else info if diagnostic.severity == "info" else warn
         location = diagnostic.path
         if diagnostic.feature_id:
             location += f" [{diagnostic.feature_id}]"
@@ -119,8 +119,8 @@ def render_wiki_query_result(result: dict[str, Any]) -> None:
         render_wiki_blocker_facts(facts)
     elif command == "wiki owner":
         render_wiki_owner_facts(facts)
-    elif command == "wiki platform":
-        render_wiki_platform_facts(facts)
+    elif command == "wiki app":
+        render_wiki_app_facts(facts)
     elif command == "wiki search":
         render_wiki_search_facts(facts)
     elif command == "wiki transition-preflight":
@@ -164,13 +164,13 @@ def render_wiki_show_facts(facts: dict[str, Any]) -> None:
                 f"Status: {feature.get('status')}",
                 f"Owner: {feature.get('owner')}",
                 f"Board review: {feature.get('advisory_review')}",
-                f"Platforms: {', '.join(feature.get('platforms', [])) or 'none'}",
+                f"Apps: {', '.join(feature.get('apps', [])) or 'none'}",
                 f"Path: {feature.get('path')}",
             ],
         )
     )
     questions = feature.get("open_questions", [])
-    requirements = feature.get("platform_requirements", [])
+    requirements = feature.get("app_requirements", [])
     print()
     print(section("Open questions"))
     if questions:
@@ -179,10 +179,10 @@ def render_wiki_show_facts(facts: dict[str, Any]) -> None:
     else:
         print("- none")
     print()
-    print(section("Platform requirements"))
+    print(section("App requirements"))
     if requirements:
         for requirement in requirements:
-            print(f"- {requirement.get('platform')}: {requirement.get('status')} ({requirement.get('path')})")
+            print(f"- {requirement.get('app')}: {requirement.get('status')} ({requirement.get('path')})")
     else:
         print("- none")
 
@@ -215,14 +215,14 @@ def render_wiki_owner_facts(facts: dict[str, Any]) -> None:
         print("- none")
 
 
-def render_wiki_platform_facts(facts: dict[str, Any]) -> None:
-    print(panel("Platform", [f"Platform: {facts.get('platform')}", f"Features: {facts.get('feature_count', 0)}", f"Requirements: {facts.get('platform_requirement_count', 0)}"]))
+def render_wiki_app_facts(facts: dict[str, Any]) -> None:
+    print(panel("App", [f"App: {facts.get('app')}", f"Features: {facts.get('feature_count', 0)}", f"Requirements: {facts.get('app_requirement_count', 0)}"]))
     print()
     print(section("Features"))
     render_feature_summaries(facts.get("features", []))
     print()
-    print(section("Platform requirements"))
-    requirements = facts.get("platform_requirements", [])
+    print(section("App requirements"))
+    requirements = facts.get("app_requirements", [])
     if requirements:
         for requirement in requirements:
             print(f"- {requirement.get('feature_id')}: {requirement.get('status')} ({requirement.get('path')})")
@@ -360,10 +360,10 @@ def render_status_result(result: WorkspaceStatus, full: bool) -> None:
             print(section("Open questions"))
             for key, value in compact_count_lines(result.open_questions_by_owner):
                 print(f"- {key}: {value}")
-        if result.platform_requirement_status_counts:
+        if result.app_requirement_status_counts:
             print()
-            print(section("Platform requirements"))
-            for key, value in compact_count_lines(result.platform_requirement_status_counts):
+            print(section("App requirements"))
+            for key, value in compact_count_lines(result.app_requirement_status_counts):
                 print(f"- {key}: {value}")
 
     diagnostics = result.to_dict()["diagnostics"]

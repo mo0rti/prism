@@ -12,7 +12,7 @@ paths:
 ## Convention
 
 - **`template/docs/`** — Project-wide reference documentation (architecture, API conventions, deployment guides). For humans. Does NOT contain feature specs or advisory board config.
-- **`template/knowledge/wiki/`** — AI-facing product wiki. Feature specs, platform requirements, advisory board, design decisions. This is the source of truth for what to build.
+- **`template/knowledge/wiki/`** — AI-facing product wiki. Feature specs, app requirements, advisory board, design decisions. This is the source of truth for what to build.
 - **`template/{platform}/docs/`** — Platform-specific technical docs (architecture, file structure, networking, design system, etc.). Only relevant to that platform.
 
 ## Rules

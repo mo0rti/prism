@@ -88,7 +88,7 @@ class SchemaSplitTests(unittest.TestCase):
                     self.assertIn("knowledge/wiki/LIFECYCLE.md", paths)
         self.assertTrue({"po-intake", "po-handoff", "dev-done", "feature-reopen", "board-review"} <= references_lifecycle)
         # Read-only query skills keep the core schema only.
-        self.assertTrue({"wiki-show", "wiki-query", "wiki-owner", "wiki-platform", "ask"}.isdisjoint(references_lifecycle))
+        self.assertTrue({"wiki-show", "wiki-query", "wiki-owner", "wiki-app", "ask"}.isdisjoint(references_lifecycle))
 
 
 if __name__ == "__main__":

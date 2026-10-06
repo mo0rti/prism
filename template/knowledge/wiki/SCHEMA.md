@@ -22,7 +22,7 @@ knowledge/
     ├── personas/         # Customer segments and user types: [slug].md
     ├── business-rules/   # Invariants and constraints: BR-XXX-[slug].md
     ├── design/           # Component specs and interaction patterns: F-XXX-[slug].md
-    ├── platform-requirements/  # Per-platform implementation specs: F-XXX-[platform].md
+    ├── app-requirements/  # Per-app implementation specs: F-XXX-[app-id].md
     ├── api-contracts/    # API shapes and endpoint contracts: F-XXX.md
     ├── decisions/        # Architecture Decision Records: ADR-XXX-[slug].md
     ├── advisory/
@@ -130,35 +130,35 @@ Questions for the Designer that affect implementation.
 
 ---
 
-## Platform requirements page format
+## App requirements page format
 
-Every file in `wiki/platform-requirements/` must follow this format:
+Every file in `wiki/app-requirements/` must follow this format:
 
 ```markdown
 ---
 feature-id: F-XXX
-platform: backend | mobile-android | mobile-ios | web-user-app | web-admin-portal
+app: [an app ID from the feature's `apps` list]
 status: pending | in-progress | done
 ---
 
 ## What to build
-Specific, actionable description of what this platform must implement.
-Written for the AI agent working in this platform's directory.
+Specific, actionable description of what this app must implement.
+Written for the AI agent working in this app's code.
 
 ## Technical constraints
-Platform-specific constraints, existing patterns to follow, library choices.
+App-specific constraints, existing patterns to follow, library choices.
 
 ## Design reference
-Link to design/F-XXX-[slug].md for UI platforms. Not applicable for backend.
+Link to design/F-XXX-[slug].md for an app with a UI. Not applicable to an app without a UI.
 
 ## API contract reference
-Link to api-contracts/F-XXX.md. List endpoints or data shapes this platform consumes/produces.
+Link to api-contracts/F-XXX.md. List endpoints or data shapes this app consumes/produces.
 
 ## Acceptance criteria
-Platform-specific done conditions.
+App-specific done conditions.
 
 ## Dependencies
-Other feature IDs or platform-requirement files that must complete first, or `None.`
+Other feature IDs or app-requirement files that must complete first, or `None.`
 Open questions never go here; they stay in the feature's Open questions table.
 ```
 
@@ -306,7 +306,7 @@ Rules:
 - it summarizes the wiki but is not the source of truth
 - only `feature-status` writes or refreshes it
 - `lint-wiki`, `wiki-show`, `wiki-blockers`, `wiki-query`, `wiki-owner`, and
-  `wiki-platform` do not write it
+  `wiki-app` do not write it
 - generated projects should ignore it in version control
 - if `WIKI_REPORT.md` disagrees with the underlying wiki files, the underlying wiki files win
 - `WIKI_REPORT.md` should stay short enough to act as an orientation artifact
@@ -323,7 +323,7 @@ are read-only and must not write wiki files.
 - `wiki-blockers`
 - `wiki-query`
 - `wiki-owner`
-- `wiki-platform`
+- `wiki-app`
 
 ### Canonical blocker categories
 
@@ -332,17 +332,17 @@ Use this blocker vocabulary consistently in `lint-wiki`, `wiki-blockers`, and
 
 - `pending-board-review`: any feature with `advisory-review: pending` that is at
   `ready-for-design`, `in-design`, `ready-for-dev`, or `in-dev`.
-- `missing-design`: any UI-platform feature in `ready-for-dev`, `in-dev`, or `done` with no
-  matching design page.
-- `missing-platform-requirements`: any feature in `ready-for-dev` or `in-dev` that is
-  missing one or more platform requirement files for platforms listed in feature
+- `missing-design`: any feature in `ready-for-dev`, `in-dev`, or `done` whose scope includes an app with a UI
+  (`has-ui`) and that has no matching design page.
+- `missing-app-requirements`: any feature in `ready-for-dev` or `in-dev` that is
+  missing one or more app requirement files for apps listed in feature
   frontmatter.
 - `unresolved-open-questions`: any feature in `ready-for-dev` or `in-dev` with open
   questions still assigned to `po`, `designer`, or `dev`.
 - `api-contract-not-ready`: any feature that depends on an API contract still marked
-  `draft` while downstream platforms are `ready-for-dev` or `in-dev`.
-- `cross-platform-dependency`: any platform-requirement page whose `Dependencies`
-  section points to unfinished feature IDs or unfinished platform-requirement pages.
+  `draft` while downstream apps are `ready-for-dev` or `in-dev`.
+- `cross-app-dependency`: any app-requirement page whose `Dependencies`
+  section points to unfinished feature IDs or unfinished app-requirement pages.
 
 If a command cannot prove a category from current wiki files, it must not invent it.
 Report the category as unchecked or absent rather than guessing.
@@ -366,8 +366,8 @@ Follow these rules in every wiki operation:
 
 5. **Always update [`index.md`](index.md) and append to `log.md`** after any write operation.
 
-6. **Only create platform-requirements pages** for platforms included in this generated
-   project. Do not create pages for platforms not present.
+6. **Only create app-requirements pages** for apps listed in the feature's `apps`
+   frontmatter. Do not create pages for any other app.
 
 7. **Use relative markdown links** between wiki pages.
 

@@ -37,7 +37,7 @@ from tests import real_temp  # noqa: F401
 
 def write_workspace(root: Path, *, manifest: dict | None = None, answers: dict | None = None) -> None:
     wiki = root / "knowledge" / "wiki"
-    for directory in ("features", "personas", "business-rules", "design", "api-contracts", "decisions", "platform-requirements", "advisory"):
+    for directory in ("features", "personas", "business-rules", "design", "api-contracts", "decisions", "app-requirements", "advisory"):
         (wiki / directory).mkdir(parents=True, exist_ok=True)
     (root / "knowledge" / "intake" / "pending").mkdir(parents=True, exist_ok=True)
     (root / "knowledge" / "intake" / "quarantined").mkdir(parents=True, exist_ok=True)
@@ -196,7 +196,7 @@ class WorkspaceInspectionTests(unittest.TestCase):
         self.assertIn("manifest-answers-drift", codes)
         self.assertIn("minimum-prism-cli-version-not-met", codes)
         self.assertEqual("Manifest Name", inspection.project_name)
-        self.assertEqual(["backend"], inspection.platforms)
+        self.assertEqual(["backend"], inspection.app_ids)
         self.assertEqual(["backend"], inspection.filesystem_platforms)
 
     def test_inspection_falls_back_to_answers_and_filesystem_when_manifest_is_unsupported(self) -> None:
@@ -208,7 +208,7 @@ class WorkspaceInspectionTests(unittest.TestCase):
 
         self.assertIsNone(inspection.manifest)
         self.assertEqual("Current", inspection.project_name)
-        self.assertEqual(["backend"], inspection.platforms)
+        self.assertEqual(["backend"], inspection.app_ids)
         self.assertIn("unsupported-workspace-manifest-schema", {item.code for item in inspection.contract_diagnostics})
 
     def test_write_manifest_records_known_provenance_and_excludes_unknown_answers(self) -> None:
@@ -401,7 +401,7 @@ class DoctorBoardCheckTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        receipt = apply_install(self.root, plan_install(self.root, name="Doctor board", platforms=["backend"]))
+        receipt = apply_install(self.root, plan_install(self.root, name="Doctor board", apps=["backend"]))
         self.assertEqual("applied", receipt["status"])
         # Keep the default-port check independent of whatever runs on this machine.
         patcher = patch.object(board_server, "DEFAULT_BOARD_PORT", _free_port())

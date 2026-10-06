@@ -26,7 +26,7 @@ class BoardStoreConcurrencyTests(unittest.TestCase):
         self.root = Path(temporary.name)
         self.assertEqual(
             "applied",
-            apply_install(self.root, plan_install(self.root, name="Document review", platforms=["backend"]))["status"],
+            apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))["status"],
         )
         feature = self.root / "knowledge/wiki/features/F-001-document-review.md"
         feature.write_text(_feature_page(), encoding="utf-8")
@@ -226,7 +226,7 @@ class ActiveGrantCountTests(unittest.TestCase):
         self.root = Path(temporary.name)
         self.assertEqual(
             "applied",
-            apply_install(self.root, plan_install(self.root, name="Grant count", platforms=["backend"]))["status"],
+            apply_install(self.root, plan_install(self.root, name="Grant count", apps=["backend"]))["status"],
         )
         workflow = yaml.safe_load((self.root / "prism.workspace.yml").read_text(encoding="utf-8"))["workflow"]
         self.identity = (workflow["board_id"], workflow["version"], workflow["asset_digest"])

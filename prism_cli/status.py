@@ -15,7 +15,7 @@ from prism_cli.wiki_model import (
     VALID_FEATURE_STATUSES,
     parse_open_question_rows,
     read_feature_pages,
-    read_platform_requirement_pages,
+    read_app_requirement_pages,
     read_wiki_settings,
 )
 from prism_cli.workspace import (
@@ -115,7 +115,7 @@ class WorkspaceStatus:
     feature_status_counts: dict[str, int] = field(default_factory=dict)
     feature_owner_counts: dict[str, int] = field(default_factory=dict)
     open_questions_by_owner: dict[str, int] = field(default_factory=dict)
-    platform_requirement_status_counts: dict[str, int] = field(default_factory=dict)
+    app_requirement_status_counts: dict[str, int] = field(default_factory=dict)
     advisory_review_snapshot: AdvisoryReviewSnapshot = field(default_factory=AdvisoryReviewSnapshot)
     settings_health: SettingsHealth | None = None
     generation_answers: dict[str, Any] = field(default_factory=dict)
@@ -167,7 +167,7 @@ class WorkspaceStatus:
                     "feature_status_counts": dict(self.feature_status_counts),
                     "feature_owner_counts": dict(self.feature_owner_counts),
                     "open_questions_by_owner": dict(self.open_questions_by_owner),
-                    "platform_requirement_status_counts": dict(self.platform_requirement_status_counts),
+                    "app_requirement_status_counts": dict(self.app_requirement_status_counts),
                     "blocker_count": self.blocker_count,
                     "error_count": self.wiki_lint.error_count,
                     "warning_count": self.wiki_lint.warning_count,
@@ -455,7 +455,7 @@ def build_status(root: Path) -> WorkspaceStatus:
         feature_status_counts=feature_counts,
         feature_owner_counts=owner_counts,
         open_questions_by_owner=open_question_counts,
-        platform_requirement_status_counts=requirement_counts,
+        app_requirement_status_counts=requirement_counts,
         advisory_review_snapshot=advisory_review_snapshot,
         settings_health=settings_health,
         generation_answers=_safe_generation_answers(answers),
@@ -664,7 +664,7 @@ def _wiki_counts(root: Path) -> tuple[dict[str, int], dict[str, int], dict[str, 
     for status in sorted(VALID_FEATURE_STATUSES):
         feature_status_counts.setdefault(status, 0)
 
-    for requirement in read_platform_requirement_pages(wiki_root):
+    for requirement in read_app_requirement_pages(wiki_root):
         requirement_status_counts[requirement.status or "unknown"] += 1
 
     return (

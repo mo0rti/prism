@@ -64,13 +64,13 @@
       "po-specify",
       "prep-sprint",
       "setup-project",
+      "wiki-app",
       "wiki-blockers",
       "wiki-owner",
-      "wiki-platform",
       "wiki-query",
       "wiki-show"
     ],
-    "identity-platforms": [
+    "identity-app-ids": [
       "backend",
       "mobile-android"
     ],
@@ -91,6 +91,9 @@
       "knowledge/wiki/advisory/_FORMAT.md",
       "knowledge/wiki/api-contracts/.gitkeep",
       "knowledge/wiki/api-contracts/_FORMAT.md",
+      "knowledge/wiki/app-requirements/.gitkeep",
+      "knowledge/wiki/app-requirements/F-003-backend.md",
+      "knowledge/wiki/app-requirements/_FORMAT.md",
       "knowledge/wiki/business-rules/.gitkeep",
       "knowledge/wiki/business-rules/_FORMAT.md",
       "knowledge/wiki/decisions/.gitkeep",
@@ -105,24 +108,319 @@
       "knowledge/wiki/index.md",
       "knowledge/wiki/log.md",
       "knowledge/wiki/personas/.gitkeep",
-      "knowledge/wiki/personas/_FORMAT.md",
-      "knowledge/wiki/platform-requirements/.gitkeep",
-      "knowledge/wiki/platform-requirements/F-003-backend.md",
-      "knowledge/wiki/platform-requirements/_FORMAT.md"
+      "knowledge/wiki/personas/_FORMAT.md"
     ],
-    "query-blockers": {
+    "query-app-backend": {
       "blocker_facts": [
         {
-          "code": "missing-design",
+          "code": "missing-app-requirements",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
         {
-          "code": "missing-platform-requirements",
+          "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "command": "wiki app",
+      "confidence": "error",
+      "diagnostics": [
+        {
+          "code": "missing-app-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "experimental": true,
+      "facts": {
+        "app": "backend",
+        "app_requirement_count": 1,
+        "app_requirements": [
+          {
+            "app": "backend",
+            "feature_id": "F-003",
+            "path": "knowledge/wiki/app-requirements/F-003-backend.md",
+            "status": "in-progress"
+          }
+        ],
+        "feature_count": 2,
+        "features": [
+          {
+            "advisory_review": "not-needed",
+            "apps": [
+              "backend",
+              "mobile-android"
+            ],
+            "id": "F-002",
+            "owner": "designer",
+            "path": "knowledge/wiki/features/F-002-outcome-review.md",
+            "status": "in-design",
+            "title": "Outcome review"
+          },
+          {
+            "advisory_review": "not-needed",
+            "apps": [
+              "backend",
+              "mobile-android"
+            ],
+            "id": "F-003",
+            "owner": "dev",
+            "path": "knowledge/wiki/features/F-003-outcome-export.md",
+            "status": "in-dev",
+            "title": "Outcome export"
+          }
+        ]
+      },
+      "next_cursor": null,
+      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
+      "required_obligations": [
+        {
+          "code": "missing-app-requirements",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "missing-design",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        }
+      ],
+      "root": ".",
+      "schema_version": 1,
+      "snapshot": {
+        "consistent": true,
+        "revision": "sha256:<digest>"
+      },
+      "sources": [
+        "knowledge/wiki",
+        "knowledge/wiki/features/F-002-outcome-review.md",
+        "knowledge/wiki/features/F-003-outcome-export.md",
+        "knowledge/wiki/app-requirements/F-003-backend.md"
+      ],
+      "total": 3,
+      "workspace": {
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": null,
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": null,
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          }
+        ],
+        "kind": "workflow-project",
+        "project_name": "Baseline WF"
+      }
+    },
+    "query-app-mobile-android": {
+      "blocker_facts": [
+        {
+          "code": "missing-app-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "command": "wiki app",
+      "confidence": "error",
+      "diagnostics": [
+        {
+          "code": "missing-app-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        }
+      ],
+      "experimental": true,
+      "facts": {
+        "app": "mobile-android",
+        "app_requirement_count": 0,
+        "app_requirements": [],
+        "feature_count": 2,
+        "features": [
+          {
+            "advisory_review": "not-needed",
+            "apps": [
+              "backend",
+              "mobile-android"
+            ],
+            "id": "F-002",
+            "owner": "designer",
+            "path": "knowledge/wiki/features/F-002-outcome-review.md",
+            "status": "in-design",
+            "title": "Outcome review"
+          },
+          {
+            "advisory_review": "not-needed",
+            "apps": [
+              "backend",
+              "mobile-android"
+            ],
+            "id": "F-003",
+            "owner": "dev",
+            "path": "knowledge/wiki/features/F-003-outcome-export.md",
+            "status": "in-dev",
+            "title": "Outcome export"
+          }
+        ]
+      },
+      "next_cursor": null,
+      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
+      "required_obligations": [
+        {
+          "code": "missing-app-requirements",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "missing-design",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        },
+        {
+          "code": "unresolved-open-questions",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md"
+        }
+      ],
+      "root": ".",
+      "schema_version": 1,
+      "snapshot": {
+        "consistent": true,
+        "revision": "sha256:<digest>"
+      },
+      "sources": [
+        "knowledge/wiki",
+        "knowledge/wiki/features/F-002-outcome-review.md",
+        "knowledge/wiki/features/F-003-outcome-export.md"
+      ],
+      "total": 2,
+      "workspace": {
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": null,
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": null,
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          }
+        ],
+        "kind": "workflow-project",
+        "project_name": "Baseline WF"
+      }
+    },
+    "query-blockers": {
+      "blocker_facts": [
+        {
+          "code": "missing-app-requirements",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "error"
+        },
+        {
+          "code": "missing-design",
+          "feature_id": "F-003",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -138,16 +436,16 @@
       "confidence": "error",
       "diagnostics": [
         {
-          "code": "missing-design",
+          "code": "missing-app-requirements",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
         {
-          "code": "missing-platform-requirements",
+          "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -164,16 +462,16 @@
         "blocker_count": 3,
         "blockers": [
           {
-            "code": "missing-design",
+            "code": "missing-app-requirements",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+            "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
             "path": "knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
           {
-            "code": "missing-platform-requirements",
+            "code": "missing-design",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
             "path": "knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
@@ -190,11 +488,11 @@
       "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
       "required_obligations": [
         {
-          "code": "missing-design",
+          "code": "missing-app-requirements",
           "path": "knowledge/wiki/features/F-003-outcome-export.md"
         },
         {
-          "code": "missing-platform-requirements",
+          "code": "missing-design",
           "path": "knowledge/wiki/features/F-003-outcome-export.md"
         },
         {
@@ -249,16 +547,16 @@
     "query-lint": {
       "blocker_facts": [
         {
-          "code": "missing-design",
+          "code": "missing-app-requirements",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
         {
-          "code": "missing-platform-requirements",
+          "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -274,16 +572,16 @@
       "confidence": "error",
       "diagnostics": [
         {
-          "code": "missing-design",
+          "code": "missing-app-requirements",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
         {
-          "code": "missing-platform-requirements",
+          "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -306,11 +604,11 @@
       "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
       "required_obligations": [
         {
-          "code": "missing-design",
+          "code": "missing-app-requirements",
           "path": "knowledge/wiki/features/F-003-outcome-export.md"
         },
         {
-          "code": "missing-platform-requirements",
+          "code": "missing-design",
           "path": "knowledge/wiki/features/F-003-outcome-export.md"
         },
         {
@@ -327,304 +625,6 @@
       "sources": [
         "knowledge/wiki"
       ],
-      "workspace": {
-        "apps": [
-          {
-            "audience": null,
-            "capabilities": {
-              "has-ui": false,
-              "serves-api": true
-            },
-            "id": "backend",
-            "maturity": null,
-            "name": "Spring Boot Backend",
-            "path": "backend",
-            "repository": "workspace",
-            "stack": "spring-backend",
-            "status": "active"
-          },
-          {
-            "audience": null,
-            "capabilities": {
-              "has-ui": true,
-              "serves-api": false
-            },
-            "id": "mobile-android",
-            "maturity": null,
-            "name": "Android (Kotlin/Compose)",
-            "path": "mobile-android",
-            "repository": "workspace",
-            "stack": "android-compose",
-            "status": "active"
-          }
-        ],
-        "kind": "workflow-project",
-        "project_name": "Baseline WF"
-      }
-    },
-    "query-platform-backend": {
-      "blocker_facts": [
-        {
-          "code": "missing-design",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        },
-        {
-          "code": "missing-platform-requirements",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        },
-        {
-          "code": "unresolved-open-questions",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        }
-      ],
-      "command": "wiki platform",
-      "confidence": "error",
-      "diagnostics": [
-        {
-          "code": "missing-design",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        },
-        {
-          "code": "missing-platform-requirements",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        },
-        {
-          "code": "unresolved-open-questions",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        }
-      ],
-      "experimental": true,
-      "facts": {
-        "feature_count": 2,
-        "features": [
-          {
-            "advisory_review": "not-needed",
-            "id": "F-002",
-            "owner": "designer",
-            "path": "knowledge/wiki/features/F-002-outcome-review.md",
-            "platforms": [
-              "backend",
-              "mobile-android"
-            ],
-            "status": "in-design",
-            "title": "Outcome review"
-          },
-          {
-            "advisory_review": "not-needed",
-            "id": "F-003",
-            "owner": "dev",
-            "path": "knowledge/wiki/features/F-003-outcome-export.md",
-            "platforms": [
-              "backend",
-              "mobile-android"
-            ],
-            "status": "in-dev",
-            "title": "Outcome export"
-          }
-        ],
-        "platform": "backend",
-        "platform_requirement_count": 1,
-        "platform_requirements": [
-          {
-            "feature_id": "F-003",
-            "path": "knowledge/wiki/platform-requirements/F-003-backend.md",
-            "platform": "backend",
-            "status": "in-progress"
-          }
-        ]
-      },
-      "next_cursor": null,
-      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
-      "required_obligations": [
-        {
-          "code": "missing-design",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md"
-        },
-        {
-          "code": "missing-platform-requirements",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md"
-        },
-        {
-          "code": "unresolved-open-questions",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md"
-        }
-      ],
-      "root": ".",
-      "schema_version": 1,
-      "snapshot": {
-        "consistent": true,
-        "revision": "sha256:<digest>"
-      },
-      "sources": [
-        "knowledge/wiki",
-        "knowledge/wiki/features/F-002-outcome-review.md",
-        "knowledge/wiki/features/F-003-outcome-export.md",
-        "knowledge/wiki/platform-requirements/F-003-backend.md"
-      ],
-      "total": 3,
-      "workspace": {
-        "apps": [
-          {
-            "audience": null,
-            "capabilities": {
-              "has-ui": false,
-              "serves-api": true
-            },
-            "id": "backend",
-            "maturity": null,
-            "name": "Spring Boot Backend",
-            "path": "backend",
-            "repository": "workspace",
-            "stack": "spring-backend",
-            "status": "active"
-          },
-          {
-            "audience": null,
-            "capabilities": {
-              "has-ui": true,
-              "serves-api": false
-            },
-            "id": "mobile-android",
-            "maturity": null,
-            "name": "Android (Kotlin/Compose)",
-            "path": "mobile-android",
-            "repository": "workspace",
-            "stack": "android-compose",
-            "status": "active"
-          }
-        ],
-        "kind": "workflow-project",
-        "project_name": "Baseline WF"
-      }
-    },
-    "query-platform-mobile-android": {
-      "blocker_facts": [
-        {
-          "code": "missing-design",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        },
-        {
-          "code": "missing-platform-requirements",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        },
-        {
-          "code": "unresolved-open-questions",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        }
-      ],
-      "command": "wiki platform",
-      "confidence": "error",
-      "diagnostics": [
-        {
-          "code": "missing-design",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        },
-        {
-          "code": "missing-platform-requirements",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        },
-        {
-          "code": "unresolved-open-questions",
-          "feature_id": "F-003",
-          "message": "Feature `F-003` has an open question assigned to `po` (#1).",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md",
-          "severity": "error"
-        }
-      ],
-      "experimental": true,
-      "facts": {
-        "feature_count": 2,
-        "features": [
-          {
-            "advisory_review": "not-needed",
-            "id": "F-002",
-            "owner": "designer",
-            "path": "knowledge/wiki/features/F-002-outcome-review.md",
-            "platforms": [
-              "backend",
-              "mobile-android"
-            ],
-            "status": "in-design",
-            "title": "Outcome review"
-          },
-          {
-            "advisory_review": "not-needed",
-            "id": "F-003",
-            "owner": "dev",
-            "path": "knowledge/wiki/features/F-003-outcome-export.md",
-            "platforms": [
-              "backend",
-              "mobile-android"
-            ],
-            "status": "in-dev",
-            "title": "Outcome export"
-          }
-        ],
-        "platform": "mobile-android",
-        "platform_requirement_count": 0,
-        "platform_requirements": []
-      },
-      "next_cursor": null,
-      "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
-      "required_obligations": [
-        {
-          "code": "missing-design",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md"
-        },
-        {
-          "code": "missing-platform-requirements",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md"
-        },
-        {
-          "code": "unresolved-open-questions",
-          "path": "knowledge/wiki/features/F-003-outcome-export.md"
-        }
-      ],
-      "root": ".",
-      "schema_version": 1,
-      "snapshot": {
-        "consistent": true,
-        "revision": "sha256:<digest>"
-      },
-      "sources": [
-        "knowledge/wiki",
-        "knowledge/wiki/features/F-002-outcome-review.md",
-        "knowledge/wiki/features/F-003-outcome-export.md"
-      ],
-      "total": 2,
       "workspace": {
         "apps": [
           {
@@ -695,14 +695,14 @@
               "status": "pass"
             },
             {
-              "code": "platform-scope",
-              "message": "Feature platforms are valid and within the available workspace scope.",
+              "code": "app-scope",
+              "message": "Feature apps are valid and within the available workspace scope.",
               "path": "knowledge/wiki/features/F-002-outcome-review.md",
               "status": "pass"
             },
             {
               "code": "design",
-              "message": "UI platform scope requires a matching design page or an explicit confirmed exemption.",
+              "message": "An app with a UI in scope requires a matching design page or an explicit confirmed exemption.",
               "path": "knowledge/wiki/features/F-002-outcome-review.md",
               "status": "blocked"
             },
@@ -739,7 +739,7 @@
           ],
           "classification": "blocked",
           "feature_id": "F-002",
-          "reason": "UI platform scope requires a matching design page or an explicit confirmed exemption.; 1 open action-relevant question remains: question 1.",
+          "reason": "An app with a UI in scope requires a matching design page or an explicit confirmed exemption.; 1 open action-relevant question remains: question 1.",
           "source_owner": "designer",
           "source_path": "knowledge/wiki/features/F-002-outcome-review.md",
           "source_status": "in-design",
@@ -802,19 +802,19 @@
               "status": "pass"
             },
             {
-              "code": "platform-scope",
-              "message": "Feature platforms are valid and within the available workspace scope.",
+              "code": "app-scope",
+              "message": "Feature apps are valid and within the available workspace scope.",
               "path": "knowledge/wiki/features/F-003-outcome-export.md",
               "status": "pass"
             },
             {
               "code": "design",
-              "message": "UI platform scope requires a matching design page or an explicit confirmed exemption.",
+              "message": "An app with a UI in scope requires a matching design page or an explicit confirmed exemption.",
               "path": "knowledge/wiki/features/F-003-outcome-export.md",
               "status": "blocked"
             },
             {
-              "code": "platform-requirements",
+              "code": "app-requirements",
               "message": "missing requirement for `mobile-android`.",
               "path": "knowledge/wiki/features/F-003-outcome-export.md",
               "status": "blocked"
@@ -856,14 +856,14 @@
               "status": "blocked"
             },
             {
-              "code": "workflow:missing-design",
-              "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+              "code": "workflow:missing-app-requirements",
+              "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
               "path": "knowledge/wiki/features/F-003-outcome-export.md",
               "status": "blocked"
             },
             {
-              "code": "workflow:missing-platform-requirements",
-              "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+              "code": "workflow:missing-design",
+              "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
               "path": "knowledge/wiki/features/F-003-outcome-export.md",
               "status": "blocked"
             },
@@ -882,7 +882,7 @@
           ],
           "classification": "blocked",
           "feature_id": "F-003",
-          "reason": "UI platform scope requires a matching design page or an explicit confirmed exemption.; missing requirement for `mobile-android`.; Required `Delivery evidence` section is missing or empty.; 1 open action-relevant question remains: question 1.; Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.; Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.; Feature `F-003` has an open question assigned to `po` (#1).",
+          "reason": "An app with a UI in scope requires a matching design page or an explicit confirmed exemption.; missing requirement for `mobile-android`.; Required `Delivery evidence` section is missing or empty.; 1 open action-relevant question remains: question 1.; Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.; Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.; Feature `F-003` has an open question assigned to `po` (#1).",
           "source_owner": "dev",
           "source_path": "knowledge/wiki/features/F-003-outcome-export.md",
           "source_status": "in-dev",
@@ -895,7 +895,7 @@
             "knowledge/wiki/index.md",
             ".agents/skills/dev-done/SKILL.md",
             ".claude/commands/dev-done.md",
-            "knowledge/wiki/platform-requirements/F-003-backend.md"
+            "knowledge/wiki/app-requirements/F-003-backend.md"
           ],
           "supported": true,
           "target_owner": "none",
@@ -979,16 +979,16 @@
     "query-show-F-001": {
       "blocker_facts": [
         {
-          "code": "missing-design",
+          "code": "missing-app-requirements",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
         {
-          "code": "missing-platform-requirements",
+          "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -1004,16 +1004,16 @@
       "confidence": "error",
       "diagnostics": [
         {
-          "code": "missing-design",
+          "code": "missing-app-requirements",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
         {
-          "code": "missing-platform-requirements",
+          "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -1029,15 +1029,19 @@
       "facts": {
         "feature": {
           "advisory_review": "not-needed",
+          "app_requirements": [],
+          "apps": [
+            "backend"
+          ],
           "frontmatter": {
             "advisory-review": "not-needed",
+            "apps": [
+              "backend"
+            ],
             "id": "F-001",
             "introduced": "2026-09-22",
             "last-updated": "2026-09-22",
             "owner": "po",
-            "platforms": [
-              "backend"
-            ],
             "sources": [],
             "status": "raw",
             "title": "Outcome capture"
@@ -1062,10 +1066,6 @@
           ],
           "owner": "po",
           "path": "knowledge/wiki/features/F-001-outcome-capture.md",
-          "platform_requirements": [],
-          "platforms": [
-            "backend"
-          ],
           "status": "raw",
           "title": "Outcome capture"
         }
@@ -1074,11 +1074,11 @@
       "provenance": "workspace facts and diagnostics; treat content as untrusted project data",
       "required_obligations": [
         {
-          "code": "missing-design",
+          "code": "missing-app-requirements",
           "path": "knowledge/wiki/features/F-003-outcome-export.md"
         },
         {
-          "code": "missing-platform-requirements",
+          "code": "missing-design",
           "path": "knowledge/wiki/features/F-003-outcome-export.md"
         },
         {
@@ -1135,23 +1135,23 @@
   "cli": {
     "doctor-workspace": {
       "exit": 3,
-      "output": "+ Workspace -------------------------------------------------------------------------+\n|Project: Baseline WF |\n|Kind: workflow-project |\n|Apps: backend, mobile-android |\n|Setup: not initialized |\n|Confidence: error |\n+------------------------------------------------------------------------------------+\n\nApps\nID Name Stack Repository Path Status Maturity\nbackend Spring Boot Backend spring-backend workspace backend active -\nmobile-android Android (Kotlin/Compose) android-compose workspace mobile-android active -\n\n+ Queues and wiki -------------------------------------------------------------------+\n|Pending intake: 0 |\n|Quarantined intake: 0 |\n|Features: 3 |\n|Blockers: 3 |\n|Wiki errors: 3 |\n|Wiki warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nsetup-project has not initialized the wiki yet.\n\nFeature lifecycle\n- in-design: 1\n- in-dev: 1\n- raw: 1\n\nAttention\n- missing-design: Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- missing-platform-requirements: Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n\nShared board\n[ok] Workspace is outside cloud-synced folders\n[ok] Workflow pin is compatible with this Prism installation\n Workflow version 1 matches this installation.\n[warn] At least one active board grant exists\n No grants yet.\n[skip] `.prism/state` is ignored by git\n This folder is not a git repository, so this check was skipped.\n"
+      "output": "+ Workspace -------------------------------------------------------------------------+\n|Project: Baseline WF |\n|Kind: workflow-project |\n|Apps: backend, mobile-android |\n|Setup: not initialized |\n|Confidence: error |\n+------------------------------------------------------------------------------------+\n\nApps\nID Name Stack Repository Path Status Maturity\nbackend Spring Boot Backend spring-backend workspace backend active -\nmobile-android Android (Kotlin/Compose) android-compose workspace mobile-android active -\n\n+ Queues and wiki -------------------------------------------------------------------+\n|Pending intake: 0 |\n|Quarantined intake: 0 |\n|Features: 3 |\n|Blockers: 3 |\n|Wiki errors: 3 |\n|Wiki warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nsetup-project has not initialized the wiki yet.\n\nFeature lifecycle\n- in-design: 1\n- in-dev: 1\n- raw: 1\n\nAttention\n- missing-app-requirements: Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- missing-design: Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n\nShared board\n[ok] Workspace is outside cloud-synced folders\n[ok] Workflow pin is compatible with this Prism installation\n Workflow version 1 matches this installation.\n[warn] At least one active board grant exists\n No grants yet.\n[skip] `.prism/state` is ignored by git\n This folder is not a git repository, so this check was skipped.\n"
     },
     "status-json": {
       "exit": 0,
       "json": {
         "blocker_facts": [
           {
-            "code": "missing-design",
+            "code": "missing-app-requirements",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+            "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
           {
-            "code": "missing-platform-requirements",
+            "code": "missing-design",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
@@ -1167,16 +1167,16 @@
         "confidence": "error",
         "diagnostics": [
           {
-            "code": "missing-design",
+            "code": "missing-app-requirements",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+            "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
           {
-            "code": "missing-platform-requirements",
+            "code": "missing-design",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
@@ -1237,6 +1237,9 @@
             "template_version": null
           },
           "wiki": {
+            "app_requirement_status_counts": {
+              "in-progress": 1
+            },
             "blocker_count": 3,
             "clean": false,
             "error_count": 3,
@@ -1258,9 +1261,6 @@
             "open_questions_by_owner": {
               "po": 3
             },
-            "platform_requirement_status_counts": {
-              "in-progress": 1
-            },
             "warning_count": 0
           }
         },
@@ -1271,11 +1271,11 @@
         },
         "required_obligations": [
           {
-            "code": "missing-design",
+            "code": "missing-app-requirements",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
           },
           {
-            "code": "missing-platform-requirements",
+            "code": "missing-design",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
           },
           {
@@ -1337,23 +1337,23 @@
     },
     "validate": {
       "exit": 0,
-      "output": " ____ ____ ___ ____ __ __\n| _ /| _ /|_ _/ ___|| // |\n| |_) | |_) || |/___ /| |//| |\n| __/| _ < | | ___) | | | |\n|_| |_| /_/___|____/|_| |_|\n----------------------------------------------------------------------------------------\nValidate template integrity or generated project structure\n\n+ Target ----------------------------------------------------------------------------+\n|Path: <ROOT> |\n|Kind: workflow-project |\n+------------------------------------------------------------------------------------+\n\n+ Wiki readiness --------------------------------------------------------------------+\n|Workspace: <ROOT> |\n|Features: 3 |\n|Integrity errors: 0 |\n|Readiness blockers: 3 |\n|Warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nWorkflow readiness\n- missing-design: Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n- missing-platform-requirements: Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n\nWiki integrity checks passed.\nWorkflow identity and wiki integrity checks passed; readiness blockers are reported above.\n"
+      "output": " ____ ____ ___ ____ __ __\n| _ /| _ /|_ _/ ___|| // |\n| |_) | |_) || |/___ /| |//| |\n| __/| _ < | | ___) | | | |\n|_| |_| /_/___|____/|_| |_|\n----------------------------------------------------------------------------------------\nValidate template integrity or generated project structure\n\n+ Target ----------------------------------------------------------------------------+\n|Path: <ROOT> |\n|Kind: workflow-project |\n+------------------------------------------------------------------------------------+\n\n+ Wiki readiness --------------------------------------------------------------------+\n|Workspace: <ROOT> |\n|Features: 3 |\n|Integrity errors: 0 |\n|Readiness blockers: 3 |\n|Warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nWorkflow readiness\n- missing-app-requirements: Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n- missing-design: Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n\nWiki integrity checks passed.\nWorkflow identity and wiki integrity checks passed; readiness blockers are reported above.\n"
     },
     "wiki-lint-json": {
       "exit": 3,
       "json": {
         "blocker_facts": [
           {
-            "code": "missing-design",
+            "code": "missing-app-requirements",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+            "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
           {
-            "code": "missing-platform-requirements",
+            "code": "missing-design",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
@@ -1369,16 +1369,16 @@
         "confidence": "error",
         "diagnostics": [
           {
-            "code": "missing-design",
+            "code": "missing-app-requirements",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+            "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
           {
-            "code": "missing-platform-requirements",
+            "code": "missing-design",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
@@ -1399,11 +1399,11 @@
         },
         "required_obligations": [
           {
-            "code": "missing-design",
+            "code": "missing-app-requirements",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
           },
           {
-            "code": "missing-platform-requirements",
+            "code": "missing-design",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
           },
           {
@@ -1454,14 +1454,14 @@
     }
   },
   "inspection": {
-    "diagnostics": [],
-    "filesystem_platforms": [],
-    "manifest_platforms": [
+    "app_ids": [
       "backend",
       "mobile-android"
     ],
-    "platform_maturity": {},
-    "platforms": [
+    "app_maturity": {},
+    "diagnostics": [],
+    "filesystem_platforms": [],
+    "manifest_app_ids": [
       "backend",
       "mobile-android"
     ]
@@ -1469,16 +1469,16 @@
   "lint": {
     "blocker_facts": [
       {
-        "code": "missing-design",
+        "code": "missing-app-requirements",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+        "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
       {
-        "code": "missing-platform-requirements",
+        "code": "missing-design",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
@@ -1494,16 +1494,16 @@
     "confidence": "error",
     "diagnostics": [
       {
-        "code": "missing-design",
+        "code": "missing-app-requirements",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+        "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
       {
-        "code": "missing-platform-requirements",
+        "code": "missing-design",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
@@ -1524,11 +1524,11 @@
     },
     "required_obligations": [
       {
-        "code": "missing-design",
+        "code": "missing-app-requirements",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
       },
       {
-        "code": "missing-platform-requirements",
+        "code": "missing-design",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
       },
       {
@@ -1579,16 +1579,16 @@
   "status": {
     "blocker_facts": [
       {
-        "code": "missing-design",
+        "code": "missing-app-requirements",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+        "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
       {
-        "code": "missing-platform-requirements",
+        "code": "missing-design",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
@@ -1604,16 +1604,16 @@
     "confidence": "error",
     "diagnostics": [
       {
-        "code": "missing-design",
+        "code": "missing-app-requirements",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.",
+        "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
       {
-        "code": "missing-platform-requirements",
+        "code": "missing-design",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.",
+        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
@@ -1674,6 +1674,9 @@
         "template_version": null
       },
       "wiki": {
+        "app_requirement_status_counts": {
+          "in-progress": 1
+        },
         "blocker_count": 3,
         "clean": false,
         "error_count": 3,
@@ -1695,9 +1698,6 @@
         "open_questions_by_owner": {
           "po": 3
         },
-        "platform_requirement_status_counts": {
-          "in-progress": 1
-        },
         "warning_count": 0
       }
     },
@@ -1708,11 +1708,11 @@
     },
     "required_obligations": [
       {
-        "code": "missing-design",
+        "code": "missing-app-requirements",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
       },
       {
-        "code": "missing-platform-requirements",
+        "code": "missing-design",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md"
       },
       {

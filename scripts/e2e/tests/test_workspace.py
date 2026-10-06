@@ -32,7 +32,7 @@ status: ready-for-dev
 owner: dev
 introduced: '2026-10-05'
 last-updated: '2026-10-05'
-platforms:
+apps:
 - backend
 advisory-review: not-needed
 ---
@@ -46,7 +46,7 @@ Text.
 | 1 | First? | po | resolved: yes |
 | 2 | Second | designer | open |
 
-## Platform scope
+## App scope
 - **backend**: x
 """
 
@@ -106,8 +106,8 @@ class FixtureTests(unittest.TestCase):
         late = ws.fixture_files(ws.fixture_steps_through("dev-done"))
         page = "knowledge/wiki/features/F-001-review-summary-export.md"
         self.assertNotEqual(early[page], late[page])
-        self.assertIn("knowledge/wiki/platform-requirements/F-001-backend.md", late)
-        self.assertNotIn("knowledge/wiki/platform-requirements/F-001-backend.md", early)
+        self.assertIn("knowledge/wiki/app-requirements/F-001-backend.md", late)
+        self.assertNotIn("knowledge/wiki/app-requirements/F-001-backend.md", early)
 
     def test_the_question_table_in_each_state_matches_the_journey(self):
         expectations = {
@@ -153,7 +153,7 @@ class FixtureTests(unittest.TestCase):
 
 FEATURE_FILE = "knowledge/wiki/features/F-001-review-summary-export.md"
 CONTRACT_FILE = "knowledge/wiki/api-contracts/F-001.md"
-REQUIREMENT_FILE = "knowledge/wiki/platform-requirements/F-001-backend.md"
+REQUIREMENT_FILE = "knowledge/wiki/app-requirements/F-001-backend.md"
 API_SET = config.API_WORK_FIXTURES_DIR
 AFTER_SPECIFY = [step.id for step in config.STEPS[3:11]]  # po-specify through dev-done
 

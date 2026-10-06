@@ -19,7 +19,7 @@ transition:
 Resolve `[F-XXX]` to exactly one existing feature file. Accept only the exact
 source pair above; do not infer a transition from another status or owner.
 Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md`, the feature, linked context, and
-workspace identity. The feature's declared platforms define the design scope.
+workspace identity. The feature's declared apps define the design scope.
 
 When available, use the read-only probe:
 
@@ -33,7 +33,7 @@ action-specific `design-start` surface, transition version 1, target owner
 unsupported capability falls back to direct-file checks. The preflight is
 copy-only and never authorizes a write.
 
-Before confirmation, verify the exact feature path, source fields, platform scope,
+Before confirmation, verify the exact feature path, source fields, app scope,
 advisory state, and any active `revalidation` domains. An active `specification`
 domain blocks this downstream start until PO verifies it; an active `design`
 domain may be worked by the designer and does not pretend that design evidence

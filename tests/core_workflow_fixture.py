@@ -31,7 +31,7 @@ def create_core_workflow_fixture(root: Path) -> Path:
 
     wiki_root = root / "knowledge" / "wiki"
     (wiki_root / "features").mkdir(parents=True)
-    (wiki_root / "platform-requirements").mkdir()
+    (wiki_root / "app-requirements").mkdir()
     (root / "knowledge" / "intake" / "pending").mkdir(parents=True)
     (root / "knowledge" / "intake" / "processed").mkdir()
 
@@ -65,9 +65,9 @@ def create_core_workflow_fixture(root: Path) -> Path:
     # Current workspace identity checks compare declared platforms to their
     # directories. An empty scope marker satisfies that contract without a
     # generated application scaffold.
-    platform_marker = root / "backend" / ".gitkeep"
-    platform_marker.parent.mkdir()
-    platform_marker.write_text("", encoding="utf-8")
+    app_marker = root / "backend" / ".gitkeep"
+    app_marker.parent.mkdir()
+    app_marker.write_text("", encoding="utf-8")
 
     intake_path = root / INTAKE_ITEM
     intake_path.parent.mkdir(parents=True)

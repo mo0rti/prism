@@ -73,9 +73,9 @@ TOPICS: dict[str, tuple[Topic, ...]] = {
     ),
     "dev": (
         _topic(
-            "platform that presents the export control",
-            r"\bwhich platform\b|\bplatforms?\b.*\b(?:present\w*|export control)\b",
-            'The backend serves the export through a service operation. The "Export summary" button lives in the client that calls the backend, and that client is outside this feature. Only the backend platform is in scope.',
+            "app that presents the export control",
+            r"\bwhich app\b|\bapps?\b.*\b(?:present\w*|export control)\b",
+            'The backend serves the export through a service operation. The "Export summary" button lives in the client that calls the backend, and that client is outside this feature. Only the backend app is in scope.',
         ),
     ),
 }

@@ -27,7 +27,7 @@ class WorkflowWorkspaceTests(unittest.TestCase):
             (root / "knowledge/wiki").mkdir(parents=True)
             result = self.inspect(root)
             self.assertEqual("workflow-project", detect_workspace_kind(root))
-            self.assertEqual(["backend"], result.platforms)
+            self.assertEqual(["backend"], result.app_ids)
             self.assertEqual([], result.contract_diagnostics)
 
     def test_generated_mode_still_reports_missing_application(self):

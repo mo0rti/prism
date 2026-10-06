@@ -1,6 +1,6 @@
 ---
 feature-id: F-003
-platform: backend
+app: backend
 status: pending
 ---
 

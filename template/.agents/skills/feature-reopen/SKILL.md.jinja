@@ -43,7 +43,7 @@ copy-only until the review and final confirmation are complete. Before proposing
 a write, obtain a human-confirmed impact review that records:
 
 - why the shipped feature needs reopening;
-- the selected route and affected platforms;
+- the selected route and affected apps;
 - affected artifacts and any additional revalidation domains;
 - the prior completion/release evidence that will be archived.
 
@@ -52,12 +52,12 @@ append-only reopen-history record. The existing delivery evidence cannot silentl
 satisfy a new Done check: archive the current evidence in the history record,
 remove it from the active Delivery evidence section on confirmation, and require
 unaffected evidence to be explicitly reaffirmed after review. Show exact affected
-platform-requirement and API pages with their proposed invalidated statuses;
+app-requirement and API pages with their proposed invalidated statuses;
 preserve prior statuses in the history and never reset unrelated shared contracts.
 
 Write the archived evidence under the `- Prior completion/release evidence:` bullet
 of the reopen record. Copy each prior Delivery evidence row verbatim, with its
-`| platform | implementation | tests | release |` cells, on that line or on the
+`| app | implementation | tests | release |` cells, on that line or on the
 lines directly below it as a table or a list, before the next `- Label:` bullet or
 heading. A row anywhere else is not found, and the connected board rejects the
 record with `delivery_evidence_not_archived`. `knowledge/wiki/features/_FORMAT.md` shows the
@@ -65,7 +65,7 @@ layout.
 
 Write `- Requirement/API invalidations:` with one entry for each requirement or API page
 you change: its full relative path, a colon, the page's current status, an arrow and its
-new status, for example `knowledge/wiki/platform-requirements/F-001-backend.md: done ->
+new status, for example `knowledge/wiki/app-requirements/F-001-backend.md: done ->
 in-progress` (on one line). Name each of those pages by the same path in
 `- Affected artifacts:`. When no page changes, write a sentence such as `No requirement
 or API page is invalidated.`; the bullet cannot be empty or a bare `None`.

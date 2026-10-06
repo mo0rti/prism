@@ -21,7 +21,7 @@ EXPECTED_SKILLS = {
     "design-intake", "design-start", "dev-clarify", "dev-done", "dev-start", "feature-reopen",
     "feature-status", "lint-wiki", "po-clarify", "po-handoff", "po-intake",
     "po-specify", "prep-sprint", "setup-project", "wiki-blockers", "wiki-owner",
-    "wiki-platform", "wiki-query", "wiki-show",
+    "wiki-app", "wiki-query", "wiki-show",
 }
 
 
@@ -77,7 +77,7 @@ class WorkflowAssetsTests(unittest.TestCase):
     def test_dev_clarify_follows_the_other_clarify_skills(self):
         skill = get_skill("dev-clarify")
         references = {item["path"] for item in skill["references"]}
-        self.assertEqual({"knowledge/wiki/features/_FORMAT.md", "knowledge/wiki/platform-requirements/_FORMAT.md"}, {path for path in references if path.endswith("_FORMAT.md")})
+        self.assertEqual({"knowledge/wiki/features/_FORMAT.md", "knowledge/wiki/app-requirements/_FORMAT.md"}, {path for path in references if path.endswith("_FORMAT.md")})
         self.assertIn(".claude/commands/dev-clarify.md", references)
         self.assertEqual([], skill["actions"])
         self.assertIn("$dev-clarify", skill["instructions"])
@@ -136,7 +136,7 @@ class WorkflowAssetsTests(unittest.TestCase):
         skill = get_skill("design-handoff")
         guidance = [skill["instructions"]] + [
             item["content"] for item in skill["references"]
-            if item["path"] in (".claude/commands/design-handoff.md", "knowledge/wiki/platform-requirements/_FORMAT.md")
+            if item["path"] in (".claude/commands/design-handoff.md", "knowledge/wiki/app-requirements/_FORMAT.md")
         ]
         self.assertEqual(3, len(guidance))
         for text in guidance:

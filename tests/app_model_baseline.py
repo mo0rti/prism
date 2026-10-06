@@ -180,13 +180,13 @@ def build_workflow_only_workspace(root: Path) -> Path:
 
 def _install_workflow(root: Path, kind: str, *, upgrade: bool, name: str | None = None, platforms: list[str] | None = None) -> None:
     with patch("prism_cli.workflow_install.uuid4", return_value=UUID(FIXED_BOARD_IDS[kind])):
-        plan = plan_install(root, name=name, platforms=platforms, upgrade=upgrade)
+        plan = plan_install(root, name=name, apps=platforms, upgrade=upgrade)
         receipt = apply_install(root, plan)
     if receipt["status"] != "applied":
         raise AssertionError(f"Baseline workflow install did not apply: {receipt}")
 
 
-def _feature(feature_id: str, title: str, status: str, owner: str, platforms: list[str], review: str = "not-needed") -> tuple[str, str]:
+def _feature(feature_id: str, title: str, status: str, owner: str, apps: list[str], review: str = "not-needed") -> tuple[str, str]:
     frontmatter = {
         "id": feature_id,
         "title": title,
@@ -194,18 +194,18 @@ def _feature(feature_id: str, title: str, status: str, owner: str, platforms: li
         "owner": owner,
         "introduced": CHECK_DATE.isoformat(),
         "last-updated": CHECK_DATE.isoformat(),
-        "platforms": platforms,
+        "apps": apps,
         "sources": [],
         "advisory-review": review,
     }
-    scope = "\n".join(f"- **{platform}**: Deliver the {title.lower()} for {platform}." for platform in platforms)
+    scope = "\n".join(f"- **{app}**: Deliver the {title.lower()} for {app}." for app in apps)
     body = (
         f"## Summary\n{title} gives reviewers one place to record an outcome.\n\n"
         "## User story\nAs a reviewer, I want to record an outcome, so that follow-up is clear.\n\n"
         "## Acceptance criteria\n- [ ] The outcome can be recorded.\n- [ ] The outcome can be read back.\n\n"
         "## Open questions\n| # | Question | Owner | Status |\n|---|----------|-------|--------|\n"
         "| 1 | Which outcomes are allowed? | po | open |\n\n"
-        f"## Platform scope\n{scope}\n\n"
+        f"## App scope\n{scope}\n\n"
         "## API surface\nNone\n"
     )
     page = f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---\n\n{body}"
@@ -236,10 +236,10 @@ def add_baseline_wiki_content(root: Path, wide_scope: list[str]) -> None:
         "|----|---------|--------|-------|--------------|------------|\n" + "\n".join(rows) + "\n",
         encoding="utf-8",
     )
-    requirements = root / "knowledge/wiki/platform-requirements"
+    requirements = root / "knowledge/wiki/app-requirements"
     requirements.mkdir(parents=True, exist_ok=True)
     (requirements / "F-003-backend.md").write_text(
-        "---\nfeature-id: F-003\nplatform: backend\nstatus: in-progress\n---\n\n"
+        "---\nfeature-id: F-003\napp: backend\nstatus: in-progress\n---\n\n"
         "## What to build\nStore the export request.\n\n## Acceptance criteria\n- The request is stored.\n",
         encoding="utf-8",
     )
@@ -330,13 +330,13 @@ def capture_board(root: Path) -> dict[str, Any]:
         captured["discover-board"] = discover["board"]
         captured["discover-participant-scopes"] = discover["participant"]["scopes"]
         captured["discover-skill-names"] = sorted(item["name"] for item in discover["skills"])
-        captured["identity-platforms"] = list(service._platforms)
+        captured["identity-app-ids"] = list(service._app_ids)
         captured["list-knowledge"] = [item["path"] for item in list_workspace(service, actor, "knowledge")["files"]]
         for kind in ("lint", "blockers"):
             captured[f"query-{kind}"] = query(service, actor, kind)
         captured["query-show-F-001"] = query(service, actor, "show", "F-001")
-        for platform in service._platforms:
-            captured[f"query-platform-{platform}"] = query(service, actor, "platform", platform)
+        for app_id in service._app_ids:
+            captured[f"query-app-{app_id}"] = query(service, actor, "app", app_id)
         for action in ("po-handoff", "design-handoff", "dev-done"):
             feature = "F-001" if action == "po-handoff" else "F-002" if action == "design-handoff" else "F-003"
             captured[f"query-preflight-{action}"] = query(service, actor, "transition-preflight", feature, action)
@@ -352,10 +352,10 @@ def capture_workspace(root: Path) -> dict[str, Any]:
         return {
             "inspection": normalize_json(
                 {
-                    "platforms": inspection.platforms,
+                    "app_ids": inspection.app_ids,
                     "filesystem_platforms": inspection.filesystem_platforms,
-                    "manifest_platforms": inspection.manifest.platforms if inspection.manifest else None,
-                    "platform_maturity": inspection.manifest.app_maturity if inspection.manifest else None,
+                    "manifest_app_ids": inspection.manifest.app_ids if inspection.manifest else None,
+                    "app_maturity": inspection.manifest.app_maturity if inspection.manifest else None,
                     "diagnostics": [item.to_dict() for item in inspection.contract_diagnostics],
                 },
                 root,

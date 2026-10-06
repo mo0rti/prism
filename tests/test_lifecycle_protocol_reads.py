@@ -22,7 +22,7 @@ class LifecycleProtocolReadTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        receipt = apply_install(self.root, plan_install(self.root, name="Document review", platforms=["backend"]))
+        receipt = apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))
         self.assertEqual("applied", receipt["status"])
         (self.root / FEATURE).write_text(_feature_page(), encoding="utf-8")
         _write_index(self.root, "raw", "po")

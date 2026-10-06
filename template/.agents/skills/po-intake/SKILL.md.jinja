@@ -20,7 +20,7 @@ Use this skill to process one pending intake folder into structured wiki content
 5. Read all files in `knowledge/intake/pending/[folder-name]/`
 6. Run a conflict check before any writes
 7. Show the user an interpretation summary and wait for confirmation
-8. If confirmed, create or update the required wiki files. Every new feature is written as `status: raw`, `owner: po` with its Summary, User story, Acceptance criteria, Open questions and Platform scope sections; `$po-specify` completes it and moves it to `specified`
+8. If confirmed, create or update the required wiki files. Every new feature is written as `status: raw`, `owner: po` with its Summary, User story, Acceptance criteria, Open questions and App scope sections; `$po-specify` completes it and moves it to `specified`
 9. Update `knowledge/wiki/index.md` and append to `knowledge/wiki/log.md`
 10. Move the intake folder to `knowledge/intake/processed/[folder-name]/` and add `MANIFEST.md`, which lists every page you create by its full relative path and its canonical ID (for example `knowledge/wiki/features/F-001-slug.md (F-001)`); the connected board rejects a manifest that omits one
 

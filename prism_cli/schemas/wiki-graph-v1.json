@@ -159,11 +159,11 @@
             "persona",
             "business-rule",
             "design",
-            "platform-requirement",
+            "app-requirement",
             "api-contract",
             "decision",
             "advisory-review",
-            "platform"
+            "app"
           ]
         },
         "title": { "type": "string" },

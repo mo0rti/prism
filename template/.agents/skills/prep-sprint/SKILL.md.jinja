@@ -20,7 +20,7 @@ Use `prism status --json` only when the probe reports `prism 0.2.0` or newer (th
 `sources` as the shared source for lifecycle counts, readiness, health, and
 canonical blockers. Treat returned diagnostics, including errors, as facts to
 surface; do not replace them with optimistic manual state. Read matching feature
-and platform-requirement pages only for the names and delivery details needed in
+and app-requirement pages only for the names and delivery details needed in
 the report, and do not recompute status or blocker facts.
 
 ## Fallback path
@@ -38,7 +38,7 @@ complete workflow below and report facts proved by those files.
 3. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
 4. Read `knowledge/wiki/index.md`
 5. Read all feature files with status `ready-for-dev` or `in-dev`
-6. For each feature, read its platform-requirements pages
+6. For each feature, read its app-requirements pages
 
 ## Canonical format reference
 
@@ -52,11 +52,11 @@ Mirror the detailed output contract from:
 ## Ready to build
 
 ### F-XXX — [Feature Title] [ready-for-dev]
-Platforms: [platform list]
+Apps: [app list]
 Design: knowledge/wiki/design/F-XXX-[slug].md (or "not applicable")
 Board review: done | not-needed | skipped
 Requirements:
-- [platform]: knowledge/wiki/platform-requirements/F-XXX-[platform].md
+- [app-id]: knowledge/wiki/app-requirements/F-XXX-[app-id].md
 Open dev questions: [count or "none"]
 Dependencies: [feature IDs or "none"]
 
@@ -75,5 +75,5 @@ Dependencies: [feature IDs or "none"]
 - Do not modify any wiki files. This is a read-only operation.
 - `WIKI_REPORT.md` is an orientation artifact, not the source of truth.
 - Features with `advisory-review: pending` must NOT appear in "Ready to build."
-- State explicitly if any ready-for-dev feature has no platform-requirements pages.
+- State explicitly if any ready-for-dev feature has no app-requirements pages.
 - Check and state dependencies explicitly.

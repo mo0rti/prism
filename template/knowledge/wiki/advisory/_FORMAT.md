@@ -18,7 +18,7 @@ Initialized by `setup-project` on YYYY-MM-DD for [Project Name].
 ## Project identity
 - Name: [project name]
 - Description: [one-sentence summary]
-- Platforms: [backend, web-user-app, ...]
+- Apps: [backend, web-user-app, ...]
 - Auth methods: [if known]
 - Infrastructure choices: [if known]
 - Important correction or note: [optional]
@@ -81,8 +81,8 @@ Is there anything missing from the current spec that will block development befo
 If none: "Spec is complete."
 
 ## 3. Build order
-Across platforms, what must be built first?
-If no dependencies: "No cross-platform ordering constraints."
+Across apps, what must be built first?
+If no dependencies: "No cross-app ordering constraints."
 
 ## 4. Biggest risk
 One sentence. What is most likely to cause this feature to fail, cause user harm, or

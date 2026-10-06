@@ -36,7 +36,7 @@ from tests import real_temp  # noqa: F401
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "wiki_contract"
-PAGE = "---\nid: F-001\ntitle: Payout summary\nstatus: specified\nplatforms:\n- backend\nnested:\n  items:\n  - a\n  - b\n---\n\n## Summary\nBody\n"
+PAGE = "---\nid: F-001\ntitle: Payout summary\nstatus: specified\napps:\n- backend\nnested:\n  items:\n  - a\n  - b\n---\n\n## Summary\nBody\n"
 HOUR_NS = 3_600_000_000_000
 
 
@@ -81,9 +81,9 @@ class ReadOnlyPageTests(unittest.TestCase):
             lambda: frontmatter.popitem(),
             lambda: frontmatter.setdefault("extra", 1),
             lambda: frontmatter.clear(),
-            lambda: frontmatter["platforms"].append("ios"),
-            lambda: frontmatter["platforms"].__setitem__(0, "ios"),
-            lambda: frontmatter["platforms"].sort(),
+            lambda: frontmatter["apps"].append("ios"),
+            lambda: frontmatter["apps"].__setitem__(0, "ios"),
+            lambda: frontmatter["apps"].sort(),
             lambda: frontmatter["nested"]["items"].extend(["c"]),
             lambda: frontmatter["nested"].__setitem__("x", 1),
             lambda: self.page.parse_errors.append("x"),
@@ -91,51 +91,51 @@ class ReadOnlyPageTests(unittest.TestCase):
             with self.assertRaises(TypeError):
                 change()
         self.assertEqual("specified", frontmatter["status"])
-        self.assertEqual(["backend"], frontmatter["platforms"])
+        self.assertEqual(["backend"], frontmatter["apps"])
         self.assertEqual({"items": ["a", "b"]}, frontmatter["nested"])
 
     def test_frozen_containers_behave_like_plain_ones_for_readers(self) -> None:
         frontmatter = self.page.frontmatter
         self.assertIsInstance(frontmatter, dict)
-        self.assertIsInstance(frontmatter["platforms"], list)
+        self.assertIsInstance(frontmatter["apps"], list)
         self.assertEqual(
-            {"id": "F-001", "title": "Payout summary", "status": "specified", "platforms": ["backend"], "nested": {"items": ["a", "b"]}},
+            {"id": "F-001", "title": "Payout summary", "status": "specified", "apps": ["backend"], "nested": {"items": ["a", "b"]}},
             frontmatter,
         )
         self.assertEqual(json.dumps(dict(frontmatter), sort_keys=True), json.dumps(frontmatter, sort_keys=True))
-        self.assertEqual(["id", "title", "status", "platforms", "nested"], list(frontmatter))
+        self.assertEqual(["id", "title", "status", "apps", "nested"], list(frontmatter))
 
     def test_copies_are_ordinary_and_changing_them_does_not_leak(self) -> None:
         frontmatter = self.page.frontmatter
         shallow = dict(frontmatter)
         shallow["status"] = "done"
         deep = copy.deepcopy(frontmatter)
-        deep["platforms"].append("ios")
+        deep["apps"].append("ios")
         deep["nested"]["items"].append("c")
-        listed = list(frontmatter["platforms"])
+        listed = list(frontmatter["apps"])
         listed.append("ios")
         merged = {**frontmatter, "status": "done"}
 
         self.assertIs(type(deep), dict)
-        self.assertIs(type(deep["platforms"]), list)
+        self.assertIs(type(deep["apps"]), list)
         self.assertIs(type(copy.copy(frontmatter)), dict)
         self.assertIs(type(frontmatter.copy()), dict)
         self.assertIs(type(pickle.loads(pickle.dumps(frontmatter))), dict)
         self.assertEqual("done", merged["status"])
         self.assertEqual("specified", frontmatter["status"])
-        self.assertEqual(["backend"], frontmatter["platforms"])
+        self.assertEqual(["backend"], frontmatter["apps"])
         self.assertEqual(["a", "b"], frontmatter["nested"]["items"])
 
     def test_a_page_built_with_plain_containers_is_frozen_without_touching_the_input(self) -> None:
-        source = {"platforms": ["backend"]}
+        source = {"apps": ["backend"]}
         errors = ["oops"]
         page = MarkdownPage(path=Path("x.md"), frontmatter=source, body="", parse_errors=errors)
 
         self.assertIsInstance(page.frontmatter, FrozenDict)
         self.assertIsInstance(page.parse_errors, FrozenList)
-        source["platforms"].append("ios")
+        source["apps"].append("ios")
         errors.append("more")
-        self.assertEqual(["backend"], page.frontmatter["platforms"])
+        self.assertEqual(["backend"], page.frontmatter["apps"])
         self.assertEqual(["oops"], page.parse_errors)
         self.assertIs(page.frontmatter, freeze(page.frontmatter))
 
@@ -363,7 +363,7 @@ class ConsumerTests(unittest.TestCase):
     def test_no_consumer_changes_the_pages_it_shares(self) -> None:
         root = self.workspace("partial")
         wiki = root / "knowledge" / "wiki"
-        overrides = {"status": "done", "platforms": ["web-user-app"], "revalidation": ["design"]}
+        overrides = {"status": "done", "apps": ["web-user-app"], "revalidation": ["design"]}
         with wiki_read_scope():
             snapshot = [(feature.page.path, copy.deepcopy(feature.page.frontmatter), feature.page.body) for feature in read_feature_pages(wiki)]
             self.assertTrue(snapshot)

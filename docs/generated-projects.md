@@ -58,8 +58,8 @@ Generated projects can be explored through the wiki graph dashboard:
 - `prism wiki graph --serve` keeps it live-updating as wiki files change
 
 The dashboard is derived from the wiki and stays read-only. Its Graph, Board,
-Platforms, and Guide views are meant for orientation: feature counts, lifecycle
-state, intake visibility, graph relationships, platform requirements, and
+Apps, and Guide views are meant for orientation: feature counts, lifecycle
+state, intake visibility, graph relationships, app requirements, and
 first-run guidance before the wiki has been initialized. Confidence and source
 paths remain visible so a stale or malformed source can be inspected before it
 informs a workflow decision.
@@ -163,7 +163,7 @@ the agent to run the same named operation.
 | Shared | `/wiki-blockers` | `$wiki-blockers` | Show blockers using the canonical blocker categories |
 | Shared | `/wiki-query "text"` | `$wiki-query "text"` | Retrieval-assisted search across the wiki |
 | Shared | `/wiki-owner po\|designer\|dev\|none` | `$wiki-owner po\|designer\|dev\|none` | Show pending work and stale items for one owner role |
-| Shared | `/wiki-platform <platform-id>` | `$wiki-platform <platform-id>` | Show the active feature queue for one platform |
+| Shared | `/wiki-app <app-id>` | `$wiki-app <app-id>` | Show the active feature queue for one app |
 
 Recommended first use:
 
@@ -235,7 +235,7 @@ Important wiki artifacts include:
 - `knowledge/wiki/SETTINGS.md`
 - `knowledge/wiki/WIKI_REPORT.md` once `feature-status` has generated it
 - `knowledge/wiki/features/`
-- `knowledge/wiki/platform-requirements/`
+- `knowledge/wiki/app-requirements/`
 - `knowledge/wiki/index.md`
 
 If you are new to the Prism workflow, continue with [wiki-workflow.md](wiki-workflow.md)

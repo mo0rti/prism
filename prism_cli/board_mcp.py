@@ -285,10 +285,10 @@ def create_mcp_server(service: Any) -> Any:
     async def list_workspace(ctx: Context, prefix: str = "knowledge", cursor: str | None = None) -> ToolReply:
         return reply("list_workspace", await call(ctx, "list_workspace", prefix, cursor))
 
-    @server.tool(name="query", description="Prism board: run one bounded workspace query (show, blockers, owner, platform, search, lint) or a source-backed lifecycle transition preflight for a feature. Owner, platform and search results are paged: follow next_cursor until it is null.", annotations=read_annotations, structured_output=True)
+    @server.tool(name="query", description="Prism board: run one bounded workspace query (show, blockers, owner, app, search, lint) or a source-backed lifecycle transition preflight for a feature. Owner, app and search results are paged: follow next_cursor until it is null.", annotations=read_annotations, structured_output=True)
     async def query(
         ctx: Context,
-        kind: Literal["show", "blockers", "owner", "platform", "search", "transition-preflight", "lint"],
+        kind: Literal["show", "blockers", "owner", "app", "search", "transition-preflight", "lint"],
         value: str | None = None,
         action: str | None = None,
         cursor: str | None = None,

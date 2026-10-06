@@ -114,7 +114,7 @@ status: raw
 owner: po
 introduced: {TODAY}
 last-updated: {TODAY}
-platforms:
+apps:
 - backend
 sources:
 - {PROCESSED_SOURCE}
@@ -136,7 +136,7 @@ As a reviewer, I want to record a document review, so that the outcome and follo
 |---|----------|-------|--------|
 | 1 | Which points should a review summary highlight? | po | open |
 
-## Platform scope
+## App scope
 - **backend**: Store the review summary and recorded outcome.
 
 ## API surface
@@ -146,7 +146,7 @@ None
 
 def build_workspace(root: Path, feature_count: int) -> None:
     create_core_workflow_fixture(root)
-    receipt = apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))
+    receipt = apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
     if receipt["status"] != "applied":
         raise RuntimeError(f"installer did not apply: {receipt}")
     (root / "knowledge/intake/pending/document-review-brief").rename(root / "knowledge/intake/processed/document-review-brief")
@@ -329,7 +329,7 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
             features_found = {path for path in paths if path.startswith("knowledge/wiki/features/F-")}
             self.assertEqual(FEATURE_COUNT, len(features_found))
 
-            platform = await client.call("query", {"kind": "platform", "value": "backend"})
+            platform = await client.call("query", {"kind": "app", "value": "backend"})
             self.assertIsNone(platform["next_cursor"])
             self.assertEqual(0, platform["total"])
 
@@ -413,7 +413,7 @@ def _dev_feature_page(status: str, owner: str, platforms: list[str], evidence_ro
         "owner": owner,
         "introduced": TODAY,
         "last-updated": TODAY,
-        "platforms": platforms,
+        "apps": platforms,
         "sources": [PROCESSED_SOURCE.rsplit("/", 1)[0]],
         "advisory-review": "not-needed",
         "revalidation": [],
@@ -434,7 +434,7 @@ As a reviewer, I want to record a document review, so that the outcome and follo
 |---|----------|-------|--------|
 | 1 | Which points should a review summary highlight? | po | resolved: The key points and the outcome. |
 
-## Platform scope
+## App scope
 {scope}
 
 ## API surface
@@ -450,7 +450,7 @@ No related feature is required for this workflow.
 The existing acceptance checks cover the scoped review workflow.
 
 ## Delivery evidence
-| Platform | Implementation | Tests | Release |
+| App | Implementation | Tests | Release |
 |---|---|---|---|
 {evidence_rows}
 
@@ -464,7 +464,7 @@ The fixture has no post-ship deviations.
 
 def _dev_requirement_page(platform: str, status: str, bulk: str) -> str:
     return (
-        f"---\nfeature-id: F-001\nplatform: {platform}\nstatus: {status}\n---\n\n"
+        f"---\nfeature-id: F-001\napp: {platform}\nstatus: {status}\n---\n\n"
         f"## What to build\nStore a document review summary and outcome on {platform}. {bulk}\n\n"
         f"## Technical constraints\nUse the existing storage. {bulk}\n\n"
         "## Design reference\nNone yet.\n\n"
@@ -501,7 +501,7 @@ def build_dev_done_workspace(root: Path, platforms: list[str], bulk: str, large_
     for platform in platforms:
         (root / platform).mkdir(exist_ok=True)
         (root / platform / ".gitkeep").write_text("", encoding="utf-8")
-    receipt = apply_install(root, plan_install(root, name="Document review", platforms=platforms))
+    receipt = apply_install(root, plan_install(root, name="Document review", apps=platforms))
     if receipt["status"] != "applied":
         raise RuntimeError(f"installer did not apply: {receipt}")
     (root / "knowledge/intake/pending/document-review-brief").rename(root / "knowledge/intake/processed/document-review-brief")
@@ -518,7 +518,7 @@ def build_dev_done_workspace(root: Path, platforms: list[str], bulk: str, large_
     write(FEATURE_FILE, _dev_feature_page("in-dev", "dev", platforms, "", bulk))
     write(DESIGN_FILE, _dev_design_page())
     for platform in platforms:
-        write(f"knowledge/wiki/platform-requirements/F-001-{platform}.md", _dev_requirement_page(platform, "in-progress", requirement_bulk(platform)))
+        write(f"knowledge/wiki/app-requirements/F-001-{platform}.md", _dev_requirement_page(platform, "in-progress", requirement_bulk(platform)))
     (wiki / "index.md").write_text(
         "# Feature Status Board\n\n"
         "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
@@ -534,7 +534,7 @@ def build_dev_done_workspace(root: Path, platforms: list[str], bulk: str, large_
     return [
         {"path": FEATURE_FILE, "content": _dev_feature_page("done", "none", platforms, evidence, bulk)},
         *(
-            {"path": f"knowledge/wiki/platform-requirements/F-001-{platform}.md", "content": _dev_requirement_page(platform, "done", requirement_bulk(platform))}
+            {"path": f"knowledge/wiki/app-requirements/F-001-{platform}.md", "content": _dev_requirement_page(platform, "done", requirement_bulk(platform))}
             for platform in platforms
         ),
     ]
@@ -636,7 +636,7 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
         )
         changes = [{"path": FEATURE_FILE, "content": answered}]
         for platform in PLATFORMS:
-            relative = f"knowledge/wiki/platform-requirements/F-001-{platform}.md"
+            relative = f"knowledge/wiki/app-requirements/F-001-{platform}.md"
             page = (root / relative).read_text(encoding="utf-8").replace(
                 "## Technical constraints\nUse the existing storage.", f"## Technical constraints\nUse the existing storage. {answer}", 1
             )

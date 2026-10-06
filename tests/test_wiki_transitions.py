@@ -41,7 +41,7 @@ status: {status}
 owner: {owner}
 introduced: 2026-09-01
 last-updated: 2026-09-08
-platforms: [{platforms}]
+apps: [{platforms}]
 sources: []
 advisory-review: {advisory}
 {advisory_reason}---
@@ -61,7 +61,7 @@ As a finance operator, I want a payout summary, so that I can review it before h
 | # | Question | Owner | Status |
 |---|----------|-------|--------|
 
-## Platform scope
+## App scope
 - **backend**: The backend prepares the summary data.
 
 """
@@ -254,8 +254,8 @@ class WikiTransitionTests(unittest.TestCase):
             advisory="not-needed",
             advisory_reason="",
         ).replace(
-            "|---|----------|-------|--------|\n\n## Platform scope",
-            "|---|----------|-------|--------|\n| 1 | Which interaction needs review? | designer | open |\n\n## Platform scope",
+            "|---|----------|-------|--------|\n\n## App scope",
+            "|---|----------|-------|--------|\n| 1 | Which interaction needs review? | designer | open |\n\n## App scope",
         )
         self._write_feature(status="ready-for-design", owner="designer", body=body)
 
@@ -289,10 +289,10 @@ class WikiTransitionTests(unittest.TestCase):
             "design-exemption-reason: Confirmed backend-only workflow with no visual surface.\n---",
         )
         self._write_feature(status="ready-for-dev", owner="dev", platforms="mobile-ios", body=body)
-        requirements = self.wiki_root / "platform-requirements" / "F-001-mobile-ios.md"
+        requirements = self.wiki_root / "app-requirements" / "F-001-mobile-ios.md"
         requirements.parent.mkdir(parents=True, exist_ok=True)
         requirements.write_text(
-            "---\nfeature-id: F-001\nplatform: mobile-ios\nstatus: pending\n---\n\n"
+            "---\nfeature-id: F-001\napp: mobile-ios\nstatus: pending\n---\n\n"
             "## Acceptance criteria\n- The flow is inspectable.\n",
             encoding="utf-8",
         )
@@ -300,7 +300,7 @@ class WikiTransitionTests(unittest.TestCase):
         lint_result = lint_wiki(self.root)
         self.assertFalse(any(diagnostic.code == "missing-design" for diagnostic in lint_result.diagnostics))
         transition = build_transition_preflight(self.root, "F-001", action="dev-start")["facts"]["transition"]
-        self.assertEqual("pass", next(check for check in transition["checks"] if check["code"] == "platform-scope")["status"])
+        self.assertEqual("pass", next(check for check in transition["checks"] if check["code"] == "app-scope")["status"])
         self.assertEqual("ready", transition["classification"])
 
     def test_done_requires_current_evidence_requirements_api_and_revalidation(self) -> None:
@@ -318,15 +318,15 @@ class WikiTransitionTests(unittest.TestCase):
             "## API surface\n"
             "- The payout summary endpoint is implemented by the backend.\n\n"
             "## Delivery evidence\n"
-            "| Platform | Implementation | Tests | Release |\n"
+            "| App | Implementation | Tests | Release |\n"
             "|---|---|---|---|\n"
             "| backend | `backend/src/payouts.kt` implemented | `tests/payouts` passed | `release/2026-09-08` deployed |\n"
         )
         self._write_feature(status="in-dev", owner="dev", advisory="done", body=body)
-        requirements = self.wiki_root / "platform-requirements" / "F-001-backend.md"
+        requirements = self.wiki_root / "app-requirements" / "F-001-backend.md"
         requirements.parent.mkdir(parents=True, exist_ok=True)
         requirements.write_text(
-            "---\nfeature-id: F-001\nplatform: backend\nstatus: done\n---\n\n## Acceptance criteria\n- Data is prepared.\n",
+            "---\nfeature-id: F-001\napp: backend\nstatus: done\n---\n\n## Acceptance criteria\n- Data is prepared.\n",
             encoding="utf-8",
         )
         api = self.wiki_root / "api-contracts" / "F-001.md"
@@ -347,6 +347,12 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertEqual("pass", next(check for check in reopened_work["checks"] if check["code"] == "revalidation")["status"])
 
     def test_api_gate_uses_feature_scope_and_explicit_links_only(self) -> None:
+        # The requirement page of an app outside the feature's scope still names an app of the workspace.
+        (self.root / "prism.workspace.yml").write_text(
+            manifest_text("Transition test", ["backend", "mobile-ios"], slug="transition-test"),
+            encoding="utf-8",
+        )
+        (self.root / "mobile-ios").mkdir()
         self._write_all_capabilities()
         self._write_completed_advisory_review()
         body = FEATURE_TEMPLATE.format(
@@ -359,14 +365,14 @@ class WikiTransitionTests(unittest.TestCase):
             advisory_reason="",
         ) + "\nSee [the persona](../personas/operator.md) for context.\n"
         self._write_feature(status="ready-for-dev", owner="dev", advisory="done", body=body)
-        requirements_dir = self.wiki_root / "platform-requirements"
+        requirements_dir = self.wiki_root / "app-requirements"
         requirements_dir.mkdir(parents=True, exist_ok=True)
         (requirements_dir / "F-001-backend.md").write_text(
-            "---\nfeature-id: F-001\nplatform: backend\nstatus: pending\n---\n\n## Acceptance criteria\n- Data is prepared.\n",
+            "---\nfeature-id: F-001\napp: backend\nstatus: pending\n---\n\n## Acceptance criteria\n- Data is prepared.\n",
             encoding="utf-8",
         )
         (requirements_dir / "F-001-mobile-ios.md").write_text(
-            "---\nfeature-id: F-001\nplatform: mobile-ios\nstatus: pending\n---\n\n## API surface\nSee [shared](../api-contracts/SHARED.md).\n",
+            "---\nfeature-id: F-001\napp: mobile-ios\nstatus: pending\n---\n\n## API surface\nSee [shared](../api-contracts/SHARED.md).\n",
             encoding="utf-8",
         )
         api = self.wiki_root / "api-contracts" / "SHARED.md"
@@ -496,22 +502,22 @@ class WikiTransitionTests(unittest.TestCase):
         cases = [
             """## Delivery evidence
 ```markdown
-| Platform | Implementation | Tests | Release |
+| App | Implementation | Tests | Release |
 |---|---|---|---|
 | backend | src | passed | deployed |
 ```""",
             """## Delivery evidence
 <!--
-| Platform | Implementation | Tests | Release |
+| App | Implementation | Tests | Release |
 |---|---|---|---|
 | backend | src | passed | deployed |
 -->""",
             """## Delivery evidence
-| Platform | Implementation | Tests | Release |
+| App | Implementation | Tests | Release |
 |---|---|---|---|
 | backend | src | passed | deployed | extra |""",
             """## Delivery evidence
-| Platform | Implementation | Tests | Release | Release |
+| App | Implementation | Tests | Release | Release |
 |---|---|---|---|---|
 | backend | src | passed | deployed | pending |""",
         ]
@@ -573,8 +579,8 @@ class WikiTransitionTests(unittest.TestCase):
             advisory="pending",
             advisory_reason="",
         ).replace(
-            "|---|----------|-------|--------|\n\n## Platform scope",
-            "|---|----------|-------|--------|\n| 1 | Which period is authoritative? | po | open |\n\n## Platform scope",
+            "|---|----------|-------|--------|\n\n## App scope",
+            "|---|----------|-------|--------|\n| 1 | Which period is authoritative? | po | open |\n\n## App scope",
         )
         self._write_feature(body=body, advisory="pending")
 
@@ -610,7 +616,7 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertEqual("blocked", transition["classification"])
         statuses = {check["code"]: check["status"] for check in transition["checks"]}
         self.assertEqual("blocked", statuses["acceptance-criteria"])
-        self.assertEqual("blocked", statuses["platform-section"])
+        self.assertEqual("blocked", statuses["app-section"])
 
     def test_invalid_frontmatter_values_are_unknown_and_feature_is_retained(self) -> None:
         body = FEATURE_TEMPLATE.format(
@@ -659,7 +665,7 @@ class WikiTransitionTests(unittest.TestCase):
         self._write_feature(platforms="web-user-app")
         blocked = build_transition_preflight(self.root, "F-001")["facts"]["transition"]
         self.assertEqual("blocked", blocked["classification"])
-        self.assertTrue(any(check["code"] == "platform-scope" and check["status"] == "blocked" for check in blocked["checks"]))
+        self.assertTrue(any(check["code"] == "app-scope" and check["status"] == "blocked" for check in blocked["checks"]))
 
     def test_duplicate_canonical_ids_are_unknown(self) -> None:
         self._write_feature(filename="F-001-another.md")

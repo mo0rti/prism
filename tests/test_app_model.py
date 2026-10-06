@@ -21,7 +21,7 @@ from prism_cli.app_model import (
     normalize_manifest,
     resolve_local_repositories,
 )
-from prism_cli.wiki_model import UI_PLATFORM_IDS, VALID_PLATFORM_IDS
+from prism_cli import wiki_model
 from prism_cli.workspace import PLATFORM_DIRS
 from tests import real_temp  # noqa: F401
 
@@ -87,8 +87,8 @@ class StackRegistryTests(unittest.TestCase):
             PLATFORM_DIRS,
         )
         self.assertEqual(["backend", "mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"], list(PLATFORM_DIRS))
-        self.assertEqual({"backend", "mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"}, VALID_PLATFORM_IDS)
-        self.assertEqual({"mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"}, UI_PLATFORM_IDS)
+        for removed in ("VALID_PLATFORM_IDS", "UI_PLATFORM_IDS"):
+            self.assertFalse(hasattr(wiki_model, removed), removed)
         self.assertEqual(
             (
                 ("backend", "Spring Boot Backend"),
@@ -106,10 +106,13 @@ class StackRegistryTests(unittest.TestCase):
         self.assertIs(app_model.ALL_PLATFORM_CHOICES, cli.ALL_PLATFORM_CHOICES)
         self.assertFalse(hasattr(presets, "ALL_PLATFORM_CHOICES"))
 
-    def test_ui_platforms_come_from_the_has_ui_capability(self) -> None:
-        for platform_id, stack_id in GENERATED_PLATFORM_STACKS.items():
-            with self.subTest(platform=platform_id):
-                self.assertEqual(STACKS[stack_id].default_capabilities["has-ui"], platform_id in UI_PLATFORM_IDS)
+    def test_generated_apps_with_a_ui_come_from_the_has_ui_capability(self) -> None:
+        model, _diagnostics = normalized({"schema_version": 2, "apps": apps_from_platforms(list(GENERATED_PLATFORM_STACKS))})
+        with_ui = {app.id for app in model.apps if app.gate_capability("has-ui")}
+        self.assertEqual({"mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"}, with_ui)
+        for app in model.apps:
+            with self.subTest(app=app.id):
+                self.assertEqual(STACKS[GENERATED_PLATFORM_STACKS[app.id]].default_capabilities["has-ui"], app.gate_capability("has-ui"))
 
 
 class GeneratedPlatformTests(unittest.TestCase):

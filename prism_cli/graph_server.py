@@ -166,7 +166,7 @@ def serve_graph(root: Path, port: int) -> int:
     server.daemon_threads = True
     state.start_watching()
     print(f"Prism graph dashboard: {url}")
-    print("Live updates: watching graph wiki, intake queues, manifest, answers, platform directories, and generated transition capabilities. Read-only; press Ctrl+C to stop.")
+    print("Live updates: watching graph wiki, intake queues, manifest, answers, app directories, and generated transition capabilities. Read-only; press Ctrl+C to stop.")
     try:
         import webbrowser
 

@@ -95,19 +95,19 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 ## A reopen record is rejected as delivery_evidence_not_archived
 
-**Symptom.** `preview_skill` for `feature-reopen` fails with `delivery_evidence_not_archived` (409), and the message names a missing `| platform | ... |` row.
+**Symptom.** `preview_skill` for `feature-reopen` fails with `delivery_evidence_not_archived` (409), and the message names a missing `| app | ... |` row.
 
 **Cause.** A reopen record must keep every prior Delivery evidence row verbatim under its `- Prior completion/release evidence:` bullet. The row must be on that line or on the lines directly below it, before the next `- Label:` bullet or heading. A row placed after another bullet, under its own heading or with changed cell text is not found. Spaces around `|` and letter case do not matter.
 
-**Fix.** Move the rows (a table or a list) directly under the bullet and copy the cells from the active Delivery evidence table. The layout is in `knowledge/wiki/features/_FORMAT.md`. Reopen reads the active table with the same parser that `dev-done` uses, so any column order, header case and platform letter case that `dev-done` accepted is accepted here; copy each row exactly as it stands in the table, in the table's own column order.
+**Fix.** Move the rows (a table or a list) directly under the bullet and copy the cells from the active Delivery evidence table. The layout is in `knowledge/wiki/features/_FORMAT.md`. Reopen reads the active table with the same parser that `dev-done` uses, so any column order, header case and app letter case that `dev-done` accepted is accepted here; copy each row exactly as it stands in the table, in the table's own column order.
 
 ## A dev-done proposal is rejected for its delivery evidence
 
-**Symptom.** `preview_skill` for `dev-done` fails with `delivery_evidence_required` or `delivery_evidence_invalid` (409). The `details` list the declared `platforms`, the `missing_platforms` and the `problems`.
+**Symptom.** `preview_skill` for `dev-done` fails with `delivery_evidence_required` or `delivery_evidence_invalid` (409). The `details` list the declared `apps`, the `missing_apps` and the `problems`.
 
-**Cause.** `dev-done` takes the delivery evidence in its proposal. The `## Delivery evidence` table of the proposed feature page must have one row per declared platform, in the cell order `| Platform | Implementation | Tests | Release |`, and every cell must be a substantive reference. A table with no platform rows, a placeholder such as `n/a` or `[artifact or source reference]`, a duplicate platform or a platform the feature does not declare is rejected. Nothing was written.
+**Cause.** `dev-done` takes the delivery evidence in its proposal. The `## Delivery evidence` table of the proposed feature page must have one row per declared app, in the cell order `| App | Implementation | Tests | Release |`, and every cell must be a substantive reference. A table with no app rows, a placeholder such as `n/a` or `[artifact or source reference]`, a duplicate app or an app the feature does not declare is rejected. Nothing was written.
 
-**Fix.** Ask the developer for the missing implementation, test and release references and add the row for each declared platform to the proposed table, then preview again. Do not invent a value. A reference the agent cannot check goes into the proposed Post-ship notes as the developer's attestation.
+**Fix.** Ask the developer for the missing implementation, test and release references and add the row for each declared app to the proposed table, then preview again. Do not invent a value. A reference the agent cannot check goes into the proposed Post-ship notes as the developer's attestation.
 
 ## A design-handoff proposal is rejected for its API contract
 
@@ -139,7 +139,7 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 **Cause.** Open questions owned by `dev` block `dev-start` and `dev-done`; they do not block `design-handoff`, which only open `po` or `designer` questions block. `po-clarify` and `design-clarify` resolve only PO and designer questions.
 
-**Fix.** Use `dev-clarify`. It resolves the dev-owned questions of a feature that is not `done`, with the developer's answers. Each section it changes, in the feature or in a platform requirement page, must contain an answer verbatim. If the feature is `done`, reopen it with `feature-reopen` first.
+**Fix.** Use `dev-clarify`. It resolves the dev-owned questions of a feature that is not `done`, with the developer's answers. Each section it changes, in the feature or in an app requirement page, must contain an answer verbatim. If the feature is `done`, reopen it with `feature-reopen` first.
 
 ## An agent stopped after the board rejected a proposal
 

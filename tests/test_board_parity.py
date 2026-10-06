@@ -43,7 +43,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
 
     def prepare(self, root: Path, action: tuple[str, ...], *, blocked: bool) -> None:
         create_core_workflow_fixture(root)
-        self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))["status"])
+        self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
         pending = root / INTAKE_ITEM.parent
         pending.rename(root / "knowledge/intake/processed/document-review-brief")
         content = _feature_page().replace("status: raw\n", f"status: {action[1]}\n").replace("owner: po\n", f"owner: {action[2]}\n")
@@ -54,7 +54,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
         (root / FEATURE_PATH).write_bytes(content.encode("utf-8"))
         _write_index(root, action[1], action[2])
         if action[0] == "dev-start":
-            (root / "knowledge/wiki/platform-requirements/F-001-backend.md").write_bytes(_requirement_page("pending").encode("utf-8"))
+            (root / "knowledge/wiki/app-requirements/F-001-backend.md").write_bytes(_requirement_page("pending").encode("utf-8"))
 
     @staticmethod
     def snapshot(root: Path) -> dict[str, bytes]:
@@ -206,17 +206,17 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
         )
 
         feature_relative = FEATURE_PATH.as_posix()
-        requirement_relative = "knowledge/wiki/platform-requirements/F-001-backend.md"
+        requirement_relative = "knowledge/wiki/app-requirements/F-001-backend.md"
         question = "| 2 | Is there a limit on the number of comments in one summary? | dev | open |"
         answer = "At most 200 comments are exported; the rest are summarized as a count."
         evidence = (
-            "| Platform | Implementation | Tests | Release |\n|---|---|---|---|\n"
+            "| App | Implementation | Tests | Release |\n|---|---|---|---|\n"
             "| backend | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | Version 1.4.0 deployed |"
         )
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "workspace"
             create_core_workflow_fixture(root)
-            self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))["status"])
+            self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
             (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/document-review-brief")
             page = _unquote_yaml_date_fields(
                 _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/document-review-brief"], [
@@ -267,7 +267,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                                     return await client.call_tool("preview_skill", {"skill": skill, "changes": changes, "read_revisions": revisions})
 
                                 clarified = page.replace(question, f"| 2 | Is there a limit on the number of comments in one summary? | dev | resolved: {answer} |")
-                                clarified = _replace_body_section(service, clarified, "Platform scope", f"- **backend**: Store the review summary and recorded outcome. {answer}")
+                                clarified = _replace_body_section(service, clarified, "App scope", f"- **backend**: Store the review summary and recorded outcome. {answer}")
                                 requirement = _replace_body_section(service, _journey_requirement_page("in-progress"), "Technical constraints", f"Use the existing workspace storage. {answer}")
                                 preview = self.tool_data(await propose("dev-clarify", [{"path": feature_relative, "content": clarified}, {"path": requirement_relative, "content": requirement}]))
                                 self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]))
@@ -282,7 +282,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                                 self.assertTrue(rejected.is_error)
                                 text = " ".join(part.text for part in rejected.content if getattr(part, "type", None) == "text")
                                 self.assertIn("delivery_evidence_required", text)
-                                self.assertIn('"missing_platforms":["backend"]', text)
+                                self.assertIn('"missing_apps":["backend"]', text)
 
                                 complete = _replace_body_section(service, missing, "Delivery evidence", evidence)
                                 preview = self.tool_data(await propose("dev-done", [{"path": feature_relative, "content": complete}, {"path": requirement_relative, "content": requirement_done}]))
@@ -309,7 +309,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
         )
 
         feature_relative = FEATURE_PATH.as_posix()
-        requirement_relative = "knowledge/wiki/platform-requirements/F-001-backend.md"
+        requirement_relative = "knowledge/wiki/app-requirements/F-001-backend.md"
         contract_relative = "knowledge/wiki/api-contracts/F-001.md"
         surface = "A new endpoint `POST /api/v1/reviews/{id}/exports` returns the review summary as a PDF export."
         contract = (
@@ -325,7 +325,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(transport=transport), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary) / "workspace"
                 create_core_workflow_fixture(root)
-                self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))["status"])
+                self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
                 (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/document-review-brief")
                 page = _unquote_yaml_date_fields(
                     _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/document-review-brief"], [question])

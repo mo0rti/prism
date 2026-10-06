@@ -35,15 +35,15 @@ from tests import real_temp  # noqa: F401
 
 
 FEATURE = FEATURE_PATH.as_posix()
-REQUIREMENT = "knowledge/wiki/platform-requirements/F-001-backend.md"
+REQUIREMENT = "knowledge/wiki/app-requirements/F-001-backend.md"
 DESIGN = "knowledge/wiki/design/F-001-document-review.md"
 PO_QUESTION = "| 1 | Which details should the summary emphasize? | po | open |"
 DEV_QUESTION = "| 2 | Is there a limit on the number of comments in one summary? | dev | open |"
 DESIGNER_QUESTION = "| 3 | Where should the next steps appear? | designer | open |"
 DEV_ANSWER = "At most 200 comments are exported; the rest are summarized as a count."
 EVIDENCE_ROW = "| backend | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | Version 1.4.0 deployed |"
-EVIDENCE_TABLE = f"| Platform | Implementation | Tests | Release |\n|---|---|---|---|\n{EVIDENCE_ROW}"
-EMPTY_EVIDENCE = "| Platform | Implementation | Tests | Release |\n|---|---|---|---|"
+EVIDENCE_TABLE = f"| App | Implementation | Tests | Release |\n|---|---|---|---|\n{EVIDENCE_ROW}"
+EMPTY_EVIDENCE = "| App | Implementation | Tests | Release |\n|---|---|---|---|"
 
 
 class _BoardWorkspace(unittest.TestCase):
@@ -59,7 +59,7 @@ class _BoardWorkspace(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = create_core_workflow_fixture(Path(temporary.name) / "workspace")
-        self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Document review", platforms=["backend"]))["status"])
+        self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))["status"])
 
     def start(self) -> None:
         self.service = BoardService(self.root).start()
@@ -277,7 +277,7 @@ class DevClarifyTests(_BoardWorkspace):
     def proposal(self, *, scope: str | None = DEV_ANSWER, requirement: str | None = DEV_ANSWER) -> list[dict[str, str]]:
         feature = self.answered(self.read(FEATURE))
         if scope is not None:
-            feature = _replace_body_section(self.service, feature, "Platform scope", f"- **backend**: Store the review summary and recorded outcome. {scope}")
+            feature = _replace_body_section(self.service, feature, "App scope", f"- **backend**: Store the review summary and recorded outcome. {scope}")
         changes = [{"path": FEATURE, "content": feature}]
         if requirement is not None:
             page = _replace_body_section(
@@ -289,7 +289,7 @@ class DevClarifyTests(_BoardWorkspace):
     def test_the_skill_is_discoverable_as_an_agent_write_with_its_scopes(self) -> None:
         listed = {item["name"]: item for item in self.service.list_skills(self.agent)["skills"]}["dev-clarify"]
         self.assertTrue(listed["write_supported"])
-        self.assertEqual(["knowledge/wiki/features/*.md", "knowledge/wiki/platform-requirements/*.md"], listed["write_scopes"])
+        self.assertEqual(["knowledge/wiki/features/*.md", "knowledge/wiki/app-requirements/*.md"], listed["write_scopes"])
         self.assertEqual(["agent"], listed["participant_kinds"])
         self.assertEqual({"preview_skill": ["agent"]}, listed["write_tools"])
         self.assertTrue(any("Resolves only dev-owned open questions" in text for text in listed["limitations"]))
@@ -297,7 +297,7 @@ class DevClarifyTests(_BoardWorkspace):
         self.assertIn("dev-clarify", self.service.discover(self.agent)["capability"]["supported_write_skills"])
         skill = self.service.get_skill(self.agent, "dev-clarify")["skill"]
         self.assertIn("$dev-clarify", skill["instructions"])
-        self.assertIn("knowledge/wiki/platform-requirements/_FORMAT.md", {item["path"] for item in skill["references"]})
+        self.assertIn("knowledge/wiki/app-requirements/_FORMAT.md", {item["path"] for item in skill["references"]})
 
     def test_a_dev_answer_updates_the_feature_and_the_linked_requirement_through_one_preview(self) -> None:
         preview = self.preview("dev-clarify", self.proposal())
@@ -335,7 +335,7 @@ class DevClarifyTests(_BoardWorkspace):
                 self.assertIn(f"cannot resolve {owner}-owned question {number}", error.message)
 
     def test_a_proposal_that_resolves_no_dev_question_is_rejected(self) -> None:
-        feature = _replace_body_section(self.service, self.read(FEATURE), "Platform scope", "- **backend**: Store it somewhere else.")
+        feature = _replace_body_section(self.service, self.read(FEATURE), "App scope", "- **backend**: Store it somewhere else.")
         error = self.rejection("dev-clarify", [{"path": FEATURE, "content": feature}])
         self.assertEqual("answer_required", error.code)
 
@@ -352,7 +352,7 @@ class DevClarifyTests(_BoardWorkspace):
     def test_a_paraphrase_in_a_feature_section_is_rejected(self) -> None:
         error = self.rejection("dev-clarify", self.proposal(scope="Export is capped.", requirement=None))
         self.assertEqual(("clarify_answer_unlinked", 409), (error.code, error.status))
-        self.assertEqual("Platform scope", error.details["section"])
+        self.assertEqual("App scope", error.details["section"])
         self.assertIn("dev-owned question(s) 2", error.message)
 
     def test_an_answer_is_matched_as_whole_words_not_inside_other_words(self) -> None:
@@ -375,9 +375,9 @@ class DevClarifyTests(_BoardWorkspace):
     def test_an_answer_with_punctuation_at_its_edges_still_matches(self) -> None:
         answer = "$5 per export (max)"
         feature = self.answered(self.read(FEATURE), answer=answer)
-        changed = _replace_body_section(self.service, feature, "Platform scope", f"- **backend**: The fee is {answer}.")
+        changed = _replace_body_section(self.service, feature, "App scope", f"- **backend**: The fee is {answer}.")
         self.assertEqual("ready", self.preview("dev-clarify", [{"path": FEATURE, "content": changed}])["classification"])
-        glued = _replace_body_section(self.service, feature, "Platform scope", f"- **backend**: The fee is {answer}s.")
+        glued = _replace_body_section(self.service, feature, "App scope", f"- **backend**: The fee is {answer}s.")
         self.assertEqual("clarify_answer_unlinked", self.rejection("dev-clarify", [{"path": FEATURE, "content": glued}]).code)
 
     def test_case_and_spacing_of_the_answer_do_not_matter(self) -> None:
@@ -418,7 +418,7 @@ class DevClarifyTests(_BoardWorkspace):
         summary = _replace_body_section(self.service, feature, "Summary", f"A new summary. {DEV_ANSWER}")
         error = self.rejection("dev-clarify", [{"path": FEATURE, "content": summary}])
         self.assertEqual(("clarify_scope_exceeded", 409), (error.code, error.status))
-        self.assertIn("Acceptance criteria, Platform scope and API surface", error.message)
+        self.assertIn("Acceptance criteria, App scope and API surface", error.message)
         self.assertEqual({"sections": ["Summary"]}, error.details)
 
     def test_it_cannot_create_or_write_other_page_types(self) -> None:
@@ -517,20 +517,20 @@ class DevDoneEvidenceTests(_DevDoneWorkspace):
                 self.assertIn("| backend | <implementation reference> | <test command and result> | <release artifact or target> |", error.message)
                 self.assertIn("do not invent", error.message)
                 self.assertEqual(FEATURE, error.details["path"])
-                self.assertEqual(["backend"], error.details["platforms"])
-                self.assertEqual(["backend"], error.details["missing_platforms"])
+                self.assertEqual(["backend"], error.details["apps"])
+                self.assertEqual(["backend"], error.details["missing_apps"])
                 self.assertTrue(error.details["problems"])
                 self.assertLess(len(error.message) + len(json.dumps(error.details)), 2000)
         self.assertEqual("in-dev", _parse_markdown(self.read(FEATURE))[0]["status"])
 
     def test_invalid_evidence_is_rejected_with_each_problem(self) -> None:
-        header = "| Platform | Implementation | Tests | Release |\n|---|---|---|---|\n"
+        header = "| App | Implementation | Tests | Release |\n|---|---|---|---|\n"
         cases = {
             "placeholder cell": (header + "| backend | Pull request 42 | n/a | Version 1.4.0 |", "delivery_evidence_invalid", "`tests` for `backend` is empty or still a placeholder", []),
             "template cell": (header + "| backend | [artifact or source reference] | CI run 1187 | Version 1.4.0 |", "delivery_evidence_invalid", "`implementation` for `backend`", []),
-            "wrong platform": (header + "| web-user-app | Pull request 42 | CI run 1187 | Version 1.4.0 |", "delivery_evidence_invalid", "undeclared platform(s): web-user-app", ["backend"]),
-            "duplicate platform": (header + EVIDENCE_ROW + "\n" + EVIDENCE_ROW, "delivery_evidence_invalid", "duplicate platform `backend`", []),
-            "short row": (header + "| backend | Pull request 42 | CI run 1187 |", "delivery_evidence_required", "exactly Platform, Implementation, Tests, and Release cells", ["backend"]),
+            "wrong platform": (header + "| web-user-app | Pull request 42 | CI run 1187 | Version 1.4.0 |", "delivery_evidence_invalid", "undeclared app(s): web-user-app", ["backend"]),
+            "duplicate platform": (header + EVIDENCE_ROW + "\n" + EVIDENCE_ROW, "delivery_evidence_invalid", "duplicate app `backend`", []),
+            "short row": (header + "| backend | Pull request 42 | CI run 1187 |", "delivery_evidence_required", "exactly App, Implementation, Tests, and Release cells", ["backend"]),
         }
         for name, (evidence, code, problem, missing) in cases.items():
             with self.subTest(case=name):
@@ -539,7 +539,7 @@ class DevDoneEvidenceTests(_DevDoneWorkspace):
                 self.assertIn(problem, " ".join(error.details["problems"]))
                 if code == "delivery_evidence_invalid":
                     self.assertIn(problem, error.message)
-                self.assertEqual(missing, error.details["missing_platforms"])
+                self.assertEqual(missing, error.details["missing_apps"])
                 self.assertEqual(FEATURE, error.details["path"])
                 self.assertLess(len(error.message) + len(json.dumps(error.details)), 2000)
 

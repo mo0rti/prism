@@ -349,7 +349,7 @@ def feature_page(number: int, rng: random.Random) -> tuple[str, dict[str, str]]:
         f"owner: {plan['owner']}\n"
         f"introduced: {FIXED_DATE}\n"
         f"last-updated: {FIXED_DATE}\n"
-        "platforms:\n- backend\n"
+        "apps:\n- backend\n"
         f"sources:\n- {PROCESSED_SOURCE}\n"
         "advisory-review: not-needed\n"
         "---\n\n"
@@ -363,7 +363,7 @@ def feature_page(number: int, rng: random.Random) -> tuple[str, dict[str, str]]:
         "| # | Question | Owner | Status |\n"
         "|---|----------|-------|--------|\n"
         + "\n".join(rows)
-        + "\n\n## Platform scope\n"
+        + "\n\n## App scope\n"
         "- **backend**: Store the review summary and recorded outcome.\n\n"
         "## API surface\nNone\n"
     )
@@ -377,7 +377,7 @@ def build_workspace(root: Path, count: int, seed: int = SEED) -> dict[str, Any]:
     from tests.core_workflow_fixture import create_core_workflow_fixture
 
     create_core_workflow_fixture(root)
-    receipt = apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))
+    receipt = apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
     if receipt["status"] != "applied":
         raise RuntimeError(f"workflow installer did not apply: {receipt.get('status')}")
     # The brief becomes a processed source so feature pages can cite it.

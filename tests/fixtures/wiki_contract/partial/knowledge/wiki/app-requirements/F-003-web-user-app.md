@@ -1,6 +1,6 @@
 ---
 feature-id: F-003
-platform: web-user-app
+app: web-user-app
 status: pending
 ---
 

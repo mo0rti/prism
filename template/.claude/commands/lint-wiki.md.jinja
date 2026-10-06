@@ -35,15 +35,15 @@ fails, or lacks `wiki lint`, say:
 - `knowledge/wiki/SETTINGS.md` if present
 - `knowledge/wiki/index.md`
 - all files in `knowledge/wiki/features/`
-- all files in `knowledge/wiki/platform-requirements/`
+- all files in `knowledge/wiki/app-requirements/`
 - related design, API contract, advisory, business-rule, persona, and decision files as needed
 
 Check only facts provable from those files: malformed frontmatter, invalid
 enums, duplicate IDs, orphan or index drift, stale pages, quarantine backlog,
 skipped board reviews without reasons, and the six canonical categories:
-`pending-board-review`, `missing-design`, `missing-platform-requirements`,
+`pending-board-review`, `missing-design`, `missing-app-requirements`,
 `unresolved-open-questions`, `api-contract-not-ready`, and
-`cross-platform-dependency`. If SETTINGS is absent or invalid, use
+`cross-app-dependency`. If SETTINGS is absent or invalid, use
 `wiki-stale-after-days: 14` and say so.
 
 ## Rules and output

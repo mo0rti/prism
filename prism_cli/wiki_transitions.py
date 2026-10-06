@@ -22,7 +22,7 @@ from threading import Lock, RLock
 from typing import Any, Callable, Iterable, Iterator
 from urllib.parse import unquote, urlsplit
 
-from prism_cli.app_model import MANIFEST_SCHEMA_VERSION
+from prism_cli.app_model import CAPABILITY_HAS_UI, MANIFEST_SCHEMA_VERSION, WorkspaceModel
 from prism_cli.status import IGNORED_INTAKE_FILES
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, _wiki_path_references, lint_wiki
 from prism_cli.wiki_model import (
@@ -30,7 +30,6 @@ from prism_cli.wiki_model import (
     VALID_FEATURE_OWNERS,
     VALID_FEATURE_STATUSES,
     VALID_OPEN_QUESTION_OWNERS,
-    VALID_PLATFORM_IDS,
     FeaturePage,
     extract_markdown_links,
     feature_id_from_path,
@@ -41,7 +40,7 @@ from prism_cli.wiki_model import (
     parse_advisory_required_actions,
     parse_revalidation,
     read_feature_pages,
-    read_platform_requirement_pages,
+    read_app_requirement_pages,
     read_wiki_pages,
     resolve_relative_markdown_link,
     section_text,
@@ -163,7 +162,7 @@ _WIKI_SOURCE_DIRECTORIES = {
     "design",
     "features",
     "personas",
-    "platform-requirements",
+    "app-requirements",
 }
 _PLACEHOLDER_PATTERNS = (
     re.compile(r"^one paragraph\b", re.IGNORECASE),
@@ -172,26 +171,20 @@ _PLACEHOLDER_PATTERNS = (
     re.compile(r"\[business outcome\]", re.IGNORECASE),
     re.compile(r"condition \d+\s*\(testable, unambiguous\)", re.IGNORECASE),
 )
-_PLATFORM_PLACEHOLDER = re.compile(
-    r"^\[what\s+(?:backend|mobile-android|mobile-ios|web-user-app|web-admin-portal)\s+must\s+implement,\s+or\s+['\"]not in scope['\"]\]$",
-    re.IGNORECASE,
-)
-_PLATFORM_SCOPE_LINE = re.compile(
-    r"^\s*[-*]\s+\*{0,2}(backend|mobile-android|mobile-ios|web-user-app|web-admin-portal)\*{0,2}\s*:\s*(.*?)\s*$",
+_APP_PLACEHOLDER = re.compile(
+    r"^\[what\s+[a-z][a-z0-9-]*\s+must\s+implement,\s+or\s+['\"]not in scope['\"]\]$",
     re.IGNORECASE,
 )
 _HARD_IDENTITY_DIAGNOSTIC_CODES = {
     "answers-filesystem-drift",
     "invalid-copier-answers-shape",
     "invalid-copier-answers-yaml",
-    "invalid-manifest-platform",
     "invalid-min-prism-cli-version",
     "invalid-workspace-manifest-project",
     "invalid-workspace-manifest-provenance",
     "invalid-workspace-manifest-schema",
     "invalid-workspace-manifest-shape",
     "invalid-workspace-manifest-surfaces",
-    "invalid-workspace-manifest-platforms",
     "invalid-workspace-manifest-paths",
     "manifest-answers-drift",
     "manifest-filesystem-drift",
@@ -291,7 +284,7 @@ def workspace_fingerprint(root: Path, *, cache: FingerprintCache | None = None) 
     """Fingerprint files and metadata consumed by graph and transition reads.
 
     The tuple shape is kept compatible with the existing graph server watcher.
-    Content is hashed for files; queue entries and platform directories retain
+    Content is hashed for files; queue entries and app directories retain
     the existing name/type invalidation semantics.  Capability instructions are
     included so changing or removing a generated command invalidates a snapshot.
 
@@ -358,8 +351,9 @@ def _workspace_fingerprint(root: Path, cache: FingerprintCache | None) -> tuple[
                 continue
             entries.append((relative, _path_kind(child)))
 
-    for platform_id, relative in sorted(PLATFORM_DIRS.items()):
-        entries.append((f"platform:{platform_id}", _path_kind(workspace_root / relative)))
+    # The directories the generated apps use; the manifest, hashed above, declares every other app path.
+    for app_id, relative in sorted(PLATFORM_DIRS.items()):
+        entries.append((f"app:{app_id}", _path_kind(workspace_root / relative)))
 
     for relative in _capability_paths():
         path = workspace_root / relative
@@ -545,7 +539,7 @@ def build_board_transition_preflight(
     lint_result = lint_wiki(workspace_root)
     inspection = inspect_workspace(workspace_root)
     identity_checks = _board_workspace_identity_checks(workspace_root, inspection)
-    requirement_pages = read_platform_requirement_pages(wiki_root)
+    requirement_pages = read_app_requirement_pages(wiki_root)
     wiki_pages = read_wiki_pages(wiki_root)
 
     if requested not in ACTION_BY_ID:
@@ -666,7 +660,7 @@ def evaluate_transition_summaries(
     feature_pages = features if features is not None else read_feature_pages(workspace_root / _WATCH_WIKI_DIR)
     wiki_lint = lint_result if lint_result is not None else lint_wiki(workspace_root)
     workspace_inspection = inspection if inspection is not None else inspect_workspace(workspace_root)
-    requirement_pages = requirement_pages if requirement_pages is not None else read_platform_requirement_pages(workspace_root / _WATCH_WIKI_DIR)
+    requirement_pages = requirement_pages if requirement_pages is not None else read_app_requirement_pages(workspace_root / _WATCH_WIKI_DIR)
     wiki_pages = wiki_pages if wiki_pages is not None else read_wiki_pages(workspace_root / _WATCH_WIKI_DIR)
 
     capability_checks_by_action: dict[str, list[dict[str, Any]]] = {}
@@ -1019,7 +1013,7 @@ def _evaluate_po_handoff(
                 _acceptance_criteria_check(feature),
             ]
         )
-        checks.append(_platform_section_check(feature))
+        checks.append(_app_section_check(feature, inspection.model))
         checks.append(_open_questions_check(feature))
         checks.append(_advisory_check(feature))
         checks.append(_revalidation_check(feature, {"specification"}, {"specification"}))
@@ -1097,7 +1091,7 @@ def _evaluate_action(
         elif spec.action == "design-handoff":
             checks.extend(
                 [
-                    _design_completion_check(feature, wiki_pages),
+                    _design_completion_check(feature, wiki_pages, inspection.model),
                     _advisory_check(feature),
                     _advisory_actions_check(feature, wiki_pages),
                     _open_questions_check_for_action(feature, {"po", "designer"}),
@@ -1118,7 +1112,7 @@ def _evaluate_action(
         elif spec.action == "dev-done":
             checks.extend(
                 [
-                    _design_completion_check(feature, wiki_pages),
+                    _design_completion_check(feature, wiki_pages, inspection.model),
                     _requirements_check(feature, requirement_pages, require_done=False),
                     _api_contract_check(feature, wiki_pages, require_implemented=False),
                     _revalidation_check(
@@ -1159,10 +1153,10 @@ def _evaluate_action(
         # feature.  A blocker on another feature remains visible in the
         # envelope, but cannot become a false prerequisite for this action.
         if not spec.action.startswith("reopen-"):
-            checks.extend(_feature_workflow_checks(feature, lint_result, spec.action, requirement_pages))
+            checks.extend(_feature_workflow_checks(feature, lint_result, spec.action, requirement_pages, inspection.model))
         ignored_integrity = {
             "done-delivery-evidence",
-            "done-platform-requirement",
+            "done-app-requirement",
             "done-api-contract",
             "done-advisory-actions",
             "invalid-revalidation",
@@ -1438,6 +1432,7 @@ def _feature_workflow_checks(
     lint_result: WikiLintResult,
     action: str,
     requirement_pages: list[Any],
+    model: WorkspaceModel,
 ) -> list[dict[str, Any]]:
     relevant_codes = {
         "po-handoff": {"pending-board-review"},
@@ -1461,7 +1456,7 @@ def _feature_workflow_checks(
     for diagnostic in lint_result.diagnostics:
         if diagnostic.code not in relevant_codes:
             continue
-        if _is_out_of_scope_requirement_dependency(diagnostic, feature, requirements_by_path):
+        if _is_out_of_scope_requirement_dependency(diagnostic, feature, requirements_by_path, model):
             continue
         diagnostic_feature_id = normalize_feature_id(diagnostic.feature_id) if isinstance(diagnostic.feature_id, str) else ""
         try:
@@ -1486,17 +1481,18 @@ def _is_out_of_scope_requirement_dependency(
     diagnostic: WikiDiagnostic,
     feature: FeaturePage,
     requirements_by_path: dict[Path, Any],
+    model: WorkspaceModel,
 ) -> bool:
     """Skip only a proven out-of-scope dependency for this action's gate.
 
     Lint diagnostics remain global facts.  This evaluator-only exception keeps
-    an unrelated declared-platform requirement visible in the envelope while
+    an unrelated declared-app requirement visible in the envelope while
     preventing it from blocking an action for a feature that does not declare
-    that platform.  Missing or malformed ownership/scope evidence fails
+    that app.  Missing or malformed ownership/scope evidence fails
     closed by returning ``False``.
     """
 
-    if diagnostic.code != "cross-platform-dependency":
+    if diagnostic.code != "cross-app-dependency":
         return False
     try:
         requirement = requirements_by_path.get(diagnostic.resolved_path)
@@ -1511,21 +1507,21 @@ def _is_out_of_scope_requirement_dependency(
         or normalize_feature_id(requirement_feature_id) != normalize_feature_id(feature.feature_id)
     ):
         return False
-    requirement_platform = getattr(requirement, "platform", None)
+    requirement_app = getattr(requirement, "app", None)
     if (
-        not isinstance(requirement_platform, str)
-        or not requirement_platform.strip()
-        or requirement_platform.strip().lower() not in VALID_PLATFORM_IDS
+        not isinstance(requirement_app, str)
+        or not requirement_app.strip()
+        or model.app(requirement_app.strip()) is None
     ):
         return False
-    declared_platforms = {
-        platform.strip().lower()
-        for platform in feature.platforms
-        if isinstance(platform, str) and platform.strip()
+    declared_apps = {
+        app_id.strip().lower()
+        for app_id in feature.apps
+        if isinstance(app_id, str) and app_id.strip()
     }
-    if not declared_platforms:
+    if not declared_apps:
         return False
-    return requirement_platform.strip().lower() not in declared_platforms
+    return requirement_app.strip().lower() not in declared_apps
 
 
 def _open_questions_message(kind: str, numbers: list[str]) -> str:
@@ -1552,10 +1548,10 @@ def _open_questions_check_for_action(feature: FeaturePage, owners: set[str]) -> 
     return _check("open-questions", "pass", "No open questions remain for this action.", path)
 
 
-def _design_completion_check(feature: FeaturePage, wiki_pages: list[Any]) -> dict[str, Any]:
+def _design_completion_check(feature: FeaturePage, wiki_pages: list[Any], model: WorkspaceModel) -> dict[str, Any]:
     path = feature.page.path
-    if not any(platform in {"mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"} for platform in feature.platforms):
-        return _check("design", "pass", "No UI platform is declared; visual design is not applicable.", path)
+    if not any((app := model.app(app_id)) is not None and app.gate_capability(CAPABILITY_HAS_UI) for app_id in feature.apps):
+        return _check("design", "pass", "No app with a UI is in scope; visual design is not applicable.", path)
     design_value = feature.page.frontmatter.get("design")
     if design_value == "not-applicable":
         reason = feature.page.frontmatter.get("design-exemption-reason")
@@ -1578,53 +1574,53 @@ def _design_completion_check(feature: FeaturePage, wiki_pages: list[Any]) -> dic
         if isinstance(page_feature_id, str) and normalize_feature_id(page_feature_id) == feature_id:
             matching.append(page)
     if not matching:
-        return _check("design", "blocked", "UI platform scope requires a matching design page or an explicit confirmed exemption.", path)
+        return _check("design", "blocked", "An app with a UI in scope requires a matching design page or an explicit confirmed exemption.", path)
     malformed = [page for page in matching if getattr(page, "parse_errors", [])]
     if malformed:
         return _check("design", "unknown", "A matching design page has malformed frontmatter.", malformed[0].path)
-    return _check("design", "pass", "A matching design page is recorded; the agent must verify it covers every declared UI platform.", matching[0].path)
+    return _check("design", "pass", "A matching design page is recorded; the agent must verify it covers every declared app with a UI.", matching[0].path)
 
 
 def _requirements_check(feature: FeaturePage, requirement_pages: list[Any], *, require_done: bool) -> dict[str, Any]:
     path = feature.page.path
-    declared = feature.platforms
+    declared = feature.apps
     if not declared:
-        return _check("platform-requirements", "unknown", "Platform requirements cannot be evaluated without a valid feature platform scope.", path)
-    by_platform: dict[str, list[Any]] = {}
+        return _check("app-requirements", "unknown", "App requirements cannot be evaluated without a valid feature app scope.", path)
+    by_app: dict[str, list[Any]] = {}
     feature_id = normalize_feature_id(feature.feature_id)
     for requirement in requirement_pages:
         requirement_id = getattr(requirement, "feature_id", None)
-        platform = getattr(requirement, "platform", None)
-        if not isinstance(requirement_id, str) or requirement_id.strip().lower() != feature_id or not isinstance(platform, str):
+        app_id = getattr(requirement, "app", None)
+        if not isinstance(requirement_id, str) or requirement_id.strip().lower() != feature_id or not isinstance(app_id, str):
             continue
-        by_platform.setdefault(platform.strip().lower(), []).append(requirement)
+        by_app.setdefault(app_id.strip().lower(), []).append(requirement)
     problems: list[str] = []
     unknown = False
-    for platform in declared:
-        matches = by_platform.get(platform.strip().lower(), [])
+    for app_id in declared:
+        matches = by_app.get(app_id.strip().lower(), [])
         if not matches:
-            problems.append(f"missing requirement for `{platform}`")
+            problems.append(f"missing requirement for `{app_id}`")
             continue
         if len(matches) > 1:
-            problems.append(f"duplicate requirements for `{platform}`")
+            problems.append(f"duplicate requirements for `{app_id}`")
             unknown = True
             continue
         requirement = matches[0]
         if getattr(requirement, "parse_errors", []):
-            problems.append(f"malformed requirement for `{platform}`")
+            problems.append(f"malformed requirement for `{app_id}`")
             unknown = True
             continue
         status = getattr(requirement, "status", None)
         if status not in {"pending", "in-progress", "done"}:
-            problems.append(f"unsupported requirement status for `{platform}`")
+            problems.append(f"unsupported requirement status for `{app_id}`")
             unknown = True
         elif require_done and status != "done":
-            problems.append(f"requirement for `{platform}` is `{status}`")
+            problems.append(f"requirement for `{app_id}` is `{status}`")
     if problems:
         status = "unknown" if unknown else "blocked"
-        return _check("platform-requirements", status, "; ".join(problems) + ".", path)
-    message = "Every declared platform has a completed requirement." if require_done else "Every declared platform has a handed-off platform requirement."
-    return _check("platform-requirements", "pass", message, path)
+        return _check("app-requirements", status, "; ".join(problems) + ".", path)
+    message = "Every declared app has a completed requirement." if require_done else "Every declared app has a handed-off app requirement."
+    return _check("app-requirements", "pass", message, path)
 
 
 def _api_contract_check(feature: FeaturePage, wiki_pages: list[Any], *, require_implemented: bool) -> dict[str, Any]:
@@ -1646,17 +1642,17 @@ def _api_contract_check(feature: FeaturePage, wiki_pages: list[Any], *, require_
             matching.append(page)
 
     # Include contracts explicitly referenced from the feature or any scoped
-    # platform requirement, including shared contracts whose own filename or
+    # app requirement, including shared contracts whose own filename or
     # feature-id is intentionally independent of this feature.
     source_pages = [feature.page]
     for page in wiki_pages:
         page_feature_id = page.frontmatter.get("feature-id")
         if not isinstance(page_feature_id, str) or normalize_feature_id(page_feature_id) != feature_id:
             continue
-        if page.frontmatter.get("platform") not in feature.platforms:
+        if page.frontmatter.get("app") not in feature.apps:
             continue
         try:
-            page.path.resolve().relative_to((wiki_root / "platform-requirements").resolve())
+            page.path.resolve().relative_to((wiki_root / "app-requirements").resolve())
         except (ValueError, OSError, RuntimeError):
             continue
         source_pages.append(page)
@@ -1753,16 +1749,16 @@ def _revalidation_check(
 
 
 def _delivery_evidence_check(feature: FeaturePage) -> dict[str, Any]:
-    rows, errors = parse_delivery_evidence(feature.page.body, feature.platforms)
+    rows, errors = parse_delivery_evidence(feature.page.body, feature.apps)
     path = feature.page.path
     if errors:
         return _check("delivery-evidence", "blocked", "; ".join(errors), path)
     if not rows:
-        return _check("delivery-evidence", "blocked", "No per-platform delivery evidence was supplied.", path)
+        return _check("delivery-evidence", "blocked", "No per-app delivery evidence was supplied.", path)
     return _check(
         "delivery-evidence",
         "pass",
-        f"Delivery evidence has substantive implementation, test, and release cells for {len(rows)} declared platform(s); an agent must verify the references.",
+        f"Delivery evidence has substantive implementation, test, and release cells for {len(rows)} declared app(s); an agent must verify the references.",
         path,
     )
 
@@ -1863,8 +1859,8 @@ def _workspace_identity_checks(root: Path, inspection: WorkspaceInspection) -> l
     identity_path = inspection.manifest.path if inspection.manifest else inspection.answers_path
     if detect_workspace_kind(root) == "unknown":
         checks.append(_check("workspace-identity", "unknown", "Workspace kind is unknown; transition scope cannot be established.", identity_path))
-    elif inspection.project_name is None or (inspection.manifest is None and not inspection.platforms):
-        checks.append(_check("workspace-identity", "unknown", "Workspace project identity or platform scope is incomplete.", identity_path))
+    elif inspection.project_name is None or (inspection.manifest is None and not inspection.app_ids):
+        checks.append(_check("workspace-identity", "unknown", "Workspace project identity or app scope is incomplete.", identity_path))
     elif hard:
         message = "; ".join(sorted({diagnostic.message for diagnostic in hard}))
         checks.append(_check("workspace-identity", "unknown", f"Workspace identity is drifted or unsupported: {message}", hard[0].path))
@@ -1875,25 +1871,25 @@ def _workspace_identity_checks(root: Path, inspection: WorkspaceInspection) -> l
 
 def _scope_check(feature: FeaturePage, inspection: WorkspaceInspection, root: Path) -> dict[str, Any]:
     path = feature.page.path
-    value = feature.page.frontmatter.get("platforms")
+    value = feature.page.frontmatter.get("apps")
     if not isinstance(value, list):
-        return _check("platform-scope", "unknown", "Feature `platforms` must be a list of valid platform IDs.", path)
+        return _check("app-scope", "unknown", "Feature `apps` must be a list of app IDs of this workspace.", path)
     if not value:
-        return _check("platform-scope", "blocked", "Feature must list at least one platform in scope.", path)
-    invalid = [item for item in value if not isinstance(item, str) or item not in VALID_PLATFORM_IDS]
+        return _check("app-scope", "blocked", "Feature must list at least one app in scope.", path)
+    invalid = [item for item in value if not isinstance(item, str)]
     if invalid:
-        return _check("platform-scope", "unknown", f"Feature platform scope contains invalid values: {invalid!r}.", path)
-    available = set(inspection.platforms)
+        return _check("app-scope", "unknown", f"Feature app scope contains values that are not app IDs: {invalid!r}.", path)
+    available = set(inspection.app_ids)
     missing = sorted(set(value) - available)
     if missing:
         hint = "" if available else " This workspace declares no apps; register them with `prism app add`."
         return _check(
-            "platform-scope",
+            "app-scope",
             "blocked",
-            f"Feature platforms {', '.join(missing)} are outside the available workspace scope.{hint}",
+            f"Feature apps {', '.join(missing)} are outside the available workspace scope.{hint}",
             path,
         )
-    return _check("platform-scope", "pass", "Feature platforms are valid and within the available workspace scope.", path)
+    return _check("app-scope", "pass", "Feature apps are valid and within the available workspace scope.", path)
 
 
 def _section_check(feature: FeaturePage, heading: str, code: str) -> dict[str, Any]:
@@ -1943,71 +1939,77 @@ def _acceptance_criteria_check(feature: FeaturePage) -> dict[str, Any]:
     )
 
 
-def _platform_section_check(feature: FeaturePage) -> dict[str, Any]:
-    """Reconcile declared feature platforms with the body scope section."""
+def _app_section_check(feature: FeaturePage, model: WorkspaceModel) -> dict[str, Any]:
+    """Reconcile declared feature apps with the body scope section."""
 
     path = feature.page.path
-    declared = feature.page.frontmatter.get("platforms")
-    body = section_text(feature.page.body, "Platform scope")
+    declared = feature.page.frontmatter.get("apps")
+    body = section_text(feature.page.body, "App scope")
     if not body.strip():
-        return _check("platform-section", "blocked", "Required `Platform scope` section is empty or missing.", path)
+        return _check("app-section", "blocked", "Required `App scope` section is empty or missing.", path)
     if not isinstance(declared, list) or any(not isinstance(item, str) for item in declared):
         return _check(
-            "platform-section",
+            "app-section",
             "unknown",
-            "Platform scope cannot be reconciled until frontmatter `platforms` is a list of strings.",
+            "App scope cannot be reconciled until frontmatter `apps` is a list of strings.",
             path,
         )
+    # A scope line names an app of the workspace: its ID, as the model knows it.
+    scope_ids = sorted({app.id for app in model.apps} | set(declared), key=len, reverse=True)
+    scope_line = re.compile(
+        r"^\s*[-*]\s+\*{0,2}(" + "|".join(re.escape(item) for item in scope_ids) + r")\*{0,2}\s*:\s*(.*?)\s*$",
+        re.IGNORECASE,
+    )
     rows: dict[str, str] = {}
     for raw_line in body.splitlines():
-        match = _PLATFORM_SCOPE_LINE.match(raw_line)
+        match = scope_line.match(raw_line) if scope_ids else None
         if match:
             rows[match.group(1).lower()] = match.group(2).strip()
     if not rows:
         return _check(
-            "platform-section",
+            "app-section",
             "blocked",
-            "Platform scope must list at least one declared platform with a description.",
+            "App scope must list at least one declared app with a description.",
             path,
         )
-    missing = [platform for platform in declared if not rows.get(platform.lower())]
+    missing = [app_id for app_id in declared if not rows.get(app_id.lower())]
     if missing:
         return _check(
-            "platform-section",
+            "app-section",
             "blocked",
-            f"Platform scope is missing a non-empty entry for: {', '.join(missing)}.",
+            f"App scope is missing a non-empty entry for: {', '.join(missing)}.",
             path,
         )
     invalid_entries: list[str] = []
-    for platform, description in rows.items():
+    for app_id, description in rows.items():
         normalized_description = re.sub(r"\s+", " ", description).strip()
-        if _PLATFORM_PLACEHOLDER.fullmatch(normalized_description):
-            invalid_entries.append(f"{platform} retains the template placeholder")
+        if _APP_PLACEHOLDER.fullmatch(normalized_description):
+            invalid_entries.append(f"{app_id} retains the template placeholder")
             continue
-        if platform in {item.lower() for item in declared} and normalized_description.lower() in {
+        if app_id in {item.lower() for item in declared} and normalized_description.lower() in {
             "not in scope",
             "n/a",
             "none",
         }:
-            invalid_entries.append(f"{platform} is declared but marked not in scope")
+            invalid_entries.append(f"{app_id} is declared but marked not in scope")
             continue
-        if platform not in {item.lower() for item in declared} and normalized_description.lower() not in {
+        if app_id not in {item.lower() for item in declared} and normalized_description.lower() not in {
             "not in scope",
             "n/a",
             "none",
         }:
-            invalid_entries.append(f"{platform} describes work but is not declared in frontmatter")
+            invalid_entries.append(f"{app_id} describes work but is not declared in frontmatter")
     if invalid_entries:
         return _check(
-            "platform-section",
+            "app-section",
             "blocked",
-            "Platform scope does not match frontmatter: " + "; ".join(invalid_entries) + ".",
+            "App scope does not match frontmatter: " + "; ".join(invalid_entries) + ".",
             path,
         )
     return _check(
-        "platform-section",
+        "app-section",
         "pass",
-        "Platform scope lists each declared feature platform with a description.",
+        "App scope lists each declared feature app with a description.",
         path,
     )
 
@@ -2126,6 +2128,9 @@ def _relevant_integrity_checks(
             # not make otherwise valid source data unsafe to use in a request.
             continue
         diagnostic_path = diagnostic.resolved_path
+        if diagnostic.code == "unknown-app-id" and diagnostic_path == path:
+            # The feature's own scope: the app-scope check reports an app outside the workspace as blocked.
+            continue
         is_global_contract = diagnostic.code in {"missing-required-wiki-file", "malformed-index"} and diagnostic_path.name in {
             "SCHEMA.md",
             "LIFECYCLE.md",
@@ -2234,7 +2239,7 @@ def _feature_summary(feature: FeaturePage) -> dict[str, Any]:
         "status": feature.status,
         "owner": feature.owner,
         "advisory_review": feature.advisory_review,
-        "platforms": feature.platforms,
+        "apps": feature.apps,
         "path": str(feature.page.path),
     }
 

@@ -35,9 +35,9 @@ from prism_cli.presets import (
 )
 from prism_cli.status import BoardCheck, build_board_checks, build_status
 from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind, inspect_workspace, write_workspace_manifest
-from prism_cli.wiki_model import VALID_FEATURE_OWNERS, VALID_PLATFORM_IDS
+from prism_cli.wiki_model import VALID_FEATURE_OWNERS
 from prism_cli.wiki_graph import build_graph, render_mermaid
-from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
+from prism_cli.wiki_query import wiki_app, wiki_blockers, wiki_owner, wiki_search, wiki_show
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, lint_wiki
 from prism_cli.wiki_transitions import SUPPORTED_ACTION, SUPPORTED_ACTIONS, build_transition_preflight
 from prism_cli.ui import (
@@ -193,7 +193,7 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_lint_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
     wiki_lint_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable lint output.")
     wiki_lint_parser.set_defaults(func=cmd_wiki_lint)
-    wiki_show_parser = wiki_subparsers.add_parser("show", help="Show one feature and its platform requirements.")
+    wiki_show_parser = wiki_subparsers.add_parser("show", help="Show one feature and its app requirements.")
     wiki_show_parser.add_argument("feature_id", help="Feature id to show, for example F-001.")
     wiki_show_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
     wiki_show_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable output.")
@@ -207,11 +207,11 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_owner_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
     wiki_owner_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable output.")
     wiki_owner_parser.set_defaults(func=cmd_wiki_owner)
-    wiki_platform_parser = wiki_subparsers.add_parser("platform", help="Show feature and requirement facts for one platform.")
-    wiki_platform_parser.add_argument("platform", choices=sorted(VALID_PLATFORM_IDS), help="Platform id to inspect.")
-    wiki_platform_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
-    wiki_platform_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable output.")
-    wiki_platform_parser.set_defaults(func=cmd_wiki_platform)
+    wiki_app_parser = wiki_subparsers.add_parser("app", help="Show feature and requirement facts for one app.")
+    wiki_app_parser.add_argument("app", help="ID of an app of the workspace to inspect.")
+    wiki_app_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
+    wiki_app_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable output.")
+    wiki_app_parser.set_defaults(func=cmd_wiki_app)
     wiki_search_parser = wiki_subparsers.add_parser("search", help="Run conservative substring search across wiki feature facts.")
     wiki_search_parser.add_argument("query", help="Literal substring to search for.")
     wiki_search_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
@@ -235,9 +235,9 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_graph_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
     wiki_graph_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable graph facts.")
     wiki_graph_parser.add_argument("--mermaid", action="store_true", help="Emit a Mermaid diagram (see --view).")
-    wiki_graph_parser.add_argument("--view", choices=["lifecycle", "ego", "platform"], default="lifecycle", help="Mermaid view. Defaults to lifecycle.")
+    wiki_graph_parser.add_argument("--view", choices=["lifecycle", "ego", "app"], default="lifecycle", help="Mermaid view. Defaults to lifecycle.")
     wiki_graph_parser.add_argument("--feature", help="Feature id for --view ego, for example F-001.")
-    wiki_graph_parser.add_argument("--platform", choices=sorted(VALID_PLATFORM_IDS), help="Platform id for --view platform.")
+    wiki_graph_parser.add_argument("--app", help="App ID for --view app.")
     wiki_graph_parser.add_argument("--html", nargs="?", const="", metavar="OUT", help="Write the interactive dashboard. Defaults to prism-graph.html in the workspace root.")
     wiki_graph_parser.add_argument("--open", action="store_true", help="Open the live local dashboard without saving a snapshot; Ctrl+C stops the server.")
     wiki_graph_parser.add_argument("--serve", action="store_true", help="Serve the dashboard locally with live updates as wiki files change.")
@@ -346,7 +346,7 @@ def build_home_actions(context_kind: str) -> list[SelectOption]:
                     value="dashboard",
                     label="Open Dashboard",
                     meta="[wiki graph]",
-                    description="Interactive product-truth dashboard: pipeline, graph, blockers, platforms.",
+                    description="Interactive product-truth dashboard: pipeline, graph, blockers, apps.",
                     accent="action",
                 ),
                 SelectOption(
@@ -984,9 +984,23 @@ def cmd_wiki_owner(args: argparse.Namespace) -> int:
     return render_or_print_wiki_query(args, "Show wiki owner facts", result)
 
 
-def cmd_wiki_platform(args: argparse.Namespace) -> int:
-    result = wiki_platform(Path(args.path), args.platform)
-    return render_or_print_wiki_query(args, "Show wiki platform facts", result)
+def _unknown_app_error(path: Path, app_id: str) -> str | None:
+    """The message for an app ID the workspace does not declare, or ``None`` when it does."""
+
+    model = inspect_workspace(path).model
+    if model.app(app_id) is not None:
+        return None
+    declared = ", ".join(f"`{app.id}`" for app in model.apps) or "none"
+    return f"`{app_id}` is not an app of this workspace; the workspace's apps are {declared}."
+
+
+def cmd_wiki_app(args: argparse.Namespace) -> int:
+    problem = _unknown_app_error(Path(args.path), args.app)
+    if problem is not None:
+        print(error(problem), file=sys.stderr)
+        return EXIT_VALIDATION
+    result = wiki_app(Path(args.path), args.app)
+    return render_or_print_wiki_query(args, "Show wiki app facts", result)
 
 
 def cmd_wiki_search(args: argparse.Namespace) -> int:
@@ -1017,10 +1031,15 @@ def cmd_wiki_graph(args: argparse.Namespace) -> int:
         if args.view == "ego" and not args.feature:
             print(error("--view ego requires --feature F-XXX."), file=sys.stderr)
             return EXIT_VALIDATION
-        if args.view == "platform" and not args.platform:
-            print(error("--view platform requires --platform <platform-id>."), file=sys.stderr)
+        if args.view == "app" and not args.app:
+            print(error("--view app requires --app <app-id>."), file=sys.stderr)
             return EXIT_VALIDATION
-        print(render_mermaid(result, args.view, feature_id=args.feature, platform_id=args.platform))
+        if args.view == "app":
+            problem = _unknown_app_error(target_path, args.app)
+            if problem is not None:
+                print(error(problem), file=sys.stderr)
+                return EXIT_VALIDATION
+        print(render_mermaid(result, args.view, feature_id=args.feature, app_id=args.app))
         return 0
 
     if args.html is not None:
@@ -2377,7 +2396,7 @@ render_wiki_query_result = _read_render.render_wiki_query_result
 render_wiki_show_facts = _read_render.render_wiki_show_facts
 render_wiki_blocker_facts = _read_render.render_wiki_blocker_facts
 render_wiki_owner_facts = _read_render.render_wiki_owner_facts
-render_wiki_platform_facts = _read_render.render_wiki_platform_facts
+render_wiki_app_facts = _read_render.render_wiki_app_facts
 render_wiki_search_facts = _read_render.render_wiki_search_facts
 render_feature_summaries = _read_render.render_feature_summaries
 render_status_result = _read_render.render_status_result

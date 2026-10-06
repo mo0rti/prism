@@ -37,13 +37,13 @@ for what to build. Before implementing any feature:
    status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
    stop and inform the human - a board review should happen before implementation.
 4. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context.
-5. Read `knowledge/wiki/platform-requirements/[feature-id]-[THIS_PLATFORM].md` for your
-   platform-specific implementation requirements.
+5. Read `knowledge/wiki/app-requirements/[feature-id]-[THIS_APP].md` for your
+   app-specific implementation requirements.
 6. Read `knowledge/wiki/api-contracts/[feature-id].md` if this feature has an API surface.
 7. Check `knowledge/wiki/business-rules/` for rules that apply to this feature.
 
 `WIKI_REPORT.md` is only an orientation artifact. The underlying feature, design,
-platform-requirement, and rule pages remain the source of truth.
+app-requirement, and rule pages remain the source of truth.
 
 **Do not implement features without a wiki page.** Ask the human to run `$po-intake [folder]`
 first.
@@ -95,7 +95,7 @@ docs/          -> Human-readable reference documentation
 - `$wiki-blockers` - blockers view using the canonical blocker categories
 - `$wiki-query "text"` - retrieval-assisted wiki search across features, rules, design, and requirements
 - `$wiki-owner po|designer|dev|none` - role dashboard for open questions, waiting work, and stale items
-- `$wiki-platform <platform-id>` - platform queue for active features, requirement state, and blockers
+- `$wiki-app <app-id>` - app queue for active features, requirement state, and blockers
 
 Read `knowledge/wiki/WIKI_REPORT.md` first when present. If it is absent, run
 `$feature-status` before deep reading.
@@ -105,7 +105,7 @@ Read `knowledge/wiki/WIKI_REPORT.md` first when present. If it is absent, run
 read/query operations listed here are read-only.
 
 For read/query operations (`$wiki-show`, `$wiki-blockers`, `$wiki-query`,
-`$wiki-owner`, `$wiki-platform`, `$lint-wiki`), prefer the Prism CLI JSON surface
+`$wiki-owner`, `$wiki-app`, `$lint-wiki`), prefer the Prism CLI JSON surface
 when available, for example `prism wiki show F-XXX --json`. If `prism` is missing,
 too old, or lacks the needed subcommand, say the CLI read surface is unavailable
 and fall back to direct wiki reads. Generated projects must not hard-depend on an
@@ -254,10 +254,10 @@ Each platform has its own `AGENTS.md` with detailed patterns:
 3. For a raw feature page, run `$po-specify [F-XXX]` to prepare the structured draft,
    then `$po-handoff [F-XXX]` after PO completeness is verified.
 4. Start design with `$design-start [F-XXX]`; after design is complete, run
-   `$design-handoff [F-XXX]` to generate platform-requirements.
+   `$design-handoff [F-XXX]` to generate app-requirements.
 5. Answer open dev questions with `$dev-clarify`; they block `$dev-start` until resolved.
    Start implementation with `$dev-start [F-XXX]`, add endpoints to
    `shared/api-contracts/openapi.yml`, and run `task generate-clients` as needed.
-6. Implement the selected platform slices per `knowledge/wiki/platform-requirements/`.
+6. Implement the selected platform slices per `knowledge/wiki/app-requirements/`.
 7. When shipped, verify delivery evidence and run `$dev-done [F-XXX]`. Use
    `$feature-reopen [F-XXX] [specified|in-design|in-dev]` only after impact review.

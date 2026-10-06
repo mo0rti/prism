@@ -158,7 +158,7 @@ Examples:
 - `wiki-blockers`
 - `wiki-query`
 - `wiki-owner`
-- `wiki-platform`
+- `wiki-app`
 
 This is acceptable as long as the generated-project guidance stays explicit about how to
 invoke them in each tool.

@@ -104,7 +104,7 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
         self.assertEqual("ready", _transition(self.root, "design-handoff")["classification"])
         _set_stage(self.root, "ready-for-dev", "dev")
 
-        requirement = self.root / "knowledge/wiki/platform-requirements/F-001-backend.md"
+        requirement = self.root / "knowledge/wiki/app-requirements/F-001-backend.md"
         requirement.write_text(_requirement_page("pending"), encoding="utf-8")
         self.assertEqual("ready", _transition(self.root, "dev-start")["classification"])
         _set_stage(self.root, "in-dev", "dev")
@@ -120,7 +120,7 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
         source = self.feature_path.read_text(encoding="utf-8")
         source += (
             "\n## Delivery evidence\n"
-            "| Platform | Implementation | Tests | Release |\n"
+            "| App | Implementation | Tests | Release |\n"
             "|---|---|---|---|\n"
             "| backend | Synthetic fixture reference `evidence/review-summary.md` | Synthetic fixture check `review-summary` passed | Synthetic fixture label `review-v1` |\n"
         )
@@ -155,7 +155,7 @@ def _feature_page() -> str:
         "owner": "po",
         "introduced": CHECK_DATE.isoformat(),
         "last-updated": CHECK_DATE.isoformat(),
-        "platforms": ["backend"],
+        "apps": ["backend"],
         "sources": [PROCESSED_INTAKE_ITEM.as_posix()],
         "advisory-review": "not-needed",
     }
@@ -174,7 +174,7 @@ As a reviewer, I want to record a document review, so that the outcome and follo
 |---|----------|-------|--------|
 | 1 | Which points should a review summary highlight? | po | open |
 
-## Platform scope
+## App scope
 - **backend**: Store the review summary and recorded outcome.
 
 ## API surface
@@ -185,7 +185,7 @@ None
 
 def _requirement_page(status: str) -> str:
     return (
-        "---\nfeature-id: F-001\nplatform: backend\n"
+        "---\nfeature-id: F-001\napp: backend\n"
         f"status: {status}\n---\n\n"
         "## What to build\nStore a document review summary and outcome.\n\n"
         "## Acceptance criteria\n- The saved summary and outcome can be read back.\n"

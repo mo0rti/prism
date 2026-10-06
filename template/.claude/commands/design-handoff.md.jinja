@@ -26,17 +26,18 @@ and never authorizes a write.
    and require `status: in-design` with `owner: designer`.
 2. Read SCHEMA, LIFECYCLE, `index.md`, the complete feature, linked design/context, workspace
    identity, current requirements/API/advisory evidence, and active revalidation.
-3. Determine whether this feature has UI platform scope:
-   - UI platforms: `mobile-android`, `mobile-ios`, `web-user-app`, `web-admin-portal`
-   - Non-UI: `backend`-only features, API-only features, infra changes, internal tooling
+3. Determine whether the feature's scope includes an app with a UI. Read each scoped app's
+   `has-ui` capability from `prism.workspace.yml` or `prism app list`; `unknown` counts as true:
+   - With a UI: apps whose `has-ui` is true (Android, iOS and web apps by default)
+   - Without a UI: apps whose `has-ui` is false (a backend by default), API-only features, infra changes, internal tooling
 4. Run completeness check:
-   - **If UI platforms are in scope:**
+   - **If an app with a UI is in scope:**
      - A design page linked in the `## Design` section, unless the feature
        frontmatter has `design: not-applicable` and a non-empty
        `design-exemption-reason`. That UI exemption must be explicitly confirmed
        by the user during this handoff.
      - Design coverage for all UI states implied by acceptance criteria
-   - **If no UI platforms are in scope (backend/API/infra):**
+   - **If no app with a UI is in scope (backend/API/infra):**
      - Design page is not required — skip design coverage check
      - A design page is not required and no exemption field is needed.
    - For all features: no open questions with owner = `po` or `designer`. An open question
@@ -62,7 +63,7 @@ and never authorizes a write.
    - Update feature file frontmatter only: change `status`, `owner` and `last-updated`
      (and clear the verified `design` revalidation domain). Leave every body section,
      including `## Design`, exactly as it is; the service rejects any other change
-   - Generate platform-requirements pages for all platforms in scope, incorporating
+   - Generate app-requirements pages for all apps in scope, incorporating
      design decisions and any board review findings relevant to implementation
    - If the feature's `## API surface` declares API work (anything other than an empty
      section or a plain statement that there is none, such as `None.`) and no API
@@ -98,7 +99,7 @@ finds it. The user who confirms this handoff is the one who agrees it.
 ## Notes for the agent
 
 - In each generated requirement page, `## Dependencies` lists only real dependencies
-  (other feature IDs or platform-requirement files that must complete first) or says
+  (other feature IDs or app-requirement files that must complete first) or says
   `None.`. Never write an open question, note or caveat there; `/dev-clarify` may not
   change that section, so the text would stay after the question is answered.
 - Open questions owned by `po` or `designer` block this handoff: resolve them first with
@@ -106,10 +107,10 @@ finds it. The user who confirms this handoff is the one who agrees it.
   stays open in the feature's Open questions table, which this handoff cannot change, and
   `/dev-clarify` resolves it before `/dev-start`.
 
-- Platform-requirements pages are generated at handoff time (not at intake time) because
+- App-requirements pages are generated at handoff time (not at intake time) because
   the spec is now complete and can be derived accurately.
 - The developer-facing requirements must be in technical language. Translate design
-  language: "modal that blocks interaction" → platform-appropriate implementation pattern.
-- If a board review found concerns, include relevant concerns in the platform-requirements
-  pages for the affected platforms. Developers should not have to cross-reference the
+  language: "modal that blocks interaction" → implementation pattern that fits the app's stack.
+- If a board review found concerns, include relevant concerns in the app-requirements
+  pages for the affected apps. Developers should not have to cross-reference the
   review file themselves.

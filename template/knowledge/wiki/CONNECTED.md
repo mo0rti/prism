@@ -80,7 +80,7 @@ canonical copy as a reference with `get_skill_reference`. Those pinned
 instructions and current workspace files have different purposes. The list is the
 baseline for that skill. Before the first preview, also read the feature page you
 change, every file in its `sources`, every file its text links to, and every design,
-platform-requirement, API-contract and advisory page whose `feature-id` is that
+app-requirement, API-contract and advisory page whose `feature-id` is that
 feature (`list_workspace` shows them), plus every intake source the operation moves.
 A required source you did not read makes the first preview fail with
 `missing_read_revisions`.
@@ -92,17 +92,17 @@ folder contains a required source that cannot be read, stop and report that
 limitation; do not omit it from the intake or claim it was reviewed.
 
 Read only the source material needed for the action. Follow the skill's linked
-context requirements, including relevant intake evidence, platform requirements,
+context requirements, including relevant intake evidence, app requirements,
 API contracts, advisory decisions, and workspace identity. A blocked, missing,
 ambiguous, stale, or unreadable source is a reason to stop and explain what must be
 resolved before preparing a write.
 
 Use `query(kind, value, action)` for existing read operations: `show` takes a
-feature ID, `owner` takes an owner, `platform` takes a declared platform ID,
+feature ID, `owner` takes an owner, `app` takes a declared app ID,
 `search` takes a query, and `transition-preflight` takes a feature ID and
 registered action. `blockers` and `lint` take no value or action. These are
 read-only facts, not confirmation or permission to write. Read the exact source
-paths named in a result before relying on their contents. `owner`, `platform` and
+paths named in a result before relying on their contents. `owner`, `app` and
 `search` results are paged: each page has `total` and `next_cursor`. Repeat the
 query with the same arguments and `cursor` set to `next_cursor` until it is null,
 and combine the items of every page; a stale cursor means the workspace changed,
@@ -165,8 +165,8 @@ does not move an intake folder. In particular, a move uses `source` and
 Send each changed file as its complete text. Copy every unchanged line and section
 exactly as `read_workspace` returned it, including the file's final newline and its
 quotes: a missing final newline or an escaped character counts as a change to the last
-section or to the text it touches. A feature's `platforms` must be among the platforms
-`discover` reports under `board.platforms`.
+section or to the text it touches. A feature's `apps` must be among the apps
+`discover` reports under `board.apps`.
 
 A lifecycle skill changes the feature page narrowly. `po-handoff`, `design-start`,
 `design-handoff` and `dev-start` change frontmatter only: every body line, including a

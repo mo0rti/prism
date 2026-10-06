@@ -1,6 +1,6 @@
 ---
 name: dev-clarify
-description: Resolve open questions assigned to dev across the wiki. Use when gathering answers from the developer and updating feature specs, platform requirements, question tables, and logs accordingly.
+description: Resolve open questions assigned to dev across the wiki. Use when gathering answers from the developer and updating feature specs, app requirements, question tables, and logs accordingly.
 ---
 
 # Dev Clarify
@@ -19,8 +19,8 @@ Use this skill to work through open dev-owned questions one feature at a time.
 4. Present the questions grouped by feature, one feature at a time
 5. For each answer:
    - update the open questions table in the feature file
-   - update the feature's Acceptance criteria, Platform scope or API surface section if the answer introduces a new requirement
-   - update the feature's platform requirement page (What to build, Technical constraints, API contract reference or Acceptance criteria) if the answer changes what that platform must build
+   - update the feature's Acceptance criteria, App scope or API surface section if the answer introduces a new requirement
+   - update the feature's app requirement page (What to build, Technical constraints, API contract reference or Acceptance criteria) if the answer changes what that app must build
    - flag the conflict and leave the question open if the answer contradicts existing wiki content
 6. Append a single summary entry to `log.md`
 
@@ -32,7 +32,7 @@ Use this skill to work through open dev-owned questions one feature at a time.
 - present questions one feature at a time, not as one large dump
 - confirm each update before moving to the next question
 - every requirement-bearing section you change must contain the full text of at least one answer you resolve in the same proposal; a paraphrase alone is not enough
-- change only the sections named above; leave platform requirement frontmatter, including `status`, unchanged
+- change only the sections named above; leave app requirement frontmatter, including `status`, unchanged
 - if an answer introduces a new open question, add it immediately
 - treat board-generated questions with the same priority as other open questions
 - if one feature hits a contradiction, skip that conflicting answer and leave the question open for that feature only

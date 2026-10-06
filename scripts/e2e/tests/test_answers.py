@@ -28,7 +28,7 @@ LIVE_TABLE = """## Open questions
 
 
 def feature_with(table: str) -> ws.FeatureState:
-    text = f"---\nid: F-001\nstatus: raw\nowner: po\n---\n\n## Summary\nText.\n\n{table}\n## Platform scope\n- **backend**: x\n"
+    text = f"---\nid: F-001\nstatus: raw\nowner: po\n---\n\n## Summary\nText.\n\n{table}\n## App scope\n- **backend**: x\n"
     return ws.FeatureState("raw", "po", "raw", "po", ws.parse_questions(text), text)
 
 
@@ -49,7 +49,7 @@ class AnswerForTests(unittest.TestCase):
                 "Does the summary have to be available in more than one language?": "No. English only",
             },
             "designer": {"Where does the export control appear and what does the summary look like?": 'One "Export summary" button'},
-            "dev": {"Which platform presents the export control, given that backend is the only platform declared for this project?": "The backend serves the export"},
+            "dev": {"Which app presents the export control, given that backend is the only app declared for this project?": "The backend serves the export"},
         }
         for role, questions in cases.items():
             for question, start in questions.items():

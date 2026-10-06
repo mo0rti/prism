@@ -18,7 +18,7 @@ transition:
 
 Resolve `[F-XXX]` to exactly one existing feature file and accept only the exact
 source pair above. Read SCHEMA, LIFECYCLE, index, the complete feature, every declared
-platform-requirement page, any applicable API contract, linked design/context,
+app-requirement page, any applicable API contract, linked design/context,
 and workspace identity.
 
 Use the optional read-only probe when available:
@@ -37,7 +37,7 @@ Check that required design/advisory prerequisites are met and inspect active
 `revalidation`. An active `specification` or `design` domain blocks this
 downstream start until the owning handoff verifies it. Other active delivery
 domains identify work for the developer and may remain while implementation
-starts. Report actual platform/API evidence; a present file does not prove
+starts. Report actual app/API evidence; a present file does not prove
 implementation or shipment. Show the exact source, destination, evidence, and
 feature/index/log write set. Reread immediately before confirmation and once
 after it. On confirmation, update the feature to `in-dev` with `owner: dev`,
@@ -45,4 +45,4 @@ update the index row, and append the log entry.
 
 Decline or cancel means no writes. If a multi-file write is partial, report each
 observed change and stop for fresh recovery; no transaction is implied. This
-action starts implementation and does not mark any platform shipped.
+action starts implementation and does not mark any app shipped.

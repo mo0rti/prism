@@ -13,7 +13,7 @@
 Resolve exactly one existing source file at
 `knowledge/wiki/features/[F-XXX]-[slug].md` and stop for any missing, invalid,
 ambiguous, or different source pair. Read SCHEMA, LIFECYCLE, index, the complete feature,
-all declared platform requirements, any applicable API contract, linked design
+all declared app requirements, any applicable API contract, linked design
 context, and workspace identity.
 
 When available, use:
@@ -28,7 +28,7 @@ Accept the response only with envelope schema 1, command facts, capability versi
 evidence. Fall back to direct-file checks when the probe is missing or unsupported;
 the preflight is copy-only and never authorizes a write.
 
-Check design, advisory, platform requirement, API, and active `revalidation`
+Check design, advisory, app requirement, API, and active `revalidation`
 facts for this route. An active `specification` or `design` domain blocks this
 downstream start until the owning handoff verifies it. Other active delivery
 domains identify work for the developer and may remain while implementation

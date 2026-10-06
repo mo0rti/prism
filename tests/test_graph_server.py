@@ -24,7 +24,7 @@ from tests import real_temp  # noqa: F401
 def _create_workspace(root: Path) -> None:
     wiki = root / "knowledge" / "wiki"
     (wiki / "features").mkdir(parents=True)
-    for directory in ("platform-requirements", "advisory", "personas", "business-rules", "design", "api-contracts", "decisions"):
+    for directory in ("app-requirements", "advisory", "personas", "business-rules", "design", "api-contracts", "decisions"):
         (wiki / directory).mkdir()
     (root / "knowledge" / "intake" / "pending").mkdir(parents=True)
     (root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)

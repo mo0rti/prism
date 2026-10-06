@@ -1,0 +1,25 @@
+schema_version: 2
+project:
+  name: Wiki contract fixture
+  slug: wiki-contract
+apps:
+- id: backend
+  name: Spring Boot Backend
+  stack: spring-backend
+  repository: workspace
+  path: backend
+- id: web-user-app
+  name: User-Facing Web App
+  stack: nextjs-web
+  repository: workspace
+  path: web-user-app
+- id: mobile-android
+  name: Android (Kotlin/Compose)
+  stack: android-compose
+  repository: workspace
+  path: mobile-android
+- id: mobile-ios
+  name: iOS (Swift/SwiftUI)
+  stack: ios-swiftui
+  repository: workspace
+  path: mobile-ios

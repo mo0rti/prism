@@ -18,7 +18,7 @@ def _fresh_envelope(root: Path) -> dict:
         "root": str(root),
         "generated_at": "2026-09-08T12:00:00+02:00",
         "confidence": "high",
-        "workspace": {"kind": "generated-project", "project_name": "Dashboard test", "platforms": ["backend"]},
+        "workspace": {"kind": "generated-project", "project_name": "Dashboard test", "apps": [{"id": "backend"}]},
         "facts": {
             "node_count": 0,
             "edge_count": 0,

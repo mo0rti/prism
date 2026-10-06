@@ -1,13 +1,13 @@
 ---
 name: design-handoff
-description: Move a feature from design to development readiness. Use when validating design completeness, advisory review state, and generating platform requirements for a confirmed feature.
+description: Move a feature from design to development readiness. Use when validating design completeness, advisory review state, and generating app requirements for a confirmed feature.
 ---
 
 # Design Handoff
 
 <!-- prism:design-handoff-contract:v1 -->
 
-Use this skill to move one feature into `ready-for-dev` and generate platform requirements.
+Use this skill to move one feature into `ready-for-dev` and generate app requirements.
 
 ## Usage
 
@@ -31,8 +31,8 @@ The preflight is copy-only and never authorizes a write.
 1. Resolve exactly one feature file and require the source pair
    `in-design` + `designer`.
 2. Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md`, the feature, linked design/context,
-   workspace identity, and current platform/API/advisory evidence.
-3. Determine whether UI platforms are in scope and run the design completeness
+   workspace identity, and current app/API/advisory evidence.
+3. Determine whether an app with a UI (`has-ui`) is in scope and run the design completeness
    checks defined in LIFECYCLE.
 4. Check advisory state and active `revalidation` domains. An active
    `specification` domain blocks this handoff. If `design` is active, prepare a
@@ -40,7 +40,7 @@ The preflight is copy-only and never authorizes a write.
    it while the source remains unchanged. Pending advisory review remains an
    unresolved blocker; use only the existing board-review or explicit skip policy.
 5. If incomplete, show the missing evidence and stop. If complete, show the full
-   proposed status/owner change, generated platform-requirement pages, the API
+   proposed status/owner change, generated app-requirement pages, the API
    contract page when one is required, and the write set.
 6. Reread immediately before asking for confirmation and once again after it.
    After confirmation, update the feature, generate requirements, update `index.md`,
@@ -54,13 +54,13 @@ exact observed changes and recover from a fresh reread; no transaction is implie
 
 - write-capable skill
 - do not hand off an incomplete feature
-- if UI platforms are in scope, a design page must cover the feature unless the
+- if an app with a UI is in scope, a design page must cover the feature unless the
   feature frontmatter contains `design: not-applicable` and a non-empty
   `design-exemption-reason`; the user must explicitly confirm that exemption
-- if no UI platforms are in scope, visual design is not required
+- if no app with a UI is in scope, visual design is not required
 - if `advisory-review: pending`, stop and route through board review or require an explicit skip reason
 - if board review actions required before development remain open, list them before proceeding
-- do not write status changes or platform requirements until the user confirms the handoff
+- do not write status changes or app requirements until the user confirms the handoff
 - on the feature page change only the lifecycle metadata (`status`, `owner`, `last-updated`
   and the verified `design` revalidation domain); leave every body section, including
   `## Design`, exactly as it is
@@ -77,7 +77,7 @@ exact observed changes and recover from a fresh reread; no transaction is implie
 - link the contract from each generated requirement's `## API contract reference`; never
   rewrite an existing contract, and write none when the API surface declares none
 - in each generated requirement page, `## Dependencies` lists only real dependencies
-  (other feature IDs or platform-requirement files that must complete first) or says
+  (other feature IDs or app-requirement files that must complete first) or says
   `None.`; never write an open question, note or caveat there
 - open questions owned by `po` or `designer` block this handoff: resolve them first with
   `po-clarify` or `design-clarify`. An open question owned by `dev` does not block it: it
@@ -100,7 +100,7 @@ Return:
 - advisory-review result
 - any blocking missing items
 - proposed status and owner change
-- generated platform-requirements targets and the API contract page, if one is required, after confirmation
+- generated app-requirements targets and the API contract page, if one is required, after confirmation
 
 ## Error and stop conditions
 

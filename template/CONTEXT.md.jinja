@@ -57,7 +57,7 @@ All product knowledge lives in `knowledge/wiki/`. Before implementing any featur
    status and that `advisory-review` is not `pending`. If `advisory-review` is `pending`,
    stop and inform the human - a board review should happen before implementation.
 2. Read `knowledge/wiki/features/[feature-id]-[slug].md` for full context
-3. Read `knowledge/wiki/platform-requirements/[feature-id]-[THIS_PLATFORM].md` for your
+3. Read `knowledge/wiki/app-requirements/[feature-id]-[THIS_APP].md` for your
    specific implementation requirements
 4. Read `knowledge/wiki/api-contracts/[feature-id].md` if this feature has an API surface
 5. Check `knowledge/wiki/business-rules/` for rules that apply to this feature
@@ -92,7 +92,7 @@ evidence/revalidation rules, proposed write set, and final confirmation.
 {% if "backend" in platforms -%}| Backend | `/add-endpoint`, `/add-integration`, `/create-migration`, `/document-entity`, `/generate-clients`, `/review-query`, `/review-security-surface`, `/debug-prod-issue` |
 {% endif -%}
 | Board | `/board-review [F-XXX]` |
-| Shared | `/feature-status`, `/ask [F-XXX] "question" --to po\|designer\|dev`, `/audit-feature [F-XXX]`, `/lint-wiki`, `/wiki-show F-XXX`, `/wiki-blockers`, `/wiki-query "text"`, `/wiki-owner po\|designer\|dev\|none`, `/wiki-platform <platform-id>` |
+| Shared | `/feature-status`, `/ask [F-XXX] "question" --to po\|designer\|dev`, `/audit-feature [F-XXX]`, `/lint-wiki`, `/wiki-show F-XXX`, `/wiki-blockers`, `/wiki-query "text"`, `/wiki-owner po\|designer\|dev\|none`, `/wiki-app <app-id>` |
 
 ### Codex
 
@@ -106,7 +106,7 @@ evidence/revalidation rules, proposed write set, and final confirmation.
 {% if "backend" in platforms -%}| Backend | `$endpoint`, `$document-entity`, `$generate-clients` |
 {% endif -%}
 | Board | `$board-review [F-XXX]` |
-| Shared | `$feature-status`, `$ask [F-XXX] "question" --to po\|designer\|dev`, `$audit-feature [F-XXX]`, `$lint-wiki`, `$wiki-show F-XXX`, `$wiki-blockers`, `$wiki-query "text"`, `$wiki-owner po\|designer\|dev\|none`, `$wiki-platform <platform-id>` |
+| Shared | `$feature-status`, `$ask [F-XXX] "question" --to po\|designer\|dev`, `$audit-feature [F-XXX]`, `$lint-wiki`, `$wiki-show F-XXX`, `$wiki-blockers`, `$wiki-query "text"`, `$wiki-owner po\|designer\|dev\|none`, `$wiki-app <app-id>` |
 
 ### Cursor
 

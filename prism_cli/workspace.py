@@ -32,6 +32,7 @@ from prism_cli.app_model import (
     repository_entries,
     resolve_local_repositories,
 )
+from prism_cli.wiki_model import request_fact
 
 
 MANIFEST_FILE = "prism.workspace.yml"
@@ -108,7 +109,7 @@ class WorkspaceManifest:
         return self.model.apps
 
     @property
-    def platforms(self) -> list[str]:
+    def app_ids(self) -> list[str]:
         """The IDs of the active apps."""
 
         return self.model.active_app_ids
@@ -223,13 +224,24 @@ class WorkspaceInspection:
         return value if isinstance(value, str) else None
 
     @property
-    def platforms(self) -> list[str]:
+    def model(self) -> WorkspaceModel:
+        """The application model: the manifest's, else the generated apps the answers or directories name."""
+
         if self.manifest:
-            return list(self.manifest.platforms)
+            return self.manifest.model
         answer_platforms = _string_list(self.answers.get("platforms"))
-        if answer_platforms:
-            return answer_platforms
-        return list(self.filesystem_platforms)
+        generated = [item for item in dict.fromkeys(answer_platforms or self.filesystem_platforms) if item in GENERATED_PLATFORM_STACKS]
+        model, _diagnostics = normalize_manifest(
+            {"schema_version": MANIFEST_SCHEMA_VERSION, "apps": apps_from_platforms(generated)},
+            path=self.answers_path,
+        )
+        return model
+
+    @property
+    def app_ids(self) -> list[str]:
+        """The IDs of the active apps of the model."""
+
+        return self.model.active_app_ids
 
     @property
     def apps(self) -> list[dict[str, Any]]:
@@ -239,14 +251,7 @@ class WorkspaceInspection:
         or found as directories are reported with their default stack and path.
         """
 
-        if self.manifest:
-            return app_entries(self.manifest.model)
-        generated = [item for item in dict.fromkeys(self.platforms) if item in GENERATED_PLATFORM_STACKS]
-        model, _diagnostics = normalize_manifest(
-            {"schema_version": MANIFEST_SCHEMA_VERSION, "apps": apps_from_platforms(generated)},
-            path=self.answers_path,
-        )
-        return app_entries(model)
+        return app_entries(self.model)
 
     @property
     def repositories(self) -> list[dict[str, Any]]:
@@ -268,10 +273,20 @@ def load_workspace(root: Path) -> WorkspaceLoadResult:
 
     Missing manifests are allowed during the transition period. Callers should
     degrade confidence rather than fail hard when the older generated-project
-    shape is otherwise recognizable.
+    shape is otherwise recognizable. Inside one ``wiki_read_scope`` the manifest
+    is read once, so the readers of a request agree on the same model.
     """
 
-    workspace_root = root.expanduser().resolve()
+    return load_resolved_workspace(root.expanduser().resolve())
+
+
+def load_resolved_workspace(workspace_root: Path) -> WorkspaceLoadResult:
+    """``load_workspace`` for a root that is already resolved."""
+
+    return request_fact(("workspace-load", str(workspace_root)), lambda: _load_workspace(workspace_root))
+
+
+def _load_workspace(workspace_root: Path) -> WorkspaceLoadResult:
     manifest_path = workspace_root / MANIFEST_FILE
     if not manifest_path.exists():
         return WorkspaceLoadResult(
@@ -419,6 +434,20 @@ def inspect_workspace(root: Path) -> WorkspaceInspection:
         filesystem_platforms=filesystem_platforms,
         diagnostics=diagnostics,
     )
+
+
+def workspace_model(root: Path, *, resolved: bool = False) -> WorkspaceModel:
+    """The application model of a workspace: the manifest's, else the generated apps the answers or directories name.
+
+    A readable manifest costs one read; without one, the Copier answers and the
+    directories are inspected, as ``WorkspaceInspection.model`` does. Pass
+    ``resolved=True`` for a root that is already resolved.
+    """
+
+    manifest = (load_resolved_workspace(root) if resolved else load_workspace(root)).manifest
+    if manifest is not None:
+        return manifest.model
+    return inspect_workspace(root).model
 
 
 def detect_workspace_kind(root: Path) -> str:

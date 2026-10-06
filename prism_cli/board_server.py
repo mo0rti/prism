@@ -788,7 +788,7 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
         value = payload.get("value")
         action = payload.get("action")
         cursor = payload.get("cursor")
-        allowed_kinds = {"show", "blockers", "owner", "platform", "search", "transition-preflight", "lint"}
+        allowed_kinds = {"show", "blockers", "owner", "app", "search", "transition-preflight", "lint"}
         if (
             not isinstance(kind, str)
             or kind not in allowed_kinds

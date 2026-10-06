@@ -32,7 +32,7 @@ PRODUCT_NAME = "TreasuryFlow"
 PROJECT_SLUG = "treasury-flow"
 PACKAGE_IDENTIFIER = "com.mortitech.treasuryflow"
 DESCRIPTION = "A finance operations platform for payout approvals, settlements, and transaction oversight"
-PLATFORMS = ["backend", "mobile-android", "mobile-ios"]
+PLATFORMS = ["backend", "mobile-android", "mobile-ios"]  # the generated platform IDs, which are also the demo's app IDs
 AUTH_METHODS = ["password", "google"]
 TEMPLATE_SOURCE = "synthetic-local-demo"
 DEMO_TODAY = date.today()
@@ -197,7 +197,7 @@ Inspect `knowledge/wiki` and `knowledge/intake` as synthetic source material for
     for platform in PLATFORMS:
         _write_text(
             destination / platform / "DEMO.md",
-            f"# {platform}\n\nSynthetic platform surface for local dashboard inspection; no implementation is included.",
+            f"# {platform}\n\nSynthetic app surface for local dashboard inspection; no implementation is included.",
         )
     for workflow in ("backend", "mobile-android", "mobile-ios"):
         _write_text(
@@ -280,7 +280,7 @@ Initialized for this synthetic local dashboard fixture on {today.isoformat()}.
 ## Project identity
 - Name: {PRODUCT_NAME}
 - Description: {DESCRIPTION}
-- Platforms: {', '.join(PLATFORMS)}
+- Apps: {', '.join(PLATFORMS)}
 - Auth methods: {', '.join(AUTH_METHODS)}
 - Infrastructure choices: Postgres, Docker, Azure
 - Important correction or note: Synthetic local documentation; no application or compliance claim.
@@ -348,7 +348,7 @@ def _feature_frontmatter(feature: dict[str, Any], today: date) -> dict[str, Any]
         "owner": feature["owner"],
         "introduced": today.isoformat(),
         "last-updated": today.isoformat(),
-        "platforms": list(PLATFORMS),
+        "apps": list(PLATFORMS),
         "sources": ["synthetic-local-demo"],
         "advisory-review": feature["advisory"],
     }
@@ -376,7 +376,7 @@ def _write_feature_pages(destination: Path, today: date) -> None:
 ## Acceptance criteria
 {criteria}
 {question}
-## Platform scope
+## App scope
 - **backend**: Implement the payout state transition and its audit fields.
 - **mobile-android**: Show the request state and accountable decision.
 - **mobile-ios**: Show the request state and accountable decision.
@@ -399,7 +399,7 @@ No observed post-ship history is recorded in this synthetic fixture.
         if feature["status"] == "done":
             body += f"""
 ## Delivery evidence
-| Platform | Implementation | Tests | Release |
+| App | Implementation | Tests | Release |
 |---|---|---|---|
 | backend | Synthetic local demo backend surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for backend (no production test claim) | Synthetic local demo release marker for backend (no production release claim) |
 | mobile-android | Synthetic local demo Android surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for Android (no production test claim) | Synthetic local demo release marker for Android (no production release claim) |
@@ -417,13 +417,13 @@ def _write_linked_context(destination: Path, today: date) -> None:
         for platform in PLATFORMS:
             requirement_status = "done" if feature["status"] == "done" else "in-progress"
             _write_page(
-                wiki_root / "platform-requirements" / f"{feature_id}-{platform}.md",
-                {"feature-id": feature_id, "platform": platform, "status": requirement_status},
+                wiki_root / "app-requirements" / f"{feature_id}-{platform}.md",
+                {"feature-id": feature_id, "app": platform, "status": requirement_status},
                 f"""## What to build
-Implement the {feature['title'].lower()} workflow for the {platform} surface.
+Implement the {feature['title'].lower()} workflow for the {platform} app.
 
 ## Technical constraints
-Keep the state transition inspectable and preserve the request identity across platforms.
+Keep the state transition inspectable and preserve the request identity across apps.
 
 ## Design reference
 {'Not applicable for backend.' if platform == 'backend' else f'[Design handoff](../design/{feature_id}-{slug}.md)'}
@@ -432,11 +432,11 @@ Keep the state transition inspectable and preserve the request identity across p
 [API contract](../api-contracts/{feature_id}-{slug}.md)
 
 ## Acceptance criteria
-- The platform reports the same request status as the shared workflow.
+- The app reports the same request status as the shared workflow.
 - Errors remain visible to the operator or manager.
 
 ## Dependencies
-No unfinished platform dependency is asserted in this synthetic fixture.
+No unfinished app dependency is asserted in this synthetic fixture.
 """,
             )
         _write_page(

@@ -19,9 +19,9 @@ Identical in structure to /po-clarify but filters for open questions where owner
 5. For each question the user answers:
    - Update the open questions table: change status to `resolved: [answer]`
    - If the answer reveals a new requirement, update the feature's Acceptance criteria,
-     Platform scope or API surface section
-   - If the answer changes what a platform must build, update that feature's platform
-     requirement page (`knowledge/wiki/platform-requirements/[F-XXX]-[platform].md`):
+     App scope or API surface section
+   - If the answer changes what an app must build, update that feature's app
+     requirement page (`knowledge/wiki/app-requirements/[F-XXX]-[app-id].md`):
      What to build, Technical constraints, API contract reference or Acceptance criteria
    - If the answer contradicts an existing wiki entry, flag and quarantine
 6. Append a single log entry summarizing all questions resolved
@@ -33,7 +33,7 @@ Identical in structure to /po-clarify but filters for open questions where owner
   reopen it with /feature-reopen first.
 - Present questions one feature at a time. Do not dump all questions at once.
 - After each answer, confirm what you updated before moving to the next.
-- Every requirement-bearing section you change (in the feature or in a platform
+- Every requirement-bearing section you change (in the feature or in an app
   requirement page) must contain the full text of at least one answer you resolve in the
   same proposal. A paraphrase alone is not enough. Leave the requirement page's
   frontmatter, including `status`, unchanged.

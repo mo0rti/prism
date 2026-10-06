@@ -73,7 +73,7 @@ _WIKI_DIRS = (
     "personas",
     "business-rules",
     "design",
-    "platform-requirements",
+    "app-requirements",
     "api-contracts",
     "advisory",
     "decisions",
@@ -206,7 +206,7 @@ class BoardService:
         self._workflow_version: str | None = None
         self._mode: str | None = None
         self._project_name: str | None = None
-        self._platforms: list[str] = []
+        self._app_ids: list[str] = []
         self._model: WorkspaceModel | None = None
         self._asset_digest_value: str | None = None
         self._identity_facts: tuple[Any, ...] | None = None
@@ -964,7 +964,7 @@ class BoardService:
         self._mode = mode
         self._project_name = project_name.strip()
         self._model = model
-        self._platforms = model.active_app_ids
+        self._app_ids = model.active_app_ids
         self._asset_digest_value = expected_digest
         self._identity_facts = (
             parsed_id,
@@ -1244,13 +1244,13 @@ class BoardService:
         if name == "design-clarify":
             return ["knowledge/wiki/features/*.md", "knowledge/wiki/design/*.md"]
         if name == "dev-clarify":
-            return ["knowledge/wiki/features/*.md", "knowledge/wiki/platform-requirements/*.md"]
+            return ["knowledge/wiki/features/*.md", "knowledge/wiki/app-requirements/*.md"]
         if name in {"po-specify", "po-handoff", "design-start", "dev-start"}:
             return ["knowledge/wiki/features/*.md"]
         if name in {"design-handoff", "dev-done", "feature-reopen"}:
             return [
                 "knowledge/wiki/features/*.md",
-                "knowledge/wiki/platform-requirements/*.md",
+                "knowledge/wiki/app-requirements/*.md",
                 "knowledge/wiki/api-contracts/*.md",
             ]
         return []
@@ -1280,8 +1280,8 @@ class BoardService:
         if name == "dev-clarify":
             limitations.append(
                 "Resolves only dev-owned open questions, on a feature that is not `done`. It may change the feature's Open questions, "
-                "Acceptance criteria, Platform scope and API surface sections and the What to build, Technical constraints, "
-                "API contract reference and Acceptance criteria sections of that feature's existing platform requirement pages."
+                "Acceptance criteria, App scope and API surface sections and the What to build, Technical constraints, "
+                "API contract reference and Acceptance criteria sections of that feature's existing app requirement pages."
             )
         if name == "design-handoff":
             limitations.append(
@@ -1295,7 +1295,7 @@ class BoardService:
         if name == "dev-done":
             limitations.append(
                 "The proposed feature page must carry the delivery evidence: one substantive Implementation, Tests and Release row per "
-                "declared platform in its `## Delivery evidence` table, taken from what the developer reports. A missing or invalid table is rejected "
+                "declared app in its `## Delivery evidence` table, taken from what the developer reports. A missing or invalid table is rejected "
                 "with `delivery_evidence_required` or `delivery_evidence_invalid` and `details`."
             )
         if name in _HUMAN_ACTIONS:
@@ -1355,7 +1355,7 @@ class BoardService:
                 paths.add(resolved.relative_to(self.root).as_posix())
         feature_id = frontmatter.get("id")
         if isinstance(feature_id, str):
-            for directory in ("design", "platform-requirements", "api-contracts", "advisory"):
+            for directory in ("design", "app-requirements", "api-contracts", "advisory"):
                 for path in (wiki_root / directory).glob("*.md"):
                     rel = path.relative_to(self.root).as_posix()
                     linked_feature_id = _page_feature_id(self._read_text(path), path.stem)
@@ -1923,13 +1923,13 @@ class BoardService:
         elif skill == "design-intake":
             allowed = {"features", "design"}
         elif skill in {"po-clarify", "design-clarify", "dev-clarify", "ask"}:
-            allowed = {"features", "design"} if skill == "design-clarify" else {"features", "platform-requirements"} if skill == "dev-clarify" else {"features"}
+            allowed = {"features", "design"} if skill == "design-clarify" else {"features", "app-requirements"} if skill == "dev-clarify" else {"features"}
         elif skill == "design-handoff":
-            allowed = {"features", "platform-requirements", "api-contracts"}
+            allowed = {"features", "app-requirements", "api-contracts"}
         elif skill == "dev-done":
-            allowed = {"features", "platform-requirements", "api-contracts"}
+            allowed = {"features", "app-requirements", "api-contracts"}
         elif skill == "feature-reopen":
-            allowed = {"features", "platform-requirements", "api-contracts"}
+            allowed = {"features", "app-requirements", "api-contracts"}
         else:
             allowed = {"features"}
         if len(parts) < 3 or parts[1] != "wiki" or parts[2] not in allowed:
@@ -1973,7 +1973,7 @@ class BoardService:
                 frontmatter = _parse_markdown(current, relative)[0]
                 target_features.append((relative, frontmatter))
                 required.update(self._feature_context_paths(relative, frontmatter))
-            elif relative.startswith(("knowledge/wiki/design/", "knowledge/wiki/platform-requirements/", "knowledge/wiki/api-contracts/")):
+            elif relative.startswith(("knowledge/wiki/design/", "knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/")):
                 frontmatter = _parse_markdown(current or content, relative)[0]
                 feature_id = frontmatter.get("feature-id")
                 if isinstance(feature_id, str):
@@ -2165,7 +2165,7 @@ class BoardService:
 
     def _validate_feature_output(self, relative: str, content: str, skill: str) -> dict[str, Any]:
         frontmatter, body = _parse_markdown(content, relative)
-        self._assert_frontmatter_fields(frontmatter, {"id", "title", "status", "owner", "introduced", "last-updated", "platforms", "sources", "advisory-review", "advisory-skip-reason", "design", "design-exemption-reason", "revalidation"}, relative)
+        self._assert_frontmatter_fields(frontmatter, {"id", "title", "status", "owner", "introduced", "last-updated", "apps", "sources", "advisory-review", "advisory-skip-reason", "design", "design-exemption-reason", "revalidation"}, relative)
         feature_id = frontmatter.get("id")
         if not isinstance(feature_id, str) or not re.fullmatch(r"F-\d+", feature_id):
             raise BoardError("invalid_feature_output", f"Feature output `{relative}` must have a canonical F-number id.", 409)
@@ -2183,12 +2183,12 @@ class BoardService:
         sources = frontmatter.get("sources")
         if not isinstance(sources, list) or any(not isinstance(path, str) or not path.strip() or ".." in PurePosixPath(path).parts or PurePosixPath(path).is_absolute() for path in sources):
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` sources must be relative workspace paths.", 409)
-        platforms = frontmatter.get("platforms")
-        if not isinstance(platforms, list) or not platforms or any(not isinstance(item, str) for item in platforms) or len(set(platforms)) != len(platforms) or any(item not in self._platforms for item in platforms):
-            declared = [item for item in platforms if isinstance(item, str)] if isinstance(platforms, list) else []
-            outside = [item for item in declared if item not in self._platforms]
-            details = {"platforms": _names(declared), "board_platforms": _names(self._platforms)}
-            if not self._platforms:
+        apps = frontmatter.get("apps")
+        if not isinstance(apps, list) or not apps or any(not isinstance(item, str) for item in apps) or len(set(apps)) != len(apps) or any(item not in self._app_ids for item in apps):
+            declared = [item for item in apps if isinstance(item, str)] if isinstance(apps, list) else []
+            outside = [item for item in declared if item not in self._app_ids]
+            details = {"apps": _names(declared), "board_apps": _names(self._app_ids)}
+            if not self._app_ids:
                 raise BoardError(
                     "invalid_feature_output",
                     f"Feature `{feature_id}` cannot be scoped: this board has no apps. Register them with `prism app add` first, then declare only those.",
@@ -2198,14 +2198,14 @@ class BoardService:
             if outside:
                 raise BoardError(
                     "invalid_feature_output",
-                    f"Feature `{feature_id}` declares platform(s) {_quoted(_names(outside))} that this board does not include; "
-                    f"this board's platforms are {_quoted(_names(self._platforms))}. Declare only those.",
+                    f"Feature `{feature_id}` declares app(s) {_quoted(_names(outside))} that this board does not include; "
+                    f"this board's apps are {_quoted(_names(self._app_ids))}. Declare only those.",
                     409,
                     details,
                 )
             raise BoardError(
                 "invalid_feature_output",
-                f"Feature `{feature_id}` must declare a nonempty `platforms` list of this board's platforms ({_quoted(_names(self._platforms))}), each platform once.",
+                f"Feature `{feature_id}` must declare a nonempty `apps` list of this board's apps ({_quoted(_names(self._app_ids))}), each app once.",
                 409,
                 details,
             )
@@ -2218,7 +2218,7 @@ class BoardService:
         if ("design" in frontmatter) != ("design-exemption-reason" in frontmatter):
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` must keep the design exemption fields together.", 409)
         if skill in {"po-intake", "po-specify"}:
-            _require_headings(body, ("Summary", "User story", "Acceptance criteria", "Open questions", "Platform scope"), relative)
+            _require_headings(body, ("Summary", "User story", "Acceptance criteria", "Open questions", "App scope"), relative)
         if skill == "design-intake":
             if status not in {"specified", "ready-for-design", "in-design"}:
                 raise BoardError("invalid_design_intake", "Design intake may update only a feature already routed to design.", 409)
@@ -2308,7 +2308,7 @@ class BoardService:
                 self._validate_business_rule(relative, content)
             elif relative.startswith("knowledge/wiki/design/"):
                 self._validate_design(relative, content)
-            elif relative.startswith("knowledge/wiki/platform-requirements/"):
+            elif relative.startswith("knowledge/wiki/app-requirements/"):
                 self._validate_requirement(relative, content)
             elif relative.startswith("knowledge/wiki/api-contracts/"):
                 self._validate_api_contract(relative, content)
@@ -2335,29 +2335,29 @@ class BoardService:
                     raise BoardError("design_feature_mismatch", f"Design page `{relative}` must link to the feature in this preview.", 409)
                 if not PurePosixPath(relative).stem.casefold().startswith(str(frontmatter["feature-id"]).casefold() + "-"):
                     raise BoardError("design_path_mismatch", f"Design page `{relative}` must be named for its linked feature.", 409)
-            elif relative.startswith("knowledge/wiki/platform-requirements/") or relative.startswith("knowledge/wiki/api-contracts/"):
+            elif relative.startswith("knowledge/wiki/app-requirements/") or relative.startswith("knowledge/wiki/api-contracts/"):
                 frontmatter, _body = _parse_markdown(content, relative)
                 if target_feature is None or not isinstance(frontmatter.get("feature-id"), str) or frontmatter["feature-id"].casefold() not in target_ids:
                     raise BoardError("feature_context_mismatch", f"Page `{relative}` must belong to a feature in this preview.", 409)
                 feature_id = str(target_feature["id"])
-                if relative.startswith("knowledge/wiki/platform-requirements/"):
-                    platform = frontmatter.get("platform")
-                    declared = (target_feature["after"] or {}).get("platforms", [])
-                    if platform not in declared or PurePosixPath(relative).stem.casefold() != f"{feature_id}-{platform}".casefold():
-                        raise BoardError("requirement_scope_mismatch", f"Requirement `{relative}` must name one declared platform of {feature_id}.", 409)
+                if relative.startswith("knowledge/wiki/app-requirements/"):
+                    app_id = frontmatter.get("app")
+                    declared = (target_feature["after"] or {}).get("apps", [])
+                    if app_id not in declared or PurePosixPath(relative).stem.casefold() != f"{feature_id}-{app_id}".casefold():
+                        raise BoardError("requirement_scope_mismatch", f"Requirement `{relative}` must name one declared app of {feature_id}.", 409)
                 elif PurePosixPath(relative).stem.casefold() != feature_id.casefold():
                     raise BoardError("api_contract_path_mismatch", f"API contract `{relative}` must use its canonical {feature_id}.md path.", 409)
 
         if skill == "design-handoff" and target_feature is not None:
             requirement_page_list = [
-                _parse_markdown(content, path)[0].get("platform")
+                _parse_markdown(content, path)[0].get("app")
                 for path, content in supplied.items()
-                if path.startswith("knowledge/wiki/platform-requirements/")
+                if path.startswith("knowledge/wiki/app-requirements/")
             ]
             requirement_pages = set(requirement_page_list)
-            declared = set((target_feature["after"] or {}).get("platforms", []))
+            declared = set((target_feature["after"] or {}).get("apps", []))
             if requirement_pages != declared or len(requirement_page_list) != len(declared):
-                raise BoardError("requirements_incomplete", "Design handoff must propose exactly one linked requirement page for each declared platform.", 409)
+                raise BoardError("requirements_incomplete", "Design handoff must propose exactly one linked requirement page for each declared app.", 409)
 
         action = actions[0] if actions else None
         if len(actions) > 1:
@@ -2434,11 +2434,11 @@ class BoardService:
                 self._assert_only_body_sections_changed(
                     old_feature_body,
                     new_feature_body,
-                    {"Open questions", "Summary", "User story", "Acceptance criteria", "Platform scope", "API surface"},
+                    {"Open questions", "Summary", "User story", "Acceptance criteria", "App scope", "API surface"},
                     "clarify_scope_exceeded",
-                    "PO clarify may update only the feature's Open questions, Summary, User story, Acceptance criteria, Platform scope and API surface sections.",
+                    "PO clarify may update only the feature's Open questions, Summary, User story, Acceptance criteria, App scope and API surface sections.",
                 )
-                for section in ("Summary", "User story", "Acceptance criteria", "Platform scope", "API surface"):
+                for section in ("Summary", "User story", "Acceptance criteria", "App scope", "API surface"):
                     if _section(old_feature_body, section) != _section(new_feature_body, section) and not self._answers_ground_section(
                         _section(new_feature_body, section), question_answers
                     ):
@@ -2462,11 +2462,11 @@ class BoardService:
                 self._assert_only_body_sections_changed(
                     old_feature_body,
                     new_feature_body,
-                    {"Open questions", "Acceptance criteria", "Platform scope", "API surface"},
+                    {"Open questions", "Acceptance criteria", "App scope", "API surface"},
                     "clarify_scope_exceeded",
-                    "Dev clarify may update only its question table and the Acceptance criteria, Platform scope and API surface sections of the feature.",
+                    "Dev clarify may update only its question table and the Acceptance criteria, App scope and API surface sections of the feature.",
                 )
-                for section in ("Acceptance criteria", "Platform scope", "API surface"):
+                for section in ("Acceptance criteria", "App scope", "API surface"):
                     if _section(old_feature_body, section) != _section(new_feature_body, section) and not self._answers_ground_section(
                         _section(new_feature_body, section), question_answers
                     ):
@@ -2505,12 +2505,12 @@ class BoardService:
                     ]
                     if not changed_design_sections or ungrounded_design_sections:
                         raise self._unlinked_answer_error("design_answer_unlinked", relative, ungrounded_design_sections, question_rows, owner="designer")
-                elif relative.startswith("knowledge/wiki/platform-requirements/"):
+                elif relative.startswith("knowledge/wiki/app-requirements/"):
                     old_content = before[relative]
                     if old_content is None or _page_feature_id(old_content, PurePosixPath(relative).stem) != changed_features[0]["id"]:
-                        raise BoardError("requirement_page_unavailable", f"Skill `{skill}` may update only an existing platform requirement page linked to its feature.", 409)
+                        raise BoardError("requirement_page_unavailable", f"Skill `{skill}` may update only an existing app requirement page linked to its feature.", 409)
                     if skill != "dev-clarify":
-                        raise BoardError("write_path_unavailable", f"Skill `{skill}` cannot update platform requirement pages.", 403)
+                        raise BoardError("write_path_unavailable", f"Skill `{skill}` cannot update app requirement pages.", 403)
                     old_fm, old_requirement_body = _parse_markdown(old_content, relative)
                     new_fm, new_requirement_body = _parse_markdown(content, relative)
                     if old_fm != new_fm:
@@ -2610,7 +2610,7 @@ class BoardService:
         if action == "po-specify":
             _require_headings(
                 _parse_markdown(feature_content, feature_path)[1],
-                ("Summary", "User story", "Acceptance criteria", "Open questions", "Platform scope", "Design", "Related features", "API surface", "Board review summary", "Post-ship notes"),
+                ("Summary", "User story", "Acceptance criteria", "Open questions", "App scope", "Design", "Related features", "API surface", "Board review summary", "Post-ship notes"),
                 feature_path,
                 " po-specify completes a raw feature: give each of them one line of supported content or an explicit statement that nothing exists yet, "
                 "for example `Not started.` under Design, `None identified.` under Related features, `None.` under API surface, "
@@ -2723,8 +2723,8 @@ class BoardService:
                 "Feature reopen may archive delivery evidence and append reopen history only.",
             )
         elif action == "po-specify":
-            if old_fm.get("platforms") != new_fm.get("platforms") or old_fm.get("sources") != new_fm.get("sources"):
-                raise BoardError("specification_identity_change", "PO specify preserves source and platform scope.", 409)
+            if old_fm.get("apps") != new_fm.get("apps") or old_fm.get("sources") != new_fm.get("sources"):
+                raise BoardError("specification_identity_change", "PO specify preserves source and app scope.", 409)
 
     @staticmethod
     def _validate_dev_done_evidence(relative: str, content: str, frontmatter: Mapping[str, Any]) -> None:
@@ -2737,7 +2737,7 @@ class BoardService:
 
         from prism_cli.wiki_model import parse_delivery_evidence
 
-        declared = [item for item in frontmatter.get("platforms", []) if isinstance(item, str)]
+        declared = [item for item in frontmatter.get("apps", []) if isinstance(item, str)]
         _frontmatter, body = _parse_markdown(content, relative)
         rows, problems = parse_delivery_evidence(body, declared)
         if not problems:
@@ -2745,15 +2745,15 @@ class BoardService:
         example = "| " + " | ".join([declared[0] if declared else "backend", "<implementation reference>", "<test command and result>", "<release artifact or target>"]) + " |"
         details: dict[str, Any] = {
             "path": relative,
-            "platforms": _names(declared),
-            "missing_platforms": _names(set(item.casefold() for item in declared) - set(rows)),
+            "apps": _names(declared),
+            "missing_apps": _names(set(item.casefold() for item in declared) - set(rows)),
             "problems": [_clip(item, 200) for item in problems[:6]],
         }
         if not rows:
             raise BoardError(
                 "delivery_evidence_required",
-                f"Dev done needs the delivery evidence in the proposal: the `## Delivery evidence` table in the proposed `{relative}` has no platform rows. "
-                f"Add one row per declared platform ({_quoted(_names(declared))}) with the implementation, test and release references the developer reports, "
+                f"Dev done needs the delivery evidence in the proposal: the `## Delivery evidence` table in the proposed `{relative}` has no app rows. "
+                f"Add one row per declared app ({_quoted(_names(declared))}) with the implementation, test and release references the developer reports, "
                 f"for example `{example}`. Ask the developer for what is missing; do not invent it.",
                 409,
                 details,
@@ -2761,7 +2761,7 @@ class BoardService:
         raise BoardError(
             "delivery_evidence_invalid",
             f"The `## Delivery evidence` table in the proposed `{relative}` is not valid: {' '.join(_clip(item, 200) for item in problems[:6])} "
-            "It needs exactly one row per declared platform, each with a substantive Implementation, Tests and Release cell.",
+            "It needs exactly one row per declared app, each with a substantive Implementation, Tests and Release cell.",
             409,
             details,
         )
@@ -2775,16 +2775,16 @@ class BoardService:
     ) -> None:
         related = {
             path for path in supplied
-            if path.startswith(("knowledge/wiki/platform-requirements/", "knowledge/wiki/api-contracts/"))
+            if path.startswith(("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/"))
         }
         if action in {"po-specify", "po-handoff", "design-start", "dev-start"} and related:
             raise BoardError("lifecycle_write_scope", f"Action `{action}` may change only its feature, managed index, and log.", 409)
         allowed_prefixes = {
-            "design-handoff": ("knowledge/wiki/platform-requirements/", "knowledge/wiki/api-contracts/"),
-            "dev-done": ("knowledge/wiki/platform-requirements/", "knowledge/wiki/api-contracts/"),
+            "design-handoff": ("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/"),
+            "dev-done": ("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/"),
         }
         if action.startswith("reopen-"):
-            allowed = ("knowledge/wiki/platform-requirements/", "knowledge/wiki/api-contracts/")
+            allowed = ("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/")
         else:
             allowed = allowed_prefixes.get(action, ())
         if related - {path for path in supplied if path.startswith(allowed)}:
@@ -2803,12 +2803,12 @@ class BoardService:
                     self._validate_handoff_api_contract(relative, original, proposed, supplied, feature)
                     continue
                 if original is None and new_fm.get("status") != "pending":
-                    raise BoardError("requirement_initial_status", "Design handoff creates new platform requirements in pending status.", 409)
+                    raise BoardError("requirement_initial_status", "Design handoff creates new app requirements in pending status.", 409)
                 if original is not None and (old_fm != new_fm or old_body != new_body):
-                    raise BoardError("requirement_body_change", "Design handoff may not rewrite an existing platform requirement.", 409)
+                    raise BoardError("requirement_body_change", "Design handoff may not rewrite an existing app requirement.", 409)
             elif action == "dev-done":
                 status = new_fm.get("status")
-                if relative.startswith("knowledge/wiki/platform-requirements/"):
+                if relative.startswith("knowledge/wiki/app-requirements/"):
                     if status not in {old_fm.get("status"), "done"}:
                         raise BoardError("requirement_status_change", "Dev done may preserve a requirement status or mark that linked requirement done.", 409)
                 elif status not in {old_fm.get("status"), "implemented"}:
@@ -2821,7 +2821,7 @@ class BoardService:
                         {"path": relative},
                     )
             elif action.startswith("reopen-"):
-                if relative.startswith("knowledge/wiki/platform-requirements/"):
+                if relative.startswith("knowledge/wiki/app-requirements/"):
                     if new_fm.get("status") not in {"pending", "in-progress"}:
                         raise BoardError("requirement_invalidation", "Reopen may invalidate a requirement only to pending or in-progress.", 409)
                 elif new_fm.get("status") not in {"draft", "agreed"}:
@@ -2915,7 +2915,7 @@ class BoardService:
                 linked = _page_feature_id(self._read_text(path), path.stem)
                 if isinstance(linked, str) and linked.casefold() == feature_id:
                     found.add(path.relative_to(self.root).as_posix())
-        sources = [path for path in supplied if path.startswith("knowledge/wiki/platform-requirements/")]
+        sources = [path for path in supplied if path.startswith("knowledge/wiki/app-requirements/")]
         resolved_root = self.root.resolve()
         for relative in [feature["path"], *sources]:
             body = _parse_markdown(supplied[relative], relative)[1]
@@ -2948,14 +2948,14 @@ class BoardService:
         headings = re.findall(r"(?im)^###\s+(\d{4}-\d{2}-\d{2})\s+-\s+(reopen-[a-z]+)\s*$", addition)
         if len(headings) != 1 or headings[0][1] != expected_heading:
             raise BoardError("reopen_record_required", "A reopen proposal must append exactly one dated record for its selected route.", 409)
-        labels = ("Reason", "Impact review", "Affected platforms", "Affected artifacts", "Prior completion/release evidence", "Requirement/API invalidations")
+        labels = ("Reason", "Impact review", "Affected apps", "Affected artifacts", "Prior completion/release evidence", "Requirement/API invalidations")
         values: dict[str, str] = {}
         for label in labels:
             match = re.search(rf"(?im)^\s*-\s*{re.escape(label)}:\s*(.*?)\s*$", addition)
             value = match.group(1).strip() if match else ""
             if match and label == _ARCHIVE_LABEL:
                 value = _label_block(addition, label, labels)
-            if not match or not value or (label != "Affected platforms" and len(value) < 8):
+            if not match or not value or (label != "Affected apps" and len(value) < 8):
                 hint = ""
                 if label == "Requirement/API invalidations":
                     hint = (
@@ -2966,19 +2966,19 @@ class BoardService:
             values[label] = value
         if any(token in " ".join(values.values()).casefold() for token in ("[reason", "[impact", "[affected", "[prior completion", "todo", "tbd", "placeholder")):
             raise BoardError("impact_review_required", "Reopen history cannot contain copied placeholders or unresolved template text.", 409)
-        declared = old.get("platforms")
-        affected = {part.strip().strip("`[]") for part in re.split(r"[,;]", values["Affected platforms"]) if part.strip()}
+        declared = old.get("apps")
+        affected = {part.strip().strip("`[]") for part in re.split(r"[,;]", values["Affected apps"]) if part.strip()}
         if not isinstance(declared, list) or not affected or not affected.issubset(set(declared)):
-            raise BoardError("reopen_platform_scope", "Reopen history must name affected platform IDs from the feature's declared scope.", 409)
+            raise BoardError("reopen_app_scope", "Reopen history must name affected app IDs from the feature's declared scope.", 409)
         from prism_cli.wiki_model import parse_delivery_evidence_cells
 
         # The same parser that dev-done applies to the evidence it accepts, so every
         # table dev-done wrote can be archived here. Rows keep their own column order.
-        declared_platforms = [item for item in declared if isinstance(item, str)]
-        declared_keys = {item.strip().lower() for item in declared_platforms}
-        prior_canonical, prior_cells, _prior_problems = parse_delivery_evidence_cells(old_body, declared_platforms)
+        declared_apps = [item for item in declared if isinstance(item, str)]
+        declared_keys = {item.strip().lower() for item in declared_apps}
+        prior_canonical, prior_cells, _prior_problems = parse_delivery_evidence_cells(old_body, declared_apps)
         if not prior_cells or set(prior_cells) != declared_keys:
-            raise BoardError("delivery_evidence_missing", "Reopen must archive the existing active delivery evidence for every declared platform.", 409)
+            raise BoardError("delivery_evidence_missing", "Reopen must archive the existing active delivery evidence for every declared app.", 409)
         normalized_archive = _normalized_table_text(values[_ARCHIVE_LABEL])
         for cells in prior_cells.values():
             row_text = "| " + " | ".join(cells) + " |"
@@ -2993,25 +2993,25 @@ class BoardService:
                     {"path": relative, "label": _ARCHIVE_LABEL, "missing_row": _clip(row_text, 300)},
                 )
         new_delivery = _section(new_body, "Delivery evidence")
-        active_canonical, active_cells, _active_problems = parse_delivery_evidence_cells(new_body, declared_platforms)
-        # A row the parser does not read as a platform row still counts as active evidence.
+        active_canonical, active_cells, _active_problems = parse_delivery_evidence_cells(new_body, declared_apps)
+        # A row the parser does not read as an app row still counts as active evidence.
         known_rows = list(active_cells.values())
         for cells in _table_rows(new_delivery, expected_columns=4):
             if cells not in known_rows:
-                raise BoardError("delivery_evidence_still_active", "Reopen may preserve only unchanged evidence for unaffected platforms explicitly reaffirmed in the impact review.", 409)
+                raise BoardError("delivery_evidence_still_active", "Reopen may preserve only unchanged evidence for unaffected apps explicitly reaffirmed in the impact review.", 409)
         affected_keys = {item.lower() for item in affected}
-        for platform, cells in active_cells.items():
-            if platform not in prior_canonical or active_canonical[platform] != prior_canonical[platform] or platform in affected_keys:
-                raise BoardError("delivery_evidence_still_active", "Reopen may preserve only unchanged evidence for unaffected platforms explicitly reaffirmed in the impact review.", 409)
+        for app_key, cells in active_cells.items():
+            if app_key not in prior_canonical or active_canonical[app_key] != prior_canonical[app_key] or app_key in affected_keys:
+                raise BoardError("delivery_evidence_still_active", "Reopen may preserve only unchanged evidence for unaffected apps explicitly reaffirmed in the impact review.", 409)
             if "reaffirm" not in values["Impact review"].casefold() or re.sub(r"\s+", " ", "| " + " | ".join(cells) + " |").casefold() not in re.sub(r"\s+", " ", values["Impact review"]).casefold():
                 raise BoardError("delivery_evidence_not_reaffirmed", "Unchanged evidence kept active must be named as reaffirmed in the impact review.", 409)
         related_paths = {
             path for path in supplied
-            if path.startswith(("knowledge/wiki/platform-requirements/", "knowledge/wiki/api-contracts/"))
+            if path.startswith(("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/"))
         }
         invalidations = values["Requirement/API invalidations"]
         artifacts = values["Affected artifacts"]
-        listed_paths = set(re.findall(r"knowledge/wiki/(?:platform-requirements|api-contracts)/[A-Za-z0-9_.-]+\.md", invalidations))
+        listed_paths = set(re.findall(r"knowledge/wiki/(?:app-requirements|api-contracts)/[A-Za-z0-9_.-]+\.md", invalidations))
         if listed_paths != related_paths:
             raise BoardError("reopen_invalidation_mismatch", "Reopen history must list exactly the linked requirement/API pages proposed in this write.", 409)
         for relative in related_paths:
@@ -3173,7 +3173,7 @@ class BoardService:
 
     @staticmethod
     def _validate_substantive_spec(body: str, relative: str) -> None:
-        for heading in ("Summary", "User story", "Acceptance criteria", "Platform scope"):
+        for heading in ("Summary", "User story", "Acceptance criteria", "App scope"):
             if not _section(body, heading).strip():
                 raise BoardError("incomplete_specification", f"Feature `{relative}` has an empty `{heading}` section.", 409)
         criteria = [line for line in _section(body, "Acceptance criteria").splitlines() if re.match(r"\s*(?:[-*+]\s+|\d+[.)]\s+)\S", line)]
@@ -3425,9 +3425,9 @@ class BoardService:
 
     def _validate_requirement(self, relative: str, content: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
-        self._assert_frontmatter_fields(frontmatter, {"feature-id", "platform", "status"}, relative)
-        if frontmatter.get("platform") not in self._platforms or frontmatter.get("status") not in {"pending", "in-progress", "done"}:
-            raise BoardError("invalid_requirement", f"Platform requirement `{relative}` has an invalid platform or status.", 409)
+        self._assert_frontmatter_fields(frontmatter, {"feature-id", "app", "status"}, relative)
+        if frontmatter.get("app") not in self._app_ids or frontmatter.get("status") not in {"pending", "in-progress", "done"}:
+            raise BoardError("invalid_requirement", f"App requirement `{relative}` has an invalid app or status.", 409)
         _require_headings(body, ("What to build", "Technical constraints", "Design reference", "API contract reference", "Acceptance criteria", "Dependencies"), relative)
         _validate_no_placeholders(body, relative)
 
@@ -4351,7 +4351,7 @@ def _table_rows(section: str, *, expected_columns: int) -> list[list[str]]:
             continue
         if all(re.fullmatch(r":?-+:?", cell) for cell in cells):
             continue
-        if any(cell.casefold() in {"platform", "implementation", "tests", "release"} for cell in cells):
+        if any(cell.casefold() in {"app", "implementation", "tests", "release"} for cell in cells):
             continue
         rows.append(cells)
     return rows
@@ -4458,7 +4458,7 @@ def _api_contract_scope_error(relative: str, feature_id: str, body: str, surface
 def _validate_no_placeholders(body: str, relative: str) -> None:
     patterns = (
         re.compile(r"\b(?:TODO|TBD|FIXME)\b", re.IGNORECASE),
-        re.compile(r"\[\s*(?:what\b|persona from|business outcome|condition \d+|feature name|persona name|platform\b|title\b|reason\b|YYYY-MM-DD|F-XXX|one paragraph|specific, actionable|list of|if known|answer\b|source\b)", re.IGNORECASE),
+        re.compile(r"\[\s*(?:what\b|persona from|business outcome|condition \d+|feature name|persona name|app-id\b|title\b|reason\b|YYYY-MM-DD|F-XXX|one paragraph|specific, actionable|list of|if known|answer\b|source\b)", re.IGNORECASE),
         re.compile(r"\bplaceholder\b", re.IGNORECASE),
     )
     if any(pattern.search(body) for pattern in patterns):

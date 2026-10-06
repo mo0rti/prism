@@ -7,17 +7,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from prism_cli.app_model import WorkspaceModel
 from prism_cli.status import detect_setup_state, list_queue_items
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, lint_wiki
 from prism_cli.wiki_links import NON_PAGE_FILENAMES, markdown_files, page_references_feature
 from prism_cli.wiki_model import (
-    VALID_PLATFORM_IDS,
     extract_markdown_links,
     load_markdown_page,
     resolve_relative_markdown_link,
     parse_open_question_rows,
     read_feature_pages,
-    read_platform_requirement_pages,
+    read_app_requirement_pages,
     read_wiki_pages,
     within_wiki_read_scope,
 )
@@ -37,11 +37,11 @@ NODE_TYPES = {
     "persona",
     "business-rule",
     "design",
-    "platform-requirement",
+    "app-requirement",
     "api-contract",
     "decision",
     "advisory-review",
-    "platform",
+    "app",
 }
 
 EDGE_KINDS = {
@@ -123,7 +123,7 @@ def build_graph(root: Path) -> dict[str, Any]:
     wiki_root = workspace_root / "knowledge" / "wiki"
     lint_result = lint_wiki(workspace_root)
     feature_pages = read_feature_pages(wiki_root)
-    requirement_pages = read_platform_requirement_pages(wiki_root)
+    requirement_pages = read_app_requirement_pages(wiki_root)
     wiki_pages = read_wiki_pages(wiki_root)
     inspection = inspect_workspace(workspace_root)
     transition_evaluation = evaluate_transition_summaries(
@@ -136,14 +136,14 @@ def build_graph(root: Path) -> dict[str, Any]:
         initial_fingerprint=initial_fingerprint,
     )
 
-    nodes, pages_by_id, path_to_id = _collect_nodes(wiki_root, feature_pages=feature_pages)
+    nodes, pages_by_id, path_to_id = _collect_nodes(wiki_root, inspection.model, feature_pages=feature_pages)
     edges, dangling = _collect_edges(wiki_root, nodes, pages_by_id, path_to_id)
 
-    edged_platforms = {edge.target for edge in edges if edge.target.startswith("platform:")}
+    edged_apps = {edge.target for edge in edges if edge.target.startswith("app:")}
     nodes = {
         node_id: node
         for node_id, node in nodes.items()
-        if node.type != "platform" or node_id in edged_platforms
+        if node.type != "app" or node_id in edged_apps
     }
     edges = [edge for edge in edges if edge.source in nodes and edge.target in nodes]
 
@@ -205,6 +205,7 @@ def build_graph(root: Path) -> dict[str, Any]:
 
 def _collect_nodes(
     wiki_root: Path,
+    model: WorkspaceModel,
     *,
     feature_pages: list[Any] | None = None,
 ) -> tuple[dict[str, GraphNode], dict[str, Any], dict[str, str]]:
@@ -212,12 +213,12 @@ def _collect_nodes(
     pages_by_id: dict[str, Any] = {}
     path_to_id: dict[str, str] = {}
 
-    # Reserve the canonical platform ids before reading user pages.  A page
+    # Reserve the workspace's app ids before reading user pages.  A page
     # with a colliding id must remain visible as a distinct node while edges
-    # still have a stable target for the real platform node.
-    for platform_id in sorted(VALID_PLATFORM_IDS):
-        node_id = f"platform:{platform_id}"
-        nodes[node_id] = GraphNode(id=node_id, type="platform", title=platform_id, path=None)
+    # still have a stable target for the real app node.
+    for app in sorted(model.apps, key=lambda item: item.id):
+        node_id = f"app:{app.id}"
+        nodes[node_id] = GraphNode(id=node_id, type="app", title=app.name, path=None)
 
     for feature in feature_pages if feature_pages is not None else read_feature_pages(wiki_root):
         question_rows, _question_errors = parse_open_question_rows(feature.page.body)
@@ -278,12 +279,12 @@ def _collect_nodes(
             pages_by_id[node.id] = page
             path_to_id[str(path)] = node.id
 
-    for requirement in read_platform_requirement_pages(wiki_root):
+    for requirement in read_app_requirement_pages(wiki_root):
         path = requirement.page.path
-        node_id = _unique_node_id(nodes, f"preq:{path.stem}", path)
+        node_id = _unique_node_id(nodes, f"areq:{path.stem}", path)
         node = GraphNode(
             id=node_id,
-            type="platform-requirement",
+            type="app-requirement",
             title=path.stem,
             path=str(path),
             status=requirement.status,
@@ -326,9 +327,9 @@ def _collect_edges(
 
     for feature_id in feature_ids:
         feature = pages_by_id[feature_id]
-        for platform_id in feature.platforms:
-            if platform_id in VALID_PLATFORM_IDS:
-                add(feature_id, f"platform:{platform_id}", "targets", "frontmatter-platforms")
+        for app_id in feature.apps:
+            if f"app:{app_id}" in nodes:
+                add(feature_id, f"app:{app_id}", "targets", "frontmatter-apps")
         related_section = _section_text(feature.page.body, RELATED_SECTION_PATTERN)
         for match in FEATURE_ID_PATTERN.findall(related_section):
             if match == feature_id:
@@ -342,7 +343,7 @@ def _collect_edges(
         "design": "has-design",
         "api-contract": "has-contract",
         "advisory-review": "has-review",
-        "platform-requirement": "has-requirement",
+        "app-requirement": "has-requirement",
     }
     for node_id, node in nodes.items():
         kind = attachment_rules.get(node.type)
@@ -417,7 +418,7 @@ def _section_text(body: str, heading_pattern: re.Pattern[str]) -> str:
 # Mermaid rendering
 
 
-def render_mermaid(envelope: dict[str, Any], view: str, feature_id: str | None = None, platform_id: str | None = None) -> str:
+def render_mermaid(envelope: dict[str, Any], view: str, feature_id: str | None = None, app_id: str | None = None) -> str:
     nodes = envelope["facts"]["nodes"]
     edges = envelope["facts"]["edges"]
     blocked_ids = {fact.get("feature_id") for fact in envelope.get("blocker_facts", []) if fact.get("feature_id")}
@@ -426,8 +427,8 @@ def render_mermaid(envelope: dict[str, Any], view: str, feature_id: str | None =
         return _mermaid_lifecycle(nodes, blocked_ids)
     if view == "ego":
         return _mermaid_ego(nodes, edges, feature_id or "")
-    if view == "platform":
-        return _mermaid_platform(nodes, edges, platform_id or "")
+    if view == "app":
+        return _mermaid_app(nodes, edges, app_id or "")
     raise ValueError(f"Unknown mermaid view: {view}")
 
 
@@ -544,30 +545,31 @@ def _mermaid_ego(nodes: list[dict[str, Any]], edges: list[dict[str, Any]], featu
     return "\n".join(lines)
 
 
-def _mermaid_platform(nodes: list[dict[str, Any]], edges: list[dict[str, Any]], platform_id: str) -> str:
-    platform_node_id = f"platform:{platform_id}"
+def _mermaid_app(nodes: list[dict[str, Any]], edges: list[dict[str, Any]], app_id: str) -> str:
+    app_node_id = f"app:{app_id}"
     node_map = {node["id"]: node for node in nodes}
     lines = ["flowchart LR"]
-    platform_ref = _mermaid_id(platform_node_id)
-    lines.append(f'  {platform_ref}(["{_mermaid_label(platform_id)}"]):::platform')
+    app_ref = _mermaid_id(app_node_id)
+    lines.append(f'  {app_ref}(["{_mermaid_label(app_id)}"]):::app')
     for edge in edges:
-        if edge["kind"] == "targets" and edge["target"] == platform_node_id:
+        if edge["kind"] == "targets" and edge["target"] == app_node_id:
             feature = node_map.get(edge["source"])
             if feature is None:
                 continue
             feature_ref = _mermaid_id(feature["id"])
             label = _mermaid_multiline(feature["id"], str(feature["title"]), feature.get("status") or "")
             lines.append(f'  {feature_ref}["{label}"]')
-            lines.append(f"  {feature_ref} --> {platform_ref}")
+            lines.append(f"  {feature_ref} --> {app_ref}")
             for requirement_edge in edges:
                 if requirement_edge["kind"] == "has-requirement" and requirement_edge["source"] == feature["id"]:
                     requirement = node_map.get(requirement_edge["target"])
-                    if requirement is None or platform_id not in requirement["id"]:
+                    # Requirement pages are named F-XXX-<app-id>.md, so the node ID says which app it is for.
+                    if requirement is None or requirement["id"].lower() != f"areq:{feature['id']}-{app_id}".lower():
                         continue
                     requirement_ref = _mermaid_id(requirement["id"])
                     status = requirement.get("status") or "unknown"
                     requirement_label = _mermaid_multiline("requirement", status)
                     lines.append(f'  {requirement_ref}["{requirement_label}"]')
                     lines.append(f"  {feature_ref} -.-> {requirement_ref}")
-    lines.append("  classDef platform fill:#eb6834,stroke:#8f3a17,color:#ffffff")
+    lines.append("  classDef app fill:#eb6834,stroke:#8f3a17,color:#ffffff")
     return "\n".join(lines)

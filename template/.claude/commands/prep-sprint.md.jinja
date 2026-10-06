@@ -16,7 +16,7 @@ Use `prism status --json` only when the probe reports `prism 0.2.0` or newer (th
 `sources` as the shared source for lifecycle counts, readiness, health, and
 canonical blockers. Treat returned diagnostics, including errors, as facts to
 surface; do not replace them with optimistic manual state. Read matching feature
-and platform-requirement pages only for the names and delivery details needed in
+and app-requirement pages only for the names and delivery details needed in
 the report, and do not recompute status or blocker facts.
 
 ## Fallback path
@@ -34,20 +34,20 @@ complete workflow below and report facts proved by those files.
 3. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
 4. Read `knowledge/wiki/index.md`
 5. Read all feature files with status = `ready-for-dev` or `in-dev`
-6. For each feature, read its platform-requirements pages
+6. For each feature, read its app-requirements pages
 7. Output a structured report:
 
    ```
    ## Ready to build
 
    ### F-002 — Profile Edit [ready-for-dev]
-   Platforms: mobile-android, mobile-ios, backend
+   Apps: mobile-android, mobile-ios, backend
    Design: knowledge/wiki/design/F-002-profile-edit.md
    Board review: done
    Requirements:
-   - Android: knowledge/wiki/platform-requirements/F-002-mobile-android.md
-   - iOS: knowledge/wiki/platform-requirements/F-002-mobile-ios.md
-   - Backend: knowledge/wiki/platform-requirements/F-002-backend.md
+   - Android: knowledge/wiki/app-requirements/F-002-mobile-android.md
+   - iOS: knowledge/wiki/app-requirements/F-002-mobile-ios.md
+   - Backend: knowledge/wiki/app-requirements/F-002-backend.md
    Open dev questions: none
    Dependencies: none
 
@@ -70,4 +70,4 @@ complete workflow below and report facts proved by those files.
 - Features with `advisory-review: pending` must not appear in the "Ready to build"
   section. List them separately under "Board review pending."
 - Dependencies must be checked and stated explicitly.
-- If any ready-for-dev feature has no platform-requirements pages, flag it as incomplete.
+- If any ready-for-dev feature has no app-requirements pages, flag it as incomplete.

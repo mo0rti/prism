@@ -36,7 +36,7 @@ class JourneyFixtureTests(unittest.TestCase):
         self.root = create_core_workflow_fixture(Path(temporary.name) / "ws")
         shutil.rmtree(self.root / "knowledge" / "intake" / "pending")
         (self.root / "knowledge" / "intake" / "pending").mkdir()
-        self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Doc review", platforms=["backend"]))["status"])
+        self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Doc review", apps=["backend"]))["status"])
 
     def seed(self, step: str | None, fixture_set: Path | None) -> None:
         e2e.seed_state(self.root, step, fixture_set)
@@ -92,7 +92,7 @@ class JourneyFixtureTests(unittest.TestCase):
         self.start()
         changes = self.proposal("dev-done", config.API_WORK_FIXTURES_DIR)
         self.assertEqual(
-            ["knowledge/wiki/api-contracts/F-001.md", FEATURE, "knowledge/wiki/platform-requirements/F-001-backend.md"],
+            ["knowledge/wiki/api-contracts/F-001.md", "knowledge/wiki/app-requirements/F-001-backend.md", FEATURE],
             sorted(item["path"] for item in changes),
         )
         preview = self.service.preview_skill(self.agent, "dev-done", changes, None, _revisions(self.service, self.agent, "dev-done", changes))

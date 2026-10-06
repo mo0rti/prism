@@ -35,13 +35,13 @@ fails, or lacks `wiki show`, say:
 
 - `knowledge/wiki/index.md`
 - `knowledge/wiki/features/[F-XXX]-[slug].md`
-- matching `knowledge/wiki/platform-requirements/[F-XXX]-*.md`
+- matching `knowledge/wiki/app-requirements/[F-XXX]-*.md`
 - `knowledge/wiki/design/[F-XXX]-[slug].md` if present
 - `knowledge/wiki/api-contracts/[F-XXX].md` if present
 - `knowledge/wiki/advisory/[F-XXX]-review.md` if present
 - business-rule, persona, and decision files that reference the feature ID
 
-Use feature frontmatter as authority for status, owner, platforms, and
+Use feature frontmatter as authority for status, owner, apps, and
 advisory-review. Report absent optional links as partial context. If multiple
 feature files match, report the ambiguity and do not merge them.
 
@@ -51,7 +51,7 @@ feature files match, report the ambiguity and do not merge them.
 - Do not invent missing facts. separate facts from advice and label optional
   suggested next steps.
 
-Return feature ID/title, status, owner, advisory-review, platforms, summary,
+Return feature ID/title, status, owner, advisory-review, apps, summary,
 open questions, linked context, requirements, relevant API state, blockers,
 diagnostics, and source paths. Use a clean missing-feature response when no page
 matches.

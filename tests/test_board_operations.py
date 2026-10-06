@@ -22,7 +22,7 @@ class BoardOperationTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        apply_install(self.root, plan_install(self.root, name="Document review", platforms=["backend"]))
+        apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))
         self.feature = "knowledge/wiki/features/F-001-document-review.md"
         self.index = "knowledge/wiki/index.md"
         self.log = "knowledge/wiki/log.md"

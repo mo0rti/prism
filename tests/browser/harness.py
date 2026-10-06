@@ -157,7 +157,7 @@ def build_workspace(root: Path, extras: tuple[FixtureFeature, ...] = ()) -> Path
     """
 
     create_core_workflow_fixture(root)
-    receipt = apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))
+    receipt = apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
     if receipt["status"] != "applied":
         raise RuntimeError(f"Workflow install did not apply: {receipt['status']}")
     (root / INTAKE_ITEM.parent).rename(root / PROCESSED_INTAKE_ITEM.parent)
@@ -170,7 +170,7 @@ def build_workspace(root: Path, extras: tuple[FixtureFeature, ...] = ()) -> Path
         target.write_bytes(_feature_page_for(feature).encode("utf-8"))
     (root / "knowledge/wiki/index.md").write_bytes(_index_text(features).encode("utf-8"))
     requirement = _requirement_page("pending").replace("feature-id: F-001", "feature-id: F-003", 1)
-    (root / "knowledge/wiki/platform-requirements/F-003-backend.md").write_bytes(requirement.encode("utf-8"))
+    (root / "knowledge/wiki/app-requirements/F-003-backend.md").write_bytes(requirement.encode("utf-8"))
     return root
 
 

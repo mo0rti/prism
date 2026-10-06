@@ -181,7 +181,7 @@ status: ready-for-dev
 owner: dev
 introduced: 2026-04-01
 last-updated: 2026-04-08
-platforms: [backend, mobile-android, mobile-ios, web-user-app]
+apps: [backend, mobile-android, mobile-ios, web-user-app]
 sources: [knowledge/intake/fixture/offline-checkout.md]
 advisory-review: done
 ---
@@ -201,7 +201,7 @@ As a returning customer, I want to finish checkout quickly, so that I can place 
 |---|----------|-------|--------|
 | 1 | Should guest checkout support saved addresses later? | dev | resolved: no, account only |
 
-## Platform scope
+## App scope
 - **backend**: Validate saved address and payment preference payloads for offline checkout recovery.
 - **mobile-android**: Pre-fill checkout with the saved address and show invalid-state handling.
 - **mobile-ios**: Pre-fill checkout with the saved address and show invalid-state handling.
@@ -231,7 +231,7 @@ status: ready-for-design
 owner: designer
 introduced: 2026-03-15
 last-updated: 2026-03-20
-platforms: [mobile-android, mobile-ios, web-user-app]
+apps: [mobile-android, mobile-ios, web-user-app]
 sources: [knowledge/intake/fixture/nutrition-score.md]
 advisory-review: pending
 ---
@@ -251,7 +251,7 @@ As a health-conscious customer, I want a quick nutrition score, so that I can co
 |---|----------|-------|--------|
 | 1 | What visual treatment should low-confidence scores use? | designer | open |
 
-## Platform scope
+## App scope
 - **mobile-android**: Show nutrition score chips in recommendations.
 - **mobile-ios**: Show nutrition score chips in recommendations.
 - **web-user-app**: Show nutrition score chips on meal cards.
@@ -280,7 +280,7 @@ status: in-design
 owner: designer
 introduced: 2026-04-02
 last-updated: 2026-04-07
-platforms: [mobile-ios, web-user-app]
+apps: [mobile-ios, web-user-app]
 sources: [knowledge/intake/fixture/notification-preferences.md]
 advisory-review: not-needed
 ---
@@ -300,7 +300,7 @@ As a customer, I want to choose my alerts, so that I only receive messages that 
 |---|----------|-------|--------|
 | 1 | Should quiet hours be in scope for v1? | po | resolved: no |
 
-## Platform scope
+## App scope
 - **mobile-ios**: Preferences form and local alert summary.
 - **web-user-app**: Preferences page in account settings.
 
@@ -328,7 +328,7 @@ status: ready-for-dev
 owner: dev
 introduced: 2026-04-03
 last-updated: 2026-04-06
-platforms: [backend, mobile-android, mobile-ios, web-user-app]
+apps: [backend, mobile-android, mobile-ios, web-user-app]
 sources: [knowledge/intake/fixture/recurring-delivery.md]
 advisory-review: done
 ---
@@ -348,7 +348,7 @@ As a repeat customer, I want a recurring delivery schedule, so that I do not hav
 |---|----------|-------|--------|
 | 1 | Should holiday skips be part of v1? | po | resolved: no |
 
-## Platform scope
+## App scope
 - **backend**: Delivery schedule creation, pause, and resume.
 - **mobile-android**: Schedule configuration and status display.
 - **mobile-ios**: Schedule configuration and status display.
@@ -378,7 +378,7 @@ status: in-dev
 owner: dev
 introduced: 2026-04-04
 last-updated: 2026-04-05
-platforms: [backend, mobile-android, mobile-ios]
+apps: [backend, mobile-android, mobile-ios]
 sources: [knowledge/intake/fixture/goal-alerts.md]
 advisory-review: done
 ---
@@ -399,7 +399,7 @@ As a customer, I want goal alerts, so that I understand my progress without open
 | 1 | What is the empty state for alert history? | designer | open |
 | 2 | Should alert delivery retry for 24 hours or 48 hours? | dev | open |
 
-## Platform scope
+## App scope
 - **backend**: Goal evaluation and alert event publishing.
 - **mobile-android**: Alert history and push deep link handling.
 - **mobile-ios**: Alert history and push deep link handling.
@@ -428,7 +428,7 @@ status: ready-for-dev
 owner: dev
 introduced: 2026-04-01
 last-updated: 2026-04-08
-platforms: [backend, mobile-android, mobile-ios, web-user-app, web-admin-portal]
+apps: [backend, mobile-android, mobile-ios, web-user-app, web-admin-portal]
 sources: [knowledge/intake/fixture/auth-session.md]
 advisory-review: done
 ---
@@ -448,7 +448,7 @@ As a security-conscious user, I want my auth session to stay protected, so that 
 |---|----------|-------|--------|
 | 1 | Should auth session history be retained for 30 or 90 days? | po | open |
 
-## Platform scope
+## App scope
 - **backend**: Auth session issuance, rotation, and revocation.
 - **mobile-android**: Auth session reauthentication prompts.
 - **mobile-ios**: Auth session reauthentication prompts.
@@ -478,7 +478,7 @@ title: Broken Fixture Page
 owner: none
 introduced: 2026-04-01
 last-updated: 2026-04-08
-platforms: [backend]
+apps: [backend]
 sources: [knowledge/intake/fixture/broken.md]
 advisory-review: not-needed
 ---
@@ -805,10 +805,10 @@ Martin de Vries focused on auth auditability and privacy-safe session metadata.
 - Add advanced admin filtering after baseline auth hardening ships.
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-010-backend.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-010-backend.md") @'
 ---
 feature-id: F-010
-platform: backend
+app: backend
 status: in-progress
 ---
 
@@ -831,10 +831,10 @@ See `knowledge/wiki/api-contracts/F-010.md`.
 No dependencies.
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-010-mobile-android.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-010-mobile-android.md") @'
 ---
 feature-id: F-010
-platform: mobile-android
+app: mobile-android
 status: pending
 ---
 
@@ -854,13 +854,13 @@ See `knowledge/wiki/api-contracts/F-010.md`.
 - Customers can resume offline checkout with a saved address.
 
 ## Dependencies
-knowledge/wiki/platform-requirements/F-010-backend.md
+knowledge/wiki/app-requirements/F-010-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-010-mobile-ios.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-010-mobile-ios.md") @'
 ---
 feature-id: F-010
-platform: mobile-ios
+app: mobile-ios
 status: pending
 ---
 
@@ -880,13 +880,13 @@ See `knowledge/wiki/api-contracts/F-010.md`.
 - Customers can resume offline checkout with a saved address.
 
 ## Dependencies
-knowledge/wiki/platform-requirements/F-010-backend.md
+knowledge/wiki/app-requirements/F-010-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-010-web-user-app.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-010-web-user-app.md") @'
 ---
 feature-id: F-010
-platform: web-user-app
+app: web-user-app
 status: pending
 ---
 
@@ -906,13 +906,13 @@ See `knowledge/wiki/api-contracts/F-010.md`.
 - Customers can resume checkout from the dashboard.
 
 ## Dependencies
-knowledge/wiki/platform-requirements/F-010-backend.md
+knowledge/wiki/app-requirements/F-010-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-013-backend.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-013-backend.md") @'
 ---
 feature-id: F-013
-platform: backend
+app: backend
 status: pending
 ---
 
@@ -935,10 +935,10 @@ See `knowledge/wiki/api-contracts/F-013.md`.
 No dependencies.
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-013-mobile-android.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-013-mobile-android.md") @'
 ---
 feature-id: F-013
-platform: mobile-android
+app: mobile-android
 status: pending
 ---
 
@@ -958,13 +958,13 @@ See `knowledge/wiki/api-contracts/F-013.md`.
 - Customers can schedule and pause recurring deliveries.
 
 ## Dependencies
-knowledge/wiki/platform-requirements/F-013-backend.md
+knowledge/wiki/app-requirements/F-013-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-013-web-user-app.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-013-web-user-app.md") @'
 ---
 feature-id: F-013
-platform: web-user-app
+app: web-user-app
 status: pending
 ---
 
@@ -984,13 +984,13 @@ See `knowledge/wiki/api-contracts/F-013.md`.
 - Customers can schedule and pause recurring deliveries.
 
 ## Dependencies
-knowledge/wiki/platform-requirements/F-013-backend.md
+knowledge/wiki/app-requirements/F-013-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-014-backend.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-014-backend.md") @'
 ---
 feature-id: F-014
-platform: backend
+app: backend
 status: in-progress
 ---
 
@@ -1013,10 +1013,10 @@ See `knowledge/wiki/api-contracts/F-014.md`.
 No dependencies.
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-014-mobile-android.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-014-mobile-android.md") @'
 ---
 feature-id: F-014
-platform: mobile-android
+app: mobile-android
 status: pending
 ---
 
@@ -1036,13 +1036,13 @@ See `knowledge/wiki/api-contracts/F-014.md`.
 - Customers can read alert history and open alert details.
 
 ## Dependencies
-knowledge/wiki/platform-requirements/F-014-backend.md
+knowledge/wiki/app-requirements/F-014-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-014-mobile-ios.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-014-mobile-ios.md") @'
 ---
 feature-id: F-014
-platform: mobile-ios
+app: mobile-ios
 status: pending
 ---
 
@@ -1062,13 +1062,13 @@ See `knowledge/wiki/api-contracts/F-014.md`.
 - Customers can read alert history and open alert details.
 
 ## Dependencies
-knowledge/wiki/platform-requirements/F-014-backend.md
+knowledge/wiki/app-requirements/F-014-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-020-backend.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-020-backend.md") @'
 ---
 feature-id: F-020
-platform: backend
+app: backend
 status: in-progress
 ---
 
@@ -1091,10 +1091,10 @@ See `knowledge/wiki/api-contracts/F-020.md`.
 No dependencies.
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-020-mobile-android.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-020-mobile-android.md") @'
 ---
 feature-id: F-020
-platform: mobile-android
+app: mobile-android
 status: pending
 ---
 
@@ -1114,13 +1114,13 @@ See `knowledge/wiki/api-contracts/F-020.md`.
 - Customers are prompted to reauthenticate after auth session revoke events.
 
 ## Dependencies
-knowledge/wiki/platform-requirements/F-020-backend.md
+knowledge/wiki/app-requirements/F-020-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-020-mobile-ios.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-020-mobile-ios.md") @'
 ---
 feature-id: F-020
-platform: mobile-ios
+app: mobile-ios
 status: pending
 ---
 
@@ -1140,13 +1140,13 @@ See `knowledge/wiki/api-contracts/F-020.md`.
 - Customers are prompted to reauthenticate after auth session revoke events.
 
 ## Dependencies
-knowledge/wiki/platform-requirements/F-020-backend.md
+knowledge/wiki/app-requirements/F-020-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-020-web-user-app.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-020-web-user-app.md") @'
 ---
 feature-id: F-020
-platform: web-user-app
+app: web-user-app
 status: pending
 ---
 
@@ -1166,13 +1166,13 @@ See `knowledge/wiki/api-contracts/F-020.md`.
 - Customers can revoke an auth session from the web app.
 
 ## Dependencies
-knowledge/wiki/platform-requirements/F-020-backend.md
+knowledge/wiki/app-requirements/F-020-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "platform-requirements\F-020-web-admin-portal.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-020-web-admin-portal.md") @'
 ---
 feature-id: F-020
-platform: web-admin-portal
+app: web-admin-portal
 status: pending
 ---
 
@@ -1192,7 +1192,7 @@ See `knowledge/wiki/api-contracts/F-020.md`.
 - Admins can inspect and revoke auth sessions.
 
 ## Dependencies
-knowledge/wiki/platform-requirements/F-020-backend.md
+knowledge/wiki/app-requirements/F-020-backend.md
 '@
 
 $timestampMap = @{

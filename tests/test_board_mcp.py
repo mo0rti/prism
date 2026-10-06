@@ -174,7 +174,7 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                 by_name = {tool.name: tool for tool in listed.tools}
                 self.assertEqual(
                     set(by_name["query"].input_schema["properties"]["kind"]["enum"]),
-                    {"show", "blockers", "owner", "platform", "search", "transition-preflight", "lint"},
+                    {"show", "blockers", "owner", "app", "search", "transition-preflight", "lint"},
                 )
                 for name in {"discover", "read_workspace", "list_workspace", "query", "list_skills", "get_skill", "get_skill_reference", "get_preview", "operation", "changes"}:
                     self.assertTrue(by_name[name].annotations.read_only_hint, name)

@@ -10,7 +10,7 @@ status: raw | specified | ready-for-design | in-design | ready-for-dev | in-dev 
 owner: po | designer | dev | none
 introduced: YYYY-MM-DD
 last-updated: YYYY-MM-DD
-platforms: [list of platforms this feature affects]
+apps: [list of app IDs this feature affects]
 sources: [paths to intake/processed/ items that produced this page]
 advisory-review: not-needed | pending | done | skipped
 # Required and non-blank when advisory-review is skipped:
@@ -41,14 +41,14 @@ As a [persona from personas/], I want to [action], so that [business outcome].
 Owner must be one of: po | designer | dev
 Status must be one of: open | resolved: [answer]
 
-## Platform scope
+## App scope
 - **backend**: [what backend must implement, or "not in scope"]
 - **mobile-android**: [what Android must implement, or "not in scope"]
 - **mobile-ios**: [what iOS must implement, or "not in scope"]
 - **web-user-app**: [what user web app must implement, or "not in scope"]
 - **web-admin-portal**: [what admin portal must implement, or "not in scope"]
 
-Only list platforms included in this generated project.
+Only list apps that `prism.workspace.yml` declares.
 
 For UI work, `design: not-applicable` and a nonblank
 `design-exemption-reason` are allowed only when the user explicitly confirms
@@ -72,11 +72,11 @@ Populated by /dev-done. Empty until then. Record a delivery reference the agent 
 not check as the developer's attestation.
 
 ## Delivery evidence
-| Platform | Implementation | Tests | Release |
+| App | Implementation | Tests | Release |
 |---|---|---|---|
-| [declared platform] | [verified artifact or source reference] | [test command and result] | [release artifact or target] |
+| [declared app] | [verified artifact or source reference] | [test command and result] | [release artifact or target] |
 
-Include exactly one substantive row per declared platform in the `dev-done`
+Include exactly one substantive row per declared app in the `dev-done`
 proposal; the developer supplies the references.
 Agents must verify the referenced artifacts and results; file presence or lint
 alone is not shipment evidence. Partial delivery stays `in-dev`.
@@ -88,7 +88,7 @@ Delivery evidence here and remove it from the active table on confirmation.
 ### YYYY-MM-DD - reopen-[spec|design|dev]
 - Reason: [why the feature was reopened]
 - Impact review: [what changed and what was assessed]
-- Affected platforms: [declared platform IDs]
+- Affected apps: [declared app IDs]
 - Affected artifacts: [paths or named artifacts]
 - Prior completion/release evidence: [archived evidence]
 - Requirement/API invalidations: [exact affected pages and proposed statuses]
@@ -97,7 +97,7 @@ Delivery evidence here and remove it from the active table on confirmation.
 ## Raw and specified pages
 
 `/po-intake` creates every new feature as `status: raw`, `owner: po`. Its page has
-substantive Summary, User story, Acceptance criteria, Open questions and Platform
+substantive Summary, User story, Acceptance criteria, Open questions and App
 scope sections; Design, Related features, API surface, Board review summary and
 Post-ship notes stay empty. `/po-specify` completes the page and sets
 `status: specified`: each of those five sections gets one line of supported content
@@ -112,8 +112,8 @@ sections. A later action replaces that line with its real content.
 
 Each reopen record has one `###` heading and the six bullets above, with the label
 text unchanged. Under `- Prior completion/release evidence:` keep every prior
-Delivery evidence row verbatim, one row per declared platform, in the same
-`| Platform | Implementation | Tests | Release |` cell order. Put the rows on that
+Delivery evidence row verbatim, one row per declared app, in the same
+`| App | Implementation | Tests | Release |` cell order. Put the rows on that
 line, or on the lines directly below it as a table or a list, indented or not.
 They must come before the next `- Label:` bullet or heading. Rows after the next
 bullet or under another heading are not found, and the connected board rejects the
@@ -123,10 +123,10 @@ and spaces around `|` do not matter; the cell text does.
 ```markdown
 - Prior completion/release evidence: Archived unchanged from the active table.
 
-  | Platform | Implementation | Tests | Release |
+  | App | Implementation | Tests | Release |
   |---|---|---|---|
   | backend | PR #42 merged as 3f9c2ab | CI run 1187: 31 passed | v1.4.0 deployed |
-- Requirement/API invalidations: knowledge/wiki/platform-requirements/F-001-backend.md: done -> in-progress
+- Requirement/API invalidations: knowledge/wiki/app-requirements/F-001-backend.md: done -> in-progress
 ```
 
 Under `- Requirement/API invalidations:` write each invalidated requirement or API page as

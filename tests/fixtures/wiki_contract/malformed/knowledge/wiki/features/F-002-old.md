@@ -5,7 +5,7 @@ status: specified
 owner: po
 introduced: 2020-01-01
 last-updated: 2020-01-01
-platforms: [backend]
+apps: [backend]
 sources: []
 advisory-review: not-needed
 ---

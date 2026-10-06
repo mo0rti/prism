@@ -186,7 +186,7 @@ const doc = {
   getElementById(id) {
     if (elements[id] && elements[id].isConnected !== false) return elements[id];
     delete elements[id];
-    const roots = ["panel", "transition-dialog", "board-view", "platform-view", "firstrun-view", "graph-view", "views", "toolbar"];
+    const roots = ["panel", "transition-dialog", "board-view", "app-view", "firstrun-view", "graph-view", "views", "toolbar"];
     for (const rootId of roots) {
       const root = elements[rootId];
       if (!root || !root.querySelector) continue;
@@ -203,7 +203,7 @@ const doc = {
     return null;
   },
   querySelectorAll(selector) {
-    if (selector === "#dashboard .view") return ["firstrun-view", "graph-view", "board-view", "platform-view"].map(id => doc.getElementById(id));
+    if (selector === "#dashboard .view") return ["firstrun-view", "graph-view", "board-view", "app-view"].map(id => doc.getElementById(id));
     if (selector.startsWith("#panel ")) return doc.getElementById("panel").querySelectorAll(selector.slice(7));
     if (selector.startsWith("#board-view ")) return doc.getElementById("board-view").querySelectorAll(selector.slice(12));
     if (selector.startsWith("#transition-dialog ")) return doc.getElementById("transition-dialog").querySelectorAll(selector.slice(20));
@@ -302,10 +302,10 @@ if (checkEscaping) {
   const escaped = JSON.parse(JSON.stringify(globalThis.transitionPayload));
   escaped.facts.nodes = [
     { id: maliciousId, type: "feature", title: "<img src=x onerror=alert(2)>", path: 'knowledge/wiki/features/evil"><svg/onload=alert(3)>', health: "ok", status: "raw", open_questions: [] },
-    { id: "platform:web", type: "platform", title: "<svg/onload=alert(4)>", path: null, health: "ok" },
+    { id: "app:web", type: "app", title: "<svg/onload=alert(4)>", path: null, health: "ok" },
   ];
   escaped.facts.node_count = 2;
-  escaped.facts.edges = [{ source: maliciousId, target: "platform:web", kind: "<img src=x>", evidence: "malformed id" }];
+  escaped.facts.edges = [{ source: maliciousId, target: "app:web", kind: "<img src=x>", evidence: "malformed id" }];
   escaped.facts.edge_count = 1;
   escaped.facts.intake = { pending: [], quarantined: [] };
   escaped.blocker_facts = [{ feature_id: maliciousId, code: "pending-board-review", message: "<svg/onload=alert(5)>" }];
@@ -314,7 +314,7 @@ if (checkEscaping) {
   selectNode(maliciousId);
   globalThis.__escapingHtml = {
     board: document.getElementById("board-view").innerHTML,
-    platform: document.getElementById("platform-view").innerHTML,
+    app: document.getElementById("app-view").innerHTML,
     panel: document.getElementById("panel").innerHTML,
   };
 })();`);
@@ -418,7 +418,7 @@ if (checkTransitions) {
       }
     };
     payload.root = "C:\\\\demo\\workspace";
-    payload.workspace = { kind: "generated-project", project_name: "TreasuryFlow", platforms: ["backend"] };
+    payload.workspace = { kind: "generated-project", project_name: "TreasuryFlow", apps: [{ id: "backend" }] };
     payload.facts.nodes = [feature];
     payload.facts.node_count = 1;
     payload.facts.edges = [];
@@ -600,7 +600,7 @@ if (checkTransitions) {
   showTransitionPreview("F-001", replacedAction);
   assert(state.transitionPreview && !document.getElementById("transition-dialog").hidden, "replacement scenario did not open a preview");
   const nonFeature = makeReady();
-  nonFeature.facts.nodes = [{ id: "F-001", type: "platform", title: "Reused identity", path: "knowledge/wiki/platforms/backend.md", health: "ok" }];
+  nonFeature.facts.nodes = [{ id: "F-001", type: "app", title: "Reused identity", path: "knowledge/wiki/apps/backend.md", health: "ok" }];
   nonFeature.facts.node_count = 1;
   nonFeature.facts.edges = [];
   nonFeature.facts.edge_count = 0;
@@ -775,7 +775,7 @@ if (checkTransitions) {
       surfaces.push({ role: "claude", action, path: "C:/demo/workspace/.claude/commands/" + actionSpecs[action].command + ".md", available: true, check: "pass", invocation_template: "/" + actionSpecs[action].command + " F-XXX" });
     });
     payload.root = "C:/demo/workspace";
-    payload.workspace = { kind: "generated-project", project_name: "TreasuryFlow", platforms: ["backend", "android", "ios"] };
+    payload.workspace = { kind: "generated-project", project_name: "TreasuryFlow", apps: [{ id: "backend" }, { id: "android" }, { id: "ios" }] };
     payload.facts.nodes = features;
     payload.facts.node_count = features.length;
     payload.facts.edges = [];
@@ -983,7 +983,7 @@ if (checkConnectedBoard) {
   const makeEnvelope = () => {
     const payload = JSON.parse(JSON.stringify(globalThis.transitionPayload));
     payload.root = "C:\\\\demo\\\\board";
-    payload.workspace = { kind: "generated-project", project_name: "Connected board fixture", platforms: ["backend"] };
+    payload.workspace = { kind: "generated-project", project_name: "Connected board fixture", apps: [{ id: "backend" }] };
     const agentPath = "knowledge/wiki/features/F-agent.md";
     const agentAction = { version: 1, feature_id: "F-agent", source_status: "in-design", source_owner: "designer", source_path: agentPath, target_status: "ready-for-dev", target_owner: "dev", action: "design-handoff", classification: "ready", supported: true, checks: [{ code: "source-readable", status: "pass", message: "Connected source is readable.", path: agentPath }], sources: [agentPath] };
     payload.facts.nodes = [
@@ -1431,7 +1431,7 @@ if (checkBoardDefects) {
   const makeEnvelope = () => {
     const payload = clone(globalThis.transitionPayload);
     payload.root = "/demo/defects";
-    payload.workspace = { kind: "generated-project", project_name: "Defect fixture", platforms: ["backend"] };
+    payload.workspace = { kind: "generated-project", project_name: "Defect fixture", apps: [{ id: "backend" }] };
     payload.facts.nodes = [
       featureNode("F-live"), featureNode("F-lost"), featureNode("F-rejected", { advisory_review: "pending" }), featureNode("F-revoked"), featureNode("F-down"), featureNode("F-drag"),
     ];

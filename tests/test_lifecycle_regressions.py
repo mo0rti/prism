@@ -114,7 +114,7 @@ class LifecycleRegressionTests(unittest.TestCase):
             )
             delivery_block = (
                 "\n## Delivery evidence\n"
-                "| Platform | Implementation | Tests | Release |\n"
+                "| App | Implementation | Tests | Release |\n"
                 "|---|---|---|---|\n"
                 f"{rows}\n"
             )
@@ -127,7 +127,7 @@ class LifecycleRegressionTests(unittest.TestCase):
             f"owner: {owner}\n"
             "introduced: 2026-09-01\n"
             "last-updated: 2026-09-08\n"
-            f"platforms: [{', '.join(platforms)}]\n"
+            f"apps: [{', '.join(platforms)}]\n"
             "sources: []\n"
             f"advisory-review: {advisory}\n"
             f"{frontmatter_extra}"
@@ -143,7 +143,7 @@ class LifecycleRegressionTests(unittest.TestCase):
             "| # | Question | Owner | Status |\n"
             "|---|----------|-------|--------|\n"
             f"{question_rows}\n"
-            "## Platform scope\n"
+            "## App scope\n"
             f"{scope_rows}\n"
             f"{api_block}"
             f"{delivery_block}"
@@ -201,14 +201,14 @@ class LifecycleRegressionTests(unittest.TestCase):
         api_link: str = "",
         dependencies: str = "",
     ) -> Path:
-        path = self.wiki_root / "platform-requirements" / f"{feature_id}-{platform}.md"
+        path = self.wiki_root / "app-requirements" / f"{feature_id}-{platform}.md"
         path.parent.mkdir(parents=True, exist_ok=True)
         api_block = f"\n## API contract reference\n{api_link.rstrip()}\n" if api_link else ""
         dependency_block = f"\n## Dependencies\n{dependencies.rstrip()}\n" if dependencies else ""
         path.write_text(
             "---\n"
             f"feature-id: {feature_id}\n"
-            f"platform: {platform}\n"
+            f"app: {platform}\n"
             f"status: {status}\n"
             "---\n\n"
             "## What to build\n"
@@ -421,7 +421,7 @@ class LifecycleRegressionTests(unittest.TestCase):
 
         transition = self._transition("dev-done")
 
-        self.assertEqual("pass", self._check(transition, "platform-requirements")["status"])
+        self.assertEqual("pass", self._check(transition, "app-requirements")["status"])
         self.assertEqual("pass", self._check(transition, "api-contract")["status"])
         self.assertEqual("ready", transition["classification"])
 
@@ -455,7 +455,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         global_dependency = [
             diagnostic
             for diagnostic in lint_result.diagnostics
-            if diagnostic.code == "cross-platform-dependency"
+            if diagnostic.code == "cross-app-dependency"
             and diagnostic.path.endswith("F-001-backend.md")
         ]
         self.assertTrue(global_dependency, lint_result.diagnostics)
@@ -465,19 +465,19 @@ class LifecycleRegressionTests(unittest.TestCase):
         transition = envelope["facts"]["transition"]
         self.assertEqual("ready", transition["classification"])
         self.assertNotIn(
-            "workflow:cross-platform-dependency",
+            "workflow:cross-app-dependency",
             {check["code"] for check in transition["checks"]},
         )
         self.assertTrue(
             any(
-                diagnostic["code"] == "cross-platform-dependency"
+                diagnostic["code"] == "cross-app-dependency"
                 and diagnostic.get("feature_id") == "F-001"
                 for diagnostic in envelope["diagnostics"]
             )
         )
         self.assertTrue(
             any(
-                diagnostic["code"] == "cross-platform-dependency"
+                diagnostic["code"] == "cross-app-dependency"
                 and diagnostic.get("feature_id") == "F-001"
                 for diagnostic in envelope["blocker_facts"]
             )
@@ -509,7 +509,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         transition = self._transition("dev-start")
 
         self.assertEqual("blocked", transition["classification"])
-        dependency_check = self._check(transition, "workflow:cross-platform-dependency")
+        dependency_check = self._check(transition, "workflow:cross-app-dependency")
         self.assertEqual("blocked", dependency_check["status"])
         self.assertIn("F-002", dependency_check["message"])
 
@@ -540,15 +540,15 @@ class LifecycleRegressionTests(unittest.TestCase):
 
         for malformed_platform in ("", "unsupported-platform"):
             with self.subTest(platform=malformed_platform or "missing"):
-                replacement = "platform:" if not malformed_platform else f"platform: {malformed_platform}"
+                replacement = "app:" if not malformed_platform else f"app: {malformed_platform}"
                 requirement.write_text(
-                    valid_requirement.replace("platform: backend", replacement),
+                    valid_requirement.replace("app: backend", replacement),
                     encoding="utf-8",
                 )
                 transition = self._transition("dev-start")
 
                 self.assertNotEqual("ready", transition["classification"])
-                dependency_check = self._check(transition, "workflow:cross-platform-dependency")
+                dependency_check = self._check(transition, "workflow:cross-app-dependency")
                 self.assertEqual("blocked", dependency_check["status"])
 
     def test_malformed_revalidation_is_visible_but_reopen_routes_remain_requestable(self) -> None:
@@ -615,7 +615,7 @@ class LifecycleRegressionTests(unittest.TestCase):
                 self.assertEqual("ready", transition["classification"])
                 if action == "dev-done":
                     self.assertEqual("pass", self._check(transition, "design")["status"])
-                    self.assertEqual("pass", self._check(transition, "platform-requirements")["status"])
+                    self.assertEqual("pass", self._check(transition, "app-requirements")["status"])
                     self.assertEqual("pass", self._check(transition, "delivery-evidence")["status"])
 
         for missing_reason in (True, False):
@@ -676,17 +676,17 @@ class LifecycleRegressionTests(unittest.TestCase):
         self._write_feature(status="in-dev", owner="dev", advisory="done")
         own_link = "Context: [F-001](../features/F-001-payout-summary.md) and its feature page F-001-payout-summary.md."
         self._write_requirement(status="pending", dependencies=own_link)
-        diagnostics = [item for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.code == "cross-platform-dependency"]
+        diagnostics = [item for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.code == "cross-app-dependency"]
         self.assertEqual([], diagnostics, diagnostics)
 
         plain = "This follows F-001 and [the requirement itself](F-001-backend.md)."
         self._write_requirement(status="pending", dependencies=plain)
-        self.assertEqual([], [item for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.code == "cross-platform-dependency"])
+        self.assertEqual([], [item for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.code == "cross-app-dependency"])
 
         # Another unfinished feature is still a dependency.
         self._write_feature(feature_id="F-002", filename="F-002-other-summary.md", title="Other summary", status="specified", owner="po")
         self._write_requirement(status="pending", dependencies=own_link + " It also waits for [F-002](../features/F-002-other-summary.md).")
-        found = [item for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.code == "cross-platform-dependency"]
+        found = [item for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.code == "cross-app-dependency"]
         self.assertEqual(1, len(found), found)
         self.assertIn("unfinished feature `F-002`", found[0].message)
         self.assertNotIn("`F-001`", found[0].message)
@@ -782,7 +782,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         api = self._write_api(status="agreed")
 
         request = self._transition("dev-done")
-        self.assertEqual("pass", self._check(request, "platform-requirements")["status"])
+        self.assertEqual("pass", self._check(request, "app-requirements")["status"])
         self.assertEqual("pass", self._check(request, "api-contract")["status"])
         self.assertEqual("ready", request["classification"])
 
@@ -795,14 +795,14 @@ class LifecycleRegressionTests(unittest.TestCase):
         )
         lint_before_completion = lint_wiki(self.root, today=CHECK_DATE)
         before_codes = {diagnostic.code for diagnostic in lint_before_completion.diagnostics}
-        self.assertIn("done-platform-requirement", before_codes)
+        self.assertIn("done-app-requirement", before_codes)
         self.assertIn("done-api-contract", before_codes)
 
         requirement.write_text(requirement.read_text(encoding="utf-8").replace("status: in-progress", "status: done"), encoding="utf-8")
         api.write_text(api.read_text(encoding="utf-8").replace("status: agreed", "status: implemented"), encoding="utf-8")
         lint_after_completion = lint_wiki(self.root, today=CHECK_DATE)
         after_codes = {diagnostic.code for diagnostic in lint_after_completion.diagnostics}
-        self.assertNotIn("done-platform-requirement", after_codes)
+        self.assertNotIn("done-app-requirement", after_codes)
         self.assertNotIn("done-api-contract", after_codes)
 
     def test_reopened_parent_invalidates_downstream_done_requirement_even_when_status_is_done(self) -> None:
@@ -829,7 +829,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         dependency_diagnostics = [
             diagnostic
             for diagnostic in invalidated.diagnostics
-            if diagnostic.code == "cross-platform-dependency" and diagnostic.feature_id == "F-002"
+            if diagnostic.code == "cross-app-dependency" and diagnostic.feature_id == "F-002"
         ]
         self.assertTrue(dependency_diagnostics)
         self.assertTrue(any("F-001-backend" in diagnostic.message for diagnostic in dependency_diagnostics))
@@ -838,7 +838,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         restored = lint_wiki(self.root, today=CHECK_DATE)
         self.assertFalse(
             any(
-                diagnostic.code == "cross-platform-dependency" and diagnostic.feature_id == "F-002"
+                diagnostic.code == "cross-app-dependency" and diagnostic.feature_id == "F-002"
                 for diagnostic in restored.diagnostics
             )
         )

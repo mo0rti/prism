@@ -10,7 +10,7 @@ The wiki usability layer is validated in three ways:
 - template-render validation
 - runtime-style fixture validation against a seeded wiki corpus
 - Python regression tests of the CLI read layer (`prism wiki lint`, `show`, `blockers`,
-  `owner`, `platform`, `search`, `transition-preflight` and `graph`), which the generated
+  `owner`, `app`, `search`, `transition-preflight` and `graph`), which the generated
   commands use as their primary path when a compatible CLI is installed
 
 ## Validation Method
@@ -50,7 +50,7 @@ Representative seeded scenarios included:
 - a complete feature
 - a feature with pending board review and stale state
 - a feature missing a design page
-- a feature missing platform requirements for one platform
+- a feature missing app requirements for one app
 - a feature with unresolved open questions plus a draft API contract
 - a broad auth-heavy search corpus for refinement testing
 - a malformed feature page missing required state
@@ -126,15 +126,15 @@ Validated for:
 - stale detection
 - invalid-owner handling
 
-### `wiki-platform`
+### `wiki-app`
 
 Validated for:
 
-- platform-specific inclusion filtering
+- app-specific inclusion filtering
 - blocker reporting
-- invalid-platform handling
+- invalid-app handling
 
-This included checking that only exact Prism platform identifiers are treated as valid.
+This included checking that only the app IDs of the workspace are treated as valid.
 
 ## What This Means
 

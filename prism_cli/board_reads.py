@@ -22,7 +22,7 @@ STRUCTURED_BUDGET_CHARS = 30000
 _MAX_CURSOR_CHARS = 4096
 _PAGED_QUERY_LISTS = {
     "owner": ("features", "open_questions"),
-    "platform": ("features", "platform_requirements"),
+    "app": ("features", "app_requirements"),
     "search": ("results",),
 }
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(\S.*?)(?:\s+#+)?\s*$")
@@ -196,7 +196,7 @@ def list_workspace(service: Any, actor: Any, prefix: str = "knowledge", cursor: 
 def query(service: Any, actor: Any, kind: str, value: str | None = None, action: str | None = None, cursor: str | None = None) -> dict[str, Any]:
     """Reuse CLI facts, with connected preflight and current access checks.
 
-    Owner, platform and search results are paged so each page fits the MCP
+    Owner, app and search results are paged so each page fits the MCP
     result budget; every other kind returns its complete result.
     """
 
@@ -205,9 +205,9 @@ def query(service: Any, actor: Any, kind: str, value: str | None = None, action:
     from prism_cli.wiki_transitions import ACTION_BY_ID, build_board_transition_preflight, fingerprint_digest, workspace_fingerprint
 
     service._require_actor(actor)
-    supported = {"show", "blockers", "owner", "platform", "search", "transition-preflight", "lint"}
+    supported = {"show", "blockers", "owner", "app", "search", "transition-preflight", "lint"}
     if not isinstance(kind, str) or kind not in supported:
-        raise BoardError("invalid_query", "Choose show, blockers, owner, platform, search, transition-preflight, or lint.", 400)
+        raise BoardError("invalid_query", "Choose show, blockers, owner, app, search, transition-preflight, or lint.", 400)
     if kind in {"blockers", "lint"}:
         if value is not None or action is not None:
             raise BoardError("invalid_query", "This query does not take a value or action.", 400)
@@ -217,14 +217,14 @@ def query(service: Any, actor: Any, kind: str, value: str | None = None, action:
         raise BoardError("invalid_query", "Only transition-preflight takes an action.", 400)
     if kind == "owner" and value not in {"po", "designer", "dev", "none"}:
         raise BoardError("invalid_query", "Owner must be po, designer, dev, or none.", 400)
-    if kind == "platform" and value not in service._platforms:
-        raise BoardError("invalid_query", "The platform is outside this workspace's declared scope.", 400)
+    if kind == "app" and value not in service._app_ids:
+        raise BoardError("invalid_query", "The app is outside this workspace's declared scope.", 400)
     if kind == "transition-preflight" and action not in ACTION_BY_ID:
         raise BoardError("invalid_query", "Choose a registered lifecycle action.", 400)
     position: dict[str, Any] | None = None
     if cursor is not None:
         if kind not in _PAGED_QUERY_LISTS:
-            raise BoardError("invalid_query", "Only owner, platform and search queries take a cursor.", 400)
+            raise BoardError("invalid_query", "Only owner, app and search queries take a cursor.", 400)
         position = decode_cursor(cursor, "query", {"k", "v", "r"})
         if position["k"] != kind or position["v"] != value:
             raise BoardError("invalid_cursor", "The cursor belongs to a different query.", 400)
@@ -243,7 +243,7 @@ def query(service: Any, actor: Any, kind: str, value: str | None = None, action:
             "capability": {"mode": "read-only", "transport": "local-board-service"},
         }
     else:
-        reader = {"show": wiki_query.wiki_show, "owner": wiki_query.wiki_owner, "platform": wiki_query.wiki_platform, "search": wiki_query.wiki_search}[kind]
+        reader = {"show": wiki_query.wiki_show, "owner": wiki_query.wiki_owner, "app": wiki_query.wiki_app, "search": wiki_query.wiki_search}[kind]
         result = reader(service.root, value)
     service.validate_graph_inputs()
     after = workspace_fingerprint(service.root)
@@ -256,7 +256,7 @@ def query(service: Any, actor: Any, kind: str, value: str | None = None, action:
     # so the same values can be passed to the bounded read_workspace operation.
     result = relativize_paths(result, [service.root])
     if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > _MAX_QUERY_BYTES:
-        raise BoardError("query_limit", "The query exceeds 4 MiB; narrow it with show, owner, platform or search.", 413)
+        raise BoardError("query_limit", "The query exceeds 4 MiB; narrow it with show, owner, app or search.", 413)
     if kind in _PAGED_QUERY_LISTS:
         return _query_page(result, kind, value, position)
     result["next_cursor"] = None

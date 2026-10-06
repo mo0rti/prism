@@ -130,14 +130,14 @@
     },
     "feature_summary": {
       "type": "object",
-      "required": ["id", "title", "status", "owner", "advisory_review", "platforms", "path"],
+      "required": ["id", "title", "status", "owner", "advisory_review", "apps", "path"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "title": { "type": "string" },
         "status": { "type": ["string", "null"] },
         "owner": { "type": ["string", "null"] },
         "advisory_review": { "type": ["string", "null"] },
-        "platforms": { "type": "array", "items": { "type": "string" } },
+        "apps": { "type": "array", "items": { "type": "string" } },
         "path": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": true

@@ -67,24 +67,24 @@ class BoardServiceValidatorTests(unittest.TestCase):
             "ask": ["knowledge/wiki/features/*.md"],
             "po-clarify": ["knowledge/wiki/features/*.md"],
             "design-clarify": ["knowledge/wiki/features/*.md", "knowledge/wiki/design/*.md"],
-            "dev-clarify": ["knowledge/wiki/features/*.md", "knowledge/wiki/platform-requirements/*.md"],
+            "dev-clarify": ["knowledge/wiki/features/*.md", "knowledge/wiki/app-requirements/*.md"],
             "po-specify": ["knowledge/wiki/features/*.md"],
             "po-handoff": ["knowledge/wiki/features/*.md"],
             "design-start": ["knowledge/wiki/features/*.md"],
             "design-handoff": [
                 "knowledge/wiki/features/*.md",
-                "knowledge/wiki/platform-requirements/*.md",
+                "knowledge/wiki/app-requirements/*.md",
                 "knowledge/wiki/api-contracts/*.md",
             ],
             "dev-start": ["knowledge/wiki/features/*.md"],
             "dev-done": [
                 "knowledge/wiki/features/*.md",
-                "knowledge/wiki/platform-requirements/*.md",
+                "knowledge/wiki/app-requirements/*.md",
                 "knowledge/wiki/api-contracts/*.md",
             ],
             "feature-reopen": [
                 "knowledge/wiki/features/*.md",
-                "knowledge/wiki/platform-requirements/*.md",
+                "knowledge/wiki/app-requirements/*.md",
                 "knowledge/wiki/api-contracts/*.md",
             ],
         }
@@ -106,11 +106,11 @@ class BoardServiceValidatorTests(unittest.TestCase):
             ("design-intake", "knowledge/wiki/design/F-002-review.md"),
             ("design-intake", "knowledge/intake/quarantined/review/CONFLICT.md"),
             ("design-clarify", "knowledge/wiki/design/F-002-review.md"),
-            ("dev-clarify", "knowledge/wiki/platform-requirements/F-002-backend.md"),
-            ("design-handoff", "knowledge/wiki/platform-requirements/backend.md"),
+            ("dev-clarify", "knowledge/wiki/app-requirements/F-002-backend.md"),
+            ("design-handoff", "knowledge/wiki/app-requirements/backend.md"),
             ("design-handoff", "knowledge/wiki/api-contracts/F-002-review.md"),
             ("dev-done", "knowledge/wiki/api-contracts/F-002-review.md"),
-            ("feature-reopen", "knowledge/wiki/platform-requirements/backend.md"),
+            ("feature-reopen", "knowledge/wiki/app-requirements/backend.md"),
         )
         for skill, path in accepted:
             with self.subTest(skill=skill, accepted_path=path):
@@ -122,13 +122,13 @@ class BoardServiceValidatorTests(unittest.TestCase):
             ("ask", "knowledge/wiki/design/F-002-review.md"),
             ("po-clarify", "knowledge/wiki/design/F-002-review.md"),
             ("design-clarify", "knowledge/wiki/api-contracts/F-002-review.md"),
-            ("design-clarify", "knowledge/wiki/platform-requirements/F-002-backend.md"),
-            ("po-clarify", "knowledge/wiki/platform-requirements/F-002-backend.md"),
+            ("design-clarify", "knowledge/wiki/app-requirements/F-002-backend.md"),
+            ("po-clarify", "knowledge/wiki/app-requirements/F-002-backend.md"),
             ("dev-clarify", "knowledge/wiki/design/F-002-review.md"),
             ("dev-clarify", "knowledge/wiki/api-contracts/F-002-review.md"),
-            ("po-specify", "knowledge/wiki/platform-requirements/backend.md"),
-            ("po-handoff", "knowledge/wiki/platform-requirements/backend.md"),
-            ("design-start", "knowledge/wiki/platform-requirements/backend.md"),
+            ("po-specify", "knowledge/wiki/app-requirements/backend.md"),
+            ("po-handoff", "knowledge/wiki/app-requirements/backend.md"),
+            ("design-start", "knowledge/wiki/app-requirements/backend.md"),
             ("po-specify", "knowledge/wiki/api-contracts/F-002-review.md"),
             ("po-handoff", "knowledge/wiki/api-contracts/F-002-review.md"),
             ("design-start", "knowledge/wiki/api-contracts/F-002-review.md"),
@@ -409,20 +409,20 @@ class BoardServiceValidatorTests(unittest.TestCase):
         self.assertIn(current, stale.exception.message)
         self.assertEqual("sha256:" + hashlib.sha256(edited.encode("utf-8")).hexdigest(), stale.exception.details["expected"])
 
-    def test_a_feature_outside_the_board_platforms_is_rejected_with_the_board_platforms(self) -> None:
+    def test_a_feature_outside_the_board_apps_is_rejected_with_the_board_apps(self) -> None:
         relative = FEATURE_PATH.as_posix()
-        content = _feature_page().replace("platforms:\n- backend\n", "platforms:\n- web-user-app\n- backend\n")
+        content = _feature_page().replace("apps:\n- backend\n", "apps:\n- web-user-app\n- backend\n")
         self.assertIn("web-user-app", content)
         with self.assertRaises(BoardError) as outside:
             self.service._validate_feature_output(relative, content, "po-intake")
         error = outside.exception
         self.assertEqual(("invalid_feature_output", 409), (error.code, error.status))
         self.assertIn("`web-user-app`", error.message)
-        self.assertIn("this board's platforms are `backend`", error.message)
-        self.assertEqual({"platforms": ["backend", "web-user-app"], "board_platforms": ["backend"]}, error.details)
+        self.assertIn("this board's apps are `backend`", error.message)
+        self.assertEqual({"apps": ["backend", "web-user-app"], "board_apps": ["backend"]}, error.details)
         with self.assertRaises(BoardError) as empty:
-            self.service._validate_feature_output(relative, content.replace("platforms:\n- web-user-app\n- backend\n", "platforms: []\n"), "po-intake")
-        self.assertIn("nonempty `platforms` list", empty.exception.message)
+            self.service._validate_feature_output(relative, content.replace("apps:\n- web-user-app\n- backend\n", "apps: []\n"), "po-intake")
+        self.assertIn("nonempty `apps` list", empty.exception.message)
         self.assertIn("`backend`", empty.exception.message)
 
     def test_discover_reports_the_board_apps(self) -> None:
@@ -1020,7 +1020,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
         old = _set_feature_stage(_feature_page(), "done", "none")
         old += (
             "\n## Delivery evidence\n"
-            "| Platform | Implementation | Tests | Release |\n"
+            "| App | Implementation | Tests | Release |\n"
             "|---|---|---|---|\n"
             "| backend | Reviewed source record | Review check passed | Review release record |\n"
             "\n## Reopen history\n"
@@ -1034,7 +1034,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
             "\n### 2026-09-22 - reopen-dev\n"
             "- Reason: A new review requirement changes the outcome.\n"
             "- Impact review: The backend outcome and test need renewed review.\n"
-            "- Affected platforms: backend\n"
+            "- Affected apps: backend\n"
         )
         old_frontmatter, _body = _parse_markdown(old)
 
@@ -1303,7 +1303,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = create_core_workflow_fixture(Path(temporary.name) / "generated-project")
-        initial_install = plan_install(self.root, name="Document review", platforms=["backend"])
+        initial_install = plan_install(self.root, name="Document review", apps=["backend"])
         self.assertEqual("workflow", initial_install["mode"])
         self.assertEqual([], initial_install["conflicts"])
         self.assertEqual("applied", apply_install(self.root, initial_install)["status"])
@@ -1313,7 +1313,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         manifest["generated_by"] = {"tool": "fixture"}
         manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
 
-        install = plan_install(self.root, name="Document review", platforms=["backend"])
+        install = plan_install(self.root, name="Document review", apps=["backend"])
         self.assertEqual("generated", install["mode"])
         self.assertEqual([], install["conflicts"])
         self.assertEqual("applied", apply_install(self.root, install)["status"])
@@ -1464,7 +1464,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         self._submit_skill("po-handoff", [{"path": feature_path, "content": po_handoff}])
         self._submit_transition("design-start")
 
-        requirement_path = "knowledge/wiki/platform-requirements/F-001-backend.md"
+        requirement_path = "knowledge/wiki/app-requirements/F-001-backend.md"
         current = self.service._read_text(self.root / feature_path)
         design_handoff = _set_feature_stage(current, "ready-for-dev", "dev", self.service)
         self._submit_skill(
@@ -1482,7 +1482,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             self.service,
             dev_done,
             "Delivery evidence",
-            "| Platform | Implementation | Tests | Release |\n"
+            "| App | Implementation | Tests | Release |\n"
             "|---|---|---|---|\n"
             "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | Synthetic release label `review-v1` |",
         )
@@ -1504,7 +1504,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             self.service,
             reopened,
             "Delivery evidence",
-            "| Platform | Implementation | Tests | Release |\n|---|---|---|---|",
+            "| App | Implementation | Tests | Release |\n|---|---|---|---|",
         )
         reopened = _replace_body_section(
             self.service,
@@ -1513,7 +1513,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             "### 2026-09-22 - reopen-dev\n"
             "- Reason: A confirmed reviewer needs a revised outcome summary.\n"
             "- Impact review: Recheck implementation, tests, release evidence, and the linked backend requirement.\n"
-            "- Affected platforms: backend\n"
+            "- Affected apps: backend\n"
             f"- Affected artifacts: {feature_path} and {requirement_path}\n"
             f"- Prior completion/release evidence: {prior_row}\n"
             f"- Requirement/API invalidations: {requirement_path} done -> in-progress",
@@ -1579,7 +1579,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
 
     def _complete_to_done(self, starting_status: str) -> None:
         feature_path = "knowledge/wiki/features/F-001-document-review.md"
-        requirement_path = "knowledge/wiki/platform-requirements/F-001-backend.md"
+        requirement_path = "knowledge/wiki/app-requirements/F-001-backend.md"
         if starting_status == "specified":
             current = self.service._read_text(self.root / feature_path)
             frontmatter, _body = _parse_markdown(current)
@@ -1632,7 +1632,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             [],
         )
         evidence = (
-            "| Platform | Implementation | Tests | Release |\n"
+            "| App | Implementation | Tests | Release |\n"
             "|---|---|---|---|\n"
             "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | Synthetic release label `review-v1` |"
         )
@@ -1657,7 +1657,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
 
     def _submit_reopen(self, action: str) -> None:
         feature_path = "knowledge/wiki/features/F-001-document-review.md"
-        requirement_path = "knowledge/wiki/platform-requirements/F-001-backend.md"
+        requirement_path = "knowledge/wiki/app-requirements/F-001-backend.md"
         target = {
             "reopen-spec": ("specified", "po", ["specification", "design", "implementation", "tests", "release"]),
             "reopen-design": ("in-design", "designer", ["design", "implementation", "tests", "release"]),
@@ -1678,7 +1678,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             self.service,
             reopened,
             "Delivery evidence",
-            "| Platform | Implementation | Tests | Release |\n|---|---|---|---|",
+            "| App | Implementation | Tests | Release |\n|---|---|---|---|",
         )
         reopened = _append_body_section(
             self.service,
@@ -1689,7 +1689,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
                     f"### {CHECK_DATE.isoformat()} - {action}",
                     "- Reason: A confirmed reviewer needs a revised outcome summary.",
                     "- Impact review: Recheck implementation, tests, release evidence, and the linked backend requirement.",
-                    "- Affected platforms: backend",
+                    "- Affected apps: backend",
                     f"- Affected artifacts: {feature_path} and {requirement_path}",
                     f"- Prior completion/release evidence: {prior_row}",
                     f"- Requirement/API invalidations: {requirement_path} done -> in-progress",
@@ -1713,16 +1713,16 @@ class BoardServiceReopenRecordTests(unittest.TestCase):
     """The archived evidence of a reopen record may follow its label in the layouts an agent writes."""
 
     FEATURE = "knowledge/wiki/features/F-001-document-review.md"
-    REQUIREMENT = "knowledge/wiki/platform-requirements/F-001-backend.md"
+    REQUIREMENT = "knowledge/wiki/app-requirements/F-001-backend.md"
     DESIGN = "knowledge/wiki/design/F-001-document-review.md"
     PRIOR_ROW = "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | Synthetic release label `review-v1` |"
-    TABLE = ["| Platform | Implementation | Tests | Release |", "|---|---|---|---|", PRIOR_ROW]
+    TABLE = ["| App | Implementation | Tests | Release |", "|---|---|---|---|", PRIOR_ROW]
 
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = create_core_workflow_fixture(Path(temporary.name) / "generated-project")
-        self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Document review", platforms=["backend"]))["status"])
+        self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))["status"])
         (self.root / INTAKE_ITEM).parent.rename(self.root / "knowledge/intake/processed/document-review-brief")
         for relative, content in (
             (self.FEATURE, _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/document-review-brief"], ["| 1 | Which points should a review summary highlight? | po | resolved: The key points. |"])),
@@ -1760,7 +1760,7 @@ class BoardServiceReopenRecordTests(unittest.TestCase):
             f"### {CHECK_DATE.isoformat()} - reopen-dev",
             "- Reason: A confirmed reviewer needs a revised outcome summary.",
             "- Impact review: Recheck implementation, tests, release evidence, and the linked backend requirement.",
-            "- Affected platforms: backend",
+            "- Affected apps: backend",
             f"- Affected artifacts: {self.FEATURE} and {self.REQUIREMENT}",
             *archive,
             f"- Requirement/API invalidations: {self.REQUIREMENT} done -> in-progress",
@@ -1771,7 +1771,7 @@ class BoardServiceReopenRecordTests(unittest.TestCase):
     def reopen(self, record: str) -> dict:
         current = self.service._read_text(self.root / self.FEATURE)
         reopened = _set_stage_and_revalidation(self.service, current, "in-dev", "dev", ["implementation", "tests", "release"])
-        reopened = _replace_body_section(self.service, reopened, "Delivery evidence", "| Platform | Implementation | Tests | Release |\n|---|---|---|---|")
+        reopened = _replace_body_section(self.service, reopened, "Delivery evidence", "| App | Implementation | Tests | Release |\n|---|---|---|---|")
         reopened = _append_body_section(self.service, reopened, "Reopen history", record)
         requirement = _set_requirement_status(self.service._read_text(self.root / self.REQUIREMENT), "in-progress")
         return self.submit("feature-reopen", [{"path": self.FEATURE, "content": reopened}, {"path": self.REQUIREMENT, "content": requirement}])
@@ -1798,12 +1798,12 @@ class BoardServiceReopenRecordTests(unittest.TestCase):
         separator = "|---|---|---|---|"
         return {
             "canonical": self.TABLE,
-            "platform capitalised": ["| Platform | Implementation | Tests | Release |", separator, "| Backend | " + " | ".join(cells) + " |"],
-            "columns reordered": ["| Implementation | Platform | Tests | Release |", separator, f"| {cells[0]} | backend | {cells[1]} | {cells[2]} |"],
-            "release first": ["| Release | Tests | Implementation | Platform |", separator, f"| {cells[2]} | {cells[1]} | {cells[0]} | backend |"],
-            "header case and emphasis": ["| **PLATFORM** | implementation | _Tests_ | Release |", separator, "| backend | " + " | ".join(cells) + " |"],
-            "release cell says Release": ["| Platform | Implementation | Tests | Release |", separator, f"| backend | {cells[0]} | {cells[1]} | Release |"],
-            "compact pipes": ["|Platform|Implementation|Tests|Release|", separator, "|backend|" + "|".join(cells) + "|"],
+            "app capitalised": ["| App | Implementation | Tests | Release |", separator, "| Backend | " + " | ".join(cells) + " |"],
+            "columns reordered": ["| Implementation | App | Tests | Release |", separator, f"| {cells[0]} | backend | {cells[1]} | {cells[2]} |"],
+            "release first": ["| Release | Tests | Implementation | App |", separator, f"| {cells[2]} | {cells[1]} | {cells[0]} | backend |"],
+            "header case and emphasis": ["| **APP** | implementation | _Tests_ | Release |", separator, "| backend | " + " | ".join(cells) + " |"],
+            "release cell says Release": ["| App | Implementation | Tests | Release |", separator, f"| backend | {cells[0]} | {cells[1]} | Release |"],
+            "compact pipes": ["|App|Implementation|Tests|Release|", separator, "|backend|" + "|".join(cells) + "|"],
         }
 
     def restore_in_dev(self) -> None:
@@ -1991,7 +1991,7 @@ def _journey_feature_page(
         "\n## Related features\nNo related feature is required for this workflow.\n"
         "\n## Board review summary\nThe existing acceptance checks cover the scoped review workflow.\n"
         "\n## Delivery evidence\n"
-        "| Platform | Implementation | Tests | Release |\n"
+        "| App | Implementation | Tests | Release |\n"
         "|---|---|---|---|\n"
         "\n## Reopen history\n"
         "\n## Post-ship notes\nThe fixture has no post-ship deviations.\n"
@@ -2099,7 +2099,7 @@ def _journey_design_page() -> str:
 
 def _journey_requirement_page(status: str) -> str:
     return (
-        "---\nfeature-id: F-001\nplatform: backend\n"
+        "---\nfeature-id: F-001\napp: backend\n"
         f"status: {status}\n---\n\n"
         "## What to build\nStore a document review summary and recorded outcome.\n\n"
         "## Technical constraints\nUse the existing workspace storage and authenticated write path.\n\n"
@@ -2137,7 +2137,7 @@ class BoardServiceCloudSyncTests(unittest.TestCase):
         self.root.mkdir(parents=True)
         self.assertEqual(
             "applied",
-            apply_install(self.root, plan_install(self.root, name="Cloud board", platforms=["backend"]))["status"],
+            apply_install(self.root, plan_install(self.root, name="Cloud board", apps=["backend"]))["status"],
         )
 
     def test_cloud_ancestor_is_rejected_with_cloud_guidance(self) -> None:

@@ -33,17 +33,17 @@ _ATTRIBUTES_RULE = "knowledge/** text eol=lf"
 def plan_install(
     root: Path,
     name: str | None = None,
-    platforms: list[str] | None = None,
+    apps: list[str] | None = None,
     upgrade: bool = False,
 ) -> dict[str, Any]:
     """Build an exact, non-mutating file plan for installing or upgrading.
 
-    ``platforms`` names the generated app IDs (the ``--app`` values) to register
+    ``apps`` names the generated app IDs (the ``--app`` values) to register
     in a manifest that declares no apps. A new workspace without them has no apps.
     """
 
     workspace = _validated_root(root)
-    selected_apps = _validate_requested_apps(platforms)
+    selected_apps = _validate_requested_apps(apps)
     if name is not None:
         _validate_name(name)
     if type(upgrade) is not bool:

@@ -94,7 +94,7 @@ knowledge/
     design/
     features/
     personas/
-    platform-requirements/
+    app-requirements/
     index.md
     log.md
     SCHEMA.md       # core wiki conventions, read before every wiki operation
@@ -115,7 +115,7 @@ The source of truth for what to build is the wiki, especially:
 
 - `knowledge/wiki/index.md`
 - `knowledge/wiki/features/`
-- `knowledge/wiki/platform-requirements/`
+- `knowledge/wiki/app-requirements/`
 - `knowledge/wiki/business-rules/`
 - `knowledge/wiki/api-contracts/`
 
@@ -172,7 +172,7 @@ This setup flow:
 - inspect readiness with `prep-sprint`
 - resolve dev-owned open questions with `dev-clarify`
 - start confirmed implementation with `dev-start`
-- read feature and platform requirement context before implementing
+- read feature and app requirement context before implementing
 - mark shipped work with `dev-done`
 
 ### Reopening shipped work
@@ -194,7 +194,7 @@ shared API contracts.
 Every write-capable lifecycle action is confirmation-gated and source-backed.
 `po-specify` authors the required structured body from raw facts; `dev-done`
 requires verifiable implementation, test, and release evidence for every
-declared platform. The canonical action table, UI design exemption, active
+declared app. The canonical action table, UI design exemption, active
 revalidation, delivery evidence, and reopen history formats live in
 `template/knowledge/wiki/LIFECYCLE.md`.
 
@@ -236,7 +236,7 @@ planned write set and wait for confirmation before writing.
 If new intake conflicts with the current wiki, move the intake folder to
 `knowledge/intake/quarantined/` with an explanation instead of guessing.
 
-### Use exact platform IDs
+### Use exact app IDs
 
 Use:
 

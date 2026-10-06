@@ -23,7 +23,7 @@ and, after explicit confirmation, write one feature-only transition:
 - Accept only the exact source pair `status: raw` and `owner: po`.
 - This action processes one feature page. It does not process, move, or rename
   anything under `knowledge/intake/pending/`, `processed/`, or `quarantined/`.
-- Preserve the existing `advisory-review`, `sources`, `platforms`, and valid
+- Preserve the existing `advisory-review`, `sources`, `apps`, and valid
   tracked questions. Keep `owner: po`.
 - Raw input is an authoring source. If it already has the canonical structured
   sections and substantive values required for `specified`, verify and preserve
@@ -63,7 +63,7 @@ required feature sections, including:
 - `## Summary`
 - `## User story`
 - `## Acceptance criteria`
-- `## Platform scope`
+- `## App scope`
 - `## Open questions`
 - `## Design`
 - `## Related features`
@@ -72,7 +72,7 @@ required feature sections, including:
 - `## Post-ship notes`
 
 A raw page written by `po-intake` already carries Summary, User story, Acceptance
-criteria, Open questions, and Platform scope, and leaves Design, Related features,
+criteria, Open questions, and App scope, and leaves Design, Related features,
 API surface, Board review summary, and Post-ship notes empty. Complete those five with
 one line each: supported content, or an explicit statement that nothing exists yet
 (for example `Not started.`, `None identified.`, `None.` under API surface,
@@ -97,8 +97,8 @@ updates. In both cases, never perform an unverified status-only write.
 
 - The feature ID and filename resolve to one canonical page.
 - Required feature frontmatter and the feature page shape are valid.
-- The declared platform list is valid and its `## Platform scope` section is
-  present and limited to the feature's platforms.
+- The declared app list is valid and its `## App scope` section is
+  present and limited to the feature's apps.
 - The proposed body (which may be unchanged when the raw body is verified as
   complete) supplies every required section with either supported content or an
   explicit owned question.

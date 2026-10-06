@@ -54,7 +54,7 @@ from prism_cli.presets import PRESETS, get_preset
 from prism_cli.status import build_status
 from prism_cli.ui import SelectOption, colorize, filter_select_options, panel, review_key_value, truncate_visible, visible_length
 from prism_cli.wiki_graph import build_graph, render_mermaid
-from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
+from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_app, wiki_search, wiki_show
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.workspace import MANIFEST_FILE, load_workspace
 from tests.manifest_fixtures import manifest_text
@@ -720,7 +720,7 @@ class WorkspaceManifestTests(unittest.TestCase):
         assert result.manifest is not None
         self.assertEqual(2, result.manifest.schema_version)
         self.assertEqual("Prism App", result.manifest.project_name)
-        self.assertEqual(["backend"], result.manifest.platforms)
+        self.assertEqual(["backend"], result.manifest.app_ids)
 
 
 class WorkspaceStatusTests(unittest.TestCase):
@@ -772,6 +772,7 @@ class WorkspaceStatusTests(unittest.TestCase):
             (root / "README.md").write_text("", encoding="utf-8")
             (root / "CONTEXT.md").write_text("", encoding="utf-8")
             create_wiki_skeleton(root)
+            (root / MANIFEST_FILE).unlink()
 
             result = build_status(root)
             data = result.to_dict()
@@ -799,7 +800,7 @@ class WorkspaceStatusTests(unittest.TestCase):
         self.assertEqual("error", result.confidence)
         self.assertIn("invalid-feature-status", codes)
         self.assertIn("invalid-feature-owner", codes)
-        self.assertIn("invalid-platform-id", codes)
+        self.assertIn("unknown-app-id", codes)
 
     def test_status_reports_manifest_filesystem_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -877,7 +878,7 @@ class WikiQueryTests(unittest.TestCase):
         self.assertEqual(cli_module.cmd_wiki_show, parser.parse_args(["wiki", "show", "F-001"]).func)
         self.assertEqual(cli_module.cmd_wiki_blockers, parser.parse_args(["wiki", "blockers"]).func)
         self.assertEqual(cli_module.cmd_wiki_owner, parser.parse_args(["wiki", "owner", "po"]).func)
-        self.assertEqual(cli_module.cmd_wiki_platform, parser.parse_args(["wiki", "platform", "backend"]).func)
+        self.assertEqual(cli_module.cmd_wiki_app, parser.parse_args(["wiki", "app", "backend"]).func)
         self.assertEqual(cli_module.cmd_wiki_search, parser.parse_args(["wiki", "search", "checkout"]).func)
 
     def test_wiki_show_returns_feature_and_requirements(self) -> None:
@@ -893,7 +894,7 @@ class WikiQueryTests(unittest.TestCase):
 
         self.assertEqual("wiki show", data["command"])
         self.assertEqual("Checkout", data["facts"]["feature"]["title"])
-        self.assertEqual(1, len(data["facts"]["feature"]["platform_requirements"]))
+        self.assertEqual(1, len(data["facts"]["feature"]["app_requirements"]))
         self.assertEqual(1, len(data["facts"]["feature"]["linked_context"]["design"]))
         self.assertIn("facts", data)
         self.assertNotIn("wiki", data)
@@ -903,6 +904,8 @@ class WikiQueryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
+            (root / MANIFEST_FILE).unlink()
+            (root / ".copier-answers.yml").write_text("_src_path: test-template\nplatforms: [backend]\n", encoding="utf-8")
             write_feature(root)
             write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
 
@@ -946,7 +949,7 @@ class WikiQueryTests(unittest.TestCase):
         self.assertEqual(1, data["facts"]["feature_count"])
         self.assertEqual(1, data["facts"]["open_question_count"])
 
-    def test_wiki_platform_returns_features_and_requirements(self) -> None:
+    def test_wiki_app_returns_features_and_requirements(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
@@ -954,19 +957,19 @@ class WikiQueryTests(unittest.TestCase):
             write_index(root, "| F-001 | Checkout | ready-for-dev | dev | done | 2026-01-01 |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
 
-            data = wiki_platform(root, "backend")
+            data = wiki_app(root, "backend")
 
         self.assertEqual(1, data["facts"]["feature_count"])
-        self.assertEqual(1, data["facts"]["platform_requirement_count"])
+        self.assertEqual(1, data["facts"]["app_requirement_count"])
 
-    def test_wiki_platform_excludes_raw_features_from_active_queue(self) -> None:
+    def test_wiki_app_excludes_raw_features_from_active_queue(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="raw", owner="po", platforms=["backend"])
             write_index(root, "| F-001 | Checkout | raw | po | not-needed | 2026-01-01 |\n")
 
-            data = wiki_platform(root, "backend")
+            data = wiki_app(root, "backend")
 
         self.assertEqual(0, data["facts"]["feature_count"])
 
@@ -1010,7 +1013,7 @@ class GeneratedPromptContractTests(unittest.TestCase):
             "wiki-show.md.jinja",
             "wiki-blockers.md.jinja",
             "wiki-owner.md.jinja",
-            "wiki-platform.md.jinja",
+            "wiki-app.md.jinja",
             "wiki-query.md.jinja",
             "lint-wiki.md.jinja",
         ]
@@ -1022,7 +1025,7 @@ class GeneratedPromptContractTests(unittest.TestCase):
             self.assertIn("read-only", text)
 
     def test_generated_codex_skills_prefer_cli_with_fallback(self) -> None:
-        skill_names = ["wiki-show", "wiki-blockers", "wiki-owner", "wiki-platform", "wiki-query", "lint-wiki"]
+        skill_names = ["wiki-show", "wiki-blockers", "wiki-owner", "wiki-app", "wiki-query", "lint-wiki"]
         for skill_name in skill_names:
             text = (cli_module.REPO_ROOT / "template" / ".agents" / "skills" / skill_name / "SKILL.md.jinja").read_text(encoding="utf-8")
             self.assertIn("Primary path", text)
@@ -1092,12 +1095,12 @@ class GeneratedPromptContractTests(unittest.TestCase):
             cli_module.REPO_ROOT / "template" / ".claude" / "commands" / "wiki-show.md.jinja",
             cli_module.REPO_ROOT / "template" / ".claude" / "commands" / "wiki-blockers.md.jinja",
             cli_module.REPO_ROOT / "template" / ".claude" / "commands" / "wiki-owner.md.jinja",
-            cli_module.REPO_ROOT / "template" / ".claude" / "commands" / "wiki-platform.md.jinja",
+            cli_module.REPO_ROOT / "template" / ".claude" / "commands" / "wiki-app.md.jinja",
             cli_module.REPO_ROOT / "template" / ".claude" / "commands" / "lint-wiki.md.jinja",
             cli_module.REPO_ROOT / "template" / ".agents" / "skills" / "wiki-show" / "SKILL.md.jinja",
             cli_module.REPO_ROOT / "template" / ".agents" / "skills" / "wiki-blockers" / "SKILL.md.jinja",
             cli_module.REPO_ROOT / "template" / ".agents" / "skills" / "wiki-owner" / "SKILL.md.jinja",
-            cli_module.REPO_ROOT / "template" / ".agents" / "skills" / "wiki-platform" / "SKILL.md.jinja",
+            cli_module.REPO_ROOT / "template" / ".agents" / "skills" / "wiki-app" / "SKILL.md.jinja",
             cli_module.REPO_ROOT / "template" / ".agents" / "skills" / "lint-wiki" / "SKILL.md.jinja",
         ]
         for path in prompt_paths:
@@ -1109,9 +1112,9 @@ class GeneratedPromptContractTests(unittest.TestCase):
     def test_schema_defines_canonical_blocker_semantics(self) -> None:
         text = (cli_module.REPO_ROOT / "template" / "knowledge" / "wiki" / "SCHEMA.md").read_text(encoding="utf-8")
 
-        self.assertIn("`missing-design`: any UI-platform feature", text)
+        self.assertIn("`missing-design`: any feature in `ready-for-dev`, `in-dev`, or `done` whose scope includes an app with a UI", text)
         self.assertIn("`api-contract-not-ready`: any feature", text)
-        self.assertIn("`cross-platform-dependency`: any platform-requirement page", text)
+        self.assertIn("`cross-app-dependency`: any app-requirement page", text)
 
     def test_wiki_workflow_documents_read_only_lint_default(self) -> None:
         text = (cli_module.REPO_ROOT / "docs" / "wiki-workflow.md").read_text(encoding="utf-8")
@@ -1143,7 +1146,7 @@ class WikiLintTests(unittest.TestCase):
             create_wiki_skeleton(root)
             feature_path = root / "knowledge" / "wiki" / "features" / "F-001-broken.md"
             feature_path.write_text(
-                "---\nid: F-001\nstatus: unknown\nowner: qa\nadvisory-review: pending\nplatforms: [ios]\n---\n\n## Summary\nBroken.\n",
+                "---\nid: F-001\nstatus: unknown\nowner: qa\nadvisory-review: pending\napps: [ios]\n---\n\n## Summary\nBroken.\n",
                 encoding="utf-8",
             )
 
@@ -1154,7 +1157,7 @@ class WikiLintTests(unittest.TestCase):
         self.assertIn("missing-feature-frontmatter", codes)
         self.assertIn("invalid-feature-status", codes)
         self.assertIn("invalid-feature-owner", codes)
-        self.assertIn("invalid-platform-id", codes)
+        self.assertIn("unknown-app-id", codes)
 
     def test_lint_uses_full_feature_id_from_filename_when_frontmatter_id_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1168,7 +1171,7 @@ class WikiLintTests(unittest.TestCase):
                 "owner: po\n"
                 "introduced: 2026-01-01\n"
                 "last-updated: 2026-01-01\n"
-                "platforms: [backend]\n"
+                "apps: [backend]\n"
                 "sources: []\n"
                 "advisory-review: not-needed\n"
                 "---\n",
@@ -1181,7 +1184,7 @@ class WikiLintTests(unittest.TestCase):
                 "owner: po\n"
                 "introduced: 2026-01-01\n"
                 "last-updated: 2026-01-01\n"
-                "platforms: [backend]\n"
+                "apps: [backend]\n"
                 "sources: []\n"
                 "advisory-review: not-needed\n"
                 "---\n",
@@ -1253,7 +1256,7 @@ class WikiLintTests(unittest.TestCase):
                 "owner: po\n"
                 "introduced: 2026-01-01\n"
                 "last-updated: 2026-01-01\n"
-                "platforms: [backend]\n"
+                "apps: [backend]\n"
                 "sources: []\n"
                 "advisory-review: not-needed\n"
                 "---\n",
@@ -1266,7 +1269,7 @@ class WikiLintTests(unittest.TestCase):
         self.assertNotIn("malformed-frontmatter", codes)
         self.assertNotIn("missing-feature-frontmatter", codes)
 
-    def test_lint_reports_missing_platform_requirements_for_ready_feature(self) -> None:
+    def test_lint_reports_missing_app_requirements_for_ready_feature(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
@@ -1274,7 +1277,7 @@ class WikiLintTests(unittest.TestCase):
             write_platform_requirement(root, feature_id="F-001", platform="backend")
 
             result = lint_wiki(root)
-            diagnostics = [diagnostic for diagnostic in result.diagnostics if diagnostic.code == "missing-platform-requirements"]
+            diagnostics = [diagnostic for diagnostic in result.diagnostics if diagnostic.code == "missing-app-requirements"]
 
         self.assertEqual(1, len(diagnostics))
         self.assertIn("mobile-ios", diagnostics[0].message)
@@ -1340,7 +1343,7 @@ class WikiGraphTests(unittest.TestCase):
         write_feature(root, status="ready-for-dev", owner="dev", platforms=["backend"])
         (root / "knowledge" / "wiki" / "features" / "F-002-refunds.md").write_text(
             "---\nid: F-002\ntitle: Refunds\nstatus: raw\nowner: po\nintroduced: 2026-01-01\n"
-            "last-updated: 2026-01-01\nplatforms: [backend]\nsources: []\nadvisory-review: not-needed\n---\n\n"
+            "last-updated: 2026-01-01\napps: [backend]\nsources: []\nadvisory-review: not-needed\n---\n\n"
             "## Summary\nRefund handling.\n\n## Related features\n- [F-001](F-001-checkout.md) - refunds follow checkout\n- F-999 does not exist\n",
             encoding="utf-8",
         )
@@ -1368,8 +1371,8 @@ class WikiGraphTests(unittest.TestCase):
             data = build_graph(root)
 
         edges = {(edge["source"], edge["target"], edge["kind"]): edge["evidence"] for edge in data["facts"]["edges"]}
-        self.assertEqual("frontmatter-platforms", edges[("F-001", "platform:backend", "targets")])
-        self.assertEqual("frontmatter-feature-id", edges[("F-001", "preq:F-001-backend", "has-requirement")])
+        self.assertEqual("frontmatter-apps", edges[("F-001", "app:backend", "targets")])
+        self.assertEqual("frontmatter-feature-id", edges[("F-001", "areq:F-001-backend", "has-requirement")])
         self.assertEqual("frontmatter-feature-id", edges[("F-001", "design:F-001-checkout", "has-design")])
         self.assertEqual("frontmatter-feature-id", edges[("F-001", "api:F-001", "has-contract")])
         self.assertEqual("frontmatter-feature-id", edges[("F-001", "review:F-001-review", "has-review")])
@@ -1378,7 +1381,7 @@ class WikiGraphTests(unittest.TestCase):
         self.assertEqual("related-features-section", edges[("F-002", "F-001", "related")])
         self.assertEqual("markdown-link", edges[("ADR-001", "P-001", "links-to")])
 
-    def test_node_ids_and_platform_nodes(self) -> None:
+    def test_node_ids_and_app_nodes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             self._rich_workspace(root)
@@ -1386,9 +1389,9 @@ class WikiGraphTests(unittest.TestCase):
 
         node_ids = {node["id"] for node in data["facts"]["nodes"]}
         self.assertIn("design:F-001-checkout", node_ids)
-        self.assertIn("preq:F-001-backend", node_ids)
-        self.assertIn("platform:backend", node_ids)
-        self.assertNotIn("platform:mobile-ios", node_ids)
+        self.assertIn("areq:F-001-backend", node_ids)
+        self.assertIn("app:backend", node_ids)
+        self.assertNotIn("app:mobile-ios", node_ids)
 
     def test_malformed_page_appears_with_error_health(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1537,7 +1540,7 @@ class WikiGraphHtmlTests(unittest.TestCase):
             create_wiki_skeleton(root)
             args = Namespace(
                 path=str(root), json=False, mermaid=False, view="lifecycle", feature=None,
-                platform=None, html=str(root / "knowledge" / "evil.html"), open=False, serve=False, port=8321,
+                app=None, html=str(root / "knowledge" / "evil.html"), open=False, serve=False, port=8321,
             )
             with contextlib.redirect_stderr(io.StringIO()):
                 exit_code = cli_module.cmd_wiki_graph(args)
@@ -1551,7 +1554,7 @@ class WikiGraphHtmlTests(unittest.TestCase):
             create_wiki_skeleton(root)
             args = Namespace(
                 path=str(root), json=False, mermaid=False, view="lifecycle", feature=None,
-                platform=None, html=None, open=True, serve=False, port=8321,
+                app=None, html=None, open=True, serve=False, port=8321,
             )
             before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
             with patch("prism_cli.graph_server.serve_graph", return_value=0) as serve:
@@ -1585,7 +1588,7 @@ class WikiGraphHtmlTests(unittest.TestCase):
 def create_wiki_skeleton(root: Path) -> None:
     wiki = root / "knowledge" / "wiki"
     (wiki / "features").mkdir(parents=True)
-    (wiki / "platform-requirements").mkdir()
+    (wiki / "app-requirements").mkdir()
     (wiki / "advisory").mkdir()
     for directory in ("personas", "business-rules", "design", "api-contracts", "decisions"):
         (wiki / directory).mkdir()
@@ -1595,6 +1598,8 @@ def create_wiki_skeleton(root: Path) -> None:
     (wiki / "LIFECYCLE.md").write_text("# Lifecycle\n", encoding="utf-8")
     (wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 14\n---\n", encoding="utf-8")
     write_index(root)
+    # The features in these tests are scoped to generated apps, which the workspace model must declare.
+    write_manifest(root, platforms=["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"])
 
 
 def write_manifest(root: Path, project_name: str = "Prism App", platforms: list[str] | None = None) -> None:
@@ -1638,7 +1643,7 @@ def write_feature(
         f"owner: {owner}\n"
         "introduced: 2026-01-01\n"
         "last-updated: 2026-01-01\n"
-        f"platforms: {platform_yaml}\n"
+        f"apps: {platform_yaml}\n"
         "sources: []\n"
         f"advisory-review: {advisory_review}\n"
         "---\n\n"
@@ -1648,10 +1653,10 @@ def write_feature(
 
 
 def write_platform_requirement(root: Path, feature_id: str, platform: str, status: str = "pending") -> None:
-    (root / "knowledge" / "wiki" / "platform-requirements" / f"{feature_id}-{platform}.md").write_text(
+    (root / "knowledge" / "wiki" / "app-requirements" / f"{feature_id}-{platform}.md").write_text(
         "---\n"
         f"feature-id: {feature_id}\n"
-        f"platform: {platform}\n"
+        f"app: {platform}\n"
         f"status: {status}\n"
         "---\n\n"
         "## What to build\nImplement it.\n",

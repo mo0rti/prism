@@ -32,15 +32,15 @@ different source pair is a stop condition.
 ## Evidence and confirmation
 
 Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md`, the complete feature, every declared
-platform-requirement page, any applicable API contract, linked context, workspace
+app-requirement page, any applicable API contract, linked context, workspace
 identity, advisory state, delivery evidence, and active `revalidation` domains.
 
-Delivery evidence is an input to this command. For every declared platform, get
+Delivery evidence is an input to this command. For every declared app, get
 the implementation artifact, the test command and result, and the release
 artifact or target from the developer, or read them from the current
 `## Delivery evidence` table when it already holds them. Write them into the
-proposed feature page as that table: one row per declared platform in the
-`| Platform | Implementation | Tests | Release |` cell order, each cell a
+proposed feature page as that table: one row per declared app in the
+`| App | Implementation | Tests | Release |` cell order, each cell a
 substantive reference. The same preview then shows the evidence rows and the
 status change, and no hand edit is needed first. Ask the developer for any value
 you do not have; never invent or imply a delivery claim. The connected board
@@ -49,7 +49,7 @@ rejects a proposal whose table has no rows or an invalid row with
 problem. A transition preflight reports the table recorded on the page now; an
 empty table is expected until the proposal supplies it.
 
-For every declared platform, verify the actual implementation artifact, test
+For every declared app, verify the actual implementation artifact, test
 result, and release artifact or target the evidence names. A substantive table
 cell, file presence, or clean lint result is not verification. When a reference
 cannot be checked from here, say so in the proposed `## Post-ship notes`: that
@@ -62,8 +62,8 @@ the domains supported by that fresh evidence. Evaluate that proposal while the
 current source remains unchanged.
 
 Require a `## Delivery evidence` table in the proposal with exactly one
-substantive Implementation, Tests, and Release entry for every declared platform. Require
-applicable platform requirements to be `done`, applicable API contracts to be
+substantive Implementation, Tests, and Release entry for every declared app. Require
+applicable app requirements to be `done`, applicable API contracts to be
 `implemented`, and no unresolved revalidation or open-question blocker after
 the proposed fresh evidence is evaluated. Pending or `in-progress` requirement
 pages and an `agreed` API contract may be proposed as complete only when the
@@ -91,8 +91,8 @@ On the feature page change only the lifecycle metadata, `## Delivery evidence` a
 `## Post-ship notes`, and add no other section heading (not even an empty
 `## Reopen history`); in a linked requirement or API contract page change only `status`.
 
-Partial platform delivery remains `in-dev`; do not mark a feature done until all
-declared platforms have current delivery evidence. If a multi-file write is
+Partial app delivery remains `in-dev`; do not mark a feature done until all
+declared apps have current delivery evidence. If a multi-file write is
 partial, report the exact observed changes and stop for fresh recovery; no
 transaction is implied. The preflight and any copied request are copy-only and
 never authorize a write. Decline or cancel means no mutation.

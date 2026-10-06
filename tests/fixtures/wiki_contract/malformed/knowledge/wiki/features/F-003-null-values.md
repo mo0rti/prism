@@ -5,7 +5,7 @@ status:
 owner: []
 introduced: 2020-01-01
 last-updated: 2020-01-01
-platforms: [backend, 7]
+apps: [backend, 7]
 sources: []
 advisory-review: not-needed
 ---

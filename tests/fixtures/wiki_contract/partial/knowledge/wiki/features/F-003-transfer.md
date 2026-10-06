@@ -5,7 +5,7 @@ status: ready-for-dev
 owner: dev
 introduced: 2026-09-01
 last-updated: 2026-09-01
-platforms: [backend, web-user-app]
+apps: [backend, web-user-app]
 sources: []
 advisory-review: done
 ---

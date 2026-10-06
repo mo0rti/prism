@@ -13,7 +13,7 @@
    hairline (light through the prism). Palette validated
    (dataviz six-checks, both themes, all 10 pairs).
    Phases: PO=blue · Design=amber · Dev=aqua · Done=green ·
-   Platform=orange · context=recessive neutral.
+   App=orange · context=recessive neutral.
    ============================================================ */
 :root, html[data-theme="dark"] {
   --page: #0d0d0d;
@@ -29,7 +29,7 @@
   --design: #c98500;
   --dev: #199e70;
   --done: #008300;
-  --platform: #d95926;
+  --app: #d95926;
   --context: #898781;
   --warning: #fab219;
   --critical: #d03b3b;
@@ -51,7 +51,7 @@ html[data-theme="light"] {
   --design: #eda100;
   --dev: #1baf7a;
   --done: #008300;
-  --platform: #eb6834;
+  --app: #eb6834;
   --context: #898781;
   --warning: #b97e00;
   --critical: #d03b3b;
@@ -90,7 +90,7 @@ header {
 }
 .prism-glyph {
   width: 19px; height: 19px; flex: none;
-  background: conic-gradient(from 210deg, var(--po), var(--design), var(--dev), var(--platform), var(--po));
+  background: conic-gradient(from 210deg, var(--po), var(--design), var(--dev), var(--app), var(--po));
   clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
 }
 .wordmark { font-size: 12px; letter-spacing: .38em; font-weight: 700; white-space: nowrap; }
@@ -120,7 +120,7 @@ header {
 
 .spectrum {
   height: 2px; flex: none; z-index: 29;
-  background: linear-gradient(90deg, var(--po), var(--design), var(--dev), var(--done), var(--platform), var(--po));
+  background: linear-gradient(90deg, var(--po), var(--design), var(--dev), var(--done), var(--app), var(--po));
   background-size: 300% 100%;
   animation: spectrumDrift 18s linear infinite;
 }
@@ -177,7 +177,7 @@ header {
 .pipe-num { font-size: 12px; font-weight: 700; color: var(--stage-c, var(--muted)); }
 .pipe-name { font-size: 10px; letter-spacing: .18em; font-weight: 700; }
 .pipe-who { font-size: 8.5px; letter-spacing: .18em; color: var(--muted); text-transform: uppercase; }
-.pipe-who.you { color: var(--platform); font-weight: 700; }
+.pipe-who.you { color: var(--app); font-weight: 700; }
 .pipe-detail {
   margin: 18px 26px 0; padding: 13px 2px 14px; border-top: 1px solid var(--hairline);
   font-size: 12.5px; color: var(--ink-2); min-height: 44px; line-height: 1.6;
@@ -354,11 +354,11 @@ main { position: relative; flex: 1; overflow: hidden; }
 .card.intake { --stage-color: var(--muted); }
 .card.intake.quarantined { --stage-color: var(--critical); }
 
-/* ---------- platforms ---------- */
-#platform-view { padding: 16px 20px 24px; display: flex; flex-direction: column; gap: 12px; }
+/* ---------- apps ---------- */
+#app-view { padding: 16px 20px 24px; display: flex; flex-direction: column; gap: 12px; }
 .lane { background: var(--surface); border: 1px solid var(--hairline); border-radius: 11px; padding: 13px 15px; animation: rise .5s cubic-bezier(.2,.8,.25,1) both; }
 .lane h3 { display: flex; align-items: center; gap: 9px; font-size: 12px; letter-spacing: .08em; margin-bottom: 10px; font-family: ui-monospace, Consolas, monospace; }
-.lane h3 i { width: 12px; height: 12px; background: var(--platform); clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0% 50%); }
+.lane h3 i { width: 12px; height: 12px; background: var(--app); clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0% 50%); }
 .lane h3 .count { margin-left: auto; font-size: 9.5px; color: var(--muted); letter-spacing: .12em; }
 .lane .features { display: flex; flex-wrap: wrap; gap: 8px; }
 .fchip {
@@ -534,7 +534,7 @@ main { position: relative; flex: 1; overflow: hidden; }
   .search { flex: 1 1 100%; min-width: 0; margin-left: 0; }
   .search input { width: 100%; min-width: 0; }
 
-  #board-view, #platform-view { padding: 12px; }
+  #board-view, #app-view { padding: 12px; }
   #board-view { overflow-x: auto; }
   .board { grid-auto-flow: column; grid-auto-columns: minmax(236px, 74vw); grid-template-columns: none; width: max-content; min-width: 100%; min-height: auto; }
   .column { min-width: 236px; min-height: 0; }
@@ -575,7 +575,7 @@ main { position: relative; flex: 1; overflow: hidden; }
       <button data-view="firstrun">Guide</button>
       <button data-view="graph" class="active">Graph</button>
       <button data-view="board">Board</button>
-      <button data-view="platform">Platforms</button>
+      <button data-view="app">Apps</button>
     </div>
     <div class="chips" id="type-chips"></div>
     <div class="search">
@@ -591,7 +591,7 @@ main { position: relative; flex: 1; overflow: hidden; }
       <div class="empty-state" id="empty-state" hidden></div>
     </section>
     <section class="view" id="board-view" inert aria-hidden="true"></section>
-    <section class="view" id="platform-view" inert aria-hidden="true"></section>
+    <section class="view" id="app-view" inert aria-hidden="true"></section>
     <aside class="panel" id="panel" inert aria-hidden="true"></aside>
   </main>
 
@@ -615,9 +615,9 @@ const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const STAGES = ["raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done"];
 const STAGE_PHASE = { raw: "po", specified: "po", "ready-for-design": "design", "in-design": "design", "ready-for-dev": "dev", "in-dev": "dev", done: "done" };
 const READY_STAGES = new Set(["ready-for-design", "ready-for-dev"]);
-const CONTEXT_TYPES = ["design", "platform-requirement", "api-contract", "business-rule", "persona", "decision", "advisory-review"];
+const CONTEXT_TYPES = ["design", "app-requirement", "api-contract", "business-rule", "persona", "decision", "advisory-review"];
 const TYPE_LABELS = {
-  feature: "Features", platform: "Platforms", design: "Design", "platform-requirement": "Requirements",
+  feature: "Features", app: "Apps", design: "Design", "app-requirement": "Requirements",
   "api-contract": "Contracts", "business-rule": "Rules", persona: "Personas", decision: "Decisions", "advisory-review": "Reviews",
 };
 const SURFACES = [
@@ -632,14 +632,14 @@ const PIPE_STAGES = [
   { n: "03", name: "CLARIFY", who: "PO", color: "po", cmd: "po-clarify", desc: "Open questions get answered by their owner: <code>po-clarify</code> for the PO, <code>design-clarify</code> for the designer and <code>dev-clarify</code> for the developer. Clarification stays stage-neutral until its workflow is confirmed." },
   { n: "04", name: "DESIGN", who: "DESIGNER", color: "design", cmd: "design-intake", desc: "Design artifacts attach to the feature; UI states and interactions get covered before development starts." },
   { n: "05", name: "BOARD", who: "ADVISORY", color: "design", cmd: "board-review", desc: "Domain-sensitive features pass the advisory board — project-specific expert personas reviewing conflicts, gaps, and risk before a line of code." },
-  { n: "06", name: "BUILD", who: "DEV", color: "dev", cmd: "prep-sprint", desc: "Review platform requirements and source evidence before development; the dashboard prepares a request but never starts a host job." },
+  { n: "06", name: "BUILD", who: "DEV", color: "dev", cmd: "prep-sprint", desc: "Review app requirements and source evidence before development; the dashboard prepares a request but never starts a host job." },
   { n: "07", name: "SHIP", who: "TEAM", color: "done", cmd: "dev-done", desc: "Shipped evidence is reviewed before the wiki records completion. Reopen requests keep the next destination explicit." },
 ];
 
 const state = {
   data: ENVELOPE,
   view: "graph",
-  visibleTypes: new Set(["feature", "platform"]),
+  visibleTypes: new Set(["feature", "app"]),
   query: "",
   selected: null,
   hovered: null,
@@ -2565,13 +2565,13 @@ let C = {};
 function refreshColors() {
   C = {
     po: css("--po"), design: css("--design"), dev: css("--dev"), done: css("--done"),
-    platform: css("--platform"), context: css("--context"), warning: css("--warning"),
+    app: css("--app"), context: css("--context"), warning: css("--warning"),
     critical: css("--critical"), ink: css("--ink"), ink2: css("--ink-2"), muted: css("--muted"),
     surface: css("--surface"), grid: css("--grid"), glow: css("--glow") === "1",
   };
 }
 function phaseColor(node) {
-  if (node.type === "platform") return C.platform;
+  if (node.type === "app") return C.app;
   if (node.type !== "feature") return C.context;
   return C[STAGE_PHASE[node.status] || "po"] || C.po;
 }
@@ -2897,7 +2897,7 @@ function renderAll(first) {
   renderHeader(); renderStatusline();
   renderStats(); renderChips(); renderLegend();
   renderFirstRunPage();
-  renderBoard(); renderPlatforms();
+  renderBoard(); renderApps();
   if (state.transitionPreview) renderTransitionDialog(false);
   if (graph) { requestAnimationFrame(sizeGraph); applyGraphData(first === true); }
   if (first === true) switchView(featureNodes().length ? "graph" : "firstrun");
@@ -2947,10 +2947,10 @@ function renderChips() {
   const wrap = document.getElementById("type-chips");
   const counts = {};
   for (const n of state.data.facts.nodes) counts[n.type] = (counts[n.type] || 0) + 1;
-  const order = ["feature", "platform", ...CONTEXT_TYPES];
+  const order = ["feature", "app", ...CONTEXT_TYPES];
   wrap.innerHTML = order.filter(t => counts[t]).map(t => {
     const on = state.visibleTypes.has(t);
-    const color = t === "feature" ? C.po : t === "platform" ? C.platform : C.context;
+    const color = t === "feature" ? C.po : t === "app" ? C.app : C.context;
     return `<span class="chip${on ? " on" : ""}" aria-pressed="${on}" data-type="${escapeHtml(t)}"><i style="background:${color}"></i>${escapeHtml(TYPE_LABELS[t] || t)}<span class="n">${counts[t]}</span></span>`;
   }).join("");
   wrap.querySelectorAll(".chip").forEach(chip => bindKeyboardAction(chip, () => {
@@ -2974,7 +2974,7 @@ function matchesQuery(node) {
   return node.id.toLowerCase().includes(q) || String(node.title || "").toLowerCase().includes(q);
 }
 function nodeRadius(node) {
-  if (node.type === "platform") return 10;
+  if (node.type === "app") return 10;
   if (node.type === "feature") return 7.5 + Math.min(3.5, (degree[node.id] || 0) * 0.35);
   return 6;
 }
@@ -3010,12 +3010,12 @@ function paintNode(node, ctx, scale) {
   const alpha = nodeAlpha(node);
   ctx.save();
   ctx.globalAlpha = alpha;
-  if (C.glow && alpha > 0.5 && node.type !== "platform" && node.health === "ok") {
+  if (C.glow && alpha > 0.5 && node.type !== "app" && node.health === "ok") {
     ctx.shadowColor = color; ctx.shadowBlur = node.type === "feature" ? 14 : 7;
   }
   const broken = node.health && node.health !== "ok";
   const ready = node.type === "feature" && READY_STAGES.has(node.status);
-  if (node.type === "platform") {
+  if (node.type === "app") {
     drawHex(ctx, node.x, node.y, r);
     ctx.fillStyle = color; ctx.fill();
   } else {
@@ -3047,7 +3047,7 @@ function paintNode(node, ctx, scale) {
     ctx.strokeStyle = C.surface; ctx.lineWidth = 1; ctx.stroke();
   }
   const focused = state.hovered === node.id || state.selected === node.id;
-  const showLabel = node.type === "platform" || focused ||
+  const showLabel = node.type === "app" || focused ||
     (node.type === "feature" && scale > 1.05) || (node.type !== "feature" && scale > 1.5);
   if (showLabel && alpha > 0.5) {
     const label = node.type === "feature" ? node.id : (node.title || node.id);
@@ -3212,16 +3212,16 @@ function renderBoard() {
   bindBoardInteractions(view);
 }
 
-/* ==================== platforms ==================== */
-function renderPlatforms() {
-  const platforms = state.data.facts.nodes.filter(n => n.type === "platform");
+/* ==================== apps ==================== */
+function renderApps() {
+  const apps = state.data.facts.nodes.filter(n => n.type === "app");
   const edges = state.data.facts.edges;
-  const html = platforms.map((p, i) => {
+  const html = apps.map((p, i) => {
     const featureIds = edges.filter(e => e.kind === "targets" && e.target === p.id).map(e => e.source);
     const chips = featureIds.map(fid => {
       const f = nodesById[fid]; if (!f) return "";
-      const platformSuffix = p.id.split(":")[1];
-      const reqEdge = edges.find(e => e.kind === "has-requirement" && e.source === fid && e.target.endsWith("-" + platformSuffix));
+      const appId = p.id.slice("app:".length);
+      const reqEdge = edges.find(e => e.kind === "has-requirement" && e.source === fid && e.target.toLowerCase() === ("areq:" + fid + "-" + appId).toLowerCase());
       const req = reqEdge ? nodesById[reqEdge.target] : null;
       const reqStatus = req ? (req.status || "unknown") : "no requirement";
       const reqColor = reqStatus === "done" ? C.done : reqStatus === "in-progress" ? C.dev : C.muted;
@@ -3229,10 +3229,10 @@ function renderPlatforms() {
         <span class="req" style="color:${reqColor}">req: ${escapeHtml(reqStatus)}</span></div>`;
     }).join("");
     return `<div class="lane" style="animation-delay:${REDUCED ? 0 : i * 0.07}s"><h3><i></i>${escapeHtml(p.title)}<span class="count">${featureIds.length} FEATURE${featureIds.length === 1 ? "" : "S"}</span></h3>
-      <div class="features">${chips || '<span class="none">No features target this platform yet.</span>'}</div></div>`;
+      <div class="features">${chips || '<span class="none">No features target this app yet.</span>'}</div></div>`;
   }).join("");
-  const view = document.getElementById("platform-view");
-  view.innerHTML = html || '<div class="lane"><span class="none">No platform targets found in the wiki.</span></div>';
+  const view = document.getElementById("app-view");
+  view.innerHTML = html || '<div class="lane"><span class="none">No app targets found in the wiki.</span></div>';
   view.querySelectorAll(".fchip").forEach(chip => {
     chip.addEventListener("click", () => selectNode(chip.dataset.id));
     chip.addEventListener("keydown", e => {
@@ -3287,7 +3287,7 @@ function renderPanel(node) {
   const blockers = blockersByFeature[node.id] || [];
   const blockerHtml = blockers.length
     ? `<div class="section"><h4>BLOCKERS - action required</h4>${blockers.map(b => {
-        const guidance = b.code === "missing-platform-requirements"
+        const guidance = b.code === "missing-app-requirements"
           ? "Review with the owning design or delivery workflow; design-handoff is not an automatic repair from this stage."
           : "Review with the owning workflow; this dashboard does not run a promotion for this blocker.";
         return `<div class="blocker-item"><div class="code">${escapeHtml(b.code || "unknown blocker")}</div>${escapeHtml(b.message || "No blocker message supplied.")}
@@ -3407,7 +3407,7 @@ function renderLegend() {
       <span class="lg"><i style="background:${C.dev}"></i>Dev phase</span>
       <span class="lg"><i style="background:${C.done}"></i>Done</span>
       <b>Marks</b>
-      <span class="lg"><i class="hex" style="background:${C.platform}"></i>Platform</span>
+      <span class="lg"><i class="hex" style="background:${C.app}"></i>App</span>
       <span class="lg"><i style="background:${C.context}"></i>Context page</span>
       <span class="lg"><i class="ring"></i>Advisory pending</span>
       <span class="lg"><i class="badge-i"></i>Blocked</span>
@@ -3438,7 +3438,7 @@ function switchView(view) {
   document.getElementById(view + "-view").classList.add("active");
   if (view === "firstrun") renderFirstRunPage();
   if (view === "board") renderBoard();
-  if (view === "platform") renderPlatforms();
+  if (view === "app") renderApps();
   if (view === "graph") requestAnimationFrame(sizeGraph);
 }
 document.getElementById("views").addEventListener("click", e => {
@@ -3470,7 +3470,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "1") switchView("firstrun");
   if (e.key === "2") switchView("graph");
   if (e.key === "3") switchView("board");
-  if (e.key === "4") switchView("platform");
+  if (e.key === "4") switchView("app");
 });
 
 /* ==================== live mode ==================== */

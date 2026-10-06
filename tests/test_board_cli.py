@@ -190,7 +190,7 @@ class BoardServeFirstRunTests(unittest.TestCase):
         self.root = Path(temporary.name)
         self.assertEqual(
             "applied",
-            apply_install(self.root, plan_install(self.root, name="First run", platforms=["backend"]))["status"],
+            apply_install(self.root, plan_install(self.root, name="First run", apps=["backend"]))["status"],
         )
 
     def run_cli(self, *argv):

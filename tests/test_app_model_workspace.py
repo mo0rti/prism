@@ -58,7 +58,7 @@ MATURITY = {
 
 
 def install_workflow(root: Path, *, name: str = "Two apps", platforms: tuple[str, ...] = ("backend",)) -> None:
-    receipt = apply_install(root, plan_install(root, name=name, platforms=list(platforms)))
+    receipt = apply_install(root, plan_install(root, name=name, apps=list(platforms)))
     if receipt["status"] != "applied":
         raise AssertionError(f"Workflow install did not apply: {receipt}")
 
@@ -130,8 +130,8 @@ class TwoAppModelTests(TwoAppWorkspaceCase):
 
     def test_inspection_lists_all_three_app_ids(self) -> None:
         inspection = inspect_workspace(self.root)
-        self.assertEqual(["customer-android", "partner-android", "backend"], inspection.platforms)
-        self.assertEqual(["customer-android", "partner-android", "backend"], inspection.manifest.platforms)
+        self.assertEqual(["customer-android", "partner-android", "backend"], inspection.app_ids)
+        self.assertEqual(["customer-android", "partner-android", "backend"], inspection.manifest.app_ids)
         self.assertEqual([], error_diagnostics(inspection.contract_diagnostics))
 
     def test_status_reports_each_apps_maturity(self) -> None:
@@ -183,7 +183,7 @@ class TwoAppModelTests(TwoAppWorkspaceCase):
         self.assertEqual([], [item for item in result.diagnostics if item.code == "missing-workflow-scope"])
         self.assertEqual([], error_diagnostics(result.diagnostics))
         inspection = inspect_workspace(self.root)
-        self.assertEqual([], inspection.platforms)
+        self.assertEqual([], inspection.app_ids)
         self.assertEqual([], error_diagnostics(inspection.contract_diagnostics))
 
     def test_project_platforms_in_a_version_two_manifest_is_an_error(self) -> None:
@@ -270,7 +270,7 @@ class TwoAppBoardTests(TwoAppWorkspaceCase):
         service = self.start_service()
 
         self.assertEqual({"read_only": False, "reason": None}, service.compatibility())
-        self.assertEqual(["customer-android", "partner-android", "backend"], service._platforms)
+        self.assertEqual(["customer-android", "partner-android", "backend"], service._app_ids)
         grant = service.create_participant("Writer", "human", writable=True)
         actor = service.authenticate(grant["token"])
         self.assertTrue(actor.writable)
@@ -326,7 +326,7 @@ class TwoAppBoardTests(TwoAppWorkspaceCase):
         self.assertNotEqual(baseline, BoardServiceIdentity(self.root))
         service = BoardService(self.root)
         self.addCleanup(service.close)
-        self.assertEqual(["customer-android", "backend"], service._platforms)
+        self.assertEqual(["customer-android", "backend"], service._app_ids)
 
     def test_renaming_an_app_changes_only_its_name(self) -> None:
         baseline = BoardServiceIdentity(self.root)
@@ -357,7 +357,7 @@ class TwoAppBoardTests(TwoAppWorkspaceCase):
         declare_two_apps(self.root, apps=[], app_maturity={})
         service = self.start_service()
         self.assertEqual({"read_only": False, "reason": None}, service.compatibility())
-        self.assertEqual([], service._platforms)
+        self.assertEqual([], service._app_ids)
         actor = service.authenticate(service.create_participant("Writer", "human", writable=True)["token"])
         self.assertTrue(actor.writable)
         self.assertEqual([], service.discover(actor)["board"]["apps"])
@@ -431,7 +431,7 @@ class SingleAppBoardIdentityTests(unittest.TestCase):
         service = BoardService(self.root)
         self.addCleanup(service.close)
         self.assertEqual(identity, service._identity_facts)
-        self.assertEqual(["backend", "mobile-android"], service._platforms)
+        self.assertEqual(["backend", "mobile-android"], service._app_ids)
         self.assertEqual({"read_only": False, "reason": None}, service.compatibility())
 
     def test_invalid_app_scopes_leave_the_board_read_only(self) -> None:
@@ -465,7 +465,7 @@ class SingleAppBoardIdentityTests(unittest.TestCase):
             path=Path(MANIFEST_FILE),
             data={"schema_version": 2, "apps": [{"id": "backend", "stack": "spring-backend"}], "app_maturity": {"backend": {"level": "baseline", "n": 1}}},
         )
-        self.assertEqual(["backend"], manifest.platforms)
+        self.assertEqual(["backend"], manifest.app_ids)
         self.assertEqual({"backend": {"level": "baseline"}}, manifest.app_maturity)
         self.assertFalse(hasattr(manifest, "platform_maturity"))
         self.assertEqual(["backend"], manifest.model.active_app_ids)
@@ -517,7 +517,7 @@ class WorkflowInstallAppsTests(TwoAppWorkspaceCase):
         before = (self.root / MANIFEST_FILE).read_bytes()
         for upgrade in (True, False):
             with self.subTest(upgrade=upgrade):
-                plan = plan_install(self.root, platforms=["backend"], upgrade=upgrade)
+                plan = plan_install(self.root, apps=["backend"], upgrade=upgrade)
                 self.assertTrue(any("`--app` cannot change the apps of this workspace" in item and "`prism app add`" in item for item in plan["conflicts"]), plan["conflicts"])
                 self.assertEqual("conflict", apply_install(self.root, plan)["status"])
         self.assertEqual(before, (self.root / MANIFEST_FILE).read_bytes())
@@ -529,7 +529,7 @@ class WorkflowInstallAppsTests(TwoAppWorkspaceCase):
         data["repositories"] = []
         data["workflow"]["asset_digest"] = "0" * 64
         write_manifest(self.root, data)
-        plan = plan_install(self.root, platforms=["mobile-ios", "backend"], upgrade=True)
+        plan = plan_install(self.root, apps=["mobile-ios", "backend"], upgrade=True)
         self.assertEqual([], plan["conflicts"])
         self.assertEqual(["backend", "mobile-ios"], plan["apps"])
 
@@ -752,10 +752,10 @@ class BaselineCompatibilityTests(unittest.TestCase):
         expected = json.loads((FIXTURES / "full.json").read_text(encoding="utf-8"))
         self.assertEqual({"board", "cli", "inspection", "lint", "status"}, set(expected))
         self.assertEqual({"doctor-workspace", "status-json", "validate", "wiki-lint-json"}, set(expected["cli"]))
-        self.assertEqual(["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"], expected["inspection"]["platforms"])
-        self.assertEqual(["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"], expected["board"]["identity-platforms"])
+        self.assertEqual(["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"], expected["inspection"]["app_ids"])
+        self.assertEqual(["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"], expected["board"]["identity-app-ids"])
         workflow_only = json.loads((FIXTURES / "workflow-only.json").read_text(encoding="utf-8"))
-        self.assertEqual(["backend", "mobile-android"], workflow_only["board"]["identity-platforms"])
+        self.assertEqual(["backend", "mobile-android"], workflow_only["board"]["identity-app-ids"])
         self.assertEqual({"read_only": False, "reason": None}, expected["board"]["compatibility"])
 
 

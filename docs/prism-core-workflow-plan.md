@@ -46,7 +46,7 @@ Agents connect to a Prism board through one shared, provider-neutral interface. 
 | Workflow board | The board served by `prism board serve` previews and applies the three human actions. The `prism wiki graph` dashboard and static exports prepare copyable requests and never write. |
 | Agent connection | One MCP endpoint at `/mcp` (Streamable HTTP) exposes 14 tools: `discover`, `list_skills`, `get_skill`, `get_skill_reference`, `list_workspace`, `read_workspace`, `query`, `preview_skill`, `preview_transition`, `get_preview`, `apply`, `operation`, `recover` and `changes`. The browser uses the same service through the board API. |
 | Workspace identity | A workspace manifest records a board UUID, the workflow version, the mode and the canonical asset digest. The core contract does not require generated application directories or Copier answers. |
-| Ownership and scope | Owners are the workflow roles `po`, `designer` and `dev`. Platform identifiers are the five built-in scope labels. A participant name labels a locally registered grant and is not a verified identity. |
+| Ownership and scope | Owners are the workflow roles `po`, `designer` and `dev`. App IDs are the scope labels of the workspace's apps. A participant name labels a locally registered grant and is not a verified identity. |
 | Updates | `prism update` merges the workspace manifest field by field and stops before changing the project when both sides changed the same field differently. |
 | Live state | The board derives its live indicator from state, fetches again after a reconnect, disables copying while stale, and shows "Board session expired" with **Reconnect** after a service restart or an expired session. |
 
@@ -104,7 +104,7 @@ The server performs deterministic validation and bounded writes. The human perfo
 
 ### Request-only actions
 
-`dev-done` previews all applicable completion evidence, review obligations, proposed requirement and API completions, and post-ship notes, but it stays request-only. The delivery evidence is an input to the agent skill: the developer supplies the per-platform references, and the proposal writes them into the feature page in the same preview as the completion. Missing or invalid evidence and unresolved blocking facts prevent completion; a person or agent verifies the evidence before applying the full action contract. No gesture runs tests, deploys the application or redefines Done.
+`dev-done` previews all applicable completion evidence, review obligations, proposed requirement and API completions, and post-ship notes, but it stays request-only. The delivery evidence is an input to the agent skill: the developer supplies the per-app references, and the proposal writes them into the feature page in the same preview as the completion. Missing or invalid evidence and unresolved blocking facts prevent completion; a person or agent verifies the evidence before applying the full action contract. No gesture runs tests, deploys the application or redefines Done.
 
 Reopening uses the named reopen routes and their required reasons and revalidation. It is not an unrestricted backward status change, and its direct human form is not supported.
 

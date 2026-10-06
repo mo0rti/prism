@@ -27,7 +27,7 @@ class WorkflowInstallTests(unittest.TestCase):
     def test_empty_workspace_preview_apply_and_repeat_are_idempotent(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            plan = plan_install(root, name="Editorial", platforms=["web-user-app", "backend"])
+            plan = plan_install(root, name="Editorial", apps=["web-user-app", "backend"])
 
             self.assertEqual([], plan["conflicts"])
             self.assertEqual("workflow", plan["mode"])
@@ -102,7 +102,7 @@ class WorkflowInstallTests(unittest.TestCase):
             binding.write_bytes(b"# User-owned connected rules\n")
             before = binding.read_bytes()
 
-            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            plan = plan_install(root, name="Editorial", apps=["backend"])
             self.assertTrue(any("CONNECTED.md" in item for item in plan["conflicts"]))
             receipt = apply_install(root, plan)
             self.assertEqual("conflict", receipt["status"])
@@ -144,7 +144,7 @@ class WorkflowInstallTests(unittest.TestCase):
             (root / CONNECTED).parent.mkdir(parents=True)
             (root / CONNECTED).write_bytes(earlier)
 
-            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            plan = plan_install(root, name="Editorial", apps=["backend"])
             self.assertEqual([], plan["conflicts"])
             self.assertEqual([CONNECTED], plan["updated"])
             self.assertEqual("applied", apply_install(root, plan)["status"])
@@ -158,7 +158,7 @@ class WorkflowInstallTests(unittest.TestCase):
             (root / CONNECTED).parent.mkdir(parents=True)
             (root / CONNECTED).write_bytes(edited)
 
-            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            plan = plan_install(root, name="Editorial", apps=["backend"])
             self.assertTrue(any("CONNECTED.md" in item for item in plan["conflicts"]))
             self.assertEqual([], plan["updated"])
             receipt = apply_install(root, plan)
@@ -176,7 +176,7 @@ class WorkflowInstallTests(unittest.TestCase):
                 path = root / relative
                 crlf_copies[relative] = path.read_bytes().replace(b"\n", b"\r\n")
                 path.write_bytes(crlf_copies[relative])
-            for plan in (plan_install(root, upgrade=True), plan_install(root, name="Editorial", platforms=["backend"])):
+            for plan in (plan_install(root, upgrade=True), plan_install(root, name="Editorial", apps=["backend"])):
                 self.assertEqual([], plan["conflicts"])
                 self.assertEqual([], plan["changes"])
                 self.assertIn(CONNECTED, plan["unchanged"])
@@ -208,7 +208,7 @@ class WorkflowInstallTests(unittest.TestCase):
             edited = (root / CONNECTED).read_bytes().replace(b"\n", b"\r\n") + b"A team rule added by the user.\r\n"
             (root / CONNECTED).write_bytes(edited)
 
-            for plan in (plan_install(root, upgrade=True), plan_install(root, name="Editorial", platforms=["backend"])):
+            for plan in (plan_install(root, upgrade=True), plan_install(root, name="Editorial", apps=["backend"])):
                 self.assertTrue(any("CONNECTED.md" in item for item in plan["conflicts"]))
             self.assertEqual("conflict", apply_install(root, plan_install(root, upgrade=True))["status"])
             self.assertEqual(edited, (root / CONNECTED).read_bytes())
@@ -217,7 +217,7 @@ class WorkflowInstallTests(unittest.TestCase):
         rule = "knowledge/** text eol=lf"
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            plan = plan_install(root, name="Editorial", apps=["backend"])
             self.assertIn(".gitattributes", [item["path"] for item in plan["changes"]])
             self.assertFalse((root / ".gitattributes").exists(), "planning must not mutate the workspace")
             self.assertEqual("applied", apply_install(root, plan)["status"])
@@ -231,7 +231,7 @@ class WorkflowInstallTests(unittest.TestCase):
             root = Path(temporary)
             existing = "*.sh text eol=lf\r\n*.png binary"
             (root / ".gitattributes").write_bytes(existing.encode("utf-8"))
-            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            plan = plan_install(root, name="Editorial", apps=["backend"])
             change = next(item for item in plan["changes"] if item["path"] == ".gitattributes")
             self.assertEqual(existing, change["before"])
             self.assertTrue(change["after"].startswith(existing + "\r\n"), "existing content and line-ending style are preserved")
@@ -242,11 +242,11 @@ class WorkflowInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / ".gitattributes").write_bytes(b"# mine\n/knowledge/** eol=lf text\n")
-            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            plan = plan_install(root, name="Editorial", apps=["backend"])
             self.assertNotIn(".gitattributes", [item["path"] for item in plan["changes"]])
             self.assertIn(".gitattributes", plan["unchanged"])
             (root / ".gitattributes").write_bytes(b"knowledge/** text eol=crlf\n")
-            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            plan = plan_install(root, name="Editorial", apps=["backend"])
             change = next(item for item in plan["changes"] if item["path"] == ".gitattributes")
             self.assertTrue(change["after"].startswith("knowledge/** text eol=crlf\n"))
             self.assertTrue(change["after"].endswith(rule + "\n"), "a later rule wins in gitattributes")
@@ -284,7 +284,7 @@ class WorkflowInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / ".gitignore").write_text("# initial\n", encoding="utf-8")
-            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            plan = plan_install(root, name="Editorial", apps=["backend"])
             (root / ".gitignore").write_text("# external edit\n", encoding="utf-8")
 
             receipt = apply_install(root, plan)
@@ -299,7 +299,7 @@ class WorkflowInstallTests(unittest.TestCase):
             root = Path(temporary)
             sentinel = root / "prism.workspace.yml.prism-tmp"
             sentinel.write_bytes(b"user data stays here")
-            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            plan = plan_install(root, name="Editorial", apps=["backend"])
 
             self.assertEqual("applied", apply_install(root, plan)["status"])
             self.assertEqual(b"user data stays here", sentinel.read_bytes())
@@ -307,7 +307,7 @@ class WorkflowInstallTests(unittest.TestCase):
     def test_manifest_changed_at_write_time_is_preserved_as_recoverable_partial(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            plan = plan_install(root, name="Editorial", apps=["backend"])
             external_manifest = b"user-created manifest after preview\n"
             original_write = workflow_installer._atomic_write
 
@@ -488,7 +488,7 @@ class WorkflowInstallTests(unittest.TestCase):
             except OSError as exc:
                 self.skipTest(f"directory symlink creation is unavailable: {exc}")
             with self.assertRaisesRegex(ValueError, "symlink, junction, or reparse"):
-                plan_install(link, name="Editorial", platforms=["backend"])
+                plan_install(link, name="Editorial", apps=["backend"])
 
     def test_cloud_ancestor_is_rejected_with_cloud_guidance(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -497,7 +497,7 @@ class WorkflowInstallTests(unittest.TestCase):
             root.mkdir(parents=True)
             with fake_reparse(base / "synced", CLOUD_TAG):
                 with self.assertRaises(ValueError) as planned:
-                    plan_install(root, name="Editorial", platforms=["backend"])
+                    plan_install(root, name="Editorial", apps=["backend"])
                 with self.assertRaises(ValueError) as validated:
                     workflow_installer._validated_root(root)
             self.assertIn(CLOUD_SYNC_MESSAGE, str(planned.exception))
@@ -526,7 +526,7 @@ class WorkflowInstallTests(unittest.TestCase):
             placeholder = wiki / "SCHEMA.md"
             placeholder.write_text("# Schema\n", encoding="utf-8")
             with fake_reparse(placeholder, CLOUD_TAG):
-                plan = plan_install(root, name="Editorial", platforms=["backend"])
+                plan = plan_install(root, name="Editorial", apps=["backend"])
                 self.assertTrue(any(CLOUD_SYNC_MESSAGE in item for item in plan["conflicts"]))
                 self.assertEqual("conflict", apply_install(root, plan)["status"])
             self.assertFalse((root / "prism.workspace.yml").exists())
@@ -542,7 +542,7 @@ class WorkflowInstallTests(unittest.TestCase):
             except OSError as exc:
                 self.skipTest(f"file symlink creation is unavailable: {exc}")
 
-            plan = plan_install(root, name="Editorial", platforms=["backend"])
+            plan = plan_install(root, name="Editorial", apps=["backend"])
             self.assertTrue(any("SCHEMA.md" in item and "symlink" in item for item in plan["conflicts"]))
             self.assertEqual("conflict", apply_install(root, plan)["status"])
             self.assertTrue(link.is_symlink())
@@ -564,7 +564,7 @@ def _shipped_history(history: dict[str, list[bytes]]):
 
 
 def _adopt_empty_workspace(root: Path) -> None:
-    plan = plan_install(root, name="Editorial", platforms=["backend"])
+    plan = plan_install(root, name="Editorial", apps=["backend"])
     if plan["conflicts"]:
         raise AssertionError(plan["conflicts"])
     receipt = apply_install(root, plan)

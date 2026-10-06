@@ -24,7 +24,7 @@ Each machine says where it keeps a checkout of an external repository in `prism.
 
 ```yaml
 repositories:
-  mobile-apps: /home/me/src/mobile-apps    # an absolute path
+  mobile-apps: /srv/checkouts/mobile-apps    # an absolute path
 ```
 
 `prism.local.yml` is per machine and is not committed: a generated project's `.gitignore` lists it, and `prism workflow install` adds the rule to an existing `.gitignore`. Without a usable entry for an external repository, the workspace still loads. Status shows one `external-repository-unresolved` warning for that repository and reports its `checkout` as `unresolved`; with a checkout that exists, the warning goes and `checkout` is `resolved`. Status never prints the local path. Prism only checks that the checkout exists. It does not read from it or write to it, and it ignores a `prism.local.yml` or a checkout that is a symlink or reparse point.
@@ -118,7 +118,7 @@ prism status
 
 A workspace created by `prism workflow install` without `--app` has `apps: []`. It loads, lints, reports status (`Apps: none declared`) and is served by the board with writes enabled; `discover` lists no apps. Register apps later with `prism app add`.
 
-An operation that needs an app scope still stops at its own check. A feature that names `backend` in a workspace with no apps is blocked at the `platform-scope` check of `po-handoff` and its preview, and a write that scopes a feature is rejected with `invalid_feature_output`. Both messages say that the workspace declares no apps and point to `prism app add`.
+An operation that needs an app scope still stops at its own check. A feature that names `backend` in a workspace with no apps is blocked at the `app-scope` check of `po-handoff` and its preview, and a write that scopes a feature is rejected with `invalid_feature_output`. Both messages say that the workspace declares no apps and point to `prism app add`.
 
 ## What the output looks like
 
@@ -150,4 +150,9 @@ An operation that needs an app scope still stops at its own check. A feature tha
 
 ## Feature scope
 
-Feature pages still declare their scope in the `platforms:` front matter with the five generated app IDs, requirement files are named `F-XXX-<id>.md` with the same IDs, and `prism wiki platform` takes one of them. An app with another ID is registered, reported and bound into the board identity, but a feature cannot name it in its scope yet.
+A feature's scope is its `apps:` front matter: a required list of app IDs of the workspace. Every ID must be an app in `prism.workspace.yml`, whatever its stack, and `platforms:` is not a valid field.
+
+- **App requirements:** each scoped app has one page, `knowledge/wiki/app-requirements/F-XXX-<app-id>.md`, whose front matter names the app with `app:`. The feature page lists each app under `## App scope`, and the delivery evidence table is keyed by app (`| App | Implementation | Tests | Release |`).
+- **Design:** a design gate asks whether any scoped app has `has-ui`. An app whose capability is `unknown` counts as having a UI, and lint reports each `unknown` capability once as `app-capability-unknown` (information).
+- **Queries:** `prism wiki app <app-id>`, the board's `app` query kind and the graph's `app:<id>` nodes take app IDs of the workspace.
+- **Two apps of one stack:** `customer-android` and `partner-android`, both `android-compose`, are two separate scopes: a feature that lists both needs both requirement pages and, because both have a UI, design evidence.

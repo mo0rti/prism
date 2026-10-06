@@ -17,7 +17,7 @@ The most important directories are:
 
 - `knowledge/wiki/features/`
 - `knowledge/wiki/design/`
-- `knowledge/wiki/platform-requirements/`
+- `knowledge/wiki/app-requirements/`
 - `knowledge/wiki/business-rules/`
 - `knowledge/wiki/api-contracts/`
 - `knowledge/wiki/advisory/`
@@ -61,9 +61,9 @@ the raw body is already structured, it may be verified and preserved; otherwise
 the missing sections are authored. It must show and confirm the body rather than
 performing an unverified status-only write. `po-handoff` remains the stricter
 specified-to-design handoff and checks factual Summary, User story, acceptance
-criteria, matching platform scope, PO questions, and advisory outcome.
+criteria, matching app scope, PO questions, and advisory outcome.
 
-`design-handoff` requires design evidence for UI platforms unless the feature
+`design-handoff` requires design evidence for apps with a UI (`has-ui`) unless the feature
 frontmatter has `design: not-applicable` and a nonblank
 `design-exemption-reason`, with the user's explicit confirmation in the final
 handoff preview. Non-UI features do not need a design page or exemption. When the
@@ -74,13 +74,13 @@ that API surface; the person confirming the handoff preview is the agreement. A
 downstream actions treat those domains as active until fresh evidence is
 verified and explicitly cleared.
 
-`dev-done` means shipped for every declared platform. The feature must have one
-substantive, verifiable `## Delivery evidence` row per declared platform with
+`dev-done` means shipped for every declared app. The feature must have one
+substantive, verifiable `## Delivery evidence` row per declared app with
 Implementation, Tests, and Release references, plus complete applicable
 requirements and API contracts. File presence and lint alone are not shipment
-evidence. A partial platform remains `in-dev`.
+evidence. A partial app remains `in-dev`.
 
-Reopen previews record the reason, impact, route, affected platforms/artifacts,
+Reopen previews record the reason, impact, route, affected apps/artifacts,
 and prior completion/release evidence. Confirmation appends that record to
 `## Reopen history`, removes prior active Delivery evidence so it cannot satisfy
 a future Done check, sets route-specific revalidation domains, and names exact
@@ -159,13 +159,13 @@ Typical flow:
 2. attach design artifacts with `design-intake`
 3. resolve open design questions with `design-clarify`
 4. start work with `design-start` after the PO handoff
-5. confirm platform implications in the wiki
+5. confirm app implications in the wiki
 6. use `design-handoff` when the feature is ready for development
 
 Helpful read/query commands:
 
 - `wiki-owner designer`
-- `wiki-platform <platform-id>`
+- `wiki-app <app-id>`
 - `wiki-query "text"` for targeted product context search
 
 ### If you are a Developer
@@ -175,7 +175,7 @@ Typical flow:
 1. read `WIKI_REPORT.md` when present, or run `feature-status`
 2. run `prep-sprint` to see what is actually ready
 3. use `wiki-show F-XXX` to assemble focused implementation context
-4. read platform requirements before implementation
+4. read app requirements before implementation
 5. use `dev-clarify` to answer dev-owned open questions, which block `dev-start`
 6. use `dev-start` to take confirmed ready-for-dev work
 7. use `dev-done` only when implementation is truly complete and shipped
@@ -184,7 +184,7 @@ Typical flow:
 Helpful read/query commands:
 
 - `wiki-blockers`
-- `wiki-platform <platform-id>`
+- `wiki-app <app-id>`
 - `wiki-query "text"`
 
 ## Orientation and Read/Query Commands
@@ -198,7 +198,7 @@ The current wiki usability layer includes:
 - `wiki-blockers`
 - `wiki-query`
 - `wiki-owner`
-- `wiki-platform`
+- `wiki-app`
 
 General workflow:
 
@@ -285,14 +285,14 @@ Linked context:
   - BR-004-checkout-address-validation.md
   - BR-011-payment-method-eligibility.md
 
-Platform requirements:
+App requirements:
 - backend: in-progress
 - mobile-ios: pending
 - mobile-android: pending
 - web-user-app: pending
 
 Current blockers:
-- api-contract-not-ready: mobile-ios platform requirements depend on the API contract status changing from draft to agreed
+- api-contract-not-ready: mobile-ios app requirements depend on the API contract status changing from draft to agreed
 - missing-design: design page does not define the expired payment-method state
 
 Suggested next action:
@@ -325,7 +325,7 @@ Feature file found, but linked implementation context is incomplete.
 
 Missing linked context:
 - No design page found
-- No platform requirements found for mobile-ios
+- No app requirements found for mobile-ios
 
 Next step:
 Create the missing linked files before treating this feature as fully implementation-ready.
@@ -341,10 +341,10 @@ Canonical blocker categories:
 
 - `pending-board-review`
 - `missing-design`
-- `missing-platform-requirements`
+- `missing-app-requirements`
 - `unresolved-open-questions`
 - `api-contract-not-ready`
-- `cross-platform-dependency`
+- `cross-app-dependency`
 
 Example:
 
@@ -352,7 +352,7 @@ Example:
 Blockers summary:
 - 2 pending board review
 - 1 missing design
-- 3 missing platform requirements
+- 3 missing app requirements
 - 2 unresolved open questions
 
 Blocked features:
@@ -364,10 +364,10 @@ F-009 - Subscription Pause
 - Next step: run board-review F-009 or explicitly skip with a documented reason
 
 F-012 - Saved Checkout
-- Category: missing-platform-requirements
+- Category: missing-app-requirements
 - Status: ready-for-dev
-- Why blocked: no platform requirements page exists for mobile-ios
-- Next step: generate or write the missing platform requirement before implementation continues
+- Why blocked: no app requirements page exists for mobile-ios
+- Next step: generate or write the missing app requirement before implementation continues
 ```
 
 No-blockers state:
@@ -376,7 +376,7 @@ No-blockers state:
 Blockers summary:
 - 0 pending board review
 - 0 missing design
-- 0 missing platform requirements
+- 0 missing app requirements
 - 0 unresolved open questions
 
 Blocked features:
@@ -512,13 +512,13 @@ Supported values:
 - none
 ```
 
-## `wiki-platform`
+## `wiki-app`
 
 Purpose:
 
-- show the active and ready features affecting one platform
+- show the active and ready features affecting one app
 
-Supported identifiers:
+Supported identifiers (the app IDs of the workspace; a default generated workspace has these):
 
 - `backend`
 - `mobile-android`
@@ -529,14 +529,14 @@ Supported identifiers:
 Example:
 
 ```text
-Platform view: mobile-ios
+App view: mobile-ios
 
 Active features:
 
 F-012 - Saved Checkout
 - Feature status: ready-for-dev
 - Advisory review: done
-- Platform requirement: pending
+- App requirement: pending
 - API contract: agreed
 - Blockers:
   - Design does not define expired payment-method handling
@@ -544,22 +544,22 @@ F-012 - Saved Checkout
 F-014 - Nutrition Goal Alerts
 - Feature status: in-design
 - Advisory review: pending
-- Platform requirement: not created
+- App requirement: not created
 - API contract: not applicable
 - Blockers:
   - Board review still pending
-  - No platform requirements page yet
+  - No app requirements page yet
 ```
 
-Invalid-platform example:
+Invalid-app example:
 
 ```text
-Platform view: ios
+App view: ios
 
 Problem:
-`ios` is not a valid platform identifier for Prism.
+`ios` is not an app of this workspace.
 
-Supported identifiers:
+Supported identifiers (the app IDs of the workspace; a default generated workspace has these):
 - backend
 - mobile-android
 - mobile-ios

@@ -40,7 +40,7 @@ complete workflow below and report facts proved by those files.
 2. Read `knowledge/wiki/SETTINGS.md` if present
 3. Read `knowledge/wiki/index.md`
 4. Read all feature files in `knowledge/wiki/features/`
-5. Read linked design, platform-requirements, api-contract, advisory-review, and
+5. Read linked design, app-requirements, api-contract, advisory-review, and
    business-rule files as needed to compute blocker counts, open-question counts, and
    recently updated pages
 6. Output the full pipeline view grouped by status
@@ -75,7 +75,7 @@ raw (N)             F-XXX - [title] | owner: po
 specified (N)       F-XXX - [title] | owner: po | open questions: N | board: pending
 ready-for-design    F-XXX - [title] | owner: designer | board: done
 in-design (N)       F-XXX - [title] | owner: designer
-ready-for-dev (N)   F-XXX - [title] | owner: dev | platforms: [list] | board: done
+ready-for-dev (N)   F-XXX - [title] | owner: dev | apps: [list] | board: done
 in-dev (N)          F-XXX - [title] | owner: dev
 done (N)            F-XXX - [title]
 
@@ -92,7 +92,7 @@ done (N)            F-XXX - [title]
 ## Blocker snapshot
 - pending-board-review: N
 - missing-design: N
-- missing-platform-requirements: N
+- missing-app-requirements: N
 - unresolved-open-questions: N
 
 ## WIKI_REPORT required sections

@@ -32,10 +32,10 @@ class WikiContractLintTests(unittest.TestCase):
             {
                 "pending-board-review",
                 "missing-design",
-                "missing-platform-requirements",
+                "missing-app-requirements",
                 "unresolved-open-questions",
                 "api-contract-not-ready",
-                "cross-platform-dependency",
+                "cross-app-dependency",
             },
             WIKI_BLOCKER_CODES,
         )
@@ -63,7 +63,7 @@ class WikiContractLintTests(unittest.TestCase):
         self.assertEqual({"F-003", "F-006"}, {diagnostic.feature_id for diagnostic in missing_design})
         self.assertFalse(any(diagnostic.feature_id == "F-001" for diagnostic in missing_design))
 
-        missing_requirements = self.diagnostics_for(result, "missing-platform-requirements")
+        missing_requirements = self.diagnostics_for(result, "missing-app-requirements")
         self.assertEqual({"F-006"}, {diagnostic.feature_id for diagnostic in missing_requirements})
         self.assertTrue(any("mobile-ios" in diagnostic.message for diagnostic in missing_requirements))
 
@@ -74,7 +74,7 @@ class WikiContractLintTests(unittest.TestCase):
         self.assertEqual({"F-003"}, {diagnostic.feature_id for diagnostic in api_contracts})
         self.assertTrue(all(Path(diagnostic.path).as_posix().endswith("api-contracts/F-003.md") for diagnostic in api_contracts))
 
-        cross_platform = self.diagnostics_for(result, "cross-platform-dependency")
+        cross_platform = self.diagnostics_for(result, "cross-app-dependency")
         self.assertEqual(2, len(cross_platform))
         self.assertTrue(all(diagnostic.feature_id == "F-003" for diagnostic in cross_platform))
 
@@ -86,7 +86,7 @@ class WikiContractLintTests(unittest.TestCase):
         self.assertIn("malformed-page", codes)
         self.assertIn("invalid-feature-status", codes)
         self.assertIn("invalid-feature-owner", codes)
-        self.assertIn("invalid-feature-platforms", codes)
+        self.assertIn("invalid-feature-apps", codes)
         self.assertIn("invalid-api-contract-status", codes)
         self.assertIn("invalid-wiki-stale-after-days", codes)
         self.assertIn("stale-page", codes)
@@ -99,6 +99,7 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+            shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
             (target_wiki / "api-contracts").mkdir(exist_ok=True)
             (target_wiki / "api-contracts" / "F-007-bad.md").write_text(
                 "---\nfeature-id: F-007\nversion: 1\nstatus:\n---\n\n## Endpoints\nGET /broken\n",
@@ -121,14 +122,15 @@ class WikiContractLintTests(unittest.TestCase):
                     target_wiki = workspace / "knowledge" / "wiki"
                     target_wiki.parent.mkdir(parents=True)
                     shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+                    shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
                     feature = target_wiki / "features" / "F-001-checkout.md"
                     body = feature.read_text(encoding="utf-8")
                     body = body.replace(
                         "status: specified\nowner: po\n",
                         f"status: {status}\nowner: {owner}\n",
                     ).replace(
-                        "platforms: [backend]\n",
-                        "platforms: [mobile-ios]\n",
+                        "apps: [backend]\n",
+                        "apps: [mobile-ios]\n",
                     ).replace(
                         "advisory-review: not-needed\n",
                         "advisory-review: not-needed\n"
@@ -151,13 +153,14 @@ class WikiContractLintTests(unittest.TestCase):
                     target_wiki = workspace / "knowledge" / "wiki"
                     target_wiki.parent.mkdir(parents=True)
                     shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+                    shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
                     feature = target_wiki / "features" / "F-001-checkout.md"
                     body = feature.read_text(encoding="utf-8").replace(
                         "status: specified\nowner: po\n",
                         "status: ready-for-dev\nowner: dev\n",
                     ).replace(
-                        "platforms: [backend]\n",
-                        "platforms: [mobile-ios]\n",
+                        "apps: [backend]\n",
+                        "apps: [mobile-ios]\n",
                     ).replace(
                         "advisory-review: not-needed\n",
                         "advisory-review: not-needed\n"
@@ -179,6 +182,7 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+            shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
             feature = target_wiki / "features" / "F-001-checkout.md"
             body = feature.read_text(encoding="utf-8").replace(
                 "status: specified\nowner: po\n",
@@ -194,15 +198,15 @@ class WikiContractLintTests(unittest.TestCase):
                 "|---|----------|-------|--------|\n"
                 "| 1 | Which settlement rule applies? | po | open |\n\n"
                 "## Delivery evidence\n"
-                "| Platform | Implementation | Tests | Release |\n"
+                "| App | Implementation | Tests | Release |\n"
                 "|---|---|---|---|\n"
                 "| backend | Synthetic implementation evidence | Synthetic test evidence | Synthetic release evidence |\n",
             )
             feature.write_text(body, encoding="utf-8")
-            requirement = target_wiki / "platform-requirements" / "F-001-backend.md"
+            requirement = target_wiki / "app-requirements" / "F-001-backend.md"
             requirement.parent.mkdir(parents=True, exist_ok=True)
             requirement.write_text(
-                "---\nfeature-id: F-001\nplatform: backend\nstatus: done\n---\n",
+                "---\nfeature-id: F-001\napp: backend\nstatus: done\n---\n",
                 encoding="utf-8",
             )
 
@@ -266,6 +270,7 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+            shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
             feature_path = target_wiki / "features" / "F-001-checkout.md"
             feature_path.write_text(
                 feature_path.read_text(encoding="utf-8")
@@ -287,6 +292,7 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+            shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
             (target_wiki / "design").mkdir(exist_ok=True)
             (target_wiki / "design" / "F-002-bytes.md").write_bytes(b"\xff\xfe\xfa")
 
@@ -302,6 +308,7 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+            shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
             (target_wiki / "design").mkdir(exist_ok=True)
             (target_wiki / "design" / "F-002-invalid-date.md").write_text(
                 "---\nfeature-id: F-001\ntitle: Invalid date\ndate: 2026-99-99\nfigma: none\n---\n",
@@ -319,6 +326,7 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+            shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
             (target_wiki / "index.md").write_bytes(b"\xff\xfe\xfa")
 
             result = lint_wiki(workspace, today=CHECK_DATE)
@@ -332,9 +340,10 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+            shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
             (target_wiki / "features" / "F-001-second.md").write_text(
                 "---\nid: F-001\ntitle: Duplicate checkout\nstatus: specified\nowner: po\n"
-                "introduced: 2026-09-01\nlast-updated: 2026-09-01\nplatforms: [backend]\n"
+                "introduced: 2026-09-01\nlast-updated: 2026-09-01\napps: [backend]\n"
                 "sources: []\nadvisory-review: not-needed\n---\n\n## Summary\nDuplicate.\n",
                 encoding="utf-8",
             )
@@ -355,6 +364,7 @@ class WikiContractLintTests(unittest.TestCase):
             target_wiki = workspace / "knowledge" / "wiki"
             target_wiki.parent.mkdir(parents=True)
             shutil.copytree(FIXTURES / "fresh" / "knowledge" / "wiki", target_wiki)
+            shutil.copyfile(FIXTURES / "fresh" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
             (target_wiki / "advisory").mkdir(exist_ok=True)
             (target_wiki / "advisory" / "PROJECT_FOUNDATION.md").write_text(
                 "# Project foundation\n\nSetup interview and rationale.\n",

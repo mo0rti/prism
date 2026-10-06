@@ -11,17 +11,16 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
+from prism_cli.app_model import CAPABILITIES, CAPABILITY_HAS_UI, UNKNOWN, WorkspaceModel
 from prism_cli.wiki_model import (
-    UI_PLATFORM_IDS,
     VALID_ADVISORY_REVIEW_STATES,
+    VALID_APP_REQUIREMENT_STATUSES,
     VALID_FEATURE_OWNERS,
     VALID_FEATURE_STATUSES,
     VALID_OPEN_QUESTION_OWNERS,
-    VALID_PLATFORM_IDS,
-    VALID_PLATFORM_REQUIREMENT_STATUSES,
+    AppRequirementPage,
     FeaturePage,
     MarkdownPage,
-    PlatformRequirementPage,
     extract_markdown_links,
     candidate_relative_markdown_link as _candidate_relative_link,
     normalize_feature_id,
@@ -35,31 +34,28 @@ from prism_cli.wiki_model import (
     parse_advisory_required_actions,
     parse_revalidation,
     read_feature_pages,
-    read_platform_requirement_pages,
+    read_app_requirement_pages,
     read_wiki_settings,
     read_wiki_pages,
     section_text,
     within_wiki_read_scope,
 )
-from prism_cli.workspace import detect_workspace_kind, inspect_workspace
+from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind, inspect_workspace, workspace_model
 
 
 DEFAULT_WIKI_STALE_AFTER_DAYS = 14
 PENDING_BOARD_REVIEW_STATUSES = {"ready-for-design", "in-design", "ready-for-dev", "in-dev"}
 DESIGN_REQUIRED_STATUSES = {"ready-for-dev", "in-dev", "done"}
-PLATFORM_REQUIREMENTS_REQUIRED_STATUSES = {"ready-for-dev", "in-dev"}
+APP_REQUIREMENTS_REQUIRED_STATUSES = {"ready-for-dev", "in-dev"}
 API_CONTRACT_DOWNSTREAM_STATUSES = {"ready-for-dev", "in-dev"}
 
-# Kept as a public compatibility name for callers that used the old constant;
-# the canonical implementation gates apply only to active implementation stages.
-READY_FOR_IMPLEMENTATION_STATUSES = {"ready-for-dev", "in-dev"}
 WIKI_BLOCKER_CODES = {
     "pending-board-review",
     "missing-design",
-    "missing-platform-requirements",
+    "missing-app-requirements",
     "unresolved-open-questions",
     "api-contract-not-ready",
-    "cross-platform-dependency",
+    "cross-app-dependency",
 }
 EXPECTED_OWNER_BY_STATUS = {
     "raw": "po",
@@ -251,21 +247,24 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
     stale_after_days, settings_diagnostics = _read_stale_after_days(wiki_root)
     diagnostics.extend(settings_diagnostics)
 
+    model = workspace_model(root, resolved=True)
+    diagnostics.extend(_lint_unknown_app_capabilities(model, root / MANIFEST_FILE))
+
     feature_pages = read_feature_pages(wiki_root)
-    requirement_pages = read_platform_requirement_pages(wiki_root)
+    requirement_pages = read_app_requirement_pages(wiki_root)
     all_pages = read_wiki_pages(wiki_root)
-    requirements_by_feature_platform = {
-        (normalize_feature_id(page.feature_id), page.platform): page
+    requirements_by_feature_app = {
+        (normalize_feature_id(page.feature_id), page.app): page
         for page in requirement_pages
-        if page.feature_id and page.platform
+        if page.feature_id and page.app
     }
 
     for requirement in requirement_pages:
-        diagnostics.extend(_lint_platform_requirement(requirement))
+        diagnostics.extend(_lint_app_requirement(requirement, model))
 
     features_by_id: dict[str, FeaturePage] = {}
     for feature in feature_pages:
-        diagnostics.extend(_lint_feature(feature))
+        diagnostics.extend(_lint_feature(feature, model))
         feature_id = feature.feature_id
         if normalize_feature_id(feature_id) in features_by_id:
             diagnostics.append(
@@ -276,15 +275,15 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
     requirement_keys: set[tuple[str, str]] = set()
     known_feature_ids = set(features_by_id)
     for requirement in requirement_pages:
-        if not requirement.feature_id or not requirement.platform:
+        if not requirement.feature_id or not requirement.app:
             continue
-        key = (normalize_feature_id(requirement.feature_id), requirement.platform)
+        key = (normalize_feature_id(requirement.feature_id), requirement.app)
         if key in requirement_keys:
-            diagnostics.append(_diag("duplicate-platform-requirement", "error", requirement.page.path,
+            diagnostics.append(_diag("duplicate-app-requirement", "error", requirement.page.path,
                 f"Multiple requirement pages declare `{key[0]}` / `{key[1]}`.", requirement.feature_id))
         requirement_keys.add(key)
         if key[0] not in known_feature_ids:
-            diagnostics.append(_diag("orphan-platform-requirement", "error", requirement.page.path,
+            diagnostics.append(_diag("orphan-app-requirement", "error", requirement.page.path,
                 f"Requirement refers to missing feature `{requirement.feature_id}`.", requirement.feature_id))
 
     for feature in feature_pages:
@@ -305,12 +304,13 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
     diagnostics.extend(
         _lint_feature_blockers(
             feature_pages,
-            requirements_by_feature_platform,
+            requirements_by_feature_app,
             _design_pages_by_feature(all_pages, wiki_root),
+            model,
         )
     )
     diagnostics.extend(_lint_api_contract_blockers(feature_pages, requirement_pages, all_pages, wiki_root))
-    diagnostics.extend(_lint_cross_platform_dependencies(requirement_pages, feature_pages, wiki_root))
+    diagnostics.extend(_lint_cross_app_dependencies(requirement_pages, feature_pages, wiki_root))
     diagnostics.extend(_lint_stale_pages(all_pages, wiki_root, stale_after_days, today or date.today()))
     diagnostics.extend(
         _lint_relative_links(
@@ -398,7 +398,7 @@ def _read_stale_after_days(wiki_root: Path) -> tuple[int, list[WikiDiagnostic]]:
 
 def _lint_done_completion(
     feature: FeaturePage,
-    requirement_pages: list[PlatformRequirementPage],
+    requirement_pages: list[AppRequirementPage],
     pages: list[MarkdownPage],
     wiki_root: Path,
 ) -> list[WikiDiagnostic]:
@@ -429,29 +429,29 @@ def _lint_done_completion(
                 )
             )
     requirements = {
-        (normalize_feature_id(requirement.feature_id), requirement.platform.strip().lower()): requirement
+        (normalize_feature_id(requirement.feature_id), requirement.app.strip().lower()): requirement
         for requirement in requirement_pages
-        if isinstance(requirement.feature_id, str) and isinstance(requirement.platform, str)
+        if isinstance(requirement.feature_id, str) and isinstance(requirement.app, str)
     }
-    for platform in feature.platforms:
-        requirement = requirements.get((feature_id, platform.strip().lower()))
+    for app_id in feature.apps:
+        requirement = requirements.get((feature_id, app_id.strip().lower()))
         if requirement is None:
             diagnostics.append(
                 _diag(
-                    "done-platform-requirement",
+                    "done-app-requirement",
                     "error",
                     feature.page.path,
-                    f"Done feature `{feature.feature_id}` requires a completed platform requirement for `{platform}`.",
+                    f"Done feature `{feature.feature_id}` requires a completed app requirement for `{app_id}`.",
                     feature.feature_id,
                 )
             )
         elif requirement.status != "done":
             diagnostics.append(
                 _diag(
-                    "done-platform-requirement",
+                    "done-app-requirement",
                     "error",
                     requirement.page.path,
-                    f"Done feature `{feature.feature_id}` has `{platform}` requirement status `{requirement.status}`; expected `done`.",
+                    f"Done feature `{feature.feature_id}` has `{app_id}` requirement status `{requirement.status}`; expected `done`.",
                     feature.feature_id,
                 )
             )
@@ -519,7 +519,7 @@ def _lint_done_completion(
 
 def _api_contract_pages_for_feature(
     feature: FeaturePage,
-    requirement_pages: list[PlatformRequirementPage],
+    requirement_pages: list[AppRequirementPage],
     pages: list[MarkdownPage],
     wiki_root: Path,
 ) -> list[MarkdownPage]:
@@ -538,7 +538,7 @@ def _api_contract_pages_for_feature(
         for requirement in requirement_pages
         if isinstance(requirement.feature_id, str)
         and normalize_feature_id(requirement.feature_id) == feature_id
-        and requirement.platform in feature.platforms
+        and requirement.app in feature.apps
     ]
     for source in sources:
         for raw_target in extract_markdown_links(source.body):
@@ -562,8 +562,9 @@ def _is_under(path: Path, root: Path) -> bool:
 
 def _lint_feature_blockers(
     feature_pages: list[FeaturePage],
-    requirements_by_feature_platform: dict[tuple[str | None, str | None], PlatformRequirementPage],
+    requirements_by_feature_app: dict[tuple[str | None, str | None], AppRequirementPage],
     designs_by_feature: dict[str, list[MarkdownPage]],
+    model: WorkspaceModel,
 ) -> list[WikiDiagnostic]:
     diagnostics: list[WikiDiagnostic] = []
     for feature in feature_pages:
@@ -581,23 +582,23 @@ def _lint_feature_blockers(
             )
 
         if feature.status in DESIGN_REQUIRED_STATUSES:
-            missing_design_platforms = sorted(
-                {platform_id for platform_id in feature.platforms if platform_id in UI_PLATFORM_IDS}
+            ui_apps = sorted(
+                {app_id for app_id in feature.apps if (app := model.app(app_id)) is not None and app.gate_capability(CAPABILITY_HAS_UI)}
             )
             if (
-                missing_design_platforms
+                ui_apps
                 and feature_id not in designs_by_feature
                 and not _has_valid_design_exemption(feature)
             ):
-                platforms = ", ".join(missing_design_platforms)
+                apps = ", ".join(ui_apps)
                 if feature.page.frontmatter.get("design") == "not-applicable":
                     message = (
-                        f"Feature `{feature_id}` declares `design: not-applicable` for UI platform(s) "
-                        f"{platforms}, but `design-exemption-reason` is missing or blank."
+                        f"Feature `{feature_id}` declares `design: not-applicable` for app(s) with a UI "
+                        f"{apps}, but `design-exemption-reason` is missing or blank."
                     )
                 else:
                     message = (
-                        f"Feature `{feature_id}` is {feature.status} for UI platform(s) {platforms} "
+                        f"Feature `{feature_id}` is {feature.status} for app(s) with a UI {apps} "
                         "but has no matching design page or valid confirmed design exemption."
                     )
                 diagnostics.append(
@@ -610,23 +611,23 @@ def _lint_feature_blockers(
                     )
                 )
 
-        if feature.status in PLATFORM_REQUIREMENTS_REQUIRED_STATUSES:
-            for platform_id in sorted(set(feature.platforms)):
-                if platform_id in VALID_PLATFORM_IDS and (
+        if feature.status in APP_REQUIREMENTS_REQUIRED_STATUSES:
+            for app_id in sorted(set(feature.apps)):
+                if model.app(app_id) is not None and (
                     normalize_feature_id(feature_id),
-                    platform_id,
-                ) not in requirements_by_feature_platform:
+                    app_id,
+                ) not in requirements_by_feature_app:
                     diagnostics.append(
                         _diag(
-                            "missing-platform-requirements",
+                            "missing-app-requirements",
                             "error",
                             path,
-                            f"Feature `{feature_id}` is {feature.status} but no platform requirement exists for `{platform_id}`.",
+                            f"Feature `{feature_id}` is {feature.status} but no app requirement exists for `{app_id}`.",
                             feature_id,
                         )
                     )
 
-        if feature.status in PLATFORM_REQUIREMENTS_REQUIRED_STATUSES:
+        if feature.status in APP_REQUIREMENTS_REQUIRED_STATUSES:
             open_questions, _ = parse_open_question_rows(feature.page.body)
             for row in open_questions:
                 if row["status"] == "open" and row["owner"] in VALID_OPEN_QUESTION_OWNERS:
@@ -669,7 +670,7 @@ def _design_pages_by_feature(pages: list[MarkdownPage], wiki_root: Path) -> dict
 
 def _lint_api_contract_blockers(
     feature_pages: list[FeaturePage],
-    requirement_pages: list[PlatformRequirementPage],
+    requirement_pages: list[AppRequirementPage],
     pages: list[MarkdownPage],
     wiki_root: Path,
 ) -> list[WikiDiagnostic]:
@@ -695,14 +696,14 @@ def _lint_api_contract_blockers(
             continue
         references: list[MarkdownPage] = []
         feature_id = normalize_feature_id(feature.feature_id)
-        declared_platforms = {platform.strip().lower() for platform in feature.platforms}
+        declared_apps = {app_id.strip().lower() for app_id in feature.apps}
         source_pages = [feature.page] + [
             requirement.page
             for requirement in requirement_pages
             if isinstance(requirement.feature_id, str)
             and normalize_feature_id(requirement.feature_id) == feature_id
-            and isinstance(requirement.platform, str)
-            and requirement.platform.strip().lower() in declared_platforms
+            and isinstance(requirement.app, str)
+            and requirement.app.strip().lower() in declared_apps
         ]
         for source in source_pages:
             for raw_target in extract_markdown_links(source.body):
@@ -735,8 +736,8 @@ def _lint_api_contract_blockers(
     return diagnostics
 
 
-def _lint_cross_platform_dependencies(
-    requirement_pages: list[PlatformRequirementPage],
+def _lint_cross_app_dependencies(
+    requirement_pages: list[AppRequirementPage],
     feature_pages: list[FeaturePage],
     wiki_root: Path,
 ) -> list[WikiDiagnostic]:
@@ -752,7 +753,7 @@ def _lint_cross_platform_dependencies(
 
         unfinished: set[tuple[str, str]] = set()
         for raw_target in extract_markdown_links(dependency_body):
-            target = _reference_path(requirement.page.path, raw_target, wiki_root, "platform-requirements")
+            target = _reference_path(requirement.page.path, raw_target, wiki_root, "app-requirements")
             if target is None:
                 continue
             target_feature = features_by_path.get(target)
@@ -760,9 +761,9 @@ def _lint_cross_platform_dependencies(
                 unfinished.add(("feature", target_feature.feature_id))
             target_requirement = requirements_by_path.get(target)
             if target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id):
-                unfinished.add(("platform requirement", _requirement_label(target_requirement)))
+                unfinished.add(("app requirement", _requirement_label(target_requirement)))
 
-        for directory, kind in (("features", "feature"), ("platform-requirements", "platform requirement")):
+        for directory, kind in (("features", "feature"), ("app-requirements", "app requirement")):
             for raw_target in _wiki_path_references(dependency_body, directory):
                 target = _reference_path(requirement.page.path, raw_target, wiki_root, directory)
                 if target is None:
@@ -771,8 +772,8 @@ def _lint_cross_platform_dependencies(
                 if kind == "feature" and target_feature is not None and _is_unfinished_feature(target_feature):
                     unfinished.add(("feature", target_feature.feature_id))
                 target_requirement = requirements_by_path.get(target)
-                if kind == "platform requirement" and target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id):
-                    unfinished.add(("platform requirement", _requirement_label(target_requirement)))
+                if kind == "app requirement" and target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id):
+                    unfinished.add(("app requirement", _requirement_label(target_requirement)))
 
         feature_by_name = {feature.page.path.name: feature for feature in feature_pages}
         requirement_by_name = {requirement.page.path.name: requirement for requirement in requirement_pages}
@@ -782,7 +783,7 @@ def _lint_cross_platform_dependencies(
                 unfinished.add(("feature", target_feature.feature_id))
             target_requirement = requirement_by_name.get(filename)
             if target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id):
-                unfinished.add(("platform requirement", _requirement_label(target_requirement)))
+                unfinished.add(("app requirement", _requirement_label(target_requirement)))
 
         plain_body = _MARKDOWN_LINK_PATTERN.sub(" ", dependency_body)
         plain_body = _FEATURE_FILE_PATTERN.sub(" ", plain_body)
@@ -799,16 +800,16 @@ def _lint_cross_platform_dependencies(
             (kind, target)
             for kind, target in unfinished
             if not (kind == "feature" and own_feature is not None and normalize_feature_id(target) == own_feature)
-            and not (kind == "platform requirement" and target == own_label)
+            and not (kind == "app requirement" and target == own_label)
         }
 
         for kind, target in sorted(unfinished):
             diagnostics.append(
                 _diag(
-                    "cross-platform-dependency",
+                    "cross-app-dependency",
                     "error",
                     requirement.page.path,
-                    f"Platform requirement `{_requirement_label(requirement)}` depends on unfinished {kind} `{target}`.",
+                    f"App requirement `{_requirement_label(requirement)}` depends on unfinished {kind} `{target}`.",
                     requirement.feature_id,
                 )
             )
@@ -820,10 +821,10 @@ def _is_unfinished_feature(feature: FeaturePage) -> bool:
 
 
 def _is_unfinished_requirement(
-    requirement: PlatformRequirementPage,
+    requirement: AppRequirementPage,
     features_by_id: dict[str, FeaturePage] | None = None,
 ) -> bool:
-    if requirement.status in VALID_PLATFORM_REQUIREMENT_STATUSES and requirement.status != "done":
+    if requirement.status in VALID_APP_REQUIREMENT_STATUSES and requirement.status != "done":
         return True
     if requirement.status != "done" or features_by_id is None or not isinstance(requirement.feature_id, str):
         return False
@@ -834,9 +835,9 @@ def _is_unfinished_requirement(
     return bool(errors or domains)
 
 
-def _requirement_label(requirement: PlatformRequirementPage) -> str:
-    if requirement.feature_id and requirement.platform:
-        return f"{requirement.feature_id}-{requirement.platform}"
+def _requirement_label(requirement: AppRequirementPage) -> str:
+    if requirement.feature_id and requirement.app:
+        return f"{requirement.feature_id}-{requirement.app}"
     return requirement.page.path.stem
 
 
@@ -888,7 +889,7 @@ def _lint_relative_links(
     pages: list[MarkdownPage],
     wiki_root: Path,
     feature_pages: list[FeaturePage],
-    requirement_pages: list[PlatformRequirementPage],
+    requirement_pages: list[AppRequirementPage],
 ) -> list[WikiDiagnostic]:
     wiki_root = _resolve(wiki_root)
     feature_by_path = {_resolve(feature.page.path): feature for feature in feature_pages}
@@ -969,14 +970,14 @@ def _is_non_source_page(path: Path, wiki_root: Path) -> bool:
         "features",
         "index.md",
         "personas",
-        "platform-requirements",
+        "app-requirements",
     }
 
 
 def _page_feature_id(
     page: MarkdownPage,
     feature_by_path: dict[Path, FeaturePage],
-    requirement_by_path: dict[Path, PlatformRequirementPage],
+    requirement_by_path: dict[Path, AppRequirementPage],
 ) -> str | None:
     feature = feature_by_path.get(_resolve(page.path))
     if feature is not None:
@@ -1160,7 +1161,7 @@ def _requires_frontmatter(path: Path, wiki_root: Path) -> bool:
     return directory == "advisory" and relative.name.startswith("F-") and relative.name.endswith("-review.md")
 
 
-def _lint_feature(feature: FeaturePage) -> list[WikiDiagnostic]:
+def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagnostic]:
     diagnostics: list[WikiDiagnostic] = []
     path = feature.page.path
     feature_id = feature.feature_id
@@ -1168,7 +1169,7 @@ def _lint_feature(feature: FeaturePage) -> list[WikiDiagnostic]:
         diagnostics.append(_diag("malformed-frontmatter", "error", path, message, feature_id))
 
     frontmatter = feature.page.frontmatter
-    required_fields = ("id", "title", "status", "owner", "introduced", "last-updated", "platforms", "sources", "advisory-review")
+    required_fields = ("id", "title", "status", "owner", "introduced", "last-updated", "apps", "sources", "advisory-review")
     for field_name in required_fields:
         if field_name not in frontmatter:
             diagnostics.append(_diag("missing-feature-frontmatter", "error", path, f"Required frontmatter field `{field_name}` is missing.", feature_id))
@@ -1229,7 +1230,7 @@ def _lint_feature(feature: FeaturePage) -> list[WikiDiagnostic]:
         )
 
     if feature.status == "done":
-        _delivery_evidence, delivery_errors = parse_delivery_evidence(feature.page.body, feature.platforms)
+        _delivery_evidence, delivery_errors = parse_delivery_evidence(feature.page.body, feature.apps)
         for message in delivery_errors:
             diagnostics.append(_diag("done-delivery-evidence", "error", path, message, feature_id))
 
@@ -1245,18 +1246,22 @@ def _lint_feature(feature: FeaturePage) -> list[WikiDiagnostic]:
                 )
             )
 
-    platforms_value = frontmatter.get("platforms")
-    if "platforms" in frontmatter and not isinstance(platforms_value, list):
-        diagnostics.append(_diag("invalid-feature-platforms", "error", path, "`platforms` must be a list.", feature_id))
-    elif isinstance(platforms_value, list):
-        for platform_value in platforms_value:
-            if not isinstance(platform_value, str):
+    if "platforms" in frontmatter:
+        diagnostics.append(
+            _diag("unknown-feature-field", "error", path, "`platforms` is not a valid feature field; list the feature's apps in `apps:`.", feature_id)
+        )
+    apps_value = frontmatter.get("apps")
+    if "apps" in frontmatter and not isinstance(apps_value, list):
+        diagnostics.append(_diag("invalid-feature-apps", "error", path, "`apps` must be a list.", feature_id))
+    elif isinstance(apps_value, list):
+        for app_value in apps_value:
+            if not isinstance(app_value, str):
                 diagnostics.append(
-                    _diag("invalid-feature-platforms", "error", path, "Every `platforms` entry must be a string.", feature_id)
+                    _diag("invalid-feature-apps", "error", path, "Every `apps` entry must be a string.", feature_id)
                 )
                 continue
-            if platform_value not in VALID_PLATFORM_IDS:
-                diagnostics.append(_diag("invalid-platform-id", "error", path, f"`{platform_value}` is not a valid Prism platform id.", feature_id))
+            if model.app(app_value) is None:
+                diagnostics.append(_diag("unknown-app-id", "error", path, _unknown_app_message(app_value, model), feature_id))
 
     sources_value = frontmatter.get("sources")
     if "sources" in frontmatter and (
@@ -1278,27 +1283,53 @@ def _lint_feature(feature: FeaturePage) -> list[WikiDiagnostic]:
     return diagnostics
 
 
-def _lint_platform_requirement(requirement: PlatformRequirementPage) -> list[WikiDiagnostic]:
+def _unknown_app_message(app_id: str, model: WorkspaceModel) -> str:
+    declared = ", ".join(f"`{app.id}`" for app in model.apps) or "none"
+    return f"`{app_id}` is not an app of this workspace; the workspace's apps are {declared}."
+
+
+def _lint_unknown_app_capabilities(model: WorkspaceModel, manifest_path: Path) -> list[WikiDiagnostic]:
+    """One information-level finding per app and capability that resolves to ``unknown``.
+
+    Lifecycle gates treat ``unknown`` as true, the stricter side.
+    """
+
+    return [
+        _diag(
+            "app-capability-unknown",
+            "info",
+            manifest_path,
+            f"App `{app.id}` has capability `{name}` unknown; lifecycle gates treat it as true until the manifest declares true or false.",
+        )
+        for app in model.apps
+        for name in CAPABILITIES
+        if app.capability(name) == UNKNOWN
+    ]
+
+
+def _lint_app_requirement(requirement: AppRequirementPage, model: WorkspaceModel) -> list[WikiDiagnostic]:
     diagnostics: list[WikiDiagnostic] = []
     path = requirement.page.path
     feature_id = requirement.feature_id
     for message in requirement.page.parse_errors:
         diagnostics.append(_diag("malformed-frontmatter", "error", path, message, feature_id))
     frontmatter = requirement.page.frontmatter
-    for field_name in ("feature-id", "platform", "status"):
+    for field_name in ("feature-id", "app", "status"):
         if field_name not in frontmatter:
-            diagnostics.append(_diag("missing-platform-requirement-frontmatter", "error", path, f"Required frontmatter field `{field_name}` is missing.", feature_id))
+            diagnostics.append(_diag("missing-app-requirement-frontmatter", "error", path, f"Required frontmatter field `{field_name}` is missing.", feature_id))
     if "feature-id" in frontmatter and (not isinstance(frontmatter["feature-id"], str) or not frontmatter["feature-id"].strip()):
-        diagnostics.append(_diag("invalid-platform-requirement-feature-id", "error", path, "`feature-id` must be a non-empty feature ID.", feature_id))
-    if "platform" in frontmatter and (
-        not isinstance(frontmatter["platform"], str) or frontmatter["platform"] not in VALID_PLATFORM_IDS
-    ):
-        diagnostics.append(_diag("invalid-platform-id", "error", path, f"`{frontmatter['platform']}` is not a valid Prism platform id.", feature_id))
+        diagnostics.append(_diag("invalid-app-requirement-feature-id", "error", path, "`feature-id` must be a non-empty feature ID.", feature_id))
+    if "platform" in frontmatter:
+        diagnostics.append(
+            _diag("unknown-requirement-field", "error", path, "`platform` is not a valid requirement field; name the app in `app:`.", feature_id)
+        )
+    if "app" in frontmatter and (not isinstance(frontmatter["app"], str) or model.app(frontmatter["app"]) is None):
+        diagnostics.append(_diag("unknown-app-id", "error", path, _unknown_app_message(str(frontmatter["app"]), model), feature_id))
     if "status" in frontmatter and (
-        not isinstance(frontmatter["status"], str) or frontmatter["status"] not in VALID_PLATFORM_REQUIREMENT_STATUSES
+        not isinstance(frontmatter["status"], str) or frontmatter["status"] not in VALID_APP_REQUIREMENT_STATUSES
     ):
         diagnostics.append(
-            _diag("invalid-platform-requirement-status", "error", path, f"`status` must be one of {sorted(VALID_PLATFORM_REQUIREMENT_STATUSES)}.", feature_id)
+            _diag("invalid-app-requirement-status", "error", path, f"`status` must be one of {sorted(VALID_APP_REQUIREMENT_STATUSES)}.", feature_id)
         )
     return diagnostics
 

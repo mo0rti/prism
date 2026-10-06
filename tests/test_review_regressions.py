@@ -119,7 +119,7 @@ class ReviewRegressions(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "workspace"
             shutil.copytree(FIXTURE.with_name("partial"), root)
-            requirements = root / "knowledge/wiki/platform-requirements"
+            requirements = root / "knowledge/wiki/app-requirements"
             source = next(requirements.glob("*.md"))
             (requirements / "duplicate.md").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
             text = source.read_text(encoding="utf-8")
@@ -127,8 +127,8 @@ class ReviewRegressions(unittest.TestCase):
             text = re.sub(r"feature-id:.*", "feature-id: F-999", text)
             (requirements / "orphan.md").write_text(text, encoding="utf-8")
             errors = {item.code for item in lint_wiki(root).diagnostics if item.severity == "error"}
-            self.assertIn("duplicate-platform-requirement", errors)
-            self.assertIn("orphan-platform-requirement", errors)
+            self.assertIn("duplicate-app-requirement", errors)
+            self.assertIn("orphan-app-requirement", errors)
 
     def test_busy_dashboard_port_returns_a_useful_failure(self):
         with socket.socket() as occupied, patch("webbrowser.open") as browser, contextlib.redirect_stderr(io.StringIO()) as output:

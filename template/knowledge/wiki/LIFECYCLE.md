@@ -19,7 +19,7 @@ status: raw | specified | ready-for-design | in-design | ready-for-dev | in-dev 
 owner: po | designer | dev | none
 introduced: YYYY-MM-DD
 last-updated: YYYY-MM-DD
-platforms: [list of platforms this feature affects - use actual project platform IDs]
+apps: [list of app IDs this feature affects - use the app IDs `prism.workspace.yml` declares]
 sources: [paths to intake/processed/ items that produced this page]
 advisory-review: not-needed | pending | done | skipped
 # Required and non-blank when advisory-review is skipped:
@@ -49,7 +49,7 @@ As a [persona from personas/], I want to [action], so that [business outcome].
 | 2 | What does the empty state look like? | designer | open |
 | 3 | Is real-time sync feasible without WebSockets? | dev | resolved: use polling |
 
-## Platform scope
+## App scope
 - **backend**: [what backend must implement, or "not in scope"]
 - **mobile-android**: [what Android must implement, or "not in scope"]
 - **mobile-ios**: [what iOS must implement, or "not in scope"]
@@ -76,11 +76,11 @@ One paragraph summarizing the key concerns raised and what was resolved.
 Notes added after shipping. Populated by /dev-done command. Empty until then.
 
 ## Delivery evidence
-| Platform | Implementation | Tests | Release |
+| App | Implementation | Tests | Release |
 |---|---|---|---|
 | backend | [artifact or source reference] | [test command and result] | [release artifact or target] |
 
-One row is required for every declared platform in the `/dev-done` proposal. Each
+One row is required for every declared app in the `/dev-done` proposal. Each
 cell must contain a substantive, current reference that an agent can verify. A
 file being present or a clean lint result does not prove implementation or
 shipment.
@@ -93,7 +93,7 @@ section so it cannot satisfy a later `/dev-done` automatically.
 ### YYYY-MM-DD - reopen-[spec|design|dev]
 - Reason: [why the feature was reopened]
 - Impact review: [what changed and what was assessed]
-- Affected platforms: [declared platform IDs]
+- Affected apps: [declared app IDs]
 - Affected artifacts: [feature, design, requirement, API, implementation, test, or release paths]
 - Prior completion/release evidence: [archived evidence, or links to the archived entries]
 - Requirement/API invalidations: [exact affected pages and proposed statuses]
@@ -106,11 +106,11 @@ Each owner has one clarify action that resolves only that owner's open questions
 `/po-clarify` (`po`), `/design-clarify` (`designer`) and `/dev-clarify` (`dev`).
 Each one preserves question text, owners and lifecycle fields. A clarify action
 that changes a requirement-bearing section of the feature, a design page or a
-platform requirement page must carry the full text of at least one answer it
+app requirement page must carry the full text of at least one answer it
 resolves in that section. `/dev-clarify` may update the feature's Acceptance
-criteria, Platform scope and API surface sections and the What to build,
+criteria, App scope and API surface sections and the What to build,
 Technical constraints, API contract reference and Acceptance criteria sections of
-that feature's existing platform requirement pages; it leaves their frontmatter
+that feature's existing app requirement pages; it leaves their frontmatter
 unchanged and does not change a `done` feature. Open dev-owned questions block
 `/dev-start` and `/dev-done`.
 
@@ -122,7 +122,7 @@ updates across the feature page, index, and log are not a filesystem transaction
 
 | Status | Owner | Meaning |
 |--------|-------|---------|
-| raw | po | Captured by `/po-intake` with Summary, User story, Acceptance criteria, Open questions and Platform scope; `/po-specify` completes the structure |
+| raw | po | Captured by `/po-intake` with Summary, User story, Acceptance criteria, Open questions and App scope; `/po-specify` completes the structure |
 | specified | po | Structured spec written, open questions may remain |
 | ready-for-design | designer | PO has handed off; designer picks up |
 | in-design | designer | Designer is actively working |
@@ -168,8 +168,8 @@ The PO handoff action is a confirmation-gated transition from
   blocks the write and requires a fresh preview.
 - Factual PO completeness requires a non-empty Summary, one singular `## User
   story` section with content, meaningful acceptance criterion entries, a non-empty
-  frontmatter `platforms` list with a non-empty matching `## Platform scope` entry
-  for every declared platform, and no open questions owned by `po`. A `skipped`
+  frontmatter `apps` list with a non-empty matching `## App scope` entry
+  for every declared app, and no open questions owned by `po`. A `skipped`
   advisory requires a non-blank
   `advisory-skip-reason`. Semantic sufficiency remains a human or agent judgment.
 - When advisory review is `pending`, offer an independent `/board-review F-XXX`.
@@ -218,9 +218,9 @@ confirmation.
 | `po-specify` | `raw` + `po` | `specified` + `po` | Author a canonical structured body from one raw page; preserve facts and represent unknowns as owned questions. |
 | `po-handoff` | `specified` + `po` | `ready-for-design` + `designer` | Verify factual PO completeness and hand the specification to design. |
 | `design-start` | `ready-for-design` + `designer` | `in-design` + `designer` | Start design work after rereading the assigned feature. |
-| `design-handoff` | `in-design` + `designer` | `ready-for-dev` + `dev` | Verify design evidence or the confirmed UI design exemption, prepare platform requirements and, when the API surface declares API work, create the agreed API contract. |
+| `design-handoff` | `in-design` + `designer` | `ready-for-dev` + `dev` | Verify design evidence or the confirmed UI design exemption, prepare app requirements and, when the API surface declares API work, create the agreed API contract. |
 | `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` | Start implementation after rereading requirements and applicable API contracts. |
-| `dev-done` | `in-dev` + `dev` | `done` + `none` | Verify current per-platform implementation, tests, release evidence, requirements, and APIs. |
+| `dev-done` | `in-dev` + `dev` | `done` + `none` | Verify current per-app implementation, tests, release evidence, requirements, and APIs. |
 | `reopen-spec` | `done` + `none` | `specified` + `po` | Revalidate specification, design, implementation, tests, and release domains after impact review. |
 | `reopen-design` | `done` + `none` | `in-design` + `designer` | Revalidate design, implementation, tests, and release domains after impact review. |
 | `reopen-dev` | `done` + `none` | `in-dev` + `dev` | Revalidate implementation, tests, and release domains after impact review. |
@@ -244,7 +244,7 @@ provide a generic status setter.
    older capability or generated instruction falls back to these direct-file
    rules after the selected instructions are refreshed.
 3. Verify the exact source pair, action-specific checks, current advisory and
-   question state, and affected platform evidence. Show observed facts and the
+   question state, and affected app evidence. Show observed facts and the
    complete proposed body/metadata/write diff. Unknown or blocked checks require
    review or repair guidance.
 4. Every proposed write must name its exact feature, requirement, API, index,
@@ -262,7 +262,7 @@ provide a generic status setter.
 #### Specification and handoff boundaries
 
 `po-intake` creates every new feature as `raw` + `po`. It writes the Summary, User
-story, Acceptance criteria, Open questions and Platform scope sections from the
+story, Acceptance criteria, Open questions and App scope sections from the
 intake material and leaves Design, Related features, API surface, Board review
 summary and Post-ship notes empty. `po-specify` adds what is missing: each of
 those five sections gets one line of supported content or an explicit statement
@@ -287,13 +287,13 @@ a later-action blocker.
 
 `po-handoff` remains the stricter factual handoff from specified to design. Its
 completeness checks include nonempty Summary, exactly one substantive `## User
-story`, meaningful acceptance entries, a nonempty matching platform scope, no
+story`, meaningful acceptance entries, a nonempty matching app scope, no
 open PO questions, and a nonblank skip reason when a proposed advisory skip is
 used. The proposal is evaluated without writing the pending advisory early.
 
 #### Design exemption
 
-For a UI platform, `design-handoff` requires design evidence unless the feature
+For an app with a UI (`has-ui`), `design-handoff` requires design evidence unless the feature
 frontmatter includes `design: not-applicable` and a nonblank
 `design-exemption-reason`, and the user explicitly confirms that exemption in
 the final write preview. A non-UI feature does not need a design page or an
@@ -316,9 +316,9 @@ an `agreed` contract and blocks on a `draft` one; `dev-done` marks the contract
 
 #### Delivery and revalidation
 
-`dev-done` means shipped for every declared platform. The active Delivery
+`dev-done` means shipped for every declared app. The active Delivery
 evidence table must contain substantive, verifiable Implementation, Tests, and
-Release entries per platform, and applicable requirements/API contracts must be
+Release entries per app, and applicable requirements/API contracts must be
 complete. Pending or `in-progress` requirement pages and an `agreed` API contract
 may be proposed as complete by `dev-done` only after the exact implementation,
 test, and release evidence is verified; a draft API contract blocks. Agents
@@ -326,7 +326,7 @@ verify actual artifacts and results; table text, file presence,
 or lint alone is insufficient. Partial delivery remains `in-dev`.
 
 Delivery evidence is an input to `dev-done`. The developer supplies, for each
-declared platform, the implementation, test and release references, and the
+declared app, the implementation, test and release references, and the
 proposal writes them into the `## Delivery evidence` table in the same preview
 as the status change; a table already filled in an earlier edit is also valid
 input. A proposal whose table is absent, has no rows, or has a placeholder or
@@ -348,7 +348,7 @@ are written.
 #### Reopen contract
 
 Every reopen requires an impact review and a proposed route before confirmation.
-The preview records the reason, route, date, affected platforms and artifacts,
+The preview records the reason, route, date, affected apps and artifacts,
 prior completion/release evidence, and exact affected requirement/API status
 invalidations. On confirmation, append the record to `## Reopen history`, copy
 the prior active Delivery evidence into that history, remove it from the active
@@ -383,7 +383,7 @@ Initialized by `setup-project` on YYYY-MM-DD for [Project Name].
 ## Project identity
 - Name: [project name]
 - Description: [one-sentence summary]
-- Platforms: [backend, web-user-app, ...]
+- Apps: [backend, web-user-app, ...]
 - Auth methods: [if known]
 - Infrastructure choices: [if known]
 - Important correction or note: [optional]
@@ -443,8 +443,8 @@ Is there anything missing from the current spec that will block development befo
 If none: "Spec is complete."
 
 ## 3. Build order
-Across platforms, what must be built first?
-If no dependencies: "No cross-platform ordering constraints."
+Across apps, what must be built first?
+If no dependencies: "No cross-app ordering constraints."
 
 ## 4. Biggest risk
 One sentence. What is most likely to cause this feature to fail, cause user harm, or

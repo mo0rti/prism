@@ -134,7 +134,7 @@ class StatusAppsShapeTests(unittest.TestCase):
             root = app_model_baseline.build_workflow_only_workspace(Path(temporary).resolve() / "ws")
             lint = run_json("wiki", "lint", str(root), "--json", allowed=(0, 3))
             blockers = run_json("wiki", "blockers", str(root), "--json", allowed=(0, 3))
-            platform = run_json("wiki", "platform", "backend", str(root), "--json", allowed=(0, 3))
+            platform = run_json("wiki", "app", "backend", str(root), "--json", allowed=(0, 3))
         for name, envelope in (("wiki-lint-v1.json", lint), ("envelope-v1.json", blockers), ("wiki-query-v1.json", platform)):
             with self.subTest(schema=name):
                 Draft202012Validator(schema(name)).validate(envelope)
@@ -555,7 +555,7 @@ class WorkflowAppOptionTests(unittest.TestCase):
 
     def test_the_plan_and_receipt_report_apps(self) -> None:
         root = self.new_root()
-        plan = plan_install(root, name="Plan", platforms=["backend", "mobile-ios"])
+        plan = plan_install(root, name="Plan", apps=["backend", "mobile-ios"])
         self.assertEqual(["backend", "mobile-ios"], plan["apps"])
         receipt = apply_install(root, plan)
         self.assertEqual(["backend", "mobile-ios"], receipt["apps"])
@@ -725,7 +725,7 @@ class ZeroAppWorkspaceTests(unittest.TestCase):
         service = BoardService(self.root)
         self.addCleanup(service.close)
         self.assertEqual({"read_only": False, "reason": None}, service.compatibility())
-        self.assertEqual([], service._platforms)
+        self.assertEqual([], service._app_ids)
 
     def test_the_old_read_only_reason_is_gone(self) -> None:
         service = BoardService(self.root)
@@ -758,7 +758,7 @@ class ZeroAppWorkspaceTests(unittest.TestCase):
         facts = query(service, actor, "transition-preflight", "F-001", "po-handoff")["facts"]["transition"]
         checks = {check["code"]: check for check in facts["checks"]}
         self.assertEqual("pass", checks["workspace-identity"]["status"], "the identity gate no longer needs an app")
-        scope = checks["platform-scope"]
+        scope = checks["app-scope"]
         self.assertEqual("blocked", scope["status"])
         self.assertIn("backend", scope["message"])
         self.assertIn("This workspace declares no apps; register them with `prism app add`.", scope["message"])
@@ -766,7 +766,7 @@ class ZeroAppWorkspaceTests(unittest.TestCase):
         preview = service.preview_transition(actor, "F-001", "po-handoff", {"semantic_review_acknowledged": True})
         self.assertFalse(preview["applicable"])
         self.assertNotEqual("ready", preview["classification"])
-        self.assertTrue(any(check["code"] == "platform-scope" and check["status"] == "blocked" for check in preview["checks"]))
+        self.assertTrue(any(check["code"] == "app-scope" and check["status"] == "blocked" for check in preview["checks"]))
 
     def test_a_feature_cannot_be_scoped_while_the_board_has_no_apps(self) -> None:
         from prism_cli.board_service import BoardError
@@ -775,7 +775,7 @@ class ZeroAppWorkspaceTests(unittest.TestCase):
         self.addCleanup(service.close)
         page = (
             "---\nid: F-001\ntitle: Outcome\nstatus: raw\nowner: po\nintroduced: 2026-09-22\nlast-updated: 2026-09-22\n"
-            "platforms:\n- backend\nsources: []\nadvisory-review: not-needed\n---\n\n## Summary\nx\n"
+            "apps:\n- backend\nsources: []\nadvisory-review: not-needed\n---\n\n## Summary\nx\n"
         )
         with self.assertRaises(BoardError) as error:
             service._validate_feature_output("knowledge/wiki/features/F-001-outcome.md", page, "po-intake")
@@ -807,7 +807,7 @@ class LocalOverrideIgnoreTests(unittest.TestCase):
             root.mkdir()
             if existing is not None:
                 (root / ".gitignore").write_text(existing, encoding="utf-8", newline="")
-            plan = plan_install(root, name="Ignore", platforms=["backend"])
+            plan = plan_install(root, name="Ignore", apps=["backend"])
         return next((change for change in plan["changes"] if change["path"] == ".gitignore"), None)
 
     def test_a_new_gitignore_gets_both_rules(self) -> None:
@@ -843,7 +843,7 @@ class LocalOverrideIgnoreTests(unittest.TestCase):
             lines = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
             self.assertIn("prism.local.yml", lines)
             self.assertIn(".prism/state/", lines)
-            plan = plan_install(root, name="Ignore", platforms=["backend"])
+            plan = plan_install(root, name="Ignore", apps=["backend"])
             self.assertIn(".gitignore", plan["unchanged"])
 
 

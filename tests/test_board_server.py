@@ -317,7 +317,7 @@ class BoardServerTests(unittest.TestCase):
     def test_list_and_query_routes_integrate_with_real_board_service(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
-            receipt = apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))
+            receipt = apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
             self.assertEqual("applied", receipt["status"])
             pending = root / "knowledge/intake/pending/document-review-brief"
             pending.mkdir(parents=True)
@@ -377,7 +377,7 @@ class BoardServerTests(unittest.TestCase):
 
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
-            self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))["status"])
+            self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
             ids = [f"F-{number:03d}" for number in range(1, 15)]
             for feature_id in ids:
                 page = _feature_page().replace("F-001", feature_id).replace("Document review", f"Document review {feature_id}")
@@ -434,7 +434,7 @@ class BoardServerTests(unittest.TestCase):
         # so only the write path can make the snapshot current.
         with TemporaryDirectory() as temporary, patch("prism_cli.board_server.GRAPH_POLL_SECONDS", 3600.0):
             root = Path(temporary)
-            apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))
+            apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
             source = root / "knowledge/intake/processed/document-review-brief/brief.md"
             source.parent.mkdir(parents=True)
             source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
@@ -489,7 +489,7 @@ class BoardServerTests(unittest.TestCase):
     def test_only_the_graph_poller_reuses_file_hashes(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
-            apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))
+            apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
             source = root / "knowledge/intake/processed/document-review-brief/brief.md"
             source.parent.mkdir(parents=True)
             source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
@@ -715,7 +715,7 @@ class ConnectionResetHandlerTests(unittest.TestCase):
 
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
-            apply_install(root, plan_install(root, name="Document review", platforms=["backend"]))
+            apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
             with patch.object(uvicorn.Server, "serve", fake_serve), redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
                 serve_board(root, port=_free_port(), open_browser=False)
         self.assertEqual(1, len(installed))

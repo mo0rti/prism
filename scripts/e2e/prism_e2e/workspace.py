@@ -26,11 +26,11 @@ from .procs import clean_env, run_captured, start_background, stop_background
 from .tokens import TokenRegistry
 
 PROJECT_NAME = "Doc review"
-PLATFORM = "backend"
+APP = "backend"
 JOURNEY_FOLDERS = (
     "knowledge/wiki/features",
     "knowledge/wiki/personas",
-    "knowledge/wiki/platform-requirements",
+    "knowledge/wiki/app-requirements",
     "knowledge/wiki/business-rules",
     "knowledge/wiki/design",
     "knowledge/wiki/api-contracts",
@@ -121,7 +121,7 @@ def create_environment(wheel: Path, work: Path, log: list[str]) -> Environment:
 def install_workspace(env: Environment, log: list[str]) -> None:
     env.workspace.mkdir(parents=True, exist_ok=True)
     _run(
-        [str(env.prism), "workflow", "install", ".", "--name", PROJECT_NAME, "--app", PLATFORM, "--apply", "--yes"],
+        [str(env.prism), "workflow", "install", ".", "--name", PROJECT_NAME, "--app", APP, "--apply", "--yes"],
         cwd=env.workspace,
         log=log,
         what="Installing the workflow into the workspace",
@@ -403,7 +403,7 @@ def declares_api_work(text: str) -> bool:
 
 
 API_CONTRACT = "knowledge/wiki/api-contracts/F-001.md"
-REQUIREMENT = "knowledge/wiki/platform-requirements/F-001-backend.md"
+REQUIREMENT = "knowledge/wiki/app-requirements/F-001-backend.md"
 
 
 def read_api_contract(workspace: Path) -> dict[str, str] | None:

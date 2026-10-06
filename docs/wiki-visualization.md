@@ -2,7 +2,7 @@
 
 Prism's wiki visualization is an optional local read surface for a generated
 workspace. It derives its facts from `knowledge/wiki/`, intake queues, the
-workspace manifest and answers, and selected platform directories. The wiki
+workspace manifest and answers, and the generated app directories. The wiki
 files remain the source of truth. The dashboard does not edit them.
 
 This page describes the dashboard that `prism wiki graph` serves and exports. It is
@@ -27,7 +27,7 @@ stages:
 |-------|----------------------|
 | `fresh` | An empty wiki and Guide setup path before the advisory board is initialized |
 | `intake` | A pending payout brief and a quarantined item visible in the intake queues |
-| `populated` | Three features across `raw`, `in-dev`, and `done`, with platform requirements, designs, API contracts, personas, business rules, a decision, a review, an open question, and a canonical blocker |
+| `populated` | Three features across `raw`, `in-dev`, and `done`, with app requirements, designs, API contracts, personas, business rules, a decision, a review, an open question, and a canonical blocker |
 
 The fixture is synthetic local documentation. It contains no production data,
 observed project history, deployment evidence, compliance claim, or recorded
@@ -53,9 +53,9 @@ diagnostics.
 
 | View | Use it for |
 |------|------------|
-| Graph | Follow relationships between features, personas, rules, designs, API contracts, platform requirements, decisions, reviews, and platforms. Search and filters narrow the visible map; selecting a node opens its source context. |
+| Graph | Follow relationships between features, personas, rules, designs, API contracts, app requirements, decisions, reviews, and apps. Search and filters narrow the visible map; selecting a node opens its source context. |
 | Board | Read feature work in lifecycle columns and see intake pending/quarantine visibility alongside workflow blockers. A first feature makes the brief and intake step complete; the guide does not reopen a completed step when the brief leaves the queue. |
-| Platforms | Compare the selected platform's feature targets and platform requirement pages, including requirement status. |
+| Apps | Compare the selected app's feature targets and app requirement pages, including requirement status. |
 | Guide | Understand setup, intake, and review state before navigating the graph. Completion is derived from current files and feature presence. |
 
 The dashboard separates workflow blockers from page integrity. A pending
@@ -89,8 +89,8 @@ files before acting. For `po-handoff`, a pending advisory review offers an
 independent board review; declining it requires a non-blank reason that remains
 a proposal until the agent's final handoff confirmation. After board review
 changes, the agent rereads the source and reruns the checks. The PO handoff
-factual checks cover a non-empty frontmatter `platforms` list with a matching
-non-empty `## Platform scope` entry for every declared platform, one singular
+factual checks cover a non-empty frontmatter `apps` list with a matching
+non-empty `## App scope` entry for every declared app, one singular
 `## User story` section, meaningful acceptance entries, and no open PO-owned
 questions. Semantic quality and the final confirmation remain human or agent
 responsibilities.
@@ -134,7 +134,7 @@ The generated agent workflow supports these exact feature-only actions:
 | `feature-reopen` | `done` + `none` | `specified`, `in-design`, or `in-dev` by selected route |
 
 `dev-done` requires substantive, verifiable Implementation, Tests, and Release
-evidence for every declared platform. A confirmed `feature-reopen` archives
+evidence for every declared app. A confirmed `feature-reopen` archives
 prior active evidence, marks route-specific `revalidation` domains, and names
 affected requirement/API status changes before downstream readiness can be
 re-established. UI design exemptions and the full confirmation/write protocol
@@ -146,7 +146,7 @@ execute the agent writes.
 
 Graph facts are rebuilt from the current source files. The live server watches
 the markdown pages consumed by the graph, manifest and Copier answers identity
-inputs, queue entry names/types, selected platform directory presence, all
+inputs, queue entry names/types, generated app directory presence, all
 generated lifecycle capability files under `.agents/skills/` and
 `.claude/commands/`, and the calendar date used for staleness checks. This
 includes the selected `po-handoff` skill/command used by the browser request. A
@@ -167,10 +167,10 @@ The same read model is available without a browser:
 prism wiki graph <workspace> --json
 prism wiki graph <workspace> --mermaid --view lifecycle
 prism wiki graph <workspace> --mermaid --view ego --feature F-002
-prism wiki graph <workspace> --mermaid --view platform --platform backend
+prism wiki graph <workspace> --mermaid --view app --app backend
 prism wiki show F-002 <workspace>
 prism wiki blockers <workspace>
-prism wiki platform backend <workspace>
+prism wiki app backend <workspace>
 ```
 
 The committed [seeded lifecycle Mermaid diagram](wiki-visualization-demo.mmd)

@@ -34,15 +34,15 @@ If the version probe or schema check fails, or `prism` is missing, too old,
 fails, or lacks `wiki lint`, say:
 `Prism CLI lint unavailable; falling back to direct wiki reads.` Read
 `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/SETTINGS.md` if present,
-`knowledge/wiki/index.md`, all feature and platform-requirement files, and
+`knowledge/wiki/index.md`, all feature and app-requirement files, and
 related design, API contract, advisory, business-rule, persona, and decision
 files as needed.
 
 Check only provable facts: malformed frontmatter, invalid enums, duplicate IDs,
 orphan and index drift, stale pages, quarantine backlog, skipped board reviews
 without reasons, and these canonical blockers: `pending-board-review`,
-`missing-design`, `missing-platform-requirements`, `unresolved-open-questions`,
-`api-contract-not-ready`, and `cross-platform-dependency`. If SETTINGS is absent,
+`missing-design`, `missing-app-requirements`, `unresolved-open-questions`,
+`api-contract-not-ready`, and `cross-app-dependency`. If SETTINGS is absent,
 invalid, or missing the key, use `wiki-stale-after-days: 14` and say so.
 
 ## Rules and output

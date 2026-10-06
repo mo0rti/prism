@@ -17,17 +17,12 @@ from urllib.parse import unquote, urlsplit
 
 import yaml
 
-from prism_cli.app_model import GENERATED_PLATFORM_IDS, GENERATED_UI_PLATFORM_IDS
-
 
 VALID_FEATURE_STATUSES = {"raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done"}
 VALID_FEATURE_OWNERS = {"po", "designer", "dev", "none"}
 VALID_OPEN_QUESTION_OWNERS = {"po", "designer", "dev"}
 VALID_ADVISORY_REVIEW_STATES = {"not-needed", "pending", "done", "skipped"}
-# Derived from the stack registry: the generated platform IDs, and those whose stack has `has-ui`.
-VALID_PLATFORM_IDS = set(GENERATED_PLATFORM_IDS)
-VALID_PLATFORM_REQUIREMENT_STATUSES = {"pending", "in-progress", "done"}
-UI_PLATFORM_IDS = set(GENERATED_UI_PLATFORM_IDS)
+VALID_APP_REQUIREMENT_STATUSES = {"pending", "in-progress", "done"}
 DEFAULT_WIKI_STALE_AFTER_DAYS = 14
 REVALIDATION_DOMAINS = {
     "specification",
@@ -36,7 +31,7 @@ REVALIDATION_DOMAINS = {
     "tests",
     "release",
 }
-DELIVERY_EVIDENCE_COLUMNS = ("platform", "implementation", "tests", "release")
+DELIVERY_EVIDENCE_COLUMNS = ("app", "implementation", "tests", "release")
 
 
 def _refuse_change(self: Any, *args: Any, **kwargs: Any) -> Any:
@@ -181,15 +176,15 @@ class FeaturePage:
         return value if isinstance(value, str) else None
 
     @property
-    def platforms(self) -> list[str]:
-        value = self.page.frontmatter.get("platforms")
+    def apps(self) -> list[str]:
+        value = self.page.frontmatter.get("apps")
         if not isinstance(value, list):
             return []
         return [item for item in value if isinstance(item, str)]
 
 
 @dataclass(frozen=True)
-class PlatformRequirementPage:
+class AppRequirementPage:
     page: MarkdownPage
 
     @property
@@ -198,8 +193,8 @@ class PlatformRequirementPage:
         return value if isinstance(value, str) else None
 
     @property
-    def platform(self) -> str | None:
-        value = self.page.frontmatter.get("platform")
+    def app(self) -> str | None:
+        value = self.page.frontmatter.get("app")
         return value if isinstance(value, str) else None
 
     @property
@@ -283,6 +278,8 @@ class WikiPageScope:
         self._wall_clock_ns = wall_clock_ns
         # path -> (stat signature, text digest, page, reusable without rereading the file)
         self._entries: dict[str, tuple[tuple[int, ...], bytes, MarkdownPage, bool]] = {}
+        # Facts other readers compute once per request, such as the workspace model.
+        self.facts: dict[Any, Any] = {}
 
     def load(self, path: Path) -> MarkdownPage:
         read_started_ns = self._wall_clock_ns()
@@ -339,6 +336,17 @@ def within_wiki_read_scope(function: Callable[..., Any]) -> Callable[..., Any]:
             return function(*args, **kwargs)
 
     return scoped
+
+
+def request_fact(key: Any, compute: Callable[[], Any]) -> Any:
+    """Return a fact computed once per ``wiki_read_scope``; outside a scope it is computed every time."""
+
+    scope = _PAGE_SCOPE.get()
+    if scope is None:
+        return compute()
+    if key not in scope.facts:
+        scope.facts[key] = compute()
+    return scope.facts[key]
 
 
 def load_markdown_page(path: Path) -> MarkdownPage:
@@ -421,12 +429,12 @@ def read_feature_pages(wiki_root: Path) -> list[FeaturePage]:
     ]
 
 
-def read_platform_requirement_pages(wiki_root: Path) -> list[PlatformRequirementPage]:
-    requirements_dir = wiki_root / "platform-requirements"
+def read_app_requirement_pages(wiki_root: Path) -> list[AppRequirementPage]:
+    requirements_dir = wiki_root / "app-requirements"
     if not requirements_dir.exists():
         return []
     return [
-        PlatformRequirementPage(load_markdown_page(path))
+        AppRequirementPage(load_markdown_page(path))
         for path in sorted(requirements_dir.glob("*.md"))
         if not path.name.startswith("_")
     ]
@@ -571,28 +579,28 @@ def parse_revalidation(value: Any) -> tuple[list[str], list[str]]:
 
 def parse_delivery_evidence(
     body: str,
-    declared_platforms: list[str],
+    declared_apps: list[str],
 ) -> tuple[dict[str, dict[str, str]], list[str]]:
-    """Parse the canonical per-platform delivery evidence table.
+    """Parse the canonical per-app delivery evidence table.
 
     This validates only observable structure and substantive cells.  It does
     not claim that referenced implementation, test, or release artifacts exist;
     the responsible agent must verify those references before writing Done.
     """
 
-    rows, _cells, errors = parse_delivery_evidence_cells(body, declared_platforms)
+    rows, _cells, errors = parse_delivery_evidence_cells(body, declared_apps)
     return rows, errors
 
 
 def parse_delivery_evidence_cells(
     body: str,
-    declared_platforms: list[str],
+    declared_apps: list[str],
 ) -> tuple[dict[str, dict[str, str]], dict[str, list[str]], list[str]]:
     """Parse the delivery evidence table like ``parse_delivery_evidence``.
 
-    The second mapping holds each platform's cells exactly as written, in the
+    The second mapping holds each app's cells exactly as written, in the
     table's own column order, so a caller can archive a row verbatim whatever
-    column order the table uses.  Platform keys are lower case in both mappings.
+    column order the table uses.  App keys are lower case in both mappings.
     """
 
     section = section_text(body, "Delivery evidence")
@@ -618,7 +626,7 @@ def parse_delivery_evidence_cells(
                 continue
             if _is_separator_row(cells):
                 continue
-            errors.append("Delivery evidence table is missing the Platform/Implementation/Tests/Release header.")
+            errors.append("Delivery evidence table is missing the App/Implementation/Tests/Release header.")
             continue
         if len(normalized) == len(DELIVERY_EVIDENCE_COLUMNS) and set(normalized) == set(DELIVERY_EVIDENCE_COLUMNS):
             errors.append("Delivery evidence contains more than one header/table.")
@@ -626,35 +634,35 @@ def parse_delivery_evidence_cells(
         if _is_separator_row(cells):
             continue
         if len(cells) != len(DELIVERY_EVIDENCE_COLUMNS):
-            errors.append("Delivery evidence table rows must contain exactly Platform, Implementation, Tests, and Release cells.")
+            errors.append("Delivery evidence table rows must contain exactly App, Implementation, Tests, and Release cells.")
             continue
-        platform = cells[header_indexes["platform"]].strip().lower()
-        if not platform:
-            errors.append("Every delivery evidence row must name a platform.")
+        app_id = cells[header_indexes["app"]].strip().lower()
+        if not app_id:
+            errors.append("Every delivery evidence row must name an app.")
             continue
-        if platform in rows:
-            errors.append(f"Delivery evidence contains duplicate platform `{platform}` rows.")
+        if app_id in rows:
+            errors.append(f"Delivery evidence contains duplicate app `{app_id}` rows.")
             continue
         row = {
             column: cells[index].strip()
             for column, index in header_indexes.items()
         }
-        rows[platform] = row
-        written[platform] = list(cells)
+        rows[app_id] = row
+        written[app_id] = list(cells)
         for column in DELIVERY_EVIDENCE_COLUMNS[1:]:
             if not _substantive_evidence_cell(row[column]):
-                errors.append(f"Delivery evidence `{column}` for `{platform}` is empty or still a placeholder.")
+                errors.append(f"Delivery evidence `{column}` for `{app_id}` is empty or still a placeholder.")
 
     if header is None:
         errors.append("Delivery evidence table has no usable header row.")
 
-    declared = {platform.strip().lower() for platform in declared_platforms if isinstance(platform, str) and platform.strip()}
+    declared = {item.strip().lower() for item in declared_apps if isinstance(item, str) and item.strip()}
     missing = sorted(declared - set(rows))
     extra = sorted(set(rows) - declared)
     if missing:
-        errors.append("Delivery evidence is missing declared platform(s): " + ", ".join(missing) + ".")
+        errors.append("Delivery evidence is missing declared app(s): " + ", ".join(missing) + ".")
     if extra:
-        errors.append("Delivery evidence contains undeclared platform(s): " + ", ".join(extra) + ".")
+        errors.append("Delivery evidence contains undeclared app(s): " + ", ".join(extra) + ".")
     return rows, written, errors
 
 

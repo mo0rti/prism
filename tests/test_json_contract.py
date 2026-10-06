@@ -10,7 +10,7 @@ from prism_cli.status import build_status
 from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_graph_html import render_html
 from prism_cli.wiki_lint import lint_wiki
-from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_platform, wiki_search, wiki_show
+from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_app, wiki_search, wiki_show
 from prism_cli.wiki_transitions import build_transition_preflight
 from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
@@ -47,7 +47,7 @@ class JsonContractTests(unittest.TestCase):
             "show": wiki_show(root, "F-001"),
             "blockers": wiki_blockers(root),
             "owner": wiki_owner(root, "po"),
-            "platform": wiki_platform(root, "backend"),
+            "app": wiki_app(root, "backend"),
             "search": wiki_search(root, "checkout"),
         }
         for name, envelope in queries.items():
@@ -118,6 +118,7 @@ class JsonContractTests(unittest.TestCase):
             wiki_root = workspace / "knowledge" / "wiki"
             wiki_root.parent.mkdir(parents=True)
             shutil.copytree(FIXTURE_ROOT / "knowledge" / "wiki", wiki_root)
+            shutil.copyfile(FIXTURE_ROOT / "prism.workspace.yml", wiki_root.parents[1] / "prism.workspace.yml")
             feature_path = wiki_root / "features" / "F-001-checkout.md"
             feature_path.write_text(
                 feature_path.read_text(encoding="utf-8")
@@ -146,6 +147,7 @@ class JsonContractTests(unittest.TestCase):
             wiki_root = workspace / "knowledge" / "wiki"
             wiki_root.parent.mkdir(parents=True)
             shutil.copytree(FIXTURE_ROOT / "knowledge" / "wiki", wiki_root)
+            shutil.copyfile(FIXTURE_ROOT / "prism.workspace.yml", wiki_root.parents[1] / "prism.workspace.yml")
             feature_path = wiki_root / "features" / "F-001-checkout.md"
             feature_path.write_text(
                 feature_path.read_text(encoding="utf-8").replace("status: specified", "status: future-stage"),
@@ -170,6 +172,7 @@ class JsonContractTests(unittest.TestCase):
             wiki_root = workspace / "knowledge" / "wiki"
             wiki_root.parent.mkdir(parents=True)
             shutil.copytree(FIXTURE_ROOT / "knowledge" / "wiki", wiki_root)
+            shutil.copyfile(FIXTURE_ROOT / "prism.workspace.yml", wiki_root.parents[1] / "prism.workspace.yml")
             (workspace / "prism.workspace.yml").write_text(
                 manifest_text("Lint workspace", ["backend"]),
                 encoding="utf-8",
@@ -210,7 +213,7 @@ class JsonContractTests(unittest.TestCase):
                     "lint-wiki",
                     "wiki-blockers",
                     "wiki-owner",
-                    "wiki-platform",
+                    "wiki-app",
                     "wiki-query",
                     "wiki-show",
                     "feature-status",

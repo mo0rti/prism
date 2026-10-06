@@ -5,7 +5,7 @@ status: ready-for-design
 owner: designer
 introduced: 2026-09-01
 last-updated: 2026-09-01
-platforms: [web-user-app]
+apps: [web-user-app]
 sources: []
 advisory-review: pending
 ---

@@ -127,14 +127,6 @@ def generated_platform_dir(platform_id: str) -> str:
 
 GENERATED_PLATFORM_DIRS: Mapping[str, str] = MappingProxyType({platform_id: generated_platform_dir(platform_id) for platform_id in GENERATED_PLATFORM_IDS})
 
-# Generated platform IDs that a gate may treat as UI platforms, from the `has-ui` default of their stack.
-GENERATED_UI_PLATFORM_IDS = frozenset(
-    platform_id
-    for platform_id in GENERATED_PLATFORM_IDS
-    if STACKS[GENERATED_PLATFORM_STACKS[platform_id]].default_capabilities.get(CAPABILITY_HAS_UI) is True
-)
-
-
 def apps_from_platforms(platforms: list[str]) -> list[dict[str, str]]:
     """Manifest `apps` entries for generated platform IDs, in the order given.
 

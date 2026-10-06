@@ -27,7 +27,7 @@ does not prove that a particular command or capability exists. The command is
 - `prism wiki show F-XXX --json`
 - `prism wiki blockers --json`
 - `prism wiki owner po|designer|dev|none --json`
-- `prism wiki platform backend|mobile-android|mobile-ios|web-user-app|web-admin-portal --json`
+- `prism wiki app <app-id> --json`
 - `prism wiki search "text" --json`
 
 Use `confidence`, facts, blocker facts, obligations, diagnostics, and sources
@@ -40,12 +40,12 @@ reads. This generated project must not hard-depend on an installed Prism CLI.
 ## Fallback path
 
 The fallback reads `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `index.md`, feature pages,
-platform requirements, and only the relevant design, API, advisory,
+app requirements, and only the relevant design, API, advisory,
 business-rule, persona, and decision pages. Keep malformed pages visible and
 compute only categories proved by files; the canonical blocker categories are
-`pending-board-review`, `missing-design`, `missing-platform-requirements`,
+`pending-board-review`, `missing-design`, `missing-app-requirements`,
 `unresolved-open-questions`, `api-contract-not-ready`, and
-`cross-platform-dependency`. Read `SETTINGS.md` for staleness and use
+`cross-app-dependency`. Read `SETTINGS.md` for staleness and use
 `wiki-stale-after-days: 14` when absent or invalid. All reads are read-only.
 
 ## Feature lifecycle transition preview
@@ -97,10 +97,10 @@ the shared schema.
 1. Read `knowledge/wiki/index.md` and confirm the feature is in `ready-for-dev` or
    `in-dev`; a pending advisory review requires human attention first.
 2. Read `knowledge/wiki/features/[feature-id]-[slug].md`.
-3. Read `knowledge/wiki/platform-requirements/[feature-id]-[THIS_PLATFORM].md`.
+3. Read `knowledge/wiki/app-requirements/[feature-id]-[THIS_APP].md`.
 4. Read `knowledge/wiki/api-contracts/[feature-id].md` when applicable.
 5. Check `knowledge/wiki/business-rules/` for rules that apply.
-6. If this is a UI platform, read `knowledge/wiki/design/[feature-id]-[slug].md`.
+6. If this app has a UI (`has-ui`), read `knowledge/wiki/design/[feature-id]-[slug].md`.
 
 Open questions owned by `dev` block `dev-start` and `dev-done`; ask for
 `dev-clarify` to resolve them before implementation starts.

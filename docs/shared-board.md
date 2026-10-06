@@ -158,7 +158,7 @@ Direct an agent in its CLI, for example: “Use Prism's PO intake skill to refin
 
 `list_workspace` discovers approved wiki and intake paths in pages;
 `read_workspace` returns their text and content digests, paged to the result limit. `query` reuses Prism's
-existing feature, owner, platform, blocker, search, lint and lifecycle preflight
+existing feature, owner, app, blocker, search, lint and lifecycle preflight
 facts. These read operations work with read-only participant grants.
 
 Connected intake supports UTF-8 `.md`, `.txt`, `.yaml` and `.yml`
@@ -199,7 +199,7 @@ and confirmation.
 ### Intake, dev answers and delivery evidence
 
 - **`po-intake` writes `raw` features.** Every new feature is `raw` + `po`, with its
-  Summary, User story, Acceptance criteria, Open questions and Platform scope. A
+  Summary, User story, Acceptance criteria, Open questions and App scope. A
   proposal that creates a feature in another status is rejected with
   `invalid_intake_feature`. `po-specify` completes the page and moves it to
   `specified`: Design, Related features, API surface, Board review summary and
@@ -218,8 +218,8 @@ and confirmation.
 - **`dev-clarify` answers dev-owned questions**, as `po-clarify` does for `po` and
   `design-clarify` for `designer`. It resolves only questions owned by `dev`, on any
   feature that is not `done`, and cannot change the feature's status or owner. Next
-  to the question table it may change the feature's Acceptance criteria, Platform
-  scope and API surface sections and, on that feature's existing platform
+  to the question table it may change the feature's Acceptance criteria, App
+  scope and API surface sections and, on that feature's existing app
   requirement pages, What to build, Technical constraints, API contract reference
   and Acceptance criteria. It leaves a requirement page's frontmatter, including
   `status`, unchanged. Every section it changes must contain the full text of an
@@ -227,11 +227,11 @@ and confirmation.
   `dev-start` and `dev-done`.
 - **`dev-done` takes the delivery evidence in its proposal.** The agent asks the
   developer for the implementation, test and release references of every declared
-  platform, or reads them from the page, and writes them as the `## Delivery
+  app, or reads them from the page, and writes them as the `## Delivery
   evidence` table of the proposed feature page. The preview shows the evidence rows
   with the status change, so nothing has to be edited by hand first. A table with no
-  platform rows is rejected with `delivery_evidence_required`; an invalid row, a
-  placeholder cell, a duplicate or an undeclared platform with
+  app rows is rejected with `delivery_evidence_required`; an invalid row, a
+  placeholder cell, a duplicate or an undeclared app with
   `delivery_evidence_invalid`. A reference the agent cannot check is recorded in the
   proposed Post-ship notes as the developer's attestation. `dev-done` stays an agent
   skill: the board offers no direct human `dev-done`.
@@ -262,7 +262,7 @@ When an apply is rejected because its sources changed, the board shows the servi
 A browser session ends after 12 hours, when the board service restarts, when the grant is revoked or when the workflow identity changes. The board then shows "Board session expired" with a **Reconnect** action, and an apply that runs after expiry shows the same message in its dialog. **Reconnect** reloads the page and asks for the human token again.
 
 Connected clarification has a deterministic traceability requirement: each changed
-requirement-bearing section of a feature, a platform requirement page or a design
+requirement-bearing section of a feature, an app requirement page or a design
 page includes the full text of at least one answer resolved in that proposal. Case and whitespace differences are ignored,
 and the answer must stand as whole words (`no` is not found inside `not` or `know`);
 paraphrases alone do not pass. Skill discovery reports this limitation. Including
@@ -298,10 +298,10 @@ Only short excerpts of workspace text appear in an error.
 | `api_contract_not_applicable`, `api_contract_exists` | `path` and `feature_id`. `api_contract_exists` for a second contract also lists the `existing` pages. |
 | `api_contract_initial_status` | `path`, `status` and `expected_status` (`agreed`). |
 | `api_contract_untraceable` | `path`, `feature_id` and `endpoints` (the `METHOD /normalized/path` entries that the API surface does not support) or `models` (the data models that neither the API surface nor an endpoint names). |
-| `delivery_evidence_required`, `delivery_evidence_invalid` | `path`, `platforms` (the declared platforms), `missing_platforms` and `problems` (up to six parse problems). The message shows the row to add: `\| platform \| implementation reference \| test command and result \| release artifact or target \|`. |
+| `delivery_evidence_required`, `delivery_evidence_invalid` | `path`, `apps` (the declared apps), `missing_apps` and `problems` (up to six parse problems). The message shows the row to add: `\| app \| implementation reference \| test command and result \| release artifact or target \|`. |
 | `missing_read_revisions` | `paths` (the sources to read, as many as fit), `total` (how many are missing) and `read_with` (`read_workspace`). A required source has neither a digest in `read_revisions` nor a read by this participant. Read those paths with `read_workspace` and preview again. |
 | `read_digest_mismatch`, `stale_read_revision` | `path`, `supplied` (the digest you sent or the one recorded from your read, shortened) and `expected` (the file's current digest). `read_digest_mismatch` means the board never returned the digest you sent for that file, so it is mistyped or copied wrongly; leave `read_revisions` out or copy it from `read_workspace` exactly. `stale_read_revision` means the board returned that digest and the file has changed since; read it again and review the change. |
-| `invalid_feature_output` | For a platform outside the board's scope: `platforms` (the declared ones) and `board_platforms` (the IDs of the board's apps); `discover` lists the apps under `board.apps`. A board with no apps rejects every feature scope and says to register an app with `prism app add`. |
+| `invalid_feature_output` | For an app outside the board's scope: `apps` (the declared ones) and `board_apps` (the IDs of the board's apps); `discover` lists the apps under `board.apps`. A board with no apps rejects every feature scope and says to register an app with `prism app add`. |
 | `lifecycle_action_required` | For a status or owner change that the skill does not perform: `path`, `skill`, `from` and `to` (status and owner pairs). A clarify skill never changes either. |
 | `new_question_must_be_open` | `path`, `question` (the number that is not in the current table) and `existing_questions`. A question that is not in the table is added with `ask` before it is answered. |
 | `impact_review_required`, `reopen_invalidation_mismatch`, `reopen_artifact_missing` | `label` for a missing or too short reopen bullet; `path`, `from` and `to` for a page whose `knowledge/wiki/...: done -> in-progress` entry is not under `- Requirement/API invalidations:`; `path` for a page that `- Affected artifacts:` does not name. `knowledge/wiki/features/_FORMAT.md` shows the layout. |
@@ -338,7 +338,7 @@ The HTTP routes `POST /api/board/v1/workspace/read` and `POST /api/board/v1/quer
 | `get_skill_reference` | `name`, `path`, `cursor?` | `content`, `offset`, `total_chars`, `digest`, `next_cursor`. A path outside the skill's `references` is `reference_not_found` (404) |
 | `read_workspace` | `paths`, `cursor?` | `files` (each with `path`, `content`, `offset`, `total_chars`, `digest`, `provenance`) and `next_cursor` |
 | `list_workspace` | `prefix?`, `cursor?` | unchanged: `files`, `total`, `next_cursor` |
-| `query` | `kind`, `value?`, `action?`, `cursor?` | the existing result, plus `next_cursor`; `owner`, `platform` and `search` also return `total` |
+| `query` | `kind`, `value?`, `action?`, `cursor?` | the existing result, plus `next_cursor`; `owner`, `app` and `search` also return `total` |
 | `preview_skill` | `skill`, `changes`, `moves?`, `read_revisions?` (usually left out: see "Recorded reads") | the preview header (`preview_id`, `classification`, `applicable`, `checks`, `blockers`, `source`, `target`, `source_revision`, `moves`), `writes` and `writes_chunk` (`offset`, `count`, `total`), and `next_cursor` |
 | `preview_transition` | `feature_id`, `action`, `inputs?` | the same as `preview_skill`; only a human participant may call it |
 | `get_preview` | `preview_id`, `cursor?` | the same result as the preview call, for a preview the caller created. An unknown preview or another participant's is `preview_not_found` (404) |
@@ -357,7 +357,7 @@ The HTTP routes `POST /api/board/v1/workspace/read` and `POST /api/board/v1/quer
 
 Every path in the `references` of `get_skill`, and every path an instructions text lists as a canonical reference (`.claude/commands/<name>.md`), resolves with `get_skill_reference` exactly as written.
 
-`query` pages `owner`, `platform` and `search`. For `owner` the pages walk `facts.features` and then `facts.open_questions`; for `platform`, `facts.features` and then `facts.platform_requirements`; for `search`, `facts.results`. `total` counts those items, and every item appears on exactly one page. An item that alone is larger than one result is replaced by an entry that keeps its short fields and adds `oversize: true`, `size_chars` and a `note`; read its `path` with `read_workspace`, which returns it in chunks. `facts.feature_count` and the other counts stay totals. `sources` lists the paths of the page's items.
+`query` pages `owner`, `app` and `search`. For `owner` the pages walk `facts.features` and then `facts.open_questions`; for `app`, `facts.features` and then `facts.app_requirements`; for `search`, `facts.results`. `total` counts those items, and every item appears on exactly one page. An item that alone is larger than one result is replaced by an entry that keeps its short fields and adds `oversize: true`, `size_chars` and a `note`; read its `path` with `read_workspace`, which returns it in chunks. `facts.feature_count` and the other counts stay totals. `sources` lists the paths of the page's items.
 
 Results contain no absolute paths: preview checks, `root` and `sources` of query results and every other path are relative to the workspace, with forward slashes.
 
