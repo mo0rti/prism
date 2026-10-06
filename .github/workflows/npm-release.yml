@@ -3,27 +3,36 @@ name: npm release
 # Runs after the Release workflow (TestPyPI, PyPI and the GitHub release) has succeeded
 # for a v* tag, then publishes @mortitech/prism with npm trusted publishing (OIDC);
 # no token is stored. The one-time owner setup is in docs/cli-release.md.
+# A manual run publishes an existing tag, for a release that was published by a
+# manual Release run.
 
 on:
   workflow_run:
     workflows: ["Release"]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish, such as v0.4.0"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: npm-release-${{ github.event.workflow_run.head_branch }}
+  group: npm-release-${{ github.event.workflow_run.head_branch || inputs.tag }}
   cancel-in-progress: false
 
 jobs:
   publish-npm:
     name: Publish @mortitech/prism
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
+      (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'v')) ||
+      (github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      startsWith(github.event.workflow_run.head_branch, 'v')
+      startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ubuntu-latest
     environment:
       name: npm
@@ -36,14 +45,14 @@ jobs:
       - name: Checkout the tagged commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || inputs.tag }}
           fetch-depth: 0
           fetch-tags: true
 
       - name: Check that the tag points at this commit and equals the npm version
         id: check
         env:
-          TAG: ${{ github.event.workflow_run.head_branch }}
+          TAG: ${{ github.event.workflow_run.head_branch || inputs.tag }}
         run: |
           set -eu
           if ! git tag --points-at HEAD | grep -Fxq "$TAG"; then

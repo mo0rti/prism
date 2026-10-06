@@ -4,11 +4,26 @@ name: Release
 # installs it from there, publishes the same files to PyPI and creates the GitHub
 # release. Publishing uses trusted publishing (OIDC); no token is stored.
 # The one-time owner setup is in docs/cli-release.md.
+#
+# A manual run releases an existing tag. With skip_testpypi it publishes to PyPI
+# without the TestPyPI stage, for when TestPyPI is unavailable, then installs the
+# published version from PyPI and runs the same smoke test.
 
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish, such as v0.4.0"
+        required: true
+        type: string
+      skip_testpypi:
+        description: "Skip TestPyPI and smoke-test the PyPI release instead"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,6 +42,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,8 +53,9 @@ jobs:
       - name: Check that the tag, the package and the changelog agree
         id: check
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
+          case "$TAG" in v*) ;; *) echo "::error::$TAG is not a release tag."; exit 1;; esac
           python - <<'PY'
           import json
           import os
@@ -79,6 +97,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -112,6 +132,7 @@ jobs:
   publish-testpypi:
     name: Publish to TestPyPI
     needs: build
+    if: ${{ !inputs.skip_testpypi }}
     runs-on: ubuntu-latest
     environment:
       name: testpypi
@@ -135,6 +156,7 @@ jobs:
   smoke-test:
     name: Install from TestPyPI and run the CLI
     needs: [verify-tag, publish-testpypi]
+    if: ${{ !inputs.skip_testpypi }}
     runs-on: ubuntu-latest
 
     steps:
@@ -177,7 +199,10 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    needs: smoke-test
+    needs: [build, smoke-test]
+    if: >-
+      ${{ always() && needs.build.result == 'success' &&
+      (needs.smoke-test.result == 'success' || (inputs.skip_testpypi && needs.smoke-test.result == 'skipped')) }}
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -195,9 +220,53 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
+  pypi-smoke-test:
+    name: Install from PyPI and run the CLI
+    needs: [verify-tag, publish-pypi]
+    if: ${{ always() && inputs.skip_testpypi && needs.publish-pypi.result == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the published version, retrying while the index catches up
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -u
+          python -m venv "$RUNNER_TEMP/prism-smoke"
+          attempts=12
+          for attempt in $(seq 1 "$attempts"); do
+            if "$RUNNER_TEMP/prism-smoke/bin/python" -m pip install --no-cache-dir "prism-kit==${VERSION}"; then
+              exit 0
+            fi
+            echo "Attempt ${attempt} of ${attempts} did not find prism-kit==${VERSION}; waiting 20 seconds."
+            sleep 20
+          done
+          echo "::error::prism-kit==${VERSION} could not be installed from PyPI."
+          exit 1
+
+      - name: Run the installed CLI in a temporary workspace
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -eu
+          PRISM="$RUNNER_TEMP/prism-smoke/bin/prism"
+          test "$("$PRISM" --version)" = "prism ${VERSION}" || { echo "::error::Unexpected version output: $("$PRISM" --version)"; exit 1; }
+          workspace="$(mktemp -d)"
+          cd "$workspace"
+          "$PRISM" workflow install . --name "Release smoke" --app backend --apply --yes
+          "$PRISM" doctor --workspace .
+
   github-release:
     name: Create the GitHub release
-    needs: [verify-tag, publish-pypi]
+    needs: [verify-tag, publish-pypi, pypi-smoke-test]
+    if: >-
+      ${{ always() && needs.publish-pypi.result == 'success' &&
+      (needs.pypi-smoke-test.result == 'success' || needs.pypi-smoke-test.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -205,6 +274,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Download the distributions
         uses: actions/download-artifact@v4
@@ -243,7 +314,7 @@ jobs:
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
           VERSION: ${{ needs.verify-tag.outputs.version }}
         run: |
           set -eu

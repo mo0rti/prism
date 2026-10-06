@@ -137,6 +137,17 @@ A pending publisher creates the project on its first upload and then becomes the
 
 A tag that does not equal the versions fails in the first job, before anything is published. Do not move or reuse a tag after PyPI has accepted the files; PyPI never accepts the same version twice, so a fix needs a new version.
 
+### Releasing without TestPyPI
+
+When TestPyPI is unavailable, release an existing tag by hand. Every job checks out the tag, so the files are built from the tagged commit, and with `skip_testpypi` the TestPyPI upload and its smoke test are skipped. After the PyPI upload, **pypi-smoke-test** installs the version from PyPI and runs the same commands, and the GitHub release is created only when that passes.
+
+```bash
+gh workflow run release.yml --ref main -f tag=v<version> -f skip_testpypi=true
+gh workflow run npm-release.yml --ref main -f tag=v<version>
+```
+
+The npm release workflow does not start by itself after a manual Release run; start it once the Release run has succeeded. Once TestPyPI is back, re-run the failed jobs of the original tag run (`gh run rerun <run-id> --failed`): TestPyPI receives the files and its smoke test runs, and the PyPI job then stops because PyPI already has the version.
+
 ## npm Launcher
 
 `@mortitech/prism` (the `npm/` folder) is a small Node package without runtime dependencies. Its `prism` command runs `uv tool run --from prism-kit==<version> prism <arguments>` with inherited streams and passes uv's exit code through, so `npx @mortitech/prism <command>` works without a Python setup. The npm version equals the Prism version, a release bumps both together, and the launcher always runs the `prism-kit` version equal to its own. It needs Node.js 22 or later.
