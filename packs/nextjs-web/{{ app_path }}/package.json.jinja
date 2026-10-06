@@ -1,0 +1,47 @@
+{%- set contract = ('../' * (app_path.split('/') | length)) ~ 'shared/api-contracts/openapi.yml' -%}
+{
+  "name": "{{ project_slug }}-{{ app_id }}",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">={{ versions.node }}"
+  },
+  "scripts": {
+    "generate:api": "openapi-typescript {{ contract }} -o lib/api/generated/schema.d.ts",
+    "predev": "npm run generate:api",
+    "dev": "next dev --port {{ port }}",
+    "prebuild": "npm run generate:api",
+    "build": "next build",
+    "start": "next start --port {{ port }}",
+    "prelint": "npm run generate:api",
+    "lint": "eslint . --max-warnings 0",
+    "pretypecheck": "npm run generate:api",
+    "typecheck": "next typegen && tsc --noEmit",
+    "pretest": "npm run generate:api",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "node -e \"const fs=require('fs');['.next'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\""
+  },
+  "dependencies": {
+    "next": "{{ versions.next }}",
+    "openapi-fetch": "{{ versions.openapi_fetch }}",
+    "react": "{{ versions.react }}",
+    "react-dom": "{{ versions.react }}"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "{{ versions.testing_library_dom }}",
+    "@testing-library/jest-dom": "{{ versions.testing_library_jest_dom }}",
+    "@testing-library/react": "{{ versions.testing_library_react }}",
+    "@types/node": "{{ versions.types_node }}",
+    "@types/react": "{{ versions.types_react }}",
+    "@types/react-dom": "{{ versions.types_react_dom }}",
+    "@vitejs/plugin-react": "{{ versions.vitejs_plugin_react }}",
+    "eslint": "{{ versions.eslint }}",
+    "eslint-config-next": "{{ versions.eslint_config_next }}",
+    "jsdom": "{{ versions.jsdom }}",
+    "openapi-typescript": "{{ versions.openapi_typescript }}",
+    "typescript": "{{ versions.typescript }}",
+    "vite": "{{ versions.vite }}",
+    "vitest": "{{ versions.vitest }}"
+  }
+}

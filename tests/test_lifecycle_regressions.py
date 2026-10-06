@@ -171,8 +171,7 @@ class LifecycleRegressionTests(unittest.TestCase):
                 "backend": "backend",
                 "mobile-android": "mobile-android",
                 "mobile-ios": "mobile-ios",
-                "web-user-app": "web-user-app",
-                "web-admin-portal": "web-admin-portal",
+                "web": "web",
             }[platform]
             path.mkdir(parents=True, exist_ok=True)
 

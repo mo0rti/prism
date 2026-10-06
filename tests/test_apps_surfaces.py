@@ -105,10 +105,10 @@ class StatusAppsShapeTests(unittest.TestCase):
         workspace = envelope["workspace"]
         self.assertNotIn("platforms", workspace)
         self.assertNotIn("platform_maturity", workspace)
-        self.assertEqual(["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"], [app["id"] for app in workspace["apps"]])
+        self.assertEqual(["backend", "web", "mobile-android", "mobile-ios"], [app["id"] for app in workspace["apps"]])
         for app in workspace["apps"]:
             self.assertEqual(APP_FIELDS, set(app))
-        backend, web_user, _admin, android, ios = workspace["apps"]
+        backend, web_user, android, ios = workspace["apps"]
         self.assertEqual(
             {
                 "id": "backend",
@@ -519,9 +519,17 @@ class WorkflowAppOptionTests(unittest.TestCase):
 
     def test_app_registers_the_named_generated_apps(self) -> None:
         root = self.new_root()
-        code, _out, err = run_cli("workflow", "install", str(root), "--name", "Two", "--app", "web-user-app", "--app", "backend", "--apply", "--yes")
+        code, _out, err = run_cli("workflow", "install", str(root), "--name", "Two", "--app", "web", "--app", "backend", "--apply", "--yes")
         self.assertEqual(0, code, err)
-        self.assertEqual(["backend", "web-user-app"], [item["id"] for item in manifest_data(root)["apps"]])
+        self.assertEqual(["backend", "web"], [item["id"] for item in manifest_data(root)["apps"]])
+
+    def test_the_retired_web_sample_ids_are_not_app_choices(self) -> None:
+        root = self.new_root()
+        for retired in ("web-user-app", "web-admin-portal"):
+            with self.subTest(app=retired):
+                code, _out, err = run_cli("workflow", "install", str(root), "--name", "Old", "--app", retired)
+                self.assertEqual(2, code)
+                self.assertIn("invalid choice", err)
 
     def test_the_platform_option_is_gone(self) -> None:
         root = self.new_root()
@@ -532,11 +540,11 @@ class WorkflowAppOptionTests(unittest.TestCase):
                 self.assertIn("unrecognized arguments: --platform", err)
         self.assertEqual([], list(root.iterdir()))
 
-    def test_only_the_five_generated_app_ids_are_accepted(self) -> None:
+    def test_only_the_default_generated_app_ids_are_accepted(self) -> None:
         root = self.new_root()
         code, _out, err = run_cli("workflow", "install", str(root), "--name", "Bad", "--app", "desktop")
         self.assertEqual(2, code)
-        for app_id in ("backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"):
+        for app_id in ("backend", "web", "mobile-android", "mobile-ios"):
             self.assertIn(app_id, err)
 
     def test_a_new_workspace_without_app_has_no_apps(self) -> None:
@@ -578,11 +586,11 @@ class WorkflowAppOptionTests(unittest.TestCase):
 
 
 class DoctorStackTests(unittest.TestCase):
-    """Doctor decides relevance from stacks and keeps today's results for the five generated apps."""
+    """Doctor decides relevance from stacks and keeps today's results for the default generated apps."""
 
     # What each stack-aware check was declared with before it was keyed by stack.
     LEGACY_PLATFORMS = {"Docker": ("backend",), "JDK": ("backend", "mobile-android"), "Xcode CLI": ("mobile-ios",)}
-    PLATFORMS = ("backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios")
+    PLATFORMS = ("backend", "web", "mobile-android", "mobile-ios")
 
     def subsets(self):
         for mask in range(1 << len(self.PLATFORMS)):
@@ -605,7 +613,7 @@ class DoctorStackTests(unittest.TestCase):
         self.assertFalse(hasattr(build_doctor_checks(incubation_mode=True)[0], "platforms"))
 
     @patch("prism_cli.cli.shutil.which", return_value=None)
-    def test_relevance_by_stack_equals_relevance_by_platform_for_every_selection_of_the_five_apps(self, _which: object) -> None:
+    def test_relevance_by_stack_equals_relevance_by_platform_for_every_selection_of_the_default_apps(self, _which: object) -> None:
         checks = build_doctor_checks(incubation_mode=True)
         for target in self.subsets():
             stacks = {GENERATED_PLATFORM_STACKS[platform] for platform in target}
@@ -936,7 +944,7 @@ class ContractAcceptanceThroughTheCliTests(unittest.TestCase):
         self.assertEqual(["backend", "customer-android", "partner-android"], [app["id"] for app in envelope["workspace"]["apps"]])
         self.assertEqual(0, envelope["facts"]["error_count"])
 
-    def test_a_generated_five_app_workspace_reads_like_the_baseline_apart_from_the_field_names(self) -> None:
+    def test_a_generated_workspace_with_the_default_apps_reads_like_the_baseline_apart_from_the_field_names(self) -> None:
         """The deep comparison is the baseline snapshot test; this checks the renamed fields against the same workspace."""
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -950,7 +958,7 @@ class ContractAcceptanceThroughTheCliTests(unittest.TestCase):
                 compatibility = service.compatibility()
             finally:
                 service.close()
-        ids = ["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"]
+        ids = ["backend", "web", "mobile-android", "mobile-ios"]
         self.assertEqual(ids, [app["id"] for app in status["workspace"]["apps"]])
         self.assertEqual(ids, [app["id"] for app in lint["workspace"]["apps"]])
         self.assertEqual(ids, [app["id"] for app in board_apps])

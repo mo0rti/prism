@@ -71,11 +71,11 @@ class ValidateAnswersTests(unittest.TestCase):
         self.assertEqual([], warnings)
 
     def test_requires_password_auth_globally(self) -> None:
-        errors, _warnings = validate_answers({"apps": [{"id": "web-user-app", "stack": "nextjs-web"}], "auth_methods": []})
+        errors, _warnings = validate_answers({"apps": [{"id": "web", "stack": "nextjs-web"}], "auth_methods": []})
         self.assertIn("Prism currently requires Username + Password auth as the baseline sign-in method.", errors)
 
-    def test_requires_password_for_admin_portal(self) -> None:
-        errors, _warnings = validate_answers({"apps": [{"id": "web-admin-portal", "stack": "nextjs-web"}], "auth_methods": ["google"]})
+    def test_requires_password_for_a_second_web_app(self) -> None:
+        errors, _warnings = validate_answers({"apps": [{"id": "web", "stack": "nextjs-web"}, {"id": "admin", "stack": "nextjs-web", "audience": "internal"}], "auth_methods": ["google"]})
         self.assertIn("Prism currently requires Username + Password auth as the baseline sign-in method.", errors)
 
     def test_requires_password_for_backend_only_projects(self) -> None:
@@ -85,7 +85,7 @@ class ValidateAnswersTests(unittest.TestCase):
     def test_emits_expected_warnings(self) -> None:
         errors, warnings = validate_answers(
             {
-                "apps": [{"id": "mobile-ios", "stack": "ios-swiftui"}, {"id": "web-user-app", "stack": "nextjs-web"}],
+                "apps": [{"id": "mobile-ios", "stack": "ios-swiftui"}, {"id": "web", "stack": "nextjs-web"}],
                 "auth_methods": ["apple", "password"],
             }
         )
@@ -713,13 +713,13 @@ class GeneratedProjectStructureTests(unittest.TestCase):
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
-            (root / "web-user-app").mkdir()
+            (root / "web").mkdir()
             (root / ".github" / "workflows").mkdir(parents=True)
-            (root / ".github" / "workflows" / "web-user-app.yml").write_text("", encoding="utf-8")
+            (root / ".github" / "workflows" / "web.yml").write_text("", encoding="utf-8")
 
             errors, _warnings, platforms = validate_generated_project_structure(root)
 
-        self.assertIn("web-user-app", platforms)
+        self.assertIn("web", platforms)
         self.assertEqual([], errors)
 
 
@@ -1623,7 +1623,7 @@ def create_wiki_skeleton(root: Path) -> None:
     write_status_board(root)
     write_general_index(root)
     # The features in these tests are scoped to generated apps, which the workspace model must declare.
-    write_manifest(root, platforms=["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"])
+    write_manifest(root, platforms=["backend", "web", "mobile-android", "mobile-ios"])
 
 
 def write_manifest(root: Path, project_name: str = "Prism App", platforms: list[str] | None = None) -> None:

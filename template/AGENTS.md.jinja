@@ -96,9 +96,8 @@ the implemented platform routes.
 
 ```text
 {% for app in apps if app.stack == "spring-backend" %}{{ app.path }}/ -> Spring Boot (Kotlin, Java {{ pack_versions["spring-backend"].java }})
-{% endfor %}{% if "web-user-app" in app_ids %}web-user-app/  -> Next.js + TypeScript user-facing web app
-{% endif %}{% if "web-admin-portal" in app_ids %}web-admin-portal/  -> Next.js + TypeScript admin web portal
-{% endif %}{% if "android-compose" in stacks %}mobile-android/ -> Kotlin + Jetpack Compose (MVVM, Hilt, Room)
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}{{ app.path }}/ -> Next.js (TypeScript, Node {{ pack_versions["nextjs-web"].node }}), port {{ app.port }}
+{% endfor %}{% if "android-compose" in stacks %}mobile-android/ -> Kotlin + Jetpack Compose (MVVM, Hilt, Room)
 {% endif %}{% if "ios-swiftui" in stacks %}mobile-ios/     -> Swift 6 + SwiftUI (MVVM, SwiftData) - Mac/Xcode only
 {% endif %}shared/        -> OpenAPI spec + design tokens
 knowledge/     -> Living product wiki (single source of truth for features)
@@ -112,9 +111,9 @@ docs/          -> Human-readable reference documentation
 | Generate API clients | `task generate-clients` |
 {% for app in apps if app.stack == "spring-backend" %}| Start {{ app.id }} | `task {{ app.id }}:run` |
 | Test {{ app.id }} | `task {{ app.id }}:test` |
-{% endfor %}{% if "web-user-app" in app_ids %}| Start user web app | `task web-user-app:dev` |
-{% endif %}{% if "web-admin-portal" in app_ids %}| Start admin web portal | `task web-admin-portal:dev` |
-{% endif %}{% if "android-compose" in stacks %}| Build Android | `task mobile-android:build` |
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| Start {{ app.id }} | `task {{ app.id }}:dev` |
+| Test {{ app.id }} | `task {{ app.id }}:test` |
+{% endfor %}{% if "android-compose" in stacks %}| Build Android | `task mobile-android:build` |
 | Android tests | `task mobile-android:test` |
 {% endif %}{% if "ios-swiftui" in stacks %}| Build iOS (Mac) | `task mobile-ios:build` |
 | iOS tests (Mac) | `task mobile-ios:test` |
@@ -263,6 +262,8 @@ Prism owns the auth contract, and you own the real identity provider. `shared/ap
 A backend app validates bearer JWTs as a resource server. Under the `local` Spring profile only, it also signs short-lived development tokens for loopback requests with a key held in memory. That is **local development sign-in, never complete authentication**: do not present it as authentication, do not enable `local` in a shared or deployed environment, and replace it with your identity provider using the `security-auth` skill before the app is exposed. Docs and tasks set `local` explicitly; `docker-compose.yml` sets no profile, and no JWT secret exists in the template.
 {% else %}
 A backend app, when you add one, validates bearer JWTs as a resource server and ships a local-only development identity; clients label that sign-in "Local development sign-in". The `security-auth` skill explains how to replace it with your identity provider.
+{% endif %}{% if "nextjs-web" in stacks %}
+A web app calls the dev-identity endpoint from its server, keeps the token in an httpOnly cookie and calls the backend from its server, so browser scripts never read the token. Its "Local development sign-in" is the same development identity, not authentication.
 {% endif %}
 ## Key Documentation
 
@@ -282,9 +283,8 @@ A backend app, when you add one, validates bearer JWTs as a resource server and 
 - `.agents/skills/deployment/` - deployment skill with worked examples; Claude Code uses `.claude/skills/deployment/`. Hosting, secrets and deployment belong to the user and their agent
 - `shared/api-contracts/openapi.yml` - API contract (source of truth)
 {% for app in apps if app.stack == "spring-backend" %}- `{{ app.path }}/docs/guide.md` - {{ app.id }} structure, conventions and commands
-{% endfor %}{% if "web-user-app" in app_ids %}- `web-user-app/docs/guide.md` - user-facing web app structure and auth flow
-{% endif %}{% if "web-admin-portal" in app_ids %}- `web-admin-portal/docs/guide.md` - admin shell, credentials auth, operational workflows
-{% endif %}
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}- `{{ app.path }}/docs/guide.md` - {{ app.id }} structure, sign-in slice and commands
+{% endfor %}
 
 ## Conventions
 
@@ -299,7 +299,7 @@ Workspace-level conventions list only the slices present in the generated worksp
 - **Android testing**: use the platform guide for JUnit, Compose/UI, and integration coverage
 {% endif %}{% if "ios-swiftui" in stacks %}- **iOS DI**: protocol-based container with async/await flows
 - **iOS testing**: use the platform guide for XCTest, async flows, and feature-level coverage
-{% endif %}{% if "web-user-app" in app_ids or "web-admin-portal" in app_ids %}- **Web platform structure**: keep route, auth, and client-generation rules aligned with the selected web platform guides
+{% endif %}{% if "nextjs-web" in stacks %}- **Web structure**: server-side calls through the generated API client, an httpOnly session cookie and Vitest tests; the web app guides and `$web-conventions` describe them
 {% endif %}
 
 Instructions load root-first. Codex reads `AGENTS.md` from the repo root down to the working
@@ -325,9 +325,8 @@ Each platform has its own `AGENTS.md` with detailed patterns. Its `CLAUDE.md` im
 and adds only what is specific to Claude Code:
 
 {% for app in apps if app.stack == "spring-backend" %}- `{{ app.path }}/AGENTS.md` - {{ app.id }}: Spring Boot, Kotlin, Gradle
-{% endfor %}{% if "web-user-app" in app_ids %}- `web-user-app/AGENTS.md` - Next.js, next-intl, marketing + dashboard flows
-{% endif %}{% if "web-admin-portal" in app_ids %}- `web-admin-portal/AGENTS.md` - Admin web portal, credentials auth, management tables
-{% endif %}{% if "android-compose" in stacks %}- `mobile-android/AGENTS.md` - Compose, Hilt, Retrofit 3, Room
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}- `{{ app.path }}/AGENTS.md` - {{ app.id }}: Next.js, the local development sign-in slice, Vitest
+{% endfor %}{% if "android-compose" in stacks %}- `mobile-android/AGENTS.md` - Compose, Hilt, Retrofit 3, Room
 {% endif %}{% if "ios-swiftui" in stacks %}- `mobile-ios/AGENTS.md` - SwiftUI, async/await, Keychain, SwiftData, local iOS skills, mobile-ios/docs/ references
 {% endif %}
 

@@ -11,9 +11,8 @@ Hosting, secrets and deployment belong to the user and their agent. The `deploym
 | Workflow | Trigger Paths | What It Does |
 |----------|--------------|--------------|
 {% for app in apps if app.stack == "spring-backend" %}| `{{ app.id }}.yml` | `{{ app.path }}/**`, `shared/api-contracts/**` | `./gradlew build`: compile, every test (the integration tests start PostgreSQL with Testcontainers) and the jar; upload test reports |
-{% endfor %}{% if "web-user-app" in app_ids %}| `web-user-app.yml` | `web-user-app/**`, `shared/**` | npm lint + typecheck + `next build` |
-{% endif %}{% if "web-admin-portal" in app_ids %}| `web-admin-portal.yml` | `web-admin-portal/**`, `shared/**` | npm lint + typecheck + `next build` |
-{% endif %}{% if "android-compose" in stacks %}| `mobile-android.yml` | `mobile-android/**`, `shared/**` | Gradle compile + unit tests, lint, emulator UI tests, assembleDebug |
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| `{{ app.id }}.yml` | `{{ app.path }}/**`, `shared/api-contracts/**` | `npm ci`, lint, typecheck, Vitest tests, `next build` |
+{% endfor %}{% if "android-compose" in stacks %}| `mobile-android.yml` | `mobile-android/**`, `shared/**` | Gradle compile + unit tests, lint, emulator UI tests, assembleDebug |
 {% endif %}{% if "ios-swiftui" in stacks %}| `mobile-ios.yml` | `mobile-ios/**`, `shared/**` | xcodebuild test (macOS runner) |
 {% endif %}| `api-contracts.yml` | `shared/api-contracts/**` | Validate OpenAPI spec |
 

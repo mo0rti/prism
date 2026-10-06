@@ -10,16 +10,10 @@ includes:
     taskfile: ./{{ app.path }}/Taskfile.yml
     dir: ./{{ app.path }}
 {% endfor %}
-{% if "web-user-app" in app_ids %}
-  web-user-app:
-    taskfile: ./web-user-app/Taskfile.yml
-    dir: ./web-user-app
-{% endif %}
-{% if "web-admin-portal" in app_ids %}
-  web-admin-portal:
-    taskfile: ./web-admin-portal/Taskfile.yml
-    dir: ./web-admin-portal
-{% endif %}
+{% for app in apps if app.stack == "nextjs-web" %}  {{ app.id }}:
+    taskfile: ./{{ app.path }}/Taskfile.yml
+    dir: ./{{ app.path }}
+{% endfor %}
 {% if "android-compose" in stacks %}
   mobile-android:
     taskfile: ./mobile-android/Taskfile.yml
@@ -41,9 +35,8 @@ tasks:
       - cmd: "{{'{{'}} .OPENAPI_GENERATOR {{'}}'}} validate -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}"
 {% for app in apps if app.stack == "spring-backend" %}      - task: generate-client-{{ app.id }}
 {% endfor %}
-{% if "web-user-app" in app_ids or "web-admin-portal" in app_ids %}
-      - task: generate-client-typescript
-{% endif %}
+{% for app in apps if app.stack == "nextjs-web" %}      - task: {{ app.id }}:generate-api
+{% endfor %}
 {% if "android-compose" in stacks %}
       - task: generate-client-mobile-android
 {% endif %}
@@ -65,19 +58,6 @@ tasks:
         --additional-properties=interfaceOnly=true,useSpringBoot3=true,useTags=true
         --package-name="{{ package_identifier }}.{{ app.id | replace('-', '') }}.api"
 {% endfor %}
-
-{% if "web-user-app" in app_ids or "web-admin-portal" in app_ids %}
-  generate-client-typescript:
-    desc: "Generate TypeScript Axios client from OpenAPI"
-    internal: true
-    cmds:
-      - >
-        {{'{{'}} .OPENAPI_GENERATOR {{'}}'}} generate
-        -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
-        -g typescript-axios
-        -o ./shared/generated/typescript-client
-        --additional-properties=supportsES6=true,withSeparateModelsAndApi=true
-{% endif %}
 
 {% if "android-compose" in stacks %}
   generate-client-mobile-android:
@@ -114,12 +94,9 @@ tasks:
     cmds:
 {% for app in apps if app.stack == "spring-backend" %}      - task: {{ app.id }}:lint
 {% endfor %}
-{% if "web-user-app" in app_ids %}
-      - task: web-user-app:lint
-{% endif %}
-{% if "web-admin-portal" in app_ids %}
-      - task: web-admin-portal:lint
-{% endif %}
+{% for app in apps if app.stack == "nextjs-web" %}      - task: {{ app.id }}:lint
+      - task: {{ app.id }}:typecheck
+{% endfor %}
 {% if "android-compose" in stacks %}
       - task: mobile-android:lint
 {% endif %}
@@ -129,12 +106,8 @@ tasks:
     cmds:
 {% for app in apps if app.stack == "spring-backend" %}      - task: {{ app.id }}:test
 {% endfor %}
-{% if "web-user-app" in app_ids %}
-      - task: web-user-app:test
-{% endif %}
-{% if "web-admin-portal" in app_ids %}
-      - task: web-admin-portal:test
-{% endif %}
+{% for app in apps if app.stack == "nextjs-web" %}      - task: {{ app.id }}:test
+{% endfor %}
 {% if "android-compose" in stacks %}
       - task: mobile-android:test
 {% endif %}

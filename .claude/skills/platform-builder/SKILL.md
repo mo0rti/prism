@@ -1,6 +1,6 @@
 ---
 name: platform-builder
-description: Add or extend a platform template (web-user-app, web-admin-portal, backend, mobile-android, or mobile-ios) following established patterns from completed platforms.
+description: Add or extend a platform template (web, backend, mobile-android, or mobile-ios) following established patterns from completed platforms.
 argument-hint: [platform-name]
 disable-model-invocation: true
 ---
@@ -20,7 +20,7 @@ $ARGUMENTS
 2. **Read the spec** - Infer the current platform contract from `copier.yml`, `template/`, `README.md`, and the maintainer docs.
 
 3. **Study reference platforms** - Read completed platform templates and packs to understand patterns:
-   - `packs/spring-backend/` - the pack shape: every path under `{{ app_path }}/`, its own workflow and Cursor rule, pinned versions read from `packs/versions.yml`, one tested slice, the dev identity and its guards, Spring Boot patterns, Jinja usage, CLAUDE.md structure
+   - `packs/spring-backend/` and `packs/nextjs-web/` - the pack shape: every path under `{{ app_path }}/`, its own workflow and Cursor rule, pinned versions read from `packs/versions.yml`, one tested slice; `spring-backend` adds the dev identity and its guards, Spring Boot patterns, Jinja usage, CLAUDE.md structure; `nextjs-web` also commits a lockfile that a script rewrites from the pins
    - `template/mobile-android/` - MVVM patterns, feature structure, Hilt DI, `mobile-android/docs/` for technical docs with 7 doc files
    - `template/mobile-ios/` - MVVM patterns mirroring Android, SwiftUI conventions
 

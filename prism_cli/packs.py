@@ -8,7 +8,7 @@ question ``prism_layer`` and passes each layer its answers.
 
 This module holds what the CLI decides for those answers: which stacks have a pack, the identifiers an
 app derives from its ID, the validation that keeps two apps apart, the port each app listens on, and the
-three switches below for the stacks whose pack has not landed yet.
+two switches below for the stacks whose pack has not landed yet.
 """
 
 from __future__ import annotations
@@ -36,12 +36,11 @@ WORKSPACE_LAYER = "workspace"
 COPIER_ANSWERS_FILE = ".copier-answers.yml"
 
 # Stacks with a pack under packs/<stack>/. Each pack work package adds its stack here.
-PACK_STACKS = ("spring-backend",)
+PACK_STACKS = ("spring-backend", "nextjs-web")
 
 # One switch per stack that has no pack yet. While it is true, the workspace layer still generates that
-# stack's full sample (web-user-app and web-admin-portal, mobile-android, mobile-ios) from template/. The
-# work package that lands the stack's pack deletes its sample, its switch and its row in full_sample_apps().
-NEXTJS_WEB_FULL_SAMPLE = True
+# stack's full sample (mobile-android, mobile-ios) from template/. The work package that lands the
+# stack's pack deletes its sample, its switch and its row in full_sample_apps().
 ANDROID_COMPOSE_FULL_SAMPLE = True
 IOS_SWIFTUI_FULL_SAMPLE = True
 
@@ -50,8 +49,6 @@ def full_sample_apps() -> dict[str, str]:
     """The default app ID and the stack of every full sample the workspace layer still generates."""
 
     samples: dict[str, str] = {}
-    if NEXTJS_WEB_FULL_SAMPLE:
-        samples.update({"web-user-app": "nextjs-web", "web-admin-portal": "nextjs-web"})
     if ANDROID_COMPOSE_FULL_SAMPLE:
         samples["mobile-android"] = "android-compose"
     if IOS_SWIFTUI_FULL_SAMPLE:
@@ -83,7 +80,7 @@ _SEGMENT_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 _MODULE_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 # App IDs the workspace layer's own files would collide with: its api-contracts workflow and its Cursor rules.
-RESERVED_APP_IDS = frozenset({"api-contracts", "advisory-review", "api-conventions", "web"})
+RESERVED_APP_IDS = frozenset({"api-contracts", "advisory-review", "api-conventions"})
 # Folders at the repository root that belong to the workspace layer or to git.
 RESERVED_PATH_ROOTS = frozenset({".git", ".github", ".claude", ".agents", ".cursor", "knowledge", "docs", "shared"})
 
@@ -234,7 +231,7 @@ def stack_maturity(stack: str) -> dict[str, str]:
     if stack == "nextjs-web":
         return {
             "level": "provisional",
-            "caveat": "Generated web apps are verified by lint, typecheck and build only; hosting is the project owner's choice (see the deployment skill).",
+            "caveat": "Generated web apps are verified by lint, typecheck, unit and component tests and the build, with a mocked backend; sign-in against a running backend is checked by hand, and hosting is the project owner's choice (see the deployment skill).",
         }
     return {"level": "baseline", "caveat": ""}
 

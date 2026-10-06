@@ -1,0 +1,23 @@
+import { cookies } from "next/headers"
+
+/** One cookie name per app: apps on `localhost` share one cookie jar whatever their port. */
+export const SESSION_COOKIE = "{{ app_id | replace('-', '_') }}_session"
+
+/** The token the sign-in route stored, or `undefined` when nobody is signed in. */
+export async function readSessionToken(): Promise<string | undefined> {
+  const store = await cookies()
+  return store.get(SESSION_COOKIE)?.value || undefined
+}
+
+/** The attributes of the session cookie. The token stays in an httpOnly cookie that scripts cannot read. */
+export function sessionCookieOptions(request: Request, maxAgeSeconds: number) {
+  const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim()
+  const secure = (forwarded ?? new URL(request.url).protocol.replace(":", "")) === "https"
+  return { httpOnly: true, sameSite: "lax" as const, secure, path: "/", maxAge: maxAgeSeconds }
+}
+
+/** Sign-in and sign-out change the session, so they only accept requests that come from this app's own origin. */
+export function isSameOrigin(request: Request): boolean {
+  const origin = request.headers.get("origin")
+  return origin === null || origin === new URL(request.url).origin
+}

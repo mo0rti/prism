@@ -256,10 +256,9 @@ Use:
 - `backend`
 - `mobile-android`
 - `mobile-ios`
-- `web-user-app`
-- `web-admin-portal`
+- `web`
 
-Do not invent aliases such as `ios`, `android`, or `web`.
+Do not invent aliases such as `ios` or `android`.
 
 ### `index.md` indexes the wiki; `status-board.md` is the status board
 

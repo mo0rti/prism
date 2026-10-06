@@ -1,6 +1,6 @@
 ---
 name: platform-builder
-description: Add or extend a platform slice in this Copier template repo by following the current repo docs, matching established template patterns, updating docs and AI context, and validating generation. Use when working on backend, web-user-app, web-admin-portal, mobile-android, or mobile-ios template support.
+description: Add or extend a platform slice in this Copier template repo by following the current repo docs, matching established template patterns, updating docs and AI context, and validating generation. Use when working on backend, web, mobile-android, or mobile-ios template support.
 ---
 
 # Platform Builder
@@ -11,7 +11,7 @@ Use this skill for template-repo work that adds a new platform slice or material
 
 1. Read the relevant implementation status and platform context in `docs/current-status.md`, `docs/maintainer-workflow.md`, `README.md`, and the strongest existing template slices.
 2. Study the strongest reference slices before editing:
-   - `packs/spring-backend/` (the pack shape: every path under `{{ app_path }}/`, versions read from `packs/versions.yml`)
+   - `packs/spring-backend/` and `packs/nextjs-web/` (the pack shape: every path under `{{ app_path }}/`, versions read from `packs/versions.yml`)
    - `template/mobile-android/`
    - `template/mobile-ios/`
 3. Edit the files of the stack: a pack under `packs/{stack}/`, or a full sample under `template/{platform}/` until its pack exists.

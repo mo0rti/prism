@@ -32,10 +32,16 @@ DEPLOYMENT_FILE_NAMES = {"wrangler.jsonc", "open-next.config.ts", ".dev.vars.exa
 ALL_AUTH_METHODS = ["google", "apple", "facebook", "microsoft", "password"]
 
 
-def generate(destination: Path, apps: list[str]) -> Path:
-    """A workspace of the default apps with these IDs and every auth method, generated through the CLI."""
+# A second nextjs-web app, for the workspaces that carry two web apps.
+ADMIN_APP = {"id": "admin", "name": "Admin App", "stack": "nextjs-web", "repository": "workspace", "path": "admin", "audience": "internal", "generation": "scaffolded"}
 
-    return generate_default_apps(destination, apps, destination.parent, auth_methods=ALL_AUTH_METHODS)
+
+def generate(destination: Path, apps: list[str]) -> Path:
+    """A workspace of the default apps with these IDs (and `admin`, a second web app) and every auth method, generated through the CLI."""
+
+    defaults = [app for app in apps if app != ADMIN_APP["id"]]
+    extra = [ADMIN_APP] if ADMIN_APP["id"] in apps else []
+    return generate_default_apps(destination, defaults, destination.parent, extra_apps=extra, auth_methods=ALL_AUTH_METHODS)
 
 
 def generate_raw_workspace_layer(destination: Path, extra_data: dict[str, str] | None = None) -> Path:
@@ -112,7 +118,7 @@ class GeneratedWorkspaceTests(unittest.TestCase):
         cls.addClassCleanup(cls.temp.cleanup)
         root = Path(cls.temp.name)
         cls.platform_sets = {preset.slug: [app["id"] for app in preset.apps] for preset in PRESETS}
-        cls.platform_sets["web-only"] = ["web-user-app", "web-admin-portal"]
+        cls.platform_sets["web-only"] = ["web", "admin"]
         cls.platform_sets["mobile-only"] = ["mobile-android", "mobile-ios"]
         cls.workspaces = {name: generate(root / name, platforms) for name, platforms in cls.platform_sets.items()}
 
@@ -130,7 +136,7 @@ class GeneratedWorkspaceTests(unittest.TestCase):
 
     def test_web_apps_do_not_depend_on_the_hosting_adapter(self) -> None:
         for name in ("backend-web", "web-only"):
-            for app in ("web-user-app", "web-admin-portal"):
+            for app in [item for item in self.platform_sets[name] if item in ("web", "admin")]:
                 with self.subTest(workspace=name, app=app):
                     package = json.loads((self.workspaces[name] / app / "package.json").read_text(encoding="utf-8"))
                     dependencies = {**package.get("dependencies", {}), **package.get("devDependencies", {})}
@@ -234,9 +240,24 @@ class GeneratedWorkspaceTests(unittest.TestCase):
         self.assertNotIn("{{", deploy)
         self.assertNotIn("{%", deploy)
         self.assertNotIn(b"\r\n", (references / "azure" / "06-deploy-backend.sh").read_bytes())
-        wrangler = (references / "cloudflare" / "wrangler.web-user-app.jsonc").read_text(encoding="utf-8")
-        self.assertIn('"name": "scope-check-web-user-app"', wrangler)
+        wrangler = (references / "cloudflare" / "wrangler.jsonc").read_text(encoding="utf-8")
+        self.assertIn('"name": "scope-check-<app-id>"', wrangler)
+        self.assertIn('"API_BASE_URL": "https://api.scope-check.com"', wrangler)
+        self.assertNotIn("AUTH_", wrangler, "the slice's web apps read no AUTH_ variable")
         self.assertTrue((references / "cloudflare" / "open-next.config.ts").is_file())
+        self.assertTrue((references / "cloudflare" / "dev.vars.example").is_file())
+
+    def test_the_cloudflare_guide_lists_every_web_app_and_matches_the_pack(self) -> None:
+        guide = (self.workspaces["web-only"] / ".claude" / "skills" / "deployment" / "references" / "cloudflare-setup.md").read_text(encoding="utf-8")
+        self.assertIn("| Web App | `web` | `scope-check-web` |", guide)
+        self.assertIn("| Admin App | `admin` | `scope-check-admin` |", guide)
+        self.assertNotIn("AUTH_", guide)
+        self.assertNotIn("NextAuth", guide)
+        # The guide's build steps are the pack's scripts: the guide adds the adapter, not a change to the app's own scripts.
+        package = json.loads((self.workspaces["web-only"] / "web" / "package.json").read_text(encoding="utf-8"))
+        self.assertIn('"clean"', guide)
+        self.assertIn("clean", package["scripts"])
+        self.assertIn('"@opennextjs/cloudflare"', guide)
 
     def test_the_manifest_records_none_of_the_removed_answers(self) -> None:
         for name, root in self.workspaces.items():

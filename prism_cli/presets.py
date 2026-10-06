@@ -47,12 +47,12 @@ PRESETS: tuple[Preset, ...] = (
         slug="backend-web",
         label="Backend + Web",
         maturity="partial",
-        summary="Combined user-web and admin-portal setup with current web caveats.",
-        apps=_scaffolded("backend", "web-user-app", "web-admin-portal"),
+        summary="Backend with one Next.js web app that signs in through the local development identity.",
+        apps=_scaffolded("backend", "web"),
         # Keep these auth defaults aligned with copier.yml until manifest-driven preset sync lands.
         answers={"auth_methods": ["google", "password"]},
         notes=(
-            "Admin Web Portal currently requires password auth.",
+            "Add further web apps, for example an internal admin app, with `prism app add ID --stack nextjs-web --scaffold`.",
         ),
     ),
 )

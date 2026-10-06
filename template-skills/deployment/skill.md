@@ -13,11 +13,6 @@ reference-stacks:
   references/cloudflare: [nextjs-web]
   references/cloudflare-setup.md: [nextjs-web]
   references/mobile-store-release.md: [android-compose, ios-swiftui]
-reference-apps:
-  references/cloudflare/wrangler.web-user-app.jsonc: [web-user-app]
-  references/cloudflare/dev.vars.web-user-app.example: [web-user-app]
-  references/cloudflare/wrangler.web-admin-portal.jsonc: [web-admin-portal]
-  references/cloudflare/dev.vars.web-admin-portal.example: [web-admin-portal]
 ---
 
 # Deployment
@@ -40,8 +35,8 @@ This project does not choose a cloud, hold credentials or deploy anything. The g
 - Backend settings come from environment variables: `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` (or the `SPRING_DATASOURCE_*` equivalents; the app keeps its tables in its own database schema, named after its ID unless overridden) and `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI` for the identity provider. `.env.example` lists the local database values.
 - The backend holds no JWT secret. Its `local` Spring profile enables a development identity and must never run in a deployed environment; replace it with your identity provider first (`security-auth` skill).
 {%- endif %}
-{%- if "web-user-app" in app_ids or "web-admin-portal" in app_ids %}
-- Web apps that pass `npm run lint`, `npm run typecheck` and `npm run build` with no hosting files. `API_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, `AUTH_URL` and the provider variables are the runtime configuration; `.env.example` lists the local values.
+{%- if "nextjs-web" in stacks %}
+- Web apps that pass `npm ci`, `npm run lint`, `npm run typecheck`, `npm test` and `npm run build` with no hosting files. `API_BASE_URL` is their only runtime variable; each app's `.env.example` lists the local value.
 {%- endif %}
 {%- if "android-compose" in stacks or "ios-swiftui" in stacks %}
 - Mobile apps with Fastlane lanes under their `fastlane/` folders; CI builds and tests them but does not release them.
@@ -63,17 +58,17 @@ Other scripts: `add-custom-domain.sh`, `check-secrets.sh`, `show-database-creden
 
 The database, its schema migrations and its production sizing are project decisions. The example provisions PostgreSQL because the local development service is PostgreSQL.
 {%- endif %}
-{%- if "web-user-app" in app_ids or "web-admin-portal" in app_ids %}
+{%- if "nextjs-web" in stacks %}
 
 ## Web: Cloudflare Workers Through OpenNext
 
 Reference: `references/cloudflare-setup.md` (the guide) and `references/cloudflare/` (`wrangler` configuration, `open-next.config.ts` and local preview variables).
 
 1. Confirm the Cloudflare account and the public URLs with the user.
-2. For each web app, copy the OpenNext adapter and Wrangler files from `references/cloudflare/`, add the `@opennextjs/cloudflare`, `wrangler` and `esbuild` dev dependencies and the `build:cloudflare`, `preview` and `deploy` scripts, and ignore `.open-next/`, `.wrangler/` and `.dev.vars` (the guide has the exact lines).
-3. Set the non-secret variables in `wrangler.jsonc`; the user creates the secrets with `npx wrangler secret put`.
+2. For each web app, copy the OpenNext adapter and Wrangler files from `references/cloudflare/`, add the `@opennextjs/cloudflare`, `esbuild` and `wrangler` dev dependencies and the `build:cloudflare`, `preview` and `deploy` scripts, and ignore `.open-next/`, `.wrangler/` and `.dev.vars` (the guide has the exact lines).
+3. Set `API_BASE_URL` in `wrangler.jsonc` to the deployed backend; the generated apps need no other variable and no secret of their own.
 4. Run `npm run preview` for a local production check, then `npm run deploy` once the user approves.
-5. Set `CORS_ALLOWED_ORIGINS` on the backend to the public web URLs.
+5. The local development sign-in works only against a backend under its `local` profile. Before deploying a web app, replace it with the project's identity provider (see `security-auth`).
 {%- endif %}
 {%- if "android-compose" in stacks or "ios-swiftui" in stacks %}
 

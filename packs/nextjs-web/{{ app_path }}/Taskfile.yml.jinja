@@ -1,0 +1,42 @@
+version: "3"
+
+tasks:
+  install:
+    desc: Install {{ app_id }} dependencies from the lockfile
+    cmds:
+      - npm ci
+
+  dev:
+    desc: Start {{ app_id }} on port {{ port }}
+    cmds:
+      - npm run dev
+
+  build:
+    desc: Build {{ app_id }}
+    cmds:
+      - npm run build
+
+  generate-api:
+    desc: Regenerate the {{ app_id }} API client types from the shared OpenAPI contract
+    cmds:
+      - npm run generate:api
+
+  lint:
+    desc: Lint {{ app_id }}
+    cmds:
+      - npm run lint
+
+  typecheck:
+    desc: Type-check {{ app_id }}
+    cmds:
+      - npm run typecheck
+
+  test:
+    desc: Run the {{ app_id }} unit and component tests
+    cmds:
+      - npm test
+
+  clean:
+    desc: Remove the Next.js build output
+    cmds:
+      - npm run clean

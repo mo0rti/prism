@@ -1478,8 +1478,7 @@ def validate_generated_project_structure(path: Path) -> tuple[list[str], list[st
     detected_platforms: list[str] = []
     workflows = {
         "backend": ".github/workflows/backend.yml",
-        "web-user-app": ".github/workflows/web-user-app.yml",
-        "web-admin-portal": ".github/workflows/web-admin-portal.yml",
+        "web": ".github/workflows/web.yml",
         "mobile-android": ".github/workflows/mobile-android.yml",
         "mobile-ios": ".github/workflows/mobile-ios.yml",
     }
@@ -1652,6 +1651,11 @@ def prompt_advanced_answers() -> dict[str, Any]:
     github_org = prompt_text("GitHub organization or username", "")
     selected = prompt_multiselect("Select the apps to scaffold (none is fine)", ALL_PLATFORM_CHOICES, default_values=["backend"], allow_empty=True)
     apps = apps_from_platforms(selected, generation=GENERATION_SCAFFOLDED)
+    for app in apps:
+        if app["stack"] == "nextjs-web":
+            audience = prompt_text(f"Audience of `{app['id']}` (free text, empty for none)", "")
+            if audience:
+                app["audience"] = audience
     apps.extend(prompt_more_apps({app["id"] for app in apps}))
     auth_default = DEFAULT_ANSWERS["auth_methods"]
     auth_methods = prompt_multiselect(

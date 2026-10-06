@@ -60,8 +60,7 @@ not as an `**Unknown:**` item.
 - **backend**: [what backend must implement, or "not in scope"]
 - **mobile-android**: [what Android must implement, or "not in scope"]
 - **mobile-ios**: [what iOS must implement, or "not in scope"]
-- **web-user-app**: [what user web app must implement, or "not in scope"]
-- **web-admin-portal**: [what admin portal must implement, or "not in scope"]
+- **web**: [what the web app must implement, or "not in scope"]
 
 ## Design
 Link to design artifacts and key design decisions.
@@ -455,7 +454,7 @@ change over time, and a change never edits a feature's scope by itself:
 ## Project identity
 - Name: [project name]
 - Description: [one-sentence summary]
-- Apps: [backend, web-user-app, ...]
+- Apps: [backend, web, ...]
 - Auth methods: [if known]
 - Infrastructure choices: [if known]
 - Important correction or note: [optional]

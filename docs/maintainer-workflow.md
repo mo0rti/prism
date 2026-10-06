@@ -11,15 +11,14 @@ tests/                # Python regression tests; tests/browser holds the opt-in 
 scripts/              # Validation, measurement and demo scripts, and the generators of the workflow asset and the skill layers
 template-skills/      # The one source of every skill, command and Cursor rule; generated into the layers of template/
 copier.yml            # Questionnaire and generation contract
-template/             # Files copied into generated projects
+packs/                # App layers, one pack per stack with a pack (spring-backend, nextjs-web), and versions.yml with the pinned versions
+template/             # Files copied into generated projects (the workspace layer)
   .claude/            # Claude commands and skills (generated from template-skills/)
   .agents/            # Codex skills (generated from template-skills/)
   .cursor/            # Cursor rules: scoped stack facts and the board review (generated from template-skills/)
   .github/            # Workflow templates
   _templates/         # Hygen generators
   backend/            # Backend scaffold
-  web-user-app/       # User-facing web scaffold
-  web-admin-portal/   # Admin web scaffold
   mobile-android/     # Android scaffold
   mobile-ios/         # iOS scaffold
   shared/             # OpenAPI and design tokens
@@ -87,14 +86,13 @@ python scripts/build-skill-layers.py --check  # fails when a generated file diff
 - `backend` alone, and `backend` with a second backend at another path (`prism app add api-two --stack spring-backend --path services/api-two --scaffold`)
 - `backend` and `mobile-android`
 - `backend` and `mobile-ios`
-- `backend` and `web-user-app`
-- `backend` and `web-admin-portal`
-- `backend`, `web-user-app` and `web-admin-portal`
+- `backend` and `web`
+- `backend`, `web` and `admin` (two apps of the `nextjs-web` stack, with different audiences)
 - the preset defaults as a contract-sanity check, not as the main proof of usability
 
 Generate each through the CLI, with a preset or an answers file that lists the apps, because Copier does not ask about apps. Generation renders the working tree (tracked or not), so a test that needs committed state, such as an update across a tag, builds a snapshot repository under a temporary folder (`tests/layered_support.py`).
 
-`./scripts/validate-template.ps1 -Mode contract` generates through `prism new` and checks rendered files and workflows. The default `full` mode also runs backend smoke checks (the pack's tests and boot jar, which need a JDK); both modes disable the script's web smoke helper. Generated web install, lint, typecheck, authentication checks and Next.js builds run in the separate `web-smoke` CI job in `.github/workflows/template-validation.yml`. A configured job is not evidence of a passing run on the current changes.
+`./scripts/validate-template.ps1 -Mode contract` generates through `prism new` and checks rendered files and workflows. The default `full` mode also runs backend smoke checks (the pack's tests and boot jar, which need a JDK); both modes disable the script's web smoke helper. Generated web `npm ci`, lint, typecheck, tests and Next.js builds run for two web apps in the separate `web-smoke` CI job in `.github/workflows/template-validation.yml`. A configured job is not evidence of a passing run on the current changes.
 
 ## Reference Commands
 

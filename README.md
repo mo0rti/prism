@@ -57,7 +57,7 @@ pip install -e .
 
 Run the remaining steps in a separate workspace folder, not in this maintainer checkout and not in a cloud-synced folder such as OneDrive.
 
-**1. Add the workflow.** Use an empty folder or an existing repository. Choose a display name and, if you want, an app: `--app` takes one of the five generated app IDs (`backend`, `web-user-app`, `web-admin-portal`, `mobile-android`, `mobile-ios`) and registers it without generating an application. Without `--app` the workspace has no apps, and `prism app add` registers one later ([the workspace model](https://github.com/mo0rti/prism/blob/main/docs/workspace-model.md) covers apps, repositories and `prism app list`). The first command previews every file. The second asks you to confirm before it writes (`--apply --yes` skips the question for automation).
+**1. Add the workflow.** Use an empty folder or an existing repository. Choose a display name and, if you want, an app: `--app` takes one of the four generated app IDs (`backend`, `web`, `mobile-android`, `mobile-ios`) and registers it without generating an application. Without `--app` the workspace has no apps, and `prism app add` registers one later ([the workspace model](https://github.com/mo0rti/prism/blob/main/docs/workspace-model.md) covers apps, repositories and `prism app list`). The first command previews every file. The second asks you to confirm before it writes (`--apply --yes` skips the question for automation).
 
 ```bash
 cd path/to/your-workspace
@@ -118,8 +118,7 @@ Application generation is separate from the shared board. Run `prism` for the ho
 A Prism-generated repository can include:
 
 - **Backend**: Spring Boot 4, Kotlin 2.2+, Java 21
-- **User Web App**: Next.js + TypeScript
-- **Admin Web Portal**: Next.js + TypeScript
+- **Web app** (one or more, one per audience): Next.js + TypeScript with a local development sign-in and one authenticated read
 - **Android**: Kotlin + Jetpack Compose
 - **iOS**: Swift + SwiftUI
 

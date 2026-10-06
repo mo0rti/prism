@@ -76,7 +76,7 @@ class WorkspaceAndBackendTests(LayeredTestCase):
         self.assertTrue((ws / "backend" / "build.gradle.kts").is_file())
         self.assertTrue((ws / "backend" / "src" / "main" / "kotlin" / "com" / "example" / "layeredapp" / "backend" / "Application.kt").is_file())
         self.assertFalse((ws / "backend" / "src" / "main" / "kotlin" / "com" / "example" / "layeredapp" / "modules").exists(), "the full backend sample is not generated")
-        for name in ("web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"):
+        for name in ("web", "mobile-android", "mobile-ios"):
             self.assertFalse((ws / name).exists(), name)
         self.assertTrue((ws / "knowledge" / "wiki" / "SCHEMA.md").is_file())
         self.assertTrue((ws / "shared" / "api-contracts" / "openapi.yml").is_file())
@@ -198,36 +198,48 @@ class TwoBackendsTests(LayeredTestCase):
 class SampleStacksTests(LayeredTestCase):
     """A stack without a pack keeps its full sample through the workspace layer, one switch per stack."""
 
-    def test_the_default_web_android_and_ios_apps_are_still_generated_as_samples(self) -> None:
+    def test_the_default_android_and_ios_apps_are_still_generated_as_samples_and_the_web_app_is_a_pack(self) -> None:
         apps = [
             BACKEND,
-            {"id": "web-user-app", "stack": "nextjs-web", "name": "User-Facing Web App"},
+            {"id": "web", "stack": "nextjs-web", "name": "Web App"},
             {"id": "mobile-android", "stack": "android-compose", "name": "Android (Kotlin/Compose)"},
             {"id": "mobile-ios", "stack": "ios-swiftui", "name": "iOS (Swift/SwiftUI)"},
         ]
         ws = self.generate("samples", apps)
-        for name in ("web-user-app", "mobile-android", "mobile-ios"):
+        for name in ("mobile-android", "mobile-ios"):
             self.assertTrue((ws / name / "AGENTS.md").is_file(), name)
             self.assertTrue((ws / ".github" / "workflows" / f"{name}.yml").is_file(), name)
-        self.assertFalse((ws / "web-admin-portal").exists())
-        self.assertTrue((ws / "backend" / ".copier-answers.yml").is_file())
-        for name in ("web-user-app", "mobile-android", "mobile-ios"):
             self.assertFalse((ws / name / ".copier-answers.yml").exists(), "a sample has no layer of its own; the workspace layer renders it")
+        for name in ("backend", "web"):
+            self.assertTrue((ws / name / ".copier-answers.yml").is_file(), f"{name} is a pack with a layer of its own")
+        self.assertTrue((ws / "web" / "package-lock.json").is_file())
+        self.assertTrue((ws / ".github" / "workflows" / "web.yml").is_file())
+        self.assertTrue((ws / ".cursor" / "rules" / "web.mdc").is_file())
         workspace = read_yaml(ws / ".copier-answers.yml")
         self.assertEqual(["android-compose", "ios-swiftui", "nextjs-web", "spring-backend"], workspace["stacks"])
-        self.assertEqual(["backend", "web-user-app", "mobile-android", "mobile-ios"], [entry["id"] for entry in workspace["apps"]])
+        self.assertEqual(["backend", "web", "mobile-android", "mobile-ios"], [entry["id"] for entry in workspace["apps"]])
         manifest = read_yaml(ws / "prism.workspace.yml")
-        self.assertEqual({"backend", "web-user-app", "mobile-android", "mobile-ios"}, set(manifest["app_maturity"]))
+        self.assertEqual({"backend", "web", "mobile-android", "mobile-ios"}, set(manifest["app_maturity"]))
         self.assertEqual("experimental", manifest["app_maturity"]["mobile-ios"]["level"])
-        self.assertEqual("provisional", manifest["app_maturity"]["web-user-app"]["level"])
+        self.assertEqual("provisional", manifest["app_maturity"]["web"]["level"])
 
-    def test_a_custom_web_app_cannot_be_scaffolded_before_its_pack_exists(self) -> None:
-        answers = write_answers(self.root / "custom.yml", {"project_name": "Custom", "apps": [{"id": "customer-web", "stack": "nextjs-web"}]})
+    def test_a_custom_android_app_cannot_be_scaffolded_before_its_pack_exists(self) -> None:
+        answers = write_answers(self.root / "custom.yml", {"project_name": "Custom", "apps": [{"id": "customer-android", "stack": "android-compose"}]})
         code, _out, err = run_cli("new", "--template", template_url(self.repo), "--trust-template", "--answers", str(answers), "--dest", str(self.root / "custom"), "--yes")
         self.assertEqual(3, code)
         self.assertIn("has no pack yet", err)
-        self.assertIn("register `customer-web`", err)
+        self.assertIn("register `customer-android`", err)
         self.assertFalse((self.root / "custom").exists())
+
+    def test_a_custom_web_app_is_scaffolded_at_its_own_path_by_the_pack(self) -> None:
+        apps = [BACKEND, {"id": "customer-portal", "stack": "nextjs-web", "name": "Customer Portal", "path": "apps/portal", "audience": "customers"}]
+        ws = self.generate("portal", apps)
+        self.assertTrue((ws / "apps" / "portal" / "package.json").is_file())
+        answers = read_yaml(ws / "apps" / "portal" / ".copier-answers.yml")
+        self.assertEqual(("nextjs-web", "customer-portal", "apps/portal", 3000, "customers"), (answers["prism_layer"], answers["app_id"], answers["app_path"], answers["port"], answers["audience"]))
+        self.assertTrue((ws / ".github" / "workflows" / "customer-portal.yml").is_file())
+        self.assertTrue((ws / ".cursor" / "rules" / "customer-portal.mdc").is_file())
+        self.assertFalse((ws / "customer-portal").exists())
 
     def test_a_registered_app_generates_no_code_and_no_layer(self) -> None:
         apps = [BACKEND, {"id": "partner-web", "stack": "nextjs-web", "generation": "registered", "path": "apps/partner"}]
@@ -373,6 +385,19 @@ class ScaffoldTests(LayeredTestCase):
         self.assertEqual("v1.0.0", read_yaml(ws / "services" / "api-two" / ".copier-answers.yml")["_commit"])
         self.assertEqual("v1.0.0", read_yaml(ws / ".copier-answers.yml")["_commit"])
 
+    def test_a_web_app_scaffolds_on_the_first_free_web_port_with_its_pack(self) -> None:
+        ws = self.copy("webapp")
+        code, out, err = run_cli("app", "add", "web", "--stack", "nextjs-web", "--audience", "B2C", "--scaffold", "--apply", "--yes", "--trust-template", str(ws))
+        self.assertEqual(0, code, out + err)
+        answers = read_yaml(ws / "web" / ".copier-answers.yml")
+        self.assertEqual((3000, "v1.0.0", "nextjs-web", "B2C"), (answers["port"], answers["_commit"], answers["prism_layer"], answers["audience"]))
+        self.assertTrue((ws / "web" / "package-lock.json").is_file())
+        self.assertTrue((ws / ".github" / "workflows" / "web.yml").is_file())
+        self.assertEqual({"backend", "web"}, set(yaml.safe_load((ws / "Taskfile.yml").read_text(encoding="utf-8"))["includes"]))
+        self.assertIn("web", read_yaml(ws / "prism.workspace.yml")["app_maturity"])
+        subjects = git(ws, "log", "--format=%s", "main..HEAD").stdout.split("\n")
+        self.assertEqual(["Scaffold web: app layer and manifest", "Scaffold web: workspace layer"], [item for item in subjects if item])
+
     def test_the_json_receipt_is_clean(self) -> None:
         ws = self.copy("jsonapplied")
         code, out, err = self.add(ws, "--apply", "--yes", "--trust-template", "--json")
@@ -412,7 +437,7 @@ class ScaffoldTests(LayeredTestCase):
 
     def test_a_stack_without_a_pack_is_registered_not_scaffolded(self) -> None:
         ws = self.copy("nopack")
-        code, _out, err = run_cli("app", "add", "customer-web", "--stack", "nextjs-web", "--scaffold", str(ws))
+        code, _out, err = run_cli("app", "add", "customer-android", "--stack", "android-compose", "--scaffold", str(ws))
         self.assertEqual(3, code)
         self.assertIn("has no pack yet", err)
         code, _out, err = run_cli("app", "add", "tool", "--stack", "other", "--has-ui", "false", "--serves-api", "false", "--scaffold", str(ws))
@@ -442,6 +467,52 @@ class ScaffoldTests(LayeredTestCase):
         self.assertEqual("main", git(ws, "symbolic-ref", "--short", "HEAD").stdout.strip())
         entry = next(app for app in read_yaml(ws / "prism.workspace.yml")["apps"] if app["id"] == "api-two")
         self.assertNotIn("generation", entry, "a registered app records no generation; the default is registered")
+
+
+class WebUpdateTests(LayeredTestCase):
+    """`prism update` brings two web apps of one stack to a new tag, each from its own answers file."""
+
+    WEB_AGENTS = "packs/nextjs-web/{{ app_path }}/AGENTS.md.jinja"
+    WEB = {"id": "web", "stack": "nextjs-web", "name": "Web App", "audience": "B2C"}
+    ADMIN = {"id": "admin", "stack": "nextjs-web", "name": "Admin App", "audience": "internal"}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls.workspace = cls.root / "base"
+        code, out, err = generate_workspace(cls.repo, cls.workspace, {"project_name": "Layered App", "apps": [BACKEND, cls.WEB, cls.ADMIN]}, cls.root)
+        if code != 0:
+            raise AssertionError(out + err)
+        commit_workspace(cls.workspace)
+        cls.updated = cls.root / "updated"
+        shutil.copytree(cls.workspace, cls.updated)
+        tag_template_change(cls.repo, "v2.0.0", (cls.WEB_AGENTS, "append", "\nTemplate v2 note for {{ app_id }}.\n"), (WORKSPACE_DOCS, "append", "\nTemplate v2 workspace note.\n"))
+        cls.result = run_cli("update", str(cls.updated), "--yes", "--trust-template")
+
+    def test_each_web_app_is_updated_in_its_own_commit(self) -> None:
+        code, out, err = self.result
+        self.assertEqual(0, code, out + err)
+        ws = self.updated
+        self.assertEqual("prism-update-v2.0.0", git(ws, "symbolic-ref", "--short", "HEAD").stdout.strip())
+        subjects = [item for item in git(ws, "log", "--format=%s", "main..HEAD").stdout.split("\n") if item]
+        self.assertEqual(["Update app admin to v2.0.0", "Update app web to v2.0.0", "Update app backend to v2.0.0", "Update workspace layer to v2.0.0"], subjects)
+        for app in ("web", "admin"):
+            self.assertIn(f"app {app}: updated", out)
+            self.assertIn(f"Template v2 note for {app}.", (ws / app / "AGENTS.md").read_text(encoding="utf-8"))
+        self.assertNotIn("Template v2 note", (ws / "backend" / "AGENTS.md").read_text(encoding="utf-8"), "the web pack's change reaches only the web apps")
+
+    def test_the_apps_keep_their_identity_port_and_dependencies(self) -> None:
+        for app, port, audience in (("web", 3000, "B2C"), ("admin", 3001, "internal")):
+            with self.subTest(app=app):
+                answers = read_yaml(self.updated / app / ".copier-answers.yml")
+                self.assertEqual(("v2.0.0", "nextjs-web", port, audience), (answers["_commit"], answers["prism_layer"], answers["port"], answers["audience"]))
+                for relative in ("package.json", "package-lock.json", "lib/auth/session.ts", "lib/app-info.ts"):
+                    self.assertEqual((self.workspace / app / relative).read_bytes(), (self.updated / app / relative).read_bytes(), relative)
+        manifest = read_yaml(self.updated / "prism.workspace.yml")
+        model, diagnostics = normalize_manifest(manifest, path=Path("prism.workspace.yml"))
+        self.assertEqual([], diagnostics)
+        self.assertEqual(["backend", "web", "admin"], model.active_app_ids)
+        self.assertTrue(all(app.scaffolded for app in model.apps))
 
 
 class UpdateTests(LayeredTestCase):

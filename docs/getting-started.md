@@ -26,7 +26,7 @@ Recommended first evaluation paths:
 
 - **Backend only** for repository shape and contract inspection
 - **Backend + Mobile** for the Android and iOS client path; iOS needs macOS and Xcode validation
-- **Backend + Web** to inspect the combined user-web and admin-portal setup
+- **Backend + Web** to inspect the web slice: a Next.js app with a local development sign-in and one authenticated read, built, tested and proven in CI
 
 For the maturity notes behind those recommendations, read
 [current-status.md](current-status.md).
@@ -207,8 +207,10 @@ Platform-specific caution:
   `README.md` has the commands), then run `task <app-id>:test`. The dev identity is local development
   sign-in, not authentication: never enable the `local` profile on a shared environment, and replace it
   with your identity provider (the generated `security-auth` skill has the steps) before you expose the app
-- for `web-user-app` and `web-admin-portal`, inspect Next.js routes and auth handlers before
-  treating the setup as settled; hosting is yours to choose (see the `deployment` skill)
+- for each web app, run `npm ci`, `npm run lint`, `npm run typecheck`, `npm test` and `npm run build`
+  in its folder, then start a backend under its `local` profile and try the "Local development
+  sign-in"; that sign-in is a development identity, not complete authentication, and hosting is yours
+  to choose (see the `deployment` skill)
 - for `mobile-ios`, validate locally on macOS before treating the slice as build-proven
 
 Do not assume every command, workflow, or platform combination has been fully hardened just

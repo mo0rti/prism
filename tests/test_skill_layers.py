@@ -24,7 +24,7 @@ from tests.layered_support import generate_default_apps
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = REPO_ROOT / "template"
-ALL_APPS = ("backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios")
+ALL_APPS = ("backend", "web", "mobile-android", "mobile-ios")
 ONE_APP = ("backend",)
 SKILL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 CODEX_INTERFACE_KEYS = {"display_name", "short_description", "icon_small", "icon_large", "brand_color", "default_prompt"}
@@ -174,7 +174,7 @@ class GeneratorTests(unittest.TestCase):
         self.assertIn(condition(".claude/skills/deploy-device", "android-compose", "ios-swiftui"), lines)
         # The backend's Cursor rule belongs to its pack, per app, so no source and no exclusion names it.
         self.assertFalse([line for line in lines if ".cursor/rules/backend.mdc" in line])
-        self.assertIn(condition(".cursor/rules/web.mdc", "nextjs-web"), lines)
+        self.assertFalse([line for line in lines if ".cursor/rules/web.mdc" in line], "the web Cursor rule belongs to the nextjs-web pack")
         self.assertIn(condition(".cursor/rules/mobile-android.mdc", "android-compose"), lines)
         self.assertIn(condition(".cursor/rules/mobile-ios.mdc", "ios-swiftui"), lines)
         for layer in (".agents/skills", ".claude/skills"):
@@ -182,8 +182,9 @@ class GeneratorTests(unittest.TestCase):
             self.assertIn(condition(f"{base}/azure", "spring-backend"), lines)
             self.assertIn(condition(f"{base}/azure-setup.md", "spring-backend"), lines)
             self.assertIn(condition(f"{base}/cloudflare", "nextjs-web"), lines)
-            self.assertIn(condition(f"{base}/cloudflare/wrangler.web-user-app.jsonc", "web-user-app", variable="app_ids"), lines)
-            self.assertIn(condition(f"{base}/cloudflare/wrangler.web-admin-portal.jsonc", "web-admin-portal", variable="app_ids"), lines)
+            self.assertIn(condition(f"{base}/cloudflare-setup.md", "nextjs-web"), lines)
+            self.assertFalse([line for line in lines if "wrangler.web-" in line or "dev.vars.web-" in line], "the Wrangler example is one file for every web app")
+            self.assertIn(condition(f"{layer}/web-conventions", "nextjs-web"), lines)
             self.assertIn(condition(f"{base}/mobile-store-release.md", "android-compose", "ios-swiftui"), lines)
         # Skills that ship with every workspace carry no condition.
         self.assertFalse([line for line in lines if "/ask" in line or "board-review" in line or "advisory-review" in line or "api-conventions" in line])
@@ -320,7 +321,7 @@ class GeneratorTests(unittest.TestCase):
                 layers: [codex, claude-skill]
                 stacks: [spring-backend]
                 reference-stacks: {references/extra: [ios-swiftui]}
-                reference-apps: {references/extra: [web-user-app]}
+                reference-apps: {references/extra: [mobile-android]}
                 codex: {display_name: Demo, short_description: Demo, default_prompt: Use it., implicit: true}
                 """,
                 "# Demo\n\nBody.",
@@ -334,7 +335,7 @@ class GeneratorTests(unittest.TestCase):
             lines = GENERATOR.exclude_lines(skills)
             self.assertIn("  - \"{% if prism_layer == 'workspace' and 'spring-backend' not in stacks %}.agents/skills/demo{% endif %}\"", lines)
             self.assertIn("  - \"{% if prism_layer == 'workspace' and 'ios-swiftui' not in stacks %}.claude/skills/demo/references/extra{% endif %}\"", lines)
-            self.assertIn("  - \"{% if prism_layer == 'workspace' and 'web-user-app' not in app_ids %}.claude/skills/demo/references/extra{% endif %}\"", lines)
+            self.assertIn("  - \"{% if prism_layer == 'workspace' and 'mobile-android' not in app_ids %}.claude/skills/demo/references/extra{% endif %}\"", lines)
         with tempfile.TemporaryDirectory(prefix="prism-skill-sources-") as temporary:
             root = Path(temporary)
             write_source(
@@ -369,9 +370,9 @@ def owner(skills, rendered: str):
     raise AssertionError(f"no source produces {rendered}")
 
 
-STACK_OF_APP = {"backend": "spring-backend", "web-user-app": "nextjs-web", "web-admin-portal": "nextjs-web", "mobile-android": "android-compose", "mobile-ios": "ios-swiftui"}
+STACK_OF_APP = {"backend": "spring-backend", "web": "nextjs-web", "mobile-android": "android-compose", "mobile-ios": "ios-swiftui"}
 # The Cursor rule of a pack's app is the pack's own file, so no skill source names it.
-PACK_APP_RULES = {".cursor/rules/backend.mdc"}
+PACK_APP_RULES = {".cursor/rules/backend.mdc", ".cursor/rules/web.mdc"}
 
 
 def rendered_names(skills, app_ids) -> set[str]:
@@ -588,7 +589,7 @@ class AllAppsDiscoveryTests(RenderedWorkspace, unittest.TestCase):
 
     def test_every_stack_skill_is_generated_for_its_app(self) -> None:
         for layer in (".agents/skills", ".claude/skills"):
-            for name in ("android-conventions", "compose-design-system", "ios-conventions", "swiftui-design-system", "spring-boot-conventions", "deployment"):
+            for name in ("android-conventions", "compose-design-system", "ios-conventions", "swiftui-design-system", "spring-boot-conventions", "web-conventions", "deployment"):
                 self.assertTrue((self.root / layer / name / "SKILL.md").is_file(), f"{layer}/{name}")
         self.assertTrue((self.root / ".claude" / "skills" / "deploy-device" / "SKILL.md").is_file())
         self.assertTrue((self.root / ".cursor" / "rules" / "web.mdc").is_file())

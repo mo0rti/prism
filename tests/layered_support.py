@@ -31,6 +31,13 @@ def git(cwd: Path, *arguments: str, check: bool = True) -> subprocess.CompletedP
     return subprocess.run(["git", *GIT_IDENTITY, *arguments], cwd=cwd, check=check, capture_output=True, text=True)
 
 
+def no_background_gc(repo: Path) -> None:
+    """Keep git from repacking loose objects in the background while a test copies or reads the repository."""
+
+    git(repo, "config", "gc.auto", "0")
+    git(repo, "config", "maintenance.auto", "false")
+
+
 def build_template_repo(destination: Path, tag: str = "v1.0.0") -> Path:
     """A git repository holding this template's working tree as one commit, tagged ``tag``."""
 
@@ -42,6 +49,7 @@ def build_template_repo(destination: Path, tag: str = "v1.0.0") -> Path:
         else:
             shutil.copy2(source, destination / item)
     git(destination, "init", "-q")
+    no_background_gc(destination)
     git(destination, "add", "-A")
     git(destination, "commit", "-qm", f"Template {tag}")
     git(destination, "tag", tag)
@@ -118,6 +126,7 @@ def commit_workspace(workspace: Path) -> None:
     """Make a generated workspace a git repository with its generated state committed."""
 
     git(workspace, "init", "-q", "-b", "main")
+    no_background_gc(workspace)
     # The CLI's update and scaffold commits run without the helper's `-c` identity, like a user's
     # own repository, so the workspace carries a local identity (CI runners have no global one).
     git(workspace, "config", "user.name", "Prism test")
@@ -130,14 +139,22 @@ def read_yaml(path: Path) -> Any:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def generate_default_apps(destination: Path, app_ids: list[str], scratch: Path, project_name: str = "Scope Check", **answers: Any) -> Path:
+def generate_default_apps(
+    destination: Path,
+    app_ids: list[str],
+    scratch: Path,
+    project_name: str = "Scope Check",
+    extra_apps: list[dict[str, Any]] | None = None,
+    **answers: Any,
+) -> Path:
     """Generate a workspace from this checkout's working tree with the default apps of these IDs.
 
     This is what the template tests need in place of a raw `copier copy --data platforms=...`: the CLI
     runs the workspace layer and each app's pack, and a full sample comes from the workspace layer.
+    ``extra_apps`` are further app entries, such as a second app of a stack, listed after the defaults.
     """
 
-    apps = apps_from_platforms(app_ids, generation=GENERATION_SCAFFOLDED)
+    apps = apps_from_platforms(app_ids, generation=GENERATION_SCAFFOLDED) + list(extra_apps or [])
     answers_file = write_answers(scratch / f"{destination.name}-answers.yml", {"project_name": project_name, "apps": apps, **answers})
     code, out, err = run_cli("new", "--answers", str(answers_file), "--dest", str(destination), "--yes")
     if code != 0:

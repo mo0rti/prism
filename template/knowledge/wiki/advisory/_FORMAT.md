@@ -16,7 +16,7 @@ Use this format for the setup-project foundation artifact:
 ## Project identity
 - Name: [project name]
 - Description: [one-sentence summary]
-- Apps: [backend, web-user-app, ...]
+- Apps: [backend, web, ...]
 - Auth methods: [if known]
 - Infrastructure choices: [if known]
 - Important correction or note: [optional]

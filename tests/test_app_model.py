@@ -80,19 +80,17 @@ class StackRegistryTests(unittest.TestCase):
                 "backend": "backend",
                 "mobile-android": "mobile-android",
                 "mobile-ios": "mobile-ios",
-                "web-user-app": "web-user-app",
-                "web-admin-portal": "web-admin-portal",
+                "web": "web",
             },
             GENERATED_PLATFORM_DIRS,
         )
-        self.assertEqual(["backend", "mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"], list(GENERATED_PLATFORM_DIRS))
+        self.assertEqual(["backend", "mobile-android", "mobile-ios", "web"], list(GENERATED_PLATFORM_DIRS))
         for removed in ("VALID_PLATFORM_IDS", "UI_PLATFORM_IDS"):
             self.assertFalse(hasattr(wiki_model, removed), removed)
         self.assertEqual(
             (
                 ("backend", "Spring Boot Backend"),
-                ("web-user-app", "User-Facing Web App"),
-                ("web-admin-portal", "Admin Web Portal"),
+                ("web", "Web App"),
                 ("mobile-android", "Android (Kotlin/Compose)"),
                 ("mobile-ios", "iOS (Swift/SwiftUI)"),
             ),
@@ -108,7 +106,7 @@ class StackRegistryTests(unittest.TestCase):
     def test_generated_apps_with_a_ui_come_from_the_has_ui_capability(self) -> None:
         model, _diagnostics = normalized({"schema_version": 2, "apps": apps_from_platforms(list(GENERATED_PLATFORM_STACKS))})
         with_ui = {app.id for app in model.apps if app.gate_capability("has-ui")}
-        self.assertEqual({"mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"}, with_ui)
+        self.assertEqual({"mobile-android", "mobile-ios", "web"}, with_ui)
         for app in model.apps:
             with self.subTest(app=app.id):
                 self.assertEqual(STACKS[GENERATED_PLATFORM_STACKS[app.id]].default_capabilities["has-ui"], app.gate_capability("has-ui"))
@@ -118,8 +116,7 @@ class GeneratedPlatformTests(unittest.TestCase):
     def test_each_generated_platform_becomes_an_app_of_its_stack(self) -> None:
         expected = {
             "backend": ("Spring Boot Backend", "spring-backend", "backend"),
-            "web-user-app": ("User-Facing Web App", "nextjs-web", "web-user-app"),
-            "web-admin-portal": ("Admin Web Portal", "nextjs-web", "web-admin-portal"),
+            "web": ("Web App", "nextjs-web", "web"),
             "mobile-android": ("Android (Kotlin/Compose)", "android-compose", "mobile-android"),
             "mobile-ios": ("iOS (Swift/SwiftUI)", "ios-swiftui", "mobile-ios"),
         }
@@ -237,13 +234,14 @@ class VersionTwoModelTests(unittest.TestCase):
         manifest["apps"][1]["path"] = "elsewhere"
         self.assert_error("duplicate-app-id", manifest, only=False)
 
-    def test_legacy_ids_are_valid_app_ids(self) -> None:
+    def test_the_default_ids_and_any_other_slug_are_valid_app_ids(self) -> None:
         manifest = v2_manifest(
             repositories=[],
             apps=[
                 {"id": "backend", "stack": "spring-backend"},
-                {"id": "web-user-app", "stack": "nextjs-web", "path": "web-user-app"},
-                {"id": "web-admin-portal", "stack": "nextjs-web", "path": "web-admin-portal"},
+                {"id": "web", "stack": "nextjs-web", "path": "web", "audience": "B2C"},
+                {"id": "admin", "stack": "nextjs-web", "path": "admin", "audience": "internal"},
+                {"id": "web-user-app", "stack": "nextjs-web", "path": "apps/user"},
                 {"id": "mobile-android", "stack": "android-compose"},
                 {"id": "mobile-ios", "stack": "ios-swiftui"},
             ],
@@ -251,7 +249,14 @@ class VersionTwoModelTests(unittest.TestCase):
         )
         model, diagnostics = normalized(manifest)
         self.assertEqual([], diagnostics)
-        self.assertEqual(["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"], model.active_app_ids)
+        self.assertEqual(["backend", "web", "admin", "web-user-app", "mobile-android", "mobile-ios"], model.active_app_ids)
+
+    def test_the_retired_web_sample_ids_are_not_default_platforms(self) -> None:
+        for retired in ("web-user-app", "web-admin-portal"):
+            with self.subTest(app=retired):
+                self.assertNotIn(retired, GENERATED_PLATFORM_STACKS)
+                with self.assertRaisesRegex(ValueError, retired):
+                    apps_from_platforms([retired])
 
     def test_unknown_app_stack(self) -> None:
         for stack in ("android", "Android-Compose", "", None, 7):

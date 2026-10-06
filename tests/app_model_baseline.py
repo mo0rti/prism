@@ -35,7 +35,7 @@ FIXED_BOARD_IDS = {
     "full": "6f1c1b0e-3d2a-4a43-9c55-0d0a5b0e7a11",
     "workflow-only": "a2b4c6d8-1e3f-4a5b-8c7d-9e0f1a2b3c4d",
 }
-ALL_PLATFORMS = ["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"]
+ALL_PLATFORMS = ["backend", "web", "mobile-android", "mobile-ios"]
 
 _FULL_MANIFEST = """schema_version: 2
 min_prism_cli_version: 0.3.0
@@ -61,16 +61,11 @@ apps:
     stack: spring-backend
     repository: workspace
     path: backend
-  - id: web-user-app
-    name: User-Facing Web App
+  - id: web
+    name: Web App
     stack: nextjs-web
     repository: workspace
-    path: web-user-app
-  - id: web-admin-portal
-    name: Admin Web Portal
-    stack: nextjs-web
-    repository: workspace
-    path: web-admin-portal
+    path: web
   - id: mobile-android
     name: Android (Kotlin/Compose)
     stack: android-compose
@@ -85,11 +80,7 @@ app_maturity:
   backend:
     level: baseline
     caveat: ''
-  web-user-app:
-    level: provisional
-    caveat: Generated web deployment requires live Cloudflare validation before treating
-      it as deployment-proven.
-  web-admin-portal:
+  web:
     level: provisional
     caveat: Generated web deployment requires live Cloudflare validation before treating
       it as deployment-proven.
@@ -112,8 +103,7 @@ expected_surfaces:
   - README.md
   workflows:
   - .github/workflows/backend.yml
-  - .github/workflows/web-user-app.yml
-  - .github/workflows/web-admin-portal.yml
+  - .github/workflows/web.yml
   - .github/workflows/mobile-android.yml
   - .github/workflows/mobile-ios.yml
 """
@@ -138,7 +128,7 @@ github_org: ''
 
 
 def build_full_workspace(root: Path) -> Path:
-    """A generated-style workspace with all five platforms and the workflow installed."""
+    """A generated-style workspace with all four default platforms and the workflow installed."""
 
     root.mkdir(parents=True, exist_ok=True)
     (root / "prism.workspace.yml").write_text(_FULL_MANIFEST, encoding="utf-8")
@@ -152,7 +142,7 @@ def build_full_workspace(root: Path) -> Path:
     for name in ("README.md", "AGENTS.md", "Taskfile.yml"):
         (root / name).write_text(f"# {name}\n", encoding="utf-8")
     _install_workflow(root, "full", upgrade=True)
-    add_baseline_wiki_content(root, ["backend", "mobile-android", "web-user-app", "mobile-ios"])
+    add_baseline_wiki_content(root, ["backend", "mobile-android", "web", "mobile-ios"])
     return root
 
 

@@ -150,6 +150,14 @@ class ReviewRegressions(unittest.TestCase):
         )
         self.assertEqual([("backend", "spring-backend", "scaffolded")], [(app["id"], app["stack"], app["generation"]) for app in answers["apps"]])
 
+    def test_advanced_flow_asks_for_the_audience_of_a_default_web_app(self):
+        texts = ["Demo", "Description", "com.example.demo", "", "B2C", ""]
+        with patch.object(cli, "prompt_text", side_effect=texts), patch.object(cli, "prompt_multiselect", side_effect=[["backend", "web"], ["password"]]), contextlib.redirect_stdout(io.StringIO()):
+            answers = cli.prompt_advanced_answers()
+        entries = {app["id"]: app for app in answers["apps"]}
+        self.assertEqual(("nextjs-web", "B2C", "scaffolded"), (entries["web"]["stack"], entries["web"]["audience"], entries["web"]["generation"]))
+        self.assertNotIn("audience", entries["backend"], "only a web app is asked for its audience here")
+
     def test_advanced_flow_asks_for_further_apps_with_a_stack_a_path_and_scaffold_or_register(self):
         texts = ["Demo", "Description", "com.example.demo", "", "api-two", "Second API", "workspace", "services/api-two", "B2B", ""]
         selections = [["backend"], ["spring-backend"], ["password"]]

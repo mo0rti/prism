@@ -2,9 +2,9 @@
 
 Prism's core is the workflow and board shared by humans and agents. Application generation is an optional capability. Follow `docs/prism-core-workflow-plan.md` for the scope, contracts and deferred work. Test lifecycle writes, workflow adoption and the shared HTTP/MCP service only in disposable neutral workspaces, never in this maintainer repository. Connected agents use pinned standard skills through one provider-neutral service; custom skills retain the direct-file path, with no extra board approval queue.
 
-Copier template that scaffolds workspaces from an app list: Backend (Spring Boot 4, a stack pack), User Web App and Admin Web Portal (Next.js samples), Android (Kotlin/Compose sample), and iOS (Swift/SwiftUI sample).
+Copier template that scaffolds workspaces from an app list: Backend (Spring Boot 4, a stack pack), web apps (Next.js, a stack pack, one per audience), Android (Kotlin/Compose sample), and iOS (Swift/SwiftUI sample).
 
-Generation has two layers under one `copier.yml` and one template tag. The hidden question `prism_layer` chooses `workspace` (`template/`) or a stack with a pack (`packs/<stack>/`, one app, every path under `{{ app_path }}/`). The Prism CLI collects the app list and runs the workspace layer and then each scaffolded app's pack, each from its own answers file. The backend, Android and web samples are verified locally; the iOS sample is verified only by the macOS CI job. Deployment is a generated skill with worked examples that are not verified against live accounts. Apple Sign-In is experimental. `docs/current-status.md` records the verification per platform.
+Generation has two layers under one `copier.yml` and one template tag. The hidden question `prism_layer` chooses `workspace` (`template/`) or a stack with a pack (`packs/<stack>/`, one app, every path under `{{ app_path }}/`). The Prism CLI collects the app list and runs the workspace layer and then each scaffolded app's pack, each from its own answers file. The backend and Android samples and the web pack are verified locally; the iOS sample is verified only by the macOS CI job. Deployment is a generated skill with worked examples that are not verified against live accounts. Apple Sign-In is experimental. `docs/current-status.md` records the verification per platform.
 
 ## Project Structure
 
@@ -14,10 +14,9 @@ copier.yml              # Template questionnaire: the hidden prism_layer, projec
 packs/                  # App layers: one pack per stack, rendered once per scaffolded app
   versions.yml          # The one place that pins versions; packs read it as `versions`
   spring-backend/       # Spring Boot pack, one tested slice (dev identity + GET /api/me): everything under {{ app_path }}/, plus .github/workflows/{{ app_id }}.yml and .cursor/rules/{{ app_id }}.mdc
+  nextjs-web/           # Next.js web pack: the local development sign-in and profile slice, its Vitest tests and a committed package-lock.json (scripts/refresh-nextjs-web-lock.py rewrites it from the pins)
 template-skills/        # The one source of every skill, command and Cursor rule (generated into template/)
 template/               # The workspace layer - Jinja2 files (.jinja suffix stripped on generation)
-  web-user-app/         # Next.js user-facing web app (full sample, switch in prism_cli/packs.py)
-  web-admin-portal/     # Next.js admin web portal
   mobile-android/              # Kotlin + Jetpack Compose (MVVM)
   mobile-ios/                  # Swift 6 + SwiftUI (MVVM)
   shared/               # OpenAPI 3.1 spec + design tokens
@@ -45,7 +44,7 @@ wiki commands from a generated project against this repository.
 
 - **Two layers of AI context**: `template/.claude/` is for generated projects; `.claude/` (root) is for this template repo
 - **Documentation organization**: Template-repo docs live in root `docs/`. Generated-project docs stay in `template/docs/`. Technical docs of an app in a pack live in `packs/<stack>/{{ app_path }}/docs/`; those of a full sample live inside its directory (`template/mobile-android/docs/`, `template/mobile-ios/docs/`). Sample docs are auto-excluded with their sample via `_exclude` rules, and every `_exclude` entry applies to the workspace layer only (`prism_layer == 'workspace'`).
-- **Layers and packs**: the workspace layer never holds app code of a stack that has a pack; a pack's paths are all under `{{ app_path }}/` except its workflow and Cursor rule; pinned versions live only in `packs/versions.yml`, and a test fails when a pack file repeats one; per-app files of a pack are the pack's own source, not the skill generator's. The switches for the stacks without a pack are named in `prism_cli/packs.py` (`NEXTJS_WEB_FULL_SAMPLE`, `ANDROID_COMPOSE_FULL_SAMPLE`, `IOS_SWIFTUI_FULL_SAMPLE`); each pack removes its switch and sample.
+- **Layers and packs**: the workspace layer never holds app code of a stack that has a pack; a pack's paths are all under `{{ app_path }}/` except its workflow and Cursor rule; pinned versions live only in `packs/versions.yml`, and a test fails when a pack file repeats one; per-app files of a pack are the pack's own source, not the skill generator's. The switches for the stacks without a pack are named in `prism_cli/packs.py` (`ANDROID_COMPOSE_FULL_SAMPLE`, `IOS_SWIFTUI_FULL_SAMPLE`); each pack removes its switch and sample. The pack's `package-lock.json.jinja` records the pins' resolved tree; after a pin changes, run `python scripts/refresh-nextjs-web-lock.py`, because a test fails while the lockfile and the pins disagree.
 - **Test with the CLI** after changes: `prism new --preset backend-only --project-name "Test App" --dest C:\temp\template-test --yes` (a checkout generates from its working tree). Raw `copier copy --trust --defaults --data "project_name=Test App" . C:\temp\layer-test` renders the workspace layer alone
 - **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
 - **User docs match behaviour**: keep the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md` equal to the CLI and service. After changing a documented command, message or security check, run it in a disposable workspace and fix the docs to match the real output

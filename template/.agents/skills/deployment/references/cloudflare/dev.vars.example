@@ -1,0 +1,3 @@
+# Cloudflare local preview vars for `npm run preview`
+# Copy this file to `.dev.vars` before running Wrangler/OpenNext preview.
+API_BASE_URL=http://localhost:8080

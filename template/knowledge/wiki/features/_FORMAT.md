@@ -47,8 +47,7 @@ as an `**Unknown:**` item.
 - **backend**: [what backend must implement, or "not in scope"]
 - **mobile-android**: [what Android must implement, or "not in scope"]
 - **mobile-ios**: [what iOS must implement, or "not in scope"]
-- **web-user-app**: [what user web app must implement, or "not in scope"]
-- **web-admin-portal**: [what admin portal must implement, or "not in scope"]
+- **web**: [what the web app must implement, or "not in scope"]
 
 Only list apps that `prism.workspace.yml` declares.
 

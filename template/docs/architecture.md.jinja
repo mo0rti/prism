@@ -9,9 +9,8 @@
 | Platform | Tech Stack | Hosting | Purpose |
 |----------|-----------|---------|---------|
 {% for app in apps if app.stack == "spring-backend" %}| {{ app.name }} | Spring Boot, Kotlin, Java {{ pack_versions["spring-backend"].java }} | Project owner's choice (see the `deployment` skill) | REST API and business logic ({{ app.path }}/) |
-{% endfor %}{% if "web-user-app" in app_ids %}| User Web App | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5, next-intl 4 | Project owner's choice (see the `deployment` skill) | User-facing marketing and authenticated dashboard |
-{% endif %}{% if "web-admin-portal" in app_ids %}| Admin Web Portal | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5 | Project owner's choice (see the `deployment` skill) | Internal admin operations and management UI |
-{% endif %}{% if "android-compose" in stacks %}| Android | Kotlin 2.2+, Java 21, Jetpack Compose, Hilt, Retrofit 3 | Google Play | Native Android app |
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| {{ app.name }} | Next.js {{ pack_versions["nextjs-web"].next }}, React {{ pack_versions["nextjs-web"].react }}, TypeScript {{ pack_versions["nextjs-web"].typescript }} | Project owner's choice (see the `deployment` skill) | Web app{% if app.audience %} for {{ app.audience }}{% endif %} ({{ app.path }}/) |
+{% endfor %}{% if "android-compose" in stacks %}| Android | Kotlin 2.2+, Java 21, Jetpack Compose, Hilt, Retrofit 3 | Google Play | Native Android app |
 {% endif %}{% if "ios-swiftui" in stacks %}| iOS | Swift 6, SwiftUI, iOS 17+, XcodeGen | App Store | Native iOS app |
 {% endif %}| Database | PostgreSQL 16 | Local development in Docker Compose; hosting is the project owner's choice | Data persistence |
 
@@ -55,7 +54,7 @@ A backend app is an OAuth2 resource server: it validates bearer JWTs and holds n
 2. The client keeps the token (web apps in an HttpOnly cookie) and sends it as `Authorization: Bearer <token>`
 3. `GET /api/me` returns the profile of the token's subject, creating it on the first call
 
-The dev identity is local development sign-in, never complete authentication. Every other profile answers its token route with 404, startup fails when `local` meets a configured identity provider, and `docker-compose.yml` sets no profile. Replace it with your identity provider before any shared deployment; the `security-auth` skill has the steps.
+The dev identity is local development sign-in, never complete authentication. Every other profile answers its token route with 404, startup fails when `local` meets a configured identity provider, and `docker-compose.yml` sets no profile. Replace it with your identity provider before any shared deployment; the `security-auth` skill has the steps. A web app's browser code never calls the backend: its server asks for the token, sets the cookie and attaches the bearer header.
 
 ### Design Tokens
 

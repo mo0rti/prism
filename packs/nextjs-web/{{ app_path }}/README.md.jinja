@@ -1,0 +1,50 @@
+# {{ app_name }}
+
+{{ app_name }} is a Next.js web app of {{ project_name }}{% if audience %}, for {{ audience }}{% endif %}. Prism's `nextjs-web` pack generated it at `{{ app_path }}/` with one working slice: a "Local development sign-in" and a page that shows the signed-in user from `GET /api/me`.
+
+## Run it
+
+You need Node {{ versions.node }} and a backend that serves `shared/api-contracts/openapi.yml`. With the `spring-backend` pack, start the backend under its `local` profile (`task db-up`, then `task <backend-app-id>:dev`, which is `task backend:dev` for the default app), then:
+
+```bash
+cd {{ app_path }}
+cp .env.example .env.local    # API_BASE_URL, the backend's address
+npm ci
+npm run dev                   # http://localhost:{{ port }}
+```
+
+Open the app, use "Local development sign-in", and the profile page shows what the backend returns for `GET /api/me`.
+
+## Check it
+
+```bash
+npm run lint
+npm run typecheck
+npm test            # Vitest and Testing Library, with a mocked backend
+npm run build
+```
+
+CI runs the same steps with `npm ci` on a clean runner (`.github/workflows/{{ app_id }}.yml`).
+
+## The slice
+
+| File | What it does |
+| --- | --- |
+| `app/sign-in/page.tsx`, `components/sign-in-form.tsx` | The page labelled "Local development sign-in" |
+| `app/api/session/route.ts` | `POST` signs in through the backend's dev identity and sets an httpOnly cookie; `DELETE` signs out |
+| `app/page.tsx`, `components/profile-card.tsx` | The profile read from `GET /api/me` |
+| `lib/api/client.ts` | The typed client of the shared contract, built from `lib/api/generated/schema.d.ts` |
+| `lib/auth/session.ts` | The session cookie name and options |
+| `lib/app-info.ts` | The display name and the audience |
+| `tests/` | The Vitest tests of the sign-in route handler, the sign-in page, the profile page and the client |
+
+## What the dev identity is, and is not
+
+- The backend offers `POST /api/dev-identity/token` only under its `local` profile and to loopback requests. Elsewhere it answers 404, and the sign-in here reports that the backend has no local development sign-in.
+- The token lives only in an httpOnly cookie that scripts cannot read; the browser never calls the backend, and the sign-in and sign-out routes accept same-origin requests only.
+- It is **not complete authentication**: it proves nothing about who the person is. Replace it with your identity provider before anything ships. The real provider, the authorization policy, the secrets and the deployment are yours; the `web-conventions` and `security-auth` skills describe the replacement.
+- `audience` is display text. No route, check or permission reads it, and a label never enforces authorization. Use a separate app when audiences differ in deployment or security boundary.
+
+## Versions and the API client
+
+Next.js, React, TypeScript and the test tooling are pinned in `packs/versions.yml` of the Prism template, and `package.json` and `package-lock.json` follow those pins. `npm run generate:api` regenerates the client types from `shared/api-contracts/openapi.yml`; `dev`, `build`, `lint`, `typecheck` and `test` run it first, and git ignores its output.
