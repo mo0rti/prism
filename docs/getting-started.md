@@ -70,16 +70,16 @@ To check a wheel built from a checkout before it is published:
 ```bash
 python -m pip install build
 python -m build
-python -m pip install dist/prism_kit-0.4.0-py3-none-any.whl
+python -m pip install dist/prism_kit-0.5.0-py3-none-any.whl
 ```
 
 An installed CLI uses the canonical GitHub template by default, at the release tag
-that matches the CLI version (`v0.4.0` for Prism 0.4.0). When that tag does not exist,
+that matches the CLI version (`v0.5.0` for Prism 0.5.0). When that tag does not exist,
 for example in a build of an unreleased checkout, `prism new` stops with exit code 3 and
 one message, and creates nothing:
 
 ```text
-The template release tag `v0.4.0` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
+The template release tag `v0.5.0` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
 ```
 
 Pass `--template <path-or-url>` to choose another template, for example a checkout
@@ -244,7 +244,12 @@ Then move into the generated project workflow:
    - Cursor: ask the agent to run `setup-project`
 3. inspect `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
 4. run `feature-status` if you want an orientation report
-5. use the read/query layer before mutating lifecycle state
+5. add a first feature: create a dated folder such as
+   `knowledge/intake/pending/2026-10-06-my-first-feature/`, put your brief in it as a
+   Markdown file, and run `po-intake` on it (or `ingest` for notes that are not a feature
+   request); the feature appears as a row of `knowledge/wiki/status-board.md`, and
+   `knowledge/wiki/index.md` lists every page
+6. use the read/query layer before mutating lifecycle state
 
 The feature lifecycle has separate confirmation-gated actions. Use
 `$po-specify F-XXX` in Codex or `/po-specify F-XXX` in Claude Code to read one
@@ -256,7 +261,7 @@ the status changes. After factual completeness, use `po-handoff` for
 `design-handoff`, `dev-start`, and `dev-done` for the confirmed downstream
 routes. Reopen shipped work with `feature-reopen F-XXX [specified|in-design|in-dev]`
 after impact review. Each action reads one exact source pair and leaves the
-feature, index, and log unchanged when declined or cancelled.
+feature, status board, and log unchanged when declined or cancelled.
 
 The optional read-only preflight is:
 

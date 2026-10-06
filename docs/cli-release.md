@@ -1,6 +1,6 @@
 # Prism CLI Release
 
-Prism's release unit is distribution `prism-kit` version `0.4.0`. The user-facing command remains `prism`, and Python
+Prism's release unit is distribution `prism-kit` version `0.5.0`. The user-facing command remains `prism`, and Python
 imports remain under `prism_cli`. Pushing a `v*` tag runs the [release workflow](#release-workflow),
 which publishes the package to PyPI and creates the GitHub release; the
 [npm launcher](#npm-launcher) `@mortitech/prism` is published from the same tag.
@@ -29,7 +29,7 @@ Build a wheel and test that artifact in an isolated environment:
 python -m pip install --upgrade build
 python -m build --wheel
 python -m venv .release-check
-.release-check/bin/python -m pip install dist/prism_kit-0.4.0-py3-none-any.whl
+.release-check/bin/python -m pip install dist/prism_kit-0.5.0-py3-none-any.whl
 .release-check/bin/prism --version
 .release-check/bin/prism doctor
 ```
@@ -41,7 +41,7 @@ temporary environment after the check.
 The installed package does not depend on a template copied into `site-packages`.
 When run from the Prism checkout, `prism new` defaults to that local template.
 When run from an installed wheel, it uses the matching release tag at the canonical
-template URL: CLI `0.4.0` requires `v0.4.0` at `https://github.com/mo0rti/prism.git`.
+template URL: CLI `0.5.0` requires `v0.5.0` at `https://github.com/mo0rti/prism.git`.
 A missing tag fails generation; there is no fallback to a newer template.
 Publish and validate that tag before publishing the matching wheel.
 An explicit `--template <path-or-url>`
@@ -71,7 +71,7 @@ describes how to run them.
 Build and hash the wheel again for every release candidate.
 
 Run a broad Copier render outside the repository and inspect the generated
-`prism.workspace.yml`. It should parse as YAML, carry `min_prism_cli_version: "0.4.0"`,
+`prism.workspace.yml`. It should parse as YAML, carry `min_prism_cli_version: "0.5.0"`,
 and include a timestamp and the template commit when that metadata is available.
 Run a CLI generation as well; the CLI post-processing step records the actual CLI
 version, source, template version or commit, and generation timestamp.
@@ -172,8 +172,8 @@ From `npm/`, `npm test` runs the Node tests offline. Then build a wheel and run 
 ```bash
 python -m build --wheel --outdir ../dist-launcher-check ..
 npm pack --pack-destination ../dist-launcher-check
-npm install --global ../dist-launcher-check/mortitech-prism-0.4.0.tgz
-PRISM_PACKAGE_SPEC=../dist-launcher-check/prism_kit-0.4.0-py3-none-any.whl prism --version
+npm install --global ../dist-launcher-check/mortitech-prism-0.5.0.tgz
+PRISM_PACKAGE_SPEC=../dist-launcher-check/prism_kit-0.5.0-py3-none-any.whl prism --version
 npm uninstall --global @mortitech/prism
 ```
 

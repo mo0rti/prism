@@ -14,7 +14,7 @@ npm install --global @mortitech/prism
 prism --version
 ```
 
-The package is a thin launcher. It runs `uv tool run --from prism-kit==<version> prism <arguments>` with your terminal's input and output and returns Prism's exit code. The npm version equals the Prism version, so `@mortitech/prism@0.4.0` runs `prism-kit==0.4.0` from PyPI. [uv](https://docs.astral.sh/uv/) creates an isolated environment for it, and downloads a suitable Python when none is installed. The first run needs network access to PyPI.
+The package is a thin launcher. It runs `uv tool run --from prism-kit==<version> prism <arguments>` with your terminal's input and output and returns Prism's exit code. The npm version equals the Prism version, so `@mortitech/prism@0.5.0` runs `prism-kit==0.5.0` from PyPI. [uv](https://docs.astral.sh/uv/) creates an isolated environment for it, and downloads a suitable Python when none is installed. The first run needs network access to PyPI.
 
 For the quickstart and the full command reference, see the [Prism README](https://github.com/mo0rti/prism#readme) and the [shared board guide](https://github.com/mo0rti/prism/blob/main/docs/shared-board.md).
 

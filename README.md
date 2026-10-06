@@ -1,6 +1,6 @@
 # Prism: One spec. Every platform.
 
-![Version](https://img.shields.io/badge/version-0.4.0-blue)
+![Version](https://img.shields.io/badge/version-0.5.0-blue)
 ![PyPI](https://img.shields.io/pypi/v/prism-kit)
 ![Template Validation](https://github.com/mo0rti/prism/actions/workflows/template-validation.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-3776AB?logo=python&logoColor=white)
@@ -199,7 +199,7 @@ Start with:
 ## Current Status
 
 - The workflow, the shared board, the MCP tool contract and the human board actions are implemented and tested; the [plan](https://github.com/mo0rti/prism/blob/main/docs/prism-core-workflow-plan.md) states their scope and contracts.
-- Prism 0.4.0 is released: `prism-kit` on [PyPI](https://pypi.org/project/prism-kit/) and the [GitHub release](https://github.com/mo0rti/prism/releases/tag/v0.4.0) with checksums.
+- Prism 0.5.0 is released: `prism-kit` on [PyPI](https://pypi.org/project/prism-kit/) and the [GitHub release](https://github.com/mo0rti/prism/releases/tag/v0.5.0) with checksums.
 - Application samples: backend, Android and web are verified locally and in CI, and the iOS sample is built and tested by the macOS CI job. Live Cloudflare and Azure deployments are unverified, and Apple Sign-In is experimental.
 - Core acceptance uses disposable neutral workspaces. Sample behavior does not define the core workflow.
 - Prism is released under the MIT license and published to PyPI as `prism-kit`, with the `@mortitech/prism` launcher on npm. The [changelog](https://github.com/mo0rti/prism/blob/main/CHANGELOG.md) lists what each version contains.
