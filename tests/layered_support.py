@@ -118,6 +118,10 @@ def commit_workspace(workspace: Path) -> None:
     """Make a generated workspace a git repository with its generated state committed."""
 
     git(workspace, "init", "-q", "-b", "main")
+    # The CLI's update and scaffold commits run without the helper's `-c` identity, like a user's
+    # own repository, so the workspace carries a local identity (CI runners have no global one).
+    git(workspace, "config", "user.name", "Prism test")
+    git(workspace, "config", "user.email", "test@example.invalid")
     git(workspace, "add", "-A")
     git(workspace, "commit", "-qm", "Generated workspace")
 
