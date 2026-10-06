@@ -11,12 +11,20 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
-from prism_cli.app_model import CAPABILITIES, CAPABILITY_HAS_UI, UNKNOWN, WorkspaceModel
+from prism_cli.app_model import (
+    CAPABILITIES,
+    CAPABILITY_HAS_UI,
+    UNKNOWN,
+    WorkspaceModel,
+    api_surface_without_api_app_message,
+    retired_in_scope_message,
+)
 from prism_cli.wiki_model import (
     VALID_ADVISORY_REVIEW_STATES,
     VALID_APP_REQUIREMENT_STATUSES,
     VALID_FEATURE_OWNERS,
     VALID_FEATURE_STATUSES,
+    RELEASE_EVIDENCE_REQUIRED,
     VALID_OPEN_QUESTION_OWNERS,
     AppRequirementPage,
     FeaturePage,
@@ -1230,9 +1238,10 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
         )
 
     if feature.status == "done":
-        _delivery_evidence, delivery_errors = parse_delivery_evidence(feature.page.body, feature.apps)
-        for message in delivery_errors:
-            diagnostics.append(_diag("done-delivery-evidence", "error", path, message, feature_id))
+        _delivery_evidence, delivery_problems = parse_delivery_evidence(feature.page.body, feature.apps)
+        for problem in delivery_problems:
+            code = RELEASE_EVIDENCE_REQUIRED if problem.code == RELEASE_EVIDENCE_REQUIRED else "done-delivery-evidence"
+            diagnostics.append(_diag(code, "error", path, problem.message, feature_id))
 
     for field_name in ("introduced", "last-updated"):
         if field_name in frontmatter and parse_iso_date(frontmatter[field_name]) is None:
@@ -1262,6 +1271,15 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
                 continue
             if model.app(app_value) is None:
                 diagnostics.append(_diag("unknown-app-id", "error", path, _unknown_app_message(app_value, model), feature_id))
+
+    if feature.status in VALID_FEATURE_STATUSES and feature.status != "done":
+        retired = model.retired_apps(feature.apps)
+        if retired:
+            diagnostics.append(_diag("app-retired-in-scope", "error", path, retired_in_scope_message(feature_id, retired), feature_id))
+        if api_surface_declared(section_text(feature.page.body, "API surface")) and not model.scope_serves_api(feature.apps):
+            diagnostics.append(
+                _diag("api-surface-without-api-app", "error", path, api_surface_without_api_app_message(model, feature_id, feature.apps), feature_id)
+            )
 
     sources_value = frontmatter.get("sources")
     if "sources" in frontmatter and (

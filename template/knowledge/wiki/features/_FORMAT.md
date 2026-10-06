@@ -74,12 +74,19 @@ not check as the developer's attestation.
 ## Delivery evidence
 | App | Implementation | Tests | Release |
 |---|---|---|---|
-| [declared app] | [verified artifact or source reference] | [test command and result] | [release artifact or target] |
+| [declared app] | [verified artifact or source reference] | [test command and result] | release: [URL of the release, tag or deployment record] |
 
 Include exactly one substantive row per declared app in the `dev-done`
 proposal; the developer supplies the references.
 Agents must verify the referenced artifacts and results; file presence or lint
 alone is not shipment evidence. Partial delivery stays `in-dev`.
+
+The `Release` cell is release evidence (`release: <reference>`, `tag: <reference>` or
+`deployment: <reference>`, the reference being the URL of, or a workspace path to, a
+release, tag or deployment record) or a delivery attestation (`attested by <Name>:
+<reference>`, the reference being a URL or a workspace path to what that person
+checked). A commit or pull request proves which code changed, not that it shipped, so
+any other cell is rejected with `release-evidence-required`.
 
 ## Reopen history
 Append-only records for confirmed reopen actions. Archive the prior active
@@ -125,7 +132,7 @@ and spaces around `|` do not matter; the cell text does.
 
   | App | Implementation | Tests | Release |
   |---|---|---|---|
-  | backend | PR #42 merged as 3f9c2ab | CI run 1187: 31 passed | v1.4.0 deployed |
+  | backend | PR #42 merged as 3f9c2ab | CI run 1187: 31 passed | release: https://example.com/releases/v1.4.0 |
 - Requirement/API invalidations: knowledge/wiki/app-requirements/F-001-backend.md: done -> in-progress
 ```
 

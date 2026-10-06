@@ -1,9 +1,10 @@
-"""``prism app``: list the workspace's apps and register a new one.
+"""``prism app``: list the workspace's apps, register a new one and retire one.
 
-Registering an app edits ``prism.workspace.yml`` only; it never generates code.
-The new manifest is validated by the one normalizer before anything is written,
-and the write goes through the same safe-path and atomic-replace helpers that
-``prism workflow install`` uses.
+Registering or retiring an app edits ``prism.workspace.yml`` only; it never
+generates, moves or deletes code, pages or evidence. The new manifest is
+validated by the one normalizer before anything is written, and the write goes
+through the same safe-path and atomic-replace helpers that ``prism workflow
+install`` uses.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from prism_cli.app_model import (
     UNKNOWN,
     WORKSPACE_REPOSITORY_ID,
     WorkspaceDiagnostic,
+    app_entries,
     normalize_manifest,
     resolve_local_repositories,
 )
@@ -36,6 +38,8 @@ from prism_cli.workflow_install import (
     _safe_target,
     _validated_root,
 )
+from prism_cli.arguments import IntermixedParser
+from prism_cli.wiki_model import read_feature_pages
 from prism_cli.workspace import MANIFEST_FILE, inspect_workspace
 
 
@@ -48,8 +52,8 @@ IDENTITY_NOTICE = (
 
 
 def register_commands(subparsers) -> None:
-    app = subparsers.add_parser("app", help="List the workspace's apps or register a new one.")
-    actions = app.add_subparsers(dest="app_command", required=True)
+    app = subparsers.add_parser("app", help="List the workspace's apps, register a new one or retire one.")
+    actions = app.add_subparsers(dest="app_command", required=True, parser_class=IntermixedParser)
 
     list_parser = actions.add_parser("list", help="Show the apps and repositories of a workspace.")
     list_parser.add_argument("path", nargs="?", default=".", help="Workspace path. Defaults to the current directory.")
@@ -74,6 +78,17 @@ def register_commands(subparsers) -> None:
     add_parser.add_argument("--yes", action="store_true", help="Confirm --apply without an interactive prompt.")
     add_parser.add_argument("--json", action="store_true", help="Emit the plan or receipt as JSON.")
     add_parser.set_defaults(func=cmd_app_add)
+
+    retire_parser = actions.add_parser(
+        "retire",
+        help="Preview retiring an app in prism.workspace.yml; --apply writes it. No code, page or evidence is deleted.",
+    )
+    retire_parser.add_argument("id", help="The ID of the app to retire.")
+    retire_parser.add_argument("path", nargs="?", default=".", help="Workspace path. Defaults to the current directory.")
+    retire_parser.add_argument("--apply", action="store_true", help="Write the displayed change after confirmation.")
+    retire_parser.add_argument("--yes", action="store_true", help="Confirm --apply without an interactive prompt.")
+    retire_parser.add_argument("--json", action="store_true", help="Emit the plan or receipt as JSON.")
+    retire_parser.set_defaults(func=cmd_app_retire)
 
 
 def _json(value: Any) -> None:
@@ -268,10 +283,16 @@ def _check_repository_arguments(data: dict[str, Any], repository: str | None, re
 def apply_app_add(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
     """Write a previewed plan after rechecking that the manifest is unchanged."""
 
+    return _apply_manifest_plan(root, plan, command="app add", subject="app")
+
+
+def _apply_manifest_plan(root: Path, plan: dict[str, Any], *, command: str, subject: str) -> dict[str, Any]:
+    """Write a previewed manifest plan after rechecking that the manifest is unchanged."""
+
     workspace = _validated_root(root)
     receipt: dict[str, Any] = {
         "schema_version": 1,
-        "command": "app add",
+        "command": command,
         "root": str(workspace),
         "app": plan.get("app"),
         "repository": plan.get("repository"),
@@ -279,16 +300,16 @@ def apply_app_add(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
         "notice": plan.get("notice", IDENTITY_NOTICE),
     }
     if plan.get("root") != str(workspace):
-        raise ValueError("The app plan belongs to a different workspace root.")
+        raise ValueError(f"The {subject} plan belongs to a different workspace root.")
     if plan.get("conflicts"):
         return {**receipt, "status": "conflict", "conflicts": list(plan["conflicts"])}
     changes = plan.get("changes")
     if not isinstance(changes, list) or len(changes) != 1 or changes[0].get("path") != MANIFEST_FILE:
-        raise ValueError("The app plan must change exactly the workspace manifest.")
+        raise ValueError(f"The {subject} plan must change exactly the workspace manifest.")
     before = changes[0].get("before")
     after = changes[0].get("after")
     if not isinstance(before, str) or not isinstance(after, str):
-        raise ValueError("The app plan has invalid manifest contents.")
+        raise ValueError(f"The {subject} plan has invalid manifest contents.")
     try:
         current = _read_path_bytes(workspace, MANIFEST_FILE, allow_missing=False)
         if _raw_digest(current) != plan.get("source_manifest_digest"):
@@ -298,6 +319,93 @@ def apply_app_add(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
     except (OSError, ValueError) as exc:
         return {**receipt, "status": "conflict", "conflicts": [f"Unable to write {MANIFEST_FILE}: {exc}"]}
     return {**receipt, "status": "applied", "conflicts": []}
+
+
+# --- prism app retire ---------------------------------------------------------
+
+
+def plan_app_retire(root: Path, app_id: str) -> dict[str, Any]:
+    """The exact manifest change that retires one app. Nothing is written.
+
+    Retiring sets ``status: retired`` on the app's manifest entry and nothing
+    else: no code, page, requirement or evidence is touched. The plan lists
+    ``flagged_features``, the features in progress that still list the app and
+    will be flagged ``app-retired-in-scope`` until their scope is edited, and
+    ``conflicts`` (error findings; the plan cannot be applied).
+    """
+
+    workspace = _validated_root(root)
+    conflicts: list[str] = []
+    warnings: list[str] = []
+    changes: list[dict[str, str | None]] = []
+    flagged: list[dict[str, str]] = []
+    app_entry: dict[str, Any] | None = None
+    manifest_bytes: bytes | None = None
+    try:
+        manifest_bytes = _read_path_bytes(workspace, MANIFEST_FILE, allow_missing=True)
+        if manifest_bytes is None:
+            raise ValueError(f"{MANIFEST_FILE} is missing; install the workflow or generate a workspace first.")
+        data, bom = _parse_manifest(manifest_bytes)
+        before = manifest_bytes.decode("utf-8-sig")
+        apps = data.get("apps")
+        if not isinstance(apps, list):
+            conflicts.append(f"{MANIFEST_FILE} `apps` must be a list before an app can be retired.")
+        else:
+            index = next((position for position, item in enumerate(apps) if isinstance(item, dict) and item.get("id") == app_id), None)
+            if index is None:
+                declared = ", ".join(f"`{item['id']}`" for item in apps if isinstance(item, dict) and isinstance(item.get("id"), str)) or "none"
+                conflicts.append(f"`{app_id}` is not an app of this workspace; the workspace's apps are {declared}.")
+            elif apps[index].get("status", "active") == "retired":
+                conflicts.append(f"App `{app_id}` is already retired.")
+            else:
+                new_data = {**data, "apps": [*apps[:index], {**apps[index], "status": "retired"}, *apps[index + 1 :]]}
+                model, diagnostics = normalize_manifest(new_data, path=Path(MANIFEST_FILE))
+                errors = [item for item in diagnostics if item.severity == "error"]
+                conflicts.extend(_diagnostic_text(item) for item in errors)
+                if not errors:
+                    app_entry = next((entry for entry in app_entries(model) if entry["id"] == app_id), None)
+                    flagged = _features_in_progress_with_app(workspace, app_id)
+                    after = yaml.safe_dump(new_data, sort_keys=False, allow_unicode=True)
+                    if bom:
+                        after = "\ufeff" + after
+                    changes.append({"path": MANIFEST_FILE, "before": before, "after": after})
+    except (OSError, UnicodeError, ValueError, yaml.YAMLError) as exc:
+        conflicts.append(f"Unable to safely inspect this workspace: {exc}")
+        changes = []
+    return {
+        "schema_version": 1,
+        "command": "app retire",
+        "root": str(workspace),
+        "app": app_entry,
+        "repository": None,
+        "changes": changes,
+        "flagged_features": flagged,
+        "conflicts": list(dict.fromkeys(conflicts)),
+        "warnings": list(dict.fromkeys(warnings)),
+        "board_identity_changed": True,
+        "notice": IDENTITY_NOTICE,
+        "source_manifest_digest": _raw_digest(manifest_bytes),
+    }
+
+
+def _features_in_progress_with_app(workspace: Path, app_id: str) -> list[dict[str, str]]:
+    """The features before done whose scope lists ``app_id``; a wiki that cannot be read lists none."""
+
+    try:
+        features = read_feature_pages(workspace / "knowledge" / "wiki")
+    except (OSError, ValueError):
+        return []
+    return [
+        {"id": feature.feature_id, "status": feature.status or "unknown"}
+        for feature in features
+        if app_id in feature.apps and feature.status != "done"
+    ]
+
+
+def apply_app_retire(root: Path, plan: dict[str, Any]) -> dict[str, Any]:
+    """Write a previewed retirement after rechecking that the manifest is unchanged."""
+
+    return _apply_manifest_plan(root, plan, command="app retire", subject="retirement")
 
 
 def _capabilities_from_args(args: argparse.Namespace) -> dict[str, bool | str]:
@@ -322,11 +430,56 @@ def cmd_app_add(args: argparse.Namespace) -> int:
             audience=args.audience,
             capabilities=_capabilities_from_args(args),
         )
+    except (OSError, ValueError) as exc:
+        _text(f"App registration failed: {exc}", file=sys.stderr)
+        return 3
+    return _run_manifest_plan(
+        args,
+        root,
+        plan,
+        apply=apply_app_add,
+        label="Prism app add",
+        failure="App registration failed",
+        applied=f"Registered app `{args.id}` in {MANIFEST_FILE}.",
+    )
+
+
+def cmd_app_retire(args: argparse.Namespace) -> int:
+    root = Path(args.path).expanduser()
+    try:
+        plan = plan_app_retire(root, args.id)
+    except (OSError, ValueError) as exc:
+        _text(f"App retirement failed: {exc}", file=sys.stderr)
+        return 3
+    return _run_manifest_plan(
+        args,
+        root,
+        plan,
+        apply=apply_app_retire,
+        label="Prism app retire",
+        failure="App retirement failed",
+        applied=f"Retired app `{args.id}` in {MANIFEST_FILE}. No code, page, requirement or evidence was deleted.",
+    )
+
+
+def _run_manifest_plan(
+    args: argparse.Namespace,
+    root: Path,
+    plan: dict[str, Any],
+    *,
+    apply,
+    label: str,
+    failure: str,
+    applied: str,
+) -> int:
+    """Show a manifest plan, and with ``--apply`` write it after confirmation."""
+
+    try:
         if args.json:
             if not args.apply:
                 _json(plan)
         else:
-            _text(f"Prism app add: {root}")
+            _text(f"{label}: {root}")
             for change in plan["changes"]:
                 before, after = change.get("before") or "", change.get("after") or ""
                 _text(
@@ -345,6 +498,11 @@ def cmd_app_add(args: argparse.Namespace) -> int:
             for warning in plan["warnings"]:
                 _text(f"Warning: {warning}")
             if not plan["conflicts"]:
+                for feature in plan.get("flagged_features", []):
+                    _text(
+                        f"Warning: feature {feature['id']} ({feature['status']}) lists this app and is flagged app-retired-in-scope until its `apps` is edited. "
+                        "Retirement never changes a feature's scope by itself."
+                    )
                 _text(IDENTITY_NOTICE)
         if plan["conflicts"]:
             if args.json and args.apply:
@@ -365,16 +523,16 @@ def cmd_app_add(args: argparse.Namespace) -> int:
             if answer.strip().lower() not in ("y", "yes"):
                 print("Canceled; no files changed.")
                 return 0
-        receipt = apply_app_add(root, plan)
+        receipt = apply(root, plan)
         if args.json:
             _json({**receipt, "plan": plan})
         elif receipt["status"] == "applied":
-            _text(f"Registered app `{args.id}` in {MANIFEST_FILE}.")
+            _text(applied)
             _text(IDENTITY_NOTICE)
         else:
             for conflict in receipt["conflicts"]:
                 _text(f"Error: {conflict}", file=sys.stderr)
         return 0 if receipt["status"] == "applied" else 3
     except (OSError, ValueError) as exc:
-        _text(f"App registration failed: {exc}", file=sys.stderr)
+        _text(f"{failure}: {exc}", file=sys.stderr)
         return 3

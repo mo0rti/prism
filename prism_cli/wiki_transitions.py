@@ -22,13 +22,20 @@ from threading import Lock, RLock
 from typing import Any, Callable, Iterable, Iterator
 from urllib.parse import unquote, urlsplit
 
-from prism_cli.app_model import CAPABILITY_HAS_UI, MANIFEST_SCHEMA_VERSION, WorkspaceModel
+from prism_cli.app_model import (
+    CAPABILITY_HAS_UI,
+    MANIFEST_SCHEMA_VERSION,
+    WorkspaceModel,
+    api_surface_without_api_app_message,
+    retired_in_scope_message,
+)
 from prism_cli.status import IGNORED_INTAKE_FILES
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, _wiki_path_references, lint_wiki
 from prism_cli.wiki_model import (
     VALID_ADVISORY_REVIEW_STATES,
     VALID_FEATURE_OWNERS,
     VALID_FEATURE_STATUSES,
+    RELEASE_EVIDENCE_REQUIRED,
     VALID_OPEN_QUESTION_OWNERS,
     FeaturePage,
     extract_markdown_links,
@@ -1092,6 +1099,7 @@ def _evaluate_action(
             checks.extend(
                 [
                     _design_completion_check(feature, wiki_pages, inspection.model),
+                    _api_surface_app_check(feature, inspection.model),
                     _advisory_check(feature),
                     _advisory_actions_check(feature, wiki_pages),
                     _open_questions_check_for_action(feature, {"po", "designer"}),
@@ -1102,6 +1110,7 @@ def _evaluate_action(
             checks.extend(
                 [
                     _requirements_check(feature, requirement_pages, require_done=False),
+                    _api_surface_app_check(feature, inspection.model),
                     _api_contract_check(feature, wiki_pages, require_implemented=False),
                     _advisory_check(feature),
                     _advisory_actions_check(feature, wiki_pages),
@@ -1114,13 +1123,14 @@ def _evaluate_action(
                 [
                     _design_completion_check(feature, wiki_pages, inspection.model),
                     _requirements_check(feature, requirement_pages, require_done=False),
+                    _api_surface_app_check(feature, inspection.model),
                     _api_contract_check(feature, wiki_pages, require_implemented=False),
                     _revalidation_check(
                         feature,
                         {"specification", "design", "implementation", "tests", "release"},
                         {"implementation", "tests", "release"},
                     ),
-                    _delivery_evidence_check(feature),
+                    *_delivery_evidence_checks(feature),
                     _advisory_check(feature),
                     _advisory_actions_check(feature, wiki_pages),
                     _open_questions_check_for_action(feature, {"po", "designer", "dev"}),
@@ -1156,6 +1166,7 @@ def _evaluate_action(
             checks.extend(_feature_workflow_checks(feature, lint_result, spec.action, requirement_pages, inspection.model))
         ignored_integrity = {
             "done-delivery-evidence",
+            RELEASE_EVIDENCE_REQUIRED,
             "done-app-requirement",
             "done-api-contract",
             "done-advisory-actions",
@@ -1748,19 +1759,39 @@ def _revalidation_check(
     return _check("revalidation", "pass", "No pending revalidation domains remain.", path)
 
 
-def _delivery_evidence_check(feature: FeaturePage) -> dict[str, Any]:
-    rows, errors = parse_delivery_evidence(feature.page.body, feature.apps)
+def _delivery_evidence_checks(feature: FeaturePage) -> list[dict[str, Any]]:
+    rows, problems = parse_delivery_evidence(feature.page.body, feature.apps)
     path = feature.page.path
-    if errors:
-        return _check("delivery-evidence", "blocked", "; ".join(errors), path)
+    release = [problem.message for problem in problems if problem.code == RELEASE_EVIDENCE_REQUIRED]
+    other = [problem.message for problem in problems if problem.code != RELEASE_EVIDENCE_REQUIRED]
+    checks: list[dict[str, Any]] = []
+    if other:
+        checks.append(_check("delivery-evidence", "blocked", "; ".join(other), path))
+    if release:
+        checks.append(_check(RELEASE_EVIDENCE_REQUIRED, "blocked", " ".join(release), path))
+    if checks:
+        return checks
     if not rows:
-        return _check("delivery-evidence", "blocked", "No per-app delivery evidence was supplied.", path)
-    return _check(
-        "delivery-evidence",
-        "pass",
-        f"Delivery evidence has substantive implementation, test, and release cells for {len(rows)} declared app(s); an agent must verify the references.",
-        path,
-    )
+        return [_check("delivery-evidence", "blocked", "No per-app delivery evidence was supplied.", path)]
+    return [
+        _check(
+            "delivery-evidence",
+            "pass",
+            f"Delivery evidence has substantive implementation and test cells and release evidence or a delivery attestation for {len(rows)} declared app(s); an agent must verify the references.",
+            path,
+        )
+    ]
+
+
+def _api_surface_app_check(feature: FeaturePage, model: WorkspaceModel) -> dict[str, Any]:
+    """API work needs an active app in scope that serves an API (`unknown` counts as serving one)."""
+
+    path = feature.page.path
+    if not api_surface_declared(section_text(feature.page.body, "API surface")):
+        return _check("api-surface-without-api-app", "pass", "No API surface is declared for this feature.", path)
+    if model.scope_serves_api(feature.apps):
+        return _check("api-surface-without-api-app", "pass", "An active app in scope serves an API.", path)
+    return _check("api-surface-without-api-app", "blocked", api_surface_without_api_app_message(model, feature.feature_id, feature.apps), path)
 
 
 def _action_transition_reason(spec: ActionSpec, classification: str, checks: list[dict[str, Any]]) -> str:
@@ -1880,6 +1911,11 @@ def _scope_check(feature: FeaturePage, inspection: WorkspaceInspection, root: Pa
     if invalid:
         return _check("app-scope", "unknown", f"Feature app scope contains values that are not app IDs: {invalid!r}.", path)
     available = set(inspection.app_ids)
+    retired = inspection.model.retired_apps(value)
+    if retired and feature.status != "done":
+        # A retired app stays valid on a feature that is done, as history; in progress it is flagged until the scope is edited.
+        return _check("app-retired-in-scope", "blocked", retired_in_scope_message(feature.feature_id, retired), path)
+    available |= set(retired)
     missing = sorted(set(value) - available)
     if missing:
         hint = "" if available else " This workspace declares no apps; register them with `prism app add`."
@@ -2130,6 +2166,9 @@ def _relevant_integrity_checks(
         diagnostic_path = diagnostic.resolved_path
         if diagnostic.code == "unknown-app-id" and diagnostic_path == path:
             # The feature's own scope: the app-scope check reports an app outside the workspace as blocked.
+            continue
+        if diagnostic.code in {"app-retired-in-scope", "api-surface-without-api-app"} and diagnostic_path == path:
+            # The feature's own scope: the app-scope and api-surface checks report these as blocked.
             continue
         is_global_contract = diagnostic.code in {"missing-required-wiki-file", "malformed-index"} and diagnostic_path.name in {
             "SCHEMA.md",

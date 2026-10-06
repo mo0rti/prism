@@ -66,4 +66,4 @@ The backend delivery references (pull request #42 merged as commit 3f9c2ab, CI r
 ## Delivery evidence
 | App | Implementation | Tests | Release |
 |---|---|---|---|
-| backend | Pull request #42 in the review-summary-service repository, merged as commit 3f9c2ab | CI run 1187 on commit 3f9c2ab: 31 tests passed, 0 failed | Version 1.4.0, deployed to production |
+| backend | Pull request #42 in the review-summary-service repository, merged as commit 3f9c2ab | CI run 1187 on commit 3f9c2ab: 31 tests passed, 0 failed | deployment: https://example.test/review-summary-service/deployments/1.4.0 |

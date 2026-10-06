@@ -217,7 +217,7 @@ def query(service: Any, actor: Any, kind: str, value: str | None = None, action:
         raise BoardError("invalid_query", "Only transition-preflight takes an action.", 400)
     if kind == "owner" and value not in {"po", "designer", "dev", "none"}:
         raise BoardError("invalid_query", "Owner must be po, designer, dev, or none.", 400)
-    if kind == "app" and value not in service._app_ids:
+    if kind == "app" and (service._model is None or service._model.app(value) is None):
         raise BoardError("invalid_query", "The app is outside this workspace's declared scope.", 400)
     if kind == "transition-preflight" and action not in ACTION_BY_ID:
         raise BoardError("invalid_query", "Choose a registered lifecycle action.", 400)

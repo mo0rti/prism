@@ -528,7 +528,7 @@ def build_dev_done_workspace(root: Path, platforms: list[str], bulk: str, large_
         newline="\n",
     )
     evidence = "\n".join(
-        f"| {platform} | Pull request for {platform} merged as commit abc123. {bulk} | CI run on {platform}: 120 tests passed. {bulk} | Release {platform}-1.4.0 deployed. {bulk} |"
+        f"| {platform} | Pull request for {platform} merged as commit abc123. {bulk} | CI run on {platform}: 120 tests passed. {bulk} | release: https://example.test/releases/{platform}-1.4.0 {bulk} |"
         for platform in platforms
     )
     return [

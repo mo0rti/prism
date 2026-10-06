@@ -320,7 +320,7 @@ class WikiTransitionTests(unittest.TestCase):
             "## Delivery evidence\n"
             "| App | Implementation | Tests | Release |\n"
             "|---|---|---|---|\n"
-            "| backend | `backend/src/payouts.kt` implemented | `tests/payouts` passed | `release/2026-09-08` deployed |\n"
+            "| backend | `backend/src/payouts.kt` implemented | `tests/payouts` passed | release: https://example.test/releases/2026-09-08 |\n"
         )
         self._write_feature(status="in-dev", owner="dev", advisory="done", body=body)
         requirements = self.wiki_root / "app-requirements" / "F-001-backend.md"

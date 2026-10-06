@@ -360,6 +360,7 @@ main { position: relative; flex: 1; overflow: hidden; }
 .lane h3 { display: flex; align-items: center; gap: 9px; font-size: 12px; letter-spacing: .08em; margin-bottom: 10px; font-family: ui-monospace, Consolas, monospace; }
 .lane h3 i { width: 12px; height: 12px; background: var(--app); clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0% 50%); }
 .lane h3 .count { margin-left: auto; font-size: 9.5px; color: var(--muted); letter-spacing: .12em; }
+.lane h3 .retired { color: var(--muted); font-weight: 400; letter-spacing: .04em; }
 .lane .features { display: flex; flex-wrap: wrap; gap: 8px; }
 .fchip {
   display: flex; align-items: center; gap: 8px; cursor: pointer;
@@ -1010,12 +1011,15 @@ function transitionReason(node, index) {
   return "Observable checks passed — agent review and confirmation are still required.";
 }
 function workspaceAppIds(ws) {
-  return Array.isArray(ws.apps) ? ws.apps.map(app => app && app.id).filter(id => typeof id === "string") : [];
+  return Array.isArray(ws.apps) ? ws.apps.filter(app => app && app.status !== "retired").map(app => app.id).filter(id => typeof id === "string") : [];
+}
+function workspaceRetiredAppIds(ws) {
+  return Array.isArray(ws.apps) ? ws.apps.filter(app => app && app.status === "retired").map(app => app.id).filter(id => typeof id === "string") : [];
 }
 function workspaceIdentity() {
   const ws = state.data.workspace || {};
-  const apps = workspaceAppIds(ws).join(", ");
-  return `${boundedText(ws.project_name || "Unnamed workspace", 120)} (${boundedText(ws.kind || "unknown workspace", 60)})${apps ? `; apps: ${boundedText(apps, 180)}` : ""}`;
+  const apps = workspaceAppIds(ws).join(", "), retired = workspaceRetiredAppIds(ws).join(", ");
+  return `${boundedText(ws.project_name || "Unnamed workspace", 120)} (${boundedText(ws.kind || "unknown workspace", 60)})${apps ? `; apps: ${boundedText(apps, 180)}` : ""}${retired ? `; retired apps: ${boundedText(retired, 180)}` : ""}`;
 }
 function promptLiteral(value, fallback) {
   const actual = value === undefined || value === null ? (fallback === undefined ? "not supplied" : fallback) : value;
@@ -3228,7 +3232,7 @@ function renderApps() {
       return `<div class="fchip" data-id="${escapeHtml(fid)}" tabindex="0" role="button" aria-label="Open feature ${escapeHtml(boundedText(fid, 120))}: ${escapeHtml(boundedText(f.title, 180))}"><i style="background:${phaseColor(f)}"></i>${escapeHtml(fid)} · ${escapeHtml(f.title)}
         <span class="req" style="color:${reqColor}">req: ${escapeHtml(reqStatus)}</span></div>`;
     }).join("");
-    return `<div class="lane" style="animation-delay:${REDUCED ? 0 : i * 0.07}s"><h3><i></i>${escapeHtml(p.title)}<span class="count">${featureIds.length} FEATURE${featureIds.length === 1 ? "" : "S"}</span></h3>
+    return `<div class="lane" style="animation-delay:${REDUCED ? 0 : i * 0.07}s"><h3><i></i>${escapeHtml(p.title)}${p.status === "retired" ? ' <span class="retired">(retired)</span>' : ""}<span class="count">${featureIds.length} FEATURE${featureIds.length === 1 ? "" : "S"}</span></h3>
       <div class="features">${chips || '<span class="none">No features target this app yet.</span>'}</div></div>`;
   }).join("");
   const view = document.getElementById("app-view");

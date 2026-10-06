@@ -22,6 +22,7 @@ from typing import Any
 import yaml
 
 from prism_cli import __version__
+from prism_cli.arguments import IntermixedParser
 from prism_cli.app_model import ALL_PLATFORM_CHOICES, GENERATED_PLATFORM_STACKS, SLUG_PATTERN
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, find_cloud_placeholder
 from prism_cli.manifest_update import ManifestUpdateError, prepare_manifest_update
@@ -140,7 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.set_defaults(func=cmd_home, parser=parser)
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", parser_class=IntermixedParser)
     from prism_cli.app_cli import register_commands as register_app_commands
     from prism_cli.board_cli import register_commands
 
@@ -188,7 +189,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.set_defaults(func=cmd_validate)
 
     wiki_parser = subparsers.add_parser("wiki", help="Inspect and validate generated-project wiki state.")
-    wiki_subparsers = wiki_parser.add_subparsers(dest="wiki_command")
+    wiki_subparsers = wiki_parser.add_subparsers(dest="wiki_command", parser_class=IntermixedParser)
     wiki_lint_parser = wiki_subparsers.add_parser("lint", help="Validate generated-project wiki schema and consistency.")
     wiki_lint_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
     wiki_lint_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable lint output.")

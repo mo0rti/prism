@@ -13,12 +13,13 @@ from pathlib import Path
 import sqlite3
 import sys
 
+from prism_cli.arguments import IntermixedParser
 from prism_cli.workspace import PLATFORM_DIRS, inspect_workspace
 
 
 def register_commands(subparsers) -> None:
     workflow = subparsers.add_parser("workflow", help="Install or upgrade the Prism workflow without generating applications.")
-    actions = workflow.add_subparsers(dest="workflow_command", required=True)
+    actions = workflow.add_subparsers(dest="workflow_command", required=True, parser_class=IntermixedParser)
     for action in ("install", "upgrade"):
         parser = actions.add_parser(action, help=f"Preview a preserving workflow {action}; --apply confirms the displayed changes.")
         parser.add_argument("path", nargs="?", default=".")
@@ -35,7 +36,7 @@ def register_commands(subparsers) -> None:
         parser.set_defaults(func=cmd_workflow)
 
     board = subparsers.add_parser("board", help="Run one local board and shared MCP connection for this workspace.")
-    actions = board.add_subparsers(dest="board_command", required=True)
+    actions = board.add_subparsers(dest="board_command", required=True, parser_class=IntermixedParser)
     serve = actions.add_parser("serve", help="Serve the authenticated board and MCP endpoint on loopback.")
     serve.add_argument("path", nargs="?", default=".")
     serve.add_argument("--port", type=int, default=8765)

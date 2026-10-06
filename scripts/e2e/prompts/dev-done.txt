@@ -3,7 +3,7 @@ I am the developer. Feature F-001 is implemented and shipped. Use Prism's dev-do
 Delivery evidence for the backend app (record it in the feature's delivery evidence table):
 - Implementation: pull request #42 in the review-summary-service repository, merged as commit 3f9c2ab.
 - Tests: CI run 1187 on that commit, 31 tests passed, 0 failed.
-- Release: version 1.4.0, deployed to production.
+- Release: deployment record https://example.test/review-summary-service/deployments/1.4.0 (version 1.4.0, deployed to production).
 
 Post-ship notes: no deviations from the specification.
 

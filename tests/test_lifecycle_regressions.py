@@ -314,7 +314,7 @@ class LifecycleRegressionTests(unittest.TestCase):
                 status=status,
                 owner=owner,
                 advisory="done",
-                delivery_rows=(("backend", "backend/src/payouts.py", "tests/payouts passed", "release/2026-09-08"),),
+                delivery_rows=(("backend", "backend/src/payouts.py", "tests/payouts passed", "release: https://example.test/releases/2026-09-08"),),
             )
             before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
             for age in (0, 14, 15, 365):
@@ -385,7 +385,7 @@ class LifecycleRegressionTests(unittest.TestCase):
     def test_shared_api_links_from_feature_or_scoped_requirement_gate_done(self) -> None:
         """Draft shared APIs block; agreed APIs remain requestable with evidence."""
 
-        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release/2026-09-08"),)
+        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release: https://example.test/releases/2026-09-08"),)
         for source in ("feature", "requirement"):
             with self.subTest(source=source):
                 link = "See [shared contract](../api-contracts/SHARED.md)."
@@ -409,7 +409,7 @@ class LifecycleRegressionTests(unittest.TestCase):
 
     def test_out_of_scope_requirement_api_reference_does_not_block_done(self) -> None:
         self._write_manifest_platforms(("backend", "mobile-ios"))
-        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release/2026-09-08"),)
+        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release: https://example.test/releases/2026-09-08"),)
         self._write_feature(status="in-dev", owner="dev", delivery_rows=evidence)
         self._write_requirement(platform="backend", status="pending")
         self._write_requirement(
@@ -580,7 +580,7 @@ class LifecycleRegressionTests(unittest.TestCase):
                 "mobile-ios",
                 "mobile-ios/Summary.swift implemented",
                 "tests/SummaryTests passed",
-                "release/ios-2026-09-08",
+                "release: https://example.test/releases/ios-2026-09-08",
             ),
         )
         exemption = (
@@ -728,7 +728,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         self._write_requirement(platform="mobile-ios", status="in-progress")
         self._write_design()
         self._write_review(required_action=False, deferred_action=False)
-        backend_evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release/backend-2026-09-08"),)
+        backend_evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release: https://example.test/releases/backend-2026-09-08"),)
         self._write_feature(
             status="in-dev",
             owner="dev",
@@ -741,7 +741,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         self.assertEqual("blocked", self._check(missing_platform, "delivery-evidence")["status"])
 
         complete_evidence = backend_evidence + (
-            ("mobile-ios", "mobile-ios/Summary.swift implemented", "tests/SummaryTests passed", "release/ios-2026-09-08"),
+            ("mobile-ios", "mobile-ios/Summary.swift implemented", "tests/SummaryTests passed", "release: https://example.test/releases/ios-2026-09-08"),
         )
         self._write_feature(
             status="in-dev",
@@ -769,7 +769,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         self.assertEqual("blocked", earlier_revalidation["classification"])
 
     def test_pending_requirement_and_agreed_api_can_be_proposed_done_but_lint_requires_completion(self) -> None:
-        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release/2026-09-08"),)
+        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release: https://example.test/releases/2026-09-08"),)
         self._write_feature(
             status="in-dev",
             owner="dev",
@@ -859,7 +859,7 @@ class LifecycleRegressionTests(unittest.TestCase):
                         status=status,
                         owner=owner,
                         advisory="done",
-                        delivery_rows=(("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release/2026-09-08"),),
+                        delivery_rows=(("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release: https://example.test/releases/2026-09-08"),),
                     )
                 transition = self._transition(action)
                 advisory_action_checks = [check for check in transition["checks"] if check.get("code") == "advisory-actions"]

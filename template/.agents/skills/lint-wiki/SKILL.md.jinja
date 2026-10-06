@@ -42,8 +42,14 @@ Check only provable facts: malformed frontmatter, invalid enums, duplicate IDs,
 orphan and index drift, stale pages, quarantine backlog, skipped board reviews
 without reasons, and these canonical blockers: `pending-board-review`,
 `missing-design`, `missing-app-requirements`, `unresolved-open-questions`,
-`api-contract-not-ready`, and `cross-app-dependency`. If SETTINGS is absent,
-invalid, or missing the key, use `wiki-stale-after-days: 14` and say so.
+`api-contract-not-ready`, and `cross-app-dependency`. Also check the app rules: a
+feature before `done` that lists a retired app (`app-retired-in-scope`), a feature whose
+`## API surface` declares API work while no active app in its `apps` serves an API
+(`api-surface-without-api-app`), and a `done` feature whose `## Delivery evidence`
+`Release` cell is neither release evidence (`release:`, `tag:` or `deployment:` and a URL
+or workspace path) nor a delivery attestation (`attested by <Name>:` and a URL or path)
+(`release-evidence-required`). If SETTINGS is absent, invalid, or missing the key, use
+`wiki-stale-after-days: 14` and say so.
 
 ## Rules and output
 

@@ -40,6 +40,8 @@ Example: /po-intake meeting-client-2026-04-01
    - Create `knowledge/wiki/features/[F-XXX]-[slug].md` using the feature format from LIFECYCLE.md
    - Set status: `raw`, owner: `po`. A new feature always starts `raw`; `/po-specify [F-XXX]`
      completes it and moves it to `specified`.
+   - List only active apps of the workspace in `apps`; a retired app is rejected with
+     `app-retired` (`app_retired` on the connected board)
    - Write the Summary, User story, Acceptance criteria, Open questions and App scope
      sections from the input. Leave Design, Related features, API surface, Board review
      summary and Post-ship notes empty; `/po-specify` completes them.

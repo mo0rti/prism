@@ -109,6 +109,30 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 **Fix.** Ask the developer for the missing implementation, test and release references and add the row for each declared app to the proposed table, then preview again. Do not invent a value. A reference the agent cannot check goes into the proposed Post-ship notes as the developer's attestation.
 
+## A Release cell is rejected as release-evidence-required
+
+**Symptom.** `preview_skill` for `dev-done` fails with `release_evidence_required` (409), the `dev-done` transition check `release-evidence-required` is blocked, or `prism wiki lint` reports `release-evidence-required` for a feature that is `done`. The message names the app and says that a commit or pull request proves which code changed, not that it shipped.
+
+**Cause.** The `Release` cell of each delivery evidence row must be release evidence or a delivery attestation. Release evidence is `release: <reference>`, `tag: <reference>` or `deployment: <reference>`, where the reference is the URL of, or a workspace path to, a release, tag or deployment record. A delivery attestation is `attested by <Name>: <reference>`, where the reference is a URL or a path to what that person checked. The prefix is matched without regard to case. A bare commit SHA, a pull-request or merge-request URL, `merged`, a branch name, free text without a prefix and a placeholder are rejected, and so is a `release:` cell whose reference is a pull request or commit link.
+
+**Fix.** Ask the developer for the release, tag or deployment record, or for the person who confirms the shipment and what they checked, and write the cell in one of those forms, for example `release: https://example.com/releases/v1.4.0`. An app in an external repository is linked by URL; no local checkout is needed. Do not invent a value.
+
+## A feature is flagged app-retired-in-scope
+
+**Symptom.** `prism wiki lint` reports `app-retired-in-scope` for a feature before `done`, every lifecycle action on it is blocked with that code, or the board rejects a proposal with `app_retired_in_scope` or `app_retired` (409).
+
+**Cause.** The feature's `apps` still lists an app that `prism app retire` has retired. Retiring an app never changes a feature's scope by itself, so the feature stays flagged until someone edits its scope. A feature that is `done` keeps a retired app as history and is not flagged. `app_retired` is the rejection of a new feature, or of an edit that adds a retired app to a scope.
+
+**Fix.** Edit the feature's `apps` and its `## App scope` explicitly: drop the retired app, or point the work at another app and adjust the app requirement pages, and record the change in `log.md`. No command re-points features. Nothing was deleted by the retirement.
+
+## API work has no app that serves an API
+
+**Symptom.** `prism wiki lint` reports `api-surface-without-api-app`, a `design-handoff`, `dev-start` or `dev-done` check with that code is blocked, or the board rejects a `design-handoff` proposal with `api_surface_without_api_app` (409).
+
+**Cause.** The feature's `## API surface` declares API work, but no active app in its `apps` has the `serves-api` capability. A retired app does not count, and `unknown` counts as serving an API.
+
+**Fix.** Add an app that serves an API to the feature's `apps` (and its app requirement page), or change the API surface through `po-clarify` or `dev-clarify` if the feature has no API work.
+
 ## A design-handoff proposal is rejected for its API contract
 
 **Symptom.** `preview_skill` for `design-handoff` fails with `api_contract_required`, `api_contract_untraceable`, `api_contract_initial_status`, `api_contract_not_applicable` or `api_contract_exists` (409). The `details` name the contract `path` and, for `api_contract_untraceable`, the `endpoints` or `models` that the feature's API surface does not support.

@@ -76,6 +76,11 @@ exact observed changes and recover from a fresh reread; no transaction is implie
   `dev-clarify` first
 - link the contract from each generated requirement's `## API contract reference`; never
   rewrite an existing contract, and write none when the API surface declares none
+- API work needs an app that serves an API: at least one active app in the feature's
+  `apps` must have the `serves-api` capability (`unknown` counts as serving one);
+  otherwise the handoff is blocked with `api-surface-without-api-app`
+  (`api_surface_without_api_app` on the connected board), so route the question to
+  `po-clarify` or `dev-clarify` instead of writing a contract
 - in each generated requirement page, `## Dependencies` lists only real dependencies
   (other feature IDs or app-requirement files that must complete first) or says
   `None.`; never write an open question, note or caveat there

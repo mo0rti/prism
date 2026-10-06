@@ -273,8 +273,9 @@ selected generated action file must contain its matching
 Refresh a selected file with a missing marker before using that action.
 
 For a shipped feature, `dev-done` requires a current Delivery evidence row for
-each declared app with verifiable implementation, tests, and release
-references. A confirmed reopen archives the previous evidence, removes it from
+each declared app with verifiable implementation and test references and
+release evidence or a delivery attestation (a commit or pull request alone does
+not prove shipment). A confirmed reopen archives the previous evidence, removes it from
 active readiness, and sets route-specific `revalidation` domains as described in
 the generated `knowledge/wiki/LIFECYCLE.md`.
 

@@ -259,5 +259,6 @@ Each platform has its own `AGENTS.md` with detailed patterns:
    Start implementation with `$dev-start [F-XXX]`, add endpoints to
    `shared/api-contracts/openapi.yml`, and run `task generate-clients` as needed.
 6. Implement the selected platform slices per `knowledge/wiki/app-requirements/`.
-7. When shipped, verify delivery evidence and run `$dev-done [F-XXX]`. Use
+7. When shipped, verify delivery evidence (per app, release evidence or a delivery
+   attestation, never a commit or pull request alone) and run `$dev-done [F-XXX]`. Use
    `$feature-reopen [F-XXX] [specified|in-design|in-dev]` only after impact review.

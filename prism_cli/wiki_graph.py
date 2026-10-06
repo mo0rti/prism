@@ -218,7 +218,8 @@ def _collect_nodes(
     # still have a stable target for the real app node.
     for app in sorted(model.apps, key=lambda item: item.id):
         node_id = f"app:{app.id}"
-        nodes[node_id] = GraphNode(id=node_id, type="app", title=app.name, path=None)
+        # The node's status is the app's: `active`, or `retired` for an app kept as history.
+        nodes[node_id] = GraphNode(id=node_id, type="app", title=app.name, path=None, status=app.status)
 
     for feature in feature_pages if feature_pages is not None else read_feature_pages(wiki_root):
         question_rows, _question_errors = parse_open_question_rows(feature.page.body)
@@ -550,7 +551,8 @@ def _mermaid_app(nodes: list[dict[str, Any]], edges: list[dict[str, Any]], app_i
     node_map = {node["id"]: node for node in nodes}
     lines = ["flowchart LR"]
     app_ref = _mermaid_id(app_node_id)
-    lines.append(f'  {app_ref}(["{_mermaid_label(app_id)}"]):::app')
+    retired = node_map.get(app_node_id, {}).get("status") == "retired"
+    lines.append(f'  {app_ref}(["{_mermaid_label(app_id + " (retired)" if retired else app_id)}"]):::app')
     for edge in edges:
         if edge["kind"] == "targets" and edge["target"] == app_node_id:
             feature = node_map.get(edge["source"])

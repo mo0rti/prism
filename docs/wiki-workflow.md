@@ -76,8 +76,11 @@ verified and explicitly cleared.
 
 `dev-done` means shipped for every declared app. The feature must have one
 substantive, verifiable `## Delivery evidence` row per declared app with
-Implementation, Tests, and Release references, plus complete applicable
-requirements and API contracts. File presence and lint alone are not shipment
+Implementation and Tests references and a `Release` cell that is release
+evidence (`release:`, `tag:` or `deployment:` and a URL or record path) or a
+delivery attestation (`attested by <Name>:` and a URL or path), plus complete
+applicable requirements and API contracts. A commit or pull request proves
+which code changed, not that it shipped. File presence and lint alone are not shipment
 evidence. A partial app remains `in-dev`.
 
 Reopen previews record the reason, impact, route, affected apps/artifacts,

@@ -375,7 +375,7 @@ class RenamedFieldTests(WikiWorkspaceCase):
 
     def test_the_delivery_evidence_table_is_keyed_by_app(self) -> None:
         rows = (
-            "| {key} | Pull request 42 merged | CI run 1187 passed | Release 1.4.0 |\n"
+            "| {key} | Pull request 42 merged | CI run 1187 passed | release: https://example.test/releases/1.4.0 |\n"
         )
         done = self.write_feature(["customer-android", "partner-android"], status="done", owner="none")
         self.write_requirement("customer-android", "done")

@@ -104,7 +104,7 @@ Registers an app in `prism.workspace.yml`. It edits the manifest only and never 
 - The new manifest is validated before anything is written. Any error stops the command with exit code 3 and writes nothing: a duplicate or invalid ID, an unknown repository, a path that is absolute, contains `..` or overlaps another app in the same repository, a remote that is a local path, or a missing capability. The write refuses a manifest that is a symlink or reparse point, and it replaces the file atomically and only if it did not change after the preview. Fields it does not touch keep their values.
 - The app scope is part of the board identity. After the command, stop a running board and start it again with `prism board serve`, and reissue grants with `prism board grant` for any participant the board rejects. A running board disables writes with `workspace_identity_changed` until it is restarted.
 
-There is no command to remove or retire an app. To retire one, set its `status` to `retired` in the manifest by hand.
+To take an app out of use, retire it with `prism app retire`; there is no command that deletes one.
 
 Example, run in an empty workspace with `backend` registered:
 
@@ -113,6 +113,21 @@ prism app add customer-android --stack android-compose --name "Customer app" --a
 prism app add partner-android --stack android-compose --name "Partner app" --audience B2B --repository mobile-apps --remote https://example.com/acme/mobile-apps.git --path apps/partner --apply --yes
 prism status
 ```
+
+## `prism app retire`
+
+```text
+prism app retire ID [--apply [--yes]] [--json] [PATH]
+```
+
+Retires an app: it sets `status: retired` on the app's entry in `prism.workspace.yml` and changes nothing else. It deletes no code, wiki page, requirement page or evidence, and the app keeps its ID, which is never reused.
+
+- It plans, confirms and writes like `prism app add`: without `--apply` it shows the exact manifest change and exits with 0, `--apply` writes it after you confirm, `--apply --yes` skips the question, and the write has the same safety checks (the manifest must not be a symlink or reparse point, the write is atomic, and it is refused if the manifest changed after the preview). The new manifest is validated first.
+- Retiring an app that the manifest does not declare, or one that is already retired, is an error: the command exits with 3 and writes nothing.
+- The preview lists the features before `done` that still name the app. Each is flagged `app-retired-in-scope` afterwards, as [Membership changes](#membership-changes) explains.
+- The app scope is part of the board identity, so the command ends with the same notice as `prism app add`: stop a running board and start it again with `prism board serve`, and reissue grants with `prism board grant` for any participant the board rejects.
+
+A retired app stays in `prism app list`, in status, in the board's app list (`discover`) and in the graph, each marked `retired` (the `status` field of its entry; the graph node carries it as `status`). It no longer counts for the checks of in-workspace paths: a missing directory of a retired app is not reported, and the directory still counts as declared.
 
 ## Workspaces with no apps
 
@@ -153,6 +168,16 @@ An operation that needs an app scope still stops at its own check. A feature tha
 A feature's scope is its `apps:` front matter: a required list of app IDs of the workspace. Every ID must be an app in `prism.workspace.yml`, whatever its stack, and `platforms:` is not a valid field.
 
 - **App requirements:** each scoped app has one page, `knowledge/wiki/app-requirements/F-XXX-<app-id>.md`, whose front matter names the app with `app:`. The feature page lists each app under `## App scope`, and the delivery evidence table is keyed by app (`| App | Implementation | Tests | Release |`).
+- **Delivery:** `dev-done` needs a valid row for every scoped app. Its `Release` cell is release evidence (`release: <reference>`, `tag: <reference>` or `deployment: <reference>`, the reference being the URL of, or a workspace path to, a release, tag or deployment record) or a delivery attestation (`attested by <Name>: <reference>`, the reference being a URL or a path to what that person checked). The prefix is matched without regard to case. A commit or pull request proves which code changed, not that it shipped, so a bare commit SHA, a pull-request or merge-request URL, `merged`, a branch name and free text are rejected with `release-evidence-required`. An app in an external repository keeps its evidence there and links it by URL; an unresolved `prism.local.yml` entry never blocks evidence given by link. A delivery attestation is not the attestation in `## Post-ship notes`, where the developer vouches for references the agent could not verify.
+- **API work:** when a feature's `## API surface` declares API work, at least one active app in its `apps` must have `serves-api` (`unknown` counts as true). Otherwise lint reports `api-surface-without-api-app` for the feature before `done`, and `design-handoff`, `dev-start` and `dev-done` block with that code.
 - **Design:** a design gate asks whether any scoped app has `has-ui`. An app whose capability is `unknown` counts as having a UI, and lint reports each `unknown` capability once as `app-capability-unknown` (information).
 - **Queries:** `prism wiki app <app-id>`, the board's `app` query kind and the graph's `app:<id>` nodes take app IDs of the workspace.
 - **Two apps of one stack:** `customer-android` and `partner-android`, both `android-compose`, are two separate scopes: a feature that lists both needs both requirement pages and, because both have a UI, design evidence.
+
+### Membership changes
+
+Adding or retiring an app never changes a feature's scope by itself.
+
+- **Adding an app:** `prism app add` leaves every existing feature's `apps` as it is. A feature gains the app only by an explicit scope edit.
+- **Retiring an app:** a retired app stays valid in the `apps` of a feature that is `done`, as history. A feature before `done` that still names it is flagged `app-retired-in-scope`: lint reports an error, and every lifecycle action on that feature is blocked with that code until its `apps` (and its `## App scope`) is edited explicitly. The message names the app and says that retirement never changes scope by itself. A new feature that names a retired app, and any edit that adds one to a scope, is rejected with `app-retired` (`app_retired` on the board).
+- **Re-pointing a feature** from one app to another is an explicit scope edit through the normal lifecycle: the feature's current owner edits `apps`, the `## App scope` entry and the app requirement pages, and the operation records the change in `log.md`. There is no command that re-points features automatically.

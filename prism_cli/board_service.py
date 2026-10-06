@@ -22,7 +22,15 @@ from uuid import UUID, uuid4
 
 import yaml
 
-from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, WorkspaceModel, app_entries, normalize_manifest
+from prism_cli.app_model import (
+    MANIFEST_SCHEMA_VERSION,
+    WorkspaceModel,
+    api_surface_without_api_app_message,
+    app_entries,
+    app_retired_message,
+    normalize_manifest,
+    retired_in_scope_message,
+)
 from prism_cli.board_store import BoardLockError, BoardStore
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError, reparse_kind
 from prism_cli.wiki_model import (
@@ -115,6 +123,15 @@ def _clip(value: Any, limit: int) -> str:
 
     text = re.sub(r"\s+", " ", str(value)).strip()
     return text if len(text) <= limit else text[: max(limit - 3, 0)].rstrip() + "..."
+
+
+def _scope_of(frontmatter: Mapping[str, Any] | None) -> list[str] | None:
+    """The app IDs a feature's front matter lists, or `None` when there is no front matter yet."""
+
+    if frontmatter is None:
+        return None
+    apps = frontmatter.get("apps")
+    return [item for item in apps if isinstance(item, str)] if isinstance(apps, list) else []
 
 
 def _names(values: Iterable[Any], *, limit: int = 20) -> list[str]:
@@ -1294,9 +1311,11 @@ class BoardService:
             )
         if name == "dev-done":
             limitations.append(
-                "The proposed feature page must carry the delivery evidence: one substantive Implementation, Tests and Release row per "
-                "declared app in its `## Delivery evidence` table, taken from what the developer reports. A missing or invalid table is rejected "
-                "with `delivery_evidence_required` or `delivery_evidence_invalid` and `details`."
+                "The proposed feature page must carry the delivery evidence: one row per declared app in its `## Delivery evidence` table, "
+                "with a substantive Implementation and Tests cell and a Release cell that is release evidence (`release:`, `tag:` or `deployment:` "
+                "and a URL or record path) or a delivery attestation (`attested by <Name>:` and a URL or path), taken from what the developer reports. "
+                "A commit or pull request proves which code changed, not that it shipped. A missing or invalid table is rejected "
+                "with `delivery_evidence_required`, `delivery_evidence_invalid` or `release_evidence_required` and `details`."
             )
         if name in _HUMAN_ACTIONS:
             limitations.append(
@@ -1826,7 +1845,7 @@ class BoardService:
         for relative in feature_changes:
             before_text = before[relative]
             before_frontmatter[relative] = _parse_markdown(before_text, relative)[0] if before_text is not None else None
-            after_frontmatter[relative] = self._validate_feature_output(relative, supplied[relative], skill)
+            after_frontmatter[relative] = self._validate_feature_output(relative, supplied[relative], skill, _scope_of(before_frontmatter[relative]))
 
         normalized_revisions.update(
             self._assert_required_skill_revisions(
@@ -2163,7 +2182,18 @@ class BoardService:
             409,
         )
 
-    def _validate_feature_output(self, relative: str, content: str, skill: str) -> dict[str, Any]:
+    def _validate_feature_output(
+        self,
+        relative: str,
+        content: str,
+        skill: str,
+        before_apps: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Validate a proposed feature page. `before_apps` is the scope of the page as it exists now, `None` for a new page.
+
+        A retired app is accepted only where the feature already lists it; naming one on a new feature, or adding one to a scope, is `app_retired`.
+        """
+
         frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"id", "title", "status", "owner", "introduced", "last-updated", "apps", "sources", "advisory-review", "advisory-skip-reason", "design", "design-exemption-reason", "revalidation"}, relative)
         feature_id = frontmatter.get("id")
@@ -2184,9 +2214,20 @@ class BoardService:
         if not isinstance(sources, list) or any(not isinstance(path, str) or not path.strip() or ".." in PurePosixPath(path).parts or PurePosixPath(path).is_absolute() for path in sources):
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` sources must be relative workspace paths.", 409)
         apps = frontmatter.get("apps")
-        if not isinstance(apps, list) or not apps or any(not isinstance(item, str) for item in apps) or len(set(apps)) != len(apps) or any(item not in self._app_ids for item in apps):
+        retained = self._model.retired_apps(before_apps) if self._model is not None and before_apps else []
+        if isinstance(apps, list) and self._model is not None:
+            added = [item for item in self._model.retired_apps(item for item in apps if isinstance(item, str)) if item not in retained]
+            if added:
+                raise BoardError(
+                    "app_retired",
+                    f"Feature `{feature_id}`: {app_retired_message(added)} Retirement never changes a scope by itself; name an active app instead.",
+                    409,
+                    {"apps": _names(item for item in apps if isinstance(item, str)), "retired_apps": _names(added), "board_apps": _names(self._app_ids)},
+                )
+        allowed = [*self._app_ids, *retained]
+        if not isinstance(apps, list) or not apps or any(not isinstance(item, str) for item in apps) or len(set(apps)) != len(apps) or any(item not in allowed for item in apps):
             declared = [item for item in apps if isinstance(item, str)] if isinstance(apps, list) else []
-            outside = [item for item in declared if item not in self._app_ids]
+            outside = [item for item in declared if item not in allowed]
             details = {"apps": _names(declared), "board_apps": _names(self._app_ids)}
             if not self._app_ids:
                 raise BoardError(
@@ -2377,6 +2418,7 @@ class BoardService:
             old = target_feature["before"]
             if old is None:
                 raise BoardError("feature_not_found", "Lifecycle skills cannot create a feature page.", 409)
+            self._require_no_retired_app_in_progress(str(old.get("id")), old)
             self._validate_lifecycle_write_scope(
                 expected_action,
                 target_feature["path"],
@@ -2395,6 +2437,8 @@ class BoardService:
                 supplied=supplied,
                 before=before,
             )
+            if expected_action == "design-handoff":
+                self._require_api_serving_app(supplied, target_feature)
             self._validate_lifecycle_related_writes(expected_action, supplied, before, target_feature)
             if expected_action == "design-handoff":
                 self._require_handoff_api_contract(supplied, target_feature)
@@ -2732,22 +2776,26 @@ class BoardService:
 
         The evidence arrives as part of the proposal, so one preview shows the
         evidence row beside the status change. The rules are the ones the
-        transition pre-check applies to a recorded table.
+        transition pre-check applies to a recorded table: each app needs
+        substantive Implementation and Tests cells and a `Release` cell that is
+        release evidence or a delivery attestation.
         """
 
-        from prism_cli.wiki_model import parse_delivery_evidence
+        from prism_cli.wiki_model import RELEASE_EVIDENCE_REQUIRED, parse_delivery_evidence
 
         declared = [item for item in frontmatter.get("apps", []) if isinstance(item, str)]
         _frontmatter, body = _parse_markdown(content, relative)
         rows, problems = parse_delivery_evidence(body, declared)
         if not problems:
             return
-        example = "| " + " | ".join([declared[0] if declared else "backend", "<implementation reference>", "<test command and result>", "<release artifact or target>"]) + " |"
+        structural = [item.message for item in problems if item.code != RELEASE_EVIDENCE_REQUIRED]
+        release = [item.message for item in problems if item.code == RELEASE_EVIDENCE_REQUIRED]
+        example = "| " + " | ".join([declared[0] if declared else "backend", "<implementation reference>", "<test command and result>", "release: <URL of the release or deployment record>"]) + " |"
         details: dict[str, Any] = {
             "path": relative,
             "apps": _names(declared),
             "missing_apps": _names(set(item.casefold() for item in declared) - set(rows)),
-            "problems": [_clip(item, 200) for item in problems[:6]],
+            "problems": [_clip(item, 200) for item in structural[:6]],
         }
         if not rows:
             raise BoardError(
@@ -2758,12 +2806,21 @@ class BoardService:
                 409,
                 details,
             )
+        if structural:
+            raise BoardError(
+                "delivery_evidence_invalid",
+                f"The `## Delivery evidence` table in the proposed `{relative}` is not valid: {' '.join(_clip(item, 200) for item in structural[:6])} "
+                "It needs exactly one row per declared app, each with a substantive Implementation and Tests cell and a Release cell that is release evidence "
+                "(`release:`, `tag:` or `deployment:` and a URL or record path) or a delivery attestation (`attested by <Name>:` and a URL or path).",
+                409,
+                details,
+            )
         raise BoardError(
-            "delivery_evidence_invalid",
-            f"The `## Delivery evidence` table in the proposed `{relative}` is not valid: {' '.join(_clip(item, 200) for item in problems[:6])} "
-            "It needs exactly one row per declared app, each with a substantive Implementation, Tests and Release cell.",
+            "release_evidence_required",
+            f"The `Release` cell of the delivery evidence in the proposed `{relative}` must be release evidence or a delivery attestation. "
+            f"{' '.join(_clip(item, 500) for item in release[:6])} Ask the developer for the release or deployment record, or for who confirms the shipment; do not invent it.",
             409,
-            details,
+            {**details, "problems": [_clip(item, 500) for item in release[:6]]},
         )
 
     def _validate_lifecycle_related_writes(
@@ -2882,6 +2939,36 @@ class BoardService:
         error = _api_contract_scope_error(relative, feature_id, new_body, surface)
         if error is not None:
             raise error
+
+    def _require_no_retired_app_in_progress(self, feature_id: str, current: Mapping[str, Any]) -> None:
+        """A feature in progress that lists a retired app takes no lifecycle transition until its scope is edited explicitly."""
+
+        if self._model is None or current.get("status") == "done":
+            return
+        scope = _scope_of(current) or []
+        retired = self._model.retired_apps(scope)
+        if retired:
+            raise BoardError(
+                "app_retired_in_scope",
+                retired_in_scope_message(feature_id, retired),
+                409,
+                {"feature_id": feature_id, "apps": _names(scope), "retired_apps": _names(retired)},
+            )
+
+    def _require_api_serving_app(self, supplied: Mapping[str, str], feature: Mapping[str, Any]) -> None:
+        """Design handoff for a feature with declared API work needs an active app in its scope that serves an API."""
+
+        surface = section_text(_parse_markdown(supplied[feature["path"]], feature["path"])[1], "API surface")
+        apps = _scope_of(feature["after"]) or []
+        if self._model is None or not api_surface_declared(surface) or self._model.scope_serves_api(apps):
+            return
+        feature_id = str(feature["id"])
+        raise BoardError(
+            "api_surface_without_api_app",
+            api_surface_without_api_app_message(self._model, feature_id, apps),
+            409,
+            {"feature_id": feature_id, "apps": _names(apps), "board_apps": _names(self._app_ids)},
+        )
 
     def _require_handoff_api_contract(self, supplied: Mapping[str, str], feature: Mapping[str, Any]) -> None:
         """Design handoff must carry an API contract when the feature declares API work and none exists yet."""
@@ -3621,7 +3708,7 @@ class BoardService:
         self._assert_required_skill_revisions(payload["skill"], supplied, before, payload.get("moves", []), revisions)
         features = [path for path in supplied if path.startswith("knowledge/wiki/features/")]
         before_fm = {path: _parse_markdown(before[path], path)[0] if before[path] is not None else None for path in features}
-        after_fm = {path: self._validate_feature_output(path, supplied[path], payload["skill"]) for path in features}
+        after_fm = {path: self._validate_feature_output(path, supplied[path], payload["skill"], _scope_of(before_fm[path])) for path in features}
         current = self._validate_skill_semantics(actor, payload["skill"], supplied, before, before_fm, after_fm, payload.get("moves", []))
         if current.get("classification") != "ready" or current.get("blockers"):
             raise BoardError("checks_changed", "Current workflow checks no longer permit this skill operation; obtain a fresh preview.", 409)

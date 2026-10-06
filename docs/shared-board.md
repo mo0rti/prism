@@ -232,7 +232,11 @@ and confirmation.
   with the status change, so nothing has to be edited by hand first. A table with no
   app rows is rejected with `delivery_evidence_required`; an invalid row, a
   placeholder cell, a duplicate or an undeclared app with
-  `delivery_evidence_invalid`. A reference the agent cannot check is recorded in the
+  `delivery_evidence_invalid`; a `Release` cell that is neither release evidence
+  (`release:`, `tag:` or `deployment:` and a URL or workspace path) nor a delivery
+  attestation (`attested by <Name>:` and a URL or path) with
+  `release_evidence_required`: a commit or pull request proves which code changed,
+  not that it shipped. A reference the agent cannot check is recorded in the
   proposed Post-ship notes as the developer's attestation. `dev-done` stays an agent
   skill: the board offers no direct human `dev-done`.
 - **`design-handoff` creates the API contract.** When the feature's API surface declares
@@ -298,7 +302,11 @@ Only short excerpts of workspace text appear in an error.
 | `api_contract_not_applicable`, `api_contract_exists` | `path` and `feature_id`. `api_contract_exists` for a second contract also lists the `existing` pages. |
 | `api_contract_initial_status` | `path`, `status` and `expected_status` (`agreed`). |
 | `api_contract_untraceable` | `path`, `feature_id` and `endpoints` (the `METHOD /normalized/path` entries that the API surface does not support) or `models` (the data models that neither the API surface nor an endpoint names). |
-| `delivery_evidence_required`, `delivery_evidence_invalid` | `path`, `apps` (the declared apps), `missing_apps` and `problems` (up to six parse problems). The message shows the row to add: `\| app \| implementation reference \| test command and result \| release artifact or target \|`. |
+| `delivery_evidence_required`, `delivery_evidence_invalid` | `path`, `apps` (the declared apps), `missing_apps` and `problems` (up to six parse problems). The message shows the row to add: `\| app \| implementation reference \| test command and result \| release: URL of the release or deployment record \|`. |
+| `release_evidence_required` | `path`, `apps`, `missing_apps` and `problems`: each names the app whose `Release` cell is not release evidence (`release:`, `tag:` or `deployment:` and a URL or workspace path) or a delivery attestation (`attested by <Name>:` and a URL or path). A bare commit SHA, a pull-request or merge-request URL, `merged`, a branch name and free text are rejected. |
+| `app_retired` | `apps`, `retired_apps` and `board_apps`. A new feature, or an edit that adds an app to a feature's scope, names an app that has been retired. Name an active app. |
+| `app_retired_in_scope` | `feature_id`, `apps` and `retired_apps`. A feature before `done` still lists a retired app, so no lifecycle action runs until its `apps` is edited explicitly; retirement never changes scope by itself. |
+| `api_surface_without_api_app` | `feature_id`, `apps` and `board_apps`. The `design-handoff` proposal's feature declares API work in `## API surface`, but no active app in its `apps` serves an API (`serves-api`; `unknown` counts as serving one). |
 | `missing_read_revisions` | `paths` (the sources to read, as many as fit), `total` (how many are missing) and `read_with` (`read_workspace`). A required source has neither a digest in `read_revisions` nor a read by this participant. Read those paths with `read_workspace` and preview again. |
 | `read_digest_mismatch`, `stale_read_revision` | `path`, `supplied` (the digest you sent or the one recorded from your read, shortened) and `expected` (the file's current digest). `read_digest_mismatch` means the board never returned the digest you sent for that file, so it is mistyped or copied wrongly; leave `read_revisions` out or copy it from `read_workspace` exactly. `stale_read_revision` means the board returned that digest and the file has changed since; read it again and review the change. |
 | `invalid_feature_output` | For an app outside the board's scope: `apps` (the declared ones) and `board_apps` (the IDs of the board's apps); `discover` lists the apps under `board.apps`. A board with no apps rejects every feature scope and says to register an app with `prism app add`. |

@@ -78,12 +78,24 @@ Notes added after shipping. Populated by /dev-done command. Empty until then.
 ## Delivery evidence
 | App | Implementation | Tests | Release |
 |---|---|---|---|
-| backend | [artifact or source reference] | [test command and result] | [release artifact or target] |
+| backend | [artifact or source reference] | [test command and result] | release: [URL of the release, tag or deployment record] |
 
 One row is required for every declared app in the `/dev-done` proposal. Each
 cell must contain a substantive, current reference that an agent can verify. A
 file being present or a clean lint result does not prove implementation or
 shipment.
+
+The `Release` cell is release evidence or a delivery attestation, matched without
+regard to case on its prefix:
+
+- release evidence: `release: <reference>`, `tag: <reference>` or
+  `deployment: <reference>`, where the reference is the URL of, or a workspace
+  path to, a release, tag or deployment record
+- delivery attestation: `attested by <Name>: <reference>`, where the reference is
+  a URL or a workspace path to what that person checked
+
+Any other `Release` cell is rejected with `release-evidence-required`: a commit or
+pull request proves which code changed, not that it shipped.
 
 ## Reopen history
 Append one record for every confirmed reopen. Keep the prior completion and
@@ -220,7 +232,7 @@ confirmation.
 | `design-start` | `ready-for-design` + `designer` | `in-design` + `designer` | Start design work after rereading the assigned feature. |
 | `design-handoff` | `in-design` + `designer` | `ready-for-dev` + `dev` | Verify design evidence or the confirmed UI design exemption, prepare app requirements and, when the API surface declares API work, create the agreed API contract. |
 | `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` | Start implementation after rereading requirements and applicable API contracts. |
-| `dev-done` | `in-dev` + `dev` | `done` + `none` | Verify current per-app implementation, tests, release evidence, requirements, and APIs. |
+| `dev-done` | `in-dev` + `dev` | `done` + `none` | Verify current per-app implementation, tests, release evidence or delivery attestation, requirements, and APIs. |
 | `reopen-spec` | `done` + `none` | `specified` + `po` | Revalidate specification, design, implementation, tests, and release domains after impact review. |
 | `reopen-design` | `done` + `none` | `in-design` + `designer` | Revalidate design, implementation, tests, and release domains after impact review. |
 | `reopen-dev` | `done` + `none` | `in-dev` + `dev` | Revalidate implementation, tests, and release domains after impact review. |
@@ -314,16 +326,43 @@ Requirement pages link the contract in `## API contract reference`. `dev-start` 
 an `agreed` contract and blocks on a `draft` one; `dev-done` marks the contract
 `implemented`.
 
+API work needs an app that serves an API: when the API surface declares API work, at
+least one active app in the feature's `apps` must have the `serves-api` capability
+(`unknown` counts as serving one). Otherwise lint reports `api-surface-without-api-app`
+for the feature before `done`, and `design-handoff`, `dev-start` and `dev-done` block
+with that code (`api_surface_without_api_app` on the connected board).
+
 #### Delivery and revalidation
 
-`dev-done` means shipped for every declared app. The active Delivery
-evidence table must contain substantive, verifiable Implementation, Tests, and
-Release entries per app, and applicable requirements/API contracts must be
+`dev-done` means shipped for every app in the feature's `apps` scope. The active
+Delivery evidence table must contain, per app, substantive and verifiable
+Implementation and Tests entries and a `Release` entry that is release evidence or
+a delivery attestation, and applicable requirements/API contracts must be
 complete. Pending or `in-progress` requirement pages and an `agreed` API contract
 may be proposed as complete by `dev-done` only after the exact implementation,
 test, and release evidence is verified; a draft API contract blocks. Agents
 verify actual artifacts and results; table text, file presence,
-or lint alone is insufficient. Partial delivery remains `in-dev`.
+or lint alone is insufficient. Partial delivery remains `in-dev`: every app in
+scope needs a valid row.
+
+The `Release` cell is one of two forms, matched without regard to case on its prefix:
+
+- release evidence: `release: <reference>`, `tag: <reference>` or
+  `deployment: <reference>`, where the reference is the URL of, or a workspace path
+  to, a release, tag or deployment record
+- delivery attestation: `attested by <Name>: <reference>`, where a named person
+  confirms the shipment and the reference is a URL or a workspace path to what they
+  checked
+
+The reference is the first word after the prefix, and it must be substantive. A
+commit or pull request proves which code changed, not that it shipped, so a bare
+commit SHA, a pull-request or merge-request URL, `merged`, a branch name and free
+text without a prefix do not satisfy `dev-done`. They are rejected with
+`release-evidence-required`: by lint for a feature that is `done`, by the
+`dev-done` transition check, and by the board as `release_evidence_required`. An app
+in an external repository keeps its evidence there and links it by URL; an
+unresolved checkout in `prism.local.yml` never blocks evidence given by link. The
+`Implementation` and `Tests` cells keep their rule: a substantive reference.
 
 Delivery evidence is an input to `dev-done`. The developer supplies, for each
 declared app, the implementation, test and release references, and the
@@ -335,8 +374,12 @@ recorded in `## Post-ship notes` as the developer's attestation, which the
 developer confirms with the final confirmation. That attestation stands in for the
 agent's own check: with it, the agent may propose the exact requirement pages and
 API contract that the evidence covers as complete, and says in its summary that it
-did not verify the references itself. The agent must not invent delivery evidence
-or imply that an absent or incomplete table is complete.
+did not verify the references itself. It differs from the delivery attestation of
+the `Release` cell: the first says the agent could not verify a reference and the
+developer vouches for it, the second says a named person confirmed the shipment and
+links what they checked. The `Release` cell must be one of the two forms either way.
+The agent must not invent delivery evidence or imply that an absent or incomplete
+table is complete.
 
 An active `revalidation` list invalidates current readiness even when older
 status fields or evidence still say done. `dev-done` may perform fresh checks and
@@ -361,6 +404,24 @@ the prior status is retained in the history. Shared API contracts are marked by
 affected scope only; no blanket reset is allowed. `po-handoff` clears verified
 specification, `design-handoff` clears verified design, and `dev-done` clears
 implementation/tests/release only after fresh evidence.
+
+**App scope and membership.** A feature's scope is its `apps` list. The workspace's apps
+change over time, and a change never edits a feature's scope by itself:
+
+- Adding an app (`prism app add`) leaves every existing feature's `apps` as it is. A
+  feature gains the app only by an explicit scope edit, recorded in `log.md`.
+- Retiring an app (`prism app retire <id>`) sets `status: retired` in
+  `prism.workspace.yml` and deletes no code, wiki page, requirement page or evidence.
+  A retired app stays valid in the `apps` of a feature that is `done`, as history.
+  Every feature before `done` that still lists it is flagged `app-retired-in-scope`:
+  lint reports an error and every lifecycle action on that feature is blocked with
+  that code until its `apps` is edited explicitly.
+  A new feature, and any edit that adds a retired app to a feature's scope, is
+  rejected with `app-retired`.
+- Re-pointing a feature from one app to another is an explicit scope edit through the
+  normal lifecycle: the feature's current owner edits `apps`, its `## App scope`
+  entry and its app requirement pages, and records the change in `log.md`. No command
+  re-points features automatically.
 
 
 ---

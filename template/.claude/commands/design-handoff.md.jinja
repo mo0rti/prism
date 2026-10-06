@@ -95,6 +95,11 @@ finds it. The user who confirms this handoff is the one who agrees it.
   `/dev-clarify` first.
 - Link the page from each generated requirement's `## API contract reference`.
 - Never rewrite an existing contract page: leave it out of the write set.
+- API work needs an app that serves an API: at least one active app in the feature's
+  `apps` must have the `serves-api` capability (`unknown` counts as serving one).
+  Otherwise the handoff is blocked with `api-surface-without-api-app` (`api_surface_without_api_app`
+  on the connected board); route the question to `/po-clarify` or `/dev-clarify` instead of
+  writing a contract.
 
 ## Notes for the agent
 

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 import re
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 from urllib.parse import urlsplit
 
 import yaml
@@ -238,6 +238,48 @@ class WorkspaceModel:
 
         entry = self.app_maturity.get(app_id)
         return dict(entry) if entry is not None else None
+
+    def retired_apps(self, app_ids: Iterable[str]) -> list[str]:
+        """The IDs among ``app_ids`` that name a retired app, in the order given."""
+
+        return [app_id for app_id in app_ids if (app := self.app(app_id)) is not None and not app.active]
+
+    def scope_serves_api(self, app_ids: Iterable[str]) -> bool:
+        """Whether an active app among ``app_ids`` serves an API, as a lifecycle gate reads it (``unknown`` counts as true)."""
+
+        return any((app := self.app(app_id)) is not None and app.active and app.gate_capability(CAPABILITY_SERVES_API) for app_id in app_ids)
+
+
+def _quoted_ids(app_ids: Iterable[str]) -> str:
+    return ", ".join(f"`{app_id}`" for app_id in app_ids)
+
+
+def retired_in_scope_message(feature_id: str, retired: Iterable[str]) -> str:
+    """The finding for an in-progress feature whose scope lists a retired app."""
+
+    return (
+        f"Feature `{feature_id}` is in progress and lists retired app(s) {_quoted_ids(retired)}. Retiring an app never changes a feature's scope by itself; "
+        "edit the feature's `apps` explicitly (and its `## App scope`), and record the change in `log.md`."
+    )
+
+
+def app_retired_message(retired: Iterable[str]) -> str:
+    """The rejection for a new feature, or an edit, that adds a retired app to a feature's scope."""
+
+    return f"App(s) {_quoted_ids(retired)} are retired and cannot be added to a feature's scope; a retired app stays only on features that are done."
+
+
+def api_surface_without_api_app_message(model: "WorkspaceModel", feature_id: str, app_ids: Iterable[str]) -> str:
+    """The finding for a feature that declares API work while no active app in its scope serves an API."""
+
+    described = ", ".join(
+        f"`{app_id}` ({'unknown app' if (app := model.app(app_id)) is None else 'retired' if not app.active else f'serves-api: {str(app.capability(CAPABILITY_SERVES_API)).lower()}'})"
+        for app_id in app_ids
+    )
+    return (
+        f"Feature `{feature_id}` declares API work in `## API surface`, but no active app in its scope serves an API: its apps are {described or 'none'}. "
+        "Add an app that serves an API to `apps`, or change the API surface."
+    )
 
 
 # --- Output shapes ----------------------------------------------------------

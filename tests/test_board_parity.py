@@ -211,7 +211,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
         answer = "At most 200 comments are exported; the rest are summarized as a count."
         evidence = (
             "| App | Implementation | Tests | Release |\n|---|---|---|---|\n"
-            "| backend | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | Version 1.4.0 deployed |"
+            "| backend | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | release: https://example.test/releases/1.4.0 |"
         )
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "workspace"

@@ -41,7 +41,7 @@ PO_QUESTION = "| 1 | Which details should the summary emphasize? | po | open |"
 DEV_QUESTION = "| 2 | Is there a limit on the number of comments in one summary? | dev | open |"
 DESIGNER_QUESTION = "| 3 | Where should the next steps appear? | designer | open |"
 DEV_ANSWER = "At most 200 comments are exported; the rest are summarized as a count."
-EVIDENCE_ROW = "| backend | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | Version 1.4.0 deployed |"
+EVIDENCE_ROW = "| backend | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | release: https://example.test/releases/1.4.0 |"
 EVIDENCE_TABLE = f"| App | Implementation | Tests | Release |\n|---|---|---|---|\n{EVIDENCE_ROW}"
 EMPTY_EVIDENCE = "| App | Implementation | Tests | Release |\n|---|---|---|---|"
 
@@ -514,7 +514,7 @@ class DevDoneEvidenceTests(_DevDoneWorkspace):
                 self.assertEqual(("delivery_evidence_required", 409), (error.code, error.status))
                 self.assertIn("## Delivery evidence", error.message)
                 self.assertIn("`backend`", error.message)
-                self.assertIn("| backend | <implementation reference> | <test command and result> | <release artifact or target> |", error.message)
+                self.assertIn("| backend | <implementation reference> | <test command and result> | release: <URL of the release or deployment record> |", error.message)
                 self.assertIn("do not invent", error.message)
                 self.assertEqual(FEATURE, error.details["path"])
                 self.assertEqual(["backend"], error.details["apps"])
@@ -526,9 +526,9 @@ class DevDoneEvidenceTests(_DevDoneWorkspace):
     def test_invalid_evidence_is_rejected_with_each_problem(self) -> None:
         header = "| App | Implementation | Tests | Release |\n|---|---|---|---|\n"
         cases = {
-            "placeholder cell": (header + "| backend | Pull request 42 | n/a | Version 1.4.0 |", "delivery_evidence_invalid", "`tests` for `backend` is empty or still a placeholder", []),
-            "template cell": (header + "| backend | [artifact or source reference] | CI run 1187 | Version 1.4.0 |", "delivery_evidence_invalid", "`implementation` for `backend`", []),
-            "wrong platform": (header + "| web-user-app | Pull request 42 | CI run 1187 | Version 1.4.0 |", "delivery_evidence_invalid", "undeclared app(s): web-user-app", ["backend"]),
+            "placeholder cell": (header + "| backend | Pull request 42 | n/a | release: https://example.test/releases/1.4.0 |", "delivery_evidence_invalid", "`tests` for `backend` is empty or still a placeholder", []),
+            "template cell": (header + "| backend | [artifact or source reference] | CI run 1187 | release: https://example.test/releases/1.4.0 |", "delivery_evidence_invalid", "`implementation` for `backend`", []),
+            "wrong platform": (header + "| web-user-app | Pull request 42 | CI run 1187 | release: https://example.test/releases/1.4.0 |", "delivery_evidence_invalid", "undeclared app(s): web-user-app", ["backend"]),
             "duplicate platform": (header + EVIDENCE_ROW + "\n" + EVIDENCE_ROW, "delivery_evidence_invalid", "duplicate app `backend`", []),
             "short row": (header + "| backend | Pull request 42 | CI run 1187 |", "delivery_evidence_required", "exactly App, Implementation, Tests, and Release cells", ["backend"]),
         }

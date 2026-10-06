@@ -200,7 +200,7 @@ class WikiContractLintTests(unittest.TestCase):
                 "## Delivery evidence\n"
                 "| App | Implementation | Tests | Release |\n"
                 "|---|---|---|---|\n"
-                "| backend | Synthetic implementation evidence | Synthetic test evidence | Synthetic release evidence |\n",
+                "| backend | Synthetic implementation evidence | Synthetic test evidence | release: https://example.test/releases/synthetic |\n",
             )
             feature.write_text(body, encoding="utf-8")
             requirement = target_wiki / "app-requirements" / "F-001-backend.md"

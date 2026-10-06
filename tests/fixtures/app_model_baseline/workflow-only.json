@@ -707,6 +707,12 @@
               "status": "blocked"
             },
             {
+              "code": "api-surface-without-api-app",
+              "message": "No API surface is declared for this feature.",
+              "path": "knowledge/wiki/features/F-002-outcome-review.md",
+              "status": "pass"
+            },
+            {
               "code": "advisory-review",
               "message": "Advisory review state is `not-needed`.",
               "path": "knowledge/wiki/features/F-002-outcome-review.md",
@@ -818,6 +824,12 @@
               "message": "missing requirement for `mobile-android`.",
               "path": "knowledge/wiki/features/F-003-outcome-export.md",
               "status": "blocked"
+            },
+            {
+              "code": "api-surface-without-api-app",
+              "message": "No API surface is declared for this feature.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "pass"
             },
             {
               "code": "api-contract",

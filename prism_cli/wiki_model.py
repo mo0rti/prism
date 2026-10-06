@@ -577,25 +577,120 @@ def parse_revalidation(value: Any) -> tuple[list[str], list[str]]:
     return domains, errors
 
 
+@dataclass(frozen=True)
+class DeliveryProblem:
+    """One reason a feature's delivery evidence is not acceptable.
+
+    ``code`` is ``release-evidence-required`` for a ``Release`` cell that is
+    neither release evidence nor a delivery attestation, and ``delivery-evidence``
+    for every other problem with the table.
+    """
+
+    code: str
+    message: str
+
+
+DELIVERY_EVIDENCE_PROBLEM = "delivery-evidence"
+RELEASE_EVIDENCE_REQUIRED = "release-evidence-required"
+
+_RELEASE_EVIDENCE_FORM = re.compile(r"^(release|tag|deployment)\s*:\s*(.*)$", re.IGNORECASE)
+_DELIVERY_ATTESTATION_FORM = re.compile(r"^attested\s+by\s+([^:]*?)\s*:\s*(.*)$", re.IGNORECASE)
+_RELEASE_FORMS_HINT = (
+    "Write `release: <URL or record path>`, `tag: <URL or record path>` or `deployment: <URL or record path>`, "
+    "or `attested by <Name>: <URL or path to what they checked>`."
+)
+_SHIPPED_NOTICE = "A commit or pull request proves which code changed, not that it shipped."
+_MARKDOWN_LINK_TARGET = re.compile(r"^\[[^\]]*\]\(\s*<?([^)\s>]+)>?\s*\)")
+_HTTP_URL = re.compile(r"^https?://[^\s/?#]+", re.IGNORECASE)
+# A pull request, merge request or commit page says what changed, never that it shipped.
+_CODE_CHANGE_URL_SEGMENT = re.compile(
+    r"^(?:pulls?|pull-requests?|pullrequests?|merge[_-]requests?|commits?)$", re.IGNORECASE
+)
+_COMMIT_SHA = re.compile(r"^[0-9a-f]{7,40}$", re.IGNORECASE)
+_RECORD_FILE_EXTENSION = re.compile(r"\.(?:md|txt|json|ya?ml|html?|pdf|csv)$", re.IGNORECASE)
+
+
+def release_evidence_problem(value: str) -> str | None:
+    """Why a ``Release`` cell is not release evidence or a delivery attestation, or ``None`` when it is.
+
+    A cell is one of two forms, matched case-insensitively on the prefix:
+
+    * release evidence: ``release: <reference>``, ``tag: <reference>`` or
+      ``deployment: <reference>``, where the reference is the URL of, or a
+      workspace path to, a release, tag or deployment record. A pull request,
+      merge request or commit link is not one;
+    * a delivery attestation: ``attested by <Name>: <reference>``, where the
+      reference is a URL or a workspace path to what the person checked.
+
+    The reference is the first word after the prefix (a Markdown link counts by
+    its target). Only the shape is checked; the responsible agent verifies that
+    the record exists and contains the change.
+    """
+
+    text = re.sub(r"\s+", " ", value).strip()
+    if not _substantive_evidence_cell(text):
+        return "is empty or still a placeholder"
+    attestation = _DELIVERY_ATTESTATION_FORM.match(text)
+    if attestation:
+        name, reference = attestation.groups()
+        if not re.search(r"[^\W\d_]", name) or re.fullmatch(r"[<\[].*[>\]]", name):
+            return "names no person after `attested by`"
+        return _release_reference_problem(reference, allow_code_change=True)
+    release = _RELEASE_EVIDENCE_FORM.match(text)
+    if release:
+        return _release_reference_problem(release.group(2), allow_code_change=False)
+    return "does not start with `release:`, `tag:`, `deployment:` or `attested by <Name>:`"
+
+
+def _release_reference_problem(reference: str, *, allow_code_change: bool) -> str | None:
+    text = reference.strip()
+    link = _MARKDOWN_LINK_TARGET.match(text)
+    token = link.group(1) if link else (text.split(" ", 1)[0] if text else "")
+    token = token.strip("`<>").rstrip(".,;")
+    if not token or not _substantive_evidence_cell(token) or re.fullmatch(r"\[[^\]]*\]", token):
+        return "has no reference after the prefix"
+    if _HTTP_URL.match(token):
+        if not allow_code_change:
+            try:
+                segments = [segment for segment in urlsplit(token).path.split("/") if segment]
+            except ValueError:
+                return "is not a valid URL"
+            if any(_CODE_CHANGE_URL_SEGMENT.match(segment) for segment in segments):
+                return "points to a commit or pull request, not to a release, tag or deployment record"
+        return None
+    if _COMMIT_SHA.match(token):
+        return "is a commit SHA"
+    if "://" in token or re.match(r"^[A-Za-z]:", token) or token.startswith(("/", "\\")) or "\\" in token:
+        return "must be an http(s) URL or a path inside the workspace"
+    parts = token.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        return "must be an http(s) URL or a path inside the workspace"
+    if "/" not in token and not _RECORD_FILE_EXTENSION.search(token):
+        return "is neither a URL nor a path to a record in the workspace"
+    return None
+
+
 def parse_delivery_evidence(
     body: str,
     declared_apps: list[str],
-) -> tuple[dict[str, dict[str, str]], list[str]]:
+) -> tuple[dict[str, dict[str, str]], list[DeliveryProblem]]:
     """Parse the canonical per-app delivery evidence table.
 
-    This validates only observable structure and substantive cells.  It does
-    not claim that referenced implementation, test, or release artifacts exist;
-    the responsible agent must verify those references before writing Done.
+    This validates only observable structure and substantive cells, and that
+    each ``Release`` cell is release evidence or a delivery attestation (see
+    ``release_evidence_problem``).  It does not claim that referenced
+    implementation, test, or release artifacts exist; the responsible agent
+    must verify those references before writing Done.
     """
 
-    rows, _cells, errors = parse_delivery_evidence_cells(body, declared_apps)
-    return rows, errors
+    rows, _cells, problems = parse_delivery_evidence_cells(body, declared_apps)
+    return rows, problems
 
 
 def parse_delivery_evidence_cells(
     body: str,
     declared_apps: list[str],
-) -> tuple[dict[str, dict[str, str]], dict[str, list[str]], list[str]]:
+) -> tuple[dict[str, dict[str, str]], dict[str, list[str]], list[DeliveryProblem]]:
     """Parse the delivery evidence table like ``parse_delivery_evidence``.
 
     The second mapping holds each app's cells exactly as written, in the
@@ -603,19 +698,22 @@ def parse_delivery_evidence_cells(
     column order the table uses.  App keys are lower case in both mappings.
     """
 
+    def problem(message: str) -> DeliveryProblem:
+        return DeliveryProblem(DELIVERY_EVIDENCE_PROBLEM, message)
+
     section = section_text(body, "Delivery evidence")
     if not section.strip():
-        return {}, {}, ["Required `Delivery evidence` section is missing or empty."]
+        return {}, {}, [problem("Required `Delivery evidence` section is missing or empty.")]
 
     table_lines = _visible_evidence_table_lines(section)
     if not table_lines:
-        return {}, {}, ["Delivery evidence must contain a markdown table."]
+        return {}, {}, [problem("Delivery evidence must contain a markdown table.")]
 
     header: list[str] | None = None
     header_indexes: dict[str, int] = {}
     rows: dict[str, dict[str, str]] = {}
     written: dict[str, list[str]] = {}
-    errors: list[str] = []
+    problems: list[DeliveryProblem] = []
     for line in table_lines:
         cells = [cell.strip() for cell in line.strip("|").split("|")]
         normalized = [re.sub(r"[*_`]+", "", cell).strip().lower() for cell in cells]
@@ -626,22 +724,22 @@ def parse_delivery_evidence_cells(
                 continue
             if _is_separator_row(cells):
                 continue
-            errors.append("Delivery evidence table is missing the App/Implementation/Tests/Release header.")
+            problems.append(problem("Delivery evidence table is missing the App/Implementation/Tests/Release header."))
             continue
         if len(normalized) == len(DELIVERY_EVIDENCE_COLUMNS) and set(normalized) == set(DELIVERY_EVIDENCE_COLUMNS):
-            errors.append("Delivery evidence contains more than one header/table.")
+            problems.append(problem("Delivery evidence contains more than one header/table."))
             continue
         if _is_separator_row(cells):
             continue
         if len(cells) != len(DELIVERY_EVIDENCE_COLUMNS):
-            errors.append("Delivery evidence table rows must contain exactly App, Implementation, Tests, and Release cells.")
+            problems.append(problem("Delivery evidence table rows must contain exactly App, Implementation, Tests, and Release cells."))
             continue
         app_id = cells[header_indexes["app"]].strip().lower()
         if not app_id:
-            errors.append("Every delivery evidence row must name an app.")
+            problems.append(problem("Every delivery evidence row must name an app."))
             continue
         if app_id in rows:
-            errors.append(f"Delivery evidence contains duplicate app `{app_id}` rows.")
+            problems.append(problem(f"Delivery evidence contains duplicate app `{app_id}` rows."))
             continue
         row = {
             column: cells[index].strip()
@@ -650,20 +748,30 @@ def parse_delivery_evidence_cells(
         rows[app_id] = row
         written[app_id] = list(cells)
         for column in DELIVERY_EVIDENCE_COLUMNS[1:]:
-            if not _substantive_evidence_cell(row[column]):
-                errors.append(f"Delivery evidence `{column}` for `{app_id}` is empty or still a placeholder.")
+            if column == "release":
+                reason = release_evidence_problem(row[column])
+                if reason is not None:
+                    problems.append(
+                        DeliveryProblem(
+                            RELEASE_EVIDENCE_REQUIRED,
+                            f"Delivery evidence `Release` for `{app_id}` is not release evidence or a delivery attestation: it {reason}. "
+                            f"{_SHIPPED_NOTICE} {_RELEASE_FORMS_HINT}",
+                        )
+                    )
+            elif not _substantive_evidence_cell(row[column]):
+                problems.append(problem(f"Delivery evidence `{column}` for `{app_id}` is empty or still a placeholder."))
 
     if header is None:
-        errors.append("Delivery evidence table has no usable header row.")
+        problems.append(problem("Delivery evidence table has no usable header row."))
 
     declared = {item.strip().lower() for item in declared_apps if isinstance(item, str) and item.strip()}
     missing = sorted(declared - set(rows))
     extra = sorted(set(rows) - declared)
     if missing:
-        errors.append("Delivery evidence is missing declared app(s): " + ", ".join(missing) + ".")
+        problems.append(problem("Delivery evidence is missing declared app(s): " + ", ".join(missing) + "."))
     if extra:
-        errors.append("Delivery evidence contains undeclared app(s): " + ", ".join(extra) + ".")
-    return rows, written, errors
+        problems.append(problem("Delivery evidence contains undeclared app(s): " + ", ".join(extra) + "."))
+    return rows, written, problems
 
 
 def parse_advisory_required_actions(body: str) -> tuple[list[str], list[str]]:

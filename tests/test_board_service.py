@@ -1022,7 +1022,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
             "\n## Delivery evidence\n"
             "| App | Implementation | Tests | Release |\n"
             "|---|---|---|---|\n"
-            "| backend | Reviewed source record | Review check passed | Review release record |\n"
+            "| backend | Reviewed source record | Review check passed | release: https://example.test/releases/review |\n"
             "\n## Reopen history\n"
         )
         proposed = _set_feature_stage(old, "in-dev", "dev")
@@ -1484,7 +1484,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             "Delivery evidence",
             "| App | Implementation | Tests | Release |\n"
             "|---|---|---|---|\n"
-            "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | Synthetic release label `review-v1` |",
+            "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | release: https://example.test/releases/review-v1 |",
         )
         dev_done = _replace_body_section(self.service, dev_done, "Post-ship notes", "No deviations were recorded in this fixture.")
         self._submit_skill(
@@ -1498,7 +1498,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         # Reopen dev route must archive the prior evidence and invalidate only
         # the linked platform requirement that changes status.
         current = self.service._read_text(self.root / feature_path)
-        prior_row = "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | Synthetic release label `review-v1` |"
+        prior_row = "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | release: https://example.test/releases/review-v1 |"
         reopened = _set_feature_stage(current, "in-dev", "dev", self.service)
         reopened = _replace_body_section(
             self.service,
@@ -1634,7 +1634,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         evidence = (
             "| App | Implementation | Tests | Release |\n"
             "|---|---|---|---|\n"
-            "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | Synthetic release label `review-v1` |"
+            "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | release: https://example.test/releases/review-v1 |"
         )
         completed = _replace_body_section(self.service, completed, "Delivery evidence", evidence)
         completed = _replace_body_section(
@@ -1672,7 +1672,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         )
         prior_row = (
             "| backend | Synthetic review record `tests/fixtures/review.md` | "
-            "Acceptance check `document-review` passed | Synthetic release label `review-v1` |"
+            "Acceptance check `document-review` passed | release: https://example.test/releases/review-v1 |"
         )
         reopened = _replace_body_section(
             self.service,
@@ -1715,7 +1715,7 @@ class BoardServiceReopenRecordTests(unittest.TestCase):
     FEATURE = "knowledge/wiki/features/F-001-document-review.md"
     REQUIREMENT = "knowledge/wiki/app-requirements/F-001-backend.md"
     DESIGN = "knowledge/wiki/design/F-001-document-review.md"
-    PRIOR_ROW = "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | Synthetic release label `review-v1` |"
+    PRIOR_ROW = "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | release: https://example.test/releases/review-v1 |"
     TABLE = ["| App | Implementation | Tests | Release |", "|---|---|---|---|", PRIOR_ROW]
 
     def setUp(self) -> None:
@@ -1778,7 +1778,7 @@ class BoardServiceReopenRecordTests(unittest.TestCase):
 
     def test_the_archived_row_is_accepted_on_the_label_line_or_below_it_in_a_table_or_a_list(self) -> None:
         label = "- Prior completion/release evidence:"
-        compact_row = "|backend|Synthetic review record `tests/fixtures/review.md`|Acceptance check `document-review` passed|Synthetic release label `review-v1`|"
+        compact_row = "|backend|Synthetic review record `tests/fixtures/review.md`|Acceptance check `document-review` passed|release: https://example.test/releases/review-v1|"
         layouts = {
             "same line": [f"{label} {self.PRIOR_ROW}"],
             "sentence then table, no indent": [f"{label} Archived unchanged in the table below.", "", *self.TABLE, ""],
@@ -1794,7 +1794,7 @@ class BoardServiceReopenRecordTests(unittest.TestCase):
                 self.assertTrue(preview["applicable"], preview["blockers"])
 
     def evidence_layouts(self) -> dict[str, list[str]]:
-        cells = ["Synthetic review record `tests/fixtures/review.md`", "Acceptance check `document-review` passed", "Synthetic release label `review-v1`"]
+        cells = ["Synthetic review record `tests/fixtures/review.md`", "Acceptance check `document-review` passed", "release: https://example.test/releases/review-v1"]
         separator = "|---|---|---|---|"
         return {
             "canonical": self.TABLE,
@@ -1802,7 +1802,7 @@ class BoardServiceReopenRecordTests(unittest.TestCase):
             "columns reordered": ["| Implementation | App | Tests | Release |", separator, f"| {cells[0]} | backend | {cells[1]} | {cells[2]} |"],
             "release first": ["| Release | Tests | Implementation | App |", separator, f"| {cells[2]} | {cells[1]} | {cells[0]} | backend |"],
             "header case and emphasis": ["| **APP** | implementation | _Tests_ | Release |", separator, "| backend | " + " | ".join(cells) + " |"],
-            "release cell says Release": ["| App | Implementation | Tests | Release |", separator, f"| backend | {cells[0]} | {cells[1]} | Release |"],
+            "release cell says Release": ["| App | Implementation | Tests | Release |", separator, f"| backend | {cells[0]} | {cells[1]} | Release: https://example.test/releases/Release |"],
             "compact pipes": ["|App|Implementation|Tests|Release|", separator, "|backend|" + "|".join(cells) + "|"],
         }
 

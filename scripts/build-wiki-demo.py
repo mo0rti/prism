@@ -401,9 +401,9 @@ No observed post-ship history is recorded in this synthetic fixture.
 ## Delivery evidence
 | App | Implementation | Tests | Release |
 |---|---|---|---|
-| backend | Synthetic local demo backend surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for backend (no production test claim) | Synthetic local demo release marker for backend (no production release claim) |
-| mobile-android | Synthetic local demo Android surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for Android (no production test claim) | Synthetic local demo release marker for Android (no production release claim) |
-| mobile-ios | Synthetic local demo iOS surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for iOS (no production test claim) | Synthetic local demo release marker for iOS (no production release claim) |
+| backend | Synthetic local demo backend surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for backend (no production test claim) | release: https://example.test/demo/releases/backend (synthetic local demo marker for backend; no production release claim) |
+| mobile-android | Synthetic local demo Android surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for Android (no production test claim) | release: https://example.test/demo/releases/android (synthetic local demo marker for Android; no production release claim) |
+| mobile-ios | Synthetic local demo iOS surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for iOS (no production test claim) | release: https://example.test/demo/releases/ios (synthetic local demo marker for iOS; no production release claim) |
 """
         _write_page(features_root / f"{feature['id']}-{feature['slug']}.md", _feature_frontmatter(feature, today), body)
 

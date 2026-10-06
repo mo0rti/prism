@@ -122,7 +122,7 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
             "\n## Delivery evidence\n"
             "| App | Implementation | Tests | Release |\n"
             "|---|---|---|---|\n"
-            "| backend | Synthetic fixture reference `evidence/review-summary.md` | Synthetic fixture check `review-summary` passed | Synthetic fixture label `review-v1` |\n"
+            "| backend | Synthetic fixture reference `evidence/review-summary.md` | Synthetic fixture check `review-summary` passed | release: evidence/review-v1.md |\n"
         )
         self.feature_path.write_text(source, encoding="utf-8")
         requirement.write_text(_requirement_page("done"), encoding="utf-8")

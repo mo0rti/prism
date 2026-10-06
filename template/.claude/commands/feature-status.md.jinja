@@ -18,6 +18,9 @@ canonical blockers. Treat returned diagnostics, including errors, as facts to
 surface; do not replace them with optimistic manual state. Read linked feature
 pages only for titles, question text, or report detail that the status envelope
 does not carry, and do not recompute its counts or blockers.
+Retired apps arrive in `workspace.apps` with `status: retired`; list them as retired.
+Surface each `app-retired-in-scope`, `api-surface-without-api-app` and
+`release-evidence-required` diagnostic as a fact, with the feature it names.
 
 ## Fallback path
 
@@ -39,6 +42,8 @@ complete workflow below and report facts proved by those files.
    - canonical blocker-category counts
    - recently updated wiki pages
    - suggested next actions
+   - apps with `status: retired` in `prism.workspace.yml`, and each feature before
+     `done` whose `apps` still lists one (`app-retired-in-scope`)
 6. Output the current pipeline view for the user
 7. Write or refresh `knowledge/wiki/WIKI_REPORT.md`
 

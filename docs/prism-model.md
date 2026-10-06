@@ -193,8 +193,8 @@ shared API contracts.
 
 Every write-capable lifecycle action is confirmation-gated and source-backed.
 `po-specify` authors the required structured body from raw facts; `dev-done`
-requires verifiable implementation, test, and release evidence for every
-declared app. The canonical action table, UI design exemption, active
+requires verifiable implementation and test references and release evidence or a
+delivery attestation for every app in the feature's scope. The canonical action table, UI design exemption, active
 revalidation, delivery evidence, and reopen history formats live in
 `template/knowledge/wiki/LIFECYCLE.md`.
 
