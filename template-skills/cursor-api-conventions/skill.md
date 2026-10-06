@@ -15,9 +15,9 @@ cursor:
 - Generate clients: `task generate-clients`
 
 ## Naming
-- Paths: plural nouns, kebab-case when a name has several words (`/transactions`, `/user-profiles`)
+- Paths: plural nouns, kebab-case when a name has several words (`/user-profiles`), under `/api/`
 - JSON fields: camelCase (`createdAt`, `totalElements`)
-- Path params: camelCase (`{transactionId}`)
+- Path params: camelCase (`{userId}`)
 
 ## Pagination
 All list endpoints use query params `page` (0-based) and `size` (default 20).
@@ -43,7 +43,7 @@ Response wraps items in:
 `details` is an optional object, for example the field and reason of a validation error.
 
 ## Auth
-- Public endpoints: `/auth/register`, `/auth/login`, `/auth/admin/login`, `/auth/refresh`, `/auth/oauth/callback` and `/auth/oauth/token`; `/auth/me` and `/auth/logout` need a token
+- Public endpoints: `/actuator/health` and `POST /api/dev-identity/token` (dev only, `x-prism-dev-only`); `GET /api/me` needs a token
 - All other endpoints require `Authorization: Bearer {token}`
 - 401 for missing/invalid token, 403 for insufficient permissions
 

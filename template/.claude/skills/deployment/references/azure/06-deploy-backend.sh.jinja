@@ -16,7 +16,8 @@ for FILE in "acr-credentials" "database-credentials" "image-tags" "azure-storage
     source "$CRED_FILE"
 done
 
-# Load app secrets
+# Load app secrets and the identity provider's issuer. Never set the `local` Spring profile on a deployed
+# app: it enables the development identity.
 SECRETS_FILE="$SCRIPT_DIR/app-secrets.env"
 if [[ ! -f "$SECRETS_FILE" ]]; then
     echo "ERROR: app-secrets.env not found. Copy app-secrets.env.example and fill in values."
@@ -46,48 +47,13 @@ az containerapp create \
     --memory "$BACKEND_MEMORY" \
     --secrets \
         "postgres-password=$POSTGRES_PASSWORD" \
-        "jwt-secret=$JWT_SECRET" \
-{% if "google" in auth_methods %}
-        "google-client-secret=${GOOGLE_CLIENT_SECRET:-placeholder}" \
-{% endif %}
-{% if "apple" in auth_methods %}
-        "apple-private-key=${APPLE_PRIVATE_KEY:-placeholder}" \
-{% endif %}
-{% if "facebook" in auth_methods %}
-        "facebook-client-secret=${FACEBOOK_CLIENT_SECRET:-placeholder}" \
-{% endif %}
-{% if "microsoft" in auth_methods %}
-        "microsoft-client-secret=${MICROSOFT_CLIENT_SECRET:-placeholder}" \
-{% endif %}
         "azure-storage-key=$AZURE_STORAGE_ACCOUNT_KEY" \
     --env-vars \
         "SPRING_PROFILES_ACTIVE=prod" \
         "SPRING_DATASOURCE_URL=$POSTGRES_JDBC_URL" \
         "SPRING_DATASOURCE_USERNAME=$POSTGRES_USER" \
         "SPRING_DATASOURCE_PASSWORD=secretref:postgres-password" \
-        "JWT_SECRET=secretref:jwt-secret" \
-        "JWT_ACCESS_TOKEN_EXPIRY=${JWT_ACCESS_TOKEN_EXPIRY:-3600}" \
-        "JWT_REFRESH_TOKEN_EXPIRY=${JWT_REFRESH_TOKEN_EXPIRY:-604800}" \
-{% if "google" in auth_methods %}
-        "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}" \
-        "GOOGLE_CLIENT_SECRET=secretref:google-client-secret" \
-        "GOOGLE_AUTHORIZED_PARTIES=${GOOGLE_AUTHORIZED_PARTIES:-}" \
-{% endif %}
-{% if "apple" in auth_methods %}
-        "APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}" \
-        "APPLE_TEAM_ID=${APPLE_TEAM_ID:-}" \
-        "APPLE_KEY_ID=${APPLE_KEY_ID:-}" \
-        "APPLE_PRIVATE_KEY=secretref:apple-private-key" \
-{% endif %}
-{% if "facebook" in auth_methods %}
-        "FACEBOOK_CLIENT_ID=${FACEBOOK_CLIENT_ID:-}" \
-        "FACEBOOK_CLIENT_SECRET=secretref:facebook-client-secret" \
-{% endif %}
-{% if "microsoft" in auth_methods %}
-        "MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID:-}" \
-        "MICROSOFT_CLIENT_SECRET=secretref:microsoft-client-secret" \
-        "MICROSOFT_TENANT_ID=${MICROSOFT_TENANT_ID:-}" \
-{% endif %}
+        "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=$IDENTITY_PROVIDER_ISSUER_URI" \
         "AZURE_STORAGE_ACCOUNT_NAME=$AZURE_STORAGE_ACCOUNT_NAME" \
         "AZURE_STORAGE_ACCOUNT_KEY=secretref:azure-storage-key" \
         "CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}" \

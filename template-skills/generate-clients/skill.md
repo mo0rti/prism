@@ -29,8 +29,8 @@ Reads `shared/api-contracts/openapi.yml` and generates typed client code for eac
 1. Validate the contract with `task validate-api`.
 2. Run `task generate-clients`.
 3. Verify the generated output for the relevant platforms only:
-{% if "spring-backend" in stacks %}- `task backend:build`
-{% endif %}{% if "web-user-app" in app_ids %}- `task web-user-app:build`
+{% for app in apps if app.stack == "spring-backend" %}- `task {{ app.id }}:build`
+{% endfor %}{% if "web-user-app" in app_ids %}- `task web-user-app:build`
 {% endif %}{% if "web-admin-portal" in app_ids %}- `task web-admin-portal:build`
 {% endif %}{% if "android-compose" in stacks %}- `task mobile-android:build`
 {% endif %}{% if "ios-swiftui" in stacks %}- `task mobile-ios:build` (Mac only)

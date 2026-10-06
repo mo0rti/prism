@@ -1,0 +1,82 @@
+package {{ app_package }}
+
+import {{ app_package }}.support.PostgresTestConfiguration
+import {{ app_package }}.support.TokenFixtures
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.context.ApplicationContext
+import org.springframework.context.annotation.Import
+import org.springframework.http.MediaType
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.Instant
+
+/**
+ * The app as it runs with no profile: no development identity, no identity provider configured, and
+ * therefore a resource server that rejects every token.
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@Import(PostgresTestConfiguration::class)
+class DefaultProfileIntegrationTest {
+
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+
+    @Autowired
+    private lateinit var context: ApplicationContext
+
+    @Test
+    fun `the dev identity token route does not exist`() {
+        mockMvc.perform(post("/api/dev-identity/token").contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `no dev identity bean exists`() {
+        val names = context.beanDefinitionNames.filter { it.contains("devIdentity", ignoreCase = true) }
+        assertTrue(names.isEmpty(), "beans of the dev identity exist without the local profile: $names")
+    }
+
+    @Test
+    fun `me needs a token`() {
+        mockMvc.perform(get("/api/me"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(header().string("WWW-Authenticate", "Bearer"))
+            .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+    }
+
+    @Test
+    fun `me rejects a well-formed token while no identity provider is configured`() {
+        val now = Instant.now()
+        val token = TokenFixtures.sign(TokenFixtures.newRsaKey(), "prism-dev-identity", "dev:someone", now, now.plusSeconds(600))
+
+        mockMvc.perform(get("/api/me").header("Authorization", "Bearer $token"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+    }
+
+    @Test
+    fun `the health check is open and the database is up`() {
+        mockMvc.perform(get("/actuator/health"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("UP"))
+    }
+
+    @Test
+    fun `other actuator endpoints are not exposed`() {
+        mockMvc.perform(get("/actuator/env")).andExpect(status().is4xxClientError)
+    }
+
+    @Test
+    fun `an unknown route needs a token`() {
+        mockMvc.perform(get("/api/does-not-exist")).andExpect(status().isUnauthorized)
+    }
+}

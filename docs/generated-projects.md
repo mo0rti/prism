@@ -111,10 +111,31 @@ docs and platform slices together.
 If the generated project includes a backend app, the first successful local startup usually
 looks like this:
 
-- start only the database container with `docker compose up -d db`
-- run the backend with `task <app-id>:run` (for the default app, `task backend:run`), on the port
-  recorded in the app's answers file and `application.yml` (`8080` for the first backend, `8081` for
-  the next); `GET /api/health` answers `{"status":"UP"}`
+- start only the database container with `task db-up` (`docker compose up -d db`)
+- run the backend with `task <app-id>:dev` (for the default app, `task backend:dev`), which sets
+  `SPRING_PROFILES_ACTIVE=local` explicitly, on the port recorded in the app's answers file and
+  `application.yml` (`8080` for the first backend, `8081` for the next)
+- sign in with `POST /api/dev-identity/token` and read the profile with `GET /api/me` (the app's
+  `README.md` has the `curl` commands); `GET /actuator/health` is open and reports the database
+
+### The backend slice
+
+Each `spring-backend` app is one compiling vertical slice with its tests, not a finished backend:
+the `users` entity and its Flyway migration, a repository, a service and the controller of
+`GET /api/me`, the shared error model, the dev identity and an OAuth2 resource-server configuration.
+There are no example business features.
+
+- The dev identity is **local development sign-in, not authentication**. `POST /api/dev-identity/token`
+  exists only under the `local` Spring profile, answers loopback requests only, and signs a short-lived
+  JWT (`iss=prism-dev-identity`) with a key generated in memory at startup. The default profile answers
+  it with 404, and startup fails when `local` is active together with a configured identity provider.
+  No JWT secret exists in the template, and the generated `docker-compose.yml` sets no profile.
+- The OpenAPI contract (`shared/api-contracts/openapi.yml`) defines both operations, with
+  `x-prism-dev-only` on the token operation. Prism owns that contract; you own the real identity
+  provider, and the generated `security-auth` skill explains how to replace the dev identity with it.
+- The integration tests start PostgreSQL with Testcontainers, so `./gradlew test` needs Docker and no
+  credentials. The app's workflow runs `./gradlew build` on a clean runner.
+- Several backends can share the workspace database: each keeps its tables in its own schema.
 
 ## AI Agent Surfaces
 
@@ -276,7 +297,7 @@ The generated workflow set is:
 | Workflow | Generated | Purpose |
 |----------|-----------|---------|
 | `api-contracts.yml` | Always | Validate the OpenAPI contract |
-| `<app-id>.yml` | One for each scaffolded `spring-backend` app (`backend.yml` for the default app) | Backend test, scoped to the app's path |
+| `<app-id>.yml` | One for each scaffolded `spring-backend` app (`backend.yml` for the default app) | `./gradlew build` (compile, every test with Testcontainers PostgreSQL, the jar), scoped to the app's path |
 | `mobile-android.yml` | With `mobile-android` | Android test, lint, instrumented tests and debug build |
 | `mobile-ios.yml` | With `mobile-ios` | iOS test |
 | `web-user-app.yml` | With `web-user-app` | User web app install, lint, typecheck and build |

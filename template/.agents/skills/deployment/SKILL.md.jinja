@@ -19,9 +19,10 @@ This project does not choose a cloud, hold credentials or deploy anything. The g
 ## What The Project Provides
 {%- if "spring-backend" in stacks %}
 
-- `backend/Dockerfile`: a multi-stage image that builds the Spring Boot jar with the Gradle wrapper, exposes port 8080 and checks `/actuator/health`.
-- `docker-compose.yml`: local development only, the backend with PostgreSQL. It is not a production definition.
-- Backend settings come from environment variables (`SPRING_DATASOURCE_*`, `JWT_*`, the OAuth provider variables, `CORS_ALLOWED_ORIGINS`). `.env.example` lists the local values.
+{% for app in apps if app.stack == "spring-backend" %}- `{{ app.path }}/Dockerfile`: a multi-stage image that builds the Spring Boot jar with the Gradle wrapper, exposes the app's port and checks `/actuator/health`.
+{% endfor %}- `docker-compose.yml`: local development only, the backend apps with PostgreSQL. It sets no Spring profile and is not a production definition.
+- Backend settings come from environment variables: `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` (or the `SPRING_DATASOURCE_*` equivalents; the app keeps its tables in its own database schema, named after its ID unless overridden) and `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI` for the identity provider. `.env.example` lists the local database values.
+- The backend holds no JWT secret. Its `local` Spring profile enables a development identity and must never run in a deployed environment; replace it with your identity provider first (`security-auth` skill).
 {%- endif %}
 {%- if "web-user-app" in app_ids or "web-admin-portal" in app_ids %}
 - Web apps that pass `npm run lint`, `npm run typecheck` and `npm run build` with no hosting files. `API_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, `AUTH_URL` and the provider variables are the runtime configuration; `.env.example` lists the local values.
@@ -36,8 +37,8 @@ This project does not choose a cloud, hold credentials or deploy anything. The g
 Reference: `references/azure-setup.md` (the guide) and `references/azure/` (the scripts and config examples).
 
 1. Confirm the subscription, region and environment (`prod`, `acc`, `dev`) with the user.
-2. Copy `references/azure/` into the repository as `infra/azure/` and add the credential files to `.gitignore` (the guide lists them). The scripts find the repository root two folders above themselves.
-3. Copy `azure-config.env.example` to `azure-config.env` and `app-secrets.env.example` to `app-secrets.env`; the user fills in the values.
+2. Copy `references/azure/` into the repository as `infra/azure/` and add the credential files to `.gitignore` (the guide lists them). The scripts find the repository root two folders above themselves, and they build the backend from `backend/`: adapt the path when the app lives elsewhere.
+3. Copy `azure-config.env.example` to `azure-config.env` and `app-secrets.env.example` to `app-secrets.env`; the user fills in the values, including the identity provider's issuer.
 4. Run the numbered scripts in order, from `00-setup-resource-group.sh` to `07-show-deployment-info.sh`: resource group, container registry and log analytics, PostgreSQL Flexible Server, Container Apps environment, blob storage, image build and push, container app deploy, deployment info.
 5. Verify with `curl https://<backend-url>/actuator/health`.
 6. Redeploy with `update-backend.sh`: it rebuilds the image, pushes it and creates a new revision.

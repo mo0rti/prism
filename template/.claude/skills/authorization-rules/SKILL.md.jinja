@@ -15,8 +15,8 @@ has already succeeded.
 - Use `security-auth` for:
   - filter chain configuration
   - public vs authenticated routes
-  - JWT and token lifecycle behavior
-  - auth bootstrap configuration
+  - JWT validation and the identity provider setup
+  - the local dev identity
 - Use this skill for:
   - method-level authorization
   - ownership checks
@@ -112,7 +112,7 @@ Use service-level imperative checks for:
 Example:
 
 - weaker: `isAdmin(user)`
-- stronger: `canSettleTransaction(actor, transaction)`
+- stronger: `canApproveRequest(actor, request)`
 
 ## Repository And Query Boundaries
 

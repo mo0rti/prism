@@ -1,7 +1,7 @@
 {# Generated from template-skills/error-handling/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: error-handling
-description: Backend exception and API error conventions. Use when adding or reviewing ApiException subclasses, error codes, validation handling, or service/controller error flows under `backend/`.
+description: Backend exception and API error conventions. Use when adding or reviewing ApiException subclasses, error codes, validation handling, or service/controller error flows of a backend app.
 ---
 
 # Error Handling
@@ -40,7 +40,7 @@ Use this skill for backend exception taxonomy and API error-shape decisions.
 - Use optional `details` for structured client context when it adds value.
 - Create a named domain exception only when the case is reused or deserves a clearer type.
 - Prefer typed `ErrorCode` enums over raw string literals inside backend code.
-- Prefer module-local `error/` packages for domain-specific error-code enums such as `AuthErrorCode` or `TransactionErrorCode`.
+- Prefer module-local `error/` packages for domain-specific error-code enums such as `DevIdentityErrorCode` in `modules/devidentity/error/`.
 - Ensure the wrapped error code's HTTP status matches the exception wrapper; a mismatch throws a runtime guard error and surfaces as a 500 through the generic handler.
 - Keep `ApiException` as the shared base class and keep each reusable built-in exception in its own Kotlin file under `shared/exception/`.
 - Let exceptions propagate to `GlobalExceptionHandler`; do not catch them in controllers just to map HTTP.
@@ -51,13 +51,18 @@ Use this skill for backend exception taxonomy and API error-shape decisions.
 
 ## Key Files
 
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/error/ErrorCode.kt`
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/error/CommonErrorCode.kt`
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/exception/ApiException.kt`
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/exception/*Exception.kt`
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/exception/GlobalExceptionHandler.kt`
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/model/ApiErrorResponse.kt`
-- `shared/api-contracts/openapi.yml`
+Source roots of the backend apps (the paths below are relative to one of them):
+{% for app in apps if app.stack == "spring-backend" %}
+- `{{ app.path }}/src/main/kotlin/{{ (package_identifier ~ "." ~ (app.id | replace("-", ""))) | replace(".", "/") }}/`
+{%- endfor %}
+
+- `shared/error/ErrorCode.kt`, `shared/error/CommonErrorCode.kt`
+- `shared/exception/ApiException.kt` and `shared/exception/*Exception.kt`
+- `shared/exception/GlobalExceptionHandler.kt`
+- `shared/model/ApiErrorResponse.kt`
+- `modules/devidentity/error/DevIdentityErrorCode.kt` - a module-owned code, thrown as `ForbiddenException(DevIdentityErrorCode.LOOPBACK_ONLY)` by `DevIdentityController`
+- `src/test/kotlin/.../shared/exception/ErrorModelTest.kt` - the tests of the model
+- `shared/api-contracts/openapi.yml` (workspace root)
 
 ## Minimum Verification
 

@@ -228,8 +228,9 @@ class GeneratedWorkspaceTests(unittest.TestCase):
             scripts,
         )
         deploy = (references / "azure" / "06-deploy-backend.sh").read_text(encoding="utf-8")
-        self.assertIn("JWT_ACCESS_TOKEN_EXPIRY=${JWT_ACCESS_TOKEN_EXPIRY:-3600}", deploy)
-        self.assertIn("FACEBOOK_CLIENT_SECRET=secretref:facebook-client-secret", deploy)
+        self.assertIn("SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=$IDENTITY_PROVIDER_ISSUER_URI", deploy)
+        self.assertNotIn("JWT_SECRET", deploy)
+        self.assertNotIn("CLIENT_SECRET", deploy)
         self.assertNotIn("{{", deploy)
         self.assertNotIn("{%", deploy)
         self.assertNotIn(b"\r\n", (references / "azure" / "06-deploy-backend.sh").read_bytes())

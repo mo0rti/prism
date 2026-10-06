@@ -1,11 +1,11 @@
 ---
 name: document-entity
-description: "Document a backend data entity in `backend/docs/entities/`. Use when adding a new entity doc or materially updating an existing one with fields, relationships, validation rules, business logic, and database notes."
+description: "Document a backend data entity in the `docs/entities/` folder of a backend app. Use when adding a new entity doc or materially updating an existing one with fields, relationships, validation rules, business logic, and database notes."
 layers: [codex, command]
 codex:
   display_name: "Document Entity"
   short_description: "Create or update backend entity documentation"
-  default_prompt: "Use @@invoke:document-entity@@ to create or update a backend/docs/entities page and keep architecture and feature docs aligned."
+  default_prompt: "Use @@invoke:document-entity@@ to create or update an entity page in a backend app's docs/entities folder and keep architecture and feature docs aligned."
   implicit: false
 ---
 
@@ -22,7 +22,7 @@ If the entity name and fields are not already provided, ask the user for them fi
 ## Workflow
 
 1. Ask for the entity name and fields if they were not provided
-2. **Create or update the entity doc**: create `backend/docs/entities/{entity-name}.md` using the template at `backend/docs/entities/_template.md`. Fill in:
+2. **Create or update the entity doc**: in the backend app's `docs/entities/` folder ({% for app in apps if app.stack == "spring-backend" %}`{{ app.path }}/docs/entities/`{% if not loop.last %}, {% endif %}{% endfor %}), create `{entity-name}.md` using `_template.md` of that folder (`user.md` documents the slice's `users` entity). Fill in:
    - entity name and description
    - all fields with types, constraints, and defaults
    - relationships to other entities
@@ -34,7 +34,7 @@ If the entity name and fields are not already provided, ask the user for them fi
 
 ## Template reference
 
-See `backend/docs/entities/_template.md` for the expected format. Key sections:
+See `_template.md` in the app's `docs/entities/` folder for the expected format. Key sections:
 
 - **Fields**: name, type, nullable, default, constraints
 - **Relationships**: foreign keys, one-to-many, many-to-many

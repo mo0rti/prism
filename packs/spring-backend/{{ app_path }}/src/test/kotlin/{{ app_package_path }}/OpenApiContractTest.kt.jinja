@@ -1,0 +1,80 @@
+package {{ app_package }}
+
+import {{ app_package }}.support.PostgresTestConfiguration
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
+import org.springframework.test.context.ActiveProfiles
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping
+import org.yaml.snakeyaml.Yaml
+import java.nio.file.Files
+import java.nio.file.Path
+
+/**
+ * The slice and `shared/api-contracts/openapi.yml` describe the same operations: the contract defines the
+ * routes this app serves under the `local` profile, with the dev-only marker and the bearer security the
+ * slice enforces. Change the contract and the code together.
+ */
+@SpringBootTest
+@ActiveProfiles("local")
+@Import(PostgresTestConfiguration::class)
+class OpenApiContractTest {
+
+    @Autowired
+    @Qualifier("requestMappingHandlerMapping")
+    private lateinit var handlerMapping: RequestMappingHandlerMapping
+
+    private val contractPath: Path = Path.of("{{ '../' * (app_path.split('/') | length) }}shared/api-contracts/openapi.yml")
+
+    @Suppress("UNCHECKED_CAST")
+    private fun contract(): Map<String, Any?> {
+        assertTrue(Files.isRegularFile(contractPath), "The API contract is missing at ${contractPath.toAbsolutePath().normalize()}")
+        return Files.newBufferedReader(contractPath).use { Yaml().load<Map<String, Any?>>(it) }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun operation(path: String, method: String): Map<String, Any?> {
+        val paths = contract()["paths"] as Map<String, Map<String, Any?>>
+        val item = paths[path]
+        assertNotNull(item, "The contract does not define $path")
+        val operation = item!![method]
+        assertNotNull(operation, "The contract does not define $method $path")
+        return operation as Map<String, Any?>
+    }
+
+    private fun servedRoutes(): Set<String> = handlerMapping.handlerMethods.keys.flatMap { info ->
+        val patterns = info.pathPatternsCondition?.patternValues.orEmpty()
+        val methods = info.methodsCondition.methods.map { it.name.lowercase() }
+        patterns.flatMap { pattern -> methods.map { "$it $pattern" } }
+    }.toSet()
+
+    @Test
+    fun `the contract defines the dev identity token route as dev only`() {
+        val token = operation("/api/dev-identity/token", "post")
+
+        assertEquals(true, token["x-prism-dev-only"], "the token operation must carry x-prism-dev-only: true")
+    }
+
+    @Test
+    fun `the contract defines me with bearer security`() {
+        val me = operation("/api/me", "get")
+
+        assertEquals(null, me["security"], "me uses the contract's default bearer security, not an override")
+        @Suppress("UNCHECKED_CAST")
+        val security = contract()["security"] as List<Map<String, Any?>>
+        assertTrue(security.any { it.containsKey("bearerAuth") }, "the contract's default security is bearerAuth")
+    }
+
+    @Test
+    fun `the app serves the operations the contract defines for the slice`() {
+        val served = servedRoutes()
+
+        assertTrue("post /api/dev-identity/token" in served, "served: $served")
+        assertTrue("get /api/me" in served, "served: $served")
+    }
+}

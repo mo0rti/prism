@@ -5,516 +5,125 @@ info:
   description: "{{ description }}"
 
 servers:
-  - url: http://localhost:8080/api/v1
+  - url: http://localhost:8080
     description: Local development
 
+# Every operation needs a bearer JWT unless it says `security: []`.
 security:
   - bearerAuth: []
 
 paths:
   # ===========================================================================
-  # Authentication
+  # Local development identity
   # ===========================================================================
-{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
-  /auth/oauth/callback:
+  /api/dev-identity/token:
     post:
-      operationId: oauthCallback
-      tags: [auth]
+      operationId: createDevToken
+      tags: [dev-identity]
+      x-prism-dev-only: true
       security: []
-      summary: Exchange OAuth authorization code for JWT
+      summary: Sign a local development token
+      description: |
+        Local development sign-in, not authentication. The backend serves this route only under the
+        `local` Spring profile and only to requests from the loopback interface; every other profile
+        answers `404`. The token is a short-lived JWT with `iss` set to `prism-dev-identity`, signed with a
+        key that exists only in the memory of the running process. Replace this route and the `local`
+        profile with your identity provider before any shared deployment (see the `security-auth` skill).
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/OAuthCallbackRequest'
+              $ref: '#/components/schemas/DevTokenRequest'
       responses:
         '200':
-          description: Successful authentication
+          description: A development token
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
+                $ref: '#/components/schemas/DevTokenResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '409':
-          $ref: '#/components/responses/Conflict'
-  /auth/oauth/token:
-    post:
-      operationId: oauthToken
-      tags: [auth]
-      security: []
-      summary: Verify a provider ID token or Facebook access token and issue backend JWTs
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OAuthTokenRequest'
-      responses:
-        '200':
-          description: Successful authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '409':
-          $ref: '#/components/responses/Conflict'
-{% endif %}
-
-  /auth/register:
-    post:
-      operationId: register
-      tags: [auth]
-      security: []
-      summary: Register with email and password
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
-      responses:
-        '201':
-          description: Registration successful
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
-  /auth/login:
-    post:
-      operationId: login
-      tags: [auth]
-      security: []
-      summary: Login with email and password
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-      responses:
-        '200':
-          description: Login successful
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /auth/admin/login:
-    post:
-      operationId: adminLogin
-      tags: [auth]
-      security: []
-      summary: Login as an administrator without rotating a rejected user session
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-      responses:
-        '200':
-          description: Login successful
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /auth/refresh:
-    post:
-      operationId: refreshToken
-      tags: [auth]
-      security: []
-      summary: Refresh access and refresh tokens
-      description: Refresh tokens rotate on success. The immediately previous token can be retried for 10 seconds within the same session. A new login or logout invalidates that retry window. Existing access tokens expire normally.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshTokenRequest'
-      responses:
-        '200':
-          description: Token refreshed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /auth/logout:
-    post:
-      operationId: logout
-      tags: [auth]
-      summary: Invalidate refresh tokens for the current user
-      responses:
-        '204':
-          description: Refresh tokens invalidated
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /auth/me:
-    get:
-      operationId: getCurrentUser
-      tags: [auth]
-      summary: Get current authenticated user
-      responses:
-        '200':
-          description: Current user profile
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  # ===========================================================================
-  # Transactions
-  # ===========================================================================
-  /transactions:
-    get:
-      operationId: listTransactions
-      tags: [transactions]
-      summary: List transactions visible to the current user
-      parameters:
-        - name: page
-          in: query
-          schema:
-            type: integer
-            default: 0
-        - name: size
-          in: query
-          schema:
-            type: integer
-            default: 20
-            maximum: 100
-        - name: sort
-          in: query
-          schema:
-            type: string
-            default: "createdAt,desc"
-      responses:
-        '200':
-          description: Paginated list of visible transactions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransactionListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-    post:
-      operationId: createTransaction
-      tags: [transactions]
-      summary: Create a new transaction
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateTransactionRequest'
-      responses:
-        '201':
-          description: Transaction created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransactionResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /transactions/{id}:
-    get:
-      operationId: getTransaction
-      tags: [transactions]
-      summary: Get a single transaction by ID
-      description: Returns `404` when the transaction does not exist or is not visible to the current user.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Transaction details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransactionResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-    put:
-      operationId: updateTransaction
-      tags: [transactions]
-      summary: Update a transaction
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateTransactionRequest'
-      responses:
-        '200':
-          description: Transaction updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransactionResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
-    delete:
-      operationId: deleteTransaction
-      tags: [transactions]
-      summary: Delete a pending transaction
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+  # ===========================================================================
+  # Users
+  # ===========================================================================
+  /api/me:
+    get:
+      operationId: getMe
+      tags: [users]
+      summary: Get the signed-in user's profile
+      description: Returns the profile of the user the bearer token's `sub` claim belongs to. The backend creates the profile on the first call.
       responses:
-        '204':
-          description: Transaction deleted
-        '400':
-          $ref: '#/components/responses/BadRequest'
+        '200':
+          description: The signed-in user's profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
 
 # =============================================================================
 # Components
 # =============================================================================
 components:
   schemas:
-    # --- Auth ---
-{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
-    OAuthTokenRequest:
+    # --- Dev identity ---
+    DevTokenRequest:
       type: object
-      required: [provider]
-      properties:
-        provider:
-          type: string
-          enum: [google, apple, facebook, microsoft]
-        idToken:
-          type: string
-          description: Provider-signed ID token for Google, Apple, or Microsoft.
-        accessToken:
-          type: string
-          description: Facebook user access token; app binding is verified by the backend.
-
-    OAuthCallbackRequest:
-      type: object
-      required: [provider, code, redirectUri]
-      properties:
-        provider:
-          type: string
-          enum: [{% for method in auth_methods if method != "password" %}{{ method }}{% if not loop.last %}, {% endif %}{% endfor %}]
-          description: Lowercase provider slug accepted by the OAuth callback endpoint and mapped to the backend AuthProvider enum.
-        code:
-          type: string
-          description: Authorization code from OAuth provider
-        redirectUri:
-          type: string
-          description: Redirect URI used in the OAuth flow
-{% endif %}
-
-    RegisterRequest:
-      type: object
-      required: [email, password, displayName]
+      description: Who the development identity signs in as. Both fields are optional.
       properties:
         email:
           type: string
           format: email
-        password:
-          type: string
-          format: password
-          minLength: 8
-          maxLength: 72
+          maxLength: 320
+          description: Defaults to `developer@example.test`. The same email always signs in as the same user.
         displayName:
           type: string
-          minLength: 1
           maxLength: 100
+          description: Defaults to `Local Developer`.
 
-    LoginRequest:
+    DevTokenResponse:
       type: object
-      required: [email, password]
-      properties:
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-          format: password
-
-    RefreshTokenRequest:
-      type: object
-      required: [refreshToken]
-      properties:
-        refreshToken:
-          type: string
-
-    AuthResponse:
-      type: object
+      required: [accessToken, tokenType, expiresIn]
       properties:
         accessToken:
           type: string
-        refreshToken:
+          description: The compact-serialized JWT. Send it in the Authorization header as `Bearer <accessToken>`.
+        tokenType:
           type: string
+          enum: [Bearer]
         expiresIn:
           type: integer
-          description: Access token expiry in seconds
-        user:
-          $ref: '#/components/schemas/UserResponse'
+          format: int64
+          description: Lifetime of the token in seconds.
 
-    UserResponse:
+    # --- Users ---
+    UserProfile:
       type: object
+      required: [id, displayName, createdAt]
       properties:
         id:
           type: string
           format: uuid
-        email:
-          type: string
-          format: email
         displayName:
           type: string
-        avatarUrl:
+        email:
           type: string
-          nullable: true
-        authProvider:
-          type: string
-          enum: [LOCAL, GOOGLE, APPLE, FACEBOOK, MICROSOFT]
-          description: `LOCAL` is always available for password-based accounts, and selected OAuth providers may also be used for sign-in.
-        role:
-          type: string
-          enum: [USER, ADMIN]
-
-    # --- Transactions ---
-    TransactionResponse:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        reference:
-          type: string
-          description: Server-generated transaction reference assigned during creation.
-        amount:
-          type: number
-        currency:
-          type: string
-        description:
-          type: string
-          nullable: true
-        type:
-          type: string
-          enum: [CHARGE, REFUND, PAYOUT]
-        status:
-          type: string
-          enum: [PENDING, SETTLED, FAILED, CANCELLED]
-        createdBy:
-          type: string
-          format: uuid
+          description: Omitted when the identity provider's token carries no email.
         createdAt:
           type: string
           format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-
-    TransactionListResponse:
-      type: object
-      properties:
-        content:
-          type: array
-          items:
-            $ref: '#/components/schemas/TransactionResponse'
-        page:
-          type: integer
-        size:
-          type: integer
-        totalElements:
-          type: integer
-        totalPages:
-          type: integer
-
-    CreateTransactionRequest:
-      type: object
-      required: [amount, currency, type]
-      properties:
-        amount:
-          type: number
-          minimum: 0.01
-        currency:
-          type: string
-          pattern: '^[A-Z]{3}$'
-        description:
-          type: string
-          maxLength: 2000
-        type:
-          type: string
-          enum: [CHARGE, REFUND, PAYOUT]
-
-    UpdateTransactionRequest:
-      type: object
-      properties:
-        description:
-          type: string
-          maxLength: 2000
-        status:
-          type: string
-          enum: [PENDING, SETTLED, FAILED, CANCELLED]
 
     # --- Common ---
     ApiError:
       type: object
+      required: [code, message]
       properties:
         code:
           type: string
@@ -526,7 +135,7 @@ components:
 
   responses:
     BadRequest:
-      description: Request is malformed or violates a business rule
+      description: Request is malformed or fails validation
       content:
         application/json:
           schema:
@@ -540,7 +149,7 @@ components:
             $ref: '#/components/schemas/ApiError'
 
     Forbidden:
-      description: Insufficient permissions
+      description: The request is not allowed
       content:
         application/json:
           schema:
@@ -548,13 +157,6 @@ components:
 
     NotFound:
       description: Resource not found
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
-
-    Conflict:
-      description: Resource already exists
       content:
         application/json:
           schema:

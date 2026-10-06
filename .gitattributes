@@ -2,3 +2,5 @@
 *.sh.jinja text eol=lf
 template/**/gradlew text eol=lf
 template/**/gradlew.bat text eol=crlf
+packs/**/gradlew text eol=lf
+packs/**/gradlew.bat text eol=crlf

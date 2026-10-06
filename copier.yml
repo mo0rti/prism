@@ -17,8 +17,6 @@ _skip_if_exists:
 
 # Every entry applies to the workspace layer only: an app layer's paths are its own.
 _exclude:
-  # The full backend sample: the spring-backend pack generates the backend, and its sources go in C5b.
-  - "{% if prism_layer == 'workspace' %}/backend{% endif %}"
   - "{% if prism_layer == 'workspace' and 'spring-backend' not in stacks %}.env{% endif %}"
   - "{% if prism_layer == 'workspace' and 'spring-backend' not in stacks %}.env.example{% endif %}"
   - "{% if prism_layer == 'workspace' and 'mobile-android' not in app_ids %}mobile-android{% endif %}"

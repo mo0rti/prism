@@ -1,6 +1,6 @@
 ---
 name: spring-boot-conventions
-description: "Spring Boot 4 and Kotlin conventions for this backend. Use when writing or reviewing controllers, services, DTOs, or module structure under `backend/`. For security and auth defer to security-auth, for API error semantics to error-handling."
+description: "Spring Boot 4 and Kotlin conventions for this backend. Use when writing or reviewing controllers, services, DTOs, or module structure of a backend app. For security and auth defer to security-auth, for API error semantics to error-handling."
 layers: [codex, claude-skill]
 codex:
   display_name: "Spring Boot Conventions"
@@ -11,7 +11,20 @@ codex:
 
 # Spring Boot Conventions
 
-This project uses **Spring Boot 4.0.x** with **Kotlin 2.2+** and **Java 21**. It follows a package-based modular structure under `{{ package_identifier }}.modules.<domain>`.
+This project uses **Spring Boot {{ pack_versions["spring-backend"].spring_boot }}** with **Kotlin {{ pack_versions["spring-backend"].kotlin }}** and **Java {{ pack_versions["spring-backend"].java }}** (pinned in `packs/versions.yml` of the Prism template). Each backend app follows a package-based modular structure under `<app package>.modules.<domain>`; the app package is the workspace's `package_identifier`, a dot and the app ID without hyphens.
+
+## The Slice As The Reference
+
+Each backend app is generated with one working slice. Read it before inventing a pattern. Source roots of the backend apps (the paths below are relative to one of them):
+{% for app in apps if app.stack == "spring-backend" %}
+- `{{ app.path }}/src/main/kotlin/{{ (package_identifier ~ "." ~ (app.id | replace("-", ""))) | replace(".", "/") }}/`
+{%- endfor %}
+
+- `modules/users/controller/MeController.kt` -> `modules/users/service/UserService.kt` -> `modules/users/repository/UserRepository.kt` -> `modules/users/model/User.kt`
+- `modules/users/dto/UserProfileResponse.kt` and `modules/users/dto/UserMappers.kt` - the response DTO and its extension-function mapper
+- `bootstrap/SecurityConfig.kt` - framework wiring lives in `bootstrap/`
+- `shared/` - the error model, exception handler and audit base class
+- `src/main/resources/db/migration/V1__users.sql` - the first Flyway migration
 
 ## Role Boundary
 
@@ -45,21 +58,19 @@ Not every module needs all subpackages - small modules may only have `controller
 
 ```kotlin
 @RestController
-@RequestMapping("/api/v1/<domain>")
-@Tag(name = "<Domain>")  // Swagger grouping
+@RequestMapping("/api/<domain>")
 class SomethingController(private val someService: SomeService) {
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get something by ID")
-    fun getById(@PathVariable id: UUID): ResponseEntity<SomeDto> { ... }
+    fun getById(@PathVariable id: UUID): SomeDto = someService.getById(id)
 }
 ```
 
-- All endpoints live under `/api/v1/`
-- Return `ResponseEntity<T>` from all controller methods
-- Use `@Operation(summary = ...)` for Swagger docs on every endpoint
-- Use `@Tag(name = ...)` at the class level for Swagger grouping
+- Endpoints live under `/api/`, exactly as `shared/api-contracts/openapi.yml` defines them; add a version segment (`/api/v1/...`) to the contract and the controllers together when you need one
+- Return the DTO directly when the status is 200; return `ResponseEntity<T>` when the status differs (201, 204)
+- The OpenAPI contract is the API documentation; the backend does not generate its own
 - Path variables use `UUID` type for entity IDs
+- Take the signed-in user from `@AuthenticationPrincipal jwt: Jwt`, as `MeController` does, and pass plain values to the service
 
 ## Service Conventions
 
@@ -78,7 +89,7 @@ class SomeService(
 ```
 
 - Use `@Transactional` on write methods, `@Transactional(readOnly = true)` on read methods
-- Keep database transactions narrow; do NOT hold them open across outbound HTTP, OAuth, or other network calls
+- Keep database transactions narrow; do NOT hold them open across outbound HTTP or other network calls. `UserService` shows a service whose repository calls each run in their own transaction on purpose
 - Services are the only layer that converts between entities and DTOs
 - Throw exceptions for error cases - `GlobalExceptionHandler` converts them to HTTP responses
 - Never call `@Transactional` methods from the same class (proxy bypass)

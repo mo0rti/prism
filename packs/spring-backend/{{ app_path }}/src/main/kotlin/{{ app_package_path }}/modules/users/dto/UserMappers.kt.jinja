@@ -1,0 +1,10 @@
+package {{ app_package }}.modules.users.dto
+
+import {{ app_package }}.modules.users.model.User
+
+fun User.toResponse(): UserProfileResponse = UserProfileResponse(
+    id = id,
+    displayName = displayName,
+    email = email,
+    createdAt = createdAt
+)

@@ -1,9 +1,0 @@
-package {{ package_identifier }}.modules.auth.dto
-
-import jakarta.validation.constraints.NotBlank
-
-data class OAuthTokenRequest(
-    @field:NotBlank val provider: String,
-    val idToken: String? = null,
-    val accessToken: String? = null
-)

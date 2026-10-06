@@ -142,7 +142,17 @@ tasks:
   # ===========================================================================
   # Utilities
   # ===========================================================================
-  validate-api:
+{% if "spring-backend" in stacks %}  db-up:
+    desc: "Start the local PostgreSQL database that the backend apps use"
+    cmds:
+      - docker compose up -d db
+
+  db-down:
+    desc: "Stop the local PostgreSQL database (its data stays in the Docker volume)"
+    cmds:
+      - docker compose stop db
+
+{% endif %}  validate-api:
     desc: "Validate OpenAPI spec"
     cmds:
       - "{{'{{'}} .OPENAPI_GENERATOR {{'}}'}} validate -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}"

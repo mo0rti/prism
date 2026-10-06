@@ -67,7 +67,8 @@ class TemplateSourceTests(unittest.TestCase):
 
     def test_every_claude_file_imports_the_agents_file_next_to_it(self) -> None:
         claude_files = sorted(TEMPLATE.glob("CLAUDE.md.jinja")) + sorted(TEMPLATE.glob("*/CLAUDE.md.jinja")) + sorted(PACKS.glob("*/*/CLAUDE.md.jinja"))
-        self.assertEqual(1 + len(APPS) + len(list(PACKS.glob("*/*/CLAUDE.md.jinja"))), len(claude_files))
+        full_samples = [app for app in APPS if app != "backend"]  # the backend is a pack: it has no folder under template/
+        self.assertEqual(1 + len(full_samples) + len(list(PACKS.glob("*/*/CLAUDE.md.jinja"))), len(claude_files))
         self.assertTrue(list(PACKS.glob("*/*/CLAUDE.md.jinja")), "a pack carries its own CLAUDE.md")
         for path in claude_files:
             with self.subTest(path=path.relative_to(REPO_ROOT).as_posix()):

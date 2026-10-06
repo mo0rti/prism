@@ -15,17 +15,17 @@ callbacks, webhooks, or other non-local boundaries.
   idempotency, remote error translation, and transaction boundaries around
   remote calls.
 - Use `spring-boot-conventions` for controller and service structure.
-- Use `security-auth` for OAuth login mechanics and route exposure.
+- Use `security-auth` for identity-provider setup and route exposure.
 - Use `error-handling` for API-facing exception and error-code shape.
 - Use `observability-and-telemetry` for logging, metrics, traces, and
   correlation around remote flows.
 
 ## Current Platform Reality
 
-- The generated backend already makes outbound OAuth calls through dedicated
-  Spring beans rather than through controllers.
-- The same separation should hold for future banking, payout, ledger, or vendor
-  integrations.
+- The generated backend makes no outbound calls yet: it only validates the
+  tokens it receives.
+- Outbound integrations such as banking, payout, ledger, identity-provider or
+  vendor calls belong in dedicated Spring beans, never in controllers.
 - The exact HTTP client can vary over time; the resilience rules in this skill
   apply regardless of whether the implementation uses `RestTemplate`,
   `RestClient`, `WebClient`, or a provider SDK.

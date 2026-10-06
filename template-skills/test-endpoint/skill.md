@@ -13,7 +13,7 @@ For the requested endpoint, generate:
 
 1. **cURL Command**:
    - Complete command with all required headers
-   - JWT token placeholder: `Authorization: Bearer <YOUR_JWT_TOKEN>`
+   - JWT token placeholder: `Authorization: Bearer <YOUR_JWT_TOKEN>`; against a backend run with the `local` profile, get a development token first with `POST /api/dev-identity/token` (see `shared/api-contracts/openapi.yml`)
    - Request body (if POST/PUT/PATCH)
    - Proper formatting for readability
 

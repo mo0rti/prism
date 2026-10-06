@@ -488,8 +488,7 @@ function Assert-DeploymentSkill {
     param(
         [string]$Root,
         [bool]$Backend = $false,
-        [bool]$Web = $false,
-        [bool]$AllAuthMethods = $false
+        [bool]$Web = $false
     )
 
     foreach ($layer in @(".claude", ".agents")) {
@@ -500,13 +499,12 @@ function Assert-DeploymentSkill {
 
         if ($Backend) {
             Assert-PathExists -Path (Join-Path $skill "references\azure-setup.md") -Message "$layer deployment skill missing the Azure guide."
-            Assert-FileContains -Path (Join-Path $skill "references\azure\app-secrets.env.example") -Needle "JWT_ACCESS_TOKEN_EXPIRY=" -Message "Azure app secrets should use JWT access expiry."
-            Assert-FileContains -Path (Join-Path $skill "references\azure\app-secrets.env.example") -Needle "JWT_REFRESH_TOKEN_EXPIRY=" -Message "Azure app secrets should use JWT refresh expiry."
-            Assert-FileContains -Path (Join-Path $skill "references\azure\06-deploy-backend.sh") -Needle 'JWT_ACCESS_TOKEN_EXPIRY=${JWT_ACCESS_TOKEN_EXPIRY:-3600}' -Message "Azure deploy script should pass JWT access expiry."
-            Assert-FileContains -Path (Join-Path $skill "references\azure\06-deploy-backend.sh") -Needle 'JWT_REFRESH_TOKEN_EXPIRY=${JWT_REFRESH_TOKEN_EXPIRY:-604800}' -Message "Azure deploy script should pass JWT refresh expiry."
-            if ($AllAuthMethods) {
-                Assert-FileContains -Path (Join-Path $skill "references\azure\06-deploy-backend.sh") -Needle 'FACEBOOK_CLIENT_SECRET=secretref:facebook-client-secret' -Message "Azure deploy script should use FACEBOOK_CLIENT_SECRET."
-                Assert-FileContains -Path (Join-Path $skill "references\azure\check-secrets.sh") -Needle 'check_var "FACEBOOK_CLIENT_SECRET"' -Message "Azure secret checks should use FACEBOOK_CLIENT_SECRET."
+            Assert-FileContains -Path (Join-Path $skill "references\azure\app-secrets.env.example") -Needle "IDENTITY_PROVIDER_ISSUER_URI=" -Message "Azure app secrets should name the identity provider's issuer."
+            Assert-FileContains -Path (Join-Path $skill "references\azure\06-deploy-backend.sh") -Needle 'SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=$IDENTITY_PROVIDER_ISSUER_URI' -Message "Azure deploy script should pass the identity provider's issuer to the backend."
+            Assert-FileContains -Path (Join-Path $skill "references\azure\check-secrets.sh") -Needle 'check_var "IDENTITY_PROVIDER_ISSUER_URI"' -Message "Azure secret checks should check the identity provider's issuer."
+            foreach ($azureFile in @("06-deploy-backend.sh", "update-backend.sh", "app-secrets.env.example", "check-secrets.sh")) {
+                Assert-FileNotContains -Path (Join-Path $skill "references\azure\$azureFile") -Needle "JWT_SECRET" -Message "Azure example $azureFile must not carry a JWT secret."
+                Assert-FileNotContains -Path (Join-Path $skill "references\azure\$azureFile") -Needle "CLIENT_SECRET" -Message "Azure example $azureFile must not carry an OAuth provider secret."
             }
             foreach ($azureScript in Get-ChildItem -LiteralPath (Join-Path $skill "references\azure") -Filter "*.sh") {
                 Assert-FileUsesLfLineEndings -Path $azureScript.FullName -Message "Deployment skill Azure shell scripts should use LF line endings for Bash compatibility."
@@ -562,22 +560,48 @@ function Validate-BackendOnly {
     Assert-FileContains -Path (Join-Path $Root "backend\.copier-answers.yml") -Needle "port: 8080" -Message "The first backend must hold port 8080."
     Assert-PathExists -Path (Join-Path $Root ".github\workflows\backend.yml") -Message "The backend pack must generate its workflow."
     Assert-PathExists -Path (Join-Path $Root ".cursor\rules\backend.mdc") -Message "The backend pack must generate its Cursor rule."
-    Assert-PathExists -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\backend\modules\health\controller\HealthController.kt") -Message "The backend pack must generate its health endpoint under the app's own package."
+    $sliceRoot = Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\backend"
+    foreach ($sliceFile in @(
+            "modules\users\controller\MeController.kt",
+            "modules\users\service\UserService.kt",
+            "modules\users\repository\UserRepository.kt",
+            "modules\users\model\User.kt",
+            "modules\devidentity\controller\DevIdentityController.kt",
+            "bootstrap\SecurityConfig.kt",
+            "bootstrap\DevIdentityConfig.kt",
+            "bootstrap\DevIdentityGuard.kt",
+            "shared\exception\GlobalExceptionHandler.kt")) {
+        Assert-PathExists -Path (Join-Path $sliceRoot $sliceFile) -Message "The backend pack must generate its slice file $sliceFile under the app's own package."
+    }
+    Assert-PathExists -Path (Join-Path $Root "backend\src\main\resources\db\migration\V1__users.sql") -Message "The backend pack must generate the users migration."
     Assert-PathExists -Path (Join-Path $Root "backend\docs\guide.md") -Message "The backend pack must generate its guide."
+    Assert-PathExists -Path (Join-Path $Root "backend\README.md") -Message "The backend pack must generate its README."
+    Assert-FileContains -Path (Join-Path $Root "backend\README.md") -Needle "local development sign-in" -Message "The backend README must state that the dev identity is local development sign-in."
+    Assert-FileContains -Path (Join-Path $Root "backend\AGENTS.md") -Needle "not authentication" -Message "The backend AGENTS.md must state that the dev identity is not authentication."
+    Assert-FileContains -Path (Join-Path $Root ".cursor\rules\backend.mdc") -Needle "dev identity" -Message "The backend Cursor rule must describe the dev identity."
+    Assert-FileContains -Path (Join-Path $Root "backend\Taskfile.yml") -Needle "SPRING_PROFILES_ACTIVE: local" -Message "The dev task must set the local profile explicitly."
+    Assert-FileNotContains -Path (Join-Path $Root "docker-compose.yml") -Needle "SPRING_PROFILES_ACTIVE" -Message "docker-compose.yml must not set a default Spring profile."
+    Assert-FileContains -Path (Join-Path $Root ".github\workflows\backend.yml") -Needle "./gradlew build" -Message "The backend workflow must build and run every test."
     Assert-FileContains -Path (Join-Path $Root "prism.workspace.yml") -Needle "generation: scaffolded" -Message "prism.workspace.yml must record the backend as scaffolded."
     Assert-PathMissing -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules") -Message "The retired full backend sample must not be generated."
+    Assert-PathMissing -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\backend\modules\health") -Message "The slice has no health module: /actuator/health is the health check."
+    Assert-PathMissing -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\backend\modules\auth") -Message "The slice has no auth module: the dev identity and the resource server replace it."
+    Assert-PathMissing -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\backend\modules\transactions") -Message "The slice has no transactions module."
 
     Assert-PathMissing -Path (Join-Path $Root "web-user-app") -Message "Backend-only sample should not generate web-user-app."
     Assert-PathMissing -Path (Join-Path $Root "web-admin-portal") -Message "Backend-only sample should not generate web-admin-portal."
     Assert-PathMissing -Path (Join-Path $Root "_templates\page") -Message "Backend-only sample should not include page generators."
     Assert-NoDeploymentArtifacts -Root $Root
-    Assert-DeploymentSkill -Root $Root -Backend $true -Web $false -AllAuthMethods $true
+    Assert-DeploymentSkill -Root $Root -Backend $true -Web $false
     Assert-PathExists -Path (Join-Path $Root "docker-compose.yml") -Message "A sample with a backend app must generate docker-compose.yml for the local development database."
     Assert-FileContains -Path (Join-Path $Root "docker-compose.yml") -Needle "postgres:16-alpine" -Message "docker-compose.yml must run the PostgreSQL development database."
 
-    Assert-FileContains -Path (Join-Path $Root ".env.example") -Needle "APPLE_CLIENT_ID=" -Message "Backend-only sample should include Apple env vars when Apple auth is selected."
-    Assert-FileContains -Path (Join-Path $Root ".env.example") -Needle "JWT_ACCESS_TOKEN_EXPIRY=" -Message "Backend-only sample should include JWT access expiry env vars."
-    Assert-FileContains -Path (Join-Path $Root ".env.example") -Needle "JWT_REFRESH_TOKEN_EXPIRY=" -Message "Backend-only sample should include JWT refresh expiry env vars."
+    Assert-FileContains -Path (Join-Path $Root ".env.example") -Needle "DATABASE_NAME=" -Message "Backend-only sample should include the local database variables."
+    foreach ($envFile in @(".env", ".env.example")) {
+        foreach ($retired in @("JWT_", "GOOGLE_", "APPLE_", "FACEBOOK_", "MICROSOFT_")) {
+            Assert-FileNotContains -Path (Join-Path $Root $envFile) -Needle $retired -Message "$envFile must not carry the retired $retired variables: the template holds no JWT secret and no OAuth provider."
+        }
+    }
 
     Assert-FileContains -Path (Join-Path $Root "backend\Taskfile.yml") -Needle "check -x test" -Message "Backend lint task should use static verification instead of ktlintCheck."
     Assert-FileNotContains -Path (Join-Path $Root "backend\Taskfile.yml") -Needle "ktlintCheck" -Message "Backend Taskfile should not reference ktlintCheck."
@@ -585,31 +609,39 @@ function Validate-BackendOnly {
     Assert-FileContains -Path (Join-Path $Root "backend\Dockerfile") -Needle "COPY gradlew gradlew.bat build.gradle.kts settings.gradle.kts ./" -Message "Backend Dockerfile should still use wrapper-based builds."
     Assert-FileContains -Path (Join-Path $Root "backend\Dockerfile") -Needle 'RUN sed -i ''s/\r$//'' gradlew && chmod +x gradlew' -Message "Backend Dockerfile should normalize gradlew for Linux builds."
 
-    Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/oauth/callback:" -Message "Backend-only sample should generate the OAuth callback path when Google and Apple are selected."
+    Validate-AuthContract -Root $Root
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "Implement backend -> web-user-app -> web-admin-portal -> Android -> iOS as applicable" -Message "Root AGENTS guidance should not assume absent platform slices."
     Assert-PathMissing -Path (Join-Path $Root "docs\advisory-board.md") -Message "Generated project must not contain legacy docs/advisory-board.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\auth.md") -Message "Generated project must not contain legacy docs/features/auth.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\example-feature.md") -Message "Generated project must not contain legacy docs/features/example-feature.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\_template.md") -Message "Generated project must not contain legacy docs/features/_template.md."
-    Assert-FileContains -Path (Join-Path $Root ".claude\skills\deployment\references\azure\app-secrets.env.example") -Needle "APPLE_CLIENT_ID=" -Message "Azure app secrets should include Apple variables when Apple auth is selected."
+    Assert-FileContains -Path (Join-Path $Root ".claude\skills\security-auth\SKILL.md") -Needle "Replacing The Dev Identity With A Real Identity Provider" -Message "The security-auth skill must explain how to replace the dev identity."
 
     Assert-TreeNotContains -Root $Root -Needle "JWT_EXPIRATION_MS" -Message "Generated backend-only output should not contain stale JWT_EXPIRATION_MS wiring."
     Assert-TreeNotContains -Root $Root -Needle "FACEBOOK_APP_SECRET" -Message "Generated backend-only output should not use stale Facebook app-secret names."
+    Assert-TreeNotContains -Root $Root -Needle "JWT_SECRET" -Message "Generated backend-only output must not carry a JWT secret variable."
+    Assert-TreeNotContains -Root $Root -Needle "JwtTokenProvider" -Message "Generated backend-only output must not reference the retired token provider of the full sample."
 
     Assert-FileUsesLfLineEndings -Path (Join-Path $Root "backend\gradlew") -Message "Generated backend gradlew should use LF line endings for Linux compatibility."
 
     $javaCommand = Get-Command java -ErrorAction SilentlyContinue
-    if ($RunSmoke -and $null -ne $javaCommand) {
-        Write-Host "Running backend Gradle test and packaging smoke test..."
+    $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
+    $dockerRunning = $false
+    if ($null -ne $dockerCommand) {
+        # cmd keeps the daemon's stderr warnings from becoming a terminating error under Windows PowerShell 5.1.
+        & cmd /c "docker info >nul 2>&1"
+        $dockerRunning = ($LASTEXITCODE -eq 0)
+    }
+    if ($RunSmoke -and $null -ne $javaCommand -and $dockerRunning) {
+        Write-Host "Running backend Gradle test and packaging smoke test (the integration tests start PostgreSQL with Testcontainers)..."
         Invoke-BackendBootJarSmoke -BackendRoot (Join-Path $Root "backend") -FailureMessage "Generated backend failed the Gradle test and bootJar smoke test."
         Assert-PathExists -Path (Join-Path $Root "backend\build\libs") -Message "Generated backend did not produce a bootJar output directory."
     }
     else {
-        Write-Host "Skipping backend Gradle smoke test because it is disabled for this mode or Java is not available on PATH."
+        Write-Host "Skipping backend Gradle smoke test because it is disabled for this mode, or Java or a running Docker daemon (Testcontainers) is not available."
     }
 
-    $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
-    if ($RunSmoke -and $null -ne $dockerCommand) {
+    if ($RunSmoke -and $dockerRunning) {
         Push-Location (Join-Path $Root "backend")
         try {
             $imageTag = "template-backend-validation:$PID"
@@ -624,7 +656,7 @@ function Validate-BackendOnly {
         }
     }
     else {
-        Write-Host "Skipping backend Docker smoke test because it is disabled for this mode or Docker is not available on PATH."
+        Write-Host "Skipping backend Docker smoke test because it is disabled for this mode or no Docker daemon is running."
     }
 }
 
@@ -683,15 +715,26 @@ function Remove-TreeIfExists {
     }
 }
 
-function Validate-PasswordOnlyContract {
+function Validate-AuthContract {
+    # The auth contract is the dev-identity token route (dev only) and GET /api/me; it does not depend on any auth answer.
+    param([string]$Root)
+
+    $spec = Join-Path $Root "shared\api-contracts\openapi.yml"
+    Assert-FileContains -Path $spec -Needle "/api/dev-identity/token:" -Message "The contract must define the dev-identity token route."
+    Assert-FileContains -Path $spec -Needle "x-prism-dev-only: true" -Message "The token operation must carry x-prism-dev-only."
+    Assert-FileContains -Path $spec -Needle "/api/me:" -Message "The contract must define GET /api/me."
+    Assert-FileContains -Path $spec -Needle "bearerAuth" -Message "The contract must define bearer JWT security."
+    foreach ($retired in @("/auth/register:", "/auth/login:", "/auth/refresh:", "/auth/oauth/callback:", "/auth/oauth/token:", "/transactions:", "OAuthTokenRequest", "RefreshTokenRequest")) {
+        Assert-FileNotContains -Path $spec -Needle $retired -Message "The contract must not define the retired $retired of the full backend sample."
+    }
+}
+
+function Validate-AuthContractWithoutAuthAnswers {
     param([string]$Root)
 
     Assert-NoCopierPlaceholders -Root $Root
     Assert-NoDeploymentArtifacts -Root $Root
-
-    Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/register:" -Message "Password-only workspace must expose register in OpenAPI."
-    Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/login:" -Message "Password-only workspace must expose login in OpenAPI."
-    Assert-FileNotContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/oauth/callback:" -Message "Password-only workspace must not expose OAuth callback in OpenAPI."
+    Validate-AuthContract -Root $Root
 }
 
 function ConvertTo-ComparableApiPath {
@@ -846,6 +889,13 @@ function Get-ClientApiPaths {
     return @($clientPaths)
 }
 
+# The contract defines the slice's operations (the dev-identity token and GET /api/me). The full samples that the
+# workspace layer still generates (web, Android, iOS) were written against the retired backend sample's operations,
+# so their client paths are not checked against the contract until their stack's pack replaces the sample. Each pack
+# package (nextjs-web, android-compose, ios-swiftui) removes its clients from this list and writes its client against
+# the contract.
+$ClientsWithoutPack = @("android", "ios", "web-user-app", "web-admin-portal")
+
 function Assert-ClientPathsInOpenApi {
     param([string]$Root)
 
@@ -856,7 +906,7 @@ function Assert-ClientPathsInOpenApi {
         throw "Could not read any paths from $specFile."
     }
 
-    $clientPaths = @(Get-ClientApiPaths -Root $Root)
+    $clientPaths = @(Get-ClientApiPaths -Root $Root | Where-Object { $ClientsWithoutPack -notcontains $_.Client })
 
     # Each rendered client must yield paths. An empty result would mean the extraction no longer matches the code.
     $expectedClients = @()
@@ -864,6 +914,7 @@ function Assert-ClientPathsInOpenApi {
     if (Test-Path -LiteralPath (Join-Path $Root "mobile-ios")) { $expectedClients += "ios" }
     if (Test-Path -LiteralPath (Join-Path $Root "web-user-app")) { $expectedClients += "web-user-app" }
     if (Test-Path -LiteralPath (Join-Path $Root "web-admin-portal")) { $expectedClients += "web-admin-portal" }
+    $expectedClients = @($expectedClients | Where-Object { $ClientsWithoutPack -notcontains $_ })
     foreach ($client in $expectedClients) {
         if (@($clientPaths | Where-Object { $_.Client -eq $client }).Count -eq 0) {
             throw "Found no API paths in the generated $client client, so the contract guard cannot check it."
@@ -1068,7 +1119,7 @@ switch ($Mode) {
         Validate-BackendOnly -Root $backendRoot -RunSmoke $true
 
         $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods @("password")
-        Validate-PasswordOnlyContract -Root $passwordOnlyRoot
+        Validate-AuthContractWithoutAuthAnswers -Root $passwordOnlyRoot
     }
     "contract" {
         Assert-ClientPathGuardRejectsUnknownPaths
@@ -1081,7 +1132,7 @@ switch ($Mode) {
         Assert-PathExists -Path (Join-Path $presetRoot "backend\.copier-answers.yml") -Message "The backend-only preset must scaffold the backend pack."
 
         $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods @("password")
-        Validate-PasswordOnlyContract -Root $passwordOnlyRoot
+        Validate-AuthContractWithoutAuthAnswers -Root $passwordOnlyRoot
 
         $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Preset "backend-web"
         Validate-WebSample -Root $webRoot -RunSmoke $false
@@ -1107,7 +1158,7 @@ switch ($Mode) {
         Validate-BackendOnly -Root $backendRoot -RunSmoke $true
 
         $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods @("password")
-        Validate-PasswordOnlyContract -Root $passwordOnlyRoot
+        Validate-AuthContractWithoutAuthAnswers -Root $passwordOnlyRoot
 
         $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Preset "backend-web"
         Validate-WebSample -Root $webRoot -RunSmoke $false

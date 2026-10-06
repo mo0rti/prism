@@ -6,7 +6,7 @@ layers: [claude-skill]
 
 # Database Migration Conventions ({{ project_name }} Backend)
 
-This project uses **Flyway** with **PostgreSQL**. Migrations live in `backend/src/main/resources/db/migration/`.
+This project uses **Flyway** with **PostgreSQL**. Migrations live in `src/main/resources/db/migration/` of each backend app; the slice starts with `V1__users.sql`. Each app keeps its tables in its own database schema (see `spring.flyway.schemas` in its `application.yml`), so write unqualified table names.
 
 ## File Naming
 

@@ -13,12 +13,12 @@ Ask me for the endpoint details if I haven't provided them: HTTP method, path, d
 1. **Update OpenAPI Spec** - Add the new path, parameters, request body, and response schemas to `shared/api-contracts/openapi.yml`. Follow conventions in `docs/api/conventions.md`:
    - Use camelCase for JSON fields
    - Use plural nouns for resource paths
-   - Include pagination for list endpoints (page, size, totalElements, totalPages)
+   - Include pagination for list endpoints (page, size, totalElements, totalPages); the slice has no list endpoint yet, so add the `PagedResponse` DTO under `shared/model/` for the first one
    - Use standard error format: `{ code: string, message: string, details?: object }`
 
 2. **Regenerate Clients** - Run `task generate-clients`.
 
-{% if "spring-backend" in stacks %}3. **Implement Backend** - Add the endpoint in `backend/`:
+{% if "spring-backend" in stacks %}3. **Implement Backend** - Add the endpoint in the backend app ({% for app in apps if app.stack == "spring-backend" %}`{{ app.path }}/`{% if not loop.last %}, {% endif %}{% endfor %}), following its `modules/users/` slice:
    - Controller method with proper annotations
    - Service method with business logic
    - Repository method if data access is needed
@@ -27,7 +27,7 @@ Ask me for the endpoint details if I haven't provided them: HTTP method, path, d
    - Re-check route exposure in `SecurityConfig` against `@.claude/skills/security-auth/SKILL.md`
    - Re-check ownership, visibility, and role or policy behavior against `@.claude/skills/authorization-rules/SKILL.md` when the endpoint affects who may access or mutate a resource{% endif %}
 
-4. **Verify** - Run `task backend:test` to ensure nothing is broken.
+4. **Verify** - Run {% for app in apps if app.stack == "spring-backend" %}`task {{ app.id }}:test`{% if not loop.last %} and {% endif %}{% endfor %} to ensure nothing is broken (the integration tests need Docker).
 
 ## Conventions
 
