@@ -350,7 +350,8 @@ class LifecycleRegressionTests(unittest.TestCase):
                 preflight = build_transition_preflight(self.root, "F-001")
                 graph = build_graph(self.root)
                 node = next(node for node in graph["facts"]["nodes"] if node["id"] == "F-001")
-                for transition in (preflight["facts"]["transition"], node["transition"]):
+                graph_transition = next(item for item in node["transitions"] if item["action"] == "po-handoff")
+                for transition in (preflight["facts"]["transition"], graph_transition):
                     self.assertEqual("unknown", transition["classification"])
                     self.assertFalse(transition["supported"])
                     self.assertEqual("unknown", self._check(transition, f"source-integrity:{code}")["status"])

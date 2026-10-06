@@ -709,9 +709,8 @@ function transitionCapability() {
 }
 function capabilityReady() {
   const cap = transitionCapability();
-  if (!cap || (cap.version !== 1 && cap.version !== 2) || cap.mode !== "copy-only" || !cap.snapshot) return false;
-  if (cap.version === 2 && cap.snapshot.consistent !== true) return false;
-  return cap.snapshot.consistent !== false && typeof cap.snapshot.fingerprint === "string" && cap.snapshot.fingerprint.trim().length > 0 &&
+  if (!cap || cap.version !== 2 || cap.mode !== "copy-only" || !cap.snapshot || cap.snapshot.consistent !== true) return false;
+  return typeof cap.snapshot.fingerprint === "string" && cap.snapshot.fingerprint.trim().length > 0 &&
     typeof cap.snapshot.observed_at === "string" && cap.snapshot.observed_at.trim().length > 0;
 }
 const ACTION_LABELS = {
@@ -726,31 +725,17 @@ const ACTION_LABELS = {
   "reopen-dev": "reopen for development",
 };
 function transitionRecords(node) {
-  if (!node) return [];
-  const cap = transitionCapability();
-  // Version 2 deliberately consumes the array only.  The singular field is
-  // retained in the payload for older readers, but merging both forms could
-  // hide conflicting action identity or invocation data.
-  if (cap && cap.version === 2) {
-    if (!Array.isArray(node.transitions)) return [];
-    const records = node.transitions;
-    const actions = new Set();
-    for (const record of records) {
-      if (!record || typeof record !== "object" || typeof record.action !== "string" || !record.action.trim() || actions.has(record.action)) return [];
-      actions.add(record.action);
-    }
-    return records.slice();
+  if (!node || !Array.isArray(node.transitions)) return [];
+  const records = node.transitions;
+  const actions = new Set();
+  for (const record of records) {
+    if (!record || typeof record !== "object" || typeof record.action !== "string" || !record.action.trim() || actions.has(record.action)) return [];
+    actions.add(record.action);
   }
-  if (cap && cap.version !== 1) return [];
-  if (node.transition && typeof node.transition === "object" && typeof node.transition.action === "string" && node.transition.action.trim()) {
-    return [node.transition];
-  }
-  return [];
+  return records.slice();
 }
 function canonicalFeatureId(node) {
-  const candidates = [];
-  if (node && node.transition && typeof node.transition === "object") candidates.push(node.transition);
-  if (node && Array.isArray(node.transitions)) candidates.push(...node.transitions);
+  const candidates = node && Array.isArray(node.transitions) ? node.transitions : [];
   const record = candidates.find(item => item && item.feature_id !== undefined && item.feature_id !== null && String(item.feature_id).trim());
   return record ? String(record.feature_id) : String(node && node.id || "");
 }
@@ -762,7 +747,6 @@ function transitionRecord(node, index) {
     if (Number.isInteger(parsed) && parsed >= 0 && parsed < records.length) return records[parsed];
     return null;
   }
-  if (node && node.transition && typeof node.transition === "object" && typeof node.transition.action === "string" && node.transition.action.trim()) return records[0];
   return records.length === 1 ? records[0] : null;
 }
 function transitionActionLabel(t) {
@@ -908,10 +892,6 @@ function capabilityActionKnown(t) {
   const cap = transitionCapability(), action = t && t.action;
   if (!cap || !t || typeof action !== "string" || !Object.prototype.hasOwnProperty.call(ACTION_CONTRACTS, action) || t.version !== 1) return false;
   const contract = ACTION_CONTRACTS[action];
-  if (cap.version === 1) {
-    return t.action === "po-handoff" && t.source_status === "specified" && t.source_owner === "po" &&
-      t.target_status === "ready-for-design" && (!Object.prototype.hasOwnProperty.call(t, "target_owner") || t.target_owner === "designer");
-  }
   if (cap.version !== 2) return false;
   return Object.keys(contract).every(key => String(t[key] === undefined || t[key] === null ? "" : t[key]) === contract[key]);
 }
@@ -975,11 +955,9 @@ function transitionSurfaceAvailable(node, index, surface) {
   const t = transitionRecord(node, index);
   if (!t || !transitionInvocationFor(node, surface, index)) return false;
   const cap = transitionCapability();
-  if (cap && cap.version === 2) {
-    const entry = transitionSurfaceEntry(t, surface);
-    return !!(entry && entry.available === true && entry.check === "pass");
-  }
-  return true;
+  if (!cap || cap.version !== 2) return false;
+  const entry = transitionSurfaceEntry(t, surface);
+  return !!(entry && entry.available === true && entry.check === "pass");
 }
 function hasTransitionSurface(node, index) {
   return transitionSurfaceAvailable(node, index, state.surface);

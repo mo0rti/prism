@@ -94,7 +94,9 @@ class JsonContractTests(unittest.TestCase):
             {surface["action"] for surface in capability["surfaces"]},
         )
         feature = next(node for node in graph["facts"]["nodes"] if node["type"] == "feature")
-        self.assertEqual("designer", feature["transition"]["target_owner"])
+        self.assertNotIn("transition", feature)
+        po_handoff = next(record for record in feature["transitions"] if record["action"] == "po-handoff")
+        self.assertEqual("designer", po_handoff["target_owner"])
         Draft202012Validator(self.load_schema("wiki-graph-v1.json")).validate(graph)
 
     def test_graph_schema_covers_done_and_unmapped_feature_routes(self) -> None:
@@ -108,10 +110,12 @@ class JsonContractTests(unittest.TestCase):
             for node in partial_graph["facts"]["nodes"]
             if node["type"] == "feature" and node["id"] == "F-005"
         )
-        self.assertEqual("done", done_node["transition"]["source_status"])
-        self.assertIsNone(done_node["transition"]["target_status"])
-        self.assertIsNone(done_node["transition"]["target_owner"])
-        self.assertIsNone(done_node["transition"]["action"])
+        self.assertNotIn("transition", done_node)
+        self.assertEqual({"reopen-spec", "reopen-design", "reopen-dev"}, {record["action"] for record in done_node["transitions"]})
+        for record in done_node["transitions"]:
+            self.assertEqual("done", record["source_status"])
+            self.assertIsNotNone(record["target_status"])
+            self.assertIsNotNone(record["target_owner"])
 
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
@@ -127,6 +131,7 @@ class JsonContractTests(unittest.TestCase):
                 encoding="utf-8",
             )
             unmapped_graph = build_graph(workspace)
+            unmapped_preflight = build_transition_preflight(workspace, "F-001")
 
         Draft202012Validator(graph_schema).validate(unmapped_graph)
         unmapped_node = next(
@@ -134,12 +139,15 @@ class JsonContractTests(unittest.TestCase):
             for node in unmapped_graph["facts"]["nodes"]
             if node["type"] == "feature" and node["id"] == "F-001"
         )
-        self.assertEqual("future-stage", unmapped_node["transition"]["source_status"])
-        self.assertEqual("future-owner", unmapped_node["transition"]["source_owner"])
-        self.assertEqual("unknown", unmapped_node["transition"]["classification"])
-        self.assertIsNone(unmapped_node["transition"]["target_status"])
-        self.assertIsNone(unmapped_node["transition"]["target_owner"])
-        self.assertIsNone(unmapped_node["transition"]["action"])
+        self.assertNotIn("transition", unmapped_node)
+        self.assertEqual([], unmapped_node["transitions"])
+        unmapped_transition = unmapped_preflight["facts"]["transition"]
+        self.assertEqual("future-stage", unmapped_transition["source_status"])
+        self.assertEqual("future-owner", unmapped_transition["source_owner"])
+        self.assertEqual("unknown", unmapped_transition["classification"])
+        self.assertIsNone(unmapped_transition["target_status"])
+        self.assertIsNone(unmapped_transition["target_owner"])
+        self.assertIsNone(unmapped_transition["action"])
 
     def test_transition_schema_retains_unknown_status_values_for_malformed_pages(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

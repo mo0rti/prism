@@ -237,7 +237,7 @@ class WikiTransitionTests(unittest.TestCase):
 
         graph = build_graph(self.root)
         node = next(node for node in graph["facts"]["nodes"] if node["type"] == "feature")
-        self.assertIsNone(node["transition"]["action"])
+        self.assertNotIn("transition", node)
         self.assertEqual(
             {"reopen-spec", "reopen-design", "reopen-dev"},
             {record["action"] for record in node["transitions"]},
@@ -550,7 +550,7 @@ class WikiTransitionTests(unittest.TestCase):
 
         envelope = build_transition_preflight(self.root, "F-001")
         capability = envelope["facts"]["transition_capability"]
-        surfaces = {surface["role"]: surface for surface in capability["surfaces"]}
+        surfaces = {surface["role"]: surface for surface in capability["surfaces"] if surface["action"] == "po-handoff"}
 
         self.assertTrue(surfaces["codex"]["available"])
         self.assertTrue(surfaces["claude"]["available"])
@@ -565,7 +565,11 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertEqual("ready", transition["classification"])
         self.assertTrue(transition["supported"])
         self.assertEqual({"codex"}, set(transition["invocations"]))
-        surfaces = {surface["role"]: surface for surface in envelope["facts"]["transition_capability"]["surfaces"]}
+        surfaces = {
+            surface["role"]: surface
+            for surface in envelope["facts"]["transition_capability"]["surfaces"]
+            if surface["action"] == "po-handoff"
+        }
         self.assertTrue(surfaces["codex"]["available"])
         self.assertFalse(surfaces["claude"]["available"])
 
@@ -685,10 +689,10 @@ class WikiTransitionTests(unittest.TestCase):
         canonical_node = next(
             node
             for node in graph["facts"]["nodes"]
-            if node["type"] == "feature" and node["transition"]["feature_id"] == "F-001"
+            if node["type"] == "feature" and node["transitions"] and node["transitions"][0]["feature_id"] == "F-001"
         )
-        self.assertEqual("unknown", canonical_node["transition"]["classification"])
-        self.assertFalse(canonical_node["transition"]["supported"])
+        self.assertEqual("unknown", canonical_node["transitions"][0]["classification"])
+        self.assertFalse(canonical_node["transitions"][0]["supported"])
 
     def test_codex_capability_requires_real_dollar_invocation(self) -> None:
         codex_path = self.root / CAPABILITY_FILES["codex"]
@@ -700,7 +704,11 @@ class WikiTransitionTests(unittest.TestCase):
 
         envelope = build_transition_preflight(self.root, "F-001")
         transition = envelope["facts"]["transition"]
-        surfaces = {surface["role"]: surface for surface in envelope["facts"]["transition_capability"]["surfaces"]}
+        surfaces = {
+            surface["role"]: surface
+            for surface in envelope["facts"]["transition_capability"]["surfaces"]
+            if surface["action"] == "po-handoff"
+        }
 
         self.assertFalse(surfaces["codex"]["available"])
         self.assertEqual("unknown", next(check for check in transition["checks"] if check["code"] == "capability-codex")["status"])
@@ -807,7 +815,7 @@ class WikiTransitionTests(unittest.TestCase):
 
         feature_nodes = [node for node in envelope["facts"]["nodes"] if node["type"] == "feature"]
         self.assertEqual(1, len(feature_nodes))
-        self.assertEqual("unknown", feature_nodes[0]["transition"]["classification"])
+        self.assertEqual("unknown", feature_nodes[0]["transitions"][0]["classification"])
         self.assertFalse(envelope["facts"]["transition_capability"]["snapshot"]["consistent"])
 
     def _add_features(self, count: int) -> None:

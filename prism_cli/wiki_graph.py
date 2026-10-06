@@ -82,7 +82,6 @@ class GraphNode:
     advisory_review: str | None = None
     health: str = "ok"
     open_questions: tuple[tuple[str, str, str, str], ...] | None = None  # (number, question, owner, status)
-    transition: dict[str, Any] | None = None
     transitions: tuple[dict[str, Any], ...] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -98,8 +97,6 @@ class GraphNode:
                 {"number": number, "question": question, "owner": owner, "status": status}
                 for number, question, owner, status in self.open_questions
             ]
-        if self.transition is not None:
-            data["transition"] = self.transition
         if self.transitions is not None:
             data["transitions"] = list(self.transitions)
         return data
@@ -170,7 +167,6 @@ def build_graph(root: Path) -> dict[str, Any]:
             advisory_review=node.advisory_review,
             health=health_by_path.get(node.path or "", "ok"),
             open_questions=node.open_questions,
-            transition=transition_evaluation.transitions_by_path.get(node.path or ""),
             transitions=(
                 tuple(transition_evaluation.transitions_list_by_path.get(node.path or "", []))
                 if node.path in transition_evaluation.transitions_list_by_path

@@ -822,7 +822,6 @@ def finalize_transition_envelope(root: Path, envelope: dict[str, Any]) -> dict[s
         for node in nodes:
             if not isinstance(node, dict):
                 continue
-            add_record(node.get("transition"))
             node_transitions = node.get("transitions")
             if isinstance(node_transitions, list):
                 for transition in node_transitions:
@@ -890,8 +889,9 @@ def _evaluate_feature(
         if feature.status == spec.source_status and feature.owner == spec.source_owner
     ]
 
-    # Preserve the original PO evaluator's detailed check vocabulary and
-    # compatibility semantics for the first supported action.
+    # po-handoff has its own evaluator with the detailed completeness checks
+    # (summary, user story, acceptance criteria, app scope) that the generic
+    # action evaluator does not produce.
     if feature.status == SUPPORTED_SOURCE_STATUS and feature.owner == SUPPORTED_SOURCE_OWNER:
         primary = _evaluate_po_handoff(
             workspace_root,
@@ -1856,10 +1856,7 @@ def _capability_surfaces(
     """
 
     surfaces: list[dict[str, Any]] = []
-    # Keep the legacy PO action last so callers that keyed old v1 surfaces by
-    # role continue to observe the PO surface while v2 consumers use action.
-    action_order = [action for action in SUPPORTED_ACTIONS if action != SUPPORTED_ACTION] + [SUPPORTED_ACTION]
-    for action in action_order:
+    for action in SUPPORTED_ACTIONS:
         by_code = {check["code"]: check for check in checks_by_action.get(action, [])}
         for role, relative in _ACTION_SURFACE_PATHS[action].items():
             code = f"capability-{role}" if action == SUPPORTED_ACTION else f"capability-{action}-{role}"

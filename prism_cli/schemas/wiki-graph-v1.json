@@ -187,7 +187,6 @@
             "additionalProperties": true
           }
         },
-        "transition": { "$ref": "#/$defs/transition" },
         "transitions": {
           "type": "array",
           "items": { "$ref": "#/$defs/transition" }
