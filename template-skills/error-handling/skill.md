@@ -1,0 +1,73 @@
+---
+name: error-handling
+description: "Backend exception and API error conventions. Use when adding or reviewing ApiException subclasses, error codes, validation handling, or service/controller error flows under `backend/`."
+layers: [codex, claude-skill]
+codex:
+  display_name: "Error Handling"
+  short_description: "Keep backend API errors consistent"
+  default_prompt: "Use @@invoke:error-handling@@ to design backend exceptions, error codes, and validation responses."
+  implicit: true
+---
+
+# Error Handling
+
+Use this skill for backend exception taxonomy and API error-shape decisions.
+
+## Role Boundary
+
+- Use this skill for exception types, error codes, validation responses, and API error payloads.
+- Use `@@invoke:spring-boot-conventions@@` for general service and controller structure.
+- Use `@@invoke:security-auth@@` for auth-related route and JWT behavior.
+::: only codex
+- Use `@@invoke:endpoint@@` when the task spans contract, DTO, controller, and persistence changes.
+:::
+
+## Current Error Model
+
+- `ErrorCode` is the shared typed contract for machine-readable API error codes.
+- `CommonErrorCode` holds shared HTTP-level error codes.
+- Domain modules can define `*ErrorCode` enums and pass them through built-in exceptions.
+- `ApiException(errorCode, message, details)` is the shared base type.
+- `GlobalExceptionHandler` maps `ApiException`, `MethodArgumentNotValidException`, and unhandled `Exception`.
+- `ApiErrorResponse` exposes `code`, `message`, and optional `details`.
+
+## Built-In Exceptions
+
+| Exception | Status | Default Code | Use For |
+|-----------|--------|-------------|---------|
+| `NotFoundException` | 404 | `NOT_FOUND` | Entity not found by ID |
+| `ConflictException` | 409 | `CONFLICT` | Duplicate or already exists |
+| `UnauthorizedException` | 401 | `UNAUTHORIZED` | Missing or invalid auth |
+| `ForbiddenException` | 403 | `FORBIDDEN` | Insufficient permissions |
+| `BadRequestException` | 400 | `BAD_REQUEST` | Invalid input or business rule violation |
+
+## Rules
+
+- Use a built-in exception plus a domain-specific code for one-off cases.
+- Use optional `details` for structured client context when it adds value.
+- Create a named domain exception only when the case is reused or deserves a clearer type.
+- Prefer typed `ErrorCode` enums over raw string literals inside backend code.
+- Prefer module-local `error/` packages for domain-specific error-code enums such as `AuthErrorCode` or `TransactionErrorCode`.
+- Ensure the wrapped error code's HTTP status matches the exception wrapper; a mismatch throws a runtime guard error and surfaces as a 500 through the generic handler.
+- Keep `ApiException` as the shared base class and keep each reusable built-in exception in its own Kotlin file under `shared/exception/`.
+- Let exceptions propagate to `GlobalExceptionHandler`; do not catch them in controllers just to map HTTP.
+- Do not throw raw `RuntimeException` or `ResponseStatusException` for expected API failures.
+- Keep `code` stable and machine-readable; keep `message` human-readable.
+- Prefer throwing from services or auth collaborators rather than repositories.
+- Align documented error behavior with `shared/api-contracts/openapi.yml` when relevant.
+
+## Key Files
+
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/error/ErrorCode.kt`
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/error/CommonErrorCode.kt`
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/exception/ApiException.kt`
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/exception/*Exception.kt`
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/exception/GlobalExceptionHandler.kt`
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/shared/model/ApiErrorResponse.kt`
+- `shared/api-contracts/openapi.yml`
+
+## Minimum Verification
+
+- Add or update tests for important exception paths.
+- Re-check validation responses when request DTO constraints change.
+- Re-check any documented error codes that changed.

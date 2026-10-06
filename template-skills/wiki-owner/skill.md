@@ -1,0 +1,69 @@
+---
+name: wiki-owner
+description: "Read-only owner facts for po, designer, dev, or none. Prefer Prism CLI JSON; use direct wiki reads when it is unavailable."
+layers: [codex, command]
+codex:
+  display_name: "Wiki Owner"
+  short_description: "Read-only owner dashboard for po, designer, dev, or none"
+  default_prompt: "Use @@invoke:wiki-owner@@ po|designer|dev|none to show open questions, waiting work, and stale items for one owner role."
+  implicit: true
+---
+
+# Wiki owner - role dashboard for one owner value
+
+Report facts for one explicit owner value.
+
+## Usage
+
+`@@invoke:wiki-owner@@ po|designer|dev|none`
+
+## Primary path: Prism CLI
+
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.5.0` or newer (the `prism-kit>=0.5.0` distribution contract)
+and the command response has `"schema_version": 1`:
+
+```bash
+prism wiki owner <owner> --json
+```
+
+Render `facts.owner`, `facts.features`, `facts.open_questions`, `diagnostics`,
+and `sources` exactly as returned. A stale item is a `stale-page` diagnostic: a
+current-state page whose last `verify` entry in `log.md` is older than `wiki-stale-after-days`.
+Do not compute additional waiting or stale state manually on this path. Treat returned
+diagnostics, including errors, as facts to surface rather than replacing them with
+optimistic manual state.
+
+## Fallback path
+
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki owner`, say:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Then read
+`knowledge/wiki/SETTINGS.md` if present, all feature and app-requirement
+files, and `knowledge/wiki/status-board.md` when lifecycle grouping needs confirmation.
+Collect matching owner features and open questions. Waiting work is:
+
+- `po`: PO-owned open questions or intake conflicts needing clarification
+- `designer`: `ready-for-design` or `in-design`, plus designer questions
+- `dev`: `ready-for-dev` or `in-dev`, plus dev questions
+
+A stale item is a current-state page of those features whose last `verify` entry in
+`knowledge/wiki/log.md` (the latest `## YYYY-MM-DD verify | ...` entry whose `paths` line lists
+the page) is older than `wiki-stale-after-days`; a page with no `verify` entry is never verified,
+not stale. If SETTINGS is absent or malformed, use `14` and say so. Report only facts present in
+the files.
+
+## Rules and output
+
+- Keep the operation read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Accept only `po`, `designer`, `dev`, and `none`; do not infer a caller role.
+- separate facts from advice and label optional suggested next steps.
+
+Return the owner heading, matching features, assigned open questions, waiting or
+stale items, diagnostics, and source paths. Use a clean empty state for no matches
+and a clean invalid-owner response for unsupported values.

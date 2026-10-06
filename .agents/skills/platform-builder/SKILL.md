@@ -22,9 +22,7 @@ Use this skill for template-repo work that adds a new platform slice or material
 5. Update AI context when the platform contract changes:
    - `template/CLAUDE.md.jinja`
    - `template/AGENTS.md.jinja`
-   - `template/.cursor/rules/`
-   - `template/.claude/`
-   - `template/.agents/skills/`
+   - `template-skills/`, the one source of the platform's skills, commands and Cursor rule; run `python scripts/build-skill-layers.py` and never edit `template/.agents/skills/`, `template/.claude/commands/`, `template/.claude/skills/` or `template/.cursor/rules/` by hand
 6. Update shared wiring only when required:
    - `template/Taskfile.yml.jinja`
    - `template/.github/workflows/`

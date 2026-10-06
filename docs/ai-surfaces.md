@@ -16,8 +16,8 @@ The practical status is:
 
 - wiki read/query guidance is present in both generated surfaces
 - the nine core lifecycle actions are present in both generated surfaces
-- the backend production guidance surface is deeper on the Claude side, while
-  Codex is intentionally narrower and more implementation-focused
+- the backend and platform guidance skills that exist in both tools carry the same text;
+  some deeper backend skills and commands exist only on the Claude side
 
 The important framing is:
 
@@ -91,11 +91,27 @@ A generated workspace states each rule once. How each tool loads instructions de
 |------|---------------|--------------|
 | Claude Code | `CLAUDE.md`, which expands `@path` imports relative to the file and loads them at launch. A folder's `CLAUDE.md` loads when Claude works in that folder. | Every `CLAUDE.md` is `@AGENTS.md` plus Claude Code notes no other tool shares, such as the platform skills and commands. |
 | Codex | `AGENTS.md` from the repository root down to the working directory, concatenated, up to a size limit of 32 KiB. It has no import. | `AGENTS.md` holds the rules, so the root file and the largest platform file together stay under the limit. |
-| Cursor | `AGENTS.md` at the root and in subfolders, and `.cursor/rules/*.mdc`. A rule may reference a file with `@filename`. | `project.mdc` is the one always-on rule and references `@AGENTS.md`. The other rules scope stack facts by `globs`. |
+| Cursor | `AGENTS.md` at the root and in subfolders, and `.cursor/rules/*.mdc`. | Nothing: Cursor reads `AGENTS.md` itself. The rules scope stack facts by `globs`, and none of them repeats or references `AGENTS.md`. |
 
 Sources: Claude Code [memory and imports](https://code.claude.com/docs/en/memory), the Codex [AGENTS.md guide](https://developers.openai.com/codex/guides/agents-md) and the Cursor [rules documentation](https://cursor.com/docs/context/rules).
 
-There is no `CONTEXT.md`. The human overview is the generated `README.md`, the rules are in `AGENTS.md`, and the template-owned `docs/` pages are listed in the "Project docs" group of `knowledge/wiki/index.md`. The skills still exist in two packagings (`.claude/` and `.agents/`) that cannot import each other, so keeping them aligned is a manual check; the repository's `sync-ai-context` skill covers that, the Cursor scoped rules and the import layout.
+There is no `CONTEXT.md`. The human overview is the generated `README.md`, the rules are in `AGENTS.md`, and the template-owned `docs/` pages are listed in the "Project docs" group of `knowledge/wiki/index.md`. The skills exist in several layouts (`.claude/` and `.agents/`) that cannot import each other, so they are generated from one source (see below). The repository's `sync-ai-context` skill covers the remaining manual checks: the Cursor stack facts against the platform guidance, and the root layer of this repository.
+
+## One Source Of Skills
+
+Each skill, command and Cursor rule is written once, in `template-skills/<name>/skill.md` of this repository, and `scripts/build-skill-layers.py` renders every layer file under `template/` from it. [maintainer-workflow.md](maintainer-workflow.md#skill-sources) describes the source format. The layers follow how each tool discovers its guidance:
+
+| Tool | Where it looks | What Prism generates there |
+|------|----------------|----------------------------|
+| Claude Code | `.claude/commands/<name>.md` and `.claude/skills/<name>/SKILL.md`. Custom commands have been merged into skills: both create `/name`, a skill folder can carry supporting files, and every front matter field is optional (`description` is recommended). | A command file without front matter, so Claude Code does not invoke it on its own, and a skill with `name`, `description` and, where the skill needs them, `argument-hint`, `disable-model-invocation`, `user-invocable` and `allowed-tools`. |
+| Codex | `.agents/skills/<name>/SKILL.md`, which needs `name` and `description`, and an optional `agents/openai.yaml` for the interface and the `allow_implicit_invocation` policy. | `SKILL.md` with `name` and `description`, and an `openai.yaml` with `display_name`, `short_description`, `default_prompt` and the policy, for every skill. |
+| Cursor | `AGENTS.md`, `.cursor/rules/*.mdc` with `description`, `globs` and `alwaysApply`, and skills from `.agents/skills/` and `.claude/skills/`. | Rules with a `description` and either `globs` or `alwaysApply: false`, which scope stack facts and describe the board review; no rule repeats `AGENTS.md`. |
+
+Sources: Claude Code [skills and commands](https://code.claude.com/docs/en/skills), the Codex [skills guide](https://developers.openai.com/codex/skills), and the Cursor [rules](https://cursor.com/docs/context/rules) and [skills](https://cursor.com/docs/context/skills) documentation.
+
+Cursor reads `AGENTS.md` and loads both skill folders itself, so the always-on rule `project.mdc`, whose only content was `@AGENTS.md`, does not exist: it would load `AGENTS.md` twice.
+
+A workflow skill that ships as a Codex skill and a Claude command has one body. The layers differ in the invocation (`$name` in Codex, `/name` in Claude Code) and in the few host-specific lines the source marks. A skill that exists in only some layers is a conscious choice, listed under [What Still Needs Deliberate Review](#what-still-needs-deliberate-review).
 
 ## What Is Shared
 

@@ -1,0 +1,154 @@
+---
+name: spring-boot-conventions
+description: "Spring Boot 4 and Kotlin conventions for this backend. Use when writing or reviewing controllers, services, DTOs, or module structure under `backend/`. For security and auth defer to security-auth, for API error semantics to error-handling."
+layers: [codex, claude-skill]
+codex:
+  display_name: "Spring Boot Conventions"
+  short_description: "Apply backend controller and service conventions"
+  default_prompt: "Use @@invoke:spring-boot-conventions@@ when updating backend controllers, services, or DTOs."
+  implicit: true
+---
+
+# Spring Boot Conventions
+
+This project uses **Spring Boot 4.0.x** with **Kotlin 2.2+** and **Java 21**. It follows a package-based modular structure under `{{ package_identifier }}.modules.<domain>`.
+
+## Role Boundary
+
+- Use this skill for general module, controller, service, and DTO conventions.
+- Use `@@invoke:security-auth@@` for route exposure, JWT handling, and auth behavior.
+- Use `@@invoke:error-handling@@` for exception taxonomy and API error responses.
+
+## Module Structure
+
+Each domain module lives under `modules/<domain>/` with subpackages:
+
+```
+modules/<domain>/
+  controller/    # REST controllers
+  dto/           # Request/response data classes
+  model/         # Entities, enums, value objects
+  repository/    # JPA repositories
+  service/       # Business logic, orchestration
+```
+
+Not every module needs all subpackages - small modules may only have `controller/` + `service/`.
+
+### Layer Dependencies (strict)
+
+- `controller` depends on `service` only (never directly on `repository` or `model` entities)
+- `service` depends on `model` and `repository`
+- `model` has NO web, DTO, or framework dependencies
+- Controllers never call repositories directly
+
+## Controller Conventions
+
+```kotlin
+@RestController
+@RequestMapping("/api/v1/<domain>")
+@Tag(name = "<Domain>")  // Swagger grouping
+class SomethingController(private val someService: SomeService) {
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Get something by ID")
+    fun getById(@PathVariable id: UUID): ResponseEntity<SomeDto> { ... }
+}
+```
+
+- All endpoints live under `/api/v1/`
+- Return `ResponseEntity<T>` from all controller methods
+- Use `@Operation(summary = ...)` for Swagger docs on every endpoint
+- Use `@Tag(name = ...)` at the class level for Swagger grouping
+- Path variables use `UUID` type for entity IDs
+
+## Service Conventions
+
+```kotlin
+@Service
+class SomeService(
+    private val someRepository: SomeRepository,
+    private val otherService: OtherService
+) {
+    @Transactional
+    fun createSomething(request: CreateSomethingRequest): SomeDto { ... }
+
+    @Transactional(readOnly = true)
+    fun getById(id: UUID): SomeDto { ... }
+}
+```
+
+- Use `@Transactional` on write methods, `@Transactional(readOnly = true)` on read methods
+- Keep database transactions narrow; do NOT hold them open across outbound HTTP, OAuth, or other network calls
+- Services are the only layer that converts between entities and DTOs
+- Throw exceptions for error cases - `GlobalExceptionHandler` converts them to HTTP responses
+- Never call `@Transactional` methods from the same class (proxy bypass)
+- Do NOT rely on `@Transactional` on private methods; Spring proxy-based transaction management will not intercept them
+
+## DTO Conventions
+
+Two mapping patterns are used:
+
+### 1. Extension functions (default for pure mappings)
+
+```kotlin
+// In a dedicated mapper file
+fun SomeEntity.toDto() = SomeDto(
+    id = this.id,
+    name = this.name
+)
+
+fun CreateSomethingRequest.toEntity() = SomeEntity(name = this.name)
+```
+
+### 2. @Component mapper classes (only when mapping needs dependencies)
+
+```kotlin
+@Component
+class SomeMapper(private val otherService: OtherService) {
+    fun toDto(entity: SomeEntity): SomeDto { ... }
+}
+```
+
+- DTOs are data classes in the `dto/` package
+- Keep each DTO class in its own Kotlin file so type ownership, reuse, navigation, and refactoring remain predictable as modules grow
+- Entities are NEVER serialized directly to JSON - always map to DTOs
+- Request DTOs are separate from response DTOs when shapes differ
+- Use summary DTOs for list views, full DTOs for detail views (don't over-fetch)
+- Default to manual mapping functions for pure entity/DTO transformations
+- Keep mapper logic pure: no repository access, permission checks, state transitions, or other business rules
+- Use Spring-managed mapper classes only when mapping genuinely needs injected collaborators
+- Preserve domain enums in response DTOs when the API contract owns those enums; avoid flattening them to raw strings without a concrete contract reason
+
+## Internal Models
+
+- Put reusable non-entity domain value objects and normalized integration models in `model/` unless a dedicated subpackage makes the boundary clearer
+- Do NOT use `service/` as a catch-all for helper data classes
+- Prefer explicit names such as `*Profile`, `*Details`, or `*State` so internal models are not confused with API DTOs or entities
+
+## Configuration Conventions
+
+- Prefer typed `@ConfigurationProperties` classes for medium-to-large backend configuration
+- Group config classes under a package such as `bootstrap/properties`
+- Inject typed config objects into services and bootstrap components rather than scattering repeated property keys with `@Value`
+- Reserve `@Value` for small one-off wiring cases only
+
+## File Organization Conventions
+
+- Keep each entity, enum, DTO, and reusable value object in its own Kotlin file
+- Do NOT group multiple DTO classes into a single `*Dtos.kt` file
+- Do NOT keep reusable enums inside an entity file; place them in dedicated files under `model/`
+
+## Repository Conventions
+
+::: only claude-skill
+See the `jpa-kotlin-patterns` skill for full repository, entity, and transaction patterns.
+:::
+
+Repository interfaces live in the `repository/` package within each module.
+
+## Forbidden Patterns
+
+- `entity -> DTO` imports (entities never depend on API DTOs)
+- `controller -> repository` imports (controllers call services, never repositories directly)
+- `runBlocking` in MVC controllers
+- Jackson annotations on JPA `@Entity` classes (use DTOs as the serialization boundary)

@@ -1,3 +1,4 @@
+{# Generated from template-skills/ios-contract-alignment/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: ios-contract-alignment
 description: Backend contract alignment rules for DTOs, endpoints, APIClient usage, and token-backed auth. Use when adding or reviewing request or response shapes, API endpoints, repository mappings, or auth-boundary code in the generated iOS app.
@@ -11,7 +12,7 @@ Use this skill when backend-facing iOS code changes.
 ## Role boundary
 
 - Own request and response shapes, endpoint mapping, repository-to-model translation, and auth-boundary wiring.
-- Defer screen structure and general workflow to companion skills.
+- Defer screen structure and general workflow to companion iOS skills.
 
 ## Rules
 
@@ -30,7 +31,7 @@ Use this skill when backend-facing iOS code changes.
 
 ## Reference files
 
-Read only the reference file the task needs:
+Load only the reference file the task needs:
 
 - `references/token-refresh-patterns.md` for actor-safe refresh coordination, retry boundaries, and the simultaneous-401 race
 - `references/privacy-manifest.md` for required-reason API categories, third-party SDK checks, and `PrivacyInfo.xcprivacy` update guidance

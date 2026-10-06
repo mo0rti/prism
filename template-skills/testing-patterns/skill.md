@@ -1,0 +1,231 @@
+---
+name: testing-patterns
+description: "Backend testing conventions for JUnit Jupiter 6 and MockK. Use when writing or reviewing backend unit tests, service tests, integration tests, or deciding how a backend change should be verified under `backend/`."
+layers: [codex, claude-skill]
+codex:
+  display_name: "Backend Testing Patterns"
+  short_description: "Apply JUnit and MockK backend test conventions"
+  default_prompt: "Use @@invoke:testing-patterns@@ when writing or reviewing backend tests in this project."
+  implicit: true
+---
+
+# Testing Patterns
+
+Use this skill for backend test structure and verification choices. The conventions are for this **Spring Boot 4 + Kotlin** project using **JUnit Jupiter 6** and **MockK**.
+
+## Test Dependencies
+
+```kotlin
+testImplementation("io.mockk:mockk:1.14.+")
+testImplementation("org.springframework.boot:spring-boot-starter-test")
+testImplementation("org.springframework.security:spring-security-test")
+```
+
+## File Location
+
+Tests mirror the main source structure:
+
+```
+src/test/kotlin/{{ package_identifier | replace('.', '/') }}/
+  modules/<domain>/
+    <ServiceName>Test.kt
+```
+
+## Unit Tests (Service / Domain Logic)
+
+Use **MockK** (not Mockito) for Kotlin-idiomatic mocking.
+
+```kotlin
+package {{ package_identifier }}.modules.example
+
+import io.mockk.*
+import org.junit.jupiter.api.*
+import org.junit.jupiter.api.Assertions.*
+import {{ package_identifier }}.modules.example.service.ExampleService
+import {{ package_identifier }}.modules.example.repository.ExampleRepository
+
+@DisplayName("ExampleService")
+class ExampleServiceTest {
+
+    private val exampleRepository = mockk<ExampleRepository>()
+    private val service = ExampleService(exampleRepository)
+
+    @AfterEach
+    fun tearDown() {
+        unmockkAll()
+    }
+
+    @Nested
+    @DisplayName("getById")
+    inner class GetById {
+
+        @Test
+        fun `should return dto when entity exists`() {
+            // Arrange
+            val entity = ExampleEntity(name = "Test")
+            every { exampleRepository.findById(any()) } returns Optional.of(entity)
+
+            // Act
+            val result = service.getById(UUID.randomUUID())
+
+            // Assert
+            assertEquals("Test", result.name)
+            verify(exactly = 1) { exampleRepository.findById(any()) }
+        }
+
+        @Test
+        fun `should throw NotFoundException when entity does not exist`() {
+            every { exampleRepository.findById(any()) } returns Optional.empty()
+
+            assertThrows<NotFoundException> {
+                service.getById(UUID.randomUUID())
+            }
+        }
+    }
+}
+```
+
+### Key Conventions
+
+- **Backtick test names**: `` `should do X when Y` `` - readable, Kotlin-idiomatic
+- **`@Nested` + `@DisplayName`**: Group tests by method or scenario
+- **`@AfterEach` with `unmockkAll()`**: Clean up MockK state between tests
+- **Constructor injection in tests**: Pass mocks directly, no `@InjectMocks`
+- **`mockk<T>(relaxed = true)`**: Use relaxed mocks when you don't care about all return values
+
+### MockK Cheat Sheet
+
+```kotlin
+// Stubbing
+every { repo.findById(any()) } returns Optional.of(entity)
+every { repo.save(any()) } answers { firstArg() }
+
+// Verification
+verify(exactly = 1) { repo.save(any()) }
+verify { repo.findById(match { it == expectedId }) }
+
+// Argument capture
+val slot = slot<SomeEntity>()
+every { repo.save(capture(slot)) } returns entity
+assertEquals("expected", slot.captured.name)
+```
+
+## Current Scaffold Baseline
+
+The generated backend currently favors:
+
+- MockK-heavy unit tests for service and domain logic
+- `@SpringBootTest` integration tests for Spring-managed auth flows
+- `@SpringBootTest` + `@AutoConfigureMockMvc` when security filters or endpoint exposure rules must be verified end to end
+
+Do not assume `@WebMvcTest` or `@DataJpaTest` are the default style just because they are available.
+
+## Integration Tests
+
+Use `@SpringBootTest` + `@ActiveProfiles("test")` for tests that need a Spring context.
+
+```kotlin
+@SpringBootTest
+@ActiveProfiles("test")
+class ExampleServiceIntegrationTest {
+
+    @Autowired
+    private lateinit var exampleService: ExampleService
+
+    @Autowired
+    private lateinit var exampleRepository: ExampleRepository
+
+    @Test
+    fun `should persist and retrieve entity`() {
+        val created = exampleService.create(CreateExampleRequest(name = "Test"))
+        val found = exampleRepository.findById(created.id)
+        assertTrue(found.isPresent)
+    }
+}
+```
+
+Add `@AutoConfigureMockMvc` when the test needs real request routing, validation, security filters, or exception-to-response mapping:
+
+```kotlin
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class SecurityConfigTest {
+    @Autowired
+    lateinit var mockMvc: MockMvc
+}
+```
+
+## Testcontainers Strategy
+
+- Prefer Testcontainers for repository or integration tests that depend on real
+  database behavior, migration ordering, or dialect-specific SQL
+- Do not assume an in-memory replacement is good enough when the production
+  path depends on PostgreSQL or MySQL behavior
+- Keep container-backed tests focused on behavior that actually needs the real
+  dependency
+- Use lighter unit or slice tests for logic that does not need container cost
+
+## Slice Tests
+
+Use test slices selectively when they make the target behavior clearer and cheaper to verify.
+
+### `@WebMvcTest`
+
+- Good for controller request mapping, JSON binding, validation, and status code checks
+- Prefer it when the controller layer is the subject and full JWT/security filter behavior is not
+- If the behavior depends on the real security chain, prefer `@SpringBootTest` + `MockMvc`
+
+### `@DataJpaTest`
+
+- Good for repository custom queries, entity mappings, and persistence behavior
+- Prefer it when the repository layer is the subject and service/business wiring is irrelevant
+- Use a fuller integration test when the persistence behavior depends on broader application configuration
+
+## Integration Test Data Rules
+
+- Keep fixtures small and explicit
+- Prefer builders or focused setup helpers over giant shared fixture blobs
+- Make each test responsible for the records it needs to reason about
+- Avoid cross-test hidden state and mutation coupling
+- Assert on the business-relevant records and transitions, not just row counts
+
+## What to Test per Layer
+
+| Layer | What to Test | Approach |
+|-------|-------------|----------|
+| **Service** | Business logic, validation, exception paths | Unit test with MockK |
+| **Domain** | Entity behavior, helper methods, equals/hashCode | Unit test, no mocks needed |
+| **Repository** | Custom queries, entity mapping behavior | `@DataJpaTest` or integration test |
+| **Controller** | Request mapping, validation, response codes | `@WebMvcTest` or integration test |
+| **Security / Filter Chain** | JWT filters, public vs authenticated routes, exception mapping | `@SpringBootTest` + `MockMvc` |
+
+## DTO Assertion Rules
+
+- Assert typed DTO fields using their real Kotlin types rather than their eventual serialized JSON representation
+- When a response DTO exposes enums, assert the enum values directly in service tests
+- Keep serialization-shape assertions in controller or integration tests, not in pure service tests
+
+## OAuth Client Testing
+
+- For code that calls external OAuth providers, prefer a mock web server or `MockRestServiceServer` to verify token exchange and user-info requests without hitting real providers
+- In higher-level auth service tests, mock or stub the OAuth client or service boundary instead of coupling every test to remote provider payload details
+
+## External Integration Contract Tests
+
+- For outbound integrations beyond OAuth, keep representative remote payload
+  samples near the integration tests
+- Test timeout mapping, retry behavior, duplicate callback handling, and remote
+  error translation explicitly
+- Prefer a mock web server, `MockRestServiceServer`, or equivalent HTTP double
+  over real provider dependencies
+- Treat provider payload drift as something tests should catch early, not only a
+  production discovery
+
+## Anti-Patterns
+
+- **Do NOT use Mockito** - use MockK for Kotlin (null-safety, extension functions)
+- **Do NOT use `@SpringBootTest` for unit tests** - only for integration tests that need the full context
+- **Do NOT use `@MockBean` in unit tests** - use constructor injection with MockK mocks instead
+- **Do NOT default to `@WebMvcTest` when the real JWT/security chain is the subject** - that belongs in a fuller integration test
+- **Do NOT test private methods** - test through public API

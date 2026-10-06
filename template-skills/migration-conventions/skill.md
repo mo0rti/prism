@@ -1,0 +1,143 @@
+---
+name: migration-conventions
+description: "Reference: Flyway naming rules, SQL style, column type conventions, constraint patterns, and foreign-key cascade guidance. Load when creating or reviewing migrations."
+layers: [claude-skill]
+---
+
+# Database Migration Conventions ({{ project_name }} Backend)
+
+This project uses **Flyway** with **PostgreSQL**. Migrations live in `backend/src/main/resources/db/migration/`.
+
+## File Naming
+
+```
+V{N}__{snake_case_description}.sql
+```
+
+- `N` is the next sequential integer (check existing migrations for the current highest)
+- Double underscore `__` separates version from description
+- Description uses `snake_case`
+- Examples: `V2__add_user_profile_table.sql`, `V3__add_index_on_example_owner`
+
+## SQL Style
+
+- **UPPERCASE** SQL keywords: `CREATE TABLE`, `ALTER TABLE`, `DROP INDEX`, etc.
+- **lowercase** identifiers: table names, column names, constraint names
+- **4-space indentation** for column definitions and sub-clauses
+- End every statement with `;`
+
+## Column Type Conventions
+| Concept | PostgreSQL Type |
+|---------|----------------|
+| Primary key | `UUID NOT NULL` or `UUID NOT NULL DEFAULT gen_random_uuid()` depending on whether the application or database assigns IDs |
+| Foreign key | `UUID NOT NULL` (or nullable if optional) |
+| Timestamps | Prefer `TIMESTAMP WITH TIME ZONE`; keep existing table style consistent unless the migration explicitly normalizes time storage |
+| JSON data | `JSONB` (never `JSON`) |
+| Booleans | `BOOLEAN NOT NULL DEFAULT false` |
+| Enums | `VARCHAR` + `CHECK` constraint (see below) |
+| Text | `VARCHAR(N)` for bounded, `TEXT` for unbounded |
+
+## Enum Handling
+
+Do NOT use database-level enum types. Use `VARCHAR` with application-level validation and a `CHECK` constraint:
+```sql
+ALTER TABLE some_table
+    ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'PENDING'
+        CONSTRAINT chk_some_table_status
+            CHECK (status = ANY (ARRAY['PENDING', 'ACTIVE', 'CANCELLED']));
+```
+
+## Naming Conventions
+
+| Object | Pattern | Example |
+|--------|---------|---------|
+| Primary key | `pk_{table}` | `pk_users` |
+| Foreign key | `fk_{child}_{parent}` | `fk_example_user` |
+| Unique constraint | `uq_{table}_{columns}` | `uq_users_email` |
+| Check constraint | `chk_{table}_{column}` | `chk_example_status` |
+| Index | `idx_{table}_{columns}` | `idx_example_owner_id` |
+
+## Standard Table Template
+```sql
+CREATE TABLE some_table (
+    id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    owner_id UUID NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    CONSTRAINT pk_some_table PRIMARY KEY (id),
+    CONSTRAINT fk_some_table_owner
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_some_table_owner_id ON some_table(owner_id);
+```
+
+## Safety Guards
+
+- Use `IF EXISTS` / `IF NOT EXISTS` where appropriate for idempotency:
+  ```sql
+  DROP INDEX IF EXISTS idx_old_index;
+  CREATE INDEX IF NOT EXISTS idx_new_index ON some_table(column);
+  ```
+- When modifying constraints: drop old constraint first, then add new one
+
+## Expand-Contract Strategy
+
+For non-trivial live-schema changes, prefer expand-contract over one-shot
+destructive change:
+
+1. **Expand** - add new nullable columns, new tables, or additive structures
+2. **Backfill** - migrate existing data safely
+3. **Adopt** - update application code to read/write the new shape
+4. **Contract** - remove old columns or constraints only after the old shape is
+   no longer needed
+
+Do not combine a risky destructive schema cutover with the first application
+deploy unless the dataset is tiny and the blast radius is genuinely low.
+
+## Multi-Statement Ordering
+
+When a migration has multiple dependent changes, order them correctly:
+
+1. Drop dependent constraints/indexes
+2. Alter columns / update data
+3. Add new constraints/indexes
+
+## Backfill Guidance
+
+- Keep backfills explicit inside the migration or in a deliberately paired
+  migration sequence
+- For large datasets, avoid a single giant rewrite when a staged approach is
+  safer
+- Make backfill logic deterministic and rerunnable where practical
+- If historical values are unknown, use an explicit sentinel or documented null
+  strategy instead of inventing false precision
+
+## Audit Columns
+
+Tables managed by `AuditableEntity` should match the entity mapping used in this repo:
+```sql
+created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+```
+
+- `created_at` is `NOT NULL` with a default
+- `updated_at` is also initialized on insert and updated on every write
+
+## Foreign Key Cascades
+
+- Use `ON DELETE CASCADE` when child records have no meaning without the parent
+- Use `ON DELETE SET NULL` when the child can exist independently
+- Default to `ON DELETE CASCADE` for junction/collection tables
+
+## Index Expectations
+
+- Add indexes for foreign-key columns that drive common lookups
+- Add indexes for repeated filter + sort paths that appear in list endpoints or
+  operational review screens
+- Re-check unique constraints when business identity is being enforced at the
+  database level
+- For large existing tables, treat expensive index creation as an operational
+  event that may need a dedicated migration strategy instead of being bundled
+  casually with unrelated DDL

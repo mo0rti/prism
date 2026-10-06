@@ -1,3 +1,4 @@
+{# Generated from template-skills/android-build-verify/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: android-build-verify
 description: Choose the cheapest trustworthy Gradle validation for Android changes. Use when asked to compile, assemble, test, debug build failures, or decide which Android verification task should run after edits in `mobile-android/`.
@@ -30,7 +31,7 @@ Use the smallest Gradle task that gives trustworthy feedback for the Android cha
 
 ## Troubleshooting
 
-- If Hilt or generated-code failures look stale after refactors, stop the Gradle daemon, remove `app/build` and `.gradle`, and rebuild with `--no-build-cache --rerun-tasks`.
+- If Hilt or generated-code failures look stale after refactors, stop the Gradle daemon (`./gradlew --stop`), remove `app/build` and `.gradle`, and rebuild with `--no-build-cache --rerun-tasks`.
 - If a release-only failure appears after compile or debug tasks pass, escalate to `assembleRelease` before editing keep rules blindly.
 - If the change is UI-only but touches shared Compose code, prefer `compileDebugKotlin` first and escalate to `assembleDebug` only if needed.
 

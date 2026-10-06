@@ -1,9 +1,10 @@
+{# Generated from template-skills/po-specify/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: po-specify
 description: Promote one raw feature page to a structured specified draft after source checks and explicit confirmation. Use when raw wiki content is ready to become a PO-owned specification.
 ---
 
-# PO Specify
+# PO specify - structure one raw feature page
 
 <!-- prism:po-specify-contract:v1 -->
 
@@ -19,7 +20,8 @@ and, after explicit confirmation, write one feature-only transition:
 ## Scope and source guard
 
 - Resolve `[F-XXX]` to exactly one existing file at
-  `knowledge/wiki/features/[F-XXX]-[slug].md`.
+  `knowledge/wiki/features/[F-XXX]-[slug].md`. A missing, invalid, or ambiguous
+  ID is a stop condition.
 - Accept only the exact source pair `status: raw` and `owner: po`.
 - This action processes one feature page. It does not process, move, or rename
   anything under `knowledge/intake/pending/`, `processed/`, or `quarantined/`.
@@ -38,14 +40,21 @@ and the workspace identity before preparing the preview. If the optional CLI is
 available, use:
 
 ```text
+prism --version
 prism wiki transition-preflight F-XXX [path] --action po-specify --json
 ```
 
 Accept a preflight only when it reports envelope schema 1, command facts,
 capability version 2 with an action-specific `po-specify` surface, transition
 version 1, the exact source pair, and a consistent current snapshot. A Prism
-version alone is insufficient. Missing or unsupported capability falls back to
-the direct-file protocol in `LIFECYCLE.md`.
+version alone is insufficient. If the probe is missing, old, unsupported, or fails, state the direct-file
+fallback and follow `LIFECYCLE.md`. The preflight is copy-only and never
+authorizes a write.
+
+Before using copied facts, reread this current skill or command, the `po-specify`
+instructions of the other agent surface when available, SCHEMA, LIFECYCLE, status
+board, feature, linked context, and identity. A mismatch or unavailable comparison
+requires a fresh preview.
 
 Show the observed source fields, structural checks, proposed destination, and
 the complete write set before asking for confirmation. The preview is copy-only;

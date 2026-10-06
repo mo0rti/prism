@@ -1,7 +1,8 @@
+{# Generated from template-skills/android-feature-delivery/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: android-feature-delivery
 description: Cross-layer feature orchestration for Android. Use when a task spans multiple layers and needs scoped planning, companion-skill selection, validation, and documentation updates across DTOs, APIs, repositories, ViewModels, Compose UI, navigation, resources, and docs.
-argument-hint: [feature-description]
+argument-hint: "[feature-description]"
 disable-model-invocation: true
 ---
 
@@ -30,6 +31,7 @@ $ARGUMENTS
 - Cross-check the OpenAPI spec in `shared/api-contracts/openapi.yml` when endpoints, DTOs, or enums are involved.
 {% if "backend" in platforms %}- Cross-check the backend in `backend/` when behavior or response shapes need confirmation.
 {% endif %}
+
 ## 3. Map affected layers
 
 Cover only the layers the feature truly needs:
@@ -43,7 +45,7 @@ Cover only the layers the feature truly needs:
 - Resources such as strings, icons, or drawables
 - Documentation updates in `mobile-android/docs/`
 
-## 4. Load the right companion skills
+## 4. Use the right companion skills
 
 - Use `android-conventions` for repository-wide MVVM, DI, navigation, string, and doc-sync rules.
 - Use `android-contract-alignment` for DTO, enum, Retrofit, and auth-boundary decisions.
@@ -59,11 +61,3 @@ Cover only the layers the feature truly needs:
 - If resources, manifests, or accessibility-sensitive UI change, include `lintDebug` or a stronger validation task from `android-build-verify`.
 - Run at least `./gradlew compileDebugKotlin` (or `gradlew.bat` on Windows), plus stronger targeted verification when the change crosses logic, packaging, or integration boundaries.
 - Update any affected docs in `mobile-android/docs/` in the same session.
-
-## Companion skills
-
-- `android-conventions`
-- `android-contract-alignment`
-- `compose-design-system`
-- `android-testing`
-- `android-build-verify`

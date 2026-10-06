@@ -1,0 +1,68 @@
+---
+name: wiki-blockers
+description: "Read-only project blocker facts. Prefer Prism CLI JSON; use direct wiki reads when it is unavailable."
+layers: [codex, command]
+codex:
+  display_name: "Wiki Blockers"
+  short_description: "Read-only blockers view across the wiki"
+  default_prompt: "Use @@invoke:wiki-blockers@@ to compute the current project blockers using the canonical blocker categories."
+  implicit: true
+---
+
+# Wiki blockers - project-level blockers view
+
+Report project blocker facts from the shared wiki.
+
+## Usage
+
+`@@invoke:wiki-blockers@@`
+
+## Primary path: Prism CLI
+
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.5.0` or newer (the `prism-kit>=0.5.0` distribution contract)
+and the command response has `"schema_version": 1`:
+
+```bash
+prism wiki blockers --json
+```
+
+Render `facts.blockers`, `blocker_facts`, `required_obligations`, `diagnostics`,
+and `sources` exactly as returned. The compatible CLI covers all six canonical
+blocker categories; do not duplicate blocker parsing or add categories on this
+path. Treat returned diagnostics, including errors, as facts to surface rather
+than replacing them with optimistic manual state.
+Link findings (`broken-link`, `broken-anchor`, `external-repository-unresolved`) and freshness
+findings (`stale-page`, `never-verified`) are not blockers: report them as diagnostics and never as
+a blocker category, and never use them to change a status.
+
+## Fallback path
+
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki blockers`, say:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Then read:
+
+- `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md` and `knowledge/wiki/status-board.md`
+- all files in `knowledge/wiki/features/`, `design/`, `app-requirements/`, and `api-contracts/`
+- files in `knowledge/wiki/advisory/` except `BOARD.md` and `PROJECT_FOUNDATION.md`
+
+## Canonical blocker categories
+
+Compute only these canonical facts: `pending-board-review`, `missing-design`,
+`missing-app-requirements`, `unresolved-open-questions`,
+`api-contract-not-ready`, and `cross-app-dependency`. Include malformed
+pages as diagnostics rather than silently skipping them.
+
+## Rules and output
+
+- Keep the operation read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Use exact canonical codes and separate facts from advice; label optional suggested
+  next steps clearly.
+
+Return blocker counts grouped by category, affected features, reasons,
+diagnostics, and source paths. If no blocker facts are present, say so plainly.

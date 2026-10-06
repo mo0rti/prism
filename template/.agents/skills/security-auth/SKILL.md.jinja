@@ -1,3 +1,4 @@
+{# Generated from template-skills/security-auth/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: security-auth
 description: Backend security and authentication conventions for this Spring Boot project. Use when changing public versus authenticated routes, JWT handling, current-user access, OAuth or password-auth flows, or security-related configuration under `backend/`.
@@ -31,6 +32,7 @@ Use this skill for backend auth exposure, JWT, and security-boundary decisions.
 
 ## Public Endpoints
 
+Defined explicitly in `SecurityConfig.securityFilterChain()`:
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
 - `/api/v1/auth/oauth/callback`
 {% endif %}
@@ -45,6 +47,17 @@ Use this skill for backend auth exposure, JWT, and security-boundary decisions.
 - `/api/v1/auth/me`
 - `/api/v1/auth/logout`
 - Every other backend route not explicitly permitted in `SecurityConfig`
+
+## Current User Access
+
+In controllers, use `@AuthenticationPrincipal`:
+
+```kotlin
+@GetMapping("/me")
+fun getProfile(@AuthenticationPrincipal user: User): ResponseEntity<UserDto> {
+    return ResponseEntity.ok(user.toDto())
+}
+```
 
 ## Rules
 
@@ -81,17 +94,17 @@ Use this skill for backend auth exposure, JWT, and security-boundary decisions.
 
 ## Key Files
 
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/SecurityConfig.kt`
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/properties/CorsProperties.kt`
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/properties/JwtProperties.kt`
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/properties/OAuthProperties.kt`
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/JwtAuthenticationFilter.kt`
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/ApiAuthenticationEntryPoint.kt`
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/JwtTokenProvider.kt`
-{% if auth_methods | length > 1 or "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
-- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/OAuth2Config.kt`
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/SecurityConfig.kt` - filter chain, route exposure rules, CORS
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/properties/CorsProperties.kt` - CORS configuration
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/properties/JwtProperties.kt` - JWT configuration
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/properties/OAuthProperties.kt` - OAuth provider configuration
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/JwtAuthenticationFilter.kt` - request filter that validates JWT
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/ApiAuthenticationEntryPoint.kt` - 401 reply for requests without a valid access token
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/JwtTokenProvider.kt` - token generation and validation
+{% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/OAuth2Config.kt` - infrastructure beans for OAuth support
 {% endif %}
-- `backend/src/main/resources/application.yml`
+- `backend/src/main/resources/application.yml` - JWT secret, token expiry, OAuth client IDs
 - `shared/api-contracts/openapi.yml`
 
 ## Minimum Verification

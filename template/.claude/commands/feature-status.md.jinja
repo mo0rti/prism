@@ -1,7 +1,9 @@
+{# Generated from template-skills/feature-status/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 # Feature status - full pipeline view and WIKI_REPORT refresh
 
 ## Usage
-/feature-status
+
+`/feature-status`
 
 ## Primary path: Prism CLI
 
@@ -49,7 +51,7 @@ complete workflow below and report facts proved by those files.
 
 ## WIKI_REPORT rules
 
-- `feature-status` is the only command that writes `knowledge/wiki/WIKI_REPORT.md`
+- only `/feature-status` writes `knowledge/wiki/WIKI_REPORT.md`
 - `WIKI_REPORT.md` is generated and read-only
 - `WIKI_REPORT.md` is an orientation artifact, not the source of truth
 - if `WIKI_REPORT.md` disagrees with the underlying wiki files, the underlying wiki files win
@@ -158,7 +160,7 @@ Run `/lint-wiki` for contradictions, missing references, malformed pages, and ot
 
 ## Notes for the agent
 
-- Do not modify feature files, index.md, status-board.md, or log.md in this command.
+- Do not modify feature files, index.md, status-board.md, or log.md in this operation.
 - Only write `knowledge/wiki/WIKI_REPORT.md`.
 - Use the canonical blocker vocabulary from `knowledge/wiki/SCHEMA.md`.
 - If the report cannot be created, still return the pipeline view and clearly say the

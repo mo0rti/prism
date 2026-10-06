@@ -1,11 +1,18 @@
+{# Generated from template-skills/spring-boot-conventions/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: spring-boot-conventions
-description: Spring Boot 4 + Kotlin conventions for this project. Use when writing or reviewing controllers, services, DTOs, or module structure. For entities see jpa-kotlin-patterns, for errors see error-handling, for security see security-auth.
+description: Spring Boot 4 and Kotlin conventions for this backend. Use when writing or reviewing controllers, services, DTOs, or module structure under `backend/`. For security and auth defer to security-auth, for API error semantics to error-handling.
 ---
 
-# Spring Boot Conventions ({{ project_name }} Backend)
+# Spring Boot Conventions
 
 This project uses **Spring Boot 4.0.x** with **Kotlin 2.2+** and **Java 21**. It follows a package-based modular structure under `{{ package_identifier }}.modules.<domain>`.
+
+## Role Boundary
+
+- Use this skill for general module, controller, service, and DTO conventions.
+- Use `security-auth` for route exposure, JWT handling, and auth behavior.
+- Use `error-handling` for exception taxonomy and API error responses.
 
 ## Module Structure
 

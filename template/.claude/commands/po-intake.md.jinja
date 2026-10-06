@@ -1,3 +1,4 @@
+{# Generated from template-skills/po-intake/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 # PO intake - process raw notes into feature specs
 
 Process a raw input document from intake/pending/ into structured wiki entries.
@@ -10,7 +11,7 @@ Example: /po-intake 2026-04-01-client-call
 The folder is named `YYYY-MM-DD-slug`: the day the source was captured, then lowercase words
 joined by hyphens. The connected board rejects any other name.
 
-## What this command does
+## Workflow
 
 1. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md` in full
 2. Read `knowledge/wiki/index.md` to find the existing pages and `knowledge/wiki/status-board.md` for the existing features
@@ -41,7 +42,7 @@ joined by hyphens. The connected board rejects any other name.
    - What new personas or business rules does it introduce?
    - What is ambiguous or unclear that you could not resolve?
    - For each new feature: does it appear to need an advisory board review?
-     (reference the criteria in /board-review.md)
+     (reference the criteria in the "When to use" section of `/board-review`)
    **Wait for the user to confirm, correct, or cancel before proceeding.**
 8. For each new feature identified and confirmed:
    - Assign the next available feature ID
@@ -72,8 +73,11 @@ joined by hyphens. The connected board rejects any other name.
     `knowledge/wiki/features/F-001-slug.md (F-001)`; the connected board rejects a
     manifest that omits one
 
-## Notes for the agent
+## Rules
 
+- write-capable skill
+- never edit a processed intake item; corrected material is a new dated pending folder
+- write every new feature as `status: raw`, `owner: po`
 - Do not invent requirements not present in the input. Mark gaps as open questions.
 - Update or conflict: a source that refines a claim, or replaces an Observed claim with a newer
   observation, updates the page in place (new label, new link, no "was/now" note). A source that
@@ -86,3 +90,19 @@ joined by hyphens. The connected board rejects any other name.
 - Do not set `advisory-review: not-needed` by default. Ask the user explicitly for any
   feature where domain complexity is ambiguous.
 - write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
+
+## Output behavior
+
+Return:
+
+- conflict summary or confirmation summary before writes
+- created or updated feature IDs and titles
+- any personas or business rules created or updated
+- any open questions added
+- the processed intake folder path
+
+## Error and stop conditions
+
+- if the intake folder does not exist, return a clean missing-folder response
+- if the input contradicts existing wiki content, quarantine it with a `CONFLICT.md` and stop
+- if the user does not confirm the interpretation summary, stop without writing

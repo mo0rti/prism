@@ -1,0 +1,275 @@
+# Azure Container Apps - {{ project_name }}
+
+A worked example for one choice: the backend container on Azure Container Apps with Azure Database for PostgreSQL, a container registry and blob storage. It is not part of the generated project. The project owner and their agent own the cloud choice, the secrets and the deployment; adapt or replace any step.
+
+## Resources Created
+
+| Resource | Azure Service | Script | Purpose |
+|----------|--------------|--------|---------|
+| Resource Group | Resource Group | `00-setup-resource-group.sh` | Container for all resources |
+| Container Registry | Azure Container Registry | `01-setup-foundation.sh` | Docker image storage |
+| Log Analytics | Log Analytics Workspace | `01-setup-foundation.sh` | Container monitoring |
+| Database | PostgreSQL Flexible Server | `02-setup-database.sh` | Data persistence |
+| Container Environment | Container Apps Environment | `03-setup-container-apps-env.sh` | Networking for containers |
+| File Storage | Azure Blob Storage | `04-setup-storage.sh` | File uploads |
+| Backend API | Azure Container Apps | `06-deploy-backend.sh` | Hosts Spring Boot 4 application |
+
+## Before You Start
+
+The scripts live in `references/azure/` next to this file. They assume they sit in `infra/azure/` of the repository: `05-build-and-push-images.sh` and `update-backend.sh` find the repository root two levels above the script folder and build `backend/Dockerfile`.
+
+1. Copy the folder into the repository: `cp -r <this skill>/references/azure infra/azure`.
+2. Add the credential files the scripts write to `.gitignore`:
+
+```gitignore
+infra/azure/azure-config.env
+infra/azure/app-secrets.env
+infra/azure/*-credentials*.env
+infra/azure/postgres-password*.env
+infra/azure/log-analytics*.env
+infra/azure/container-apps-env*.env
+infra/azure/image-tags*.env
+infra/azure/azure-storage*.env
+infra/azure/backend-url*.env
+```
+
+3. Review the scripts and defaults (region, SKUs, replica counts) with the project owner before running anything against a subscription.
+
+## First-Time Setup
+
+### Prerequisites
+
+- Azure CLI installed (`az login` completed)
+- Docker running locally
+- Azure subscription with appropriate permissions
+
+### Step 1: Configure
+
+```bash
+cd infra/azure
+
+# Copy and fill in infrastructure config
+cp azure-config.env.example azure-config.env
+# Edit azure-config.env: subscription ID, resource names, SKUs
+
+# Copy and fill in application secrets
+cp app-secrets.env.example app-secrets.env
+# Edit app-secrets.env: JWT secret, OAuth credentials, API keys
+```
+
+### Step 2: Deploy Everything
+
+```bash
+# Run the scripts one after another (~20-25 minutes)
+bash 00-setup-resource-group.sh
+bash 01-setup-foundation.sh
+bash 02-setup-database.sh
+bash 03-setup-container-apps-env.sh
+bash 04-setup-storage.sh
+bash 05-build-and-push-images.sh   # Requires Docker
+bash 06-deploy-backend.sh
+bash 07-show-deployment-info.sh
+```
+
+### Step 3: Verify
+
+```bash
+# Show deployment info
+bash 07-show-deployment-info.sh
+
+# Test database connectivity
+bash test-database-connection.sh
+
+# Check backend health
+curl https://<your-backend-url>/actuator/health
+```
+
+## Updating the Backend
+
+After code changes, redeploy with zero downtime:
+
+```bash
+bash infra/azure/update-backend.sh
+```
+
+This rebuilds the Docker image, pushes to ACR, and creates a new Container App revision. Traffic automatically shifts to the new revision when healthy.
+
+## Multi-Environment
+
+All scripts accept an environment parameter:
+
+```bash
+# Production (default)
+bash 00-setup-resource-group.sh prod
+
+# Acceptance
+bash 00-setup-resource-group.sh acc
+
+# Development
+bash 00-setup-resource-group.sh dev
+```
+
+Each environment gets its own resource group and credential files.
+
+## Adding Additional Services
+
+The numbered script system is designed for extensibility:
+
+1. Create `07-deploy-my-service.sh` (or `06b-deploy-my-service.sh` to insert before backend)
+2. Create `update-my-service.sh` for recurring deployments
+3. Follow the same pattern: source config -> create container app -> save URL
+
+## Custom Domain
+
+```bash
+bash infra/azure/add-custom-domain.sh prod api.yourdomain.com
+```
+
+This adds DNS verification and provisions a managed SSL certificate.
+
+## Optional: Task Shortcuts
+
+Add these to the root `Taskfile.yml` if you want `task` entry points for the scripts:
+
+```yaml
+  infra:setup:
+    desc: "Run all Azure infrastructure setup scripts (first-time only)"
+    dir: ./infra/azure
+    cmds:
+      - bash 00-setup-resource-group.sh {% raw %}{{.CLI_ARGS}}{% endraw %}
+      - bash 01-setup-foundation.sh {% raw %}{{.CLI_ARGS}}{% endraw %}
+      - bash 02-setup-database.sh {% raw %}{{.CLI_ARGS}}{% endraw %}
+      - bash 03-setup-container-apps-env.sh {% raw %}{{.CLI_ARGS}}{% endraw %}
+      - bash 04-setup-storage.sh {% raw %}{{.CLI_ARGS}}{% endraw %}
+      - bash 05-build-and-push-images.sh {% raw %}{{.CLI_ARGS}}{% endraw %}
+      - bash 06-deploy-backend.sh {% raw %}{{.CLI_ARGS}}{% endraw %}
+      - bash 07-show-deployment-info.sh {% raw %}{{.CLI_ARGS}}{% endraw %}
+
+  infra:update-backend:
+    desc: "Rebuild and redeploy backend (zero-downtime)"
+    dir: ./infra/azure
+    cmds:
+      - bash update-backend.sh {% raw %}{{.CLI_ARGS}}{% endraw %}
+
+  infra:info:
+    desc: "Show deployment information"
+    dir: ./infra/azure
+    cmds:
+      - bash 07-show-deployment-info.sh {% raw %}{{.CLI_ARGS}}{% endraw %}
+
+  infra:check-secrets:
+    desc: "Validate all required secrets are configured"
+    dir: ./infra/azure
+    cmds:
+      - bash check-secrets.sh
+```
+
+## Optional: GitHub Actions Deploy
+
+The generated CI builds and tests only. To push the image and deploy on every push to `main`, add a workflow such as the one below. It reports **Image push skipped** or **Deploy skipped** and does nothing while a secret is missing.
+
+```yaml
+name: Backend Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+
+jobs:
+  build-and-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    outputs:
+      image_pushed: {% raw %}${{ steps.push.outcome == 'success' }}{% endraw %}
+    env:
+      PRISM_RELEASE_CONFIGURED: {% raw %}${{ secrets.AZURE_CONTAINER_REGISTRY != '' && secrets.ACR_USERNAME != '' && secrets.ACR_PASSWORD != '' }}{% endraw %}
+    steps:
+      - name: Report skipped image push
+        if: env.PRISM_RELEASE_CONFIGURED != 'true'
+        run: |
+          echo "::warning title=Image push skipped::Set the AZURE_CONTAINER_REGISTRY, ACR_USERNAME and ACR_PASSWORD secrets to build and push the backend image."
+
+      - uses: actions/checkout@v4
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
+
+      - name: Login to Azure Container Registry
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
+        uses: azure/docker-login@v2
+        with:
+          login-server: {% raw %}${{ secrets.AZURE_CONTAINER_REGISTRY }}{% endraw %}
+          username: {% raw %}${{ secrets.ACR_USERNAME }}{% endraw %}
+          password: {% raw %}${{ secrets.ACR_PASSWORD }}{% endraw %}
+
+      - name: Build and push Docker image
+        id: push
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
+        working-directory: backend
+        run: |
+          IMAGE={% raw %}${{ secrets.AZURE_CONTAINER_REGISTRY }}{% endraw %}/{{ project_slug }}-backend
+          docker build -t $IMAGE:{% raw %}${{ github.sha }}{% endraw %} -t $IMAGE:latest .
+          docker push $IMAGE:{% raw %}${{ github.sha }}{% endraw %}
+          docker push $IMAGE:latest
+
+  deploy:
+    name: Deploy to Azure
+    needs: build-and-push
+    if: needs.build-and-push.outputs.image_pushed == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      PRISM_RELEASE_CONFIGURED: {% raw %}${{ secrets.AZURE_CREDENTIALS != '' && secrets.AZURE_CONTAINER_REGISTRY != '' && secrets.AZURE_RESOURCE_GROUP != '' && secrets.AZURE_CONTAINER_APP_NAME != '' }}{% endraw %}
+    steps:
+      - name: Report skipped deploy
+        if: env.PRISM_RELEASE_CONFIGURED != 'true'
+        run: |
+          echo "::warning title=Deploy skipped::Set the AZURE_CREDENTIALS, AZURE_CONTAINER_REGISTRY, AZURE_RESOURCE_GROUP and AZURE_CONTAINER_APP_NAME secrets to deploy the backend to Azure Container Apps."
+
+      - name: Azure Login
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
+        uses: azure/login@v2
+        with:
+          creds: {% raw %}${{ secrets.AZURE_CREDENTIALS }}{% endraw %}
+
+      - name: Deploy to Container Apps
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
+        run: |
+          IMAGE={% raw %}${{ secrets.AZURE_CONTAINER_REGISTRY }}{% endraw %}/{{ project_slug }}-backend:{% raw %}${{ github.sha }}{% endraw %}
+          REVISION="sha-$(echo {% raw %}${{ github.sha }}{% endraw %} | head -c 8)"
+          az containerapp update \
+            --resource-group {% raw %}${{ secrets.AZURE_RESOURCE_GROUP }}{% endraw %} \
+            --name {% raw %}${{ secrets.AZURE_CONTAINER_APP_NAME }}{% endraw %} \
+            --image "$IMAGE" \
+            --revision-suffix "$REVISION"
+```
+
+### Required GitHub Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `AZURE_CREDENTIALS` | Service principal JSON for Azure login |
+| `AZURE_CONTAINER_REGISTRY` | ACR login server URL |
+| `ACR_USERNAME` | ACR admin username |
+| `ACR_PASSWORD` | ACR admin password |
+| `AZURE_RESOURCE_GROUP` | Resource group name |
+| `AZURE_CONTAINER_APP_NAME` | Container App name |
+
+The project owner creates these secrets; never commit their values.
+
+## Cleanup
+
+```bash
+# DANGER: Deletes ALL resources in the resource group
+bash infra/azure/cleanup.sh
+```
+
+## Useful Scripts
+
+| Command | Description |
+|---------|-------------|
+| `bash infra/azure/07-show-deployment-info.sh` | Show deployment status |
+| `bash infra/azure/update-backend.sh` | Redeploy backend |
+| `bash infra/azure/check-secrets.sh` | Validate secrets |
+| `bash infra/azure/show-database-credentials.sh` | Show database credentials |
+| `bash infra/azure/test-database-connection.sh` | Test DB connectivity |

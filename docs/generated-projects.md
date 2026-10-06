@@ -23,7 +23,8 @@ Generated projects include:
 - platform-specific docs under `docs/`, `backend/docs/`, `mobile-android/docs/`,
   `mobile-ios/docs/`, `web-user-app/docs/`, and `web-admin-portal/docs/`
 - a generated `AGENTS.md`, the single source of agent rules, and a `CLAUDE.md` that only imports it with `@AGENTS.md`; each platform folder repeats the pattern
-- Cursor rules under `.cursor/rules/`: `project.mdc` references `@AGENTS.md` and the other rules scope stack facts by file path
+- Cursor rules under `.cursor/rules/` that scope stack facts by file path and describe the board review; Cursor reads `AGENTS.md` itself and loads the skills in `.agents/skills/` and `.claude/skills/`
+- Codex skills in `.agents/skills/`, Claude commands in `.claude/commands/` and Claude skills in `.claude/skills/`, generated from one source in this repository (`template-skills/`), so the guidance has the same text in every tool
 - GitHub workflow files that build and test; they hold no deploy job and no secrets
 - Hygen generators under `_templates/`
 - a `docker-compose.yml` with the PostgreSQL development database when a backend app is selected

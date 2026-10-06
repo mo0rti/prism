@@ -1,13 +1,18 @@
+{# Generated from template-skills/wiki-query/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: wiki-query
 description: Read-only conservative wiki search. Prefer Prism CLI JSON; use direct text search when it is unavailable.
 ---
 
-# Wiki Query
+# Wiki query - conservative search across the wiki
 
 Provide compact, conservative search facts across the wiki.
 
-## Primary path
+## Usage
+
+`$wiki-query "text"`
+
+## Primary path: Prism CLI
 
 Probe the optional CLI before selecting the JSON path:
 
@@ -24,7 +29,7 @@ prism wiki search "text" --json
 
 The CLI reads `knowledge/wiki/index.md` first: the index lines that contain the text name
 their pages, and those pages come first in `facts.results`, each with its `index_line` and
-`index` among its `matched_fields`. Summarize `facts.query`, `facts.results`,
+`index` among its `matched_fields`. Render `facts.query`, `facts.results`,
 `facts.index_match_count`, `diagnostics`, and `sources` exactly as returned. Treat returned diagnostics, including errors, as facts to surface
 rather than replacing them with optimistic manual state.
 
@@ -48,21 +53,22 @@ names a page, and those pages come first. Then run literal text search over:
 - `knowledge/wiki/plans/`
 - `knowledge/wiki/direction.md` and `knowledge/wiki/roadmap.md`
 
-Collect matching lines and page types, group by match class, and synthesize a
-compact result. ## Match classes
+Collect matching lines and page types, then synthesize a compact result set.
 
-Match classes are exact feature ID or exact filename, title or
-heading, body text, and related-page enrichment.
+## Match classes
+
+Use these match classes: exact feature ID or exact filename match, title or heading
+match, body-text match, and related-page enrichment. Explain each match.
 
 ## Rules and output
 
-- Keep the skill read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Keep the operation read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
 - Use conservative substring matching. Do not invent numeric scores, semantic
   ranking, or hidden relevance claims; keep the default result set small (for
   example, top 8).
-- Explain each match, separate facts from advice, and label optional suggested
-  next steps.
+- separate facts from advice and label optional suggested next steps.
 
 Return the original query, candidates, page type, feature status when relevant,
-match class, useful headings or sections, diagnostics, and source paths. Use
-clean no-results or refinement responses when appropriate.
+match class, relevant headings or sections, diagnostics, and source paths. Use a
+clean no-results response when no candidates match and request refinement when
+more than 8 diffuse matches would be misleading.

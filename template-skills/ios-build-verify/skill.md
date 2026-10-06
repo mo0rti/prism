@@ -1,0 +1,59 @@
+---
+name: ios-build-verify
+description: "Build and verification workflow for the generated iOS app. Use when asked to compile, test, debug build failures, or choose the cheapest sufficient validation task for a change."
+layers: [codex, claude-skill]
+platforms: [mobile-ios]
+codex:
+  display_name: "iOS Build Verify"
+  short_description: "Pick the right iOS validation step"
+  default_prompt: "Use @@invoke:ios-build-verify@@ to choose the right iOS validation task for this change."
+  implicit: false
+claude-skill:
+  argument-hint: "[scope-or-task]"
+  disable-model-invocation: true
+  allowed-tools: "Read, Grep, Glob, Bash(task mobile-ios:*), Bash(xcodebuild *), Bash(bundle exec fastlane *)"
+---
+
+# iOS Build Verify
+
+Use the smallest validation task that gives trustworthy feedback for the change.
+
+## Request
+
+$ARGUMENTS
+
+## Default task selection
+
+- `task mobile-ios:generate-project`
+  - Use after `project.yml`, target or scheme changes, Swift Package additions, xcconfig or build-setting edits, entitlements, resource-bundle changes, or source-layout changes that affect XcodeGen output.
+  - It also creates a missing `Config/Debug.xcconfig` or `Config/Release.xcconfig` from its tracked `.example` file, and the build and test tasks run it first.
+- `task mobile-ios:build`
+  - Use for most Swift, SwiftUI, ViewModel, repository, DI, and navigation edits.
+- `task mobile-ios:test-unit`
+  - Prefer this when ViewModel or repository logic changes and no UI behavior is affected.
+- `task mobile-ios:test`
+  - Use when both unit and UI coverage are relevant, or when the change spans logic plus app flow behavior.
+- `task mobile-ios:test-ui`
+  - Use when screen structure, accessibility identifiers, auth gating, or app-launch behavior changes.
+- `xcodebuild archive ...`
+  - Escalate here when signing, Info.plist values, release build settings, or generated project structure may affect archive or release behavior.
+- `bundle exec fastlane beta`
+  - Use when validating the TestFlight release lane or debugging release automation after signing and CI release changes.
+- Direct `xcodebuild ...`
+  - Use only when debugging a specific Xcode build issue beyond the Taskfile wrappers.
+
+## Troubleshooting
+
+- If project-generation output looks stale, rerun `task mobile-ios:generate-project`, especially after structural XcodeGen changes.
+- If Xcode build metadata looks stale, use a fresh DerivedData path when invoking `xcodebuild` directly.
+- `Config/Debug.xcconfig` and `Config/Release.xcconfig` are git-ignored local files. On a fresh clone, run `task mobile-ios:generate-project` or copy the `.example` files before `xcodegen generate`, which fails when a config file is missing.
+- Build and test tasks run on `SIMULATOR_NAME` when it is set and on the newest available iPhone simulator otherwise. Set it when a task reports a simulator lookup error or you need a specific device.
+- The generated UI suite is smoke-level by default; passing `task mobile-ios:test-ui` confirms launch, auth gating, and a small set of critical flows, not full screen coverage.
+- If the change is UI-only but touches shared theme or common UI, prefer `task mobile-ios:build` first and escalate to UI tests when identifiers, flow structure, or launch/auth state changed.
+- If you are not on Mac, explicitly list which verification steps were skipped, why they were skipped, and that real iOS validation is deferred to Mac CI or a Mac follow-up session.
+
+## Report clearly
+
+- State exactly which task or command ran.
+- State whether it passed or failed.
+- If you skip a stronger verification step, say why.

@@ -1,13 +1,18 @@
+{# Generated from template-skills/wiki-show/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: wiki-show
 description: Read-only feature facts for one feature ID. Prefer Prism CLI JSON; use direct wiki reads when it is unavailable.
 ---
 
-# Wiki Show
+# Wiki show - focused feature context bundle
 
 Provide a focused fact bundle for one feature.
 
-## Primary path
+## Usage
+
+`$wiki-show F-XXX`
+
+## Primary path: Prism CLI
 
 Probe the optional CLI before selecting the JSON path:
 
@@ -22,10 +27,10 @@ and the command response has `"schema_version": 1`:
 prism wiki show F-XXX --json
 ```
 
-Summarize `confidence`, `facts.feature`, `blocker_facts`,
-`required_obligations`, `diagnostics`, and `sources` exactly as returned. Treat
-returned diagnostics, including errors, as facts to surface rather than
-replacing them with optimistic manual state.
+Render `confidence`, `facts.feature`, `blocker_facts`, `required_obligations`,
+`diagnostics`, and `sources` exactly as returned. Treat returned diagnostics,
+including errors, as facts to surface rather than replacing them with optimistic
+manual state.
 
 ## Fallback path
 
@@ -41,17 +46,18 @@ fails, or lacks `wiki show`, say:
 - `knowledge/wiki/advisory/[F-XXX]-review.md` if present
 - business-rule, persona, and decision files that reference the feature ID
 
-Use feature frontmatter as authority for status, owner, apps, and
-advisory-review. Report absent optional links as partial context. If multiple
-feature files match, report the ambiguity and do not merge them.
+Use the feature frontmatter as authority for status, owner, apps, and
+advisory-review. Treat absent optional links as partial context and report every
+fact as present or absent. If multiple feature files match, report the ambiguity
+and do not merge them.
 
 ## Rules and output
 
-- Keep the skill read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Keep the operation read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
 - Do not invent missing facts. separate facts from advice and label optional
   suggested next steps.
 
-Return feature ID/title, status, owner, advisory-review, apps, summary,
-open questions, linked context, requirements, relevant API state, blockers,
+Return feature ID/title, status, owner, advisory-review, apps, summary, open
+questions, linked context, requirements, relevant API state, blocker facts,
 diagnostics, and source paths. Use a clean missing-feature response when no page
 matches.

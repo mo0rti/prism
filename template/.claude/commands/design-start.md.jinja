@@ -1,3 +1,4 @@
+{# Generated from template-skills/design-start/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 # Design start - take ownership of one ready feature
 
 <!-- prism:design-start-contract:v1 -->
@@ -8,13 +9,17 @@
 
 ## Supported action
 
+Prepare, preview, and, after explicit confirmation, write one feature-only
+transition:
+
 `ready-for-design` + `designer` -> `in-design` + `designer`
 
 Resolve exactly one existing feature file at
 `knowledge/wiki/features/[F-XXX]-[slug].md`. Stop for a missing, invalid, or
-ambiguous ID, or for any other source status/owner pair. Read SCHEMA, LIFECYCLE, status board, the
-feature, linked context, and workspace identity. The feature's declared apps
-define its design scope.
+ambiguous ID, or for any other source status/owner pair; accept only the exact
+source pair above and do not infer a transition from another status or owner.
+Read SCHEMA, LIFECYCLE, status board, the feature, linked context, and workspace
+identity. The feature's declared apps define its design scope.
 
 When available, use:
 
@@ -42,3 +47,7 @@ confirmation and once more after confirmation. Only then update `status` to
 `in-design`, keep `owner: designer`, update the status board row, and append the log.
 Decline or cancel means no writes. If a multi-file write is partial, report the
 exact observed changes and stop for fresh recovery; no transaction is implied.
+
+Return the observed source and destination fields and the design-scope evidence.
+This action starts work; it does not prove design completeness or development
+readiness.

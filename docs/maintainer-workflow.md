@@ -8,12 +8,13 @@ Use this guide when changing the template itself rather than a generated project
 docs/                 # Documentation for this template repository
 prism_cli/            # The prism CLI, board service, MCP adapter and packaged workflow assets
 tests/                # Python regression tests; tests/browser holds the opt-in browser tests
-scripts/              # Validation, measurement and demo scripts
+scripts/              # Validation, measurement and demo scripts, and the generators of the workflow asset and the skill layers
+template-skills/      # The one source of every skill, command and Cursor rule; generated into the layers of template/
 copier.yml            # Questionnaire and generation contract
 template/             # Files copied into generated projects
-  .claude/            # Claude project context and slash commands
-  .agents/            # Codex project skills
-  .cursor/            # Cursor rules: project.mdc references AGENTS.md, the others scope stack facts
+  .claude/            # Claude commands and skills (generated from template-skills/)
+  .agents/            # Codex skills (generated from template-skills/)
+  .cursor/            # Cursor rules: scoped stack facts and the board review (generated from template-skills/)
   .github/            # Workflow templates
   _templates/         # Hygen generators
   backend/            # Backend scaffold
@@ -37,14 +38,49 @@ CLAUDE.md             # Claude maintainer guidance for this repo
 
 ## Recommended Maintainer Flow
 
-1. Update `copier.yml` and/or files under `template/`.
-2. Run `./scripts/validate-template.ps1` after template changes, and `python -B -m unittest discover -s tests` after changes to `prism_cli/`, the packaged assets or the template. When the board UI changes, also run the browser tests that [current-status.md](current-status.md#validation) describes.
-3. Generate any extra explicit sample variants you need instead of relying on assumptions.
-4. Compare generated output against the root docs, generated README/docs, task wiring, and the selected platform combinations.
-5. Update repository docs when the template contract changes. When a CLI command, message, board behaviour or security check changes, also update the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md`, run the documented commands in a disposable workspace, and add the change under `Unreleased` in `CHANGELOG.md`.
-6. Keep roadmap-visible options honest about whether they are current, partial, experimental, or planned.
+1. Update `copier.yml` and/or files under `template/`. Change a skill, command or Cursor rule only in `template-skills/` (see [Skill Sources](#skill-sources)); never edit a file under `template/.agents/skills/`, `template/.claude/commands/`, `template/.claude/skills/` or `template/.cursor/rules/`.
+2. After editing `template-skills/`, run `python scripts/build-skill-layers.py`, then `python scripts/build-workflow-assets.py` when a packaged workflow skill changed.
+3. Run `./scripts/validate-template.ps1` after template changes, and `python -B -m unittest discover -s tests` after changes to `prism_cli/`, the packaged assets or the template. When the board UI changes, also run the browser tests that [current-status.md](current-status.md#validation) describes.
+4. Generate any extra explicit sample variants you need instead of relying on assumptions.
+5. Compare generated output against the root docs, generated README/docs, task wiring, and the selected platform combinations.
+6. Update repository docs when the template contract changes. When a CLI command, message, board behaviour or security check changes, also update the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md`, run the documented commands in a disposable workspace, and add the change under `Unreleased` in `CHANGELOG.md`.
+7. Keep roadmap-visible options honest about whether they are current, partial, experimental, or planned.
 
 To check the lifecycle with real Claude Code and Codex sessions and a browser against the board, run `scripts/e2e/journey.py`; [`scripts/e2e/README.md`](../scripts/e2e/README.md) describes the tiers and the report.
+
+## Skill Sources
+
+`template-skills/<name>/skill.md` is the one source of a skill. A generated workspace carries the same guidance in the layout each tool discovers, and `scripts/build-skill-layers.py` renders every layer file from the source:
+
+| Layer | Generated file | Tool |
+|-------|----------------|------|
+| `codex` | `template/.agents/skills/<name>/SKILL.md.jinja` and `agents/openai.yaml` | Codex, and Cursor (it loads `.agents/skills/`) |
+| `command` | `template/.claude/commands/<name>.md.jinja` | Claude Code |
+| `claude-skill` | `template/.claude/skills/<name>/SKILL.md.jinja` | Claude Code, and Cursor (it loads `.claude/skills/`) |
+| `cursor` | `template/.cursor/rules/<file>.mdc.jinja` | Cursor rules |
+
+The front matter of a source holds:
+
+- `name` (the folder name), one `description` and `layers`, the layers the skill ships to;
+- `platforms`, when the skill ships only with some apps (it ships when any listed platform is selected); `reference-platforms` does the same for a file or folder under `references/`. The generator writes these conditions into the generated block of `_exclude` in `copier.yml`;
+- the per-host fields: `codex` (`display_name`, `short_description`, `default_prompt`, `implicit` for `allow_implicit_invocation`), `claude-skill` (`argument-hint`, `disable-model-invocation`, `user-invocable`, `allowed-tools`) and `cursor` (`file`, and `globs` or `always-apply`).
+
+The body is written once. Copier conditions and variables (`{% if "backend" in platforms %}`, `{{ project_name }}`) pass through unchanged. Two mechanisms cover the differences between hosts:
+
+- `@@invoke:<name>@@` becomes the host's way to run that skill: `$name` in Codex, `/name` in a Claude command, and the bare name in a Claude skill or a Cursor rule;
+- a block from `::: only <layers>` to `:::` stays only in those layers (`codex`, `command`, `claude-skill`, `cursor`, or `claude` for both Claude layers).
+
+A skill's `references/` folder is copied into the `.agents/skills/<name>/` and `.claude/skills/<name>/` folders. A Cursor-only rule is a source whose only layer is `cursor`.
+
+After editing a source:
+
+```bash
+python scripts/build-skill-layers.py          # renders template/ and the _exclude block of copier.yml
+python scripts/build-workflow-assets.py       # when one of the packaged workflow skills changed
+python scripts/build-skill-layers.py --check  # fails when a generated file differs from its source
+```
+
+`tests/test_skill_layers.py` runs the check, fails when a layer file is edited without its source, and tests how each tool discovers the rendered skills.
 
 ## Recommended Validation Variants
 

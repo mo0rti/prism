@@ -1,0 +1,88 @@
+---
+name: lint-wiki
+description: "Deterministic wiki contract diagnostics. Prefer Prism CLI JSON; use direct wiki reads when it is unavailable."
+layers: [codex, command]
+codex:
+  display_name: "Lint Wiki"
+  short_description: "Read and lint the wiki for structural issues and blockers"
+  default_prompt: "Use @@invoke:lint-wiki@@ to inspect the knowledge wiki for structural issues and blocker categories without changing WIKI_REPORT.md."
+  implicit: true
+---
+
+# Lint wiki - health-check the knowledge base
+
+Report deterministic wiki contract diagnostics without auto-fixing.
+
+## Usage
+
+`@@invoke:lint-wiki@@`
+
+## Primary path: Prism CLI
+
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.5.0` or newer (the `prism-kit>=0.5.0` distribution contract)
+and the command response has `"schema_version": 1`:
+
+```bash
+prism wiki lint --json
+```
+
+Render `confidence`, `facts`, `blocker_facts`, `required_obligations`,
+`diagnostics`, and `sources` exactly as returned. The compatible CLI reports the
+canonical blocker categories and structural diagnostics; do not duplicate lint
+or blocker parsing on this path. Treat returned diagnostics, including errors,
+as facts to surface rather than replacing them with optimistic manual state.
+
+## Fallback path
+
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki lint`, say:
+`Prism CLI lint unavailable; falling back to direct wiki reads.` Then read:
+
+- `knowledge/wiki/SCHEMA.md`
+- `knowledge/wiki/LIFECYCLE.md`
+- `knowledge/wiki/SETTINGS.md` if present
+- `knowledge/wiki/index.md`
+- `knowledge/wiki/status-board.md`
+- all files in `knowledge/wiki/features/`
+- all files in `knowledge/wiki/app-requirements/`
+- related design, API contract, advisory, business-rule, persona, and decision files as needed
+
+Check only facts provable from those files: malformed frontmatter, invalid
+enums, duplicate IDs, orphan or status board drift, broken links and sources (`broken-link`, `broken-anchor`), a link into an external repository without a local checkout (`external-repository-unresolved`), freshness from the log (`stale-page`, `never-verified`), a page with no index line (`missing-index-entry`), an index line for no page (`orphan-index-entry`), history dates on pages (`history-date-on-page`), malformed log
+entries (`malformed-log-entry`), a missing `schema-version` (`missing-schema-version`),
+open conflicts (`unresolved-conflict`) and malformed conflict records (`malformed-conflict`), a processed intake item without a `MANIFEST.md` (`processed-source-without-manifest`), evidence labels (`unknown-evidence-label`, `unlinked-claim`), decision supersession (`supersession-mismatch`, `superseded-decision-cited`),
+skipped board reviews without reasons, and the six canonical categories:
+`pending-board-review`, `missing-design`, `missing-app-requirements`,
+`unresolved-open-questions`, `api-contract-not-ready`, and
+`cross-app-dependency`. Also check the app rules: a feature before `done` that lists a
+retired app (`app-retired-in-scope`), a feature whose `## API surface` declares API work
+while no active app in its `apps` serves an API (`api-surface-without-api-app`), and a
+`done` feature whose `## Delivery evidence` `Release` cell is neither release evidence
+(`release:`, `tag:` or `deployment:` and a URL or workspace path) nor a delivery
+attestation (`attested by <Name>:` and a URL or path) (`release-evidence-required`).
+Freshness comes from `knowledge/wiki/log.md`: a page's last verification is the latest `verify`
+entry whose `paths` line lists it; it is `stale-page` (warning) when older than
+`wiki-stale-after-days` and `never-verified` (information) when there is none, for current-state
+pages only. It never changes a status and never blocks a lifecycle action. Resolve relative links
+and `sources` entries to existing files or folders, and `repo:<repository-id>/<path>` links through
+`prism.local.yml` by checking existence only. If SETTINGS is absent, invalid, or missing the key, use
+`wiki-stale-after-days: 14` and say so.
+
+## Rules and output
+
+- Keep the operation read-only. Do not write wiki files, refresh `WIKI_REPORT.md`,
+  append to `knowledge/wiki/log.md`, do not create lint report files unless the user explicitly asks for a persisted report.
+- Do not silently skip malformed pages. Keep skipped board reviews visible without
+  treating them as hard errors.
+- separate facts from advice: report findings first, then clearly label optional
+  suggested next steps.
+
+Return a lint summary, counts by category, affected paths, source evidence, and
+a WIKI_REPORT note stating that `knowledge/wiki/WIKI_REPORT.md` was not modified.
+If clean, state: `Wiki is consistent. No issues found.`

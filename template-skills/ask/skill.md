@@ -1,0 +1,58 @@
+---
+name: ask
+description: "Route a question to PO, designer, or dev by adding it to a feature's open questions table and appending the change to the wiki log."
+layers: [codex, command]
+codex:
+  display_name: "Ask"
+  short_description: "Route a feature question to PO, designer, or dev"
+  default_prompt: "Use @@invoke:ask@@ F-XXX \"question\" --to po|designer|dev to add a new open question to the feature."
+  implicit: false
+---
+
+# Ask — route a question to the right role
+
+Use this skill to record and route one explicit open question for a feature.
+
+## Usage
+
+`@@invoke:ask@@ [F-XXX] "[question text]" --to po|designer|dev`
+
+Examples:
+
+```text
+@@invoke:ask@@ F-003 "What is the maximum number of items a user can save?" --to po
+@@invoke:ask@@ F-007 "What does the overflow state look like at 50+ items?" --to designer
+```
+
+## Workflow
+
+1. Read `knowledge/wiki/features/[F-XXX]-[slug].md`
+2. Add a new row to the open questions table:
+   - Next question number for this feature
+   - Owner = the value of `--to`
+   - Status = `open`
+3. Show the user the updated open questions table for confirmation
+4. After confirmation, update the feature file
+5. Append a `log.md` entry in the log format that the wiki schema defines
+
+## Rules
+
+- write-capable skill
+- supported owner values are exactly `po`, `designer`, and `dev`
+- do not infer the owner automatically
+- do not write the updated question table until the user confirms it
+- record a gap in the Open questions table, which is the Unknown form of the evidence labels; do not write an `**Unknown:**` item for it
+
+## Output behavior
+
+Return:
+
+- feature ID and title
+- the new question row
+- the updated open questions table before writing
+
+## Error and stop conditions
+
+- if the feature file does not exist, return a clean missing-feature response
+- if `--to` is invalid, return a clean invalid-owner response
+- if the user does not confirm the updated table, stop without writing

@@ -76,7 +76,8 @@ class TemplateSourceTests(unittest.TestCase):
     def test_the_root_claude_file_is_only_the_import(self) -> None:
         self.assertEqual(IMPORT_LINE + "\n", (TEMPLATE / "CLAUDE.md.jinja").read_text(encoding="utf-8"))
 
-    def test_the_cursor_rules_are_the_project_pointer_and_the_scoped_stack_rules(self) -> None:
+    def test_the_cursor_rules_are_the_scoped_stack_rules_and_the_board_review_rule(self) -> None:
+        # Cursor reads AGENTS.md itself, so no rule repeats it: there is no always-on pointer rule.
         rules = sorted(path.name for path in (TEMPLATE / ".cursor" / "rules").iterdir())
         self.assertEqual(
             [
@@ -85,14 +86,13 @@ class TemplateSourceTests(unittest.TestCase):
                 "backend.mdc.jinja",
                 "mobile-android.mdc.jinja",
                 "mobile-ios.mdc.jinja",
-                "project.mdc.jinja",
                 "web.mdc.jinja",
             ],
             rules,
         )
-        project = (TEMPLATE / ".cursor" / "rules" / "project.mdc.jinja").read_text(encoding="utf-8")
-        self.assertTrue(project.startswith("---\nalwaysApply: true\n---\n"))
-        self.assertEqual(1, project.count("@AGENTS.md"))
+        for path in sorted((TEMPLATE / ".cursor" / "rules").iterdir()):
+            with self.subTest(rule=path.name):
+                self.assertNotIn("@AGENTS.md", path.read_text(encoding="utf-8"))
 
     def test_the_instruction_guidance_no_longer_names_the_context_file(self) -> None:
         for path in sorted(TEMPLATE.rglob("*")):
@@ -200,18 +200,17 @@ class GeneratedInstructionTests(unittest.TestCase):
         largest = max(len(self.text(f"{app}/AGENTS.md").encode("utf-8")) for app in APPS)
         self.assertLess(root + largest, 32 * 1024)
 
-    def test_the_cursor_rules_point_at_the_source_and_repeat_none_of_it(self) -> None:
+    def test_the_cursor_rules_repeat_none_of_the_source_and_carry_no_pointer_rule(self) -> None:
         rules = self.root / ".cursor" / "rules"
         self.assertFalse((rules / "wiki.mdc").exists())
-        project = (rules / "project.mdc").read_text(encoding="utf-8")
-        self.assertIn("alwaysApply: true", project)
-        self.assertEqual(1, project.count("@AGENTS.md"))
+        self.assertFalse((rules / "project.mdc").exists(), "Cursor reads AGENTS.md itself; a pointer rule would load it twice")
         agents_lines = {flat(line) for line in self.text("AGENTS.md").splitlines() if len(flat(line)) >= 60}
         for path in sorted(rules.glob("*.mdc")):
             with self.subTest(rule=path.name):
                 text = path.read_text(encoding="utf-8")
                 self.assertTrue(text.startswith("---\n"))
                 self.assertNotIn("{{", text)
+                self.assertNotIn("@AGENTS.md", text)
                 repeated = [line for line in (flat(item) for item in text.splitlines()) if line in agents_lines]
                 self.assertEqual([], repeated)
         for name, folders in (

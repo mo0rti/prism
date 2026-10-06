@@ -1,9 +1,10 @@
+{# Generated from template-skills/audit-feature/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: audit-feature
 description: Cross-check a feature spec against its recorded source intake. Use when validating traceability and looking for missing, drifted, or AI-invented requirements.
 ---
 
-# Audit Feature
+# Audit feature — cross-check spec against source intake
 
 Use this skill to audit one feature against its source documents.
 
@@ -13,25 +14,28 @@ Use this skill to audit one feature against its source documents.
 
 ## Workflow
 
-1. Read the feature file
-2. Read its `sources` frontmatter
-3. Read all listed source files
-4. Compare the feature spec to the sources
-5. Report findings as Confirmed, Untraced, Missed, and Drifted
-6. Append the audit result to `log.md` as an entry in the log format that the wiki schema defines
+1. Read `knowledge/wiki/features/[F-XXX]-[slug].md`
+2. Read the `sources` field in the frontmatter
+3. Read all files listed in sources (from intake/processed/ or intake/quarantined/)
+4. Compare spec against source documents:
+   - Are all requirements in the spec traceable to the sources?
+   - Are there items in the sources that didn't make it into the spec?
+   - Does the acceptance criteria match what was described in the source?
+   - If a board review exists: do the board's findings trace back to the spec content?
+5. Report findings:
+   - **Confirmed:** requirements with clear source traceability
+   - **Untraced:** requirements in the spec with no source — possibly hallucinated by AI
+   - **Missed:** items in the source not in the spec
+   - **Drifted:** items appearing in both but with meaningfully different framing
+6. Do not auto-fix. Report only. Append the audit result to `log.md` as an entry in the log format that the wiki schema defines.
 
 ## Rules
 
 - write-capable skill for `log.md` only
 - do not auto-fix the feature spec during the audit
-- treat untraced requirements as the highest-signal risk
+- treat untraced requirements as the highest-signal risk: a requirement with no source is a risk. Flag it clearly and suggest the team confirm whether it was an agreed addition or AI invention
 - if a board review exists, include traceability context where relevant
-
-## Canonical format reference
-
-Mirror the detailed workflow and output framing from:
-
-- `.claude/commands/audit-feature.md`
+- run this before any handoff for features with complex or ambiguous source documents
 
 ## Output behavior
 

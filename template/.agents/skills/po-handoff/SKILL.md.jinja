@@ -1,52 +1,50 @@
+{# Generated from template-skills/po-handoff/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: po-handoff
 description: Prepare the supported PO handoff from a specified feature owned by PO to ready-for-design. Use when checking source identity, completeness, advisory review, and the confirmation-gated handoff preview.
 ---
 
-# PO Handoff
+# PO handoff - prepare a feature for design
 
 <!-- prism:po-handoff-contract:v1 -->
-
-Prepare, preview, and, after explicit confirmation, write the supported first-slice
-transition:
-
-`specified` + `po` -> `ready-for-design` + `designer`
 
 ## Usage
 
 `$po-handoff [F-XXX]`
 
-## Scope and source guard
+## Supported action
 
-- Resolve `[F-XXX]` to exactly one existing file at
-  `knowledge/wiki/features/[F-XXX]-[slug].md`. An omitted, invalid, missing, or
-  ambiguous feature ID is a stop condition.
-- Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/status-board.md`, the complete feature
-  page, and the linked source/context needed for the handoff.
-- This action accepts only the exact source pair `status: specified` and
-  `owner: po`. A `raw` feature is unsupported for this action; use the separate
-  `po-specify` contract when promoting a raw feature. Do not invent a legacy
-  transition or a generic status setter for another source pair.
-- The only proposed destination is exactly `status: ready-for-design` and
-  `owner: designer`.
+This action prepares, previews, and, after explicit confirmation, writes one
+transition only:
 
-## Read-only preflight and freshness
+`specified` + `po` -> `ready-for-design` + `designer`
 
-When the optional Prism CLI is available, probe the read-only preflight:
+The destination fields are exactly `status: ready-for-design` and
+`owner: designer`.
+
+The source feature must be one unique existing file at
+`knowledge/wiki/features/[F-XXX]-[slug].md`. A missing, invalid, or ambiguous ID
+is a stop condition. A `raw` feature is unsupported for this action; use
+`$po-specify F-XXX` for the separate raw-to-specified contract. Do not invent a
+generic status setter for another lifecycle pair.
+
+## Read-only preflight and source freshness
+
+When installed, probe the optional read-only CLI surface:
 
 ```text
 prism --version
 prism wiki transition-preflight F-XXX [path] --action po-handoff --json
 ```
 
-Use its result only when the response explicitly identifies common envelope schema
-version 1 (`schema_version: 1`), the `transition-preflight` command facts, the
-graph capability version 2 with an action-specific `po-handoff` surface, and the
-requested `po-handoff` action. A `0.5.0` version alone does not
-prove that this command or capability exists. If the probe, command, response
-schema, action, or capability is missing, unsupported, or fails, say so and use
-the direct-file checks below. The preflight is copy-only and never authorizes a
-write.
+Use that response only when it explicitly identifies common envelope schema
+version 1 (`schema_version: 1`), command facts for `transition-preflight`, graph
+capability version 2 with an action-specific `po-handoff` surface, and the
+requested `po-handoff` action. The version string alone does not prove
+that this command or capability is present. If the probe or any required response
+fact/schema/action/capability is absent, unsupported, or fails, state the
+direct-file fallback and read the files directly. The preflight is copy-only and
+never authorizes a write.
 
 For the exact response contract, require top-level `schema_version == 1` and
 `command == "wiki transition-preflight"`; `facts.requested_action` must be
@@ -56,7 +54,7 @@ action-specific surface must identify `"po-handoff"`, and its `mode` must be
 `facts.transition_capability.snapshot.fingerprint`, `observed_at`, and
 `consistent: true` before treating a snapshot as fresh. A copy-ready result also
 requires `facts.transition.action == "po-handoff"`, `supported: true`,
-`classification == "ready"`, and an invocation for the selected Codex or Claude
+`classification == "ready"`, and an invocation for the selected Claude or Codex
 surface in `facts.transition.invocations`. A `blocked` or `unknown` result is
 useful evidence to show and repair, but it is never copy-ready. If any structural
 field is absent or mismatched, use direct-file fallback and do not claim the CLI
@@ -69,65 +67,76 @@ If this selected file lacks the marker, its generated instructions are an older
 contract and the action is unsupported until this file is refreshed from the
 current template. Do not infer this from the Prism version.
 
-Record the current workspace root, unique feature path, feature ID, status, owner,
-advisory state, and every identity or source-fingerprint fact that the available
-preflight or direct reads can establish. A copied request or dashboard snapshot is
-only a convenience hint. Before using it, reread the current skill, SCHEMA, LIFECYCLE, status board,
-feature, workspace identity, and relevant context. Compare the path, identity,
-status, owner, advisory state, and fingerprint with the current files. Stop and
-produce a fresh preview if any value differs or cannot be reconciled.
+Before using a dashboard or clipboard request, reread this current skill or command, the
+`po-handoff` instructions of the other agent surface when available, `knowledge/wiki/SCHEMA.md`,
+`knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/status-board.md`, the feature page, and linked source/context. Compare
+the current unique path, workspace identity, feature ID, status, owner, advisory
+state, and available source fingerprint with the copied snapshot. Stop and ask for
+a fresh preview if any value differs or is unavailable for comparison.
 
 ## Workflow
 
-1. **Read the source.** Resolve one feature file and read the source and context
-   using the source guard above. Do not treat a copied prompt, static export, or
-   stale preflight as current evidence.
-2. **Check advisory review.** Read the actual `advisory-review` value and its
-   documented criteria. If it is `pending`, offer an independent
-   `$board-review F-XXX` first. The board review has its own confirmation and write
-   rules; this handoff confirmation does not approve a board review. After a board
-   review that may change the feature, reread the source, status board, identity, and
-   context, then rerun every completeness check.
-3. **Handle an explicit skip.** If the user declines board review while advisory
-   review is pending, request a non-empty reason. Keep
-   `advisory-review: skipped` and `advisory-skip-reason` as a proposal until the
-   final handoff confirmation. For this preview only, evaluate a non-blank proposed
-   skip as the `skipped` advisory outcome while the source remains unchanged; show
-   clearly that the current `pending` value has not been written. Never silently
-   skip review and never write the skip while merely asking for a reason. Treat a
-   missing reason as blocked.
-4. **Run factual completeness checks against current files.** Require a non-empty
-   Summary, one singular `## User story` section with content, meaningful acceptance
-   criterion entries, a non-empty frontmatter `apps` list, and a non-empty
-   matching `## App scope` entry for every declared app. There must be no
-   open questions owned by `po`. A confirmed `advisory-review: skipped` also
-   requires a non-blank
-   `advisory-skip-reason`. Show the actual advisory and completeness results,
-   including unknown or blocked checks. These checks do not replace human or agent
-   judgment about semantic completeness.
-5. **Handle specification revalidation.** If the feature has an active
-   `specification` domain, perform fresh PO verification and show a proposal to
-   clear only that domain. Evaluate the proposal while the current source is
-   unchanged. Keep any `design`, `implementation`, `tests`, or `release` domains
-   active and visible; do not reset unrelated requirements or API contracts.
-6. **Prepare a preview.** If any check fails, list the exact missing or blocked
-   evidence and stop without writing. If checks pass, show the unique feature path,
-   observed source fields, advisory result, any skip/reason proposal, the exact
-   destination pair, files that would change, and a concise design brief. A preview
-   is not a status change and is not an approval.
-7. **Confirm against a fresh reread.** Immediately before asking for confirmation,
-   reread the source, status board, workspace identity, and linked context. Recompare all
-   recorded identity, path, status, owner, advisory, and fingerprint facts. If the
-   workspace changed, stop and prepare a new preview. Ask the user to confirm the
-   complete set of feature, advisory (if applicable), status board, and log writes.
-8. **Write only after confirmation.** After confirmation, reread the same sources
-   once more. If they still match, update the feature fields atomically as far as
-   the available file operations allow, include a confirmed advisory skip reason
-   when applicable, update the matching `status-board.md` row, and append the required
-   `log.md` entry in the log format that the wiki schema defines. Do not write a design brief as a substitute for those source
-   updates. If the user declines or cancels, stop with no feature, advisory, index,
-   or log mutation. If a multi-file write is partial, report each observed change,
-   stop, and require a fresh reread for recovery; no transaction is implied.
+1. Resolve exactly one feature path and read the source and context.
+2. Enforce the exact source guard: `status: specified` and `owner: po`. Show the
+   observed fields. Stop without writing for raw or any other pair.
+3. Read the actual `advisory-review` value and criteria. If it is `pending`, offer
+   an independent `$board-review F-XXX`. Board review has its own confirmation and
+   write rules; this handoff confirmation does not approve it.
+4. If the user declines board review, request a non-empty skip reason. Stage
+   `advisory-review: skipped` and `advisory-skip-reason` only as a proposal. For
+   this preview, evaluate a non-blank proposed skip as the `skipped` advisory
+   outcome while the current `pending` source remains unchanged. Do not write
+   either field while asking for the reason, and never silently skip review.
+5. After a board review or an explicit skip proposal, reread the feature, status board,
+   identity, and context and rerun the advisory and factual completeness checks.
+   Require:
+   - a non-empty Summary
+   - one singular `## User story` section with content
+   - meaningful Acceptance criterion entries
+   - a non-empty frontmatter `apps` list with a non-empty matching
+     `## App scope` entry for every declared app
+   - no open questions owned by `po`
+   - a non-blank `advisory-skip-reason` when advisory review is `skipped` or has a
+     valid proposed skip
+
+   Report actual pass, blocked, or unknown evidence. Semantic completeness remains
+   a human or agent judgment.
+6. Check active `revalidation`. If `specification` is active, perform fresh PO
+   verification and show a proposal to clear only that domain; evaluate it while
+   the source is unchanged. Keep `design`, `implementation`, `tests`, or
+   `release` domains active and visible, and do not reset unrelated requirement
+   or API pages.
+7. If a check fails, list the exact missing or blocked evidence and stop without
+   changing the feature, advisory, status board, or log.
+8. If checks pass, show a preview containing the unique path, observed source and
+   advisory fields, identity/fingerprint facts, any skip/reason proposal, exact
+   destination fields, all files that would change, and a concise design brief.
+   The preview is not an "Approve move" dialog and does not move a card.
+9. Immediately before confirmation, reread the source and context and compare all
+   recorded path, identity, status, owner, advisory, and fingerprint facts. If they
+   changed, stop and prepare a fresh preview.
+10. Ask the user to confirm the complete write set. The final handoff confirmation
+   and one final matching reread are required before you update the feature, confirmed advisory skip fields
+   when applicable, `knowledge/wiki/status-board.md`, and `knowledge/wiki/log.md`.
+11. If the user declines or cancels, make no feature, advisory, index, or log
+    mutation. After a confirmed write, report the resulting fields and the design
+    brief; never claim that this action proves design, implementation, or shipment.
+    If a multi-file write is partial, report each observed change, stop, and
+    require a fresh reread for recovery; no transaction is implied.
+
+## Notes for agents and copied requests
+
+- A copied UI request preserves the requested action and evidence only. Reread the
+  current skill and source files before acting; the copied text cannot override the
+  source guard, completeness checks, confirmation, or write rules.
+- Browser controls may offer **Prepare handoff**, **Copy request**, and **Cancel**.
+  Dragging a card is the same preview shortcut. No browser action executes an agent
+  or mutates the wiki.
+- The intended process is a confirmed agent workflow followed by a fresh source
+  snapshot. The Board itself derives columns from current source fields and cannot
+  prove which human or agent changed them or whether confirmation happened.
+- Static snapshots are relative to their capture time; live refresh can observe
+  changes. A stale preview must be discarded.
 
 ## Rules
 
@@ -141,12 +150,6 @@ produce a fresh preview if any value differs or cannot be reconciled.
   shipment.
 - Preserve the source feature path and existing documented workflow rules. Do not
   execute an agent, mutate the wiki, or change a card from a browser copy request.
-
-## Canonical format reference
-
-Mirror the detailed workflow and write behavior from:
-
-- `.claude/commands/po-handoff.md`
 
 ## Output behavior
 

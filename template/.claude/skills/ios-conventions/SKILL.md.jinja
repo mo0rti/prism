@@ -1,3 +1,4 @@
+{# Generated from template-skills/ios-conventions/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: ios-conventions
 description: iOS repository rules for Swift, SwiftUI, MVVM, DI, navigation, networking, and documentation sync. Use when writing or reviewing app code in this generated project, especially for architecture-sensitive changes.
@@ -6,22 +7,26 @@ user-invocable: false
 
 # iOS Conventions
 
-Apply these rules whenever you change iOS app code in this repository.
+Use this skill for repository-wide iOS guardrails.
 
 ## Role boundary
 
-- Use this skill for repository-wide guardrails that apply across features.
-- Keep feature sequencing in `ios-feature-delivery`, backend-facing contract details in `ios-contract-alignment`, shared SwiftUI guidance in `swiftui-design-system`, and task selection in `ios-build-verify`.
+- Use this skill for cross-feature conventions.
+- Keep feature orchestration in `ios-feature-delivery`.
+- Keep backend-facing contract decisions in `ios-contract-alignment`.
+- Keep shared SwiftUI reuse and styling decisions in `swiftui-design-system`.
+- Keep build selection in `ios-build-verify`.
 
 ## Core rules
 
 - Follow MVVM with the generated structure under `{{ project_slug }}/`.
-- All API calls go through `APIClient`; do not create raw `URLSession` calls in features.
+- All API calls use `APIClient`; never create raw `URLSession` calls in features.
 - Repositories have protocols and implementations in the same file under `Data/Repository/`.
-- ViewModels that drive SwiftUI state are `@MainActor @Observable` by default, and views use `@Bindable` when they need mutation access.
+- ViewModels that drive SwiftUI state are `@MainActor @Observable` by default, and views use `@Bindable` when mutation access is needed.
 - Use `async/await` for async operations.
 - Because UI-driving ViewModels are `@MainActor`, their methods already run on the main actor by default. Reach for `MainActor.run` only when non-isolated code needs to publish back into a main-actor-owned ViewModel or UI state.
 - Prefer `Sendable` value types for DTOs, domain models, and helper structs that cross actor boundaries.
+- Repository protocols and implementations that cross into `@MainActor` ViewModels should also be `Sendable` so Swift 6 concurrency checks stay build-clean.
 - Use `TokenStorage` for auth and session state; do not bypass it for token access.
 - `DependencyContainer` is injected with SwiftUI environment at the app root. Screens usually receive feature ViewModels through initializers, not environment objects.
 - Keep long-lived `@Observable` instances out of frequently recomputed `body` code paths. Parent views or router-level owners should create them once and pass them down.
@@ -35,13 +40,13 @@ Apply these rules whenever you change iOS app code in this repository.
 
 ## Reference files
 
-Read only the reference file the task needs:
+Load only the reference file the task needs:
 
 - `references/swift6-observation-and-di.md` for `@MainActor`, Observation, `@Bindable`, environment injection, and ViewModel ownership rules
 - `references/navigation.md` for route ownership, `AppRouter`, `NavigationStack`, sheet usage, and iPad-only multi-column guidance
 - `references/swiftdata-patterns.md` for `ModelContext` actor confinement, query ownership, and schema-evolution basics
 
-## Read these docs only when needed
+## Read when needed
 
 - `mobile-ios/docs/repo-orientation.md`
 - `mobile-ios/docs/architecture.md`
@@ -57,3 +62,4 @@ Read only the reference file the task needs:
 
 - Run `task mobile-ios:build` on Mac after architecture-sensitive changes.
 - If you are not on Mac, explicitly report which iOS verification steps were skipped, why they were skipped, and that real validation is deferred to Mac CI or a Mac follow-up session.
+- If implementation changes docs-described behavior, update the relevant file in `mobile-ios/docs/` in the same session.

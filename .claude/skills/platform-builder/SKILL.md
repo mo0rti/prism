@@ -36,16 +36,15 @@ $ARGUMENTS
    - Reference skills with `@.claude/skills/` syntax
    - Include key conventions, doc-sync rules, and feature workflow
 
-7. **Create platform skills** - Add project skills for the platform:
-   - Claude skills in `template/.claude/skills/`
-   - Codex skills in `template/.agents/skills/` when the workflow should be available in generated projects
+7. **Create platform skills** - Add project skills for the platform as sources in `template-skills/<name>/skill.md`, then run `python scripts/build-skill-layers.py`; the generator writes the generated-project layers, so never edit `template/.claude/skills/`, `template/.agents/skills/`, `template/.claude/commands/` or `template/.cursor/rules/` by hand:
+   - list `claude-skill` and `codex` in `layers` when the guidance should be available in both tools, and give the skill the platform's `platforms` condition
    - Keep skill scope orthogonal: conventions, contract alignment, delivery, and verification should not collapse into one giant skill
 
 8. **Update cross-cutting files**:
    - `template/Taskfile.yml.jinja` - add platform tasks
    - `template/CLAUDE.md.jinja` - add to architecture map and platform-specific context section
    - `template/AGENTS.md.jinja` - mirror changes
-   - `template/.cursor/rules/{platform}.mdc.jinja` - add platform rule
+   - `template-skills/cursor-{platform}/skill.md` - add the platform's Cursor rule (a source whose only layer is `cursor`)
    - `template/.github/workflows/{platform}.yml.jinja` - add CI/CD workflow
    - `template/_templates/` - add Hygen generators if applicable
 

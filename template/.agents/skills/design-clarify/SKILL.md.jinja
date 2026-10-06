@@ -1,3 +1,4 @@
+{# Generated from template-skills/design-clarify/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: design-clarify
 description: Resolve open questions assigned to the designer. Use when working through design-owned questions and updating feature and design pages as answers are confirmed.
@@ -13,34 +14,33 @@ Use this skill to work through open designer-owned questions one feature at a ti
 
 ## Workflow
 
+Identical in structure to `$po-clarify` but filters for open questions where owner = `designer`.
+
 1. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
-2. Read all feature files
-3. Collect open questions where owner = `designer` and status = `open`
-4. Present the questions grouped by feature, one feature at a time
+2. Read all files in `knowledge/wiki/features/`
+3. Collect all open questions where owner = `designer` and status = `open`
+4. Present questions grouped by feature, one feature at a time
 5. For each answer:
-   - update the open questions table in the feature file
-   - update the design page when the answer reveals missing design detail or resolves a state gap
+   - Update the open questions table in the feature file
+   - If the answer reveals a missing design artifact, note it in the design page; when the
+     feature has no design page, record the answer in the question table only and tell the
+     user that design intake can attach a page later
+   - If the answer resolves a design state gap, update the design page's "States covered" section
 6. Update the feature's row in `status-board.md` if any feature status changes
-7. Append a summary entry to `log.md` in the log format that the wiki schema defines
+7. Append a `log.md` entry in the log format that the wiki schema defines, with a summary of questions resolved
 
 ## Rules
 
 - write-capable skill
 - present questions one feature at a time
-- confirm each update before moving to the next question
-- flag board-generated questions clearly and treat them as high priority
+- after each answer, confirm what you updated before moving to the next question
+- questions tagged "[Board: ...]" came from a board review: flag them clearly and treat them as high priority, because they represent domain expert concerns the designer must address
 - update the design page when answers resolve previously missing UI states
 - on the feature page change only the Open questions table; leave every other section,
-  including Acceptance criteria and App scope, exactly as it is
+  including Acceptance criteria and App scope, exactly as it is; design detail belongs on the design page
 - if one feature hits a contradiction, stop updates for that feature only
 - do not stop the whole clarify session unless the user asks to stop
 - write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
-
-## Canonical format reference
-
-Mirror the detailed workflow and write behavior from:
-
-- `.claude/commands/design-clarify.md`
 
 ## Output behavior
 

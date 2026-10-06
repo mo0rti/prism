@@ -11,6 +11,8 @@ on:
       - "scripts/check-web-auth.mjs"
       - "prism_cli/**"
       - "template/**"
+      - "template-skills/**"
+      - "scripts/build-skill-layers.py"
   pull_request:
     paths:
       - ".github/workflows/template-validation.yml"
@@ -19,6 +21,8 @@ on:
       - "scripts/check-web-auth.mjs"
       - "prism_cli/**"
       - "template/**"
+      - "template-skills/**"
+      - "scripts/build-skill-layers.py"
 
 jobs:
   contract-validation:

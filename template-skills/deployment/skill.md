@@ -1,0 +1,89 @@
+---
+name: deployment
+description: "Deploy the generated stacks. Worked examples for the backend container on Azure Container Apps and the web apps on Cloudflare Workers through OpenNext, plus notes on mobile store releases. Use when the user asks to deploy, host, release, add a deploy job to CI or choose a cloud. The cloud choice, secrets and deployment belong to the user and their agent."
+layers: [codex, claude-skill]
+codex:
+  display_name: "Deployment"
+  short_description: "Deploy the generated stacks from worked examples"
+  default_prompt: "Use @@invoke:deployment@@ when the user asks to deploy, host or release the backend, web or mobile apps."
+  implicit: true
+reference-platforms:
+  references/azure: [backend]
+  references/azure-setup.md: [backend]
+  references/cloudflare: [web-user-app, web-admin-portal]
+  references/cloudflare/wrangler.web-user-app.jsonc: [web-user-app]
+  references/cloudflare/dev.vars.web-user-app.example: [web-user-app]
+  references/cloudflare/wrangler.web-admin-portal.jsonc: [web-admin-portal]
+  references/cloudflare/dev.vars.web-admin-portal.example: [web-admin-portal]
+  references/cloudflare-setup.md: [web-user-app, web-admin-portal]
+  references/mobile-store-release.md: [mobile-android, mobile-ios]
+---
+
+# Deployment
+
+This project does not choose a cloud, hold credentials or deploy anything. The generated CI builds and tests only. The `references/` folder of this skill holds the scripts and configuration of a worked example for one choice per stack. Treat them as a starting point to adapt, not as the project's deployment.
+
+## Ownership
+
+- The user and their agent own the cloud choice, the secrets and the deployment. Prism owns neither.
+- Ask which hosting the user wants before running or copying anything. If it is not Azure Container Apps or Cloudflare, use the examples only as a pattern.
+- Record the choice as a decision page once it is settled (`knowledge/wiki/decisions/`, format in its `_FORMAT.md`).
+- Never run a script against a cloud account, create a secret or push an image without the user's explicit go-ahead for that account.
+- Never commit a secret. Keep credential files out of git before creating them.
+
+## What The Project Provides
+{%- if "backend" in platforms %}
+
+- `backend/Dockerfile`: a multi-stage image that builds the Spring Boot jar with the Gradle wrapper, exposes port 8080 and checks `/actuator/health`.
+- `docker-compose.yml`: local development only, the backend with PostgreSQL. It is not a production definition.
+- Backend settings come from environment variables (`SPRING_DATASOURCE_*`, `JWT_*`, the OAuth provider variables, `CORS_ALLOWED_ORIGINS`). `.env.example` lists the local values.
+{%- endif %}
+{%- if "web-user-app" in platforms or "web-admin-portal" in platforms %}
+- Web apps that pass `npm run lint`, `npm run typecheck` and `npm run build` with no hosting files. `API_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, `AUTH_URL` and the provider variables are the runtime configuration; `.env.example` lists the local values.
+{%- endif %}
+{%- if "mobile-android" in platforms or "mobile-ios" in platforms %}
+- Mobile apps with Fastlane lanes under their `fastlane/` folders; CI builds and tests them but does not release them.
+{%- endif %}
+{%- if "backend" in platforms %}
+
+## Backend: Azure Container Apps
+
+Reference: `references/azure-setup.md` (the guide) and `references/azure/` (the scripts and config examples).
+
+1. Confirm the subscription, region and environment (`prod`, `acc`, `dev`) with the user.
+2. Copy `references/azure/` into the repository as `infra/azure/` and add the credential files to `.gitignore` (the guide lists them). The scripts find the repository root two folders above themselves.
+3. Copy `azure-config.env.example` to `azure-config.env` and `app-secrets.env.example` to `app-secrets.env`; the user fills in the values.
+4. Run the numbered scripts in order, from `00-setup-resource-group.sh` to `07-show-deployment-info.sh`: resource group, container registry and log analytics, PostgreSQL Flexible Server, Container Apps environment, blob storage, image build and push, container app deploy, deployment info.
+5. Verify with `curl https://<backend-url>/actuator/health`.
+6. Redeploy with `update-backend.sh`: it rebuilds the image, pushes it and creates a new revision.
+
+Other scripts: `add-custom-domain.sh`, `check-secrets.sh`, `show-database-credentials.sh`, `test-database-connection.sh`, `cleanup.sh` (deletes the whole resource group; confirm with the user first).
+
+The database, its schema migrations and its production sizing are project decisions. The example provisions PostgreSQL because the local development service is PostgreSQL.
+{%- endif %}
+{%- if "web-user-app" in platforms or "web-admin-portal" in platforms %}
+
+## Web: Cloudflare Workers Through OpenNext
+
+Reference: `references/cloudflare-setup.md` (the guide) and `references/cloudflare/` (`wrangler` configuration, `open-next.config.ts` and local preview variables).
+
+1. Confirm the Cloudflare account and the public URLs with the user.
+2. For each web app, copy the OpenNext adapter and Wrangler files from `references/cloudflare/`, add the `@opennextjs/cloudflare`, `wrangler` and `esbuild` dev dependencies and the `build:cloudflare`, `preview` and `deploy` scripts, and ignore `.open-next/`, `.wrangler/` and `.dev.vars` (the guide has the exact lines).
+3. Set the non-secret variables in `wrangler.jsonc`; the user creates the secrets with `npx wrangler secret put`.
+4. Run `npm run preview` for a local production check, then `npm run deploy` once the user approves.
+5. Set `CORS_ALLOWED_ORIGINS` on the backend to the public web URLs.
+{%- endif %}
+{%- if "mobile-android" in platforms or "mobile-ios" in platforms %}
+
+## Mobile: Store Releases
+
+Reference: `references/mobile-store-release.md`. It describes a tag-triggered release job that runs the Fastlane lanes, and the signing secrets it needs. The user owns the store accounts and the signing material.
+{%- endif %}
+
+## CI Deploy Jobs
+
+Generated workflows build and test only. To deploy from CI, add a job to the matching workflow with the example in the guide: it runs only on `main` (or a release tag), uses `environment: production`, and reports a warning instead of deploying while a secret is missing. Describe the secrets to set; never write their values.
+
+## Verification
+
+Report what was actually run and observed: the health check status, the deployed URL, the revision or Worker version. If a step needed an account or secret that was not available, say so and stop at that step.

@@ -1,3 +1,4 @@
+{# Generated from template-skills/error-handling/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: error-handling
 description: Backend exception and API error conventions. Use when adding or reviewing ApiException subclasses, error codes, validation handling, or service/controller error flows under `backend/`.
@@ -25,11 +26,13 @@ Use this skill for backend exception taxonomy and API error-shape decisions.
 
 ## Built-In Exceptions
 
-- `NotFoundException` -> `404 NOT_FOUND`
-- `ConflictException` -> `409 CONFLICT`
-- `UnauthorizedException` -> `401 UNAUTHORIZED`
-- `ForbiddenException` -> `403 FORBIDDEN`
-- `BadRequestException` -> `400 BAD_REQUEST`
+| Exception | Status | Default Code | Use For |
+|-----------|--------|-------------|---------|
+| `NotFoundException` | 404 | `NOT_FOUND` | Entity not found by ID |
+| `ConflictException` | 409 | `CONFLICT` | Duplicate or already exists |
+| `UnauthorizedException` | 401 | `UNAUTHORIZED` | Missing or invalid auth |
+| `ForbiddenException` | 403 | `FORBIDDEN` | Insufficient permissions |
+| `BadRequestException` | 400 | `BAD_REQUEST` | Invalid input or business rule violation |
 
 ## Rules
 

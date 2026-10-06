@@ -1,0 +1,76 @@
+---
+name: ios-feature-delivery
+description: "Cross-layer feature orchestration for the generated iOS app. Use when a task spans multiple layers and needs scoped planning, companion-skill selection, validation, and documentation updates across models, networking, repositories, ViewModels, SwiftUI screens, navigation, and docs."
+layers: [codex, claude-skill]
+platforms: [mobile-ios]
+codex:
+  display_name: "iOS Feature Delivery"
+  short_description: "Coordinate multi-layer iOS feature work"
+  default_prompt: "Use @@invoke:ios-feature-delivery@@ to coordinate a larger iOS feature change."
+  implicit: false
+claude-skill:
+  argument-hint: "[feature-description]"
+  disable-model-invocation: true
+---
+
+# iOS Feature Delivery
+
+Use this skill to coordinate non-trivial feature work that crosses layers.
+::: only claude-skill
+Invoke it explicitly with `/ios-feature-delivery <feature-description>` when you want the full feature workflow applied.
+:::
+
+## Role boundary
+
+- Use this skill as the delivery checklist and orchestration layer for multi-step work.
+- Pull in companion skills for detailed rules instead of restating repository, contract, UI, or verification conventions here.
+
+## Request
+
+$ARGUMENTS
+
+## 1. Research the current shape
+
+- Inspect the surrounding code under `{{ project_slug }}/Data/`, `DI/`, `Navigation/`, and `UI/`.
+- Read only the docs needed for the task, starting with `mobile-ios/docs/repo-orientation.md`, `mobile-ios/docs/conventions-and-workflow.md`, and `mobile-ios/docs/architecture.md`.
+- Reuse nearby patterns before inventing a new one.
+
+## 2. Verify contracts and parity
+
+- Cross-check `shared/api-contracts/openapi.yml` when endpoints, DTOs, or enums are involved.
+{% if "backend" in platforms %}- Cross-check `backend/` when behavior or response semantics need confirmation.
+{% endif %}{% if "mobile-android" in platforms %}- Cross-check `mobile-android/` when product parity or UX intent matters.
+{% endif %}
+
+## 3. Map affected layers
+
+Cover only the layers the feature truly needs:
+
+- Domain models
+- API endpoints and network transport
+- Repository protocol plus implementation
+- ViewModel state and intent methods
+- SwiftUI screens and shared UI
+- Navigation routes and auth gating
+- Dependency wiring in `DependencyContainer`
+- Documentation updates in `mobile-ios/docs/`
+
+## 4. Use the right companion skills
+
+- Use `@@invoke:ios-conventions@@` for repository-wide Swift, SwiftUI, MVVM, navigation, and doc-sync rules.
+- Use `@@invoke:ios-contract-alignment@@` for endpoint, DTO, `APIClient`, and auth-boundary decisions.
+- Use `@@invoke:swiftui-design-system@@` for shared UI language, reusable components, and visual consistency.
+- Use `@@invoke:ios-testing@@` for XCTest baselines, Swift Testing guidance, and choosing between unit and UI coverage.
+- Use `@@invoke:ios-build-verify@@` to choose the smallest trustworthy validation.
+
+## 5. Execute and close out
+
+- Implement only the layers the feature actually touches.
+- If ViewModel or repository logic is added or changed, add at least one targeted test and confirm it passes with `task mobile-ios:test-unit` on Mac before close-out. Escalate to `task mobile-ios:test` when the change also affects app flow or UI behavior.
+- If UI or navigation behavior is added or changed, confirm accessibility labels, traits, touch targets, and stable identifiers are still correct before close-out.
+- If shared UI in `UI/Common/` is added or changed, include `#Preview` coverage that applies the shared theme tokens where applicable.
+- If storage, file access, user defaults, or a new third-party SDK is introduced, review privacy manifest guidance and update `PrivacyInfo.xcprivacy` when the project starts using covered APIs.
+- If `project.yml` structure may be affected, rerun `task mobile-ios:generate-project` before close-out.
+- If actors, `@Observable` ViewModels, or async/await boundaries are touched, confirm no `@unchecked Sendable` or `nonisolated` workarounds were introduced without explicit justification.
+- Run at least `task mobile-ios:build` on Mac, plus stronger targeted verification when the change crosses logic or integration boundaries.
+- Update any affected docs in the same session.

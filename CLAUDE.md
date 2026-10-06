@@ -11,6 +11,7 @@ The questionnaire keeps roadmap-facing options visible. Backend, Android and web
 ```
 docs/                    # Documentation for this template repository
 copier.yml              # Template questionnaire (project identity, platforms, auth)
+template-skills/        # The one source of every skill, command and Cursor rule (generated into template/)
 template/               # All templated output - Jinja2 files (.jinja suffix stripped on generation)
   backend/              # Spring Boot 4 (Kotlin 2.2+, Java 21)
   web-user-app/         # Next.js user-facing web app
@@ -19,9 +20,9 @@ template/               # All templated output - Jinja2 files (.jinja suffix str
   mobile-ios/                  # Swift 6 + SwiftUI (MVVM)
   shared/               # OpenAPI 3.1 spec + design tokens
   docs/                 # Project-wide reference docs (architecture, API conventions, deployment)
-  .claude/              # Claude context for generated projects (commands, skills)
-  .agents/              # Codex skills for generated projects
-  .cursor/              # Cursor rules for generated projects: project.mdc references AGENTS.md, the others scope stack facts
+  .claude/              # Claude commands and skills for generated projects (generated from template-skills/)
+  .agents/              # Codex skills for generated projects (generated from template-skills/)
+  .cursor/              # Cursor rules for generated projects: scoped stack facts and the board review (generated from template-skills/)
   .github/              # CI/CD workflow templates
   _templates/           # Hygen in-project generators
 ```
@@ -45,8 +46,9 @@ wiki commands from a generated project against this repository.
 - **Test with `copier copy`** after changes: `copier copy --trust . C:\temp\template-test`
 - **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
 - **User docs match behaviour**: keep the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md` equal to the CLI and service. After changing a documented command, message or security check, run it in a disposable workspace and fix the docs to match the real output
-- **One source of generated-project rules**: `template/AGENTS.md.jinja` (and each platform's `AGENTS.md.jinja`) holds the rules; every `CLAUDE.md.jinja` only imports its sibling with `@AGENTS.md` plus Claude Code notes no other tool shares; there is no `CONTEXT.md`; `template/.cursor/rules/project.mdc.jinja` references `@AGENTS.md`; add a rule once, where it belongs
-- **Packaged workflow assets**: the 26 canonical workflow skills, `template/knowledge/` and the "Connected board workflow" section of `template/AGENTS.md.jinja` are packaged into `prism_cli/assets/workflow-v1.json` (a `.jinja` file under `template/knowledge/` ships rendered in its workflow-only form); run `python scripts/build-workflow-assets.py` after editing them (`--check` verifies), because a new digest invalidates existing board grants; the asset is generated, so never hand-edit it; its `previous_digests` history is empty, and `PREVIOUS_DIGESTS` in the build script records the digests of earlier shipped installer-owned files from the first release that has external users, so `prism workflow upgrade` can then replace an unmodified copy
+- **One source of generated-project rules**: `template/AGENTS.md.jinja` (and each platform's `AGENTS.md.jinja`) holds the rules; every `CLAUDE.md.jinja` only imports its sibling with `@AGENTS.md` plus Claude Code notes no other tool shares; there is no `CONTEXT.md`; Cursor reads `AGENTS.md` itself, so no Cursor rule references it; add a rule once, where it belongs
+- **One source of generated skills**: every skill, command and Cursor rule is `template-skills/<name>/skill.md`; edit the source, run `python scripts/build-skill-layers.py`, then `python scripts/build-workflow-assets.py` when a packaged workflow skill changed; never hand-edit a file under `template/.agents/skills/`, `template/.claude/commands/`, `template/.claude/skills/` or `template/.cursor/rules/`, because the generator owns them and `--check` and a test fail when one differs from its source
+- **Packaged workflow assets**: the 26 canonical workflow skills (generated from `template-skills/`), `template/knowledge/` and the "Connected board workflow" section of `template/AGENTS.md.jinja` are packaged into `prism_cli/assets/workflow-v1.json` (a `.jinja` file under `template/knowledge/` ships rendered in its workflow-only form); run `python scripts/build-workflow-assets.py` after editing them (`--check` verifies), because a new digest invalidates existing board grants; the asset is generated, so never hand-edit it; its `previous_digests` history is empty, and `PREVIOUS_DIGESTS` in the build script records the digests of earlier shipped installer-owned files from the first release that has external users, so `prism workflow upgrade` can then replace an unmodified copy
 - **Changelog**: record user-visible changes under `Unreleased` in `CHANGELOG.md`; version numbers and release tags are chosen at release time
 - **Current state only**: instruction and guidance files describe current behaviour; dates and history belong in logs, ledgers and the changelog
 - **Model and effort**: launch every agent run with an explicit model and effort, and keep the full output limit
@@ -59,6 +61,11 @@ copier copy --trust . C:\temp\template-test
 
 # Test with specific options
 copier copy --trust --data 'project_name=TestApp' --data 'platforms=[backend, mobile-android]' . C:\temp\template-test-mobile
+
+# Rebuild the generated skill layers after editing template-skills/, then the packaged asset
+python scripts/build-skill-layers.py
+python scripts/build-workflow-assets.py
+python scripts/build-skill-layers.py --check
 
 # Update an existing generated project through Prism's manifest/provenance checks
 cd /path/to/generated-project
@@ -84,5 +91,7 @@ prism board serve . --port 8765
 - `docs/maintainer-workflow.md` - template maintenance workflow and validation variants
 - `docs/questionnaire.md` - questionnaire inputs and maturity notes
 - `copier.yml` - template configuration and questionnaire
+- `template-skills/` - the source of every generated skill, command and Cursor rule
+- `scripts/build-skill-layers.py` - renders the skill layers of `template/` from `template-skills/`
 - `template/AGENTS.md.jinja` - agent rules for generated projects, the single source for every tool
 - `template/CLAUDE.md.jinja` - Claude Code import of `AGENTS.md` for generated projects

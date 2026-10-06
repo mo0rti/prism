@@ -1,7 +1,11 @@
+{# Generated from template-skills/lint-wiki/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 # Lint wiki - health-check the knowledge base
 
+Report deterministic wiki contract diagnostics without auto-fixing.
+
 ## Usage
-/lint-wiki
+
+`/lint-wiki`
 
 ## Primary path: Prism CLI
 
@@ -57,7 +61,7 @@ entry whose `paths` line lists it; it is `stale-page` (warning) when older than
 `wiki-stale-after-days` and `never-verified` (information) when there is none, for current-state
 pages only. It never changes a status and never blocks a lifecycle action. Resolve relative links
 and `sources` entries to existing files or folders, and `repo:<repository-id>/<path>` links through
-`prism.local.yml` by checking existence only. If SETTINGS is absent or invalid, use
+`prism.local.yml` by checking existence only. If SETTINGS is absent, invalid, or missing the key, use
 `wiki-stale-after-days: 14` and say so.
 
 ## Rules and output

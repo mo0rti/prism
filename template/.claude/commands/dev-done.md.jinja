@@ -1,6 +1,9 @@
+{# Generated from template-skills/dev-done/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 # Dev done - mark a feature as shipped
 
 <!-- prism:dev-done-contract:v1 -->
+
+Use this skill to mark one feature as shipped and close out its implementation state.
 
 ## Usage
 
@@ -37,7 +40,7 @@ Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md
 app-requirement page, any applicable API contract, linked context, workspace
 identity, advisory state, delivery evidence, and active `revalidation` domains.
 
-Delivery evidence is an input to this command. For every declared app, get
+Delivery evidence is an input to this action. For every declared app, get
 the implementation artifact, the test command and result, and the release
 evidence or delivery attestation from the developer, or read them from the current
 `## Delivery evidence` table when it already holds them. Write them into the
@@ -50,7 +53,7 @@ to, a release, tag or deployment record) or a delivery attestation (`attested by
 <Name>: <reference>`, where the reference is a URL or a path to what that person
 checked). A commit, a pull request or merge request, `merged`, a branch name or
 free text proves which code changed, not that it shipped, so it does not satisfy
-this command. For an app in an external repository, link its record by URL; no
+this action. For an app in an external repository, link its record by URL; no
 local checkout is needed. The same preview then shows the evidence rows and the
 status change, and no hand edit is needed first. Ask the developer for any value
 you do not have; never invent or imply a delivery claim. The connected board
@@ -118,6 +121,22 @@ unfounded. Record meaningful deviations rather than silently dropping them. This
 action records shipment; it does not prove a future release or deployment beyond
 the evidence the user and agent recorded.
 
-## Page rules
+## Rules
 
+- write-capable skill
+- ask for post-ship notes before changing the final status, unless the request already gives them
 - write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
+
+## Output behavior
+
+Return:
+
+- feature being closed out
+- any post-ship notes recorded
+- pages whose status changed
+- final status summary
+
+## Error and stop conditions
+
+- if the feature file does not exist, return a clean missing-feature response
+- if the user wants to cancel instead of marking the feature done, stop without writing

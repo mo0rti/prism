@@ -1,3 +1,4 @@
+{# Generated from template-skills/dev-start/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 # Dev start - take ownership of one ready feature
 
 <!-- prism:dev-start-contract:v1 -->
@@ -7,6 +8,9 @@
 `/dev-start [F-XXX]`
 
 ## Supported action
+
+Prepare, preview, and, after explicit confirmation, write one feature-only
+transition:
 
 `ready-for-dev` + `dev` -> `in-dev` + `dev`
 
@@ -32,10 +36,11 @@ Check design, advisory, app requirement, API, and active `revalidation`
 facts for this route. An active `specification` or `design` domain blocks this
 downstream start until the owning handoff verifies it. Other active delivery
 domains identify work for the developer and may remain while implementation
-starts. Show actual evidence and the full feature/status board/log write set; presence
+starts. Show actual app and API evidence and the full feature/status board/log write set; presence
 alone does not prove implementation or shipment. Reread immediately before
 confirmation and once after it. After explicit confirmation, update the feature
 to `in-dev` with `owner: dev`, update the status board row, and append the log.
 
 Decline or cancel means no writes. If a multi-file write is partial, report the
 exact observed changes and stop for fresh recovery; no transaction is implied.
+This action starts implementation and does not mark any app shipped.

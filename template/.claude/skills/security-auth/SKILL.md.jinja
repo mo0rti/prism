@@ -1,11 +1,12 @@
+{# Generated from template-skills/security-auth/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: security-auth
-description: Security and authentication conventions for this Spring Boot backend. Use when changing public versus authenticated routes, JWT handling, current-user access, OAuth or password-auth flows, or security configuration.
+description: Backend security and authentication conventions for this Spring Boot project. Use when changing public versus authenticated routes, JWT handling, current-user access, OAuth or password-auth flows, or security-related configuration under `backend/`.
 ---
 
-# Security & Authentication ({{ project_name }} Backend)
+# Security & Authentication
 
-Apply this skill when a backend change affects route exposure, JWT handling, or auth behavior.
+Use this skill for backend auth exposure, JWT, and security-boundary decisions.
 
 ## Role Boundary
 
@@ -21,7 +22,7 @@ Apply this skill when a backend change affects route exposure, JWT handling, or 
 - Password inputs are bounded to BCrypt's 72-byte effective limit
 - `JwtAuthenticationFilter` runs before `UsernamePasswordAuthenticationFilter`
 - CORS allowed origins come from `app.cors.allowed-origins`
-- Route access is controlled in `bootstrap/SecurityConfig.kt`
+- Route access is defined with request matchers in `bootstrap/SecurityConfig.kt`
 - Method-security annotations are not enabled by default in this template
 - When business authorization grows beyond route exposure, enable and model it intentionally through `authorization-rules` rather than widening route rules alone
 - Refresh tokens carry a version claim and are rotated on every successful login, OAuth callback, and refresh
@@ -46,7 +47,7 @@ Defined explicitly in `SecurityConfig.securityFilterChain()`:
 
 - `/api/v1/auth/me`
 - `/api/v1/auth/logout`
-- Every other backend route that is not explicitly permitted
+- Every other backend route not explicitly permitted in `SecurityConfig`
 
 ## Current User Access
 
@@ -59,55 +60,55 @@ fun getProfile(@AuthenticationPrincipal user: User): ResponseEntity<UserDto> {
 }
 ```
 
-Use `SecurityContextHolder` only when controller-level injection is not practical.
-
 ## Rules
 
 - Keep public matchers explicit; never widen them to `/api/v1/auth/**`.
 - Update `SecurityConfig` whenever endpoint exposure changes.
 - Use `@AuthenticationPrincipal` in controllers when possible.
+- Reach for `SecurityContextHolder` only where controller injection is not practical.
 - Keep secrets in environment-backed config, never hardcoded Kotlin values.
-- Align backend route security with `shared/api-contracts/openapi.yml`.
+- Align route security with `shared/api-contracts/openapi.yml`.
 - Access and refresh tokens must carry an explicit token-type claim, and each usage path must validate the expected type before accepting the token.
 - Rotate refresh tokens on every successful refresh and reject reused refresh tokens.
 - Do not silently link an OAuth sign-in to an existing account that shares only an email address; require an explicit account-linking flow instead.
 
 ## Auth-Specific Modeling
 
-- Follow `spring-boot-conventions` for DTO splitting, mapper placement, enum files, and general module layout
-- Keep normalized OAuth provider data as an internal model such as `OAuthUserProfile`, not as an API DTO and not as a helper class buried in `service`
-- Keep provider-specific HTTP exchange and payload normalization out of controllers
+- Follow `spring-boot-conventions` for DTO splitting, mapper placement, enum files, and general module layout.
+- Keep normalized OAuth provider data as an internal model such as `OAuthUserProfile`, not as an API DTO and not as a helper class buried in `service/`.
+- Keep provider-specific HTTP exchange and payload normalization out of controllers.
 
 ## Security Configuration
 
-- Bind JWT, CORS, and OAuth provider settings with typed `@ConfigurationProperties`
-- Group auth-related config under `bootstrap/properties`
-- When adding a provider, update config properties, OAuth flow handling, and public route exposure together
-- Do not wrap outbound OAuth HTTP calls in long-lived database transactions; fetch remote provider data first, then persist within a narrower transaction boundary if needed
+- Bind JWT, CORS, and OAuth provider settings with typed `@ConfigurationProperties`.
+- Keep auth-related properties grouped under `bootstrap/properties/` instead of scattering repeated `@Value` keys.
+- Validate that any newly added provider is represented consistently across config properties, OAuth service flow, and public route exposure.
+- Do not wrap outbound OAuth HTTP calls in long-lived database transactions; fetch remote provider data first, then persist within a narrower transaction boundary if needed.
 {% if auth_methods | reject("equalto", "password") | list | length > 0 %}
-- For first startup after generation, a local profile may provide placeholder OAuth values so the backend can boot before real provider credentials are configured
-- The local profile may also provide a bootstrap-only JWT secret so first startup works without exporting `JWT_SECRET`
-- Treat placeholder OAuth values as a bootstrap convenience only; real OAuth flows still require real credentials supplied through IDE environment variables or local overrides
+- For first startup after generation, a local profile may provide placeholder OAuth values so the backend can boot before real provider credentials are configured.
+- The local profile may also provide a bootstrap-only JWT secret so first startup works without exporting `JWT_SECRET`.
+- Treat placeholder OAuth values as a bootstrap convenience only; real OAuth flows still require real credentials supplied through IDE environment variables or local overrides.
 {% else %}
-- The local profile may provide a bootstrap-only JWT secret so first startup works without exporting `JWT_SECRET`
+- The local profile may provide a bootstrap-only JWT secret so first startup works without exporting `JWT_SECRET`.
 {% endif %}
-- Remove global fallback secrets from shared config and require environment-backed secrets outside the local/test profiles
+- Remove global fallback secrets from shared config and require environment-backed secrets outside the local/test profiles.
 
 ## Key Files
 
-- `bootstrap/SecurityConfig.kt` - filter chain, route exposure rules, CORS
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/SecurityConfig.kt` - filter chain, route exposure rules, CORS
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/properties/CorsProperties.kt` - CORS configuration
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/properties/JwtProperties.kt` - JWT configuration
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/properties/OAuthProperties.kt` - OAuth provider configuration
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/JwtAuthenticationFilter.kt` - request filter that validates JWT
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/ApiAuthenticationEntryPoint.kt` - 401 reply for requests without a valid access token
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/security/JwtTokenProvider.kt` - token generation and validation
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
-- `bootstrap/OAuth2Config.kt` - infrastructure beans for OAuth support
+- `backend/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/bootstrap/OAuth2Config.kt` - infrastructure beans for OAuth support
 {% endif %}
-- `bootstrap/security/JwtTokenProvider.kt` - token generation and validation
-- `bootstrap/properties/OAuthProperties.kt` - OAuth provider configuration
-- `bootstrap/properties/JwtProperties.kt` - JWT configuration
-- `bootstrap/properties/CorsProperties.kt` - CORS configuration
-- `bootstrap/security/JwtAuthenticationFilter.kt` - request filter that validates JWT
-- `bootstrap/security/ApiAuthenticationEntryPoint.kt` - 401 reply for requests without a valid access token
-- `application.yml` - JWT secret, token expiry, OAuth client IDs
+- `backend/src/main/resources/application.yml` - JWT secret, token expiry, OAuth client IDs
+- `shared/api-contracts/openapi.yml`
 
-## Minimum Checks
+## Minimum Verification
 
 - Re-check unauthenticated access to any route whose matcher changed.
 - Re-check intended public auth endpoints after auth-surface changes.

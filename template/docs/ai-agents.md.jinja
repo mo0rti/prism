@@ -22,7 +22,7 @@ The agent system in this workspace does four jobs:
 | Claude commands | [`.claude/commands/`](../.claude/commands/) | Structured project operations such as setup, PO intake, review, handoff, and wiki maintenance |
 | Claude skills | [`.claude/skills/`](../.claude/skills/) | Reusable Claude Code guidance for implementation, conventions, testing, and platform work |
 | Codex skills | [`.agents/skills/`](../.agents/skills/) | Reusable Codex guidance for shared workflows and supported platform work |
-| Cursor rules | [`.cursor/rules/`](../.cursor/rules/) | `project.mdc` points to `AGENTS.md`; the other rules scope stack facts by file path and describe the board review |
+| Cursor rules | [`.cursor/rules/`](../.cursor/rules/) | Stack facts scoped by file path, and the board review; Cursor reads `AGENTS.md` itself and loads the skills in `.agents/skills/` and `.claude/skills/` |
 {% if "backend" in platforms %}| Backend guidance | [`backend/AGENTS.md`](../backend/AGENTS.md), [`backend/CLAUDE.md`](../backend/CLAUDE.md), [`backend/docs/guide.md`](../backend/docs/guide.md) | Backend-specific architecture, conventions, and delivery rules |
 {% endif %}{% if "web-user-app" in platforms %}| User web guidance | [`web-user-app/AGENTS.md`](../web-user-app/AGENTS.md), [`web-user-app/CLAUDE.md`](../web-user-app/CLAUDE.md), [`web-user-app/docs/guide.md`](../web-user-app/docs/guide.md) | User web implementation rules and workflow expectations |
 {% endif %}{% if "web-admin-portal" in platforms %}| Admin web guidance | [`web-admin-portal/AGENTS.md`](../web-admin-portal/AGENTS.md), [`web-admin-portal/CLAUDE.md`](../web-admin-portal/CLAUDE.md), [`web-admin-portal/docs/guide.md`](../web-admin-portal/docs/guide.md) | Admin portal implementation rules and workflow expectations |
@@ -84,13 +84,14 @@ Each rule is written once, in `AGENTS.md`. The tools load it like this:
 - **Claude Code** loads `CLAUDE.md`, whose first line `@AGENTS.md` imports the sibling `AGENTS.md`.
   A platform folder's `CLAUDE.md` does the same for that folder's `AGENTS.md` and adds only
   the Claude Code skills and commands that no other tool shares.
-- **Cursor** applies `AGENTS.md` at the root and in subfolders. Its rule files cannot import an
-  instruction file, so `.cursor/rules/project.mdc` references `@AGENTS.md`, and the other rules
-  carry only stack facts scoped by file path.
+- **Cursor** applies `AGENTS.md` at the root and in subfolders itself, so no rule repeats or
+  references it. The rules in `.cursor/rules/` carry only stack facts scoped by file path and the
+  board review, and Cursor loads the skills in `.agents/skills/` and `.claude/skills/` too.
 
 Add or change a rule in `AGENTS.md`, or in the platform `AGENTS.md` that owns it, and nowhere
-else. Skills exist in two packagings, `.claude/` and `.agents/`; keep them aligned when you
-change one.
+else. The skills in `.agents/skills/` and `.claude/skills/` and the commands in
+`.claude/commands/` carry the same text, written once and generated into each layout; when you
+change a skill in this workspace, change every copy of it.
 
 After `setup-project`, the advisory area should contain both `BOARD.md` and
 `PROJECT_FOUNDATION.md`, which preserves the setup interview, risk framing, and

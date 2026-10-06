@@ -1,0 +1,21 @@
+# Cloudflare local preview vars for `npm run preview`
+# Copy this file to `.dev.vars` before running Wrangler/OpenNext preview.
+AUTH_SECRET=replace-with-a-random-secret
+AUTH_URL=http://localhost:3000
+AUTH_TRUST_HOST=true
+API_BASE_URL=http://localhost:8080
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
+
+{% if "google" in auth_methods %}AUTH_GOOGLE_ID=your-google-client-id
+AUTH_GOOGLE_SECRET=your-google-client-secret
+
+{% endif %}{% if "apple" in auth_methods %}AUTH_APPLE_ID=your-apple-service-id
+AUTH_APPLE_SECRET=your-apple-client-secret
+
+{% endif %}{% if "facebook" in auth_methods %}AUTH_FACEBOOK_ID=your-facebook-app-id
+AUTH_FACEBOOK_SECRET=your-facebook-app-secret
+
+{% endif %}{% if "microsoft" in auth_methods %}AUTH_MICROSOFT_ID=your-microsoft-client-id
+AUTH_MICROSOFT_SECRET=your-microsoft-client-secret
+AUTH_MICROSOFT_TENANT_ID=common
+{% endif %}

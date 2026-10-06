@@ -1,3 +1,4 @@
+{# Generated from template-skills/po-clarify/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: po-clarify
 description: Resolve open questions assigned to PO across the wiki. Use when gathering answers from the product owner and updating feature specs, question tables, status, and logs accordingly.
@@ -8,21 +9,25 @@ description: Resolve open questions assigned to PO across the wiki. Use when gat
 Use this skill to work through open PO-owned questions one feature at a time.
 
 ## Usage
-
-`$po-clarify`
+$po-clarify
 
 ## Workflow
 
 1. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
-2. Read all feature files
-3. Collect open questions where owner = `po` and status = `open`
-4. Present the questions grouped by feature, one feature at a time
-5. For each answer:
-   - update the open questions table
-   - update the feature spec if the answer introduces a new requirement
-   - flag the conflict and leave the question open if the answer contradicts existing wiki content
+2. Read all files in `knowledge/wiki/features/`
+3. Collect all open questions where owner = `po` and status = `open`
+4. Group by feature and present them to the user one feature at a time:
+   ```
+   F-002 — Profile Edit
+   1. What happens when a user tries to edit their email but email is used for login?
+   2. Should users be able to delete their account from this screen?
+   ```
+5. For each question the user answers:
+   - Update the open questions table: change status to `resolved: [answer]`
+   - If the answer reveals a new requirement, update the feature spec
+   - If the answer contradicts existing wiki content, flag the conflict and leave the question open
 6. Leave `status` and `owner` as they are; the status board row then stays as it is
-7. Append a single summary entry to `log.md` in the log format that the wiki schema defines
+7. Append a single `log.md` entry in the log format that the wiki schema defines, summarizing all questions resolved
 
 ## Rules
 
@@ -43,12 +48,6 @@ Use this skill to work through open PO-owned questions one feature at a time.
 - if one feature hits a contradiction, skip that conflicting answer and leave the question open for that feature only
 - do not stop the whole clarify session unless the user asks to stop
 - write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
-
-## Canonical format reference
-
-Mirror the detailed workflow and write behavior from:
-
-- `.claude/commands/po-clarify.md`
 
 ## Output behavior
 

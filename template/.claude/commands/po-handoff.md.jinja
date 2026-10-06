@@ -1,3 +1,4 @@
+{# Generated from template-skills/po-handoff/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 # PO handoff - prepare a feature for design
 
 <!-- prism:po-handoff-contract:v1 -->
@@ -8,7 +9,7 @@
 
 ## Supported action
 
-This command prepares, previews, and, after explicit confirmation, writes one
+This action prepares, previews, and, after explicit confirmation, writes one
 transition only:
 
 `specified` + `po` -> `ready-for-design` + `designer`
@@ -61,14 +62,14 @@ selected file lacks the marker, its generated instructions are an older contract
 and the action is unsupported until this file is refreshed from the current
 template. Do not infer this from the Prism version.
 
-Before using a dashboard or clipboard request, reread this current command, the
-Codex `po-handoff` skill when available, `knowledge/wiki/SCHEMA.md`,
+Before using a dashboard or clipboard request, reread this current skill or command, the
+`po-handoff` instructions of the other agent surface when available, `knowledge/wiki/SCHEMA.md`,
 `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/status-board.md`, the feature page, and linked source/context. Compare
 the current unique path, workspace identity, feature ID, status, owner, advisory
 state, and available source fingerprint with the copied snapshot. Stop and ask for
 a fresh preview if any value differs or is unavailable for comparison.
 
-## What this command does
+## Workflow
 
 1. Resolve exactly one feature path and read the source and context.
 2. Enforce the exact source guard: `status: specified` and `owner: po`. Show the
@@ -131,3 +132,35 @@ a fresh preview if any value differs or is unavailable for comparison.
   prove which human or agent changed them or whether confirmation happened.
 - Static snapshots are relative to their capture time; live refresh can observe
   changes. A stale preview must be discarded.
+
+## Rules
+
+- This is a write-capable skill, but every write is confirmation-gated.
+- Board review remains independent intelligence and confirmation; it is not silently
+  folded into the handoff approval.
+- Rerun PO completeness after any board-review change and immediately before writes.
+- A stale or unsupported CLI response falls back to direct file reads; it never
+  becomes optimistic state.
+- Never claim that the preflight proves implementation, design completion, or
+  shipment.
+- Preserve the source feature path and existing documented workflow rules. Do not
+  execute an agent, mutate the wiki, or change a card from a browser copy request.
+
+## Output behavior
+
+Return the observed source identity and fields, advisory result, factual
+completeness result, missing blockers when blocked, proposed writes, and the design
+brief after a confirmed handoff. Keep generation or workspace metadata to the
+documented fields and do not print arbitrary secrets from copied answers.
+
+## Error and stop conditions
+
+- If the feature file does not exist or is not unique, return a clean stop response.
+- If the source pair is not exactly `specified` + `po`, report that this action is
+  unsupported and leave the feature unchanged.
+- If the source, workspace identity, or snapshot is stale or mismatched, stop and
+  require a fresh read.
+- If advisory or completeness checks fail, report the evidence and stop without
+  writing.
+- If the user does not confirm the complete proposed write set, stop without
+  writing.

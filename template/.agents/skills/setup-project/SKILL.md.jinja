@@ -1,57 +1,109 @@
+{# Generated from template-skills/setup-project/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: setup-project
 description: Interactive two-phase project initialization. Run once immediately after Copier scaffolding to initialize the wiki state and generate the advisory board through a structured domain risk interview. Required before any other wiki operation.
 ---
 
-# Setup Project
+# Setup project — interactive project initialization
 
-Run this skill once immediately after `copier copy` scaffolds the project.
-It initializes the wiki and generates the domain-specific advisory board.
+Run this once, immediately after scaffolding a new project with Copier.
+This operation initializes the wiki state and generates the advisory board configuration
+through a structured conversation with the team.
+
+## Usage
+
+`$setup-project`
+
+## When to run
+Immediately after `copier copy` produces the project structure. Run before any other
+wiki command. If the wiki already has feature entries, this operation will warn and ask
+for confirmation before proceeding.
 
 ## Workflow
 
+This operation has four checkpointed steps. Complete each step fully before proceeding
+to the next. If something needs adjustment at any step, fix it before moving on.
+
 ### Step 1: Project identity confirmation
 
-Read:
-- `AGENTS.md` (the rendered monorepo root agent instructions)
-- `.copier-answers.yml` if present (Copier-generated answers file)
+Read the following files:
+- AGENTS.md (the rendered monorepo root agent instructions)
+- `.copier-answers.yml` if present (Copier writes this file to the generated project
+  root with the answers the user gave during scaffolding — this is NOT the template
+  repo's `copier.yml`, which is not present in the generated project)
 - Any existing docs/ or README files
 
-Present a confirmation summary: project name, description, platforms included, any
-pre-existing structure. Ask: "Is this correct? Is there anything important not captured?"
+Present a confirmation summary:
+- Project name and description
+- Platforms included
+- Any pre-existing structure the AI discovered
 
-Wait for confirmation before proceeding to Step 2.
+Ask: "Is this correct? Is there anything important about this project not captured above?"
+
+Wait for confirmation or corrections before proceeding to Step 2.
 
 ### Step 2: Domain risk interview
 
-Ask these four questions one at a time. Wait for each answer before asking the next:
+Ask the following four questions. Ask them one at a time, not all at once.
+Wait for the answer to each before asking the next.
 
-1. "Who are your primary users, and what do they trust this app to get right?"
-2. "What is the most important decision or calculation this app makes on behalf of users?"
-3. "What could go wrong if the app gets that wrong? The worst realistic case?"
-4. "Are there any user groups who might be especially vulnerable to a mistake?"
+**Question 1:** "Who are your primary users, and what do they trust this app to get right?
+Be specific — not 'general public' but 'parents managing their children's meal plans' or
+'small restaurant owners tracking inventory.'"
 
-After all answers, summarize the domain risks and expertise gaps implied. Confirm
-understanding before proceeding to Step 3.
+**Question 2:** "What is the most important decision or calculation this app makes on behalf
+of users? What is the thing the app does that users rely on most?"
 
-### Step 3: Advisory board generation
+**Question 3:** "What could go wrong if the app gets that wrong? Think about the worst
+realistic case — not catastrophizing, but honest. What would a news headline say?"
 
-Propose a board of 4–6 members. For each member provide:
-- Name (realistic fictional person), Title, Institution
-- Expertise: 3–5 bullet points
-- Why on this board: one sentence connecting to a specific failure mode from Step 2
-- Typical questions they ask: 2–3 concrete, domain-specific questions
+**Question 4:** "Are there any user groups who might be especially vulnerable to a mistake?
+For example: people with health conditions, financial stress, learning differences,
+dietary restrictions, or cultural backgrounds where the dominant assumptions don't apply."
 
-Present all members and ask for confirmation, additions, and removals.
-Revise until the team confirms.
+After all four answers are received, summarize what you heard and what domain expertise
+gaps they imply. For example:
 
-**Only write BOARD.md after explicit confirmation.**
+"Based on what you've described:
+- You serve users managing dietary restrictions → need a medical/nutritional perspective
+- A wrong recommendation could reinforce disordered eating → need behavioral psychology
+- The scoring system uses nutritional data → food science needed to validate accuracy
+- Traditional foods from non-Western cuisines may be penalized → cultural sensitivity
+  and epidemiological perspective needed
+Does this match how you see the risks?"
+
+Wait for confirmation or additions before proceeding to Step 3.
+
+### Step 3: Advisory board generation and confirmation
+
+Based on the domain risk interview answers, propose a board of 4–6 members.
+
+For each proposed member, provide:
+- **Name:** a realistic fictional person (first and last name)
+- **Title:** specific professional title
+- **Institution:** a realistic, named institution or company (can be fictional but plausible)
+- **Expertise:** 3–5 bullet points of specific knowledge areas
+- **Why on this board:** one sentence connecting their expertise to a specific failure
+  mode identified in Step 2
+- **Typical questions they ask:** 2–3 example questions this person would raise during
+  a feature review (concrete, domain-specific, not generic)
+
+Present all proposed board members and ask:
+- "Does this board composition look right for your product's risk profile?"
+- "Is there a perspective that's missing?"
+- "Is there anyone here who doesn't seem relevant to your specific product?"
+
+Allow additions, removals, and modifications. Revise until the team confirms.
+
+**Only write BOARD.md after explicit confirmation.** Do not write the file speculatively
+and ask for approval after — show the content and confirm first.
 
 ### Step 4: Initial wiki scaffolding
 
-After confirmation:
-- Write `knowledge/wiki/advisory/BOARD.md` with confirmed board, replacing the
-  placeholder and removing `<!-- prism:setup-required -->`
+Create the initial wiki state:
+- Write `knowledge/wiki/advisory/BOARD.md` using the confirmed board composition
+  using the board structure defined in this operation. Replace the placeholder
+  content and remove `<!-- prism:setup-required -->` when the board is created.
 - Write `knowledge/wiki/advisory/PROJECT_FOUNDATION.md` capturing:
   - confirmed project identity summary
   - the four setup interview questions with the team's confirmed answers
@@ -60,20 +112,39 @@ After confirmation:
   - links to any initial personas and business rules created from setup
 - Add the `knowledge/wiki/index.md` line of each business rule and persona created below
 - Append a `setup-project` entry to `knowledge/wiki/log.md`
-- Create any business rule entries revealed during interview
-- Create any user persona stubs revealed during interview
+- If the domain risk interview revealed clear business rules (e.g. "all recommendations
+  must include a medical disclaimer"), create the first business rule entries in
+  `knowledge/wiki/business-rules/`
+- If the project description revealed clear user personas, create initial persona stubs
+  in `knowledge/wiki/personas/`
+
+Show the user a summary of everything created. State explicitly: "The advisory board
+can be revised at any time by editing BOARD.md directly or by asking me to regenerate
+a specific board member. The board composition is a living document."
 
 When writing `knowledge/wiki/log.md`, append one entry in the log format that
-the wiki schema defines: `## YYYY-MM-DD setup-project | Project initialization` with
-today's date, every path created in `paths`, `advisory/PROJECT_FOUNDATION.md` as
-`evidence`, and who ran the setup in `by`. Do not edit existing entries.
+the wiki schema defines, and do not edit existing entries:
+- `## YYYY-MM-DD setup-project | Project initialization`, with today's date
+- `- paths:` every path the setup created, including any business rules and personas
+- `- evidence:` `advisory/PROJECT_FOUNDATION.md`
+- `- by:` who ran the setup
+- optionally one sentence naming the project and the number of board members
 
-Show a summary of everything created.
+## Notes for the agent
 
-## Notes
-
-- Ask Step 2 questions one at a time in conversation — never as a form.
-- 4–6 board members is the right range for small teams.
-- The "typical questions" are the most important part — they train the AI reviewer.
-- Never skip Step 3 confirmation. A board the team didn't help define will be dismissed.
+- Step 2 questions must be asked one at a time in conversation. Do not present them
+  as a form to fill in. The conversational format produces better answers because
+  each answer informs how to ask the next question.
+- The board should have 4–6 members for small teams. More than 6 produces review
+  output that is too long to read in 15 minutes. Fewer than 4 likely misses important
+  domain perspectives.
+- The "typical questions" for each board member are not decoration — they are the
+  most important part of the board definition. They train the AI on what concerns
+  this board member raises. Write them from the board member's perspective, in their
+  domain language, and make them specific to this product's actual risks.
+- The board has credibility only if the team helped define it. Never skip Step 3 or
+  rush through confirmation. A board the team doesn't believe in will have its concerns
+  dismissed.
+- The board is a starting point, not a final answer. The team will not have thought
+  through all their domain risks on day one. Say this explicitly at the end of Step 4.
 - write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)

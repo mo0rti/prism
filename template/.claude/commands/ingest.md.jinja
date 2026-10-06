@@ -1,16 +1,18 @@
+{# Generated from template-skills/ingest/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 # Ingest - process raw sources into wiki pages of any kind
 
-Process one input folder from intake/pending/ into wiki pages. Any role can run this command, and it can write any page kind. `/po-intake` and `/design-intake` remain the role-specific entry points for feature requests and design handoffs.
+Process one input folder from intake/pending/ into wiki pages. Any role can run it, and it can write any page kind. `/po-intake` and `/design-intake` remain the role-specific entry points for feature requests and design handoffs.
 
 ## Usage
-/ingest [folder-name]
 
-Example: /ingest 2026-10-06-payments-research
+`/ingest [folder-name]`
+
+Example: `/ingest 2026-10-06-payments-research`
 
 The folder is named `YYYY-MM-DD-slug`: the day the source was captured, then lowercase words
 joined by hyphens. The connected board rejects any other name.
 
-## What this command does
+## Workflow
 
 1. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md` in full. The Ingest
    section of the schema lists the page kinds.
@@ -75,8 +77,10 @@ joined by hyphens. The connected board rejects any other name.
     `knowledge/wiki/features/F-001-slug.md (F-001)` or `knowledge/wiki/topics/payment-flows.md`;
     the connected board rejects a manifest that omits one
 
-## Notes for the agent
+## Rules
 
+- write-capable skill
+- never rewrite an existing feature, persona, business rule or decision, and never edit a processed intake item; corrected material is a new dated pending folder
 - Do not invent requirements not present in the input. Mark gaps as open questions on a
   feature and as `**Unknown:**` items on other pages.
 - Update or conflict: a source that refines a claim, or replaces an Observed claim with a newer
@@ -88,3 +92,19 @@ joined by hyphens. The connected board rejects any other name.
 - A single input folder may produce several pages of different kinds.
 - Never set a new feature to `specified`. Ingest writes `raw` + `po` only.
 - write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table of a feature) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
+
+## Output behavior
+
+Return:
+
+- conflict summary or confirmation summary before writes
+- the pages created or replaced, by path and kind
+- any new feature IDs and titles
+- any open questions added
+- the processed intake folder path
+
+## Error and stop conditions
+
+- if the intake folder does not exist, return a clean missing-folder response
+- if the input contradicts existing wiki content, quarantine it with a `CONFLICT.md` and stop
+- if the user does not confirm the interpretation summary, stop without writing

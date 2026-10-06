@@ -334,8 +334,8 @@ function Validate-WikiStructure {
     # business-rules/ keeps a .gitkeep alongside its required _FORMAT.md
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\business-rules\.gitkeep") -Message "Generated project missing knowledge/wiki/business-rules/.gitkeep."
 
-    # Cursor project rule points to AGENTS.md; the wiki rule is gone
-    Assert-PathExists -Path (Join-Path $Root ".cursor\rules\project.mdc") -Message "Generated project missing .cursor/rules/project.mdc."
+    # Cursor reads AGENTS.md itself: no pointer rule, and the wiki rule is gone
+    Assert-PathMissing -Path (Join-Path $Root ".cursor\rules\project.mdc") -Message "Generated project must not contain .cursor/rules/project.mdc (Cursor reads AGENTS.md itself)."
     Assert-PathMissing -Path (Join-Path $Root ".cursor\rules\wiki.mdc") -Message "Generated project must not contain .cursor/rules/wiki.mdc."
 
     # docs/README.md present
@@ -409,12 +409,6 @@ function Validate-WikiStructure {
     Assert-FileContains -Path (Join-Path $Root "AGENTS.md") -Needle "setup-project" -Message "Rendered AGENTS.md must reference setup-project."
     Assert-FileContains -Path (Join-Path $Root "AGENTS.md") -Needle "Claude Code" -Message "Rendered AGENTS.md must include Claude Code setup instruction."
     Assert-FileContains -Path (Join-Path $Root "AGENTS.md") -Needle "Codex" -Message "Rendered AGENTS.md must include Codex setup instruction."
-
-    # Cursor project rule must reference knowledge/wiki, not old docs paths
-    Assert-FileContains -Path (Join-Path $Root ".cursor\rules\project.mdc") -Needle "knowledge/wiki" -Message "Cursor project rule must reference knowledge/wiki."
-    Assert-FileContains -Path (Join-Path $Root ".cursor\rules\project.mdc") -Needle "@AGENTS.md" -Message "Cursor project rule must reference @AGENTS.md."
-    Assert-FileNotContains -Path (Join-Path $Root ".cursor\rules\project.mdc") -Needle "docs/advisory-board.md" -Message "Cursor project rule must not reference docs/advisory-board.md."
-    Assert-FileNotContains -Path (Join-Path $Root ".cursor\rules\project.mdc") -Needle "Feature docs in" -Message "Cursor project rule must not use old feature-docs-in phrasing."
 
     # Cursor advisory-review rule must point to knowledge/wiki, not docs/advisory-board.md
     Assert-FileContains -Path (Join-Path $Root ".cursor\rules\advisory-review.mdc") -Needle "knowledge/wiki/advisory/BOARD.md" -Message "Cursor advisory-review rule must reference knowledge/wiki/advisory/BOARD.md."

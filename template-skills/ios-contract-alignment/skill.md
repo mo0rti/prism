@@ -1,0 +1,56 @@
+---
+name: ios-contract-alignment
+description: "Backend contract alignment rules for DTOs, endpoints, APIClient usage, and token-backed auth. Use when adding or reviewing request or response shapes, API endpoints, repository mappings, or auth-boundary code in the generated iOS app."
+layers: [codex, claude-skill]
+platforms: [mobile-ios]
+codex:
+  display_name: "iOS Contract Alignment"
+  short_description: "Keep iOS DTOs and endpoints aligned"
+  default_prompt: "Use @@invoke:ios-contract-alignment@@ when changing iOS API contracts or auth-boundary code."
+  implicit: true
+claude-skill:
+  user-invocable: false
+---
+
+# iOS Contract Alignment
+
+Use this skill when backend-facing iOS code changes.
+
+## Role boundary
+
+- Own request and response shapes, endpoint mapping, repository-to-model translation, and auth-boundary wiring.
+- Defer screen structure and general workflow to companion iOS skills.
+
+## Rules
+
+- Keep API-aligned models in `Domain/Model/`.
+- Keep endpoint definitions in `Data/Network/APIEndpoint.swift`.
+- Keep transport logic in `APIClient`.
+- Keep repository mapping logic in `Data/Repository/`, not in views.
+- The runtime base URL already includes `/api/v1`, so endpoint paths append feature-relative routes such as `/auth/...` or `/transactions/...`.
+- Auth headers come from `TokenStorage` through `APIClient`; do not add ad hoc token plumbing in features.
+- The default baseline for `APIError.unauthorized` is: clear `TokenStorage` and route the app back to login.
+- `AuthRepository.refreshToken()` exists as a named extension point, but automatic refresh-and-retry is not scaffolded into `APIClient` by default.
+- If a project adds refresh-and-retry later, centralize that behavior in `APIClient` or another transport-boundary abstraction rather than scattering retry logic across features.
+- Coordinate refresh-and-retry so concurrent 401 responses await one in-flight refresh operation instead of triggering parallel refresh attempts.
+- If the project starts using covered required-reason APIs or adds third-party SDKs that declare privacy usage, update `PrivacyInfo.xcprivacy` rather than hiding that work inside feature code.
+- Keep client error flow consistent: `APIClient` maps transport failures, repositories translate only when needed, ViewModels map errors into view state, and views render shared loading or error patterns.
+
+## Reference files
+
+Load only the reference file the task needs:
+
+- `references/token-refresh-patterns.md` for actor-safe refresh coordination, retry boundaries, and the simultaneous-401 race
+- `references/privacy-manifest.md` for required-reason API categories, third-party SDK checks, and `PrivacyInfo.xcprivacy` update guidance
+
+## Cross-check sources
+
+- Use `shared/api-contracts/openapi.yml` as the primary source for endpoint shapes.
+{% if "backend" in platforms %}- Use `backend/` to confirm behavior when the spec is ambiguous.
+{% endif %}{% if "mobile-android" in platforms %}- Use `mobile-android/` to confirm parity expectations when iOS should mirror Android behavior.
+{% endif %}
+
+## Validation
+
+- Run `task mobile-ios:build` on Mac after contract changes.
+- Read `mobile-ios/docs/networking-and-auth.md` and `mobile-ios/docs/session-and-token-storage.md` when auth, token, or session behavior changes.

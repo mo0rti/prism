@@ -1,9 +1,13 @@
+{# Generated from template-skills/design-handoff/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 # Design handoff — move a feature to ready-for-development
 
 <!-- prism:design-handoff-contract:v1 -->
 
+Use this skill to move one feature into `ready-for-dev` and generate app requirements.
+
 ## Usage
-/design-handoff [F-XXX]
+
+`/design-handoff [F-XXX]`
 
 ## Read-only preflight
 
@@ -20,7 +24,7 @@ support. If any required fact, schema, action, capability, or snapshot is
 missing or fails, fall back to direct-file checks. The preflight is copy-only
 and never authorizes a write.
 
-## What this command does
+## Workflow
 
 1. Resolve exactly one `knowledge/wiki/features/[F-XXX]-[slug].md` source file
    and require `status: in-design` with `owner: designer`.
@@ -52,12 +56,12 @@ and never authorizes a write.
        handoff without a reason — this is the last gate before development starts.
    - If `done`: check that the board review's "Actions required before dev starts"
      checklist has been addressed. If items remain open, list them and ask how to proceed.
-7. Check active `revalidation` domains. An active `specification` domain blocks
+6. Check active `revalidation` domains. An active `specification` domain blocks
    this handoff. If `design` is active, prepare a fresh design verification and
    propose clearing only that domain; evaluate the proposal while the source is
    unchanged. Do not clear other domains or shared contracts here.
-8. If the completeness check fails, list what is missing and stop
-9. If the check passes:
+7. If the completeness check fails, list what is missing and stop
+8. If the check passes:
    - Show the user: status → `ready-for-dev`, owner → `dev`
    - Wait for confirmation
    - Update feature file frontmatter only: change `status` and `owner`
@@ -91,8 +95,8 @@ finds it. The user who confirms this handoff is the one who agrees it.
 - Write it only from the API surface text: list each endpoint as `METHOD /path`, use the
   paths the API surface names, and define only data models that the API surface or a
   listed endpoint names. Add no endpoint, model or behavior the API surface does not state;
-  an API surface that is too vague to write from needs `/ask` and `/po-clarify` or
-  `/dev-clarify` first.
+  an API surface that is too vague to write from needs `ask` and `po-clarify` or
+  `dev-clarify` first.
 - Link the page from each generated requirement's `## API contract reference`.
 - Never rewrite an existing contract page: leave it out of the write set.
 - API work needs an app that serves an API: at least one active app in the feature's
@@ -101,8 +105,11 @@ finds it. The user who confirms this handoff is the one who agrees it.
   on the connected board); route the question to `/po-clarify` or `/dev-clarify` instead of
   writing a contract.
 
-## Notes for the agent
+## Rules
 
+- write-capable skill
+- do not hand off an incomplete feature
+- do not write status changes or app requirements until the user confirms the handoff
 - In each generated requirement page, `## Dependencies` lists only real dependencies
   (other feature IDs or app-requirement files that must complete first) or says
   `None.`. Never write an open question, note or caveat there; `/dev-clarify` may not
@@ -120,3 +127,19 @@ finds it. The user who confirms this handoff is the one who agrees it.
   pages for the affected apps. Developers should not have to cross-reference the
   review file themselves.
 - write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
+
+## Output behavior
+
+Return:
+
+- completeness result
+- advisory-review result
+- any blocking missing items
+- proposed status and owner change
+- generated app-requirements targets and the API contract page, if one is required, after confirmation
+
+## Error and stop conditions
+
+- if the feature file does not exist, return a clean missing-feature response
+- if required design or advisory prerequisites are not met, stop without writing
+- if the user does not confirm the handoff, stop without writing

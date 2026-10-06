@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Step 0: Create Azure Resource Group
+# =============================================================================
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/load-env-config.sh" "${1:-prod}"
+
+echo "============================================"
+echo "  Creating Resource Group: $RESOURCE_GROUP"
+echo "  Location: $LOCATION"
+echo "============================================"
+
+az group create \
+    --name "$RESOURCE_GROUP" \
+    --location "$LOCATION" \
+    --tags "project={{ project_slug }}" "environment=$ENVIRONMENT"
+
+echo ""
+echo "Resource group '$RESOURCE_GROUP' created in '$LOCATION'."
+echo "Next: Run 01-setup-foundation.sh"

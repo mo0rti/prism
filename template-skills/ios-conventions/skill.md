@@ -1,0 +1,72 @@
+---
+name: ios-conventions
+description: "iOS repository rules for Swift, SwiftUI, MVVM, DI, navigation, networking, and documentation sync. Use when writing or reviewing app code in this generated project, especially for architecture-sensitive changes."
+layers: [codex, claude-skill]
+platforms: [mobile-ios]
+codex:
+  display_name: "iOS Conventions"
+  short_description: "Apply SwiftUI MVVM and repo guardrails"
+  default_prompt: "Use @@invoke:ios-conventions@@ when updating iOS code in this project."
+  implicit: true
+claude-skill:
+  user-invocable: false
+---
+
+# iOS Conventions
+
+Use this skill for repository-wide iOS guardrails.
+
+## Role boundary
+
+- Use this skill for cross-feature conventions.
+- Keep feature orchestration in `@@invoke:ios-feature-delivery@@`.
+- Keep backend-facing contract decisions in `@@invoke:ios-contract-alignment@@`.
+- Keep shared SwiftUI reuse and styling decisions in `@@invoke:swiftui-design-system@@`.
+- Keep build selection in `@@invoke:ios-build-verify@@`.
+
+## Core rules
+
+- Follow MVVM with the generated structure under `{{ project_slug }}/`.
+- All API calls use `APIClient`; never create raw `URLSession` calls in features.
+- Repositories have protocols and implementations in the same file under `Data/Repository/`.
+- ViewModels that drive SwiftUI state are `@MainActor @Observable` by default, and views use `@Bindable` when mutation access is needed.
+- Use `async/await` for async operations.
+- Because UI-driving ViewModels are `@MainActor`, their methods already run on the main actor by default. Reach for `MainActor.run` only when non-isolated code needs to publish back into a main-actor-owned ViewModel or UI state.
+- Prefer `Sendable` value types for DTOs, domain models, and helper structs that cross actor boundaries.
+- Repository protocols and implementations that cross into `@MainActor` ViewModels should also be `Sendable` so Swift 6 concurrency checks stay build-clean.
+- Use `TokenStorage` for auth and session state; do not bypass it for token access.
+- `DependencyContainer` is injected with SwiftUI environment at the app root. Screens usually receive feature ViewModels through initializers, not environment objects.
+- Keep long-lived `@Observable` instances out of frequently recomputed `body` code paths. Parent views or router-level owners should create them once and pass them down.
+- `@Observable` redraws only the views that read the changed property. Do not assume every property mutation invalidates the entire screen.
+- Do not introduce `@unchecked Sendable` or `nonisolated` workarounds in app code unless the reason is explicit and documented in the change.
+- Keep routes in `Navigation/Route.swift` and top-level auth gating in `Navigation/AppRouter.swift`.
+- Preserve stable accessibility identifiers on screen roots and critical controls that generated UI tests depend on.
+- Move reusable SwiftUI components into `UI/Common/` and shared styling primitives into `UI/Theme/`.
+- Regenerate the Xcode project after structural `project.yml` changes such as new targets, schemes, Swift Packages, xcconfig wiring, build settings, entitlements, resource bundles, capabilities, or deployment-target changes.
+- Write URLs in `Config/*.xcconfig` as `http:/$()/host/path`, because xcconfig treats `//` as a comment start. `Config/Debug.xcconfig` and `Config/Release.xcconfig` are git-ignored; change the default in the tracked `.example` file as well.
+
+## Reference files
+
+Load only the reference file the task needs:
+
+- `references/swift6-observation-and-di.md` for `@MainActor`, Observation, `@Bindable`, environment injection, and ViewModel ownership rules
+- `references/navigation.md` for route ownership, `AppRouter`, `NavigationStack`, sheet usage, and iPad-only multi-column guidance
+- `references/swiftdata-patterns.md` for `ModelContext` actor confinement, query ownership, and schema-evolution basics
+
+## Read when needed
+
+- `mobile-ios/docs/repo-orientation.md`
+- `mobile-ios/docs/architecture.md`
+- `mobile-ios/docs/file-structure.md`
+- `mobile-ios/docs/networking-and-auth.md`
+- `mobile-ios/docs/session-and-token-storage.md`
+- `mobile-ios/docs/navigation-and-screens.md`
+- `mobile-ios/docs/design-system-and-theme.md`
+- `mobile-ios/docs/naming-conventions.md`
+- `mobile-ios/docs/conventions-and-workflow.md`
+
+## Minimum verification
+
+- Run `task mobile-ios:build` on Mac after architecture-sensitive changes.
+- If you are not on Mac, explicitly report which iOS verification steps were skipped, why they were skipped, and that real validation is deferred to Mac CI or a Mac follow-up session.
+- If implementation changes docs-described behavior, update the relevant file in `mobile-ios/docs/` in the same session.
