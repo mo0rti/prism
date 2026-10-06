@@ -422,7 +422,7 @@ class FeatureLaterTests(KnowledgeRootCase):
     def write_in_dev_feature(self, apps: list[str]) -> None:
         scope = "\n".join(f"- **{app}**: Deliver the history in {app}." for app in apps)
         rows = "\n".join(
-            f"| {app} | https://example.com/acme/{app}/pull/42 | https://example.com/acme/{app}/actions/runs/1187 | https://example.com/acme/{app}/releases/tag/v1.4.0 |"
+            f"| {app} | https://example.com/acme/{app}/pull/42 | https://example.com/acme/{app}/actions/runs/1187 | release: https://example.com/acme/{app}/releases/tag/v1.4.0 |"
             for app in apps
         )
         (self.wiki / "features" / "F-001-invoice-history.md").write_text(
@@ -472,7 +472,7 @@ class FeatureLaterTests(KnowledgeRootCase):
     def test_the_unresolved_checkout_does_not_block_the_evidence_of_a_missing_app(self) -> None:
         self.write_in_dev_feature(["customer-android", "billing-api"])
         page = self.wiki / "features" / "F-001-invoice-history.md"
-        page.write_text(page.read_text(encoding="utf-8").replace("| billing-api | https://example.com/acme/billing-api/pull/42 | https://example.com/acme/billing-api/actions/runs/1187 | https://example.com/acme/billing-api/releases/tag/v1.4.0 |\n", ""), encoding="utf-8")
+        page.write_text(page.read_text(encoding="utf-8").replace("| billing-api | https://example.com/acme/billing-api/pull/42 | https://example.com/acme/billing-api/actions/runs/1187 | release: https://example.com/acme/billing-api/releases/tag/v1.4.0 |\n", ""), encoding="utf-8")
 
         blocked = self.dev_done_checks()["delivery-evidence"]
 
