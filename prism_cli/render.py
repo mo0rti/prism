@@ -257,11 +257,19 @@ def render_status_result(result: WorkspaceStatus, full: bool) -> None:
     workspace_lines = [
         f"Project: {result.project_name or 'unknown'}",
         f"Kind: {result.workspace_kind}",
-        f"Platforms: {', '.join(result.platforms) if result.platforms else 'none detected'}",
+        f"Apps: {', '.join(app['id'] for app in result.apps) if result.apps else 'none declared'}",
         f"Setup: {format_setup_state(result.setup_state)}",
         f"Confidence: {format_confidence(result.confidence)}",
     ]
     print(panel("Workspace", workspace_lines))
+    if result.apps:
+        print()
+        print(section("Apps"))
+        for line in format_apps_table(result.apps):
+            print(line)
+    for repository in result.repositories:
+        if repository.get("checkout") is not None:
+            print(format_repository_checkout(repository))
     print()
 
     queue_lines = [
@@ -279,15 +287,15 @@ def render_status_result(result: WorkspaceStatus, full: bool) -> None:
         print(warn("setup-project has not initialized the wiki yet."))
 
     caveats = [
-        (platform_id, data.get("caveat", ""))
-        for platform_id, data in result.platform_maturity.items()
-        if data.get("caveat")
+        (app["id"], app["maturity"].get("caveat", ""))
+        for app in result.apps
+        if app.get("maturity") and app["maturity"].get("caveat")
     ]
     if caveats:
         print()
-        print(section("Platform maturity"))
-        for platform_id, caveat in caveats:
-            print(f"- {platform_id}: {warn(caveat)}")
+        print(section("App maturity"))
+        for app_id, caveat in caveats:
+            print(f"- {app_id}: {warn(caveat)}")
 
     print()
     print(section("Feature lifecycle"))
@@ -375,6 +383,40 @@ def render_status_result(result: WorkspaceStatus, full: bool) -> None:
     if hidden_count > 0:
         print()
         print(info(f"{hidden_count} more diagnostics hidden. Run `prism status --full` or `prism wiki lint` for details."))
+
+
+APP_TABLE_HEADERS = ("ID", "Name", "Stack", "Repository", "Path", "Status", "Maturity")
+
+
+def format_apps_table(apps: list[dict[str, Any]]) -> list[str]:
+    """Aligned plain-text rows for the declared apps: ID, name, stack, repository, path, status and maturity."""
+
+    rows = [
+        (
+            str(app["id"]),
+            str(app["name"]),
+            str(app["stack"]),
+            str(app["repository"]),
+            str(app["path"]),
+            str(app["status"]),
+            str((app.get("maturity") or {}).get("level") or "-"),
+        )
+        for app in apps
+    ]
+    widths = [max(len(row[column]) for row in [APP_TABLE_HEADERS, *rows]) for column in range(len(APP_TABLE_HEADERS))]
+
+    def line(row: tuple[str, ...]) -> str:
+        return "  ".join(cell.ljust(width) for cell, width in zip(row, widths)).rstrip()
+
+    return [line(APP_TABLE_HEADERS), *(line(row) for row in rows)]
+
+
+def format_repository_checkout(repository: dict[str, Any]) -> str:
+    """One line saying whether an external repository's checkout is resolved on this machine."""
+
+    if repository.get("checkout") == "resolved":
+        return f"Repository {repository['id']}: checkout resolved"
+    return f"Repository {repository['id']}: checkout {warn('unresolved')} (add it to prism.local.yml)"
 
 
 def show_command_intro(args: argparse.Namespace, subtitle: str) -> None:

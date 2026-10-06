@@ -182,7 +182,19 @@ class JsonContractTests(unittest.TestCase):
             {
                 "kind": "generated-project",
                 "project_name": "Lint workspace",
-                "platforms": ["backend"],
+                "apps": [
+                    {
+                        "id": "backend",
+                        "name": "Spring Boot Backend",
+                        "stack": "spring-backend",
+                        "repository": "workspace",
+                        "path": "backend",
+                        "audience": None,
+                        "status": "active",
+                        "capabilities": {"has-ui": False, "serves-api": True},
+                        "maturity": None,
+                    }
+                ],
             },
             envelope["workspace"],
         )
@@ -270,7 +282,7 @@ class JsonContractTests(unittest.TestCase):
 
         codes = {diagnostic["code"] for diagnostic in envelope["diagnostics"]}
         self.assertEqual("Manifest name", envelope["workspace"]["project_name"])
-        self.assertEqual(["backend", "mobile-ios"], envelope["workspace"]["platforms"])
+        self.assertEqual(["backend", "mobile-ios"], [app["id"] for app in envelope["workspace"]["apps"]])
         self.assertIn("manifest-answers-drift", codes)
         self.assertIn("manifest-filesystem-drift", codes)
         self.assertEqual("error", envelope["confidence"])
@@ -290,7 +302,7 @@ class JsonContractTests(unittest.TestCase):
             envelope = wiki_show(workspace, "F-001")
 
         self.assertEqual("Answers name", envelope["workspace"]["project_name"])
-        self.assertEqual(["mobile-ios"], envelope["workspace"]["platforms"])
+        self.assertEqual(["mobile-ios"], [app["id"] for app in envelope["workspace"]["apps"]])
         self.assertIn("missing-workspace-manifest", {diagnostic["code"] for diagnostic in envelope["diagnostics"]})
 
 

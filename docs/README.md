@@ -11,7 +11,7 @@ If you are not sure where to start, choose the path that matches your goal.
 
 Start with the [README quickstart](../README.md#quickstart-a-shared-board-for-you-and-your-agents),
 then [shared-board.md](shared-board.md) for adoption, participant access, the local
-service, and standard MCP configuration, and [agent-hosts.md](agent-hosts.md) for what to
+service, and standard MCP configuration, [workspace-model.md](workspace-model.md) for the apps and repositories a workspace declares, and [agent-hosts.md](agent-hosts.md) for what to
 expect from Claude Code and Codex. When something fails, read
 [troubleshooting.md](troubleshooting.md). [`SECURITY.md`](../SECURITY.md) describes what the
 local service protects. Read [current-status.md](current-status.md) for the current
@@ -58,6 +58,7 @@ These are the best pages for understanding Prism quickly.
 | Document | Best for | Purpose |
 |----------|----------|---------|
 | [shared-board.md](shared-board.md) | Humans and agents sharing a workspace | Adopt the workflow, connect through MCP, and use supported human board actions |
+| [workspace-model.md](workspace-model.md) | Anyone declaring apps or repositories | Stacks and capabilities, repositories and `prism.local.yml`, apps and their fields, `prism app list` and `prism app add`, and workspaces with no apps |
 | [agent-hosts.md](agent-hosts.md) | Anyone connecting Claude Code or Codex | Tested host versions, transport, the settings that matter, known limitations and what to expect, including the retry rule |
 | [troubleshooting.md](troubleshooting.md) | Anyone whose setup or connection fails | Symptom, cause and fix for cloud-synced folders, a busy port, stale previews, upgraded grants, cursor errors, missing tools and the doctor checks |
 | [getting-started.md](getting-started.md) | Builders and evaluators | Install Prism, generate a first sample, validate it, and enter the generated workflow |

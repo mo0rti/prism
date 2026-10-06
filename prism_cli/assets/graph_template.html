@@ -1009,10 +1009,13 @@ function transitionReason(node, index) {
   if (!hasTransitionSurface(node, index)) return "No generated " + state.surface + " invocation is available for this workflow action.";
   return "Observable checks passed — agent review and confirmation are still required.";
 }
+function workspaceAppIds(ws) {
+  return Array.isArray(ws.apps) ? ws.apps.map(app => app && app.id).filter(id => typeof id === "string") : [];
+}
 function workspaceIdentity() {
   const ws = state.data.workspace || {};
-  const platforms = Array.isArray(ws.platforms) ? ws.platforms.join(", ") : "";
-  return `${boundedText(ws.project_name || "Unnamed workspace", 120)} (${boundedText(ws.kind || "unknown workspace", 60)})${platforms ? `; platforms: ${boundedText(platforms, 180)}` : ""}`;
+  const apps = workspaceAppIds(ws).join(", ");
+  return `${boundedText(ws.project_name || "Unnamed workspace", 120)} (${boundedText(ws.kind || "unknown workspace", 60)})${apps ? `; apps: ${boundedText(apps, 180)}` : ""}`;
 }
 function promptLiteral(value, fallback) {
   const actual = value === undefined || value === null ? (fallback === undefined ? "not supplied" : fallback) : value;
@@ -1024,7 +1027,7 @@ function transitionPrompt(node, index) {
   const t = transitionRecord(node, index) || {}, cap = transitionCapability() || {}, snapshot = cap.snapshot || {};
   const ws = state.data.workspace || {};
   const invocation = transitionInvocation(node, index) || "No supported invocation is available for this agent surface.";
-  const platforms = ws.platforms === undefined || ws.platforms === null ? [] : ws.platforms;
+  const appIds = workspaceAppIds(ws);
   const sources = t.sources === undefined || t.sources === null ? [] : t.sources;
   return [
     "Prepare the existing workflow action for review.",
@@ -1033,7 +1036,7 @@ function transitionPrompt(node, index) {
     `Workspace root (envelope.root): ${promptLiteral(state.data.root)}`,
     `Project name: ${promptLiteral(ws.project_name)}`,
     `Workspace kind: ${promptLiteral(ws.kind)}`,
-    `Workspace platforms: ${promptLiteral(platforms)}`,
+    `Workspace apps: ${promptLiteral(appIds)}`,
     `Feature ID: ${promptLiteral(t.feature_id === undefined ? node.id : t.feature_id)}`,
     `Source path: ${promptLiteral(t.source_path === undefined ? node.path : t.source_path)}`,
     `Observed status: ${promptLiteral(t.source_status === undefined ? node.status : t.source_status)}`,
@@ -2802,7 +2805,7 @@ function renderFirstRunPage() {
   document.getElementById("firstrun-view").innerHTML = `
     <div class="sec-label"><b>00</b> HOW IDEAS BECOME PRODUCT TRUTH</div>
     <div class="fr-headline">One idea in.<br><em>A spectrum of product truth out.</em></div>
-    <div class="fr-sub">Every feature in this workspace flows through one pipeline — captured raw, confirmed with you, designed, reviewed, and built across <b>${escapeHtml((state.data.workspace.platforms || []).join(" · ") || "your platforms")}</b> from a single wiki. ${CONFIG.mode === "live" ? "This page updates itself as your agent works." : "This is a snapshot — rerun <code>prism wiki graph --open</code> to refresh."} Click any stage to see what happens there.</div>
+    <div class="fr-sub">Every feature in this workspace flows through one pipeline — captured raw, confirmed with you, designed, reviewed, and built across <b>${escapeHtml(workspaceAppIds(state.data.workspace || {}).join(" · ") || "your apps")}</b> from a single wiki. ${CONFIG.mode === "live" ? "This page updates itself as your agent works." : "This is a snapshot — rerun <code>prism wiki graph --open</code> to refresh."} Click any stage to see what happens there.</div>
     <div class="pipeline termcard">
       <div class="pipe-track">${REDUCED ? "" : '<div class="pipe-spark"></div>'}${pipeline}</div>
       <div class="pipe-detail" id="pipe-detail"><b style="color:${C[focus.color]};letter-spacing:.14em;font-family:ui-monospace,Consolas,monospace">${focus.n} ${focus.name}</b> — ${focus.desc}${focusCmd}</div>

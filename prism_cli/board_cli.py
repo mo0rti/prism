@@ -23,7 +23,12 @@ def register_commands(subparsers) -> None:
         parser = actions.add_parser(action, help=f"Preview a preserving workflow {action}; --apply confirms the displayed changes.")
         parser.add_argument("path", nargs="?", default=".")
         parser.add_argument("--name", help="Workspace display name; required for a new workspace.")
-        parser.add_argument("--platform", action="append", choices=sorted(PLATFORM_DIRS), help="Workflow scope; repeat to select multiple platform IDs.")
+        parser.add_argument(
+            "--app",
+            action="append",
+            choices=sorted(PLATFORM_DIRS),
+            help="Generated app ID to register when the manifest declares no apps; repeat for several. Without it a new workspace has no apps.",
+        )
         parser.add_argument("--apply", action="store_true", help="Apply the displayed plan after confirmation.")
         parser.add_argument("--yes", action="store_true", help="Confirm --apply without an interactive prompt.")
         parser.add_argument("--json", action="store_true", help="Emit the full installation plan or receipt as JSON.")
@@ -70,7 +75,7 @@ def cmd_workflow(args: argparse.Namespace) -> int:
 
     try:
         root = Path(args.path).expanduser()
-        plan = plan_install(root, name=args.name, platforms=args.platform, upgrade=args.workflow_command == "upgrade")
+        plan = plan_install(root, name=args.name, platforms=args.app, upgrade=args.workflow_command == "upgrade")
         if args.json:
             if not args.apply:
                 _json(plan)

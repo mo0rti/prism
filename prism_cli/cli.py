@@ -22,7 +22,7 @@ from typing import Any
 import yaml
 
 from prism_cli import __version__
-from prism_cli.app_model import ALL_PLATFORM_CHOICES, SLUG_PATTERN
+from prism_cli.app_model import ALL_PLATFORM_CHOICES, GENERATED_PLATFORM_STACKS, SLUG_PATTERN
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, find_cloud_placeholder
 from prism_cli.manifest_update import ManifestUpdateError, prepare_manifest_update
 from prism_cli.presets import (
@@ -107,7 +107,7 @@ class DoctorCheck:
     install_commands: dict[str, str] | None = None
     install_references: dict[str, str] | None = None
     resolver: str | None = None
-    platforms: tuple[str, ...] = ()
+    stacks: tuple[str, ...] = ()
     required_os: str | None = None
     blocking: bool = False
     packaged_status: str | None = None
@@ -141,9 +141,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.set_defaults(func=cmd_home, parser=parser)
     subparsers = parser.add_subparsers(dest="command")
+    from prism_cli.app_cli import register_commands as register_app_commands
     from prism_cli.board_cli import register_commands
 
     register_commands(subparsers)
+    register_app_commands(subparsers)
 
     presets_parser = subparsers.add_parser("presets", help="Show recommended Prism presets.")
     presets_parser.set_defaults(func=cmd_presets)
@@ -474,10 +476,10 @@ def dispatch_home_action(selected: str, parser: argparse.ArgumentParser) -> int:
         return parsed.func(parsed)
     if selected == "workflow":
         name = prompt_text("Workspace name", Path.cwd().name)
-        platforms = prompt_multiselect("Select workflow scope", ALL_PLATFORM_CHOICES)
+        selected_apps = prompt_multiselect("Select generated apps to register (none is fine)", ALL_PLATFORM_CHOICES, allow_empty=True)
         command = ["workflow", "install", "--name", name, "--apply"]
-        for selected_platform in platforms:
-            command.extend(["--platform", selected_platform])
+        for selected_app in selected_apps:
+            command.extend(["--app", selected_app])
         parsed = parser.parse_args(command)
         return parsed.func(parsed)
 
@@ -513,11 +515,11 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     selected_preset = get_preset(_args.preset) if _args.preset else None
     workspace_status = build_status(Path(_args.workspace)) if getattr(_args, "workspace", None) else None
     if selected_preset:
-        target_platforms = set(selected_preset.answers.get("platforms", []))
+        target_stacks = preset_stacks(selected_preset)
     elif workspace_status:
-        target_platforms = set(workspace_status.platforms)
+        target_stacks = workspace_status.workspace_stacks
     else:
-        target_platforms = set()
+        target_stacks = set()
     target_label = selected_preset.label if selected_preset else "Workspace Prism readiness" if workspace_status else "General Prism readiness"
 
     body = [
@@ -534,7 +536,7 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     workflow_only = bool(workspace_status and workspace_status.workspace_kind == "workflow-project" and not selected_preset)
     if workflow_only:
         checks = [check for check in checks if check.label == "Python"]
-    results = evaluate_doctor_checks(checks, system, target_platforms)
+    results = evaluate_doctor_checks(checks, system, target_stacks)
     summary = summarize_doctor_results(results, selected_preset, folder_is_workspace=folder_is_prism_workspace(_args))
     core_missing = any(result.status == "missing" and result.check.blocking for result in results)
     print(panel("Summary", summary))
@@ -702,7 +704,7 @@ def build_doctor_checks(incubation_mode: bool) -> list[DoctorCheck]:
                 "default": "https://docs.docker.com/desktop/",
             },
             resolver="docker",
-            platforms=("backend",),
+            stacks=("spring-backend",),
         ),
         DoctorCheck(
             label="JDK",
@@ -718,7 +720,7 @@ def build_doctor_checks(incubation_mode: bool) -> list[DoctorCheck]:
                 "default": "https://adoptium.net/installation/",
             },
             resolver="java",
-            platforms=("backend", "mobile-android"),
+            stacks=("spring-backend", "android-compose"),
         ),
         DoctorCheck(
             label="Xcode CLI",
@@ -734,17 +736,25 @@ def build_doctor_checks(incubation_mode: bool) -> list[DoctorCheck]:
                 "Darwin": "https://developer.apple.com/xcode/",
             },
             resolver="xcodebuild",
-            platforms=("mobile-ios",),
+            stacks=("ios-swiftui",),
             required_os="Darwin",
         ),
     ]
     return checks
 
 
-def evaluate_doctor_checks(checks: list[DoctorCheck], system: str, target_platforms: set[str]) -> list[DoctorResult]:
+def preset_stacks(preset: Preset) -> set[str]:
+    """The stacks of a preset's generated platforms."""
+
+    return {GENERATED_PLATFORM_STACKS[platform_id] for platform_id in preset.answers.get("platforms", [])}
+
+
+def evaluate_doctor_checks(checks: list[DoctorCheck], system: str, target_stacks: set[str]) -> list[DoctorResult]:
+    """Run the checks that apply to the target stacks; with no target stacks, every check applies."""
+
     results: list[DoctorResult] = []
     for check in checks:
-        if check.platforms and target_platforms and not set(check.platforms).intersection(target_platforms):
+        if check.stacks and target_stacks and not set(check.stacks).intersection(target_stacks):
             continue
 
         if check.packaged_status:
@@ -798,7 +808,7 @@ def summarize_doctor_results(results: list[DoctorResult], selected_preset: Prese
         if folder_is_workspace
         else "You can generate a Prism project now."
     )
-    next_result = choose_next_doctor_result(results, set(selected_preset.answers.get("platforms", [])) if selected_preset else set())
+    next_result = choose_next_doctor_result(results, preset_stacks(selected_preset) if selected_preset else set())
     if next_result:
         next_step = next_doctor_step(next_result)
 
@@ -829,13 +839,13 @@ def summarize_doctor_results(results: list[DoctorResult], selected_preset: Prese
     return lines
 
 
-def choose_next_doctor_result(results: list[DoctorResult], target_platforms: set[str]) -> DoctorResult | None:
+def choose_next_doctor_result(results: list[DoctorResult], target_stacks: set[str]) -> DoctorResult | None:
     missing_results = [result for result in results if result.status == "missing"]
     if not missing_results:
         return None
 
     def sort_key(result: DoctorResult) -> tuple[int, int, str]:
-        platform_relevant = bool(target_platforms) and bool(set(result.check.platforms).intersection(target_platforms))
+        platform_relevant = bool(target_stacks) and bool(set(result.check.stacks).intersection(target_stacks))
         category_priority = 0 if result.check.blocking else 1 if platform_relevant else 2 if result.check.category == "workflow" else 3
         platform_priority = 0 if platform_relevant else 1
         return (category_priority, platform_priority, result.check.label)

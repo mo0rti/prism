@@ -121,7 +121,7 @@ def create_environment(wheel: Path, work: Path, log: list[str]) -> Environment:
 def install_workspace(env: Environment, log: list[str]) -> None:
     env.workspace.mkdir(parents=True, exist_ok=True)
     _run(
-        [str(env.prism), "workflow", "install", ".", "--name", PROJECT_NAME, "--platform", PLATFORM, "--apply", "--yes"],
+        [str(env.prism), "workflow", "install", ".", "--name", PROJECT_NAME, "--app", PLATFORM, "--apply", "--yes"],
         cwd=env.workspace,
         log=log,
         what="Installing the workflow into the workspace",

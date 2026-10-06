@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
+from prism_cli.app_model import WORKSPACE_REPOSITORY_ID
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, lint_wiki
 from prism_cli.wiki_model import (
     VALID_FEATURE_STATUSES,
@@ -102,7 +103,8 @@ class WorkspaceStatus:
     root: Path
     workspace_kind: str
     project_name: str | None
-    platforms: list[str]
+    apps: list[dict[str, Any]]
+    repositories: list[dict[str, Any]]
     setup_state: str
     confidence: str
     manifest_present: bool
@@ -114,12 +116,17 @@ class WorkspaceStatus:
     feature_owner_counts: dict[str, int] = field(default_factory=dict)
     open_questions_by_owner: dict[str, int] = field(default_factory=dict)
     platform_requirement_status_counts: dict[str, int] = field(default_factory=dict)
-    platform_maturity: dict[str, dict[str, str]] = field(default_factory=dict)
     advisory_review_snapshot: AdvisoryReviewSnapshot = field(default_factory=AdvisoryReviewSnapshot)
     settings_health: SettingsHealth | None = None
     generation_answers: dict[str, Any] = field(default_factory=dict)
     template_metadata: dict[str, Any] = field(default_factory=dict)
     answers_present: bool = False
+
+    @property
+    def workspace_stacks(self) -> set[str]:
+        """The stacks of the active apps that live in this repository; doctor checks the tools they need."""
+
+        return {app["stack"] for app in self.apps if app["status"] == "active" and app["repository"] == WORKSPACE_REPOSITORY_ID}
 
     @property
     def blocker_count(self) -> int:
@@ -144,8 +151,8 @@ class WorkspaceStatus:
             "workspace": {
                 "kind": self.workspace_kind,
                 "project_name": self.project_name,
-                "platforms": self.platforms,
-                "platform_maturity": dict(self.platform_maturity),
+                "apps": [dict(app) for app in self.apps],
+                "repositories": [dict(repository) for repository in self.repositories],
                 "setup_state": self.setup_state,
             },
             "manifest": {
@@ -426,7 +433,6 @@ def build_status(root: Path) -> WorkspaceStatus:
     status_diagnostics.extend(settings_health.diagnostics)
 
     project_name = inspection.project_name
-    platforms = inspection.platforms
     setup_state = _setup_state(workspace_root, wiki_lint)
     intake = _intake_counts(workspace_root)
     feature_counts, owner_counts, open_question_counts, requirement_counts = _wiki_counts(workspace_root)
@@ -437,7 +443,8 @@ def build_status(root: Path) -> WorkspaceStatus:
         root=workspace_root,
         workspace_kind=detect_workspace_kind(workspace_root),
         project_name=project_name,
-        platforms=platforms,
+        apps=inspection.apps,
+        repositories=inspection.repositories,
         setup_state=setup_state,
         confidence=confidence,
         manifest_present=workspace_result.manifest_exists,
@@ -449,7 +456,6 @@ def build_status(root: Path) -> WorkspaceStatus:
         feature_owner_counts=owner_counts,
         open_questions_by_owner=open_question_counts,
         platform_requirement_status_counts=requirement_counts,
-        platform_maturity=workspace_result.manifest.app_maturity if workspace_result.manifest else {},
         advisory_review_snapshot=advisory_review_snapshot,
         settings_health=settings_health,
         generation_answers=_safe_generation_answers(answers),

@@ -191,7 +191,7 @@ def _envelope(
         "workspace": {
             "kind": detect_workspace_kind(root),
             "project_name": inspection.project_name,
-            "platforms": inspection.platforms,
+            "apps": inspection.apps,
         },
         "facts": facts,
         "blocker_facts": blocker_facts if blocker_facts is not None else [

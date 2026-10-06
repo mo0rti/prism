@@ -23,7 +23,7 @@ SERVER_DESCRIPTION = "Shared Prism workflow board: workflow skills, wiki and fea
 # neutral and within the 2,000-character limit that tests enforce.
 SERVER_INSTRUCTIONS = (
     "Prism board: one shared service for workflow skills, the wiki and feature lifecycle.\n"
-    "1. Call discover first.\n"
+    "1. Call discover first; it lists the workspace's apps.\n"
     "2. Use list_skills and get_skill, then fetch every reference you need with get_skill_reference.\n"
     "3. Follow every next_cursor until it is null, and check each digest against the reassembled text.\n"
     "4. Read workspace data with list_workspace, read_workspace and query.\n"
@@ -273,7 +273,7 @@ def create_mcp_server(service: Any) -> Any:
         # a short summary so clients that show both do not read two copies.
         return CallToolResult(content=[TextContent(type="text", text=_summarize(tool, data))], structured_content=data)
 
-    @server.tool(name="discover", description="Prism board: read the board's capabilities, participant, pending operations and workflow skill names. Call this first.", annotations=read_annotations, structured_output=True)
+    @server.tool(name="discover", description="Prism board: read the board's apps, capabilities, participant, pending operations and workflow skill names. Call this first.", annotations=read_annotations, structured_output=True)
     async def discover(ctx: Context) -> ToolReply:
         return reply("discover", await shaped(shrink_to_budget, await call(ctx, "discover")))
 

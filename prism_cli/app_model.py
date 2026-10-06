@@ -241,6 +241,59 @@ class WorkspaceModel:
 
         return tuple(app for app in self.apps if app.in_workspace and (app.active or not active_only))
 
+    def maturity(self, app_id: str) -> dict[str, str] | None:
+        """The ``app_maturity`` entry of an app, or ``None`` when the manifest records none."""
+
+        entry = self.app_maturity.get(app_id)
+        return dict(entry) if entry is not None else None
+
+
+# --- Output shapes ----------------------------------------------------------
+
+CHECKOUT_RESOLVED = "resolved"
+CHECKOUT_UNRESOLVED = "unresolved"
+
+
+def app_entries(model: WorkspaceModel) -> list[dict[str, Any]]:
+    """Every app of the workspace in manifest order, in the shape workspace-level JSON reports.
+
+    Each entry has ``id``, ``name``, ``stack``, ``repository``, ``path``,
+    ``audience`` (or ``None``), ``status``, ``capabilities`` (``has-ui`` and
+    ``serves-api``, each ``True``, ``False`` or ``"unknown"``) and ``maturity``
+    (the ``app_maturity`` entry or ``None``).
+    """
+
+    return [
+        {
+            "id": app.id,
+            "name": app.name,
+            "stack": app.stack,
+            "repository": app.repository,
+            "path": app.path,
+            "audience": app.audience,
+            "status": app.status,
+            "capabilities": app.capabilities,
+            "maturity": model.maturity(app.id),
+        }
+        for app in model.apps
+    ]
+
+
+def repository_entries(model: WorkspaceModel, local_repositories: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The repositories of the workspace: ``id``, ``remote`` (or ``None``) and, for an external one, ``checkout``.
+
+    ``checkout`` is ``resolved`` or ``unresolved`` from ``prism.local.yml``. The
+    local path itself is never reported.
+    """
+
+    entries: list[dict[str, Any]] = []
+    for repository in model.repositories:
+        entry: dict[str, Any] = {"id": repository.id, "remote": repository.remote}
+        if not repository.is_workspace:
+            entry["checkout"] = CHECKOUT_RESOLVED if repository.id in local_repositories else CHECKOUT_UNRESOLVED
+        entries.append(entry)
+    return entries
+
 
 # --- Normalizer -------------------------------------------------------------
 

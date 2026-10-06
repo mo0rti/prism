@@ -539,7 +539,7 @@ class DoctorCommandTests(unittest.TestCase):
     @patch("prism_cli.cli.shutil.which")
     def test_evaluate_doctor_checks_marks_ios_not_applicable_on_windows(self, mocked_which: object) -> None:
         mocked_which.return_value = None
-        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"mobile-ios"})
+        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"ios-swiftui"})
         ios_result = next(result for result in results if result.check.label == "Xcode CLI")
         self.assertEqual("not-applicable", ios_result.status)
 
@@ -569,14 +569,14 @@ class DoctorCommandTests(unittest.TestCase):
     @patch("prism_cli.cli.shutil.which")
     def test_summary_reports_generate_now_when_everything_is_ready(self, mocked_which: object) -> None:
         mocked_which.return_value = "C:/tools/found.exe"
-        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"backend", "mobile-android"})
+        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"spring-backend", "android-compose"})
         summary = "\n".join(summarize_doctor_results(results, get_preset("backend-mobile")))
         self.assertIn("You can generate a Prism project now.", summary)
 
     @patch("prism_cli.cli.shutil.which")
     def test_preset_filtering_excludes_ios_check_for_backend_only(self, mocked_which: object) -> None:
         mocked_which.return_value = "C:/tools/found.exe"
-        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"backend"})
+        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"spring-backend"})
         labels = [result.check.label for result in results]
         self.assertNotIn("Xcode CLI", labels)
 
@@ -594,8 +594,8 @@ class DoctorCommandTests(unittest.TestCase):
             return "C:/tools/found.exe"
 
         mocked_which.side_effect = fake_which
-        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"backend", "mobile-android"})
-        next_result = choose_next_doctor_result(results, {"backend", "mobile-android"})
+        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"spring-backend", "android-compose"})
+        next_result = choose_next_doctor_result(results, {"spring-backend", "android-compose"})
         assert next_result is not None
         self.assertEqual("JDK", next_result.check.label)
 

@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 
 import yaml
 
-from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, apps_from_platforms, normalize_manifest
+from prism_cli.app_model import LOCAL_OVERRIDE_FILE, MANIFEST_SCHEMA_VERSION, apps_from_platforms, normalize_manifest
 from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, PLATFORM_DIRS
 from prism_cli.workflow_assets import asset_digest, bootstrap_files, guidance_pointer, previous_digests
 from prism_cli.board_store import BoardLockError, unresolved_board_operations, workspace_process_lock
@@ -24,6 +24,8 @@ from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, reparse_kind
 WORKFLOW_VERSION = "1"
 _IGNORE_MARKER = "# Prism local workflow state"
 _IGNORE_RULE = ".prism/state/"
+_LOCAL_IGNORE_MARKER = "# Prism per-machine repository checkouts"
+_LOCAL_IGNORE_RULE = LOCAL_OVERRIDE_FILE
 _ATTRIBUTES_MARKER = "# Prism workflow files keep LF line endings"
 _ATTRIBUTES_RULE = "knowledge/** text eol=lf"
 
@@ -34,10 +36,14 @@ def plan_install(
     platforms: list[str] | None = None,
     upgrade: bool = False,
 ) -> dict[str, Any]:
-    """Build an exact, non-mutating file plan for installing or upgrading."""
+    """Build an exact, non-mutating file plan for installing or upgrading.
+
+    ``platforms`` names the generated app IDs (the ``--app`` values) to register
+    in a manifest that declares no apps. A new workspace without them has no apps.
+    """
 
     workspace = _validated_root(root)
-    selected_platforms = _validate_requested_platforms(platforms)
+    selected_apps = _validate_requested_apps(platforms)
     if name is not None:
         _validate_name(name)
     if type(upgrade) is not bool:
@@ -119,12 +125,12 @@ def plan_install(
                 f"{MANIFEST_FILE} has invalid repository or app declarations ({', '.join(problem_codes)}); fix them before adopting or upgrading the workflow."
             )
         if scope_declared and model is not None:
-            chosen_platforms = model.active_app_ids
+            chosen_apps = model.active_app_ids
             # Naming the apps the workspace already has is harmless; naming others would change them.
-            if selected_platforms is not None and set(selected_platforms) != set(chosen_platforms):
-                conflicts.append(f"`--platform` cannot change the apps of this workspace; edit `apps` in {MANIFEST_FILE} instead.")
+            if selected_apps is not None and set(selected_apps) != set(chosen_apps):
+                conflicts.append(f"`--app` cannot change the apps of this workspace; register another app with `prism app add` or edit `apps` in {MANIFEST_FILE}.")
         else:
-            chosen_platforms = _choose_platforms(inferred_answers, selected_platforms, conflicts)
+            chosen_apps = _choose_apps(inferred_answers, selected_apps, conflicts)
         mode = "generated" if is_generated else "workflow"
 
         if not conflicts:
@@ -134,8 +140,8 @@ def plan_install(
             project["name"] = chosen_name
             manifest_data["project"] = project
             if not scope_declared:
-                # The chosen platforms become apps: their ID, stack and default directory.
-                manifest_data["apps"] = apps_from_platforms(chosen_platforms)
+                # The chosen generated apps are registered with their ID, stack and default directory.
+                manifest_data["apps"] = apps_from_platforms(chosen_apps)
             if old_workflow is None:
                 old_workflow = {}
             old_workflow.update(
@@ -168,7 +174,7 @@ def plan_install(
                 unchanged.append(MANIFEST_FILE)
         else:
             chosen_name = chosen_name or (project.get("name") if isinstance(project.get("name"), str) else None)
-            chosen_platforms = chosen_platforms or []
+            chosen_apps = chosen_apps or []
 
         for bootstrap in bootstrap_files(WORKFLOW_VERSION):
             relative = bootstrap["path"]
@@ -209,7 +215,7 @@ def plan_install(
             "asset_digest": digest,
             "board_id": board_id,
             "name": chosen_name,
-            "platforms": chosen_platforms,
+            "apps": chosen_apps,
             "upgrade": upgrade,
             "changes": changes,
             "conflicts": _unique(conflicts),
@@ -237,7 +243,7 @@ def plan_install(
             "asset_digest": digest,
             "board_id": None,
             "name": name,
-            "platforms": selected_platforms or [],
+            "apps": selected_apps or [],
             "upgrade": upgrade,
             "changes": [],
             "conflicts": _unique(conflicts),
@@ -578,19 +584,19 @@ def _mutable_mapping(data: dict[str, Any], key: str, source: str) -> dict[str, A
     return value
 
 
-def _validate_requested_platforms(platforms: list[str] | None) -> list[str] | None:
-    if platforms is None:
+def _validate_requested_apps(apps: list[str] | None) -> list[str] | None:
+    if apps is None:
         return None
-    if not isinstance(platforms, list) or not platforms:
-        raise ValueError("Select at least one Prism platform with --platform.")
-    if any(not isinstance(item, str) for item in platforms):
-        raise ValueError("Platform scope must be a list of Prism platform IDs.")
-    if len(set(platforms)) != len(platforms):
-        raise ValueError("Platform scope cannot contain duplicate IDs.")
-    invalid = sorted(set(platforms) - set(PLATFORM_DIRS))
+    if not isinstance(apps, list) or not apps:
+        raise ValueError("Select at least one app with --app, or leave it out to create a workspace with no apps.")
+    if any(not isinstance(item, str) for item in apps):
+        raise ValueError("The apps must be a list of generated app IDs.")
+    if len(set(apps)) != len(apps):
+        raise ValueError("The apps cannot contain duplicate IDs.")
+    invalid = sorted(set(apps) - set(PLATFORM_DIRS))
     if invalid:
-        raise ValueError(f"Unsupported Prism platform IDs: {', '.join(invalid)}.")
-    return [platform for platform in PLATFORM_DIRS if platform in platforms]
+        raise ValueError(f"Unsupported app IDs: {', '.join(invalid)}. Choose from {', '.join(PLATFORM_DIRS)}.")
+    return [app_id for app_id in PLATFORM_DIRS if app_id in apps]
 
 
 def _validate_name(name: str) -> None:
@@ -640,27 +646,28 @@ def _choose_name(
     return root.name or None
 
 
-def _choose_platforms(
+def _choose_apps(
     answers: dict[str, Any],
     requested: list[str] | None,
     conflicts: list[str],
 ) -> list[str]:
+    """The generated apps to register: the requested ones, else the Copier answers' platforms, else none."""
+
     if requested is not None:
         return requested
     answer_platforms = answers.get("platforms")
     if answer_platforms is not None and not isinstance(answer_platforms, list):
-        conflicts.append(f"Saved project platform scope must be a list; found {type(answer_platforms).__name__}.")
+        conflicts.append(f"Saved project platform answers must be a list; found {type(answer_platforms).__name__}.")
         return []
     if isinstance(answer_platforms, list) and answer_platforms:
         invalid = [value for value in answer_platforms if not isinstance(value, str) or value not in PLATFORM_DIRS]
         if invalid:
-            conflicts.append(f"Saved project platform scope contains unsupported values: {invalid!r}; provide a valid --platform selection.")
+            conflicts.append(f"Saved project platform answers contain unsupported values: {invalid!r}; provide a valid --app selection.")
             return []
         if len(set(answer_platforms)) != len(answer_platforms):
-            conflicts.append("Saved project platform scope contains duplicates; provide a valid --platform selection.")
+            conflicts.append("Saved project platform answers contain duplicates; provide a valid --app selection.")
             return []
         return list(answer_platforms)
-    conflicts.append("Choose an explicit non-empty Prism platform scope with one or more --platform options.")
     return []
 
 
@@ -782,20 +789,25 @@ def _plan_gitignore(
         return
     if current is None:
         _check_missing_parent_chain(root, relative)
-        after = f"{_IGNORE_MARKER}\n{_IGNORE_RULE}\n"
+        after = f"{_IGNORE_MARKER}\n{_IGNORE_RULE}\n{_LOCAL_IGNORE_MARKER}\n{_LOCAL_IGNORE_RULE}\n"
         changes.append({"path": relative, "before": None, "after": after})
         return
     try:
         text = current.decode("utf-8")
     except UnicodeError as exc:
-        conflicts.append(f"{relative} is not UTF-8 text and cannot safely receive the Prism state ignore rule: {exc}")
+        conflicts.append(f"{relative} is not UTF-8 text and cannot safely receive the Prism ignore rules: {exc}")
         return
-    if _state_ignore_is_effective(text):
+    additions: list[str] = []
+    if not _state_ignore_is_effective(text):
+        additions.extend((_IGNORE_MARKER, _IGNORE_RULE))
+    if not _local_ignore_is_effective(text):
+        additions.extend((_LOCAL_IGNORE_MARKER, _LOCAL_IGNORE_RULE))
+    if not additions:
         unchanged.append(relative)
         return
     newline = "\r\n" if "\r\n" in text else "\n"
     suffix = "" if not text or text.endswith(("\n", "\r")) else newline
-    after = f"{text}{suffix}{_IGNORE_MARKER}{newline}{_IGNORE_RULE}{newline}"
+    after = f"{text}{suffix}" + "".join(f"{line}{newline}" for line in additions)
     changes.append({"path": relative, "before": text, "after": after})
 
 
@@ -843,6 +855,21 @@ def _attributes_rule_is_effective(text: str) -> bool:
         if not tokens or tokens[0].startswith("#") or tokens[0] not in {"knowledge/**", "/knowledge/**"}:
             continue
         effective = "eol=lf" in tokens[1:]
+    return effective
+
+
+def _local_ignore_is_effective(text: str) -> bool:
+    """Tell whether the last rule that names `prism.local.yml` ignores it."""
+
+    effective = False
+    for line in text.splitlines():
+        value = line.strip()
+        if not value or value.startswith("#"):
+            continue
+        negate = value.startswith("!")
+        pattern = value[1:].strip() if negate else value
+        if pattern in {LOCAL_OVERRIDE_FILE, f"/{LOCAL_OVERRIDE_FILE}"}:
+            effective = not negate
     return effective
 
 
@@ -951,6 +978,6 @@ def _receipt(plan: dict[str, Any], *, status: str, **details: Any) -> dict[str, 
         "board_id": plan.get("board_id"),
         "asset_digest": plan.get("asset_digest"),
         "name": plan.get("name"),
-        "platforms": plan.get("platforms", []),
+        "apps": plan.get("apps", []),
         **details,
     }

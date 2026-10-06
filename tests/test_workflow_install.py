@@ -395,7 +395,7 @@ class WorkflowInstallTests(unittest.TestCase):
             stdout = io.StringIO()
             with contextlib.redirect_stdout(stdout):
                 preview_result = cmd_workflow(Namespace(
-                    path=str(root), workflow_command="upgrade", name=None, platform=None,
+                    path=str(root), workflow_command="upgrade", name=None, app=None,
                     apply=False, yes=False, json=False,
                 ))
             self.assertEqual(0, preview_result)

@@ -57,12 +57,12 @@ pip install -e .
 
 Run the remaining steps in a separate workspace folder, not in this maintainer checkout and not in a cloud-synced folder such as OneDrive.
 
-**1. Add the workflow.** Use an empty folder or an existing repository. Choose a display name and one scope; `--platform` takes one of the five platform IDs and does not generate an application. The first command previews every file. The second asks you to confirm before it writes (`--apply --yes` skips the question for automation).
+**1. Add the workflow.** Use an empty folder or an existing repository. Choose a display name and, if you want, an app: `--app` takes one of the five generated app IDs (`backend`, `web-user-app`, `web-admin-portal`, `mobile-android`, `mobile-ios`) and registers it without generating an application. Without `--app` the workspace has no apps, and `prism app add` registers one later ([the workspace model](https://github.com/mo0rti/prism/blob/main/docs/workspace-model.md) covers apps, repositories and `prism app list`). The first command previews every file. The second asks you to confirm before it writes (`--apply --yes` skips the question for automation).
 
 ```bash
 cd path/to/your-workspace
-prism workflow install . --name "My workspace" --platform backend
-prism workflow install . --name "My workspace" --platform backend --apply
+prism workflow install . --name "My workspace" --app backend
+prism workflow install . --name "My workspace" --app backend --apply
 ```
 
 **2. Check readiness.** The "Shared board" section lists what needs attention, each with a `Fix:` line. A warning that no grant exists yet is expected at this point.
@@ -158,7 +158,8 @@ For the full first-run path, read [docs/getting-started.md](https://github.com/m
 
 Read the [shared board guide](https://github.com/mo0rti/prism/blob/main/docs/shared-board.md), then the
 [wiki workflow](https://github.com/mo0rti/prism/blob/main/docs/wiki-workflow.md). The local service shares one workspace
-between the browser and standard MCP clients.
+between the browser and standard MCP clients. [The workspace model](https://github.com/mo0rti/prism/blob/main/docs/workspace-model.md)
+explains how a workspace declares its apps and repositories.
 
 ### I want to generate a project and evaluate Prism
 

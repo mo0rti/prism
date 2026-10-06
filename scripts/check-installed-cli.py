@@ -63,7 +63,7 @@ def main() -> None:
         (adopted / "notes.txt").write_bytes(b"Existing workspace content\r\n")
         (adopted / "AGENTS.md").write_bytes(b"# Existing team guidance\r\n")
         original = snapshot_project(adopted)
-        adoption = ["workflow", "install", str(adopted), "--name", "Document review", "--platform", "backend"]
+        adoption = ["workflow", "install", str(adopted), "--name", "Document review", "--app", "backend"]
         plan = json.loads(run(root, cli + adoption + ["--json"]).stdout)
         assert not plan["conflicts"], plan["conflicts"]
         assert snapshot_project(adopted) == original, "installation preview must be read-only"

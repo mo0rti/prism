@@ -78,16 +78,20 @@ version, source, template version or commit, and generation timestamp.
 
 The workspace contract is intentionally conservative:
 
-- schema 1 manifests load normally
-- older readable manifests expose known fields with a warning and are not migrated
-  implicitly
-- newer, malformed, or unreadable manifests produce diagnostics and are never
-  rewritten by read commands
+- schema 2 manifests load normally; every other `schema_version` is refused with
+  `unsupported-workspace-manifest-schema` and is not migrated
+- invalid repository or app declarations produce error diagnostics with stable codes
+  (for example `duplicate-app-id`, `unknown-app-stack` and `app-path-conflict`), and an
+  external repository without a checkout in `prism.local.yml` is the warning
+  `external-repository-unresolved`, never an error
+- malformed or unreadable manifests produce diagnostics and are never rewritten by
+  read commands
 - a missing manifest falls back to Copier answers and filesystem facts with degraded
   confidence
-- `prism status`, `prism status --full`, `prism status --json`, and
-  `prism doctor --workspace` are read-only; only explicit generation or update
-  workflows refresh manifest provenance
+- `prism status`, `prism status --full`, `prism status --json`,
+  `prism doctor --workspace` and `prism app list` are read-only; only explicit
+  generation, update, workflow and `prism app add --apply` commands write the manifest,
+  and only generation and update refresh its provenance
 
 `status --full` reports documented generation answers, effective wiki settings,
 advisory review counts, and template provenance. Private Copier metadata and unknown
@@ -100,7 +104,7 @@ answer keys are omitted from human and JSON status output.
 1. **verify-tag** fails unless the tag equals `v` plus the version in `pyproject.toml`, `prism_cli/__init__.py` and `npm/package.json`, and `CHANGELOG.md` has a section for that version.
 2. **build** builds the source archive and the wheel from the tagged commit, runs `twine check --strict` with `readme-renderer[md]`, requires exactly the two expected file names, and uploads them as one artifact. Every later job publishes those same files.
 3. **publish-testpypi** uploads them to TestPyPI with `pypa/gh-action-pypi-publish` and trusted publishing, in the GitHub environment `testpypi`. A file that is already on TestPyPI is skipped, so a rerun does not fail.
-4. **smoke-test** installs `prism-kit==<version>` from TestPyPI (`--index-url https://test.pypi.org/simple/` with `--extra-index-url https://pypi.org/simple/` for the dependencies) into a fresh environment, retrying up to 12 times, 20 seconds apart, while the index catches up. It then runs `prism --version`, `prism workflow install . --platform backend --apply --yes` and `prism doctor --workspace .` in a temporary folder.
+4. **smoke-test** installs `prism-kit==<version>` from TestPyPI (`--index-url https://test.pypi.org/simple/` with `--extra-index-url https://pypi.org/simple/` for the dependencies) into a fresh environment, retrying up to 12 times, 20 seconds apart, while the index catches up. It then runs `prism --version`, `prism workflow install . --app backend --apply --yes` and `prism doctor --workspace .` in a temporary folder.
 5. **publish-pypi** uploads the same files to PyPI with trusted publishing, in the GitHub environment `pypi`. A required reviewer on that environment turns this job into a manual approval.
 6. **github-release** creates the GitHub release for the tag with the source archive, the wheel and a `SHA256SUMS.txt`. The release notes are the matching `CHANGELOG.md` section. A version with an `a`, `b`, `rc` or `dev` suffix is marked as a pre-release.
 

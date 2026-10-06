@@ -52,16 +52,43 @@
   "$defs": {
     "workspace": {
       "type": "object",
-      "required": ["kind", "project_name", "platforms"],
+      "required": ["kind", "project_name", "apps"],
       "properties": {
         "kind": { "type": "string", "minLength": 1 },
         "project_name": { "type": ["string", "null"] },
-        "platforms": {
+        "apps": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "$ref": "#/$defs/app" }
         }
       },
       "additionalProperties": true
+    },
+    "app": {
+      "type": "object",
+      "required": ["id", "name", "stack", "repository", "path", "audience", "status", "capabilities", "maturity"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "stack": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "audience": { "type": ["string", "null"] },
+        "status": { "enum": ["active", "retired"] },
+        "capabilities": {
+          "type": "object",
+          "required": ["has-ui", "serves-api"],
+          "properties": {
+            "has-ui": { "enum": [true, false, "unknown"] },
+            "serves-api": { "enum": [true, false, "unknown"] }
+          },
+          "additionalProperties": false
+        },
+        "maturity": {
+          "type": ["object", "null"],
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
     },
     "diagnostic": {
       "type": "object",

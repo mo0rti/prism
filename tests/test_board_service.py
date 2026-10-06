@@ -294,11 +294,11 @@ class BoardServiceValidatorTests(unittest.TestCase):
             self.service.discover(self.actor)
         self.assertEqual("workspace_identity_changed", error.exception.code)
 
-    def test_discover_and_list_skills_report_contract_2_and_state_read_support_once(self) -> None:
+    def test_discover_and_list_skills_report_contract_3_and_state_read_support_once(self) -> None:
         discovered = self.service.discover(self.actor)
         listed = self.service.list_skills(self.actor)
-        self.assertEqual(2, discovered["mcp_contract"])
-        self.assertEqual(2, listed["mcp_contract"])
+        self.assertEqual(3, discovered["mcp_contract"])
+        self.assertEqual(3, listed["mcp_contract"])
         self.assertEqual(listed["read_support"], discovered["capability"]["read_support"])
         self.assertTrue(discovered["skills"])
         for item in discovered["skills"]:
@@ -425,8 +425,25 @@ class BoardServiceValidatorTests(unittest.TestCase):
         self.assertIn("nonempty `platforms` list", empty.exception.message)
         self.assertIn("`backend`", empty.exception.message)
 
-    def test_discover_reports_the_board_platforms(self) -> None:
-        self.assertEqual(["backend"], self.service.discover(self.actor)["board"]["platforms"])
+    def test_discover_reports_the_board_apps(self) -> None:
+        board = self.service.discover(self.actor)["board"]
+        self.assertNotIn("platforms", board)
+        self.assertEqual(
+            [
+                {
+                    "id": "backend",
+                    "name": "Spring Boot Backend",
+                    "stack": "spring-backend",
+                    "repository": "workspace",
+                    "path": "backend",
+                    "audience": None,
+                    "status": "active",
+                    "capabilities": {"has-ui": False, "serves-api": True},
+                    "maturity": None,
+                }
+            ],
+            board["apps"],
+        )
 
     def test_a_section_that_differs_only_in_its_final_newline_is_named_as_whitespace(self) -> None:
         old = "## Open questions\nrow\n\n## Post-ship notes\nNot shipped yet.\n"

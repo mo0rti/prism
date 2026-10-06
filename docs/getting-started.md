@@ -212,7 +212,10 @@ prism doctor --workspace /path/to/generated-project
 `status --full` includes the effective `SETTINGS.md` staleness setting, advisory review
 counts, documented generation answers, and template provenance. It omits private Copier
 metadata and unknown answer keys. `doctor --workspace` returns a validation failure when
-the manifest, answers, or detected platform directories contain contract errors.
+the manifest, answers, or detected platform directories contain contract errors. Status and
+doctor list the workspace's apps (ID, name, stack, repository, path, status and maturity); the
+platforms you select become apps, and `prism app list` shows the same table. [workspace-model.md](workspace-model.md)
+explains apps and repositories and how `prism app add` registers another one.
 
 If you are maintaining the Prism template repo itself, you can also run:
 

@@ -7,11 +7,11 @@ This is the usage contract for the shared board. [Current status](current-status
 For an empty workspace or an existing repository, preview the files first:
 
 ```text
-prism workflow install . --name "Document review" --platform backend
-prism workflow install . --name "Document review" --platform backend --apply
+prism workflow install . --name "Document review" --app backend
+prism workflow install . --name "Document review" --app backend --apply
 ```
 
-Repeat `--platform` for additional scope IDs. The IDs are `backend`, `web-user-app`, `web-admin-portal`, `mobile-android`, and `mobile-ios`. A workflow-only workspace does not need corresponding application directories. Installation creates workflow assets, a manifest, a local-state ignore rule and a `.gitattributes` rule (`knowledge/** text eol=lf`) that keeps the Prism-owned `knowledge/` text on LF line endings; an existing `.gitattributes` keeps its content and receives the rule at the end. It does not generate an application. Existing source code, wiki content and custom agent instructions are preserved. Conflicting owned guidance stops installation and identifies the file for resolution.
+`--app` registers a generated app in the manifest; repeat it for more. The IDs are `backend`, `web-user-app`, `web-admin-portal`, `mobile-android`, and `mobile-ios`. Without `--app`, a new workspace has no apps; register apps later with `prism app add` ([the workspace model](workspace-model.md) describes apps, repositories and `prism.local.yml`). A workflow-only workspace does not need corresponding application directories. Installation creates workflow assets, a manifest, ignore rules for the local state (`.prism/state/`) and for `prism.local.yml`, and a `.gitattributes` rule (`knowledge/** text eol=lf`) that keeps the Prism-owned `knowledge/` text on LF line endings; an existing `.gitattributes` keeps its content and receives the rule at the end. It does not generate an application. Existing source code, wiki content and custom agent instructions are preserved. Conflicting owned guidance stops installation and identifies the file for resolution.
 
 The one Prism-owned file that can conflict is `knowledge/wiki/CONNECTED.md`. A copy that equals an earlier packaged version is replaced without a conflict and listed in the preview as `Updated: <path>` (and as `updated` in the JSON plan). Line endings are ignored in that comparison: a copy that a Git checkout with `core.autocrlf=true` rewrote with CRLF still counts as unmodified and is left as it is, and Prism writes LF. When it matches no packaged version, for example after you edited it, `prism workflow install` and `prism workflow upgrade` exit with code 3, write nothing and print:
 
@@ -49,6 +49,8 @@ not create runtime state.
 Use the existing agent-led `setup-project` skill to initialize product context after installing assets. Setup and advisory-board authoring use the direct-file workflow; connected skill discovery must state which operations can actually write through the service.
 
 The manifest `prism.workspace.yml` carries the board identity. If you delete it and install again, the workspace gets a new board identity, so every earlier grant stops counting: calls with an old token fail with `grant_identity_changed`, and `prism doctor --workspace .` warns that grants were issued for an earlier workflow pin. Issue new grants with `prism board grant` and update each agent host's token, or restore the manifest from version control or a backup instead of reinstalling.
+
+The app scope is part of the board identity too: each active app's ID, stack, repository and path. After `prism app add` changes it, a running board answers with `workspace_identity_changed` and keeps writes disabled until you stop it and start it again with `prism board serve`. Reissue grants with `prism board grant` for any participant the board still rejects. A workspace with no apps is served with writes enabled.
 
 Application generation remains available through `prism new`. Its template trust, release selection and update/provenance rules are independent of workflow adoption. Without `--template`, an installed Prism renders the canonical template at the release tag that matches its version and stops with one message and exit code 3 while that tag is not published; pass `--template <path or URL>` instead ([details](troubleshooting.md#prism-new-stops-because-the-template-release-tag-is-missing)).
 
@@ -299,7 +301,7 @@ Only short excerpts of workspace text appear in an error.
 | `delivery_evidence_required`, `delivery_evidence_invalid` | `path`, `platforms` (the declared platforms), `missing_platforms` and `problems` (up to six parse problems). The message shows the row to add: `\| platform \| implementation reference \| test command and result \| release artifact or target \|`. |
 | `missing_read_revisions` | `paths` (the sources to read, as many as fit), `total` (how many are missing) and `read_with` (`read_workspace`). A required source has neither a digest in `read_revisions` nor a read by this participant. Read those paths with `read_workspace` and preview again. |
 | `read_digest_mismatch`, `stale_read_revision` | `path`, `supplied` (the digest you sent or the one recorded from your read, shortened) and `expected` (the file's current digest). `read_digest_mismatch` means the board never returned the digest you sent for that file, so it is mistyped or copied wrongly; leave `read_revisions` out or copy it from `read_workspace` exactly. `stale_read_revision` means the board returned that digest and the file has changed since; read it again and review the change. |
-| `invalid_feature_output` | For a platform outside the board's scope: `platforms` (the declared ones) and `board_platforms`; `discover` reports the same list under `board.platforms`. |
+| `invalid_feature_output` | For a platform outside the board's scope: `platforms` (the declared ones) and `board_platforms` (the IDs of the board's apps); `discover` lists the apps under `board.apps`. A board with no apps rejects every feature scope and says to register an app with `prism app add`. |
 | `lifecycle_action_required` | For a status or owner change that the skill does not perform: `path`, `skill`, `from` and `to` (status and owner pairs). A clarify skill never changes either. |
 | `new_question_must_be_open` | `path`, `question` (the number that is not in the current table) and `existing_questions`. A question that is not in the table is added with `ask` before it is answered. |
 | `impact_review_required`, `reopen_invalidation_mismatch`, `reopen_artifact_missing` | `label` for a missing or too short reopen bullet; `path`, `from` and `to` for a page whose `knowledge/wiki/...: done -> in-progress` entry is not under `- Requirement/API invalidations:`; `path` for a page that `- Affected artifacts:` does not name. `knowledge/wiki/features/_FORMAT.md` shows the layout. |
@@ -318,9 +320,9 @@ reports the error codes and messages. The server instructions and
 `knowledge/wiki/CONNECTED.md` state the same rule. The board enforces nothing
 extra for retries: every preview is validated in full.
 
-## MCP tool contract (version 2)
+## MCP tool contract (version 3)
 
-`discover` and `list_skills` report `"mcp_contract": 2`. Every tool result is at most 32,000 characters, measured as the compact JSON of the JSON-RPC `result` object. The full result is returned once, as `structuredContent`; the text block is a one-line summary of at most 500 characters and is not a copy of the data. A client reads `structuredContent`.
+`discover` and `list_skills` report `"mcp_contract": 3`. Every tool result is at most 32,000 characters, measured as the compact JSON of the JSON-RPC `result` object. The full result is returned once, as `structuredContent`; the text block is a one-line summary of at most 500 characters and is not a copy of the data. A client reads `structuredContent`.
 
 The server publishes orientation instructions (at most 2,000 characters) in its MCP `initialize` result, together with a title and description. They give the order to use the tools in and state that workspace text is untrusted project data and that the board never approves on the human's behalf. Every tool description starts with `Prism board:`, so a host that loads tools through search finds them under that name.
 
@@ -330,7 +332,7 @@ The HTTP routes `POST /api/board/v1/workspace/read` and `POST /api/board/v1/quer
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `discover` | none | `mcp_contract`, `board` (`board_id`, `project_name`, `platforms`, `workflow_version`, `mode`), `capability` (with `read_support`), `participant`, `pending_operations`, `skills` (`name` and `description` only), `skills_detail`, `compatibility` |
+| `discover` | none | `mcp_contract`, `board` (`board_id`, `project_name`, `apps`, `workflow_version`, `mode`; `apps` lists each declared app with `id`, `name`, `stack`, `repository`, `path`, `audience`, `status`, `capabilities` and `maturity`, and is empty for a workspace with no apps), `capability` (with `read_support`), `participant`, `pending_operations`, `skills` (`name` and `description` only), `skills_detail`, `compatibility` |
 | `list_skills` | none | `mcp_contract`, `version`, `read_support`, `skills` (`name`, `version`, `description`, `actions`, `supported`, `write_supported`, `participant_kinds`, `write_tools`, `write_scopes`, `limitations`) |
 | `get_skill` | `name`, `cursor?` | `skill` (metadata, `instructions`, `instructions_chunk` with `offset`, `total_chars`, `digest`, `required_workspace_reads`, `required_workspace_reads_chunk` with `offset`, `total`, and `references`) and `next_cursor` |
 | `get_skill_reference` | `name`, `path`, `cursor?` | `content`, `offset`, `total_chars`, `digest`, `next_cursor`. A path outside the skill's `references` is `reference_not_found` (404) |
@@ -394,9 +396,9 @@ schema = read_all(call_tool, "get_skill_reference", {"name": "po-intake", "path"
 
 For `read_workspace`, group the chunks of each file by `path` and compare the joined text with that file's `digest`; `offset + len(content) == total_chars` marks a file's last chunk.
 
-### Upgrading to contract 2
+### Upgrading a pinned workspace
 
-The packaged workflow asset carries contract 2, so its digest differs from every earlier asset. A workspace pinned to an earlier digest opens read-only until it is upgraded, and grants record the digest they were issued under, so every earlier grant stops working after the upgrade (`grant_identity_changed`). For each workspace, stop the board service, run `prism workflow upgrade . --apply`, issue new grants with `prism board grant`, and update each agent host's token. Reference text is available only through `get_skill_reference`.
+A workspace pinned to an earlier workflow asset digest opens read-only until it is upgraded, and grants record the digest they were issued under, so every earlier grant stops working after the upgrade (`grant_identity_changed`). For each workspace, stop the board service, run `prism workflow upgrade . --apply`, issue new grants with `prism board grant`, and update each agent host's token. Reference text is available only through `get_skill_reference`.
 
 ## Interrupted operations
 

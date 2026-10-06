@@ -22,7 +22,7 @@ from uuid import UUID, uuid4
 
 import yaml
 
-from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, WorkspaceModel, normalize_manifest
+from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, WorkspaceModel, app_entries, normalize_manifest
 from prism_cli.board_store import BoardLockError, BoardStore
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError, reparse_kind
 from prism_cli.wiki_model import (
@@ -38,7 +38,7 @@ from prism_cli.wiki_model import (
 _MAX_TEXT_FILE = 512 * 1024
 _MAX_READ_TOTAL = 2 * 1024 * 1024
 _MAX_READ_PATHS = 64
-_MCP_CONTRACT = 2
+_MCP_CONTRACT = 3
 # Operation states that never run again: `applied` finished its writes and `abandoned` was closed by a human.
 _TERMINAL_OPERATION_STATES = frozenset({"applied", "abandoned"})
 # A path segment every operating system can hold. Windows refuses these characters,
@@ -333,7 +333,7 @@ class BoardService:
             "board": {
                 "board_id": self._board_id,
                 "project_name": self._project_name,
-                "platforms": list(self._platforms),
+                "apps": app_entries(self._model) if self._model is not None else [],
                 "workflow_version": self._workflow_version,
                 "mode": self._mode,
             },
@@ -2188,6 +2188,13 @@ class BoardService:
             declared = [item for item in platforms if isinstance(item, str)] if isinstance(platforms, list) else []
             outside = [item for item in declared if item not in self._platforms]
             details = {"platforms": _names(declared), "board_platforms": _names(self._platforms)}
+            if not self._platforms:
+                raise BoardError(
+                    "invalid_feature_output",
+                    f"Feature `{feature_id}` cannot be scoped: this board has no apps. Register them with `prism app add` first, then declare only those.",
+                    409,
+                    details,
+                )
             if outside:
                 raise BoardError(
                     "invalid_feature_output",
@@ -4117,21 +4124,19 @@ def BoardServiceIdentity(root: Path) -> tuple[Any, ...] | None:
 def _board_scope(data: Mapping[str, Any], manifest_path: Path) -> tuple[WorkspaceModel | None, str | None]:
     """The application model of a connected workspace, or the reason it cannot be used.
 
-    The project needs a name and at least one active app, and every repository
-    and app declaration must be valid.
+    The project needs a name, and every repository and app declaration must be
+    valid. A workflow workspace may declare no apps.
     """
 
     model, diagnostics = normalize_manifest(data, path=manifest_path)
     project = data.get("project")
     project_name = project.get("name") if isinstance(project, dict) else None
     if not isinstance(project_name, str) or not project_name.strip():
-        return None, "Project name and an explicit nonempty app scope are required."
+        return None, "A project name is required."
     errors = [item for item in diagnostics if item.severity == "error"]
     if errors:
         codes = ", ".join(sorted({item.code for item in errors}))
         return None, f"The workspace manifest has invalid repository or app declarations ({codes}); `prism doctor --workspace` lists them, and connected writes are read-only until they are fixed."
-    if not model.active_app_ids:
-        return None, "Project name and an explicit nonempty app scope are required."
     return model, None
 
 

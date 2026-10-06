@@ -69,6 +69,13 @@ human actions (`po-handoff`, `design-start` and `dev-start`) plus an MCP endpoin
 agents. A generated project activates it with `prism workflow upgrade . --apply`; see
 [shared-board.md](shared-board.md).
 
+A generated project's `prism.workspace.yml` declares the platforms you selected as apps, with
+the IDs `backend`, `web-user-app`, `web-admin-portal`, `mobile-android` and `mobile-ios`, all
+in this repository. `prism status` lists them, and `prism app add` registers another app, in
+this repository or in another one, without generating code. A machine that keeps an external
+repository's checkout records it in `prism.local.yml`, which the generated `.gitignore`
+excludes. [workspace-model.md](workspace-model.md) describes the manifest.
+
 For a repeatable local capture, use the [wiki visualization guide](wiki-visualization.md),
 which builds a synthetic TreasuryFlow fixture in a new destination. The
 fixture demonstrates fresh, intake, and populated stages; it contains no

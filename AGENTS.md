@@ -86,7 +86,9 @@ copier copy --trust --defaults --data "project_name=Test App" --data "platforms=
 rg -n --hidden --glob '!**/.git/**' "\.agents/skills|AGENTS\.md|CLAUDE\.md" .
 
 # Shared board, in a disposable workspace and never in this repository
-prism workflow install . --name "Scratch" --platform backend --apply --yes
+prism workflow install . --name "Scratch" --app backend --apply --yes
+prism app add web --stack nextjs-web --apply --yes .
+prism app list .
 prism doctor --workspace .
 prism board grant "Tester" --kind human --write --path .
 prism board serve . --port 8765

@@ -5,15 +5,95 @@
       "reason": null
     },
     "discover-board": {
+      "apps": [
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": false,
+            "serves-api": true
+          },
+          "id": "backend",
+          "maturity": {
+            "caveat": "",
+            "level": "baseline"
+          },
+          "name": "Spring Boot Backend",
+          "path": "backend",
+          "repository": "workspace",
+          "stack": "spring-backend",
+          "status": "active"
+        },
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "web-user-app",
+          "maturity": {
+            "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+            "level": "provisional"
+          },
+          "name": "User-Facing Web App",
+          "path": "web-user-app",
+          "repository": "workspace",
+          "stack": "nextjs-web",
+          "status": "active"
+        },
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "web-admin-portal",
+          "maturity": {
+            "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+            "level": "provisional"
+          },
+          "name": "Admin Web Portal",
+          "path": "web-admin-portal",
+          "repository": "workspace",
+          "stack": "nextjs-web",
+          "status": "active"
+        },
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "mobile-android",
+          "maturity": {
+            "caveat": "",
+            "level": "baseline"
+          },
+          "name": "Android (Kotlin/Compose)",
+          "path": "mobile-android",
+          "repository": "workspace",
+          "stack": "android-compose",
+          "status": "active"
+        },
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "mobile-ios",
+          "maturity": {
+            "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+            "level": "experimental"
+          },
+          "name": "iOS (Swift/SwiftUI)",
+          "path": "mobile-ios",
+          "repository": "workspace",
+          "stack": "ios-swiftui",
+          "status": "active"
+        }
+      ],
       "board_id": "<uuid>",
       "mode": "generated",
-      "platforms": [
-        "backend",
-        "web-user-app",
-        "web-admin-portal",
-        "mobile-android",
-        "mobile-ios"
-      ],
       "project_name": "Baseline Full",
       "workflow_version": "1"
     },
@@ -192,14 +272,94 @@
         "knowledge/wiki"
       ],
       "workspace": {
-        "kind": "generated-project",
-        "platforms": [
-          "backend",
-          "web-user-app",
-          "web-admin-portal",
-          "mobile-android",
-          "mobile-ios"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-user-app",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "User-Facing Web App",
+            "path": "web-user-app",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-admin-portal",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "Admin Web Portal",
+            "path": "web-admin-portal",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-ios",
+            "maturity": {
+              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "level": "experimental"
+            },
+            "name": "iOS (Swift/SwiftUI)",
+            "path": "mobile-ios",
+            "repository": "workspace",
+            "stack": "ios-swiftui",
+            "status": "active"
+          }
         ],
+        "kind": "generated-project",
         "project_name": "Baseline Full"
       }
     },
@@ -285,14 +445,94 @@
         "knowledge/wiki"
       ],
       "workspace": {
-        "kind": "generated-project",
-        "platforms": [
-          "backend",
-          "web-user-app",
-          "web-admin-portal",
-          "mobile-android",
-          "mobile-ios"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-user-app",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "User-Facing Web App",
+            "path": "web-user-app",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-admin-portal",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "Admin Web Portal",
+            "path": "web-admin-portal",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-ios",
+            "maturity": {
+              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "level": "experimental"
+            },
+            "name": "iOS (Swift/SwiftUI)",
+            "path": "mobile-ios",
+            "repository": "workspace",
+            "stack": "ios-swiftui",
+            "status": "active"
+          }
         ],
+        "kind": "generated-project",
         "project_name": "Baseline Full"
       }
     },
@@ -417,14 +657,94 @@
       ],
       "total": 3,
       "workspace": {
-        "kind": "generated-project",
-        "platforms": [
-          "backend",
-          "web-user-app",
-          "web-admin-portal",
-          "mobile-android",
-          "mobile-ios"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-user-app",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "User-Facing Web App",
+            "path": "web-user-app",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-admin-portal",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "Admin Web Portal",
+            "path": "web-admin-portal",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-ios",
+            "maturity": {
+              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "level": "experimental"
+            },
+            "name": "iOS (Swift/SwiftUI)",
+            "path": "mobile-ios",
+            "repository": "workspace",
+            "stack": "ios-swiftui",
+            "status": "active"
+          }
         ],
+        "kind": "generated-project",
         "project_name": "Baseline Full"
       }
     },
@@ -541,14 +861,94 @@
       ],
       "total": 2,
       "workspace": {
-        "kind": "generated-project",
-        "platforms": [
-          "backend",
-          "web-user-app",
-          "web-admin-portal",
-          "mobile-android",
-          "mobile-ios"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-user-app",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "User-Facing Web App",
+            "path": "web-user-app",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-admin-portal",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "Admin Web Portal",
+            "path": "web-admin-portal",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-ios",
+            "maturity": {
+              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "level": "experimental"
+            },
+            "name": "iOS (Swift/SwiftUI)",
+            "path": "mobile-ios",
+            "repository": "workspace",
+            "stack": "ios-swiftui",
+            "status": "active"
+          }
         ],
+        "kind": "generated-project",
         "project_name": "Baseline Full"
       }
     },
@@ -652,14 +1052,94 @@
       ],
       "total": 1,
       "workspace": {
-        "kind": "generated-project",
-        "platforms": [
-          "backend",
-          "web-user-app",
-          "web-admin-portal",
-          "mobile-android",
-          "mobile-ios"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-user-app",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "User-Facing Web App",
+            "path": "web-user-app",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-admin-portal",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "Admin Web Portal",
+            "path": "web-admin-portal",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-ios",
+            "maturity": {
+              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "level": "experimental"
+            },
+            "name": "iOS (Swift/SwiftUI)",
+            "path": "mobile-ios",
+            "repository": "workspace",
+            "stack": "ios-swiftui",
+            "status": "active"
+          }
         ],
+        "kind": "generated-project",
         "project_name": "Baseline Full"
       }
     },
@@ -747,14 +1227,94 @@
       ],
       "total": 0,
       "workspace": {
-        "kind": "generated-project",
-        "platforms": [
-          "backend",
-          "web-user-app",
-          "web-admin-portal",
-          "mobile-android",
-          "mobile-ios"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-user-app",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "User-Facing Web App",
+            "path": "web-user-app",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-admin-portal",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "Admin Web Portal",
+            "path": "web-admin-portal",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-ios",
+            "maturity": {
+              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "level": "experimental"
+            },
+            "name": "iOS (Swift/SwiftUI)",
+            "path": "mobile-ios",
+            "repository": "workspace",
+            "stack": "ios-swiftui",
+            "status": "active"
+          }
         ],
+        "kind": "generated-project",
         "project_name": "Baseline Full"
       }
     },
@@ -858,14 +1418,94 @@
       ],
       "total": 1,
       "workspace": {
-        "kind": "generated-project",
-        "platforms": [
-          "backend",
-          "web-user-app",
-          "web-admin-portal",
-          "mobile-android",
-          "mobile-ios"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-user-app",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "User-Facing Web App",
+            "path": "web-user-app",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-admin-portal",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "Admin Web Portal",
+            "path": "web-admin-portal",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-ios",
+            "maturity": {
+              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "level": "experimental"
+            },
+            "name": "iOS (Swift/SwiftUI)",
+            "path": "mobile-ios",
+            "repository": "workspace",
+            "stack": "ios-swiftui",
+            "status": "active"
+          }
         ],
+        "kind": "generated-project",
         "project_name": "Baseline Full"
       }
     },
@@ -1306,14 +1946,94 @@
         "knowledge/wiki/features/F-001-outcome-capture.md"
       ],
       "workspace": {
-        "kind": "generated-project",
-        "platforms": [
-          "backend",
-          "web-user-app",
-          "web-admin-portal",
-          "mobile-android",
-          "mobile-ios"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-user-app",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "User-Facing Web App",
+            "path": "web-user-app",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "web-admin-portal",
+            "maturity": {
+              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+              "level": "provisional"
+            },
+            "name": "Admin Web Portal",
+            "path": "web-admin-portal",
+            "repository": "workspace",
+            "stack": "nextjs-web",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": {
+              "caveat": "",
+              "level": "baseline"
+            },
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-ios",
+            "maturity": {
+              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "level": "experimental"
+            },
+            "name": "iOS (Swift/SwiftUI)",
+            "path": "mobile-ios",
+            "repository": "workspace",
+            "stack": "ios-swiftui",
+            "status": "active"
+          }
         ],
+        "kind": "generated-project",
         "project_name": "Baseline Full"
       }
     }
@@ -1321,7 +2041,7 @@
   "cli": {
     "doctor-workspace": {
       "exit": 3,
-      "output": "+ Workspace -------------------------------------------------------------------------+\n|Project: Baseline Full |\n|Kind: generated-project |\n|Platforms: backend, web-user-app, web-admin-portal, mobile-android, mobile-ios |\n|Setup: not initialized |\n|Confidence: error |\n+------------------------------------------------------------------------------------+\n\n+ Queues and wiki -------------------------------------------------------------------+\n|Pending intake: 0 |\n|Quarantined intake: 0 |\n|Features: 3 |\n|Blockers: 3 |\n|Wiki errors: 3 |\n|Wiki warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nsetup-project has not initialized the wiki yet.\n\nPlatform maturity\n- web-user-app: Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.\n- web-admin-portal: Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.\n- mobile-ios: Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.\n\nFeature lifecycle\n- in-design: 1\n- in-dev: 1\n- raw: 1\n\nAttention\n- missing-design: Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- missing-platform-requirements: Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n\nShared board\n[ok] Workspace is outside cloud-synced folders\n[ok] Workflow pin is compatible with this Prism installation\n Workflow version 1 matches this installation.\n[warn] At least one active board grant exists\n No grants yet.\n[skip] `.prism/state` is ignored by git\n This folder is not a git repository, so this check was skipped.\n"
+      "output": "+ Workspace -------------------------------------------------------------------------+\n|Project: Baseline Full |\n|Kind: generated-project |\n|Apps: backend, web-user-app, web-admin-portal, mobile-android, mobile-ios |\n|Setup: not initialized |\n|Confidence: error |\n+------------------------------------------------------------------------------------+\n\nApps\nID Name Stack Repository Path Status Maturity\nbackend Spring Boot Backend spring-backend workspace backend active baseline\nweb-user-app User-Facing Web App nextjs-web workspace web-user-app active provisional\nweb-admin-portal Admin Web Portal nextjs-web workspace web-admin-portal active provisional\nmobile-android Android (Kotlin/Compose) android-compose workspace mobile-android active baseline\nmobile-ios iOS (Swift/SwiftUI) ios-swiftui workspace mobile-ios active experimental\n\n+ Queues and wiki -------------------------------------------------------------------+\n|Pending intake: 0 |\n|Quarantined intake: 0 |\n|Features: 3 |\n|Blockers: 3 |\n|Wiki errors: 3 |\n|Wiki warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nsetup-project has not initialized the wiki yet.\n\nApp maturity\n- web-user-app: Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.\n- web-admin-portal: Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.\n- mobile-ios: Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.\n\nFeature lifecycle\n- in-design: 1\n- in-dev: 1\n- raw: 1\n\nAttention\n- missing-design: Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- missing-platform-requirements: Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n\nShared board\n[ok] Workspace is outside cloud-synced folders\n[ok] Workflow pin is compatible with this Prism installation\n Workflow version 1 matches this installation.\n[warn] At least one active board grant exists\n No grants yet.\n[skip] `.prism/state` is ignored by git\n This folder is not a git repository, so this check was skipped.\n"
     },
     "status-json": {
       "exit": 0,
@@ -1523,37 +2243,101 @@
           "<ROOT>/knowledge/wiki/SETTINGS.md"
         ],
         "workspace": {
-          "kind": "generated-project",
-          "platform_maturity": {
-            "backend": {
-              "caveat": "",
-              "level": "baseline"
+          "apps": [
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": false,
+                "serves-api": true
+              },
+              "id": "backend",
+              "maturity": {
+                "caveat": "",
+                "level": "baseline"
+              },
+              "name": "Spring Boot Backend",
+              "path": "backend",
+              "repository": "workspace",
+              "stack": "spring-backend",
+              "status": "active"
             },
-            "mobile-android": {
-              "caveat": "",
-              "level": "baseline"
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": true,
+                "serves-api": false
+              },
+              "id": "web-user-app",
+              "maturity": {
+                "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+                "level": "provisional"
+              },
+              "name": "User-Facing Web App",
+              "path": "web-user-app",
+              "repository": "workspace",
+              "stack": "nextjs-web",
+              "status": "active"
             },
-            "mobile-ios": {
-              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
-              "level": "experimental"
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": true,
+                "serves-api": false
+              },
+              "id": "web-admin-portal",
+              "maturity": {
+                "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+                "level": "provisional"
+              },
+              "name": "Admin Web Portal",
+              "path": "web-admin-portal",
+              "repository": "workspace",
+              "stack": "nextjs-web",
+              "status": "active"
             },
-            "web-admin-portal": {
-              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
-              "level": "provisional"
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": true,
+                "serves-api": false
+              },
+              "id": "mobile-android",
+              "maturity": {
+                "caveat": "",
+                "level": "baseline"
+              },
+              "name": "Android (Kotlin/Compose)",
+              "path": "mobile-android",
+              "repository": "workspace",
+              "stack": "android-compose",
+              "status": "active"
             },
-            "web-user-app": {
-              "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
-              "level": "provisional"
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": true,
+                "serves-api": false
+              },
+              "id": "mobile-ios",
+              "maturity": {
+                "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+                "level": "experimental"
+              },
+              "name": "iOS (Swift/SwiftUI)",
+              "path": "mobile-ios",
+              "repository": "workspace",
+              "stack": "ios-swiftui",
+              "status": "active"
             }
-          },
-          "platforms": [
-            "backend",
-            "web-user-app",
-            "web-admin-portal",
-            "mobile-android",
-            "mobile-ios"
           ],
+          "kind": "generated-project",
           "project_name": "Baseline Full",
+          "repositories": [
+            {
+              "id": "workspace",
+              "remote": null
+            }
+          ],
           "setup_state": "not-initialized"
         }
       }
@@ -1640,14 +2424,94 @@
           "<ROOT>/knowledge/wiki"
         ],
         "workspace": {
-          "kind": "generated-project",
-          "platforms": [
-            "backend",
-            "web-user-app",
-            "web-admin-portal",
-            "mobile-android",
-            "mobile-ios"
+          "apps": [
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": false,
+                "serves-api": true
+              },
+              "id": "backend",
+              "maturity": {
+                "caveat": "",
+                "level": "baseline"
+              },
+              "name": "Spring Boot Backend",
+              "path": "backend",
+              "repository": "workspace",
+              "stack": "spring-backend",
+              "status": "active"
+            },
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": true,
+                "serves-api": false
+              },
+              "id": "web-user-app",
+              "maturity": {
+                "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+                "level": "provisional"
+              },
+              "name": "User-Facing Web App",
+              "path": "web-user-app",
+              "repository": "workspace",
+              "stack": "nextjs-web",
+              "status": "active"
+            },
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": true,
+                "serves-api": false
+              },
+              "id": "web-admin-portal",
+              "maturity": {
+                "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+                "level": "provisional"
+              },
+              "name": "Admin Web Portal",
+              "path": "web-admin-portal",
+              "repository": "workspace",
+              "stack": "nextjs-web",
+              "status": "active"
+            },
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": true,
+                "serves-api": false
+              },
+              "id": "mobile-android",
+              "maturity": {
+                "caveat": "",
+                "level": "baseline"
+              },
+              "name": "Android (Kotlin/Compose)",
+              "path": "mobile-android",
+              "repository": "workspace",
+              "stack": "android-compose",
+              "status": "active"
+            },
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": true,
+                "serves-api": false
+              },
+              "id": "mobile-ios",
+              "maturity": {
+                "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+                "level": "experimental"
+              },
+              "name": "iOS (Swift/SwiftUI)",
+              "path": "mobile-ios",
+              "repository": "workspace",
+              "stack": "ios-swiftui",
+              "status": "active"
+            }
           ],
+          "kind": "generated-project",
           "project_name": "Baseline Full"
         }
       }
@@ -1775,14 +2639,94 @@
       "<ROOT>/knowledge/wiki"
     ],
     "workspace": {
-      "kind": "generated-project",
-      "platforms": [
-        "backend",
-        "web-user-app",
-        "web-admin-portal",
-        "mobile-android",
-        "mobile-ios"
+      "apps": [
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": false,
+            "serves-api": true
+          },
+          "id": "backend",
+          "maturity": {
+            "caveat": "",
+            "level": "baseline"
+          },
+          "name": "Spring Boot Backend",
+          "path": "backend",
+          "repository": "workspace",
+          "stack": "spring-backend",
+          "status": "active"
+        },
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "web-user-app",
+          "maturity": {
+            "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+            "level": "provisional"
+          },
+          "name": "User-Facing Web App",
+          "path": "web-user-app",
+          "repository": "workspace",
+          "stack": "nextjs-web",
+          "status": "active"
+        },
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "web-admin-portal",
+          "maturity": {
+            "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+            "level": "provisional"
+          },
+          "name": "Admin Web Portal",
+          "path": "web-admin-portal",
+          "repository": "workspace",
+          "stack": "nextjs-web",
+          "status": "active"
+        },
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "mobile-android",
+          "maturity": {
+            "caveat": "",
+            "level": "baseline"
+          },
+          "name": "Android (Kotlin/Compose)",
+          "path": "mobile-android",
+          "repository": "workspace",
+          "stack": "android-compose",
+          "status": "active"
+        },
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "mobile-ios",
+          "maturity": {
+            "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+            "level": "experimental"
+          },
+          "name": "iOS (Swift/SwiftUI)",
+          "path": "mobile-ios",
+          "repository": "workspace",
+          "stack": "ios-swiftui",
+          "status": "active"
+        }
       ],
+      "kind": "generated-project",
       "project_name": "Baseline Full"
     }
   },
@@ -1984,37 +2928,101 @@
       "<ROOT>/knowledge/wiki/SETTINGS.md"
     ],
     "workspace": {
-      "kind": "generated-project",
-      "platform_maturity": {
-        "backend": {
-          "caveat": "",
-          "level": "baseline"
+      "apps": [
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": false,
+            "serves-api": true
+          },
+          "id": "backend",
+          "maturity": {
+            "caveat": "",
+            "level": "baseline"
+          },
+          "name": "Spring Boot Backend",
+          "path": "backend",
+          "repository": "workspace",
+          "stack": "spring-backend",
+          "status": "active"
         },
-        "mobile-android": {
-          "caveat": "",
-          "level": "baseline"
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "web-user-app",
+          "maturity": {
+            "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+            "level": "provisional"
+          },
+          "name": "User-Facing Web App",
+          "path": "web-user-app",
+          "repository": "workspace",
+          "stack": "nextjs-web",
+          "status": "active"
         },
-        "mobile-ios": {
-          "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
-          "level": "experimental"
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "web-admin-portal",
+          "maturity": {
+            "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
+            "level": "provisional"
+          },
+          "name": "Admin Web Portal",
+          "path": "web-admin-portal",
+          "repository": "workspace",
+          "stack": "nextjs-web",
+          "status": "active"
         },
-        "web-admin-portal": {
-          "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
-          "level": "provisional"
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "mobile-android",
+          "maturity": {
+            "caveat": "",
+            "level": "baseline"
+          },
+          "name": "Android (Kotlin/Compose)",
+          "path": "mobile-android",
+          "repository": "workspace",
+          "stack": "android-compose",
+          "status": "active"
         },
-        "web-user-app": {
-          "caveat": "Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.",
-          "level": "provisional"
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "mobile-ios",
+          "maturity": {
+            "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+            "level": "experimental"
+          },
+          "name": "iOS (Swift/SwiftUI)",
+          "path": "mobile-ios",
+          "repository": "workspace",
+          "stack": "ios-swiftui",
+          "status": "active"
         }
-      },
-      "platforms": [
-        "backend",
-        "web-user-app",
-        "web-admin-portal",
-        "mobile-android",
-        "mobile-ios"
       ],
+      "kind": "generated-project",
       "project_name": "Baseline Full",
+      "repositories": [
+        {
+          "id": "workspace",
+          "remote": null
+        }
+      ],
       "setup_state": "not-initialized"
     }
   }

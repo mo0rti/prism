@@ -19,7 +19,7 @@ Copier will walk you through these inputs:
 
 ## Current Notes Per Input
 
-- `Platforms`: the backend, Android and web samples are verified locally. The iOS sample is verified only by the macOS CI job. `web-user-app` and `web-admin-portal` pass install, lint, typecheck, the auth check and the Next.js and OpenNext builds locally, the `web-smoke` CI job adds a Wrangler dry run, and live Cloudflare deployment is unverified. [current-status.md](current-status.md) records the verification per platform.
+- `Platforms`: each selected platform becomes an app in `prism.workspace.yml` with the same ID, its stack and its default directory; `prism app add` registers more later ([workspace-model.md](workspace-model.md)). The backend, Android and web samples are verified locally. The iOS sample is verified only by the macOS CI job. `web-user-app` and `web-admin-portal` pass install, lint, typecheck, the auth check and the Next.js and OpenNext builds locally, the `web-smoke` CI job adds a Wrangler dry run, and live Cloudflare deployment is unverified. [current-status.md](current-status.md) records the verification per platform.
 - `Auth methods`: Username + Password is the baseline sign-in method in the current Prism model. OAuth providers are additive. Google is the secondary default; Apple Sign-In is selectable but experimental.
 - `Database`, `Backend deployment`, and `Web deployment`: implemented as questionnaire inputs, with one available option each.
 - `Supporting services`: Redis is optional and is modeled separately from the primary database choice.

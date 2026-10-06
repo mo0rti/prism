@@ -172,7 +172,7 @@ jobs:
           test "$("$PRISM" --version)" = "prism ${VERSION}" || { echo "::error::Unexpected version output: $("$PRISM" --version)"; exit 1; }
           workspace="$(mktemp -d)"
           cd "$workspace"
-          "$PRISM" workflow install . --name "Release smoke" --platform backend --apply --yes
+          "$PRISM" workflow install . --name "Release smoke" --app backend --apply --yes
           "$PRISM" doctor --workspace .
 
   publish-pypi:

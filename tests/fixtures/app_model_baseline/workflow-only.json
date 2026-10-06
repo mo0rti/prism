@@ -5,12 +5,38 @@
       "reason": null
     },
     "discover-board": {
+      "apps": [
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": false,
+            "serves-api": true
+          },
+          "id": "backend",
+          "maturity": null,
+          "name": "Spring Boot Backend",
+          "path": "backend",
+          "repository": "workspace",
+          "stack": "spring-backend",
+          "status": "active"
+        },
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "mobile-android",
+          "maturity": null,
+          "name": "Android (Kotlin/Compose)",
+          "path": "mobile-android",
+          "repository": "workspace",
+          "stack": "android-compose",
+          "status": "active"
+        }
+      ],
       "board_id": "<uuid>",
       "mode": "workflow",
-      "platforms": [
-        "backend",
-        "mobile-android"
-      ],
       "project_name": "Baseline WF",
       "workflow_version": "1"
     },
@@ -186,11 +212,37 @@
         "knowledge/wiki"
       ],
       "workspace": {
-        "kind": "workflow-project",
-        "platforms": [
-          "backend",
-          "mobile-android"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": null,
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": null,
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          }
         ],
+        "kind": "workflow-project",
         "project_name": "Baseline WF"
       }
     },
@@ -276,11 +328,37 @@
         "knowledge/wiki"
       ],
       "workspace": {
-        "kind": "workflow-project",
-        "platforms": [
-          "backend",
-          "mobile-android"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": null,
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": null,
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          }
         ],
+        "kind": "workflow-project",
         "project_name": "Baseline WF"
       }
     },
@@ -403,11 +481,37 @@
       ],
       "total": 3,
       "workspace": {
-        "kind": "workflow-project",
-        "platforms": [
-          "backend",
-          "mobile-android"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": null,
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": null,
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          }
         ],
+        "kind": "workflow-project",
         "project_name": "Baseline WF"
       }
     },
@@ -522,11 +626,37 @@
       ],
       "total": 2,
       "workspace": {
-        "kind": "workflow-project",
-        "platforms": [
-          "backend",
-          "mobile-android"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": null,
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": null,
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          }
         ],
+        "kind": "workflow-project",
         "project_name": "Baseline WF"
       }
     },
@@ -967,11 +1097,37 @@
         "knowledge/wiki/features/F-001-outcome-capture.md"
       ],
       "workspace": {
-        "kind": "workflow-project",
-        "platforms": [
-          "backend",
-          "mobile-android"
+        "apps": [
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": false,
+              "serves-api": true
+            },
+            "id": "backend",
+            "maturity": null,
+            "name": "Spring Boot Backend",
+            "path": "backend",
+            "repository": "workspace",
+            "stack": "spring-backend",
+            "status": "active"
+          },
+          {
+            "audience": null,
+            "capabilities": {
+              "has-ui": true,
+              "serves-api": false
+            },
+            "id": "mobile-android",
+            "maturity": null,
+            "name": "Android (Kotlin/Compose)",
+            "path": "mobile-android",
+            "repository": "workspace",
+            "stack": "android-compose",
+            "status": "active"
+          }
         ],
+        "kind": "workflow-project",
         "project_name": "Baseline WF"
       }
     }
@@ -979,7 +1135,7 @@
   "cli": {
     "doctor-workspace": {
       "exit": 3,
-      "output": "+ Workspace -------------------------------------------------------------------------+\n|Project: Baseline WF |\n|Kind: workflow-project |\n|Platforms: backend, mobile-android |\n|Setup: not initialized |\n|Confidence: error |\n+------------------------------------------------------------------------------------+\n\n+ Queues and wiki -------------------------------------------------------------------+\n|Pending intake: 0 |\n|Quarantined intake: 0 |\n|Features: 3 |\n|Blockers: 3 |\n|Wiki errors: 3 |\n|Wiki warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nsetup-project has not initialized the wiki yet.\n\nFeature lifecycle\n- in-design: 1\n- in-dev: 1\n- raw: 1\n\nAttention\n- missing-design: Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- missing-platform-requirements: Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n\nShared board\n[ok] Workspace is outside cloud-synced folders\n[ok] Workflow pin is compatible with this Prism installation\n Workflow version 1 matches this installation.\n[warn] At least one active board grant exists\n No grants yet.\n[skip] `.prism/state` is ignored by git\n This folder is not a git repository, so this check was skipped.\n"
+      "output": "+ Workspace -------------------------------------------------------------------------+\n|Project: Baseline WF |\n|Kind: workflow-project |\n|Apps: backend, mobile-android |\n|Setup: not initialized |\n|Confidence: error |\n+------------------------------------------------------------------------------------+\n\nApps\nID Name Stack Repository Path Status Maturity\nbackend Spring Boot Backend spring-backend workspace backend active -\nmobile-android Android (Kotlin/Compose) android-compose workspace mobile-android active -\n\n+ Queues and wiki -------------------------------------------------------------------+\n|Pending intake: 0 |\n|Quarantined intake: 0 |\n|Features: 3 |\n|Blockers: 3 |\n|Wiki errors: 3 |\n|Wiki warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nsetup-project has not initialized the wiki yet.\n\nFeature lifecycle\n- in-design: 1\n- in-dev: 1\n- raw: 1\n\nAttention\n- missing-design: Feature `F-003` is in-dev for UI platform(s) mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- missing-platform-requirements: Feature `F-003` is in-dev but no platform requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n\nShared board\n[ok] Workspace is outside cloud-synced folders\n[ok] Workflow pin is compatible with this Prism installation\n Workflow version 1 matches this installation.\n[warn] At least one active board grant exists\n No grants yet.\n[skip] `.prism/state` is ignored by git\n This folder is not a git repository, so this check was skipped.\n"
     },
     "status-json": {
       "exit": 0,
@@ -1137,13 +1293,44 @@
           "<ROOT>/knowledge/wiki/SETTINGS.md"
         ],
         "workspace": {
-          "kind": "workflow-project",
-          "platform_maturity": {},
-          "platforms": [
-            "backend",
-            "mobile-android"
+          "apps": [
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": false,
+                "serves-api": true
+              },
+              "id": "backend",
+              "maturity": null,
+              "name": "Spring Boot Backend",
+              "path": "backend",
+              "repository": "workspace",
+              "stack": "spring-backend",
+              "status": "active"
+            },
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": true,
+                "serves-api": false
+              },
+              "id": "mobile-android",
+              "maturity": null,
+              "name": "Android (Kotlin/Compose)",
+              "path": "mobile-android",
+              "repository": "workspace",
+              "stack": "android-compose",
+              "status": "active"
+            }
           ],
+          "kind": "workflow-project",
           "project_name": "Baseline WF",
+          "repositories": [
+            {
+              "id": "workspace",
+              "remote": null
+            }
+          ],
           "setup_state": "not-initialized"
         }
       }
@@ -1230,11 +1417,37 @@
           "<ROOT>/knowledge/wiki"
         ],
         "workspace": {
-          "kind": "workflow-project",
-          "platforms": [
-            "backend",
-            "mobile-android"
+          "apps": [
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": false,
+                "serves-api": true
+              },
+              "id": "backend",
+              "maturity": null,
+              "name": "Spring Boot Backend",
+              "path": "backend",
+              "repository": "workspace",
+              "stack": "spring-backend",
+              "status": "active"
+            },
+            {
+              "audience": null,
+              "capabilities": {
+                "has-ui": true,
+                "serves-api": false
+              },
+              "id": "mobile-android",
+              "maturity": null,
+              "name": "Android (Kotlin/Compose)",
+              "path": "mobile-android",
+              "repository": "workspace",
+              "stack": "android-compose",
+              "status": "active"
+            }
           ],
+          "kind": "workflow-project",
           "project_name": "Baseline WF"
         }
       }
@@ -1329,11 +1542,37 @@
       "<ROOT>/knowledge/wiki"
     ],
     "workspace": {
-      "kind": "workflow-project",
-      "platforms": [
-        "backend",
-        "mobile-android"
+      "apps": [
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": false,
+            "serves-api": true
+          },
+          "id": "backend",
+          "maturity": null,
+          "name": "Spring Boot Backend",
+          "path": "backend",
+          "repository": "workspace",
+          "stack": "spring-backend",
+          "status": "active"
+        },
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "mobile-android",
+          "maturity": null,
+          "name": "Android (Kotlin/Compose)",
+          "path": "mobile-android",
+          "repository": "workspace",
+          "stack": "android-compose",
+          "status": "active"
+        }
       ],
+      "kind": "workflow-project",
       "project_name": "Baseline WF"
     }
   },
@@ -1491,13 +1730,44 @@
       "<ROOT>/knowledge/wiki/SETTINGS.md"
     ],
     "workspace": {
-      "kind": "workflow-project",
-      "platform_maturity": {},
-      "platforms": [
-        "backend",
-        "mobile-android"
+      "apps": [
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": false,
+            "serves-api": true
+          },
+          "id": "backend",
+          "maturity": null,
+          "name": "Spring Boot Backend",
+          "path": "backend",
+          "repository": "workspace",
+          "stack": "spring-backend",
+          "status": "active"
+        },
+        {
+          "audience": null,
+          "capabilities": {
+            "has-ui": true,
+            "serves-api": false
+          },
+          "id": "mobile-android",
+          "maturity": null,
+          "name": "Android (Kotlin/Compose)",
+          "path": "mobile-android",
+          "repository": "workspace",
+          "stack": "android-compose",
+          "status": "active"
+        }
       ],
+      "kind": "workflow-project",
       "project_name": "Baseline WF",
+      "repositories": [
+        {
+          "id": "workspace",
+          "remote": null
+        }
+      ],
       "setup_state": "not-initialized"
     }
   }

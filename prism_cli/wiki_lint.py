@@ -174,7 +174,7 @@ class WikiLintResult:
             "workspace": {
                 "kind": detect_workspace_kind(self.root),
                 "project_name": inspection.project_name,
-                "platforms": inspection.platforms,
+                "apps": inspection.apps,
             },
             "facts": {
                 "feature_count": self.feature_count,

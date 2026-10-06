@@ -637,8 +637,8 @@ def _board_workspace_identity_checks(root: Path, inspection: WorkspaceInspection
         UUID(workflow["board_id"])
     except (ValueError, TypeError, AttributeError):
         return [_check("workspace-identity", "unknown", "The workflow board_id is not a valid UUID.", manifest.path)]
-    if not manifest.project_name or not inspection.platforms:
-        return [_check("workspace-identity", "unknown", "Project identity and explicit platform scope are required.", manifest.path)]
+    if not manifest.project_name:
+        return [_check("workspace-identity", "unknown", "Project identity is required.", manifest.path)]
     return [_check("workspace-identity", "pass", "The adopted workflow identity and scope are available.", manifest.path)]
 
 
@@ -1863,7 +1863,7 @@ def _workspace_identity_checks(root: Path, inspection: WorkspaceInspection) -> l
     identity_path = inspection.manifest.path if inspection.manifest else inspection.answers_path
     if detect_workspace_kind(root) == "unknown":
         checks.append(_check("workspace-identity", "unknown", "Workspace kind is unknown; transition scope cannot be established.", identity_path))
-    elif inspection.project_name is None or not inspection.platforms:
+    elif inspection.project_name is None or (inspection.manifest is None and not inspection.platforms):
         checks.append(_check("workspace-identity", "unknown", "Workspace project identity or platform scope is incomplete.", identity_path))
     elif hard:
         message = "; ".join(sorted({diagnostic.message for diagnostic in hard}))
@@ -1886,10 +1886,11 @@ def _scope_check(feature: FeaturePage, inspection: WorkspaceInspection, root: Pa
     available = set(inspection.platforms)
     missing = sorted(set(value) - available)
     if missing:
+        hint = "" if available else " This workspace declares no apps; register them with `prism app add`."
         return _check(
             "platform-scope",
             "blocked",
-            f"Feature platforms {', '.join(missing)} are outside the available workspace scope.",
+            f"Feature platforms {', '.join(missing)} are outside the available workspace scope.{hint}",
             path,
         )
     return _check("platform-scope", "pass", "Feature platforms are valid and within the available workspace scope.", path)

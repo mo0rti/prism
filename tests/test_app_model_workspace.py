@@ -136,8 +136,12 @@ class TwoAppModelTests(TwoAppWorkspaceCase):
 
     def test_status_reports_each_apps_maturity(self) -> None:
         status = build_status(self.root)
-        self.assertEqual(["customer-android", "partner-android", "backend"], status.platforms)
-        self.assertEqual(MATURITY, status.platform_maturity)
+        self.assertEqual(["customer-android", "partner-android", "backend"], [app["id"] for app in status.apps])
+        self.assertEqual(MATURITY, {app["id"]: app["maturity"] for app in status.apps if app["maturity"] is not None})
+        self.assertEqual(
+            [{"id": "workspace", "remote": None}, {"id": "mobile-apps", "remote": "https://example.com/acme/mobile-apps.git", "checkout": "unresolved"}],
+            status.repositories,
+        )
 
     def test_without_prism_local_yml_the_workspace_loads_with_exactly_one_unresolved_warning(self) -> None:
         result = load_workspace(self.root)
@@ -271,7 +275,8 @@ class TwoAppBoardTests(TwoAppWorkspaceCase):
         actor = service.authenticate(grant["token"])
         self.assertTrue(actor.writable)
         board = service.discover(actor)["board"]
-        self.assertEqual(["customer-android", "partner-android", "backend"], board["platforms"])
+        self.assertEqual(["customer-android", "partner-android", "backend"], [app["id"] for app in board["apps"]])
+        self.assertNotIn("platforms", board)
         self.assertEqual("Two apps", board["project_name"])
 
     def test_the_identity_binds_schema_version_two_and_each_active_app(self) -> None:
@@ -348,14 +353,14 @@ class TwoAppBoardTests(TwoAppWorkspaceCase):
         self.assertEqual("workspace_read_only", error.exception.code)
         self.assertIsNone(BoardServiceIdentity(self.root))
 
-    def test_a_version_two_manifest_with_no_active_app_is_read_only(self) -> None:
+    def test_a_version_two_manifest_with_no_active_app_is_writable(self) -> None:
         declare_two_apps(self.root, apps=[], app_maturity={})
-        service = BoardService(self.root)
-        self.addCleanup(service.close)
-        self.assertEqual(
-            {"read_only": True, "reason": "Project name and an explicit nonempty app scope are required."},
-            service.compatibility(),
-        )
+        service = self.start_service()
+        self.assertEqual({"read_only": False, "reason": None}, service.compatibility())
+        self.assertEqual([], service._platforms)
+        actor = service.authenticate(service.create_participant("Writer", "human", writable=True)["token"])
+        self.assertTrue(actor.writable)
+        self.assertEqual([], service.discover(actor)["board"]["apps"])
 
     def test_unsupported_schema_versions_stay_read_only(self) -> None:
         for version in (3, 99, True, "2", 2.0):
@@ -431,12 +436,10 @@ class SingleAppBoardIdentityTests(unittest.TestCase):
 
     def test_invalid_app_scopes_leave_the_board_read_only(self) -> None:
         cases = {
-            "no apps": ([], "Project name and an explicit nonempty app scope are required."),
             "apps not a list": ("backend", "invalid-app-declaration"),
             "unknown stack": ([{"id": "backend", "stack": "nope"}], "unknown-app-stack"),
             "duplicate id": ([{"id": "backend", "stack": "spring-backend"}, {"id": "backend", "stack": "spring-backend", "path": "other"}], "duplicate-app-id"),
             "invalid id": ([{"id": "Backend", "stack": "spring-backend"}], "invalid-app-id"),
-            "only retired apps": ([{"id": "backend", "stack": "spring-backend", "status": "retired"}], "Project name and an explicit nonempty app scope are required."),
         }
         for label, (apps, expected) in cases.items():
             with self.subTest(case=label):
@@ -449,7 +452,7 @@ class SingleAppBoardIdentityTests(unittest.TestCase):
         data["project"]["name"] = "  "
         data["apps"] = [dict(item) for item in APPS[2:]]
         write_manifest(self.root, data)
-        self.assertEqual("Project name and an explicit nonempty app scope are required.", self.reason())
+        self.assertEqual("A project name is required.", self.reason())
 
     def test_project_platforms_makes_the_board_read_only(self) -> None:
         data = manifest_data(self.root)
@@ -484,7 +487,8 @@ class WorkflowInstallAppsTests(TwoAppWorkspaceCase):
         plan = plan_install(self.root, upgrade=True)
 
         self.assertEqual([], plan["conflicts"])
-        self.assertEqual(["customer-android", "partner-android", "backend"], plan["platforms"])
+        self.assertEqual(["customer-android", "partner-android", "backend"], plan["apps"])
+        self.assertNotIn("platforms", plan)
         receipt = apply_install(self.root, plan)
         self.assertEqual("applied", receipt["status"])
         after = (self.root / MANIFEST_FILE).read_text(encoding="utf-8")
@@ -508,13 +512,13 @@ class WorkflowInstallAppsTests(TwoAppWorkspaceCase):
         apply_install(self.root, plan)
         self.assertEqual(before, (self.root / MANIFEST_FILE).read_bytes())
 
-    def test_platform_scope_that_would_change_the_apps_is_a_conflict(self) -> None:
+    def test_an_app_scope_that_would_change_the_apps_is_a_conflict(self) -> None:
         self.stale_pin()
         before = (self.root / MANIFEST_FILE).read_bytes()
         for upgrade in (True, False):
             with self.subTest(upgrade=upgrade):
                 plan = plan_install(self.root, platforms=["backend"], upgrade=upgrade)
-                self.assertTrue(any("`--platform` cannot change the apps of this workspace" in item and "`apps`" in item for item in plan["conflicts"]), plan["conflicts"])
+                self.assertTrue(any("`--app` cannot change the apps of this workspace" in item and "`prism app add`" in item for item in plan["conflicts"]), plan["conflicts"])
                 self.assertEqual("conflict", apply_install(self.root, plan)["status"])
         self.assertEqual(before, (self.root / MANIFEST_FILE).read_bytes())
 
@@ -527,16 +531,16 @@ class WorkflowInstallAppsTests(TwoAppWorkspaceCase):
         write_manifest(self.root, data)
         plan = plan_install(self.root, platforms=["mobile-ios", "backend"], upgrade=True)
         self.assertEqual([], plan["conflicts"])
-        self.assertEqual(["backend", "mobile-ios"], plan["platforms"])
+        self.assertEqual(["backend", "mobile-ios"], plan["apps"])
 
-    def test_the_platform_option_fails_through_the_command(self) -> None:
+    def test_the_app_option_fails_through_the_command(self) -> None:
         self.stale_pin()
         stdout, stderr = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            code = cli.main(["workflow", "upgrade", str(self.root), "--platform", "backend", "--apply", "--yes"])
+            code = cli.main(["workflow", "upgrade", str(self.root), "--app", "backend", "--apply", "--yes"])
         self.assertEqual(3, code)
-        self.assertIn("Conflict: `--platform` cannot change the apps of this workspace", stderr.getvalue())
-        self.assertIn("edit `apps`", stderr.getvalue())
+        self.assertIn("Conflict: `--app` cannot change the apps of this workspace", stderr.getvalue())
+        self.assertIn("prism app add", stderr.getvalue())
 
     def test_invalid_version_two_declarations_block_the_upgrade(self) -> None:
         self.stale_pin()
@@ -551,7 +555,7 @@ class WorkflowInstallAppsTests(TwoAppWorkspaceCase):
         self.stale_pin()
         plan = plan_install(self.root, upgrade=True)
         self.assertEqual([], plan["conflicts"])
-        self.assertEqual([], plan["platforms"])
+        self.assertEqual([], plan["apps"])
         self.assertEqual("applied", apply_install(self.root, plan)["status"])
         self.assertEqual([], manifest_data(self.root)["apps"])
 

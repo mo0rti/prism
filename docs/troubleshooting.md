@@ -11,6 +11,7 @@ Each entry gives the symptom, its cause and the fix. Start with `prism doctor --
 - [Workflow install stops on a modified CONNECTED.md](#workflow-install-stops-on-a-modified-connectedmd)
 - [An operation is stuck in conflict and blocks other writes](#an-operation-is-stuck-in-conflict-and-blocks-other-writes)
 - [Grants stop working after prism.workspace.yml was deleted](#grants-stop-working-after-prismworkspaceyml-was-deleted)
+- [Status warns that an external repository has no checkout](#status-warns-that-an-external-repository-has-no-checkout)
 - [A cursor is rejected as invalid_cursor or stale_cursor](#a-cursor-is-rejected-as-invalid_cursor-or-stale_cursor)
 - [The agent host does not show the Prism tools](#the-agent-host-does-not-show-the-prism-tools)
 - [The agent can read but cannot write](#the-agent-can-read-but-cannot-write)
@@ -150,9 +151,9 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 ## Calls fail with grant_identity_changed after an upgrade
 
-**Symptom.** An agent call or a board action fails with status 409 and `grant_identity_changed`: "The workspace workflow identity changed after this grant was created." Writes can also fail with `workspace_identity_changed`.
+**Symptom.** An agent call or a board action fails with status 409 and `grant_identity_changed`: "The workspace workflow identity changed after this grant was created." Writes can also fail with `workspace_identity_changed`: "The adopted workflow identity changed; writes are disabled until grants are reissued."
 
-**Cause.** A grant records the workflow version and asset digest it was issued under. After `prism workflow upgrade . --apply` changes either one (for example when a newer Prism ships new skills or a new MCP tool contract), every earlier grant stops working. Before the upgrade, a workspace pinned to an older digest opens read-only, `prism board status` reports it as incompatible and `prism doctor --workspace .` shows `[fail] Workflow pin is compatible with this Prism installation`.
+**Cause.** A grant records the workflow version and asset digest it was issued under. After `prism workflow upgrade . --apply` changes either one (for example when a newer Prism ships new skills), every earlier grant stops working. Before the upgrade, a workspace pinned to an older digest opens read-only, `prism board status` reports it as incompatible and `prism doctor --workspace .` shows `[fail] Workflow pin is compatible with this Prism installation`. The app scope is part of the board identity too: after `prism app add` changes it, a running board returns `workspace_identity_changed` until you stop it and start it again.
 
 **Fix.** For each workspace:
 
@@ -161,7 +162,7 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 3. Issue new grants with `prism board grant` and update the token in each agent host's environment.
 4. Start the board again and sign in with the new human token.
 
-If the message asks for a newer Prism, upgrade Prism first. [Upgrading to contract 2](shared-board.md#upgrading-to-contract-2) lists the same steps.
+If the message asks for a newer Prism, upgrade Prism first. [Upgrading a pinned workspace](shared-board.md#upgrading-a-pinned-workspace) lists the same steps. After `prism app add`, restart the board with `prism board serve`, and reissue grants for any participant the board still rejects.
 
 ## Workflow install stops on a modified CONNECTED.md
 
@@ -206,6 +207,18 @@ To keep Git from rewriting the line endings of the Prism-owned text, `prism work
 **Cause.** The manifest holds the board identity (`workflow.board_id`). Installing without a manifest creates a new identity, and a grant counts only for the identity it was issued under. The wiki files are untouched.
 
 **Fix.** Issue new grants with `prism board grant "NAME" --kind human|agent --write --path .`, update the token in each agent host's environment and sign in to the browser with the new human token. To keep your existing grants, restore `prism.workspace.yml` from version control or a backup instead of reinstalling.
+
+## Status warns that an external repository has no checkout
+
+**Symptom.** `prism status` or `prism app list` shows `external-repository-unresolved`, and the repository's `checkout` is `unresolved`:
+
+```text
+External repository `mobile-apps` has no checkout on this machine (prism.local.yml has no entry for it); add `repositories: {mobile-apps: <absolute path>}` to prism.local.yml. Links into it are skipped.
+```
+
+**Cause.** An app lives in a repository other than the workspace, and this machine has not said where it keeps a checkout. `prism.local.yml` is per machine and is not committed. The checkout also stays unresolved, with the reason in the same warning, when the recorded folder does not exist or is a symlink or reparse point, and a relative path is reported as `invalid-local-repository-path`. A `prism.local.yml` that is a symlink or reparse point is ignored.
+
+**Fix.** Create `prism.local.yml` next to `prism.workspace.yml` with the absolute path of your checkout: `repositories:` followed by an indented `mobile-apps: /path/to/mobile-apps`. The warning is harmless otherwise: the workspace loads, and only links into that repository are skipped. [The workspace model](workspace-model.md#repositories-and-prismlocalyml) describes the file.
 
 ## A proposal is rejected as invalid_path for a file or folder name
 

@@ -21,12 +21,15 @@ import yaml
 from prism_cli import __version__
 from prism_cli.app_model import (
     GENERATED_PLATFORM_DIRS,
+    GENERATED_PLATFORM_STACKS,
     MANIFEST_SCHEMA_VERSION,
     App,
     WorkspaceDiagnostic,
     WorkspaceModel,
+    app_entries,
     apps_from_platforms,
     normalize_manifest,
+    repository_entries,
     resolve_local_repositories,
 )
 
@@ -227,6 +230,31 @@ class WorkspaceInspection:
         if answer_platforms:
             return answer_platforms
         return list(self.filesystem_platforms)
+
+    @property
+    def apps(self) -> list[dict[str, Any]]:
+        """Every declared app in the shape workspace-level JSON reports.
+
+        Without a usable manifest the generated apps named by the Copier answers
+        or found as directories are reported with their default stack and path.
+        """
+
+        if self.manifest:
+            return app_entries(self.manifest.model)
+        generated = [item for item in dict.fromkeys(self.platforms) if item in GENERATED_PLATFORM_STACKS]
+        model, _diagnostics = normalize_manifest(
+            {"schema_version": MANIFEST_SCHEMA_VERSION, "apps": apps_from_platforms(generated)},
+            path=self.answers_path,
+        )
+        return app_entries(model)
+
+    @property
+    def repositories(self) -> list[dict[str, Any]]:
+        """The workspace's repositories with each external checkout's resolved or unresolved state."""
+
+        if not self.manifest:
+            return []
+        return repository_entries(self.manifest.model, self.load_result.local_repositories)
 
     @property
     def contract_diagnostics(self) -> list[WorkspaceDiagnostic]:
