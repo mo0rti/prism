@@ -47,19 +47,15 @@ All platform API clients are **generated** from this spec. Never manually edit g
 
 ### Authentication
 
-Local email/password auth is always included.{% if auth_methods | reject("equalto", "password") | list | length > 0 %} Selected OAuth providers: {% for method in auth_methods if method != "password" %}{{ method }}{% if not loop.last %}, {% endif %}{% endfor %}.{% endif %}
+Prism owns the auth contract; the real identity provider, the authorization policy and the secrets are yours. The contract (`POST /api/dev-identity/token`, tagged `x-prism-dev-only`, and `GET /api/me`) is in the OpenAPI spec.
 
-Flow:
+A backend app is an OAuth2 resource server: it validates bearer JWTs and holds no signing secret. For local development it also ships a **local development identity**:
 
-1. Client submits login credentials or completes the OAuth provider callback
-2. Backend validates credentials, exchanges the OAuth authorization code, or verifies the web provider token
-3. Backend issues JWT access and refresh tokens
-4. Native clients store tokens locally; web sessions keep them in encrypted HttpOnly cookies
-5. Native clients and server-side web proxies attach the access token to authenticated API requests
+1. Under the `local` Spring profile only, `POST /api/dev-identity/token` signs a short-lived JWT (`iss=prism-dev-identity`) for a loopback request, with an RSA key generated in memory at startup
+2. The client keeps the token (web apps in an HttpOnly cookie) and sends it as `Authorization: Bearer <token>`
+3. `GET /api/me` returns the profile of the token's subject, creating it on the first call
 
-The backend allows one active refresh session per account, with a 10-second retry window
-for the immediately previous rotating token. New login and backend logout revoke old refresh
-state; previously issued access JWTs last until expiry. Public web sessions omit credentials.
+The dev identity is local development sign-in, never complete authentication. Every other profile answers its token route with 404, startup fails when `local` meets a configured identity provider, and `docker-compose.yml` sets no profile. Replace it with your identity provider before any shared deployment; the `security-auth` skill has the steps.
 
 ### Design Tokens
 
@@ -72,7 +68,7 @@ Colors, spacing, typography, and border-radius values that each platform's theme
 1. **API contract first** - define endpoints in OpenAPI before implementing
 2. **Documentation first** - create feature/entity docs before coding
 3. **Feature modules** - backend domains live under `modules/<domain>/`
-4. **Consistent naming** - docs, contract, and code should refer to the same feature names (for example, `transactions`)
+4. **Consistent naming** - docs, contract, and code should refer to the same feature names (for example, `users`)
 5. **Never edit generated code** - modify the OpenAPI spec and regenerate
 
 ## Related Docs

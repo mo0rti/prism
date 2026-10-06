@@ -1,0 +1,57 @@
+# Entity: User
+
+## Description
+The profile of a signed-in user. The identity provider owns who the user is; this table keeps the application's own record of them. A row is created the first time a token's subject calls `GET /api/me`.
+
+## Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| id | UUID | Yes | Primary key, assigned by the application |
+| subject | String | Yes | The `sub` claim of the identity provider's token (unique, never changes) |
+| email | String | No | The token's `email` claim, when it has one |
+| displayName | String | Yes | The token's `name` claim, else the email, else the subject (at most 100 characters) |
+| createdAt | DateTime | Yes | Profile creation timestamp |
+| updatedAt | DateTime | Yes | Last update timestamp |
+
+## Relationships
+
+- None yet. Entities you add can reference `users.id`.
+
+## Validation Rules
+
+- `subject`: unique across all users; one subject is one profile
+- `displayName`: 1-100 characters; a longer name from the token is cut
+
+## Business Logic
+
+- The profile is created on first use, not at sign-in: the backend never sees a sign-in, only tokens.
+- Two first calls that race create one profile: the loser of the unique `subject` insert reads the winner's row.
+- Under the `local` profile the dev identity's subject is `dev:<lower-case email>`, so the same email is the same user.
+
+## Database
+
+- **Table name**: `users` (in the app's own schema, `{{ app_id | replace('-', '_') }}` by default)
+- **Indexes**: unique `uq_users_subject` on `subject`
+- **Migration**: `V1__users.sql`
+
+## API Exposure
+
+- `UserProfileResponse` exposes `id`, `displayName`, `email` and `createdAt`
+- `subject` and `updatedAt` stay internal; change the public DTO only after the API contract
+
+## API Representation
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "displayName": "Ada",
+  "email": "ada@example.test",
+  "createdAt": "2024-01-01T00:00:00Z"
+}
+```
+
+## Related Docs
+
+- [Entities Index](README.md) for the full entity set
+- [Guide](../guide.md) for structure and migration conventions

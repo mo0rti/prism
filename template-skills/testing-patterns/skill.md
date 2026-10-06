@@ -1,6 +1,6 @@
 ---
 name: testing-patterns
-description: "Backend testing conventions for JUnit Jupiter 6 and MockK. Use when writing or reviewing backend unit tests, service tests, integration tests, or deciding how a backend change should be verified under `backend/`."
+description: "Backend testing conventions for JUnit Jupiter 6 and MockK. Use when writing or reviewing backend unit tests, service tests, integration tests, or deciding how a backend change should be verified in a backend app."
 layers: [codex, claude-skill]
 codex:
   display_name: "Backend Testing Patterns"
@@ -15,18 +15,24 @@ Use this skill for backend test structure and verification choices. The conventi
 
 ## Test Dependencies
 
-```kotlin
-testImplementation("io.mockk:mockk:1.14.+")
-testImplementation("org.springframework.boot:spring-boot-starter-test")
-testImplementation("org.springframework.security:spring-security-test")
-```
+The app's `build.gradle.kts` declares MockK, `spring-boot-starter-test`, `spring-boot-webmvc-test`, `spring-boot-testcontainers`, the Testcontainers JUnit and PostgreSQL modules, and the JUnit platform launcher. Versions come from `packs/versions.yml` through the generated build file; do not hard-code another one. Add `spring-security-test` when you need its request post-processors.
 
 ## File Location
 
-Tests mirror the main source structure:
+Tests mirror the main source structure. The slice's tests are the reference; source roots of the backend apps (replace `main` with `test` in the path):
+{% for app in apps if app.stack == "spring-backend" %}
+- `{{ app.path }}/src/main/kotlin/{{ (package_identifier ~ "." ~ (app.id | replace("-", ""))) | replace(".", "/") }}/`
+{%- endfor %}
+
+- `modules/users/UserServiceTest.kt` - a MockK unit test of a service
+- `modules/devidentity/DevIdentityTokenServiceTest.kt`, `LoopbackRequestPolicyTest.kt` - plain unit tests
+- `DefaultProfileIntegrationTest.kt`, `LocalProfileIntegrationTest.kt` - `@SpringBootTest` + `MockMvc` against Testcontainers PostgreSQL
+- `DevIdentityStartupGuardTest.kt` - a startup failure asserted with `SpringApplicationBuilder`
+- `OpenApiContractTest.kt` - the contract and the served routes agree
+- `support/PostgresTestConfiguration.kt` - the Testcontainers PostgreSQL, `support/TokenFixtures.kt` - tokens the dev identity never issues
 
 ```
-src/test/kotlin/{{ package_identifier | replace('.', '/') }}/
+src/test/kotlin/<app package path>/
   modules/<domain>/
     <ServiceName>Test.kt
 ```
@@ -36,13 +42,13 @@ src/test/kotlin/{{ package_identifier | replace('.', '/') }}/
 Use **MockK** (not Mockito) for Kotlin-idiomatic mocking.
 
 ```kotlin
-package {{ package_identifier }}.modules.example
+package <app package>.modules.example
 
 import io.mockk.*
 import org.junit.jupiter.api.*
 import org.junit.jupiter.api.Assertions.*
-import {{ package_identifier }}.modules.example.service.ExampleService
-import {{ package_identifier }}.modules.example.repository.ExampleRepository
+import <app package>.modules.example.service.ExampleService
+import <app package>.modules.example.repository.ExampleRepository
 
 @DisplayName("ExampleService")
 class ExampleServiceTest {
@@ -114,19 +120,19 @@ assertEquals("expected", slot.captured.name)
 
 The generated backend currently favors:
 
-- MockK-heavy unit tests for service and domain logic
-- `@SpringBootTest` integration tests for Spring-managed auth flows
-- `@SpringBootTest` + `@AutoConfigureMockMvc` when security filters or endpoint exposure rules must be verified end to end
+- MockK unit tests for service and domain logic
+- `@SpringBootTest` + `@AutoConfigureMockMvc` integration tests against a real PostgreSQL (Testcontainers), so Flyway migrations, Hibernate validation, the security chain and the error model are exercised together
+- one test per fail-closed guard of the dev identity (see `security-auth`)
 
 Do not assume `@WebMvcTest` or `@DataJpaTest` are the default style just because they are available.
 
 ## Integration Tests
 
-Use `@SpringBootTest` + `@ActiveProfiles("test")` for tests that need a Spring context.
+Use `@SpringBootTest` with `@Import(PostgresTestConfiguration::class)` for tests that need a Spring context, and `@ActiveProfiles("local")` when the dev identity is the subject. There is no in-memory database and no `test` profile: the datasource always comes from the container.
 
 ```kotlin
 @SpringBootTest
-@ActiveProfiles("test")
+@Import(PostgresTestConfiguration::class)
 class ExampleServiceIntegrationTest {
 
     @Autowired
@@ -149,8 +155,9 @@ Add `@AutoConfigureMockMvc` when the test needs real request routing, validation
 ```kotlin
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
-class SecurityConfigTest {
+@ActiveProfiles("local")
+@Import(PostgresTestConfiguration::class)
+class LocalProfileIntegrationTest {
     @Autowired
     lateinit var mockMvc: MockMvc
 }
@@ -158,10 +165,12 @@ class SecurityConfigTest {
 
 ## Testcontainers Strategy
 
+The slice's integration tests use Testcontainers, not the workspace's `docker-compose.yml` database: a test run needs only Docker, never touches your development data, and CI needs no service container. `PostgresTestConfiguration` starts `postgres:` with the tag pinned in `packs/versions.yml`, and `@ServiceConnection` wires it into the datasource.
+
 - Prefer Testcontainers for repository or integration tests that depend on real
   database behavior, migration ordering, or dialect-specific SQL
 - Do not assume an in-memory replacement is good enough when the production
-  path depends on PostgreSQL or MySQL behavior
+  path depends on PostgreSQL behavior
 - Keep container-backed tests focused on behavior that actually needs the real
   dependency
 - Use lighter unit or slice tests for logic that does not need container cost
@@ -198,7 +207,7 @@ Use test slices selectively when they make the target behavior clearer and cheap
 | **Domain** | Entity behavior, helper methods, equals/hashCode | Unit test, no mocks needed |
 | **Repository** | Custom queries, entity mapping behavior | `@DataJpaTest` or integration test |
 | **Controller** | Request mapping, validation, response codes | `@WebMvcTest` or integration test |
-| **Security / Filter Chain** | JWT filters, public vs authenticated routes, exception mapping | `@SpringBootTest` + `MockMvc` |
+| **Security / Filter Chain** | Bearer-token validation, public vs authenticated routes, exception mapping | `@SpringBootTest` + `MockMvc` |
 
 ## DTO Assertion Rules
 
@@ -206,14 +215,14 @@ Use test slices selectively when they make the target behavior clearer and cheap
 - When a response DTO exposes enums, assert the enum values directly in service tests
 - Keep serialization-shape assertions in controller or integration tests, not in pure service tests
 
-## OAuth Client Testing
+## Identity Provider Testing
 
-- For code that calls external OAuth providers, prefer a mock web server or `MockRestServiceServer` to verify token exchange and user-info requests without hitting real providers
-- In higher-level auth service tests, mock or stub the OAuth client or service boundary instead of coupling every test to remote provider payload details
+- Never call a real identity provider from a test. Build tokens with a test-only key and decoder (`support/TokenFixtures.kt` shows how), or use Spring Security's `jwt()` post-processor
+- Test each token failure that matters: no token, malformed, expired, wrong issuer, wrong signature, wrong audience
 
 ## External Integration Contract Tests
 
-- For outbound integrations beyond OAuth, keep representative remote payload
+- For outbound integrations, keep representative remote payload
   samples near the integration tests
 - Test timeout mapping, retry behavior, duplicate callback handling, and remote
   error translation explicitly

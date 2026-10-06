@@ -80,8 +80,8 @@ exposure, async execution, or operational debugging expectations.
 
 Add business metrics when a flow is operationally important, such as:
 
-- auth login success/failure split
-- token refresh failures
+- sign-in success/failure split
+- token validation failures by reason (expired, wrong issuer, wrong audience)
 - payout or transaction submission outcomes
 - settlement success/failure counts
 - provider callback failures

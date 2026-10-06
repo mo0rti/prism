@@ -1,0 +1,48 @@
+package {{ app_package }}.bootstrap
+
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory
+import org.springframework.context.EnvironmentAware
+import org.springframework.context.annotation.Profile
+import org.springframework.core.env.Environment
+import org.springframework.stereotype.Component
+
+/**
+ * Stops the app from starting when the `local` profile meets a real identity provider.
+ *
+ * The dev identity signs tokens that anyone on the machine can obtain. A deployment that has both the
+ * `local` profile and a configured issuer would accept them next to the real provider's tokens, so
+ * startup fails before any other bean exists. Remove the profile or the issuer.
+ */
+@Component
+@Profile("local")
+class DevIdentityGuard : BeanFactoryPostProcessor, EnvironmentAware {
+
+    private lateinit var environment: Environment
+
+    override fun setEnvironment(environment: Environment) {
+        this.environment = environment
+    }
+
+    override fun postProcessBeanFactory(beanFactory: ConfigurableListableBeanFactory) {
+        requireNoRealIdentityProvider(environment)
+    }
+
+    companion object {
+        /** The properties that name a real identity provider to the resource server. */
+        val IDENTITY_PROVIDER_PROPERTIES = listOf(
+            "spring.security.oauth2.resourceserver.jwt.issuer-uri",
+            "spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
+            "spring.security.oauth2.resourceserver.jwt.public-key-location",
+            "spring.security.oauth2.resourceserver.opaquetoken.introspection-uri"
+        )
+
+        fun requireNoRealIdentityProvider(environment: Environment) {
+            val configured = IDENTITY_PROVIDER_PROPERTIES.filter { !environment.getProperty(it).isNullOrBlank() }
+            check(configured.isEmpty()) {
+                "The `local` profile (development identity) cannot run with a real identity provider configured " +
+                    "(${configured.joinToString(", ")}). Remove the `local` profile or the identity provider settings."
+            }
+        }
+    }
+}

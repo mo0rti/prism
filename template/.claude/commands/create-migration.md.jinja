@@ -10,7 +10,7 @@ Ask me for the schema change if I have not provided it clearly.
      columns, constraints, or semantics.
    - For non-trivial destructive change, follow the expand-contract guidance in
      `@.claude/skills/migration-conventions/SKILL.md`.
-2. **Determine the next version number** - check existing files in `backend/src/main/resources/db/migration/` for the current highest version.
+2. **Determine the next version number** - check the existing files in `src/main/resources/db/migration/` of the backend app ({% for app in apps if app.stack == "spring-backend" %}`{{ app.path }}/`{% if not loop.last %}, {% endif %}{% endfor %}) for the current highest version; a new app starts with `V1__users.sql`.
 3. **Create the migration SQL** - follow the conventions in `@.claude/skills/migration-conventions/SKILL.md`.
 4. **Update Kotlin code if needed** - when the schema change affects entities or relationships, follow `@.claude/skills/jpa-kotlin-patterns/SKILL.md`.
 5. **Check related docs** - update entity docs or backend docs if the schema meaning changed.

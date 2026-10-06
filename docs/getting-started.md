@@ -119,7 +119,7 @@ Required for shared tooling in generated projects:
 Required for common backend and container workflows:
 
 - JDK 21
-- Docker Desktop
+- Docker Desktop (the backend's integration tests start PostgreSQL with Testcontainers, and the local database runs in Docker Compose)
 
 Required for iOS work on macOS:
 
@@ -202,6 +202,11 @@ Then, if the supporting tools are installed:
 
 Platform-specific caution:
 
+- for a `spring-backend` app, run `task db-up` and `task <app-id>:dev` to start it with the `local`
+  Spring profile, sign in with `POST /api/dev-identity/token` and read `GET /api/me` (the app's
+  `README.md` has the commands), then run `task <app-id>:test`. The dev identity is local development
+  sign-in, not authentication: never enable the `local` profile on a shared environment, and replace it
+  with your identity provider (the generated `security-auth` skill has the steps) before you expose the app
 - for `web-user-app` and `web-admin-portal`, inspect Next.js routes and auth handlers before
   treating the setup as settled; hosting is yours to choose (see the `deployment` skill)
 - for `mobile-ios`, validate locally on macOS before treating the slice as build-proven

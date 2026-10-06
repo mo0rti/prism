@@ -33,7 +33,7 @@ and must not be referenced. They are replaced by the wiki lifecycle system
 
 ## Repository Focus
 
-- This template scaffolds an app list. Generation has two layers under one `copier.yml` and one tag: the workspace layer (`template/`) and one app layer per scaffolded app (`packs/<stack>/`, chosen by the hidden question `prism_layer`). The backend is a stack pack; the web, Android and iOS apps are still full samples rendered by the workspace layer, one switch per stack in `prism_cli/packs.py`.
+- This template scaffolds an app list. Generation has two layers under one `copier.yml` and one tag: the workspace layer (`template/`) and one app layer per scaffolded app (`packs/<stack>/`, chosen by the hidden question `prism_layer`). The backend is a stack pack with one tested slice (the local development identity and `GET /api/me`); the web, Android and iOS apps are still full samples rendered by the workspace layer, one switch per stack in `prism_cli/packs.py`.
 - Backend, Android and web samples are verified locally. The iOS sample is verified only by the macOS CI job. The generated `deployment` skill's Azure and Cloudflare examples are not verified against live accounts. Apple Sign-In is experimental. Keep maturity language explicit and honest, and keep `docs/current-status.md` equal to the verification that exists.
 - Never leave questionnaire-visible options silently generating broken output.
 

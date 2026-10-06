@@ -30,13 +30,19 @@ For direct Claude workflow execution, use:
 Depending on the scope, backend delivery may involve:
 
 - `shared/api-contracts/openapi.yml`
-- `backend/src/main/kotlin/.../modules/<domain>/controller/`
-- `backend/src/main/kotlin/.../modules/<domain>/dto/`
-- `backend/src/main/kotlin/.../modules/<domain>/service/`
-- `backend/src/main/kotlin/.../modules/<domain>/repository/`
-- `backend/src/main/kotlin/.../modules/<domain>/model/`
-- `backend/src/main/resources/db/migration/`
-- `backend/docs/entities/` when the domain model meaning changes
+Source roots of the backend apps (the paths below are relative to one of them):
+{% for app in apps if app.stack == "spring-backend" %}
+- `{{ app.path }}/src/main/kotlin/{{ (package_identifier ~ "." ~ (app.id | replace("-", ""))) | replace(".", "/") }}/`
+{%- endfor %}
+
+- `modules/<domain>/controller/`, `dto/`, `service/`, `repository/`, `model/` - copy the shape of `modules/users/`
+- `bootstrap/SecurityConfig.kt` when route exposure changes
+
+and, at the root of the app:
+
+- `src/main/resources/db/migration/` - Flyway migrations, the next after `V1__users.sql`
+- `docs/entities/` when the domain model meaning changes
+- `src/test/kotlin/...` - tests beside the slice's
 
 ## Core Rules
 

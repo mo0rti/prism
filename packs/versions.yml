@@ -7,3 +7,5 @@ spring-backend:
   spring_boot: "4.0.1"
   spring_dependency_management: "1.1.7"
   gradle: "8.14.3"
+  mockk: "1.14.5"
+  postgres: "16-alpine"

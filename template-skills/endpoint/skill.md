@@ -1,6 +1,6 @@
 ---
 name: endpoint
-description: "Create or extend a REST API endpoint in the backend. Use when adding backend routes, request or response DTOs, service methods, persistence support, or matching OpenAPI contract changes under `backend/` and `shared/api-contracts/`."
+description: "Create or extend a REST API endpoint in the backend. Use when adding backend routes, request or response DTOs, service methods, persistence support, or matching OpenAPI contract changes in a backend app and `shared/api-contracts/`."
 layers: [codex]
 codex:
   display_name: "Backend Endpoint"
@@ -15,7 +15,7 @@ Use this skill when a backend API endpoint needs to be added or materially chang
 
 ## Workflow
 
-1. Identify the target domain module under `modules/<domain>/` and confirm feature context from the wiki and local backend docs as needed.
+1. Identify the target domain module under `modules/<domain>/` (the slice's `modules/users/` is the pattern: `MeController` -> `UserService` -> `UserRepository`) and confirm feature context from the wiki and local backend docs as needed.
 2. Add or update the matching OpenAPI path and schemas in `shared/api-contracts/openapi.yml`.
 3. Run `task generate-clients` so generated clients stay aligned with the contract.
 4. Create or update the controller in `controller/` using the project's Spring conventions.

@@ -15,10 +15,14 @@ on:
 {%- endfor %}
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
-    name: Test
+  build:
+    name: Build and test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -39,13 +43,15 @@ jobs:
             ~/.gradle/wrapper
           key: {% raw %}${{ runner.os }}-gradle-${{ hashFiles({% endraw %}'{{ app_path }}/**/*.gradle*', '{{ app_path }}/gradle/wrapper/gradle-wrapper.properties'{% raw %}) }}{% endraw %}
 
-      - name: Run tests
+      # The runner's Docker daemon serves the integration tests (Testcontainers starts PostgreSQL).
+      # The build needs no secret and no production credential.
+      - name: Build and run every test
         working-directory: {{ app_path }}
-        run: ./gradlew test
+        run: ./gradlew build
 
-      - name: Upload test results
+      - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-reports
           path: {{ app_path }}/build/reports/tests/

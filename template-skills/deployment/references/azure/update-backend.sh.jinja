@@ -60,19 +60,6 @@ az containerapp secret set \
     --name "$BACKEND_APP_NAME" \
     --secrets \
         "postgres-password=$POSTGRES_PASSWORD" \
-        "jwt-secret=$JWT_SECRET" \
-{% if "google" in auth_methods %}
-        "google-client-secret=${GOOGLE_CLIENT_SECRET:-placeholder}" \
-{% endif %}
-{% if "apple" in auth_methods %}
-        "apple-private-key=${APPLE_PRIVATE_KEY:-placeholder}" \
-{% endif %}
-{% if "facebook" in auth_methods %}
-        "facebook-client-secret=${FACEBOOK_CLIENT_SECRET:-placeholder}" \
-{% endif %}
-{% if "microsoft" in auth_methods %}
-        "microsoft-client-secret=${MICROSOFT_CLIENT_SECRET:-placeholder}" \
-{% endif %}
         "azure-storage-key=$AZURE_STORAGE_ACCOUNT_KEY"
 
 # Update container app with new image

@@ -1,5 +1,5 @@
 ---
-description: {{ (app_name ~ " (Spring Boot, Kotlin): stack, structure and commands.") | tojson }}
+description: {{ (app_name ~ " (Spring Boot, Kotlin): stack, structure, the dev identity and commands.") | tojson }}
 globs: "{{ app_path }}/**"
 ---
 
@@ -7,21 +7,31 @@ globs: "{{ app_path }}/**"
 
 ## Stack
 - Spring Boot {{ versions.spring_boot }}, Kotlin {{ versions.kotlin }}, Java {{ versions.java }}, Gradle {{ versions.gradle }}
-- Jackson 3.x, JUnit Jupiter 6
+- Spring Security resource server (bearer JWT), Spring Data JPA, Flyway, PostgreSQL
+- Jackson 3.x, JUnit Jupiter 6, MockK, Testcontainers
 - Hosting is the project owner's choice (see the `deployment` skill, `.agents/skills/deployment/SKILL.md`)
 
 ## Structure
 ```
 {{ app_path }}/src/main/kotlin/{{ app_package_path }}/
-  modules/<domain>/  -> controller/, dto/, error/, model/, repository/, service/
+  bootstrap/         -> SecurityConfig, dev identity wiring (local profile)
+  modules/users/     -> GET /api/me: controller/, dto/, model/, repository/, service/
+  modules/devidentity/ -> POST /api/dev-identity/token (local profile only)
+  shared/            -> audit/, error/, exception/, model/
 ```
 
 ## Patterns
 - Controller -> Service -> Repository -> Entity
 - DTOs in `dto/` package, entities in `model/` - never expose entities
-- Tests use MockK for service logic and `@SpringBootTest` with MockMvc for request-path behavior
+- Unit tests use MockK; integration tests boot the app against a Testcontainers PostgreSQL
+
+## The dev identity
+- `POST /api/dev-identity/token` exists only under the `local` profile, answers loopback requests only, and signs 15-minute JWTs with an in-memory key
+- It is local development sign-in, not authentication; replace it with your identity provider (see the `security-auth` skill)
+- Never weaken its guards: the profile gate, the loopback check, the in-memory key and the startup failure next to a configured issuer
 
 ## Commands
-- `./gradlew bootRun` or `task {{ app_id }}:run` (port {{ port }})
-- `./gradlew test` or `task {{ app_id }}:test`
+- `task db-up` at the repository root, then `task {{ app_id }}:dev` (profile `local`, port {{ port }})
+- `./gradlew bootRun` runs with no profile: no dev identity
+- `./gradlew test` or `task {{ app_id }}:test` (needs Docker)
 - `./gradlew build -x test` or `task {{ app_id }}:build`

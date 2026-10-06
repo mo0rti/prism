@@ -258,15 +258,12 @@ the shared schema.
 
 ## Auth
 
-{% for method in auth_methods %}{% if method == "google" %}- Google OAuth
-{% elif method == "apple" %}- Apple Sign-In
-{% elif method == "facebook" %}- Facebook Login
-{% elif method == "microsoft" %}- Microsoft Account
-{% elif method == "password" %}- Username + Password
-{% endif %}{% endfor %}
-
-Backend issues JWTs after successful auth. Native clients store them locally; web proxies read encrypted HttpOnly cookies. Public web sessions must not expose backend tokens. One refresh session per account supports a 10-second previous-token retry window; see the backend guide.
-
+Prism owns the auth contract, and you own the real identity provider. `shared/api-contracts/openapi.yml` defines `POST /api/dev-identity/token` (tagged `x-prism-dev-only`) and `GET /api/me`.
+{% if "spring-backend" in stacks %}
+A backend app validates bearer JWTs as a resource server. Under the `local` Spring profile only, it also signs short-lived development tokens for loopback requests with a key held in memory. That is **local development sign-in, never complete authentication**: do not present it as authentication, do not enable `local` in a shared or deployed environment, and replace it with your identity provider using the `security-auth` skill before the app is exposed. Docs and tasks set `local` explicitly; `docker-compose.yml` sets no profile, and no JWT secret exists in the template.
+{% else %}
+A backend app, when you add one, validates bearer JWTs as a resource server and ships a local-only development identity; clients label that sign-in "Local development sign-in". The `security-auth` skill explains how to replace it with your identity provider.
+{% endif %}
 ## Key Documentation
 
 - `knowledge/wiki/SCHEMA.md` - wiki conventions and operational rules
@@ -295,8 +292,8 @@ Workspace-level conventions list only the slices present in the generated worksp
 
 - **API-first**: Define endpoints in OpenAPI -> generate clients -> implement
 {% if "spring-backend" in stacks %}- **Backend module structure**: `bootstrap/`, `shared/`, and `modules/<domain>/`
-- **Security**: JWT-protected routes with explicit public auth endpoints
-- **Backend testing**: JUnit Jupiter 6 + MockK for service logic, plus Spring integration coverage for security and request-path behavior
+- **Security**: bearer-JWT-protected routes with explicit public routes; the dev identity exists only under the `local` profile
+- **Backend testing**: JUnit Jupiter 6 + MockK for service logic, plus Spring integration tests against Testcontainers PostgreSQL for security and request-path behavior
 {% endif %}{% if "android-compose" in stacks or "ios-swiftui" in stacks %}- **Mobile MVVM**: ViewModel + UiState/ViewState on the generated mobile platforms
 {% endif %}{% if "android-compose" in stacks %}- **Android DI**: Hilt-backed feature and network wiring
 - **Android testing**: use the platform guide for JUnit, Compose/UI, and integration coverage

@@ -1,0 +1,7 @@
+package {{ app_package }}.shared.model
+
+data class ApiErrorResponse(
+    val code: String,
+    val message: String,
+    val details: Map<String, Any>? = null
+)

@@ -3,8 +3,9 @@
 ## Tech Stack
 
 - **Spring Boot {{ versions.spring_boot }}** on **Kotlin {{ versions.kotlin }}**, **Java {{ versions.java }}**, built with Gradle {{ versions.gradle }}
+- **Spring Security** as an OAuth2 resource server (bearer JWT), **Spring Data JPA** with **Flyway** migrations on **PostgreSQL**
 - **Jackson 3.x** for JSON serialization
-- **JUnit Jupiter 6** for testing
+- **JUnit Jupiter 6**, **MockK** and **Testcontainers** for testing
 
 `packs/versions.yml` of the Prism template pins these versions; the files of this app read them from there.
 
@@ -13,25 +14,50 @@
 ```
 {{ app_path }}/src/main/kotlin/{{ app_package_path }}/
 ├── {{ app_module_name }}Application.kt   # @SpringBootApplication entry point
-└── modules/
-    └── health/                          # GET /api/health
-        ├── controller/
-        └── dto/
+├── bootstrap/
+│   ├── SecurityConfig.kt                # every route needs a bearer JWT, except health and the token route
+│   ├── DevIdentityConfig.kt             # local profile: in-memory signing key, JWT encoder and decoder
+│   ├── DevIdentityGuard.kt              # local profile: startup fails next to a real identity provider
+│   ├── properties/                      # configuration properties
+│   └── security/                        # 401 entry point, the decoder of an app with no provider
+├── modules/
+│   ├── users/                           # GET /api/me: controller, dto, model, repository, service
+│   └── devidentity/                     # POST /api/dev-identity/token (local only)
+└── shared/                              # audit, error, exception, model
 ```
+
+Resources: `src/main/resources/application.yml` and the Flyway migrations in `db/migration/`.
 
 ## Run And Test
 
 ```bash
-task {{ app_id }}:run     # ./gradlew bootRun, on port {{ port }}
-task {{ app_id }}:build   # ./gradlew build -x test
-task {{ app_id }}:test    # ./gradlew test
-task {{ app_id }}:lint    # ./gradlew check -x test
+task db-up                  # at the repository root: the workspace's PostgreSQL
+task {{ app_id }}:dev       # SPRING_PROFILES_ACTIVE=local ./gradlew bootRun, on port {{ port }}
+task {{ app_id }}:run       # ./gradlew bootRun with no profile
+task {{ app_id }}:build     # ./gradlew build -x test
+task {{ app_id }}:test      # ./gradlew test (needs Docker for Testcontainers)
+task {{ app_id }}:lint      # ./gradlew check -x test
 ```
 
-The package is `{{ app_package }}`. Configuration lives in `src/main/resources/application.yml`; the server port comes from the `PORT` environment variable and defaults to {{ port }}.
+The package is `{{ app_package }}`. Configuration lives in `src/main/resources/application.yml`: the server port comes from `PORT` (default {{ port }}), the database from `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` and `DATABASE_SCHEMA` (defaults match the workspace's `docker-compose.yml`).
+
+## Identity
+
+The slice signs in through a **local development identity** under the `local` profile, and validates JWTs as a resource server in every profile.
+
+- `local`: `DevIdentityConfig` generates an RSA key in memory; `POST /api/dev-identity/token` signs a 15-minute token (`iss=prism-dev-identity`) for loopback requests. `GET /api/me` accepts only those tokens. `DevIdentityGuard` stops startup when an identity provider is also configured.
+- no profile: the token route does not exist (404). With `spring.security.oauth2.resourceserver.jwt.issuer-uri` set, Spring Boot validates your provider's tokens; with nothing set, `RejectingJwtDecoder` rejects every token.
+- `GET /api/me` reads the token's `sub`, `email` and `name` claims. `UserService` creates the `users` row on the first call, so it keeps working unchanged with a real provider.
+
+The dev identity is not authentication. The `security-auth` skill describes how to replace it.
+
+## Persistence
+
+Migrations are Flyway files `V<n>__<name>.sql` in `src/main/resources/db/migration/`; Hibernate only validates the schema (`ddl-auto: validate`). Tables live in the app's own schema (`DATABASE_SCHEMA`, default `{{ app_id | replace('-', '_') }}`), so several backends can share one database. The database, its schema design and its hosting are yours to decide.
 
 ## Related Docs
 
 {% set up = '../' * (app_path.split('/') | length + 1) -%}
 - [Architecture Overview]({{ up }}docs/architecture.md) for system-wide constraints
 - [API Conventions]({{ up }}docs/api/conventions.md) for URL, error, and versioning rules
+- [Entities](entities/README.md) for the persisted domain model

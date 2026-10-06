@@ -1,0 +1,47 @@
+package {{ app_package }}.modules.devidentity.controller
+
+import {{ app_package }}.modules.devidentity.dto.DevTokenRequest
+import {{ app_package }}.modules.devidentity.dto.DevTokenResponse
+import {{ app_package }}.modules.devidentity.error.DevIdentityErrorCode
+import {{ app_package }}.modules.devidentity.service.DevIdentityTokenService
+import {{ app_package }}.modules.devidentity.service.LoopbackRequestPolicy
+import {{ app_package }}.shared.exception.ForbiddenException
+import jakarta.servlet.http.HttpServletRequest
+import jakarta.validation.Valid
+import org.springframework.context.annotation.Profile
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
+
+/**
+ * `POST /api/dev-identity/token`: signs a development token. Exists only under the `local` profile, so
+ * every other profile answers 404, and accepts only requests from the loopback interface.
+ *
+ * This is local sign-in for development. It is not authentication, and the OpenAPI contract marks it
+ * `x-prism-dev-only`.
+ */
+@RestController
+@Profile("local")
+@RequestMapping("/api/dev-identity")
+class DevIdentityController(
+    private val tokenService: DevIdentityTokenService
+) {
+
+    @PostMapping("/token")
+    fun token(
+        @Valid @RequestBody(required = false) request: DevTokenRequest?,
+        servletRequest: HttpServletRequest
+    ): DevTokenResponse {
+        val allowed = LoopbackRequestPolicy.allows(
+            remoteAddress = servletRequest.remoteAddr,
+            serverName = servletRequest.serverName,
+            headerNames = servletRequest.headerNames.toList()
+        )
+        if (!allowed) {
+            throw ForbiddenException(DevIdentityErrorCode.LOOPBACK_ONLY)
+        }
+        val issued = tokenService.issue(email = request?.email, displayName = request?.displayName)
+        return DevTokenResponse(accessToken = issued.value, expiresIn = issued.expiresIn.seconds)
+    }
+}

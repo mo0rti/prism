@@ -7,14 +7,18 @@ services:
       dockerfile: Dockerfile
     ports:
       - "{{ app.port }}:{{ app.port }}"
+    # No Spring profile is set here: a container never runs the `local` development identity.
     environment:
       PORT: "{{ app.port }}"
+      DATABASE_URL: jdbc:postgresql://db:5432/${DATABASE_NAME:-{{ project_slug | replace('-', '_') }}}
+      DATABASE_USERNAME: ${DATABASE_USERNAME:-{{ project_slug | replace('-', '_') }}}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-localdev}
     depends_on:
       db:
         condition: service_healthy
 
 {% endfor %}  db:
-    image: postgres:16-alpine
+    image: postgres:{{ pack_versions['spring-backend'].postgres }}
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-{{ project_slug | replace('-', '_') }}}
       POSTGRES_USER: ${DATABASE_USERNAME:-{{ project_slug | replace('-', '_') }}}

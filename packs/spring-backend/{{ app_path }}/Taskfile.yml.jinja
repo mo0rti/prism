@@ -4,8 +4,15 @@ vars:
   GRADLEW: '{{'{{'}}if eq OS "windows"{{'}}'}}gradlew.bat{{'{{'}}else{{'}}'}}./gradlew{{'{{'}}end{{'}}'}}'
 
 tasks:
+  dev:
+    desc: "Run {{ app_id }} on port {{ port }} with the local development identity (start the database first with `task db-up` at the repository root)"
+    env:
+      SPRING_PROFILES_ACTIVE: local
+    cmds:
+      - "{{'{{'}}.GRADLEW{{'}}'}} bootRun"
+
   run:
-    desc: Run {{ app_id }} on port {{ port }}
+    desc: "Run {{ app_id }} on port {{ port }} with no profile: no dev identity, and every token is rejected until the identity provider's issuer is set"
     cmds:
       - "{{'{{'}}.GRADLEW{{'}}'}} bootRun"
 
@@ -15,7 +22,7 @@ tasks:
       - "{{'{{'}}.GRADLEW{{'}}'}} build -x test"
 
   test:
-    desc: Run the {{ app_id }} tests
+    desc: "Run the {{ app_id }} tests (needs Docker: the integration tests start PostgreSQL with Testcontainers)"
     cmds:
       - "{{'{{'}}.GRADLEW{{'}}'}} test"
 

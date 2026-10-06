@@ -13,10 +13,9 @@ docs/                    # Documentation for this template repository
 copier.yml              # Template questionnaire: the hidden prism_layer, project identity, the layers' internal answers, auth
 packs/                  # App layers: one pack per stack, rendered once per scaffolded app
   versions.yml          # The one place that pins versions; packs read it as `versions`
-  spring-backend/       # Minimal Spring Boot pack: everything under {{ app_path }}/, plus .github/workflows/{{ app_id }}.yml and .cursor/rules/{{ app_id }}.mdc
+  spring-backend/       # Spring Boot pack, one tested slice (dev identity + GET /api/me): everything under {{ app_path }}/, plus .github/workflows/{{ app_id }}.yml and .cursor/rules/{{ app_id }}.mdc
 template-skills/        # The one source of every skill, command and Cursor rule (generated into template/)
 template/               # The workspace layer - Jinja2 files (.jinja suffix stripped on generation)
-  backend/              # The full backend sample: never rendered, because the spring-backend pack generates the backend
   web-user-app/         # Next.js user-facing web app (full sample, switch in prism_cli/packs.py)
   web-admin-portal/     # Next.js admin web portal
   mobile-android/              # Kotlin + Jetpack Compose (MVVM)

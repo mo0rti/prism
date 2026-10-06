@@ -19,9 +19,11 @@ Ask me for the target if I have not provided it clearly:
    - Flag widened matchers or unintentionally public paths.
 
 2. **Token behavior**
-   - Check token-type validation, refresh-token rotation, and protected-route
-     handling.
-   - Verify refresh tokens are not accepted as bearer access tokens.
+   - Check that the decoder validates the signature, issuer, expiry and, for a
+     real identity provider, the audience.
+   - Verify the dev identity guards of `security-auth` still hold: `local`-only
+     beans, in-memory key, loopback-only route, startup failure next to a
+     configured issuer, and no `local` profile in any shared environment.
 
 3. **Current-user access**
    - Prefer `@AuthenticationPrincipal` where practical.

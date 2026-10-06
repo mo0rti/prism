@@ -49,7 +49,7 @@ An app ID and path must not replace a file of the workspace layer: an ID such as
 
 | Stack | What `prism new` generates today |
 |-------|----------------------------------|
-| `spring-backend` | The `spring-backend` pack: a Spring Boot app with a health endpoint, a context test, a CI workflow and a Cursor rule, under the app's path |
+| `spring-backend` | The `spring-backend` pack: a Spring Boot app with one tested slice (the local development identity and `GET /api/me` with a `users` table), a CI workflow, a Cursor rule and its own guidance, under the app's path |
 | `nextjs-web`, `android-compose`, `ios-swiftui` | The full sample, rendered by the workspace layer, only for the default apps (`web-user-app` and `web-admin-portal`, `mobile-android`, `mobile-ios`) at their default paths; another app of these stacks can only be registered until the stack's pack exists |
 | `other` | Registered only |
 
@@ -57,7 +57,7 @@ The backend, Android and web samples are verified locally. The iOS sample is ver
 
 ## Current Notes Per Input
 
-- `Auth methods`: Username + Password is the baseline sign-in method in the current Prism model. OAuth providers are additive. Google is the secondary default; Apple Sign-In is selectable but experimental.
+- `Auth methods`: Username + Password is the baseline sign-in method in the current Prism model. OAuth providers are additive. Google is the secondary default; Apple Sign-In is selectable but experimental. Only the full web and mobile samples read this answer. A `spring-backend` app does not: its sign-in is the local development identity, which Prism's auth contract defines, and the real identity provider is yours to choose.
 - `Package identifier`: every scaffolded app gets its own package under it, so two apps of one stack never share a package.
 
 ## What The Questionnaire Does Not Ask

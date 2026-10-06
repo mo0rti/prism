@@ -1,7 +1,0 @@
-package {{ package_identifier }}.modules.auth.model
-
-/**
- * Accounts are identified by email without regard to case, so storage and
- * lookups both use this form. The `uq_users_email_lower` index enforces it.
- */
-fun String.normalizedEmail(): String = trim().lowercase()

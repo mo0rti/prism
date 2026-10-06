@@ -115,7 +115,7 @@ and `$generate-clients`.
 
 ```bash
 # Review local configuration
-{% if "spring-backend" in stacks %}# Backend and local infrastructure defaults are already generated in `.env`
+{% if "spring-backend" in stacks %}# The local database defaults are already generated in `.env`
 {% endif %}{% if "android-compose" in stacks %}# Android API config is already generated in `mobile-android/local.config.properties`
 {% endif %}{% if "ios-swiftui" in stacks %}# iOS API config is already generated in the git-ignored `mobile-ios/Config/Debug.xcconfig`
 # On a fresh clone, `task mobile-ios:generate-project` creates it from `Config/Debug.xcconfig.example`
@@ -125,10 +125,10 @@ and `$generate-clients`.
 {% endif %}# Edit the local config files as needed for your machine and credentials
 
 {% if "spring-backend" in stacks %}# Start the local database first
-docker compose up -d db
+task db-up
 
-{% endif %}{% for app in apps if app.stack == "spring-backend" %}# Start {{ app.id }} locally on port {{ app.port }}
-task {{ app.id }}:run
+{% endif %}{% for app in apps if app.stack == "spring-backend" %}# Start {{ app.id }} locally on port {{ app.port }} with the local development identity (profile `local`)
+task {{ app.id }}:dev
 
 {% endfor %}{% if "web-user-app" in app_ids %}# Start the user web app
 task web-user-app:dev
@@ -164,7 +164,7 @@ task generate-clients
 | Generate API clients | `task generate-clients` |
 {% if "web-user-app" in app_ids %}| Install user web app deps | `task web-user-app:install` |
 {% endif %}{% if "web-admin-portal" in app_ids %}| Install admin web portal deps | `task web-admin-portal:install` |
-{% endif %}{% for app in apps if app.stack == "spring-backend" %}| Start {{ app.id }} | `task {{ app.id }}:run` |
+{% endif %}{% for app in apps if app.stack == "spring-backend" %}| Start {{ app.id }} with the local development identity | `task {{ app.id }}:dev` |
 {% endfor %}{% if "web-user-app" in app_ids %}| Start user web app | `task web-user-app:dev` |
 {% endif %}{% if "web-admin-portal" in app_ids %}| Start admin web portal | `task web-admin-portal:dev` |
 {% endif %}| Run all tests | `task test` |

@@ -1,0 +1,57 @@
+package {{ app_package }}
+
+import {{ app_package }}.bootstrap.DevIdentityGuard
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import org.springframework.boot.WebApplicationType
+import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.mock.env.MockEnvironment
+
+/**
+ * The `local` profile must never run next to a real identity provider. A configured issuer stops the
+ * app before any bean, and so before the database, is created.
+ */
+class DevIdentityStartupGuardTest {
+
+    private fun messages(failure: Throwable): String =
+        generateSequence(failure) { it.cause }.joinToString(" | ") { it.message.orEmpty() }
+
+    @Test
+    fun `startup fails when the local profile meets a configured issuer`() {
+        val application = SpringApplicationBuilder({{ app_module_name }}Application::class.java)
+            .profiles("local")
+            .web(WebApplicationType.NONE)
+            .properties("spring.security.oauth2.resourceserver.jwt.issuer-uri=https://idp.example.test")
+
+        val failure = assertThrows<Exception> { application.run().close() }
+
+        assertTrue(messages(failure).contains("cannot run with a real identity provider"), messages(failure))
+    }
+
+    @Test
+    fun `every property that names an identity provider is refused`() {
+        for (property in DevIdentityGuard.IDENTITY_PROVIDER_PROPERTIES) {
+            val environment = MockEnvironment().withProperty(property, "https://idp.example.test/value")
+
+            val failure = assertThrows<IllegalStateException>(property) {
+                DevIdentityGuard.requireNoRealIdentityProvider(environment)
+            }
+
+            assertTrue(failure.message.orEmpty().contains(property), failure.message)
+        }
+    }
+
+    @Test
+    fun `a blank value does not count as a configured provider`() {
+        val environment = MockEnvironment().withProperty("spring.security.oauth2.resourceserver.jwt.issuer-uri", "  ")
+
+        assertDoesNotThrow { DevIdentityGuard.requireNoRealIdentityProvider(environment) }
+    }
+
+    @Test
+    fun `no configured provider is allowed`() {
+        assertDoesNotThrow { DevIdentityGuard.requireNoRealIdentityProvider(MockEnvironment()) }
+    }
+}
