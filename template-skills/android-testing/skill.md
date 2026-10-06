@@ -2,7 +2,7 @@
 name: android-testing
 description: "Android testing patterns for ViewModels, repositories, Compose UI, and Hilt-aware instrumentation. Use when adding or updating tests under `app/src/test/` or `app/src/androidTest/`, or when deciding the right Android test shape for a change."
 layers: [codex, claude-skill]
-platforms: [mobile-android]
+stacks: [android-compose]
 codex:
   display_name: "Android Testing"
   short_description: "Choose and write the right Android tests"

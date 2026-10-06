@@ -18,6 +18,7 @@ import yaml
 from prism_cli import board_server
 from prism_cli import cli
 from prism_cli import __version__
+from prism_cli.app_model import apps_from_platforms
 from prism_cli.board_service import BoardService
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE
 from prism_cli.status import build_status
@@ -127,8 +128,6 @@ class WorkspaceSchemaContractTests(unittest.TestCase):
                     "--data",
                     "project_slug=quote-project",
                     "--data",
-                    "platforms=[backend]",
-                    "--data",
                     "auth_methods=[password]",
                     ".",
                     str(output),
@@ -147,7 +146,7 @@ class WorkspaceInspectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             write_workspace(root, manifest={**manifest_data("Test", ["backend"]), "min_prism_cli_version": "0.2.0"})
-            path = write_workspace_manifest(root, {"project_name": "Test", "platforms": ["backend"]}, prism_cli_version="0.9.0")
+            path = write_workspace_manifest(root, {"project_name": "Test"}, prism_cli_version="0.9.0")
             result = yaml.safe_load(path.read_text(encoding="utf-8"))
             self.assertEqual("0.2.0", result["min_prism_cli_version"])
             self.assertEqual("0.9.0", result["generated_by"]["prism_cli_version"])
@@ -180,7 +179,7 @@ class WorkspaceInspectionTests(unittest.TestCase):
             write_workspace(
                 root,
                 manifest={**manifest_data("Manifest Name", ["backend"]), "min_prism_cli_version": "99.0.0"},
-                answers={"_src_path": "template", "project_name": "Answers Name", "platforms": ["mobile-ios"]},
+                answers={"_src_path": "template", "project_name": "Answers Name", "stacks": ["ios-swiftui"]},
             )
             (root / "backend").mkdir()
 
@@ -196,7 +195,7 @@ class WorkspaceInspectionTests(unittest.TestCase):
     def test_an_unsupported_manifest_gives_no_identity_and_no_apps(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            write_workspace(root, manifest={**manifest_data("Future", ["mobile-ios"]), "schema_version": 3}, answers={"_src_path": "template", "project_name": "Current", "platforms": ["backend"]})
+            write_workspace(root, manifest={**manifest_data("Future", ["mobile-ios"]), "schema_version": 3}, answers={"_src_path": "template", "project_name": "Current", "stacks": ["spring-backend"]})
             (root / "backend").mkdir()
             inspection = inspect_workspace(root)
 
@@ -214,9 +213,9 @@ class WorkspaceInspectionTests(unittest.TestCase):
                 {
                     "project_name": "Safe Project",
                     "project_slug": "safe-project",
-                    "platforms": ["backend"],
                     "secret_token": "must-not-be-rendered",
                 },
+                apps=apps_from_platforms(["backend"], generation="scaffolded"),
                 prism_cli_version=__version__,
                 template_source=r"C:\templates\prism",
                 template_version="v0.3.0",
@@ -228,6 +227,9 @@ class WorkspaceInspectionTests(unittest.TestCase):
         self.assertEqual(2, data["schema_version"])
         self.assertEqual(["backend"], [app["id"] for app in data["apps"]])
         self.assertEqual("spring-backend", data["apps"][0]["stack"])
+        self.assertEqual("scaffolded", data["apps"][0]["generation"])
+        self.assertEqual({"backend": {"level": "baseline", "caveat": ""}}, data["app_maturity"])
+        self.assertEqual(["backend"], list(data["app_maturity"]))
         self.assertNotIn("platforms", data["project"])
         self.assertEqual(__version__, data["min_prism_cli_version"])
         self.assertEqual(__version__, data["generated_by"]["prism_cli_version"])
@@ -269,7 +271,7 @@ class WorkspaceStatusContractTests(unittest.TestCase):
                     "_src_path": "https://github.com/mo0rti/prism.git",
                     "_commit": "abc123",
                     "project_name": "Safe Project",
-                    "platforms": ["backend"],
+                    "stacks": ["spring-backend"],
                     "secret_token": "do-not-display",
                 },
             )

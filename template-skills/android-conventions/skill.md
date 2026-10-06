@@ -2,7 +2,7 @@
 name: android-conventions
 description: "Android repository rules for Kotlin, Compose, MVVM, Hilt, navigation, networking, strings, and documentation sync. Use when writing, refactoring, or reviewing code under `mobile-android/`, especially for architecture-sensitive changes."
 layers: [codex, claude-skill]
-platforms: [mobile-android]
+stacks: [android-compose]
 codex:
   display_name: "Android Conventions"
   short_description: "Apply Android MVVM and repository guardrails"

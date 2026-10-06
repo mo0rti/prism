@@ -27,7 +27,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "wiki_contract" / "healthy"
 
 class ReviewRegressions(unittest.TestCase):
     def test_identifier_validation_rejects_uncompilable_names(self):
-        base = {"project_name": "Demo", "platforms": ["backend"], "auth_methods": ["password"]}
+        base = {"project_name": "Demo", "apps": [{"id": "backend", "stack": "spring-backend"}], "auth_methods": ["password"]}
         for bad in ({"project_name": "2048 Game"}, {"project_slug": "two--hyphens"},
                     {"package_identifier": "com.2048.app"}, {"package_identifier": "com.class.app"},
                     {"ios_module_name": "2048Game"}, {"project_slug": 2048}):
@@ -40,19 +40,20 @@ class ReviewRegressions(unittest.TestCase):
             root = Path(directory)
             source = root / "template-source"
             (source / "template").mkdir(parents=True)
+            (source / "packs").mkdir()
             shutil.copyfile(Path(__file__).parents[1] / "copier.yml", source / "copier.yml")
+            shutil.copyfile(Path(__file__).parents[1] / "packs" / "versions.yml", source / "packs" / "versions.yml")
             cases = [
                 ({"project_name": "2048 Game"}, "Project slug must start"),
                 ({"project_slug": "bad--slug"}, "Project slug must start"),
                 ({"package_identifier": "com.2048.app"}, "Package identifier must"),
                 ({"package_identifier": "com.class.app"}, "cannot be Kotlin or Java keywords"),
                 ({"ios_module_name": "2048Game"}, "valid Swift identifier"),
-                ({"platforms": []}, "At least one platform"),
             ]
             for index, (bad, message) in enumerate(cases):
                 with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, message):
-                    run_copy(str(source), str(root / f"invalid-{index}"), data={"project_name": "Demo", "platforms": ["backend"], "auth_methods": ["password"], **bad}, defaults=True, unsafe=True, quiet=True)
-            run_copy(str(source), str(root / "valid"), data={"project_name": "2048 Game", "project_slug": "game-2048", "platforms": ["backend"], "auth_methods": ["password"]}, defaults=True, unsafe=True, quiet=True)
+                    run_copy(str(source), str(root / f"invalid-{index}"), data={"project_name": "Demo", "auth_methods": ["password"], **bad}, defaults=True, unsafe=True, quiet=True)
+            run_copy(str(source), str(root / "valid"), data={"project_name": "2048 Game", "project_slug": "game-2048", "auth_methods": ["password"]}, defaults=True, unsafe=True, quiet=True)
 
     def test_custom_template_trust_is_explicit(self):
         with patch("sys.stdin.isatty", return_value=False), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
@@ -138,13 +139,26 @@ class ReviewRegressions(unittest.TestCase):
             self.assertIn("Choose another --port", output.getvalue())
             browser.assert_not_called()
 
-    def test_advanced_flow_asks_only_for_identity_platforms_and_auth(self):
-        with patch.object(cli, "prompt_text", side_effect=["Demo", "Description", "com.example.demo", ""]), patch.object(cli, "prompt_multiselect", side_effect=[["backend"], ["password"]]) as multiselect, contextlib.redirect_stdout(io.StringIO()):
+    def test_advanced_flow_asks_only_for_identity_apps_and_auth(self):
+        # The last empty answer ends the list of further apps.
+        with patch.object(cli, "prompt_text", side_effect=["Demo", "Description", "com.example.demo", "", ""]), patch.object(cli, "prompt_multiselect", side_effect=[["backend"], ["password"]]) as multiselect, contextlib.redirect_stdout(io.StringIO()):
             answers = cli.prompt_advanced_answers()
         self.assertEqual(2, multiselect.call_count)
         self.assertEqual(
-            {"project_name", "description", "package_identifier", "github_org", "platforms", "auth_methods"},
+            {"project_name", "description", "package_identifier", "github_org", "apps", "auth_methods"},
             set(answers),
+        )
+        self.assertEqual([("backend", "spring-backend", "scaffolded")], [(app["id"], app["stack"], app["generation"]) for app in answers["apps"]])
+
+    def test_advanced_flow_asks_for_further_apps_with_a_stack_a_path_and_scaffold_or_register(self):
+        texts = ["Demo", "Description", "com.example.demo", "", "api-two", "Second API", "workspace", "services/api-two", "B2B", ""]
+        selections = [["backend"], ["spring-backend"], ["password"]]
+        with patch.object(cli, "prompt_text", side_effect=texts), patch.object(cli, "prompt_multiselect", side_effect=selections), patch.object(cli, "confirm", return_value=True), contextlib.redirect_stdout(io.StringIO()):
+            answers = cli.prompt_advanced_answers()
+        self.assertEqual(["backend", "api-two"], [app["id"] for app in answers["apps"]])
+        self.assertEqual(
+            {"id": "api-two", "stack": "spring-backend", "name": "Second API", "path": "services/api-two", "audience": "B2B", "generation": "scaffolded"},
+            answers["apps"][1],
         )
 
     def test_open_uses_memory_server_without_creating_a_snapshot(self):

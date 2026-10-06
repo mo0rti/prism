@@ -335,7 +335,7 @@ class IndexLintTests(unittest.TestCase):
     def with_project_docs(self, platforms: list[str]) -> list[str]:
         """Give the workspace the index of a generated workspace and the docs pages it lists; returns the listed doc paths."""
 
-        index = render_template_text((TEMPLATE_KNOWLEDGE / "wiki" / "index.md.jinja").read_text(encoding="utf-8"), platforms=platforms)
+        index = render_template_text((TEMPLATE_KNOWLEDGE / "wiki" / "index.md.jinja").read_text(encoding="utf-8"), apps=[{"id": item} for item in platforms])
         (self.wiki / "index.md").write_text(index, encoding="utf-8", newline="\n")
         listed = [entry.target for entry in parse_index_entries(index) if is_project_doc_target(entry.target)]
         for target in listed:
@@ -421,7 +421,7 @@ class ProjectDocsTemplateTests(unittest.TestCase):
         return sorted(path.relative_to(docs).as_posix()[: -len(".jinja")] for path in docs.rglob("*.md.jinja"))
 
     def rendered_index(self, platforms: list[str]) -> str:
-        return render_template_text((TEMPLATE_KNOWLEDGE / "wiki" / "index.md.jinja").read_text(encoding="utf-8"), platforms=platforms)
+        return render_template_text((TEMPLATE_KNOWLEDGE / "wiki" / "index.md.jinja").read_text(encoding="utf-8"), apps=[{"id": item} for item in platforms])
 
     def test_every_template_docs_page_has_exactly_one_line(self) -> None:
         for platforms in (["backend"], ["web-user-app"], ["mobile-ios"], self.ALL_PLATFORMS):

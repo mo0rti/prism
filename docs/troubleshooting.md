@@ -3,6 +3,7 @@
 Each entry gives the symptom, its cause and the fix. Start with `prism doctor --workspace .`: its "Shared board" section is read-only and checks the causes behind most of these entries. The [shared board guide](shared-board.md) documents the commands and tools mentioned here.
 
 - [prism new stops because the template release tag is missing](#prism-new-stops-because-the-template-release-tag-is-missing)
+- [prism update stops before merging](#prism-update-stops-before-merging)
 - [The workspace is in a cloud-synced folder](#the-workspace-is-in-a-cloud-synced-folder)
 - [The board will not start because the port is busy](#the-board-will-not-start-because-the-port-is-busy)
 - [A second board service refuses to start](#a-second-board-service-refuses-to-start)
@@ -38,6 +39,21 @@ prism new --preset backend-only --project-name "My App" --dest ../my-app --templ
 ```
 
 Or install a released version of Prism, whose tag is published. `prism workflow install` and the shared board do not use the template, so they work without the tag.
+
+## prism update stops before merging
+
+**Symptom.** `prism update` prints an update report with a layer marked `CONFLICT in N file(s)` and `Update stopped before merging` followed by the names of the conflicted layers, then exits with code 6.
+
+```text
+workspace layer: updated, committed as d2149c3
+app backend: updated, committed as 84480a7
+app api-two: CONFLICT in 1 file(s), committed as 6565f95
+    services/api-two/AGENTS.md
+```
+
+**Cause.** `prism update` brings each layer of the workspace (the workspace layer, then each scaffolded app) to the new template tag on its own update branch, with one commit per layer. Copier exits with 0 when a change of the template overlaps a change you made, so Prism scans every layer for `.rej` files and conflict markers and stops before anything is merged. The branch already holds the conflicting file, with the overlap between `<<<<<<< before updating` and `>>>>>>> after updating`.
+
+**Fix.** On the update branch, which stays checked out, open each listed file, keep the text you want and remove the markers, then commit. Merge the branch when you are satisfied: `git switch <your branch>` and `git merge prism-update-<tag>`. To abandon the update, `git switch <your branch>` and `git branch -D prism-update-<tag>`; your branch was never changed. Other stops before any change: the working tree is not clean, git does not know who commits (`git config user.name` and `user.email`), the branch `prism-update-<tag>` already exists, or a scaffolded app has no `<path>/.copier-answers.yml`.
 
 ## The workspace is in a cloud-synced folder
 

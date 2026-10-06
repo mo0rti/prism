@@ -219,41 +219,71 @@ function Assert-NoCopierPlaceholders {
     }
 }
 
+# The default generated apps: the ID, the stack and the display name `prism new` gives each.
+$DefaultApps = @{
+    "backend"          = @{ Stack = "spring-backend";  Name = "Spring Boot Backend" }
+    "web-user-app"     = @{ Stack = "nextjs-web";      Name = "User-Facing Web App" }
+    "web-admin-portal" = @{ Stack = "nextjs-web";      Name = "Admin Web Portal" }
+    "mobile-android"   = @{ Stack = "android-compose"; Name = "Android (Kotlin/Compose)" }
+    "mobile-ios"       = @{ Stack = "ios-swiftui";     Name = "iOS (Swift/SwiftUI)" }
+}
+
 function New-GeneratedProject {
+    # Generates through the Prism CLI from this checkout, with a preset or an answers file of default apps.
     param(
         [string]$Name,
-        [string[]]$DataArgs
+        [string]$ProjectName,
+        [string[]]$Apps = @(),
+        [string[]]$AuthMethods = @(),
+        [string]$Preset = ""
     )
 
     $target = Join-Path $OutputRoot $Name
     Remove-TreeIfExists -Path $target
 
-    $arguments = @("copy", "--trust", "--defaults", "--vcs-ref", "HEAD")
-    foreach ($dataArg in $DataArgs) {
-        $arguments += "--data"
-        $arguments += $dataArg
+    $arguments = @("-B", "-m", "prism_cli", "new", "--dest", $target, "--yes")
+    if ($Preset) {
+        $arguments += @("--preset", $Preset, "--project-name", $ProjectName)
     }
-    $arguments += "."
-    $arguments += $target
+    else {
+        $lines = @("schema_version: 1", "answers:", "  project_name: `"$ProjectName`"")
+        if ($AuthMethods.Count -gt 0) {
+            $lines += "  auth_methods: [" + ($AuthMethods -join ", ") + "]"
+        }
+        if ($Apps.Count -eq 0) {
+            $lines += "  apps: []"
+        }
+        else {
+            $lines += "  apps:"
+            foreach ($app in $Apps) {
+                $lines += "    - id: $app"
+                $lines += "      stack: $($DefaultApps[$app].Stack)"
+                $lines += "      name: `"$($DefaultApps[$app].Name)`""
+            }
+        }
+        $answersFile = Join-Path $OutputRoot "$Name-answers.yml"
+        [System.IO.File]::WriteAllText($answersFile, (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+        $arguments += @("--answers", $answersFile)
+    }
 
-    # Copier writes notices to stderr. Windows PowerShell 5.1 turns native stderr
+    # The CLI writes notices to stderr. Windows PowerShell 5.1 turns native stderr
     # output into a terminating error under $ErrorActionPreference = "Stop", so the
     # call runs with "Continue" and only a non-zero exit code fails the generation.
-    $copierExitCode = 0
+    $generationExitCode = 0
     Push-Location $repoRoot
     $savedErrorActionPreference = $ErrorActionPreference
     try {
         Write-Host "Generating sample: $Name"
         $ErrorActionPreference = "Continue"
-        & python -m copier @arguments 2>&1 | ForEach-Object { Write-Host "$_" }
-        $copierExitCode = $LASTEXITCODE
+        & python @arguments 2>&1 | ForEach-Object { Write-Host "$_" }
+        $generationExitCode = $LASTEXITCODE
     }
     finally {
         $ErrorActionPreference = $savedErrorActionPreference
         Pop-Location
     }
-    if ($copierExitCode -ne 0) {
-        throw "Copier generation failed for $Name."
+    if ($generationExitCode -ne 0) {
+        throw "Prism generation failed for $Name."
     }
 
     if ($Mode -eq "contract") {
@@ -263,7 +293,7 @@ function New-GeneratedProject {
             throw "Generated workflow validation failed for $Name."
         }
     }
-    Assert-PathExists -Path (Join-Path $target ".copier-answers.yml") -Message "Raw Copier generation must save its answers for future updates."
+    Assert-PathExists -Path (Join-Path $target ".copier-answers.yml") -Message "Generation must save its answers for future updates."
     return $target
 }
 
@@ -527,6 +557,16 @@ function Validate-BackendOnly {
     Assert-PathExists -Path (Join-Path $Root "backend\gradlew.bat") -Message "Backend-only sample is missing gradlew.bat."
     Assert-PathExists -Path (Join-Path $Root "backend\gradle\wrapper\gradle-wrapper.jar") -Message "Backend-only sample is missing gradle-wrapper.jar."
 
+    # The backend is the spring-backend pack: an app layer with its own answers, workflow and Cursor rule.
+    Assert-FileContains -Path (Join-Path $Root "backend\.copier-answers.yml") -Needle "prism_layer: spring-backend" -Message "The backend must record its own pack answers in backend/.copier-answers.yml."
+    Assert-FileContains -Path (Join-Path $Root "backend\.copier-answers.yml") -Needle "port: 8080" -Message "The first backend must hold port 8080."
+    Assert-PathExists -Path (Join-Path $Root ".github\workflows\backend.yml") -Message "The backend pack must generate its workflow."
+    Assert-PathExists -Path (Join-Path $Root ".cursor\rules\backend.mdc") -Message "The backend pack must generate its Cursor rule."
+    Assert-PathExists -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\backend\modules\health\controller\HealthController.kt") -Message "The backend pack must generate its health endpoint under the app's own package."
+    Assert-PathExists -Path (Join-Path $Root "backend\docs\guide.md") -Message "The backend pack must generate its guide."
+    Assert-FileContains -Path (Join-Path $Root "prism.workspace.yml") -Needle "generation: scaffolded" -Message "prism.workspace.yml must record the backend as scaffolded."
+    Assert-PathMissing -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules") -Message "The retired full backend sample must not be generated."
+
     Assert-PathMissing -Path (Join-Path $Root "web-user-app") -Message "Backend-only sample should not generate web-user-app."
     Assert-PathMissing -Path (Join-Path $Root "web-admin-portal") -Message "Backend-only sample should not generate web-admin-portal."
     Assert-PathMissing -Path (Join-Path $Root "_templates\page") -Message "Backend-only sample should not include page generators."
@@ -546,7 +586,6 @@ function Validate-BackendOnly {
     Assert-FileContains -Path (Join-Path $Root "backend\Dockerfile") -Needle 'RUN sed -i ''s/\r$//'' gradlew && chmod +x gradlew' -Message "Backend Dockerfile should normalize gradlew for Linux builds."
 
     Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/oauth/callback:" -Message "Backend-only sample should generate the OAuth callback path when Google and Apple are selected."
-    Assert-FileContains -Path (Join-Path $Root "backend\docs\entities\user.md") -Needle "local password auth and also supports Google, Apple, Facebook, Microsoft OAuth callback exchange" -Message "User entity doc should reflect the baseline password auth plus selected OAuth providers."
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "Implement backend -> web-user-app -> web-admin-portal -> Android -> iOS as applicable" -Message "Root AGENTS guidance should not assume absent platform slices."
     Assert-PathMissing -Path (Join-Path $Root "docs\advisory-board.md") -Message "Generated project must not contain legacy docs/advisory-board.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\auth.md") -Message "Generated project must not contain legacy docs/features/auth.md."
@@ -561,9 +600,9 @@ function Validate-BackendOnly {
 
     $javaCommand = Get-Command java -ErrorAction SilentlyContinue
     if ($RunSmoke -and $null -ne $javaCommand) {
-        Write-Host "Running backend Gradle packaging smoke test..."
-        Invoke-BackendBootJarSmoke -BackendRoot (Join-Path $Root "backend") -FailureMessage "Generated backend sample failed the Gradle bootJar smoke test."
-        Assert-PathExists -Path (Join-Path $Root "backend\build\libs") -Message "Generated backend sample did not produce a bootJar output directory."
+        Write-Host "Running backend Gradle test and packaging smoke test..."
+        Invoke-BackendBootJarSmoke -BackendRoot (Join-Path $Root "backend") -FailureMessage "Generated backend failed the Gradle test and bootJar smoke test."
+        Assert-PathExists -Path (Join-Path $Root "backend\build\libs") -Message "Generated backend did not produce a bootJar output directory."
     }
     else {
         Write-Host "Skipping backend Gradle smoke test because it is disabled for this mode or Java is not available on PATH."
@@ -598,11 +637,11 @@ function Invoke-BackendBootJarSmoke {
     Push-Location $BackendRoot
     try {
         if ($env:OS -eq "Windows_NT") {
-            & .\gradlew.bat bootJar --no-daemon -x test | Out-Host
+            & .\gradlew.bat test bootJar --no-daemon | Out-Host
         }
         else {
             & chmod +x ./gradlew | Out-Null
-            & ./gradlew bootJar --no-daemon -x test | Out-Host
+            & ./gradlew test bootJar --no-daemon | Out-Host
         }
 
         if ($LASTEXITCODE -ne 0) {
@@ -644,36 +683,15 @@ function Remove-TreeIfExists {
     }
 }
 
-function Validate-BackendPasswordOnly {
-    param(
-        [string]$Root,
-        [bool]$RunSmoke = $false
-    )
+function Validate-PasswordOnlyContract {
+    param([string]$Root)
 
     Assert-NoCopierPlaceholders -Root $Root
     Assert-NoDeploymentArtifacts -Root $Root
 
-    Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@PostMapping("/register")' -Message "Password-only backend sample must expose the register endpoint."
-    Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@PostMapping("/login")' -Message "Password-only backend sample must expose the login endpoint."
-    Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@PostMapping("/refresh")' -Message "Password-only backend sample must expose the refresh endpoint."
-    Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@PostMapping("/logout")' -Message "Password-only backend sample must expose the logout endpoint."
-    Assert-FileContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '@GetMapping("/me")' -Message "Password-only backend sample must expose the current-user endpoint."
-    Assert-FileNotContains -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules\auth\controller\AuthController.kt") -Needle '/oauth/callback' -Message "Password-only backend sample must not render the OAuth callback endpoint."
-
-    Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/register:" -Message "Password-only backend sample must expose register in OpenAPI."
-    Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/login:" -Message "Password-only backend sample must expose login in OpenAPI."
-    Assert-FileNotContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/oauth/callback:" -Message "Password-only backend sample must not expose OAuth callback in OpenAPI."
-
-    if ($RunSmoke) {
-        $javaCommand = Get-Command java -ErrorAction SilentlyContinue
-        if ($null -ne $javaCommand) {
-            Write-Host "Running password-only backend Gradle packaging smoke test..."
-            Invoke-BackendBootJarSmoke -BackendRoot (Join-Path $Root "backend") -FailureMessage "Generated password-only backend sample failed the Gradle bootJar smoke test."
-        }
-        else {
-            Write-Host "Skipping password-only backend Gradle smoke test because Java is not available on PATH."
-        }
-    }
+    Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/register:" -Message "Password-only workspace must expose register in OpenAPI."
+    Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/login:" -Message "Password-only workspace must expose login in OpenAPI."
+    Assert-FileNotContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/oauth/callback:" -Message "Password-only workspace must not expose OAuth callback in OpenAPI."
 }
 
 function ConvertTo-ComparableApiPath {
@@ -1042,62 +1060,39 @@ function Validate-IosSample {
 Remove-TreeIfExists -Path $OutputRoot
 New-Item -ItemType Directory -Path $OutputRoot | Out-Null
 
+$AllAuthMethods = @("google", "apple", "facebook", "microsoft", "password")
+
 switch ($Mode) {
     "backend-smoke" {
-        $backendRoot = New-GeneratedProject -Name "backend" -DataArgs @(
-            "project_name=Review Backend",
-            "platforms=[backend]",
-            "auth_methods=[google, apple, facebook, microsoft, password]"
-        )
+        $backendRoot = New-GeneratedProject -Name "backend" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods $AllAuthMethods
         Validate-BackendOnly -Root $backendRoot -RunSmoke $true
 
-        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -DataArgs @(
-            "project_name=Review Backend",
-            "platforms=[backend]",
-            "auth_methods=[password]"
-        )
-        Validate-BackendPasswordOnly -Root $passwordOnlyRoot -RunSmoke $true
+        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods @("password")
+        Validate-PasswordOnlyContract -Root $passwordOnlyRoot
     }
     "contract" {
         Assert-ClientPathGuardRejectsUnknownPaths
 
-        $backendRoot = New-GeneratedProject -Name "backend" -DataArgs @(
-            "project_name=Review Backend",
-            "platforms=[backend]",
-            "auth_methods=[google, apple, facebook, microsoft, password]"
-        )
+        $backendRoot = New-GeneratedProject -Name "backend" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods $AllAuthMethods
         Validate-BackendOnly -Root $backendRoot -RunSmoke $false
 
-        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -DataArgs @(
-            "project_name=Review Backend",
-            "platforms=[backend]",
-            "auth_methods=[password]"
-        )
-        Validate-BackendPasswordOnly -Root $passwordOnlyRoot -RunSmoke $false
+        $presetRoot = New-GeneratedProject -Name "backend-preset" -ProjectName "Review Backend" -Preset "backend-only"
+        Assert-NoCopierPlaceholders -Root $presetRoot
+        Assert-PathExists -Path (Join-Path $presetRoot "backend\.copier-answers.yml") -Message "The backend-only preset must scaffold the backend pack."
 
-        $webRoot = New-GeneratedProject -Name "web" -DataArgs @(
-            "project_name=Review Web",
-            "platforms=[backend, web-user-app, web-admin-portal]"
-        )
+        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods @("password")
+        Validate-PasswordOnlyContract -Root $passwordOnlyRoot
+
+        $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Preset "backend-web"
         Validate-WebSample -Root $webRoot -RunSmoke $false
 
-        $androidRoot = New-GeneratedProject -Name "android" -DataArgs @(
-            "project_name=Review Android",
-            "platforms=[backend, mobile-android]"
-        )
+        $androidRoot = New-GeneratedProject -Name "android" -ProjectName "Review Android" -Apps @("backend", "mobile-android")
         Validate-AndroidSample -Root $androidRoot
 
-        $iosRoot = New-GeneratedProject -Name "ios" -DataArgs @(
-            "project_name=Review App",
-            "platforms=[backend, mobile-ios]"
-        )
+        $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios")
         Validate-IosSample -Root $iosRoot
 
-        $standaloneRoot = New-GeneratedProject -Name "standalone-web" -DataArgs @(
-            "project_name=Standalone Web",
-            "platforms=[web-user-app, web-admin-portal]",
-            "auth_methods=[password]"
-        )
+        $standaloneRoot = New-GeneratedProject -Name "standalone-web" -ProjectName "Standalone Web" -Apps @("web-user-app", "web-admin-portal") -AuthMethods @("password")
         Validate-WikiStructure -Root $standaloneRoot
         Assert-NoDeploymentArtifacts -Root $standaloneRoot
         Assert-DeploymentSkill -Root $standaloneRoot -Backend $false -Web $true
@@ -1108,36 +1103,19 @@ switch ($Mode) {
     "full" {
         Assert-ClientPathGuardRejectsUnknownPaths
 
-        $backendRoot = New-GeneratedProject -Name "backend" -DataArgs @(
-            "project_name=Review Backend",
-            "platforms=[backend]",
-            "auth_methods=[google, apple, facebook, microsoft, password]"
-        )
+        $backendRoot = New-GeneratedProject -Name "backend" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods $AllAuthMethods
         Validate-BackendOnly -Root $backendRoot -RunSmoke $true
 
-        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -DataArgs @(
-            "project_name=Review Backend",
-            "platforms=[backend]",
-            "auth_methods=[password]"
-        )
-        Validate-BackendPasswordOnly -Root $passwordOnlyRoot -RunSmoke $true
+        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods @("password")
+        Validate-PasswordOnlyContract -Root $passwordOnlyRoot
 
-        $webRoot = New-GeneratedProject -Name "web" -DataArgs @(
-            "project_name=Review Web",
-            "platforms=[backend, web-user-app, web-admin-portal]"
-        )
+        $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Preset "backend-web"
         Validate-WebSample -Root $webRoot -RunSmoke $false
 
-        $androidRoot = New-GeneratedProject -Name "android" -DataArgs @(
-            "project_name=Review Android",
-            "platforms=[backend, mobile-android]"
-        )
+        $androidRoot = New-GeneratedProject -Name "android" -ProjectName "Review Android" -Apps @("backend", "mobile-android")
         Validate-AndroidSample -Root $androidRoot
 
-        $iosRoot = New-GeneratedProject -Name "ios" -DataArgs @(
-            "project_name=Review App",
-            "platforms=[backend, mobile-ios]"
-        )
+        $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios")
         Validate-IosSample -Root $iosRoot
     }
 }

@@ -1,0 +1,37 @@
+# {{ app_name }} Guide - {{ project_name }}
+
+## Tech Stack
+
+- **Spring Boot {{ versions.spring_boot }}** on **Kotlin {{ versions.kotlin }}**, **Java {{ versions.java }}**, built with Gradle {{ versions.gradle }}
+- **Jackson 3.x** for JSON serialization
+- **JUnit Jupiter 6** for testing
+
+`packs/versions.yml` of the Prism template pins these versions; the files of this app read them from there.
+
+## Project Structure
+
+```
+{{ app_path }}/src/main/kotlin/{{ app_package_path }}/
+├── {{ app_module_name }}Application.kt   # @SpringBootApplication entry point
+└── modules/
+    └── health/                          # GET /api/health
+        ├── controller/
+        └── dto/
+```
+
+## Run And Test
+
+```bash
+task {{ app_id }}:run     # ./gradlew bootRun, on port {{ port }}
+task {{ app_id }}:build   # ./gradlew build -x test
+task {{ app_id }}:test    # ./gradlew test
+task {{ app_id }}:lint    # ./gradlew check -x test
+```
+
+The package is `{{ app_package }}`. Configuration lives in `src/main/resources/application.yml`; the server port comes from the `PORT` environment variable and defaults to {{ port }}.
+
+## Related Docs
+
+{% set up = '../' * (app_path.split('/') | length + 1) -%}
+- [Architecture Overview]({{ up }}docs/architecture.md) for system-wide constraints
+- [API Conventions]({{ up }}docs/api/conventions.md) for URL, error, and versioning rules

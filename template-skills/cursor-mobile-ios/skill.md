@@ -2,7 +2,7 @@
 name: cursor-mobile-ios
 description: "iOS (Swift 6, SwiftUI) app facts: stack, structure, MVVM pattern and conventions."
 layers: [cursor]
-platforms: [mobile-ios]
+stacks: [ios-swiftui]
 cursor:
   file: mobile-ios
   globs: "mobile-ios/**"

@@ -2,7 +2,7 @@
 name: ios-conventions
 description: "iOS repository rules for Swift, SwiftUI, MVVM, DI, navigation, networking, and documentation sync. Use when writing or reviewing app code in this generated project, especially for architecture-sensitive changes."
 layers: [codex, claude-skill]
-platforms: [mobile-ios]
+stacks: [ios-swiftui]
 codex:
   display_name: "iOS Conventions"
   short_description: "Apply SwiftUI MVVM and repo guardrails"

@@ -7,16 +7,17 @@ codex:
   short_description: "Deploy the generated stacks from worked examples"
   default_prompt: "Use @@invoke:deployment@@ when the user asks to deploy, host or release the backend, web or mobile apps."
   implicit: true
-reference-platforms:
-  references/azure: [backend]
-  references/azure-setup.md: [backend]
-  references/cloudflare: [web-user-app, web-admin-portal]
+reference-stacks:
+  references/azure: [spring-backend]
+  references/azure-setup.md: [spring-backend]
+  references/cloudflare: [nextjs-web]
+  references/cloudflare-setup.md: [nextjs-web]
+  references/mobile-store-release.md: [android-compose, ios-swiftui]
+reference-apps:
   references/cloudflare/wrangler.web-user-app.jsonc: [web-user-app]
   references/cloudflare/dev.vars.web-user-app.example: [web-user-app]
   references/cloudflare/wrangler.web-admin-portal.jsonc: [web-admin-portal]
   references/cloudflare/dev.vars.web-admin-portal.example: [web-admin-portal]
-  references/cloudflare-setup.md: [web-user-app, web-admin-portal]
-  references/mobile-store-release.md: [mobile-android, mobile-ios]
 ---
 
 # Deployment
@@ -32,19 +33,19 @@ This project does not choose a cloud, hold credentials or deploy anything. The g
 - Never commit a secret. Keep credential files out of git before creating them.
 
 ## What The Project Provides
-{%- if "backend" in platforms %}
+{%- if "spring-backend" in stacks %}
 
 - `backend/Dockerfile`: a multi-stage image that builds the Spring Boot jar with the Gradle wrapper, exposes port 8080 and checks `/actuator/health`.
 - `docker-compose.yml`: local development only, the backend with PostgreSQL. It is not a production definition.
 - Backend settings come from environment variables (`SPRING_DATASOURCE_*`, `JWT_*`, the OAuth provider variables, `CORS_ALLOWED_ORIGINS`). `.env.example` lists the local values.
 {%- endif %}
-{%- if "web-user-app" in platforms or "web-admin-portal" in platforms %}
+{%- if "web-user-app" in app_ids or "web-admin-portal" in app_ids %}
 - Web apps that pass `npm run lint`, `npm run typecheck` and `npm run build` with no hosting files. `API_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, `AUTH_URL` and the provider variables are the runtime configuration; `.env.example` lists the local values.
 {%- endif %}
-{%- if "mobile-android" in platforms or "mobile-ios" in platforms %}
+{%- if "android-compose" in stacks or "ios-swiftui" in stacks %}
 - Mobile apps with Fastlane lanes under their `fastlane/` folders; CI builds and tests them but does not release them.
 {%- endif %}
-{%- if "backend" in platforms %}
+{%- if "spring-backend" in stacks %}
 
 ## Backend: Azure Container Apps
 
@@ -61,7 +62,7 @@ Other scripts: `add-custom-domain.sh`, `check-secrets.sh`, `show-database-creden
 
 The database, its schema migrations and its production sizing are project decisions. The example provisions PostgreSQL because the local development service is PostgreSQL.
 {%- endif %}
-{%- if "web-user-app" in platforms or "web-admin-portal" in platforms %}
+{%- if "web-user-app" in app_ids or "web-admin-portal" in app_ids %}
 
 ## Web: Cloudflare Workers Through OpenNext
 
@@ -73,7 +74,7 @@ Reference: `references/cloudflare-setup.md` (the guide) and `references/cloudfla
 4. Run `npm run preview` for a local production check, then `npm run deploy` once the user approves.
 5. Set `CORS_ALLOWED_ORIGINS` on the backend to the public web URLs.
 {%- endif %}
-{%- if "mobile-android" in platforms or "mobile-ios" in platforms %}
+{%- if "android-compose" in stacks or "ios-swiftui" in stacks %}
 
 ## Mobile: Store Releases
 

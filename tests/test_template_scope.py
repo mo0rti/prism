@@ -2,7 +2,8 @@
 
 Deployment is a skill, not generated project files: a generated workspace carries no
 `infra/`, no Wrangler or OpenNext files and no deploy job, and it carries the `deployment`
-skill in both agent layers. Generation runs the real Copier against a copy of the working tree.
+skill in both agent layers. Generation runs the Prism CLI, which runs the real Copier against a
+copy of the working tree: the workspace layer and each scaffolded app's pack.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import yaml
 from prism_cli import cli
 from prism_cli.presets import PRESETS
 from tests import real_temp  # noqa: F401
+from tests.layered_support import generate_default_apps
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REMOVED_QUESTIONS = ("database", "supporting_services", "use_docker", "cloud_provider", "web_hosting")
@@ -27,10 +29,22 @@ SKILL_LAYERS = (".claude/skills/deployment", ".agents/skills/deployment")
 DEPLOYMENT_FILE_NAMES = {"wrangler.jsonc", "open-next.config.ts", ".dev.vars.example", "azure-setup.md", "cloudflare-setup.md"}
 
 
-def generate(destination: Path, platforms: list[str], extra_data: dict[str, str] | None = None) -> Path:
+ALL_AUTH_METHODS = ["google", "apple", "facebook", "microsoft", "password"]
+
+
+def generate(destination: Path, apps: list[str]) -> Path:
+    """A workspace of the default apps with these IDs and every auth method, generated through the CLI."""
+
+    return generate_default_apps(destination, apps, destination.parent, auth_methods=ALL_AUTH_METHODS)
+
+
+def generate_raw_workspace_layer(destination: Path, extra_data: dict[str, str] | None = None) -> Path:
+    """The workspace layer of a one-backend workspace through raw Copier, with extra `--data` values."""
+
     data = {
         "project_name": "Scope Check",
-        "platforms": "[" + ", ".join(platforms) + "]",
+        "stacks": "[spring-backend]",
+        "apps": '[{"id": "backend", "name": "Backend", "stack": "spring-backend", "path": "backend", "audience": "", "port": 8080}]',
         "auth_methods": "[google, apple, facebook, microsoft, password]",
         **(extra_data or {}),
     }
@@ -41,7 +55,7 @@ def generate(destination: Path, platforms: list[str], extra_data: dict[str, str]
         command.extend([str(template), str(destination)])
         result = subprocess.run(command, cwd=REPO_ROOT, capture_output=True, text=True, timeout=600)
     if result.returncode != 0:
-        raise AssertionError(f"Copier failed for {platforms}:\n{result.stderr[-2000:]}")
+        raise AssertionError(f"Copier failed:\n{result.stderr[-2000:]}")
     return destination
 
 
@@ -55,8 +69,14 @@ class QuestionnaireTests(unittest.TestCase):
         questions = [key for key in config if not key.startswith("_")]
         for removed in REMOVED_QUESTIONS:
             self.assertNotIn(removed, questions)
+        self.assertNotIn("platforms", questions)
         self.assertEqual(
-            ["project_name", "project_slug", "package_identifier", "description", "package_path", "ios_module_name", "platforms", "auth_methods", "github_org"],
+            [
+                "prism_layer", "project_name", "project_slug", "reserved_identifiers", "package_identifier", "package_path", "ios_module_name",
+                "description", "stacks", "apps", "app_ids", "auth_methods", "github_org", "pack_versions", "versions",
+                "app_id", "app_name", "app_path", "audience", "port", "app_package_segment", "app_package", "app_package_path",
+                "app_module_name", "ci_workflow_name", "ci_paths",
+            ],
             questions,
         )
 
@@ -91,7 +111,7 @@ class GeneratedWorkspaceTests(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory(prefix="prism-scope-")
         cls.addClassCleanup(cls.temp.cleanup)
         root = Path(cls.temp.name)
-        cls.platform_sets = {preset.slug: list(preset.answers["platforms"]) for preset in PRESETS}
+        cls.platform_sets = {preset.slug: [app["id"] for app in preset.apps] for preset in PRESETS}
         cls.platform_sets["web-only"] = ["web-user-app", "web-admin-portal"]
         cls.platform_sets["mobile-only"] = ["mobile-android", "mobile-ios"]
         cls.workspaces = {name: generate(root / name, platforms) for name, platforms in cls.platform_sets.items()}
@@ -233,18 +253,17 @@ class RemovedAnswerHandlingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(prefix="prism-scope-ignored-") as temp_dir:
             root = Path(temp_dir)
-            plain = generate(root / "plain", ["backend"])
-            extra = generate(
+            plain = generate_raw_workspace_layer(root / "plain")
+            extra = generate_raw_workspace_layer(
                 root / "extra",
-                ["backend"],
                 {"database": "mysql", "supporting_services": "[redis]", "use_docker": "false", "cloud_provider": "aws", "web_hosting": "vercel"},
             )
             self.assertEqual(relative_files(plain), relative_files(extra))
-            for relative in ("docker-compose.yml", "backend/Dockerfile", ".env.example"):
+            for relative in ("docker-compose.yml", ".env.example"):
                 self.assertEqual((plain / relative).read_text(encoding="utf-8"), (extra / relative).read_text(encoding="utf-8"), relative)
             manifests = [yaml.safe_load((root_ / "prism.workspace.yml").read_text(encoding="utf-8")) for root_ in (plain, extra)]
             self.assertEqual(manifests[0]["project"], manifests[1]["project"])
-            self.assertEqual(manifests[0]["apps"], manifests[1]["apps"])
+            self.assertNotIn("apps", manifests[0], "the workspace layer renders no apps; the CLI records them")
             answers = yaml.safe_load((extra / ".copier-answers.yml").read_text(encoding="utf-8"))
             for removed in REMOVED_QUESTIONS:
                 self.assertNotIn(removed, answers)

@@ -154,6 +154,7 @@ def main() -> None:
         files = template / "template"
         files.mkdir(parents=True)
         shutil.copyfile(source / "copier.yml", template / "copier.yml")
+        shutil.copytree(source / "packs", template / "packs")
         shutil.copyfile(source / "template/{{ _copier_conf.answers_file }}.jinja", files / "{{ _copier_conf.answers_file }}.jinja")
         shutil.copyfile(source / "template/prism.workspace.yml.jinja", files / "prism.workspace.yml.jinja")
         text = "user line: original\n" + "unchanged\n" * 20 + "template version: one\n"
@@ -199,8 +200,14 @@ def main() -> None:
         assert updated_manifest["generated_by"]["template_commit"] == updated_answers["_commit"]
         status = run(root, cli + ["status", str(project), "--json"])
         assert "invalid-workspace-manifest-yaml" not in status.stdout
-        run(project, ["git", "add", "."])
-        run(project, ["git", "commit", "-qm", "fixture updated"])
+        # The update ran on a branch, one commit per layer (the workspace layer, then the backend app), and left the tree clean.
+        assert run(project, ["git", "symbolic-ref", "--short", "HEAD"]).stdout.strip() == "prism-update-v2.0.0"
+        assert run(project, ["git", "status", "--porcelain"]).stdout.strip() == "", "the update commits each layer"
+        layer_commits = run(project, ["git", "log", "--format=%s", "-3"]).stdout.splitlines()
+        assert layer_commits[:2] == ["Update app backend to v2.0.0", "Update workspace layer to v2.0.0"], layer_commits
+        backend_answers = yaml.safe_load((project / "backend/.copier-answers.yml").read_text(encoding="utf-8"))
+        assert backend_answers["_commit"] == "v2.0.0" and backend_answers["prism_layer"] == "spring-backend"
+        assert [app["id"] for app in updated_manifest["apps"]] == ["backend"] and updated_manifest["apps"][0]["generation"] == "scaffolded"
 
         current_manifest["min_prism_cli_version"] = advanced(2)
         current_manifest_path.write_text(yaml.safe_dump(current_manifest, sort_keys=False), encoding="utf-8")
@@ -224,6 +231,8 @@ def main() -> None:
         recopied_manifest = yaml.safe_load(current_manifest_path.read_text(encoding="utf-8"))
         assert recopied_manifest["min_prism_cli_version"] == advanced(3)
         assert "team_notes" not in recopied_manifest
+        assert [app["id"] for app in recopied_manifest["apps"]] == ["backend"], "a recopy keeps the workspace's apps"
+        assert run(project, ["git", "symbolic-ref", "--short", "HEAD"]).stdout.strip().startswith("prism-recopy-")
         assert not (project / ".copier-answers.prism-recopy.yml").exists()
         # Substitute only the canonical URL with a local Git remote; exercise the
         # installed default ref selection and the real Copier tag checkout.

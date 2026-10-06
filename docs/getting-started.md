@@ -154,10 +154,10 @@ Inside a generated project, the home screen also offers the dashboard, validatio
 
 If you run `prism new` with no extra flags, Prism starts the guided interactive flow:
 
-- shows the recommended presets
+- shows the recommended presets, each an app list
 - lets you choose a preset or advanced mode
 - asks for missing project details
-- uses interactive selectors for platform and auth choices
+- uses interactive selectors for the apps to scaffold, further apps (an ID, a stack, a path and whether to scaffold or only register them) and auth choices
 - defaults the destination folder to `workspaces/<project-slug>`
 - shows a final review screen before generation
 
@@ -170,8 +170,15 @@ prism new --preset backend-mobile --project-name "My Mobile App" --dest ../my-mo
 prism validate ../my-mobile-app
 ```
 
-The Prism CLI is the main entry point for generation in this repository. Raw Copier
-commands remain the lower-level fallback underneath it.
+You can also generate from an answers file that lists the apps ([questionnaire.md](questionnaire.md)):
+
+```bash
+prism new --answers my-platform.yml --dest ../my-platform
+```
+
+The Prism CLI is the main entry point for generation in this repository. It runs Copier once
+for the workspace layer and once for each scaffolded app, each layer with its own answers file,
+so the raw Copier commands are only a layer-level fallback underneath it.
 
 Optional deeper context before choosing a non-standard path:
 
@@ -216,7 +223,7 @@ counts, documented generation answers, and template provenance. It omits private
 metadata and unknown answer keys. `doctor --workspace` returns a validation failure when
 the manifest, answers, or detected platform directories contain contract errors. Status and
 doctor list the workspace's apps (ID, name, stack, repository, path, status and maturity); the
-platforms you select become apps, and `prism app list` shows the same table. [workspace-model.md](workspace-model.md)
+apps you list become the manifest's apps (`scaffolded` or `registered`), and `prism app list` shows the same table. [workspace-model.md](workspace-model.md)
 explains apps and repositories and how `prism app add` registers another one.
 
 If you are maintaining the Prism template repo itself, you can also run:
@@ -229,10 +236,10 @@ prism validate --kind template --template-mode contract .
 
 Before treating the generated repo as production-ready, start with structural checks:
 
-- confirm the selected platform directories exist
+- confirm each scaffolded app's directory exists
 - confirm `README.md`, `AGENTS.md`, and `knowledge/wiki/SCHEMA.md` exist
 - inspect the generated root `Taskfile.yml`
-- inspect `.github/workflows/` for the slices you selected
+- inspect `.github/workflows/` for the apps you scaffolded (one `<app-id>.yml` each)
 - inspect the generated platform docs
 
 Then move into the generated project workflow:
@@ -301,10 +308,29 @@ prism update /path/to/generated-project
 ```
 
 This is the Prism-managed update path. It expects the generated project to include
-`.copier-answers.yml`, which Prism writes during `prism new`.
+`.copier-answers.yml`, which Prism writes during `prism new`, and each scaffolded app's own
+`<path>/.copier-answers.yml`.
 
 Use updates only after reviewing template changes and only in a generated project that is
 already under version control with a clean git working tree.
+
+`prism update` works on an update branch (`prism-update-<template tag>`) and brings every layer to the same template
+tag, one commit per layer: first the workspace layer, then each active scaffolded app from its own answers file.
+Copier needs a clean tree for each update, so each layer is committed before the next. After each layer Prism
+scans for `.rej` files and conflict markers (Copier exits 0 on a conflict) and reports per layer:
+
+```text
+workspace layer: updated, committed as d2149c3
+app backend: updated, committed as 84480a7
+app api-two: CONFLICT in 1 file(s), committed as 6565f95
+    services/api-two/AGENTS.md
+```
+
+Without conflicts the branch stays checked out for you to review and merge (`git switch <original branch>` then
+`git merge --ff-only prism-update-<tag>`); Prism never merges for you. When a layer conflicted, the update exits with 6
+before merging, and the branch holds one commit per layer with the conflict as `<<<<<<<` markers: resolve them there,
+commit, then merge. The manifest is merged field by field as before. A scaffolded app whose own answers file is
+missing stops the update before anything changes.
 
 `prism update` uses Copier's smart update when `.copier-answers.yml` records a remote
 template source and a saved revision. A project generated from a local checkout records an
@@ -315,25 +341,28 @@ recopy instead of guessing a baseline. To reapply the template explicitly:
 prism update /path/to/generated-project --strategy recopy
 ```
 
-Recopy overwrites customized template files. Non-interactive recopy requires `--yes`.
+Recopy also works on a branch, one commit per layer (`prism-recopy-<timestamp>`). It overwrites customized template
+files and renders the manifest from the template again, but keeps the workspace's apps and repositories. Non-interactive recopy requires `--yes`.
 Custom template sources require a separate trust confirmation or `--trust-template`;
 `--yes` does not grant code-execution trust. Raw Copier generation saves
 `.copier-answers.yml`, including version provenance when the source is versioned.
 
 ## 7. Raw Copier Fallbacks
 
-If you need to bypass the Prism CLI and generate directly:
+Raw Copier renders one layer, chosen by the hidden question `prism_layer`. Use it for template development, not to generate a workspace.
 
-Generate from GitHub:
+The workspace layer from GitHub or from a local checkout (it has no apps unless you pass them):
 
 ```bash
-copier copy --trust https://github.com/mo0rti/prism.git ../my-new-project
+copier copy --trust --defaults --data project_name="My Project" https://github.com/mo0rti/prism.git ../my-new-project
+copier copy --trust --defaults --data project_name="My Project" . ../my-new-project
 ```
 
-Generate from a local checkout:
+One app layer, into an existing workspace, with that app's own answers file:
 
 ```bash
-copier copy --trust . ../my-new-project
+copier copy --trust --defaults --answers-file services/api-two/.copier-answers.yml \
+  --data prism_layer=spring-backend --data project_name="My Project" --data app_id=api-two --data app_path=services/api-two . ../my-new-project
 ```
 
 The `--trust` flag is required because this template uses the `jinja2_time` Jinja
@@ -348,7 +377,7 @@ python -m pip install copier jinja2-time
 
 Use the raw Copier path when:
 
-- you are contributing to the template and want the fastest low-level feedback loop
+- you are contributing to the template and want the fastest low-level feedback loop on one layer
 - you need to compare Prism CLI behavior with the underlying rendering path
 - you are debugging Copier-specific generation behavior
 

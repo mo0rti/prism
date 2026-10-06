@@ -14,6 +14,7 @@ import yaml
 
 from prism_cli import __version__
 from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, normalize_manifest
+from prism_cli.packs import WORKSPACE_LAYER
 from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, _VERSION_PATTERN
 
 
@@ -48,6 +49,8 @@ class ManifestUpdatePlan:
     target_ref: str
     manifest: dict[str, Any]
     source_manifest_bytes: bytes
+    # The name of the selected revision, such as its tag; the commit hash when it has none.
+    target_label: str = ""
 
 
 def prepare_manifest_update(project_path: Path, old_revision: str) -> ManifestUpdatePlan:
@@ -80,6 +83,7 @@ def prepare_manifest_update(project_path: Path, old_revision: str) -> ManifestUp
                 target_ref = latest_worker.template.commit_hash
                 if not target_ref:
                     raise ManifestUpdateError("Copier could not resolve a versioned template revision.")
+                target_label = str(latest_worker.template.commit or target_ref)
                 latest_manifest = render_template_manifest(latest_worker)
 
             with Worker(
@@ -111,6 +115,7 @@ def prepare_manifest_update(project_path: Path, old_revision: str) -> ManifestUp
         target_ref=target_ref,
         manifest=manifest,
         source_manifest_bytes=source_manifest_bytes,
+        target_label=target_label,
     )
 
 
@@ -184,13 +189,28 @@ def validate_string_mapping_keys(value: Any, label: str, path: tuple[str, ...]) 
             validate_string_mapping_keys(nested, label, path + (f"[{index}]",))
 
 
-def render_template_manifest(worker: Any) -> dict[str, Any]:
-    """Render only the manifest with Copier's context; never run template tasks."""
+def workspace_layer_root(worker: Any) -> str:
+    """The folder of the template that holds the workspace layer, with the workspace layer's own ``prism_layer``.
 
-    subdirectory = worker.template.subdirectory.strip("/\\")
+    The template's ``_subdirectory`` names its layer root with the ``prism_layer`` question, so it is rendered
+    here for the workspace layer and never read raw: the answers a worker holds may belong to an app layer.
+    """
+
+    raw = worker.template.subdirectory
+    try:
+        rendered = worker.jinja_env.from_string(raw).render(**{**worker._render_context(), "prism_layer": WORKSPACE_LAYER})
+    except Exception as exc:
+        raise ManifestUpdateError(f"Unable to resolve the workspace layer of the template: {exc}") from exc
+    return rendered.strip("/\\")
+
+
+def render_template_manifest(worker: Any) -> dict[str, Any]:
+    """Render only the manifest of the workspace layer with Copier's context; never run template tasks."""
+
+    subdirectory = workspace_layer_root(worker)
     template_name = f"{subdirectory}/{MANIFEST_FILE}{worker.template.templates_suffix}" if subdirectory else f"{MANIFEST_FILE}{worker.template.templates_suffix}"
     try:
-        rendered = worker.jinja_env.get_template(template_name).render(**worker._render_context())
+        rendered = worker.jinja_env.get_template(template_name).render(**{**worker._render_context(), "prism_layer": WORKSPACE_LAYER})
     except Exception as exc:
         raise ManifestUpdateError(f"Unable to render {MANIFEST_FILE} from the template: {exc}") from exc
     try:

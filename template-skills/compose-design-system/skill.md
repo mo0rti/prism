@@ -2,7 +2,7 @@
 name: compose-design-system
 description: "Compose UI and design-system rules for this repo. Use when building, refactoring, or reviewing screens, shared components, theme architecture, color roles, day/night theming, previews, or reusable modifiers."
 layers: [codex, claude-skill]
-platforms: [mobile-android]
+stacks: [android-compose]
 codex:
   display_name: "Compose Design System"
   short_description: "Keep Android shared UI visually consistent"

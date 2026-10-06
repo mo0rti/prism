@@ -84,15 +84,17 @@ python scripts/build-skill-layers.py --check  # fails when a generated file diff
 
 ## Recommended Validation Variants
 
-- `platforms=[backend]`
-- `platforms=[backend, mobile-android]`
-- `platforms=[backend, mobile-ios]`
-- `platforms=[backend, web-user-app]`
-- `platforms=[backend, web-admin-portal]`
-- `platforms=[backend, web-user-app, web-admin-portal]`
-- default generation as a contract-sanity check, not as the main proof of usability
+- `backend` alone, and `backend` with a second backend at another path (`prism app add api-two --stack spring-backend --path services/api-two --scaffold`)
+- `backend` and `mobile-android`
+- `backend` and `mobile-ios`
+- `backend` and `web-user-app`
+- `backend` and `web-admin-portal`
+- `backend`, `web-user-app` and `web-admin-portal`
+- the preset defaults as a contract-sanity check, not as the main proof of usability
 
-`./scripts/validate-template.ps1 -Mode contract` checks rendered files and workflows. The default `full` mode also runs backend smoke checks; both modes disable the script's web smoke helper. Generated web install, lint, typecheck, authentication checks and Next.js builds run in the separate `web-smoke` CI job in `.github/workflows/template-validation.yml`. A configured job is not evidence of a passing run on the current changes.
+Generate each through the CLI, with a preset or an answers file that lists the apps, because Copier does not ask about apps. Generation renders the working tree (tracked or not), so a test that needs committed state, such as an update across a tag, builds a snapshot repository under a temporary folder (`tests/layered_support.py`).
+
+`./scripts/validate-template.ps1 -Mode contract` generates through `prism new` and checks rendered files and workflows. The default `full` mode also runs backend smoke checks (the pack's tests and boot jar, which need a JDK); both modes disable the script's web smoke helper. Generated web install, lint, typecheck, authentication checks and Next.js builds run in the separate `web-smoke` CI job in `.github/workflows/template-validation.yml`. A configured job is not evidence of a passing run on the current changes.
 
 ## Reference Commands
 
@@ -101,9 +103,9 @@ Contract validation requires actionlint on PATH (CI installs 1.7.12), or an expl
 
 ```bash
 ./scripts/validate-template.ps1
-copier copy --trust . ../template-test
-copier copy --trust --defaults --data "project_name=Test App" --data "platforms=[backend]" . ../template-test-backend
-copier copy --trust --defaults --data "project_name=Test Web App" --data "platforms=[backend, web-user-app, web-admin-portal]" . ../template-test-web
+prism new --preset backend-only --project-name "Test App" --dest ../template-test-backend --yes
+prism new --preset backend-web --project-name "Test Web App" --dest ../template-test-web --yes
+copier copy --trust --defaults --data "project_name=Test App" . ../template-test-workspace-layer   # one layer only
 ```
 
 ## Related Documentation

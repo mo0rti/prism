@@ -37,16 +37,31 @@ if (Test-Path -LiteralPath $TargetDir) {
     Remove-Item -LiteralPath $TargetDir -Recurse -Force
 }
 
+$answersFile = Join-Path ([System.IO.Path]::GetTempPath()) ("prism-runtime-validate-" + [System.Guid]::NewGuid().ToString("N") + ".yml")
+$answers = @'
+schema_version: 1
+answers:
+  project_name: Prism Runtime Validate
+  description: Reusable runtime validation fixture for Prism wiki commands
+  apps:
+    - {id: backend, stack: spring-backend, name: Spring Boot Backend}
+    - {id: mobile-android, stack: android-compose, name: Android (Kotlin/Compose)}
+    - {id: mobile-ios, stack: ios-swiftui, name: iOS (Swift/SwiftUI)}
+    - {id: web-user-app, stack: nextjs-web, name: User-Facing Web App}
+    - {id: web-admin-portal, stack: nextjs-web, name: Admin Web Portal}
+'@
+[System.IO.File]::WriteAllText($answersFile, $answers.Replace("`r`n", "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
+
 Push-Location $repoRoot
 try {
-    copier copy --trust --defaults --vcs-ref HEAD `
-        --data "project_name=Prism Runtime Validate" `
-        --data "description=Reusable runtime validation fixture for Prism wiki commands" `
-        --data "platforms=[backend,mobile-android,mobile-ios,web-user-app,web-admin-portal]" `
-        . $TargetDir
+    python -m prism_cli new --answers $answersFile --dest $TargetDir --yes
+    if ($LASTEXITCODE -ne 0) {
+        throw "Prism generation failed for the runtime validation fixture."
+    }
 }
 finally {
     Pop-Location
+    Remove-Item -LiteralPath $answersFile -Force -ErrorAction SilentlyContinue
 }
 
 $wikiRoot = Join-Path $TargetDir "knowledge\wiki"

@@ -18,30 +18,6 @@ project:
     - {{ auth_method }}
 {% endfor %}
   github_org: {{ github_org | tojson }}
-{% set stacks = {"backend": "spring-backend", "web-user-app": "nextjs-web", "web-admin-portal": "nextjs-web", "mobile-android": "android-compose", "mobile-ios": "ios-swiftui"} %}
-{% set labels = {"backend": "Spring Boot Backend", "web-user-app": "User-Facing Web App", "web-admin-portal": "Admin Web Portal", "mobile-android": "Android (Kotlin/Compose)", "mobile-ios": "iOS (Swift/SwiftUI)"} %}
-apps:
-{% for platform in platforms %}
-  - id: {{ platform }}
-    name: {{ labels[platform] | tojson }}
-    stack: {{ stacks[platform] }}
-    repository: workspace
-    path: {{ platform }}
-{% endfor %}
-app_maturity:
-{% for platform in platforms %}
-  {{ platform }}:
-{% if platform == "mobile-ios" %}
-    level: experimental
-    caveat: "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven."
-{% elif platform == "web-user-app" or platform == "web-admin-portal" %}
-    level: provisional
-    caveat: "Generated web apps are verified by lint, typecheck and build only; hosting is the project owner's choice (see the deployment skill)."
-{% else %}
-    level: baseline
-    caveat: ""
-{% endif %}
-{% endfor %}
 paths:
   wiki_root: knowledge/wiki
   intake_root: knowledge/intake
@@ -56,19 +32,4 @@ expected_surfaces:
   docs:
     - README.md
     - docs/
-  workflows:
-{% if "backend" in platforms %}
-    - .github/workflows/backend.yml
-{% endif %}
-{% if "web-user-app" in platforms %}
-    - .github/workflows/web-user-app.yml
-{% endif %}
-{% if "web-admin-portal" in platforms %}
-    - .github/workflows/web-admin-portal.yml
-{% endif %}
-{% if "mobile-android" in platforms %}
-    - .github/workflows/mobile-android.yml
-{% endif %}
-{% if "mobile-ios" in platforms %}
-    - .github/workflows/mobile-ios.yml
-{% endif %}
+  workflows: []

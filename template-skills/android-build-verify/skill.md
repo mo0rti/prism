@@ -2,7 +2,7 @@
 name: android-build-verify
 description: "Choose the cheapest trustworthy Gradle validation for Android changes. Use when asked to compile, assemble, test, debug build failures, or decide which Android verification task should run after edits in `mobile-android/`."
 layers: [codex, claude-skill]
-platforms: [mobile-android]
+stacks: [android-compose]
 codex:
   display_name: "Android Build Verify"
   short_description: "Pick the right Android Gradle validation step"

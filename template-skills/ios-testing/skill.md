@@ -2,7 +2,7 @@
 name: ios-testing
 description: "iOS testing patterns for XCTest, Swift Testing adoption, ViewModel coverage, repository tests, and UI smoke tests. Use when adding or updating tests under `{{ project_slug }}Tests/` or `{{ project_slug }}UITests/`, or when deciding the right iOS test shape for a change."
 layers: [codex, claude-skill]
-platforms: [mobile-ios]
+stacks: [ios-swiftui]
 codex:
   display_name: "iOS Testing"
   short_description: "Choose and write the right iOS tests"

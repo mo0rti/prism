@@ -1,6 +1,6 @@
 """Every skill is written once in template-skills/ and generated into the layout of each tool.
 
-The source tests need no Copier. The discovery tests render a workspace with Copier, once with all
+The source tests need no Copier. The discovery tests generate a workspace through the CLI, once with all
 five apps and once with one app, and check how Codex, Claude Code and Cursor each find the skills.
 """
 
@@ -20,6 +20,7 @@ import yaml
 
 from prism_cli import cli
 from tests import real_temp  # noqa: F401
+from tests.layered_support import generate_default_apps
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = REPO_ROOT / "template"
@@ -113,7 +114,7 @@ class GeneratorTests(unittest.TestCase):
             codex.write_text(codex.read_text(encoding="utf-8") + "\nAn edit that has no source.\n", encoding="utf-8")
             command = template / ".claude" / "commands" / "po-handoff.md.jinja"
             command.write_text(command.read_text(encoding="utf-8").replace("exactly one", "exactly two", 1), encoding="utf-8")
-            cursor = template / ".cursor" / "rules" / "backend.mdc.jinja"
+            cursor = template / ".cursor" / "rules" / "mobile-android.mdc.jinja"
             cursor.write_text(cursor.read_text(encoding="utf-8") + "- one more fact\n", encoding="utf-8")
             (template / ".agents" / "skills" / "ask" / "agents" / "openai.yaml").write_text("interface: {}\n", encoding="utf-8")
             reference = template / ".claude" / "skills" / "compose-design-system" / "references" / "compose-components.md"
@@ -122,7 +123,7 @@ class GeneratorTests(unittest.TestCase):
             for path in (
                 ".agents/skills/ask/SKILL.md.jinja",
                 ".claude/commands/po-handoff.md.jinja",
-                ".cursor/rules/backend.mdc.jinja",
+                ".cursor/rules/mobile-android.mdc.jinja",
                 ".agents/skills/ask/agents/openai.yaml",
                 ".claude/skills/compose-design-system/references/compose-components.md",
             ):
@@ -158,31 +159,32 @@ class GeneratorTests(unittest.TestCase):
             copier.write_text(text.replace(".agents/skills/android-testing", ".agents/skills/android-testing-x", 1), encoding="utf-8")
             self.assertEqual(["differs from its sources: the generated _exclude block of copier.yml"], GENERATOR.differences(skills, template, copier))
 
-    def test_the_exclude_block_keeps_the_platform_conditions(self) -> None:
+    def test_the_exclude_block_keeps_the_stack_conditions(self) -> None:
         lines = GENERATOR.exclude_lines(GENERATOR.load_sources())
 
-        def condition(path: str, *platforms: str) -> str:
-            test = " and ".join(f"'{platform}' not in platforms" for platform in platforms)
-            return f'  - "{{% if {test} %}}{path}{{% endif %}}"'
+        def condition(path: str, *items: str, variable: str = "stacks") -> str:
+            test = " and ".join(f"'{item}' not in {variable}" for item in items)
+            return f'  - "{{% if prism_layer == \'workspace\' and {test} %}}{path}{{% endif %}}"'
 
         for layer in (".agents/skills", ".claude/skills"):
             for name in ("android-build-verify", "android-contract-alignment", "android-conventions", "android-feature-delivery", "android-testing", "compose-design-system"):
-                self.assertIn(condition(f"{layer}/{name}", "mobile-android"), lines)
+                self.assertIn(condition(f"{layer}/{name}", "android-compose"), lines)
             for name in ("ios-build-verify", "ios-contract-alignment", "ios-conventions", "ios-feature-delivery", "ios-testing", "swiftui-design-system"):
-                self.assertIn(condition(f"{layer}/{name}", "mobile-ios"), lines)
-        self.assertIn(condition(".claude/skills/deploy-device", "mobile-android", "mobile-ios"), lines)
-        self.assertIn(condition(".cursor/rules/backend.mdc", "backend"), lines)
-        self.assertIn(condition(".cursor/rules/web.mdc", "web-user-app", "web-admin-portal"), lines)
-        self.assertIn(condition(".cursor/rules/mobile-android.mdc", "mobile-android"), lines)
-        self.assertIn(condition(".cursor/rules/mobile-ios.mdc", "mobile-ios"), lines)
+                self.assertIn(condition(f"{layer}/{name}", "ios-swiftui"), lines)
+        self.assertIn(condition(".claude/skills/deploy-device", "android-compose", "ios-swiftui"), lines)
+        # The backend's Cursor rule belongs to its pack, per app, so no source and no exclusion names it.
+        self.assertFalse([line for line in lines if ".cursor/rules/backend.mdc" in line])
+        self.assertIn(condition(".cursor/rules/web.mdc", "nextjs-web"), lines)
+        self.assertIn(condition(".cursor/rules/mobile-android.mdc", "android-compose"), lines)
+        self.assertIn(condition(".cursor/rules/mobile-ios.mdc", "ios-swiftui"), lines)
         for layer in (".agents/skills", ".claude/skills"):
             base = f"{layer}/deployment/references"
-            self.assertIn(condition(f"{base}/azure", "backend"), lines)
-            self.assertIn(condition(f"{base}/azure-setup.md", "backend"), lines)
-            self.assertIn(condition(f"{base}/cloudflare", "web-user-app", "web-admin-portal"), lines)
-            self.assertIn(condition(f"{base}/cloudflare/wrangler.web-user-app.jsonc", "web-user-app"), lines)
-            self.assertIn(condition(f"{base}/cloudflare/wrangler.web-admin-portal.jsonc", "web-admin-portal"), lines)
-            self.assertIn(condition(f"{base}/mobile-store-release.md", "mobile-android", "mobile-ios"), lines)
+            self.assertIn(condition(f"{base}/azure", "spring-backend"), lines)
+            self.assertIn(condition(f"{base}/azure-setup.md", "spring-backend"), lines)
+            self.assertIn(condition(f"{base}/cloudflare", "nextjs-web"), lines)
+            self.assertIn(condition(f"{base}/cloudflare/wrangler.web-user-app.jsonc", "web-user-app", variable="app_ids"), lines)
+            self.assertIn(condition(f"{base}/cloudflare/wrangler.web-admin-portal.jsonc", "web-admin-portal", variable="app_ids"), lines)
+            self.assertIn(condition(f"{base}/mobile-store-release.md", "android-compose", "ios-swiftui"), lines)
         # Skills that ship with every workspace carry no condition.
         self.assertFalse([line for line in lines if "/ask" in line or "board-review" in line or "advisory-review" in line or "api-conventions" in line])
 
@@ -282,7 +284,9 @@ class GeneratorTests(unittest.TestCase):
             "folder name": (good.replace("name: demo", "name: other"), "# Demo\n\nBody.", "name must equal"),
             "missing codex fields": (good.replace("short_description: Demo, ", ""), "# Demo\n\nBody.", "codex needs"),
             "unknown key": (good + "\nflavour: x", "# Demo\n\nBody.", "unknown front matter keys"),
-            "bad platform": (good + "\nplatforms: [watchos]", "# Demo\n\nBody.", "platforms must be"),
+            "bad stack": (good + "\nstacks: [watchos]", "# Demo\n\nBody.", "stacks must be"),
+            "bad reference app": (good + "\nreference-apps: {references/extra: [watchos]}", "# Demo\n\nBody.", "reference-apps[references/extra] must be"),
+            "the retired platforms key": (good + "\nplatforms: [backend]", "# Demo\n\nBody.", "unknown front matter keys"),
             "unclosed block": (good, "# Demo\n\n::: only codex\nText.\n", "not closed"),
             "stray close": (good, "# Demo\n\n:::\n", "without an open block"),
             "unknown layer in block": (good, "# Demo\n\n::: only vscode\nText.\n:::\n", "unknown layer"),
@@ -314,8 +318,9 @@ class GeneratorTests(unittest.TestCase):
                 name: demo
                 description: A demo.
                 layers: [codex, claude-skill]
-                platforms: [backend]
-                reference-platforms: {references/extra: [mobile-ios]}
+                stacks: [spring-backend]
+                reference-stacks: {references/extra: [ios-swiftui]}
+                reference-apps: {references/extra: [web-user-app]}
                 codex: {display_name: Demo, short_description: Demo, default_prompt: Use it., implicit: true}
                 """,
                 "# Demo\n\nBody.",
@@ -327,8 +332,9 @@ class GeneratorTests(unittest.TestCase):
             self.assertEqual(b"Notes.\n", files[".agents/skills/demo/references/extra/notes.md"])
             self.assertEqual(files[".agents/skills/demo/references/extra/notes.md"], files[".claude/skills/demo/references/extra/notes.md"])
             lines = GENERATOR.exclude_lines(skills)
-            self.assertIn("  - \"{% if 'backend' not in platforms %}.agents/skills/demo{% endif %}\"", lines)
-            self.assertIn("  - \"{% if 'mobile-ios' not in platforms %}.claude/skills/demo/references/extra{% endif %}\"", lines)
+            self.assertIn("  - \"{% if prism_layer == 'workspace' and 'spring-backend' not in stacks %}.agents/skills/demo{% endif %}\"", lines)
+            self.assertIn("  - \"{% if prism_layer == 'workspace' and 'ios-swiftui' not in stacks %}.claude/skills/demo/references/extra{% endif %}\"", lines)
+            self.assertIn("  - \"{% if prism_layer == 'workspace' and 'web-user-app' not in app_ids %}.claude/skills/demo/references/extra{% endif %}\"", lines)
         with tempfile.TemporaryDirectory(prefix="prism-skill-sources-") as temporary:
             root = Path(temporary)
             write_source(
@@ -363,30 +369,37 @@ def owner(skills, rendered: str):
     raise AssertionError(f"no source produces {rendered}")
 
 
-def rendered_names(skills, platforms) -> set[str]:
+STACK_OF_APP = {"backend": "spring-backend", "web-user-app": "nextjs-web", "web-admin-portal": "nextjs-web", "mobile-android": "android-compose", "mobile-ios": "ios-swiftui"}
+# The Cursor rule of a pack's app is the pack's own file, so no skill source names it.
+PACK_APP_RULES = {".cursor/rules/backend.mdc"}
+
+
+def rendered_names(skills, app_ids) -> set[str]:
     """The files a workspace with these apps carries in the four managed folders, by their rendered names."""
 
+    stacks = {STACK_OF_APP[app] for app in app_ids}
     names: set[str] = set()
     for path in GENERATOR.render_layers(skills):
         rendered = path[: -len(".jinja")] if path.endswith(".jinja") else path
         skill = owner(skills, rendered)
-        if skill.platforms and not set(skill.platforms) & set(platforms):
+        if skill.stacks and not set(skill.stacks) & stacks:
             continue
         skipped = False
-        for relative, only in skill.reference_platforms.items():
-            for folder in (".agents/skills", ".claude/skills"):
-                base = f"{folder}/{skill.name}/{relative}"
-                if (rendered == base or rendered.startswith(base + "/")) and not set(only) & set(platforms):
-                    skipped = True
+        for scopes, present in ((skill.reference_stacks, stacks), (skill.reference_apps, set(app_ids))):
+            for relative, only in scopes.items():
+                for folder in (".agents/skills", ".claude/skills"):
+                    base = f"{folder}/{skill.name}/{relative}"
+                    if (rendered == base or rendered.startswith(base + "/")) and not set(only) & present:
+                        skipped = True
         if not skipped:
             names.add(rendered)
     return names
 
 
 class RenderedWorkspace:
-    """Mixin for the discovery tests: one Copier render per class."""
+    """Mixin for the discovery tests: one render per class, through the CLI."""
 
-    platforms: tuple[str, ...] = ALL_APPS
+    app_ids: tuple[str, ...] = ALL_APPS
     root: Path
     skills: list
 
@@ -396,28 +409,7 @@ class RenderedWorkspace:
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.root = Path(cls.temporary.name) / "generated"
         cls.skills = GENERATOR.load_sources()
-        with cli.staged_template_path(str(REPO_ROOT)) as template:
-            command = [
-                sys.executable,
-                "-m",
-                "copier",
-                "copy",
-                "--trust",
-                "--defaults",
-                "--data",
-                "project_name=Skill Discovery",
-                "--data",
-                "project_slug=skill-discovery",
-                "--data",
-                f"platforms=[{', '.join(cls.platforms)}]",
-                "--data",
-                "auth_methods=[password]",
-                str(template),
-                str(cls.root),
-            ]
-            result = subprocess.run(command, cwd=REPO_ROOT, capture_output=True, text=True, check=False, timeout=900)
-        if result.returncode:
-            raise AssertionError(f"Copier generation failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
+        generate_default_apps(cls.root, list(cls.app_ids), Path(cls.temporary.name), project_name="Skill Discovery", auth_methods=["password"])
 
     def files(self, *folders: str) -> set[str]:
         found: set[str] = set()
@@ -532,8 +524,8 @@ class RenderedWorkspace:
     # ------------------------------------------------------------------ the layers agree
 
     def test_the_workspace_carries_exactly_the_files_the_sources_name(self) -> None:
-        expected = rendered_names(self.skills, self.platforms)
-        actual = self.files(".agents/skills", ".claude/commands", ".claude/skills", ".cursor/rules")
+        expected = rendered_names(self.skills, self.app_ids)
+        actual = self.files(".agents/skills", ".claude/commands", ".claude/skills", ".cursor/rules") - PACK_APP_RULES
         self.assertEqual([], sorted(expected - actual), "a layer the sources claim is missing")
         self.assertEqual([], sorted(actual - expected), "a layer file has no source")
 
@@ -592,7 +584,7 @@ class RenderedWorkspace:
 
 
 class AllAppsDiscoveryTests(RenderedWorkspace, unittest.TestCase):
-    platforms = ALL_APPS
+    app_ids = ALL_APPS
 
     def test_every_stack_skill_is_generated_for_its_app(self) -> None:
         for layer in (".agents/skills", ".claude/skills"):
@@ -616,7 +608,7 @@ class AllAppsDiscoveryTests(RenderedWorkspace, unittest.TestCase):
 
 
 class OneAppDiscoveryTests(RenderedWorkspace, unittest.TestCase):
-    platforms = ONE_APP
+    app_ids = ONE_APP
 
     def test_an_app_that_is_not_selected_brings_none_of_its_skills(self) -> None:
         for layer in (".agents/skills", ".claude/skills"):

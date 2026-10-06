@@ -2,7 +2,7 @@
 name: ios-build-verify
 description: "Build and verification workflow for the generated iOS app. Use when asked to compile, test, debug build failures, or choose the cheapest sufficient validation task for a change."
 layers: [codex, claude-skill]
-platforms: [mobile-ios]
+stacks: [ios-swiftui]
 codex:
   display_name: "iOS Build Verify"
   short_description: "Pick the right iOS validation step"

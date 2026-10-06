@@ -23,11 +23,11 @@ The agent system in this workspace does four jobs:
 | Claude skills | [`.claude/skills/`](../.claude/skills/) | Reusable Claude Code guidance for implementation, conventions, testing, and platform work |
 | Codex skills | [`.agents/skills/`](../.agents/skills/) | Reusable Codex guidance for shared workflows and supported platform work |
 | Cursor rules | [`.cursor/rules/`](../.cursor/rules/) | Stack facts scoped by file path, and the board review; Cursor reads `AGENTS.md` itself and loads the skills in `.agents/skills/` and `.claude/skills/` |
-{% if "backend" in platforms %}| Backend guidance | [`backend/AGENTS.md`](../backend/AGENTS.md), [`backend/CLAUDE.md`](../backend/CLAUDE.md), [`backend/docs/guide.md`](../backend/docs/guide.md) | Backend-specific architecture, conventions, and delivery rules |
-{% endif %}{% if "web-user-app" in platforms %}| User web guidance | [`web-user-app/AGENTS.md`](../web-user-app/AGENTS.md), [`web-user-app/CLAUDE.md`](../web-user-app/CLAUDE.md), [`web-user-app/docs/guide.md`](../web-user-app/docs/guide.md) | User web implementation rules and workflow expectations |
-{% endif %}{% if "web-admin-portal" in platforms %}| Admin web guidance | [`web-admin-portal/AGENTS.md`](../web-admin-portal/AGENTS.md), [`web-admin-portal/CLAUDE.md`](../web-admin-portal/CLAUDE.md), [`web-admin-portal/docs/guide.md`](../web-admin-portal/docs/guide.md) | Admin portal implementation rules and workflow expectations |
-{% endif %}{% if "mobile-android" in platforms %}| Android guidance | [`mobile-android/AGENTS.md`](../mobile-android/AGENTS.md), [`mobile-android/CLAUDE.md`](../mobile-android/CLAUDE.md), [`mobile-android/docs/guide.md`](../mobile-android/docs/guide.md) | Android-specific architecture, testing, and delivery rules |
-{% endif %}{% if "mobile-ios" in platforms %}| iOS guidance | [`mobile-ios/AGENTS.md`](../mobile-ios/AGENTS.md), [`mobile-ios/CLAUDE.md`](../mobile-ios/CLAUDE.md), [`mobile-ios/docs/guide.md`](../mobile-ios/docs/guide.md) | iOS-specific architecture, testing, and delivery rules |
+{% for app in apps if app.stack == "spring-backend" %}| {{ app.name }} guidance | [`{{ app.path }}/AGENTS.md`](../{{ app.path }}/AGENTS.md), [`{{ app.path }}/CLAUDE.md`](../{{ app.path }}/CLAUDE.md), [`{{ app.path }}/docs/guide.md`](../{{ app.path }}/docs/guide.md) | Backend-specific architecture, conventions, and delivery rules |
+{% endfor %}{% if "web-user-app" in app_ids %}| User web guidance | [`web-user-app/AGENTS.md`](../web-user-app/AGENTS.md), [`web-user-app/CLAUDE.md`](../web-user-app/CLAUDE.md), [`web-user-app/docs/guide.md`](../web-user-app/docs/guide.md) | User web implementation rules and workflow expectations |
+{% endif %}{% if "web-admin-portal" in app_ids %}| Admin web guidance | [`web-admin-portal/AGENTS.md`](../web-admin-portal/AGENTS.md), [`web-admin-portal/CLAUDE.md`](../web-admin-portal/CLAUDE.md), [`web-admin-portal/docs/guide.md`](../web-admin-portal/docs/guide.md) | Admin portal implementation rules and workflow expectations |
+{% endif %}{% if "android-compose" in stacks %}| Android guidance | [`mobile-android/AGENTS.md`](../mobile-android/AGENTS.md), [`mobile-android/CLAUDE.md`](../mobile-android/CLAUDE.md), [`mobile-android/docs/guide.md`](../mobile-android/docs/guide.md) | Android-specific architecture, testing, and delivery rules |
+{% endif %}{% if "ios-swiftui" in stacks %}| iOS guidance | [`mobile-ios/AGENTS.md`](../mobile-ios/AGENTS.md), [`mobile-ios/CLAUDE.md`](../mobile-ios/CLAUDE.md), [`mobile-ios/docs/guide.md`](../mobile-ios/docs/guide.md) | iOS-specific architecture, testing, and delivery rules |
 {% endif %}
 
 ## Agent File Map
@@ -50,23 +50,23 @@ The agent system in this workspace does four jobs:
 │   └── skills/
 ├── .agents/
 │   └── skills/
-{% if "backend" in platforms %}├── backend/
+{% for app in apps if app.stack == "spring-backend" %}├── {{ app.path }}/
 │   ├── AGENTS.md
 │   ├── CLAUDE.md
 │   └── docs/guide.md
-{% endif %}{% if "web-user-app" in platforms %}├── web-user-app/
+{% endfor %}{% if "web-user-app" in app_ids %}├── web-user-app/
 │   ├── AGENTS.md
 │   ├── CLAUDE.md
 │   └── docs/guide.md
-{% endif %}{% if "web-admin-portal" in platforms %}├── web-admin-portal/
+{% endif %}{% if "web-admin-portal" in app_ids %}├── web-admin-portal/
 │   ├── AGENTS.md
 │   ├── CLAUDE.md
 │   └── docs/guide.md
-{% endif %}{% if "mobile-android" in platforms %}├── mobile-android/
+{% endif %}{% if "android-compose" in stacks %}├── mobile-android/
 │   ├── AGENTS.md
 │   ├── CLAUDE.md
 │   └── docs/guide.md
-{% endif %}{% if "mobile-ios" in platforms %}├── mobile-ios/
+{% endif %}{% if "ios-swiftui" in stacks %}├── mobile-ios/
 │   ├── AGENTS.md
 │   ├── CLAUDE.md
 │   └── docs/guide.md
@@ -231,7 +231,7 @@ mirror much of the Claude command surface for Codex:
 |------|---------|---------|
 | `deployment` | Claude, Codex | Worked examples for deploying the generated stacks: the backend container to Azure Container Apps, the web apps to Cloudflare through OpenNext, and notes on mobile store releases. The user and their agent own the cloud choice, the secrets and the deployment; the files are an example for one choice |
 
-{% if "backend" in platforms %}
+{% if "spring-backend" in stacks %}
 ### Backend Skills
 
 These skills support backend implementation. The `Surface` column shows whether the
@@ -258,7 +258,7 @@ skill is available to Claude Code, Codex, or both.
 | `code-review` | Claude | Multi-perspective review across correctness, architecture, security, performance, and maintainability across platforms |
 {% endif %}
 
-{% if "web-user-app" in platforms or "web-admin-portal" in platforms %}
+{% if "web-user-app" in app_ids or "web-admin-portal" in app_ids %}
 ### Web Skills
 
 The current web slices rely more on platform-local docs and agent files than on a large
@@ -269,12 +269,12 @@ Start with:
 - [`AGENTS.md`](../AGENTS.md) for workspace-level rules, workflow and command context
 - [`docs/api/conventions.md`](api/conventions.md) for API usage rules
 - [`shared/api-contracts/openapi.yml`](../shared/api-contracts/openapi.yml) for the source contract
-{% if "web-user-app" in platforms %}- [`web-user-app/docs/guide.md`](../web-user-app/docs/guide.md) for the user web slice
-{% endif %}{% if "web-admin-portal" in platforms %}- [`web-admin-portal/docs/guide.md`](../web-admin-portal/docs/guide.md) for the admin web slice
+{% if "web-user-app" in app_ids %}- [`web-user-app/docs/guide.md`](../web-user-app/docs/guide.md) for the user web slice
+{% endif %}{% if "web-admin-portal" in app_ids %}- [`web-admin-portal/docs/guide.md`](../web-admin-portal/docs/guide.md) for the admin web slice
 {% endif %}- the local `AGENTS.md` and `CLAUDE.md` files inside each web slice
 {% endif %}
 
-{% if "mobile-android" in platforms %}
+{% if "android-compose" in stacks %}
 ### Android Skills
 
 | Skill | Surface | Purpose |
@@ -288,7 +288,7 @@ Start with:
 | `compose-design-system` | Claude, Codex | Jetpack Compose design-system and UI composition guidance |
 {% endif %}
 
-{% if "mobile-ios" in platforms %}
+{% if "ios-swiftui" in stacks %}
 ### iOS Skills
 
 | Skill | Surface | Purpose |

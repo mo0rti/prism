@@ -18,12 +18,16 @@ from tests import real_temp  # noqa: F401
 
 
 class CliAnswerValidationTests(unittest.TestCase):
-    def test_rejects_wrong_platform_and_auth_types_and_values(self) -> None:
+    BACKEND = [{"id": "backend", "stack": "spring-backend"}]
+
+    def test_rejects_wrong_app_list_and_auth_types_and_values(self) -> None:
         cases = (
-            ({"platforms": "backend", "auth_methods": ["password"]}, "platforms must be a list"),
-            ({"platforms": ["desktop"], "auth_methods": ["password"]}, "Unsupported platforms value"),
-            ({"platforms": ["backend"], "auth_methods": "password"}, "auth_methods must be a list"),
-            ({"platforms": ["backend"], "auth_methods": ["magic"]}, "Unsupported auth_methods value"),
+            ({"apps": "backend", "auth_methods": ["password"]}, "`apps` must be a list"),
+            ({"apps": [{"id": "x", "stack": "desktop"}], "auth_methods": ["password"]}, "needs a `stack` from the registry"),
+            ({"apps": ["backend"], "auth_methods": ["password"]}, "`apps[0]` must be a mapping"),
+            ({"apps": self.BACKEND, "auth_methods": "password"}, "auth_methods must be a list"),
+            ({"apps": self.BACKEND, "auth_methods": ["magic"]}, "Unsupported auth_methods value"),
+            ({"auth_methods": ["password"]}, "The app list is missing"),
         )
         for answers, expected in cases:
             with self.subTest(answers=answers):
@@ -31,10 +35,10 @@ class CliAnswerValidationTests(unittest.TestCase):
                 self.assertTrue(any(expected in error for error in errors), errors)
 
     def test_rejects_answers_for_questions_that_no_longer_exist(self) -> None:
-        for removed in ("database", "supporting_services", "use_docker", "cloud_provider", "web_hosting"):
+        for removed in ("database", "supporting_services", "use_docker", "cloud_provider", "web_hosting", "platforms"):
             with self.subTest(removed=removed):
                 errors, _warnings = cli.validate_answers(
-                    {"platforms": ["backend"], "auth_methods": ["password"], removed: "anything"}
+                    {"apps": self.BACKEND, "auth_methods": ["password"], removed: "anything"}
                 )
                 self.assertEqual(1, len(errors), errors)
                 self.assertIn(f"Unknown answer(s): {removed}.", errors[0])
@@ -46,7 +50,7 @@ class CliAnswerValidationTests(unittest.TestCase):
                 "project_slug": "demo",
                 "package_identifier": "com.example.demo",
                 "description": "Demo",
-                "platforms": ["backend"],
+                "apps": self.BACKEND,
                 "auth_methods": ["password"],
                 "github_org": "",
                 "_prism_private": "ignored",
@@ -58,7 +62,7 @@ class CliAnswerValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             answers_file = Path(temp_dir) / "answers.yml"
             answers_file.write_text(
-                "schema_version: 1\nanswers:\n  project_name: Demo\n  platforms: [backend]\n  database: mysql\n",
+                "schema_version: 1\nanswers:\n  project_name: Demo\n  apps: [{id: backend, stack: spring-backend}]\n  database: mysql\n",
                 encoding="utf-8",
             )
             args = cli.build_parser().parse_args(["new", "--answers", str(answers_file), "--dest", str(Path(temp_dir) / "out"), "--yes"])
@@ -119,7 +123,7 @@ class CliAnswerValidationTests(unittest.TestCase):
             root = Path(temp_dir)
             answers_path = root / "answers.yml"
             answers_path.write_text(
-                "schema_version: 1\nanswers:\n  project_name: Bad Data\n  platforms: backend\n  auth_methods: [password]\ndestination: "
+                "schema_version: 1\nanswers:\n  project_name: Bad Data\n  apps: backend\n  auth_methods: [password]\ndestination: "
                 + str(root / "project")
                 + "\n",
                 encoding="utf-8",
@@ -132,7 +136,7 @@ class CliAnswerValidationTests(unittest.TestCase):
                 result = cli.cmd_new(args)
 
         self.assertEqual(cli.EXIT_VALIDATION, result)
-        self.assertIn("platforms must be a list", stderr.getvalue())
+        self.assertIn("`apps` must be a list", stderr.getvalue())
         self.assertFalse((root / "project").exists())
 
 

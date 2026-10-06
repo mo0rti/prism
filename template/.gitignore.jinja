@@ -21,18 +21,7 @@ Desktop.ini
 .env.local
 .env.*.local
 
-{% if "backend" in platforms %}
-# =============================================================================
-# Backend (Spring Boot / Gradle)
-# =============================================================================
-backend/build/
-backend/.gradle/
-backend/.kotlin/
-backend/bin/
-backend/out/
-backend/src/generated/
-{% endif %}
-{% if "web-user-app" in platforms %}
+{% if "web-user-app" in app_ids %}
 # =============================================================================
 # Web (Next.js)
 # =============================================================================
@@ -40,7 +29,7 @@ web-user-app/node_modules/
 web-user-app/.next/
 web-user-app/out/
 {% endif %}
-{% if "web-admin-portal" in platforms %}
+{% if "web-admin-portal" in app_ids %}
 # =============================================================================
 # Admin (Next.js)
 # =============================================================================
@@ -48,7 +37,7 @@ web-admin-portal/node_modules/
 web-admin-portal/.next/
 web-admin-portal/out/
 {% endif %}
-{% if "mobile-android" in platforms %}
+{% if "android-compose" in stacks %}
 # =============================================================================
 # Android
 # =============================================================================
@@ -59,7 +48,7 @@ mobile-android/local.properties
 mobile-android/local.config.properties
 mobile-android/app/src/main/java/generated/
 {% endif %}
-{% if "mobile-ios" in platforms %}
+{% if "ios-swiftui" in stacks %}
 # =============================================================================
 # iOS
 # =============================================================================

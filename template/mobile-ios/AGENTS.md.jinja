@@ -62,8 +62,8 @@ Treat `mobile-ios/docs/` as the current-state source of truth:
 ## Cross-Project References
 
 - `shared/api-contracts/openapi.yml` is the primary contract reference for endpoints, payloads, and auth flows.
-{% if "backend" in platforms %}- `backend/` is the behavior reference when the OpenAPI spec needs clarification.
-{% endif %}{% if "mobile-android" in platforms %}- `mobile-android/` is useful for product parity and UX intent, but prefer iOS-native solutions when platform conventions differ.
+{% if "spring-backend" in stacks %}- `backend/` is the behavior reference when the OpenAPI spec needs clarification.
+{% endif %}{% if "android-compose" in stacks %}- `mobile-android/` is useful for product parity and UX intent, but prefer iOS-native solutions when platform conventions differ.
 {% endif %}
 
 ## Workflow: Implementing A New Feature
@@ -71,15 +71,15 @@ Treat `mobile-ios/docs/` as the current-state source of truth:
 1. Read `mobile-ios/docs/repo-orientation.md` if you need a quick map of the generated iOS slice.
 2. Inspect the closest existing files under `Data/`, `Navigation/`, and `UI/`.
 3. Verify backend-facing models and endpoints in `shared/api-contracts/openapi.yml`.
-{% if "backend" in platforms %}4. Cross-check `backend/` when endpoint behavior or response semantics matter.
-{% if "mobile-android" in platforms %}5. Cross-check `mobile-android/` when product parity matters.
+{% if "spring-backend" in stacks %}4. Cross-check `backend/` when endpoint behavior or response semantics matter.
+{% if "android-compose" in stacks %}5. Cross-check `mobile-android/` when product parity matters.
 6. Update only the layers the task needs: models, networking, repositories, router, screens, tests, and docs.
 7. Run the smallest sufficient iOS build or test task on Mac.
 8. Update affected docs before closing the task.
 {% else %}5. Update only the layers the task needs: models, networking, repositories, router, screens, tests, and docs.
 6. Run the smallest sufficient iOS build or test task on Mac.
 7. Update affected docs before closing the task.
-{% endif %}{% else %}{% if "mobile-android" in platforms %}4. Cross-check `mobile-android/` when product parity matters.
+{% endif %}{% else %}{% if "android-compose" in stacks %}4. Cross-check `mobile-android/` when product parity matters.
 5. Update only the layers the task needs: models, networking, repositories, router, screens, tests, and docs.
 6. Run the smallest sufficient iOS build or test task on Mac.
 7. Update affected docs before closing the task.

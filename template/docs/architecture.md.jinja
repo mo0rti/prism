@@ -8,16 +8,16 @@
 
 | Platform | Tech Stack | Hosting | Purpose |
 |----------|-----------|---------|---------|
-{% if "backend" in platforms %}| Backend | Spring Boot 4, Kotlin 2.2+, Java 21 | Project owner's choice (see the `deployment` skill) | REST API, business logic, auth |
-{% endif %}{% if "web-user-app" in platforms %}| User Web App | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5, next-intl 4 | Project owner's choice (see the `deployment` skill) | User-facing marketing and authenticated dashboard |
-{% endif %}{% if "web-admin-portal" in platforms %}| Admin Web Portal | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5 | Project owner's choice (see the `deployment` skill) | Internal admin operations and management UI |
-{% endif %}{% if "mobile-android" in platforms %}| Android | Kotlin 2.2+, Java 21, Jetpack Compose, Hilt, Retrofit 3 | Google Play | Native Android app |
-{% endif %}{% if "mobile-ios" in platforms %}| iOS | Swift 6, SwiftUI, iOS 17+, XcodeGen | App Store | Native iOS app |
+{% for app in apps if app.stack == "spring-backend" %}| {{ app.name }} | Spring Boot, Kotlin, Java {{ pack_versions["spring-backend"].java }} | Project owner's choice (see the `deployment` skill) | REST API and business logic ({{ app.path }}/) |
+{% endfor %}{% if "web-user-app" in app_ids %}| User Web App | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5, next-intl 4 | Project owner's choice (see the `deployment` skill) | User-facing marketing and authenticated dashboard |
+{% endif %}{% if "web-admin-portal" in app_ids %}| Admin Web Portal | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5 | Project owner's choice (see the `deployment` skill) | Internal admin operations and management UI |
+{% endif %}{% if "android-compose" in stacks %}| Android | Kotlin 2.2+, Java 21, Jetpack Compose, Hilt, Retrofit 3 | Google Play | Native Android app |
+{% endif %}{% if "ios-swiftui" in stacks %}| iOS | Swift 6, SwiftUI, iOS 17+, XcodeGen | App Store | Native iOS app |
 {% endif %}| Database | PostgreSQL 16 | Local development in Docker Compose; hosting is the project owner's choice | Data persistence |
 
 ## Architecture Pattern
 
-{% if "mobile-android" in platforms or "mobile-ios" in platforms %}
+{% if "android-compose" in stacks or "ios-swiftui" in stacks %}
 ### Mobile: MVVM (Model-View-ViewModel)
 
 Both Android and iOS follow the same MVVM architecture:
@@ -35,13 +35,8 @@ View (UI)  ->  ViewModel (State + Logic)  ->  Repository  ->  Data Source (API/L
 | Local Storage | DataStore | Keychain |
 | DI | Hilt | `DependencyContainer` via SwiftUI environment |
 
-{% elif "backend" in platforms and platforms | length == 1 %}
-This generation is backend-only. The backend is organized into:
-
-- `bootstrap/` for framework wiring such as security, OpenAPI, CORS, and typed properties
-- `shared/` for cross-cutting concerns such as error handling, paging DTOs, and auditing
-- `modules/auth/` for registration, login, OAuth callback exchange, JWT refresh, and current-user endpoints
-- `modules/transactions/` for transaction CRUD, visibility rules, and ownership checks
+{% elif "spring-backend" in stacks and apps | length == 1 %}
+This generation is backend-only. The backend is organized into feature modules under `modules/<domain>/`, each with the folders it needs of `controller/`, `dto/`, `error/`, `model/`, `repository/` and `service/`. Framework wiring goes in `bootstrap/` and cross-cutting code in `shared/` once the app has some.
 
 {% endif %}
 ### API Contract
@@ -83,5 +78,5 @@ Colors, spacing, typography, and border-radius values that each platform's theme
 ## Related Docs
 
 - [API Conventions](api/conventions.md) for path versioning, auth headers, and error payloads
-{% if "backend" in platforms %}- [Backend Guide](../backend/docs/guide.md) for backend package layout and coding conventions
-{% endif %}- [Agent Instructions](../AGENTS.md) for the rules every AI agent follows, command surfaces and workflow expectations
+{% for app in apps if app.stack == "spring-backend" %}- [{{ app.name }} Guide](../{{ app.path }}/docs/guide.md) for package layout and coding conventions
+{% endfor %}- [Agent Instructions](../AGENTS.md) for the rules every AI agent follows, command surfaces and workflow expectations

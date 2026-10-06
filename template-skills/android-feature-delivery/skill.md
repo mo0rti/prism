@@ -2,7 +2,7 @@
 name: android-feature-delivery
 description: "Cross-layer feature orchestration for Android. Use when a task spans multiple layers and needs scoped planning, companion-skill selection, validation, and documentation updates across DTOs, APIs, repositories, ViewModels, Compose UI, navigation, resources, and docs."
 layers: [codex, claude-skill]
-platforms: [mobile-android]
+stacks: [android-compose]
 codex:
   display_name: "Android Feature Delivery"
   short_description: "Coordinate multi-layer Android feature work"
@@ -38,7 +38,7 @@ $ARGUMENTS
 ## 2. Verify external contracts
 
 - Cross-check the OpenAPI spec in `shared/api-contracts/openapi.yml` when endpoints, DTOs, or enums are involved.
-{% if "backend" in platforms %}- Cross-check the backend in `backend/` when behavior or response shapes need confirmation.
+{% if "spring-backend" in stacks %}- Cross-check the backend in `backend/` when behavior or response shapes need confirmation.
 {% endif %}
 
 ## 3. Map affected layers

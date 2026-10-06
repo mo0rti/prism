@@ -1,0 +1,15 @@
+@AGENTS.md
+
+## Claude Code skills
+
+Project-specific Claude skills live in `.claude/skills/`; Claude Code loads them when the work matches. Detailed conventions are documented there.
+
+- `spring-boot-conventions` - module structure, layers, controller/service/DTO patterns
+- `backend-feature-delivery` - contract-first backend feature delivery across OpenAPI, DTOs, services, persistence, and schema changes
+- `testing-patterns` - JUnit Jupiter 6, MockK, unit vs integration test conventions
+- `deployment` - worked examples for deploying the backend container (Azure Container Apps); the user and their agent own the cloud choice, the secrets and the deployment
+
+## Backend Claude Commands
+
+- `/add-endpoint` - add or evolve a backend API endpoint using the OpenAPI-first flow
+- `/generate-clients` - regenerate API clients from the shared contract

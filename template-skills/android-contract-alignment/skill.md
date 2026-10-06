@@ -2,7 +2,7 @@
 name: android-contract-alignment
 description: "Backend contract alignment rules for Android DTOs, enums, Retrofit APIs, and auth. Use when changing request or response shapes, Retrofit endpoints, mappers, or auth-boundary code under `mobile-android/`."
 layers: [codex, claude-skill]
-platforms: [mobile-android]
+stacks: [android-compose]
 codex:
   display_name: "Android Contract Alignment"
   short_description: "Keep Android DTOs and APIs aligned"
@@ -39,7 +39,7 @@ Use this skill when backend-facing Android code changes.
 ## Cross-Check Sources
 
 - Use the OpenAPI spec in `shared/api-contracts/openapi.yml` as the primary source for endpoint shapes.
-{% if "backend" in platforms %}- Use the backend in `backend/` to confirm endpoint behavior when the spec is ambiguous.
+{% if "spring-backend" in stacks %}- Use the backend in `backend/` to confirm endpoint behavior when the spec is ambiguous.
 {% endif %}
 ## Validation
 

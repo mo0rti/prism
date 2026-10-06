@@ -628,11 +628,13 @@ class DoctorStackTests(unittest.TestCase):
 
         return sorted(missing, key=key)[0].check.label
 
-    def test_a_preset_uses_the_stacks_of_its_platforms(self) -> None:
+    def test_a_preset_uses_the_stacks_of_its_apps(self) -> None:
         for preset in PRESETS:
             with self.subTest(preset=preset.slug):
-                platforms = preset.answers.get("platforms", [])
-                self.assertEqual({GENERATED_PLATFORM_STACKS[item] for item in platforms}, preset_stacks(preset))
+                app_ids = [app["id"] for app in preset.apps]
+                self.assertTrue(app_ids)
+                self.assertEqual({GENERATED_PLATFORM_STACKS[item] for item in app_ids}, preset_stacks(preset))
+                self.assertEqual({app["generation"] for app in preset.apps}, {"scaffolded"})
 
     def test_with_no_target_stacks_every_check_applies(self) -> None:
         checks = build_doctor_checks(incubation_mode=True)

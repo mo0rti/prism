@@ -18,7 +18,7 @@ Ask me for the endpoint details if I haven't provided them: HTTP method, path, d
 
 2. **Regenerate Clients** - Run `task generate-clients`.
 
-{% if "backend" in platforms %}3. **Implement Backend** - Add the endpoint in `backend/`:
+{% if "spring-backend" in stacks %}3. **Implement Backend** - Add the endpoint in `backend/`:
    - Controller method with proper annotations
    - Service method with business logic
    - Repository method if data access is needed

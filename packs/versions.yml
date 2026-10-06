@@ -1,0 +1,9 @@
+# The one place that pins versions. Every pack reads its stack's baseline through Copier as `versions`,
+# so a release moves a baseline here and nowhere else. A test fails when a pack file repeats a version
+# pinned here instead of reading it.
+spring-backend:
+  java: "21"
+  kotlin: "2.2.0"
+  spring_boot: "4.0.1"
+  spring_dependency_management: "1.1.7"
+  gradle: "8.14.3"

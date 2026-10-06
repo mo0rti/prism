@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from copy import deepcopy
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 import re
 from uuid import UUID
 
@@ -22,11 +22,11 @@ from prism_cli import __version__
 from prism_cli.app_model import (
     GENERATED_PLATFORM_DIRS,
     MANIFEST_SCHEMA_VERSION,
+    GENERATION_SCAFFOLDED,
     App,
     WorkspaceDiagnostic,
     WorkspaceModel,
     app_entries,
-    apps_from_platforms,
     normalize_manifest,
     repository_entries,
     resolve_local_repositories,
@@ -44,7 +44,7 @@ GENERATION_ANSWER_FIELDS = (
     "project_slug",
     "package_identifier",
     "description",
-    "platforms",
+    "stacks",
     "auth_methods",
     "github_org",
 )
@@ -442,11 +442,15 @@ def write_workspace_manifest(
     template_version: str | None = None,
     template_commit: str | None = None,
     generated_at: str | None = None,
+    apps: Sequence[Mapping[str, Any]] | None = None,
+    repositories: Sequence[Mapping[str, Any]] | None = None,
 ) -> Path:
     """Write generation provenance into a generated workspace manifest.
 
     Copier renders the manifest template first.  This explicit generation or
-    update step then records the CLI and template metadata known to the caller.
+    update step then records the CLI and template metadata known to the caller,
+    and, once, the apps the questionnaire chose (``apps``, with the
+    ``repositories`` that external apps declare).
     Read commands never call this function.
     """
 
@@ -501,13 +505,42 @@ def write_workspace_manifest(
         if answer_key in answers:
             project[project_key] = deepcopy(answers[answer_key])
     data["project"] = project
-    # The questionnaire's platforms are generation input; they become apps once.
-    if "apps" not in data and isinstance(answers.get("platforms"), list):
-        data["apps"] = apps_from_platforms(list(answers["platforms"]))
+    # The questionnaire's apps are generation input; they enter the manifest once.
+    if apps is not None and "apps" not in data:
+        data = _with_apps(data, apps, repositories or ())
 
     destination.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return manifest_path
+
+
+def _with_apps(data: dict[str, Any], apps: Sequence[Mapping[str, Any]], repositories: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The manifest with its apps, their maturity and the workflows of the scaffolded ones, after ``project``."""
+
+    from prism_cli.packs import stack_maturity, workflow_path
+
+    entries = [dict(app) for app in apps]
+    scaffolded = [app for app in entries if app.get("generation") == GENERATION_SCAFFOLDED]
+    added: dict[str, Any] = {}
+    if repositories:
+        added["repositories"] = [dict(item) for item in repositories]
+    added["apps"] = entries
+    maturity = {app["id"]: stack_maturity(app["stack"]) for app in scaffolded}
+    if maturity:
+        added["app_maturity"] = maturity
+    result: dict[str, Any] = {}
+    for key, value in data.items():
+        result[key] = value
+        if key == "project":
+            result.update(added)
+    for key, value in added.items():
+        result.setdefault(key, value)
+    surfaces = result.get("expected_surfaces")
+    if isinstance(surfaces, dict) and scaffolded:
+        surfaces = dict(surfaces)
+        surfaces["workflows"] = [workflow_path(app["id"]) for app in scaffolded]
+        result["expected_surfaces"] = surfaces
+    return result
 
 
 def _current_timestamp() -> str:

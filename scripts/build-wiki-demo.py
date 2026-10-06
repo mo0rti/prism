@@ -25,6 +25,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from prism_cli import __version__  # noqa: E402
 from prism_cli.wiki_index import build_index  # noqa: E402
+from prism_cli.app_model import apps_from_platforms  # noqa: E402
 from prism_cli.workspace import write_workspace_manifest  # noqa: E402
 from prism_cli.wiki_transitions import ACTION_SPECS  # noqa: E402
 
@@ -107,7 +108,6 @@ def _answers() -> dict[str, Any]:
         "project_slug": PROJECT_SLUG,
         "package_identifier": PACKAGE_IDENTIFIER,
         "description": DESCRIPTION,
-        "platforms": list(PLATFORMS),
         "auth_methods": list(AUTH_METHODS),
         "github_org": "",
     }
@@ -213,6 +213,7 @@ def _write_workspace_contract(destination: Path, today: date) -> None:
         template_version=TEMPLATE_SOURCE,
         template_commit=TEMPLATE_SOURCE,
         generated_at=f"{today.isoformat()}T00:00:00Z",
+        apps=apps_from_platforms(list(PLATFORMS)),
     )
     manifest_path = destination / "prism.workspace.yml"
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}

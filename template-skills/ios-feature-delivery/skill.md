@@ -2,7 +2,7 @@
 name: ios-feature-delivery
 description: "Cross-layer feature orchestration for the generated iOS app. Use when a task spans multiple layers and needs scoped planning, companion-skill selection, validation, and documentation updates across models, networking, repositories, ViewModels, SwiftUI screens, navigation, and docs."
 layers: [codex, claude-skill]
-platforms: [mobile-ios]
+stacks: [ios-swiftui]
 codex:
   display_name: "iOS Feature Delivery"
   short_description: "Coordinate multi-layer iOS feature work"
@@ -38,8 +38,8 @@ $ARGUMENTS
 ## 2. Verify contracts and parity
 
 - Cross-check `shared/api-contracts/openapi.yml` when endpoints, DTOs, or enums are involved.
-{% if "backend" in platforms %}- Cross-check `backend/` when behavior or response semantics need confirmation.
-{% endif %}{% if "mobile-android" in platforms %}- Cross-check `mobile-android/` when product parity or UX intent matters.
+{% if "spring-backend" in stacks %}- Cross-check `backend/` when behavior or response semantics need confirmation.
+{% endif %}{% if "android-compose" in stacks %}- Cross-check `mobile-android/` when product parity or UX intent matters.
 {% endif %}
 
 ## 3. Map affected layers

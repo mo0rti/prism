@@ -1,0 +1,27 @@
+---
+description: {{ (app_name ~ " (Spring Boot, Kotlin): stack, structure and commands.") | tojson }}
+globs: "{{ app_path }}/**"
+---
+
+# {{ app_name }} - Spring Boot (Kotlin)
+
+## Stack
+- Spring Boot {{ versions.spring_boot }}, Kotlin {{ versions.kotlin }}, Java {{ versions.java }}, Gradle {{ versions.gradle }}
+- Jackson 3.x, JUnit Jupiter 6
+- Hosting is the project owner's choice (see the `deployment` skill, `.agents/skills/deployment/SKILL.md`)
+
+## Structure
+```
+{{ app_path }}/src/main/kotlin/{{ app_package_path }}/
+  modules/<domain>/  -> controller/, dto/, error/, model/, repository/, service/
+```
+
+## Patterns
+- Controller -> Service -> Repository -> Entity
+- DTOs in `dto/` package, entities in `model/` - never expose entities
+- Tests use MockK for service logic and `@SpringBootTest` with MockMvc for request-path behavior
+
+## Commands
+- `./gradlew bootRun` or `task {{ app_id }}:run` (port {{ port }})
+- `./gradlew test` or `task {{ app_id }}:test`
+- `./gradlew build -x test` or `task {{ app_id }}:build`

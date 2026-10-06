@@ -2,7 +2,7 @@
 name: swiftui-design-system
 description: "SwiftUI design system rules for this generated project. Use when building, refactoring, or reviewing screens, shared components, theme primitives, spacing, color roles, or reusable view patterns in the iOS app."
 layers: [codex, claude-skill]
-platforms: [mobile-ios]
+stacks: [ios-swiftui]
 codex:
   display_name: "SwiftUI Design System"
   short_description: "Keep iOS shared UI visually consistent"

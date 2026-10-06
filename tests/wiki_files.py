@@ -27,7 +27,7 @@ def copy_template_knowledge(destination: Path, **context: Any) -> None:
     """Copy `template/knowledge` to `destination`, rendering each `.jinja` file and dropping its suffix.
 
     With no context the copy is the workflow-only form that `prism workflow install` writes; with
-    ``platforms=[...]`` it is the form a generated workspace gets.
+    ``apps=[...]`` it is the form a generated workspace gets.
     """
 
     shutil.copytree(TEMPLATE_KNOWLEDGE, destination, ignore=shutil.ignore_patterns("*.jinja"))

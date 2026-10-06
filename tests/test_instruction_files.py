@@ -12,9 +12,11 @@ from pathlib import Path
 from prism_cli.wiki_index import is_project_doc_target, parse_index_entries
 from prism_cli.wiki_lint import lint_wiki
 from tests import real_temp  # noqa: F401
+from tests.layered_support import generate_default_apps
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = REPO_ROOT / "template"
+PACKS = REPO_ROOT / "packs"
 APPS = ("backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios")
 IMPORT_LINE = "@AGENTS.md"
 
@@ -64,10 +66,11 @@ class TemplateSourceTests(unittest.TestCase):
         self.assertFalse((TEMPLATE / "CONTEXT.md").exists())
 
     def test_every_claude_file_imports_the_agents_file_next_to_it(self) -> None:
-        claude_files = sorted(TEMPLATE.glob("CLAUDE.md.jinja")) + sorted(TEMPLATE.glob("*/CLAUDE.md.jinja"))
-        self.assertEqual(1 + len(APPS), len(claude_files))
+        claude_files = sorted(TEMPLATE.glob("CLAUDE.md.jinja")) + sorted(TEMPLATE.glob("*/CLAUDE.md.jinja")) + sorted(PACKS.glob("*/*/CLAUDE.md.jinja"))
+        self.assertEqual(1 + len(APPS) + len(list(PACKS.glob("*/*/CLAUDE.md.jinja"))), len(claude_files))
+        self.assertTrue(list(PACKS.glob("*/*/CLAUDE.md.jinja")), "a pack carries its own CLAUDE.md")
         for path in claude_files:
-            with self.subTest(path=path.relative_to(TEMPLATE).as_posix()):
+            with self.subTest(path=path.relative_to(REPO_ROOT).as_posix()):
                 self.assertTrue((path.parent / "AGENTS.md.jinja").is_file())
                 text = path.read_text(encoding="utf-8")
                 self.assertEqual(IMPORT_LINE, text.splitlines()[0])
@@ -83,7 +86,6 @@ class TemplateSourceTests(unittest.TestCase):
             [
                 "advisory-review.mdc.jinja",
                 "api-conventions.mdc.jinja",
-                "backend.mdc.jinja",
                 "mobile-android.mdc.jinja",
                 "mobile-ios.mdc.jinja",
                 "web.mdc.jinja",
@@ -115,32 +117,7 @@ class GeneratedInstructionTests(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory(prefix="prism-instruction-files-")
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.root = Path(cls.temporary.name) / "generated"
-        result = subprocess.run(
-            [
-                "copier",
-                "copy",
-                "--trust",
-                "--vcs-ref",
-                "HEAD",
-                "--defaults",
-                "--data",
-                "project_name=Instruction Files",
-                "--data",
-                "project_slug=instruction-files",
-                "--data",
-                f"platforms=[{', '.join(APPS)}]",
-                "--data",
-                "auth_methods=[password]",
-                str(REPO_ROOT),
-                str(cls.root),
-            ],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode:
-            raise AssertionError(f"Copier generation failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
+        generate_default_apps(cls.root, list(APPS), Path(cls.temporary.name), project_name="Instruction Files", auth_methods=["password"])
 
     def text(self, relative: str) -> str:
         return (self.root / relative).read_text(encoding="utf-8")

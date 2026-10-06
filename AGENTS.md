@@ -26,14 +26,14 @@ and must not be referenced. They are replaced by the wiki lifecycle system
 
 - Codex reads `AGENTS.md` from the repo root down to the current working directory.
 - Repository-local Codex skills live in `.agents/skills/`, following the current Codex docs.
-- Generated projects scaffold their own Codex skills from `template/.agents/skills/`.
+- Generated projects scaffold their own Codex skills from `template/.agents/skills/`; the per-app files of a stack pack (its Cursor rule `.cursor/rules/{{ app_id }}.mdc`, its `AGENTS.md`) are the pack's own source under `packs/<stack>/`, not the generator's.
 - Generated projects keep one source of agent rules: `template/AGENTS.md.jinja` (and the `AGENTS.md.jinja` of each platform) holds the rules, and each `CLAUDE.md.jinja` only imports its sibling with `@AGENTS.md` plus Claude Code notes that no other tool shares. `template/CONTEXT.md.jinja` does not exist. Cursor reads `AGENTS.md` directly and also loads the skills in `.agents/skills/` and `.claude/skills/`, so no Cursor rule references `AGENTS.md`; the Cursor rules carry scoped stack facts and the board review. Add a generated-project rule once, in the `AGENTS.md.jinja` that owns it.
 - Every generated skill, command and Cursor rule is written once, in `template-skills/<name>/skill.md`, and `scripts/build-skill-layers.py` renders `template/.agents/skills/`, `template/.claude/commands/`, `template/.claude/skills/` and `template/.cursor/rules/` from it. Edit the source, run the generator, then rebuild the packaged asset; never hand-edit a generated layer file.
 - Keep this repository's `AGENTS.md` and `CLAUDE.md`, and the Cursor stack facts and the platform guidance they scope, aligned, and preserve tool-specific syntax instead of forcing identical wording.
 
 ## Repository Focus
 
-- This template scaffolds backend, web-user-app, web-admin-portal, mobile-android, and mobile-ios slices.
+- This template scaffolds an app list. Generation has two layers under one `copier.yml` and one tag: the workspace layer (`template/`) and one app layer per scaffolded app (`packs/<stack>/`, chosen by the hidden question `prism_layer`). The backend is a stack pack; the web, Android and iOS apps are still full samples rendered by the workspace layer, one switch per stack in `prism_cli/packs.py`.
 - Backend, Android and web samples are verified locally. The iOS sample is verified only by the macOS CI job. The generated `deployment` skill's Azure and Cloudflare examples are not verified against live accounts. Apple Sign-In is experimental. Keep maturity language explicit and honest, and keep `docs/current-status.md` equal to the verification that exists.
 - Never leave questionnaire-visible options silently generating broken output.
 
@@ -41,18 +41,19 @@ and must not be referenced. They are replaced by the wiki lifecycle system
 
 - Keep template-repo docs in root `docs/`.
 - Keep project-wide docs in `template/docs/`.
-- Keep platform-specific technical docs in `template/{platform}/docs/`.
-- Keep entity docs in `template/backend/docs/entities/`.
-- Run `copier copy --trust . <tempdir>` after template changes.
+- Keep technical docs of a sample in `template/{platform}/docs/` and those of a pack app in `packs/<stack>/{{ app_path }}/docs/`.
+- Keep the pinned versions in `packs/versions.yml` only; a pack reads them as `versions`.
+- Generate with `prism new` (a preset or an answers file that lists the apps) after template changes; raw `copier copy --trust --defaults --data "project_name=Test App" . <tempdir>` renders the workspace layer alone.
 - When editing files under `template/`, keep Jinja syntax valid:
   - all `{{` have matching `}}`
   - all `{% if %}` and `{% for %}` blocks are balanced
-  - platform conditionals use `{% if "backend" in platforms %}` style
+  - stack conditionals use `{% if "spring-backend" in stacks %}` and full-sample conditionals `{% if "web-user-app" in app_ids %}`; per-app output loops over `apps`
+  - every `_exclude` entry of `copier.yml` applies to the workspace layer only (`prism_layer == 'workspace'`), because an app layer's paths are its own
   - Kotlin and Java directory paths use `{{package_path}}`
   - any file containing Jinja expressions keeps a `.jinja` suffix
 - Update AI context when commands, paths, maturity, or workflow expectations change.
 - Keep provider-neutral workflow guidance and its packaged assets synchronized. Connected agents use the shared service and pinned standard skills; custom skills retain the direct-file path. Do not add per-agent workflow implementations or an extra board approval queue.
-- The 26 canonical workflow skills (the generated `template/.agents/skills/<name>/SKILL.md.jinja` and `template/.claude/commands/<name>.md.jinja`, whose source is `template-skills/<name>/skill.md`), everything under `template/knowledge/` and the "Connected board workflow" section of `template/AGENTS.md.jinja` are packaged into `prism_cli/assets/workflow-v1.json`; the packaged `CLAUDE.md` is the `@AGENTS.md` import of `template/CLAUDE.md.jinja`. A `.jinja` file under `template/knowledge/` (the general `index.md.jinja`, whose "Project docs" group exists only when Copier supplies `platforms`) ships rendered in its workflow-only form. After editing one of them (a skill in `template-skills/`, then `python scripts/build-skill-layers.py`), run `python scripts/build-workflow-assets.py` to regenerate the asset; `--check` verifies it. A new asset digest invalidates existing board grants. The asset is generated, so never hand-edit it. Its `previous_digests` history is empty; `PREVIOUS_DIGESTS` in the build script records the digests of earlier shipped installer-owned files from the first release that has external users, which lets `prism workflow upgrade` then replace an unmodified copy without a conflict.
+- The 26 canonical workflow skills (the generated `template/.agents/skills/<name>/SKILL.md.jinja` and `template/.claude/commands/<name>.md.jinja`, whose source is `template-skills/<name>/skill.md`), everything under `template/knowledge/` and the "Connected board workflow" section of `template/AGENTS.md.jinja` are packaged into `prism_cli/assets/workflow-v1.json`; the packaged `CLAUDE.md` is the `@AGENTS.md` import of `template/CLAUDE.md.jinja`. A `.jinja` file under `template/knowledge/` (the general `index.md.jinja`, whose "Project docs" group exists only when Copier supplies `apps`) ships rendered in its workflow-only form. After editing one of them (a skill in `template-skills/`, then `python scripts/build-skill-layers.py`), run `python scripts/build-workflow-assets.py` to regenerate the asset; `--check` verifies it. A new asset digest invalidates existing board grants. The asset is generated, so never hand-edit it. Its `previous_digests` history is empty; `PREVIOUS_DIGESTS` in the build script records the digests of earlier shipped installer-owned files from the first release that has external users, which lets `prism workflow upgrade` then replace an unmodified copy without a conflict.
 - Keep the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md` equal to the CLI and service behaviour. After changing a documented command, message or security check, run it in a disposable workspace and fix the docs to match the real output.
 - Record user-visible changes under `Unreleased` in `CHANGELOG.md`. Version numbers and release tags are chosen at release time, not in the changelog's unreleased section.
 - Instruction and guidance files state the current behaviour only. Keep dates and history in logs, ledgers and the changelog.
@@ -76,7 +77,8 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 - `CHANGELOG.md` for user-visible changes
 - `docs/maintainer-workflow.md` for template maintenance flow
 - `docs/current-status.md` for maturity and validation context
-- `copier.yml` for questionnaire inputs and exclusions
+- `copier.yml` for the layer question, the questionnaire inputs and the exclusions
+- `packs/` for the stack packs and `packs/versions.yml`, the one place that pins versions
 - `template-skills/` for the source of every generated skill, command and Cursor rule
 - `template/AGENTS.md.jinja` for the generated-project agent rules, the single source for every tool
 - `template/CLAUDE.md.jinja` for the generated-project Claude Code import of `AGENTS.md`
@@ -84,10 +86,10 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 ## Common Commands
 
 ```bash
-copier copy --trust . C:\temp\template-test
+prism new --preset backend-only --project-name "Test App" --dest C:\temp\template-test --yes
 python scripts/build-skill-layers.py          # after editing template-skills/
 python scripts/build-skill-layers.py --check
-copier copy --trust --defaults --data "project_name=Test App" --data "platforms=[backend]" . C:\temp\template-test-backend
+prism new --answers C:\temp\answers.yml --dest C:\temp\template-test-mobile --yes   # an app list of your choice
 rg -n --hidden --glob '!**/.git/**' "\.agents/skills|AGENTS\.md|CLAUDE\.md" .
 
 # Shared board, in a disposable workspace and never in this repository

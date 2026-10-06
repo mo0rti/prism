@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: {{ app_id }}
+
+server:
+  port: ${PORT:{{ port }}}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

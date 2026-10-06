@@ -37,6 +37,12 @@ UNKNOWN = "unknown"
 
 APP_STATUSES = ("active", "retired")
 
+# How an app's code came to be: ``scaffolded`` by Prism (a pack or a full sample, so ``prism update``
+# keeps it current) or ``registered`` only, with its code created and kept elsewhere.
+GENERATION_SCAFFOLDED = "scaffolded"
+GENERATION_REGISTERED = "registered"
+APP_GENERATIONS = (GENERATION_SCAFFOLDED, GENERATION_REGISTERED)
+
 # What a workflow workspace is for, from the optional ``workflow.purpose`` field.
 # No gate reads it; status, the board and the generated guidance describe it.
 PURPOSE_KNOWLEDGE_ROOT = "knowledge-root"
@@ -76,16 +82,24 @@ class Stack:
     generated: bool
     default_capabilities: Mapping[str, bool]
     default_path: str | None = None
+    # The ports an app of this stack listens on, as the first and the last. ``None`` for a stack with no server.
+    port_range: tuple[int, int] | None = None
 
 
-def _stack(stack_id: str, generated: bool, capabilities: Mapping[str, bool], default_path: str | None = None) -> Stack:
-    return Stack(stack_id, generated, MappingProxyType(dict(capabilities)), default_path)
+def _stack(
+    stack_id: str,
+    generated: bool,
+    capabilities: Mapping[str, bool],
+    default_path: str | None = None,
+    port_range: tuple[int, int] | None = None,
+) -> Stack:
+    return Stack(stack_id, generated, MappingProxyType(dict(capabilities)), default_path, port_range)
 
 
 STACKS: Mapping[str, Stack] = MappingProxyType(
     {
-        "spring-backend": _stack("spring-backend", True, {CAPABILITY_HAS_UI: False, CAPABILITY_SERVES_API: True}, "backend"),
-        "nextjs-web": _stack("nextjs-web", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}),
+        "spring-backend": _stack("spring-backend", True, {CAPABILITY_HAS_UI: False, CAPABILITY_SERVES_API: True}, "backend", (8080, 8179)),
+        "nextjs-web": _stack("nextjs-web", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, None, (3000, 3099)),
         "android-compose": _stack("android-compose", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, "mobile-android"),
         "ios-swiftui": _stack("ios-swiftui", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, "mobile-ios"),
         # An app of an unlisted kind declares both capabilities itself.
@@ -132,16 +146,19 @@ def generated_platform_dir(platform_id: str) -> str:
 
 GENERATED_PLATFORM_DIRS: Mapping[str, str] = MappingProxyType({platform_id: generated_platform_dir(platform_id) for platform_id in GENERATED_PLATFORM_IDS})
 
-def apps_from_platforms(platforms: list[str]) -> list[dict[str, str]]:
+def apps_from_platforms(platforms: list[str], generation: str | None = None) -> list[dict[str, str]]:
     """Manifest `apps` entries for generated platform IDs, in the order given.
 
     Each app's ID is the platform ID, its stack comes from the platform, and it
-    lives in the workspace repository at the platform's directory.
+    lives in the workspace repository at the platform's directory. With
+    ``generation`` set, each entry records how its code came to be.
     """
 
     unknown = [item for item in platforms if item not in GENERATED_PLATFORM_STACKS]
     if unknown:
         raise ValueError(f"Unsupported Prism platform IDs: {', '.join(str(item) for item in unknown)}.")
+    if generation is not None and generation not in APP_GENERATIONS:
+        raise ValueError(f"Unsupported app generation: {generation}.")
     return [
         {
             "id": platform_id,
@@ -149,6 +166,7 @@ def apps_from_platforms(platforms: list[str]) -> list[dict[str, str]]:
             "stack": GENERATED_PLATFORM_STACKS[platform_id],
             "repository": WORKSPACE_REPOSITORY_ID,
             "path": GENERATED_PLATFORM_DIRS[platform_id],
+            **({"generation": generation} if generation is not None else {}),
         }
         for platform_id in platforms
     ]
@@ -179,10 +197,17 @@ class App:
     audience: str | None = None
     capability_overrides: Mapping[str, bool | str] = field(default_factory=dict)
     status: str = "active"
+    generation: str = GENERATION_REGISTERED
 
     @property
     def active(self) -> bool:
         return self.status == "active"
+
+    @property
+    def scaffolded(self) -> bool:
+        """Whether Prism generated the app's code, so ``prism update`` keeps it current."""
+
+        return self.generation == GENERATION_SCAFFOLDED
 
     @property
     def in_workspace(self) -> bool:
@@ -574,6 +599,23 @@ def _read_app(
         diagnostics.append(_diag("invalid-app-status", "error", path, f"App `{app_id}` status must be `active` or `retired`."))
         valid = False
 
+    generation = item.get("generation", GENERATION_REGISTERED)
+    if generation not in APP_GENERATIONS:
+        diagnostics.append(_diag("invalid-app-generation", "error", path, f"App `{app_id}` generation must be `scaffolded` or `registered`."))
+        valid = False
+    elif generation == GENERATION_SCAFFOLDED and (
+        (isinstance(repository_id, str) and repository_id != WORKSPACE_REPOSITORY_ID) or (stack is not None and not stack.generated)
+    ):
+        diagnostics.append(
+            _diag(
+                "invalid-app-generation",
+                "error",
+                path,
+                f"App `{app_id}` cannot be `scaffolded`: Prism scaffolds only apps of a generated stack in this repository, and registers the others.",
+            )
+        )
+        valid = False
+
     overrides, capabilities_valid = _read_capabilities(item.get("capabilities"), app_id, stack, path, diagnostics)
     valid = valid and capabilities_valid
 
@@ -588,6 +630,7 @@ def _read_app(
         audience=audience,
         capability_overrides=overrides,
         status=status,
+        generation=generation,
     )
 
 

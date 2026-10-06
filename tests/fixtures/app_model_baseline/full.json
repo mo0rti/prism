@@ -2176,15 +2176,14 @@
               "description": "Baseline full workspace",
               "github_org": "",
               "package_identifier": "com.example.baselinefull",
-              "platforms": [
-                "backend",
-                "web-user-app",
-                "web-admin-portal",
-                "mobile-android",
-                "mobile-ios"
-              ],
               "project_name": "Baseline Full",
-              "project_slug": "baseline-full"
+              "project_slug": "baseline-full",
+              "stacks": [
+                "spring-backend",
+                "nextjs-web",
+                "android-compose",
+                "ios-swiftui"
+              ]
             },
             "answers_file": "<ROOT>/.copier-answers.yml",
             "answers_present": true,
@@ -2205,15 +2204,14 @@
             "description": "Baseline full workspace",
             "github_org": "",
             "package_identifier": "com.example.baselinefull",
-            "platforms": [
-              "backend",
-              "web-user-app",
-              "web-admin-portal",
-              "mobile-android",
-              "mobile-ios"
-            ],
             "project_name": "Baseline Full",
-            "project_slug": "baseline-full"
+            "project_slug": "baseline-full",
+            "stacks": [
+              "spring-backend",
+              "nextjs-web",
+              "android-compose",
+              "ios-swiftui"
+            ]
           },
           "intake": {
             "pending": 0,
@@ -2923,15 +2921,14 @@
           "description": "Baseline full workspace",
           "github_org": "",
           "package_identifier": "com.example.baselinefull",
-          "platforms": [
-            "backend",
-            "web-user-app",
-            "web-admin-portal",
-            "mobile-android",
-            "mobile-ios"
-          ],
           "project_name": "Baseline Full",
-          "project_slug": "baseline-full"
+          "project_slug": "baseline-full",
+          "stacks": [
+            "spring-backend",
+            "nextjs-web",
+            "android-compose",
+            "ios-swiftui"
+          ]
         },
         "answers_file": "<ROOT>/.copier-answers.yml",
         "answers_present": true,
@@ -2952,15 +2949,14 @@
         "description": "Baseline full workspace",
         "github_org": "",
         "package_identifier": "com.example.baselinefull",
-        "platforms": [
-          "backend",
-          "web-user-app",
-          "web-admin-portal",
-          "mobile-android",
-          "mobile-ios"
-        ],
         "project_name": "Baseline Full",
-        "project_slug": "baseline-full"
+        "project_slug": "baseline-full",
+        "stacks": [
+          "spring-backend",
+          "nextjs-web",
+          "android-compose",
+          "ios-swiftui"
+        ]
       },
       "intake": {
         "pending": 0,

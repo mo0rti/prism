@@ -14,7 +14,7 @@ Prism's core is the workflow and the shared board that humans and agents use tog
 | Human board actions | The board performs `po-handoff`, `design-start` and `dev-start` directly. The other six actions stay with agent skills, which the board offers as a copyable MCP request. |
 | Agent skills | 26 canonical skills are served through MCP. Connected writes are available for the skills that [shared-board.md](shared-board.md#work-together) lists. Custom skills keep the direct-file path. |
 | `prism doctor --workspace` | A read-only "Shared board" section checks the cloud-sync location, the workflow pin, active grants, the default port and git ignore of `.prism/state`. Only `[fail]` lines change the exit code. |
-| Smart template update | Needs a remote template source with a saved revision. A project generated from a local checkout records an unversioned snapshot that supplies no merge baseline, and `prism update --strategy recopy` is the explicit alternative. |
+| Smart template update | Needs a remote template source with a saved revision. A project generated from a local checkout records an unversioned snapshot that supplies no merge baseline, and `prism update --strategy recopy` is the explicit alternative. It updates the workspace layer and then each scaffolded app from its own answers file, on an update branch with one commit per layer, reports conflicts per layer and stops before merging when a layer conflicted. |
 | Remote access | Not supported. The service listens on loopback only. |
 
 ## Validation
@@ -56,7 +56,7 @@ The generated samples are working starting points, not verified products.
 
 | Platform | Verification |
 | --- | --- |
-| Backend | The backend tests pass on JDK 21 for each rendered variant, and the `V4` migration is checked on PostgreSQL. The `backend-smoke` CI job packages the boot jar and builds the Docker image. |
+| Backend | The `spring-backend` pack is minimal: a health endpoint with a context test and a MockMvc test. Its tests pass on JDK 21 for one app and for two apps at different paths and ports, and the `backend-smoke` CI job generates the workspace through `prism new`, runs the tests, packages the boot jar and builds the Docker image. The pack has no sign-in, database access or authenticated read yet. |
 | Android | Unit tests pass, and instrumented tests and an emulator sign-in pass on a local emulator. The `android-build` CI job runs the unit tests, `assembleDebug` and lint. |
 | Web (user app and admin portal) | Install, lint, typecheck, the auth check script and the Next.js build pass locally for both apps, and the `web-smoke` CI job runs the same steps. No hosting configuration is generated. |
 | iOS | Swift compilation and tests are verified by the `ios-build` job on a macOS runner in `template-validation.yml`, which passes. There is no local iOS check on Windows or Linux. |
@@ -69,6 +69,6 @@ Prism 0.5.0 is released under the MIT license, copyright 2026 Mortitech: `prism-
 
 ## Evaluating application generation
 
-Choose a focused platform selection, inspect the generated files, and run that platform's own build and runtime checks. The five platform IDs are workflow scope labels, even in an adopted workspace that has no matching application directory.
+Choose a focused app list, inspect the generated files, and run each app's own build and runtime checks. The five default app IDs are workflow scope labels, even in an adopted workspace that has no matching application directory.
 
 Read [maintainer-workflow.md](maintainer-workflow.md) for the maintainer commands and [getting-started.md](getting-started.md) for the generation path.

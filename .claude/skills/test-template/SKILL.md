@@ -10,13 +10,14 @@ Test the Copier template by generating a project and verifying the output.
 
 ## Steps
 
-1. Run template generation to a temp directory:
+1. Run template generation through the CLI to a temp directory, with an app list that has every stack (an answers file):
    ```bash
-   copier copy --trust --defaults --data 'project_name=Test App' . /tmp/template-test-output
+   prism new --answers /tmp/all-apps.yml --dest /tmp/template-test-output --yes
    ```
+   where `all-apps.yml` is `schema_version: 1`, `answers: {project_name: Test App, apps: [{id: backend, stack: spring-backend}, {id: web-user-app, stack: nextjs-web}, {id: web-admin-portal, stack: nextjs-web}, {id: mobile-android, stack: android-compose}, {id: mobile-ios, stack: ios-swiftui}]}`.
 
 2. Verify the output structure:
-   - Check all platform directories exist: `backend/`, `web-user-app/`, `web-admin-portal/`, `mobile-android/`, `mobile-ios/`
+   - Check all app directories exist: `backend/` (from the pack, with its own `.copier-answers.yml`), `web-user-app/`, `web-admin-portal/`, `mobile-android/`, `mobile-ios/`
    - Check `CLAUDE.md`, `AGENTS.md`, `Taskfile.yml` were generated without Jinja artifacts
    - Check `.claude/`, `.agents/skills/`, and `.cursor/` are present
    - Check `docs/`, `shared/`, `.github/workflows/` are present
@@ -26,11 +27,11 @@ Test the Copier template by generating a project and verifying the output.
    - Search for `<%= %>` or EJS tags that should have been escaped
    - Check that platform-conditional content is correctly included/excluded
 
-4. Test with a subset of platforms:
+4. Test with a subset of apps:
    ```bash
-   copier copy --trust --defaults --data 'project_name=Backend Only' --data 'platforms=[backend]' . /tmp/template-test-backend
+   prism new --preset backend-only --project-name "Backend Only" --dest /tmp/template-test-backend --yes
    ```
-   - Verify excluded platform directories are absent
+   - Verify excluded app directories are absent
    - Verify CLAUDE.md doesn't reference excluded platforms
 
 5. Run the contract validation, which checks rendered files and workflows (it needs actionlint on PATH or `-ActionlintPath`):

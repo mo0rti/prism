@@ -1,17 +1,18 @@
-{% if "backend" in platforms %}
-name: Backend CI
+name: {{ ci_workflow_name | tojson }}
 
 on:
   push:
     branches: [main]
     paths:
-      - 'backend/**'
-      - 'shared/api-contracts/**'
+{%- for path in ci_paths %}
+      - {{ path | tojson }}
+{%- endfor %}
   pull_request:
     branches: [main]
     paths:
-      - 'backend/**'
-      - 'shared/api-contracts/**'
+{%- for path in ci_paths %}
+      - {{ path | tojson }}
+{%- endfor %}
   workflow_dispatch:
 
 jobs:
@@ -22,12 +23,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Make Gradle wrapper executable
-        run: chmod +x backend/gradlew
+        run: chmod +x {{ app_path }}/gradlew
 
-      - name: Set up JDK 21
+      - name: Set up JDK {{ versions.java }}
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '{{ versions.java }}'
           distribution: 'temurin'
 
       - name: Cache Gradle
@@ -36,10 +37,10 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: {% raw %}${{ runner.os }}-gradle-${{ hashFiles('backend/**/*.gradle*', 'backend/gradle/wrapper/gradle-wrapper.properties') }}{% endraw %}
+          key: {% raw %}${{ runner.os }}-gradle-${{ hashFiles({% endraw %}'{{ app_path }}/**/*.gradle*', '{{ app_path }}/gradle/wrapper/gradle-wrapper.properties'{% raw %}) }}{% endraw %}
 
       - name: Run tests
-        working-directory: backend
+        working-directory: {{ app_path }}
         run: ./gradlew test
 
       - name: Upload test results
@@ -47,6 +48,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: backend/build/reports/tests/
-
-{% endif %}
+          path: {{ app_path }}/build/reports/tests/

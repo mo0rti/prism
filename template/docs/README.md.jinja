@@ -24,8 +24,8 @@ Do not put architecture guides in `knowledge/`. They belong in `docs/`.
 | `docs/ai-agents.md` | How the agent system, commands, skills, and platform guidance fit together |
 | `docs/api/conventions.md` | API naming, pagination, error format |
 | `docs/deployment/ci-cd.md` | CI setup (build and test) |
-{% if "backend" in platforms %}| `backend/docs/entities/` | Database entity definitions and relationships |
-{% endif %}
+{% for app in apps if app.stack == "spring-backend" %}| `{{ app.path }}/docs/` | The guide of the {{ app.id }} backend |
+{% endfor %}
 
 ## What is in knowledge/
 

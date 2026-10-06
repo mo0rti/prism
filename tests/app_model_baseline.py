@@ -125,12 +125,11 @@ project_name: Baseline Full
 project_slug: baseline-full
 package_identifier: com.example.baselinefull
 description: Baseline full workspace
-platforms:
-- backend
-- web-user-app
-- web-admin-portal
-- mobile-android
-- mobile-ios
+stacks:
+- spring-backend
+- nextjs-web
+- android-compose
+- ios-swiftui
 auth_methods:
 - google
 - password

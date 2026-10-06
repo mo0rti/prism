@@ -44,11 +44,12 @@ An entry in `apps` has these fields.
 | `path` | The app's directory, relative to its repository root with forward slashes. It defaults to the stack's default path. It is unique per repository, apps in one repository must not overlap, and it cannot be `.` in the workspace repository. |
 | `audience` | Optional free text, for example `B2C`. |
 | `status` | `active` (the default) or `retired`. |
+| `generation` | `scaffolded` when Prism generated the app's code, so `prism update` keeps it current, or `registered` (the default) when its code is created and kept elsewhere. Only an app of a generated stack in this repository can be scaffolded; any other value is `invalid-app-generation`. |
 | `capabilities` | Optional overrides of the stack's capabilities. |
 
 `app_maturity` maps an app ID to `level` and `caveat`. Status shows each app's entry as `maturity`, and prints the caveats.
 
-`prism new` registers the platforms you pick as apps with the IDs `backend`, `web-user-app`, `web-admin-portal`, `mobile-android` and `mobile-ios`, each in the `workspace` repository.
+`prism new` records the apps you list in the manifest, each `scaffolded` or `registered`; a preset is an app list with the IDs `backend`, `web-user-app`, `web-admin-portal`, `mobile-android` and `mobile-ios`, each in the `workspace` repository ([questionnaire.md](questionnaire.md)).
 
 `min_prism_cli_version` is the version of the CLI that wrote the manifest. An older CLI reports `minimum-prism-cli-version-not-met`.
 
@@ -96,10 +97,10 @@ Shows the apps and repositories in the same table as `prism status`: ID, name, s
 ```text
 prism app add ID --stack STACK [--name NAME] [--repository REPO [--remote URL]] [--path PATH]
               [--audience TEXT] [--has-ui true|false|unknown] [--serves-api true|false|unknown]
-              [--apply [--yes]] [--json] [PATH]
+              [--scaffold [--trust-template]] [--apply [--yes]] [--json] [PATH]
 ```
 
-Registers an app in `prism.workspace.yml`. It edits the manifest only and never generates code.
+Registers an app in `prism.workspace.yml`. Without `--scaffold` it edits the manifest only and never generates code; [Scaffolding apps](#scaffolding-apps) covers `--scaffold`.
 
 - Without `--apply` it shows the exact manifest change and exits with 0, like the preview of `prism workflow install`. `--apply` writes it after you confirm, and `--apply --yes` skips the question for automation.
 - `--path` defaults to the stack's default path, or to the app ID when the stack has none. The path of an app in this repository that does not exist yet is a warning, not an error.
@@ -109,6 +110,28 @@ Registers an app in `prism.workspace.yml`. It edits the manifest only and never 
 - The app scope is part of the board identity. After the command, stop a running board and start it again with `prism board serve`, and reissue grants with `prism board grant` for any participant the board rejects. A running board disables writes with `workspace_identity_changed` until it is restarted.
 
 To take an app out of use, retire it with `prism app retire`; there is no command that deletes one.
+
+## Scaffolding apps
+
+Generation has two layers, and one `copier.yml` and one template tag cover both:
+
+- **The workspace layer** (`template/`) holds the knowledge base, the guidance, `shared/` and `docker-compose.yml`. It receives the `stacks` and the app list of the scaffolded apps, so its compose file has one service for each backend app, the root `Taskfile.yml` includes each app's tasks, and its guidance lists them.
+- **An app layer** (`packs/<stack>/`) holds one app. Copier applies it to the repository root, once for each scaffolded app, with every path under the app's path, plus the app's workflow `.github/workflows/<id>.yml` and Cursor rule `.cursor/rules/<id>.mdc`. Each app keeps its own answers at `<path>/.copier-answers.yml`, which is Copier's documented way to apply one template several times to one project. The workspace's own answers stay in `.copier-answers.yml`.
+
+The versions a pack pins are in `packs/versions.yml`, the one place a release moves them. Packs exist for `spring-backend`; the other generated stacks still generate their full samples through the workspace layer until their packs land.
+
+`prism app add --scaffold` generates a new app into an existing generated workspace:
+
+```text
+prism app add api-two --stack spring-backend --path services/api-two --scaffold --apply --yes --trust-template
+```
+
+- **At the workspace's recorded tag.** The app comes from the template revision `.copier-answers.yml` records (`_src_path` and `_commit`), not from the CLI's version or the latest tag, so it matches the workspace layer and every other app. A workspace generated from an unversioned local checkout records no revision and cannot be scaffolded into; register the app instead.
+- **On a branch, one commit per layer.** Copier updates need a clean git tree, so `--apply` requires the workspace to be its own git repository with a clean working tree. It creates the branch `prism-scaffold-<id>`, brings the workspace layer in line with the new app list and commits (`Scaffold <id>: workspace layer`), generates the app, records it in the manifest and commits (`Scaffold <id>: app layer and manifest`). It leaves the branch checked out for you to review and merge. The preview shows the plan and changes nothing.
+- **What it chooses.** It derives the app's identifiers from its ID (`app_package_segment` is the ID without hyphens, which must be a valid package segment and must not repeat another app's), picks the first free port of the stack's range, scopes the app's workflow and Cursor rule to its path, and records `generation: scaffolded`, the app's maturity and its workflow in the manifest.
+- **What stops it.** An ID or path that collides with another app or with a file of the workspace layer, a path that already holds files, a stack with no pack yet (register the app instead), `--repository` or `--remote` (a scaffolded app lives in this repository), a custom template that is not trusted (`--trust-template`), or an existing branch of that name. Any of them exits with 3 and changes nothing.
+
+`prism update` keeps every layer current ([getting-started.md](getting-started.md#6-update-a-generated-project)).
 
 Example, run in an empty workspace with `backend` registered:
 

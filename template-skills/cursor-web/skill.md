@@ -2,7 +2,7 @@
 name: cursor-web
 description: "Next.js user web app and admin portal facts: stack, structure, patterns and commands."
 layers: [cursor]
-platforms: [web-user-app, web-admin-portal]
+stacks: [nextjs-web]
 cursor:
   file: web
   globs: "web-user-app/**,web-admin-portal/**"

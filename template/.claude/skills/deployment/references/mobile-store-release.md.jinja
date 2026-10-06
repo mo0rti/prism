@@ -4,7 +4,7 @@ The generated mobile CI builds and tests only. Store releases are the project ow
 
 Add a `tags: ['v*']` trigger to the app's workflow, then a release job that runs only on a `v*` tag, uses `environment: production` and does nothing while a secret is missing (report a **Deploy skipped** warning naming the secrets, as the Azure and Cloudflare examples do). Never commit secret values; the project owner creates them.
 
-{%- if "mobile-android" in platforms %}
+{%- if "android-compose" in stacks %}
 
 ## Android: Play Store
 
@@ -26,7 +26,7 @@ Job `release` in `.github/workflows/mobile-android.yml`, after the test and lint
 The lane is defined in `mobile-android/fastlane/Fastfile`.
 {%- endif %}
 
-{%- if "mobile-ios" in platforms %}
+{%- if "ios-swiftui" in stacks %}
 
 ## iOS: TestFlight
 

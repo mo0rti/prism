@@ -2,7 +2,7 @@
 name: deploy-device
 description: "Build, install, and launch on a connected Android device or emulator with adb. Use when the user wants the app deployed and opened on hardware."
 layers: [claude-skill]
-platforms: [mobile-android, mobile-ios]
+stacks: [android-compose, ios-swiftui]
 claude-skill:
   argument-hint: "[variant] [adb-serial]"
   disable-model-invocation: true

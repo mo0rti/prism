@@ -2,19 +2,22 @@
 
 Prism's core is the workflow and board shared by humans and agents. Application generation is an optional capability. Follow `docs/prism-core-workflow-plan.md` for the scope, contracts and deferred work. Test lifecycle writes, workflow adoption and the shared HTTP/MCP service only in disposable neutral workspaces, never in this maintainer repository. Connected agents use pinned standard skills through one provider-neutral service; custom skills retain the direct-file path, with no extra board approval queue.
 
-Copier template that scaffolds multi-platform workspaces with Backend (Spring Boot 4), User Web App (Next.js), Admin Web Portal (Next.js), Android (Kotlin/Compose), and iOS (Swift/SwiftUI).
+Copier template that scaffolds workspaces from an app list: Backend (Spring Boot 4, a stack pack), User Web App and Admin Web Portal (Next.js samples), Android (Kotlin/Compose sample), and iOS (Swift/SwiftUI sample).
 
-The questionnaire keeps roadmap-facing options visible. Backend, Android and web samples are verified locally; the iOS sample is verified only by the macOS CI job. Deployment is a generated skill with worked examples that are not verified against live accounts. Apple Sign-In is experimental. `docs/current-status.md` records the verification per platform.
+Generation has two layers under one `copier.yml` and one template tag. The hidden question `prism_layer` chooses `workspace` (`template/`) or a stack with a pack (`packs/<stack>/`, one app, every path under `{{ app_path }}/`). The Prism CLI collects the app list and runs the workspace layer and then each scaffolded app's pack, each from its own answers file. The backend, Android and web samples are verified locally; the iOS sample is verified only by the macOS CI job. Deployment is a generated skill with worked examples that are not verified against live accounts. Apple Sign-In is experimental. `docs/current-status.md` records the verification per platform.
 
 ## Project Structure
 
 ```
 docs/                    # Documentation for this template repository
-copier.yml              # Template questionnaire (project identity, platforms, auth)
+copier.yml              # Template questionnaire: the hidden prism_layer, project identity, the layers' internal answers, auth
+packs/                  # App layers: one pack per stack, rendered once per scaffolded app
+  versions.yml          # The one place that pins versions; packs read it as `versions`
+  spring-backend/       # Minimal Spring Boot pack: everything under {{ app_path }}/, plus .github/workflows/{{ app_id }}.yml and .cursor/rules/{{ app_id }}.mdc
 template-skills/        # The one source of every skill, command and Cursor rule (generated into template/)
-template/               # All templated output - Jinja2 files (.jinja suffix stripped on generation)
-  backend/              # Spring Boot 4 (Kotlin 2.2+, Java 21)
-  web-user-app/         # Next.js user-facing web app
+template/               # The workspace layer - Jinja2 files (.jinja suffix stripped on generation)
+  backend/              # The full backend sample: never rendered, because the spring-backend pack generates the backend
+  web-user-app/         # Next.js user-facing web app (full sample, switch in prism_cli/packs.py)
   web-admin-portal/     # Next.js admin web portal
   mobile-android/              # Kotlin + Jetpack Compose (MVVM)
   mobile-ios/                  # Swift 6 + SwiftUI (MVVM)
@@ -42,8 +45,9 @@ wiki commands from a generated project against this repository.
 ## Key Rules
 
 - **Two layers of AI context**: `template/.claude/` is for generated projects; `.claude/` (root) is for this template repo
-- **Documentation organization**: Template-repo docs live in root `docs/`. Generated-project docs stay in `template/docs/`. Platform-specific technical docs live inside each platform directory (`template/mobile-android/docs/`, `template/backend/docs/`, `template/mobile-ios/docs/`). Entity docs are backend-specific (`template/backend/docs/entities/`). Platform docs are auto-excluded with their platform via `_exclude` rules.
-- **Test with `copier copy`** after changes: `copier copy --trust . C:\temp\template-test`
+- **Documentation organization**: Template-repo docs live in root `docs/`. Generated-project docs stay in `template/docs/`. Technical docs of an app in a pack live in `packs/<stack>/{{ app_path }}/docs/`; those of a full sample live inside its directory (`template/mobile-android/docs/`, `template/mobile-ios/docs/`). Sample docs are auto-excluded with their sample via `_exclude` rules, and every `_exclude` entry applies to the workspace layer only (`prism_layer == 'workspace'`).
+- **Layers and packs**: the workspace layer never holds app code of a stack that has a pack; a pack's paths are all under `{{ app_path }}/` except its workflow and Cursor rule; pinned versions live only in `packs/versions.yml`, and a test fails when a pack file repeats one; per-app files of a pack are the pack's own source, not the skill generator's. The switches for the stacks without a pack are named in `prism_cli/packs.py` (`NEXTJS_WEB_FULL_SAMPLE`, `ANDROID_COMPOSE_FULL_SAMPLE`, `IOS_SWIFTUI_FULL_SAMPLE`); each pack removes its switch and sample.
+- **Test with the CLI** after changes: `prism new --preset backend-only --project-name "Test App" --dest C:\temp\template-test --yes` (a checkout generates from its working tree). Raw `copier copy --trust --defaults --data "project_name=Test App" . C:\temp\layer-test` renders the workspace layer alone
 - **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
 - **User docs match behaviour**: keep the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md` equal to the CLI and service. After changing a documented command, message or security check, run it in a disposable workspace and fix the docs to match the real output
 - **One source of generated-project rules**: `template/AGENTS.md.jinja` (and each platform's `AGENTS.md.jinja`) holds the rules; every `CLAUDE.md.jinja` only imports its sibling with `@AGENTS.md` plus Claude Code notes no other tool shares; there is no `CONTEXT.md`; Cursor reads `AGENTS.md` itself, so no Cursor rule references it; add a rule once, where it belongs
@@ -56,11 +60,14 @@ wiki commands from a generated project against this repository.
 ## Common Commands
 
 ```bash
-# Test template generation (all platforms)
-copier copy --trust . C:\temp\template-test
+# Test template generation through the CLI (the workspace layer and each scaffolded app's pack)
+prism new --preset backend-only --project-name "Test App" --dest C:\temp\template-test --yes
 
-# Test with specific options
-copier copy --trust --data 'project_name=TestApp' --data 'platforms=[backend, mobile-android]' . C:\temp\template-test-mobile
+# Test an app list: an answers file with apps: [{id: backend, stack: spring-backend}, {id: mobile-android, stack: android-compose}]
+prism new --answers C:\temp\answers.yml --dest C:\temp\template-test-mobile --yes
+
+# Scaffold a second app into a committed generated workspace (needs a versioned template; a git+file:// URL of a tagged copy works)
+prism app add api-two --stack spring-backend --path services/api-two --scaffold --apply --yes --trust-template C:\temp\template-test
 
 # Rebuild the generated skill layers after editing template-skills/, then the packaged asset
 python scripts/build-skill-layers.py
@@ -89,7 +96,8 @@ prism board serve . --port 8765
 - `SECURITY.md` - local threat model
 - `CHANGELOG.md` - user-visible changes
 - `docs/maintainer-workflow.md` - template maintenance workflow and validation variants
-- `docs/questionnaire.md` - questionnaire inputs and maturity notes
+- `docs/questionnaire.md` - questionnaire inputs, the app list and what each stack generates
+- `packs/` - the stack packs and `packs/versions.yml`, the pinned versions
 - `copier.yml` - template configuration and questionnaire
 - `template-skills/` - the source of every generated skill, command and Cursor rule
 - `scripts/build-skill-layers.py` - renders the skill layers of `template/` from `template-skills/`

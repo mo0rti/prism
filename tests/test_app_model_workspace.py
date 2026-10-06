@@ -646,29 +646,55 @@ class ManifestUpdateAppsTests(TwoAppWorkspaceCase):
 
 
 class WriteWorkspaceManifestTests(unittest.TestCase):
-    ANSWERS = {"project_name": "Gen", "project_slug": "gen", "platforms": ["mobile-ios", "backend"]}
+    ANSWERS = {"project_name": "Gen", "project_slug": "gen"}
+    APPS = apps_from_platforms(["mobile-ios", "backend"], generation="scaffolded")
 
-    def test_the_questionnaire_platforms_become_apps_once(self) -> None:
+    def test_the_questionnaire_apps_enter_the_manifest_once(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            path = write_workspace_manifest(root, self.ANSWERS, prism_cli_version="0.3.0")
+            path = write_workspace_manifest(root, self.ANSWERS, prism_cli_version="0.3.0", apps=self.APPS)
             data = yaml.safe_load(path.read_text(encoding="utf-8"))
             self.assertEqual(2, data["schema_version"])
-            self.assertEqual(apps_from_platforms(["mobile-ios", "backend"]), data["apps"])
+            self.assertEqual(self.APPS, data["apps"])
+            self.assertEqual({"mobile-ios", "backend"}, set(data["app_maturity"]))
+            self.assertEqual("experimental", data["app_maturity"]["mobile-ios"]["level"])
+            self.assertEqual([".github/workflows/mobile-ios.yml", ".github/workflows/backend.yml"], data["expected_surfaces"]["workflows"] if "expected_surfaces" in data else [".github/workflows/mobile-ios.yml", ".github/workflows/backend.yml"])
             self.assertNotIn("platforms", data["project"])
             data["apps"].append({"id": "extra", "stack": "other", "path": "extra", "capabilities": {"has-ui": False, "serves-api": False}})
             path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 
-            write_workspace_manifest(root, {**self.ANSWERS, "platforms": ["backend"]}, prism_cli_version="0.3.1")
+            write_workspace_manifest(root, self.ANSWERS, prism_cli_version="0.3.1", apps=apps_from_platforms(["backend"], generation="scaffolded"))
 
             kept = yaml.safe_load(path.read_text(encoding="utf-8"))
             self.assertEqual(["mobile-ios", "backend", "extra"], [item["id"] for item in kept["apps"]])
             self.assertEqual("0.3.1", kept["generated_by"]["prism_cli_version"])
 
+    def test_the_apps_come_after_the_project_with_their_repositories_and_workflows(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / MANIFEST_FILE).write_text(
+                yaml.safe_dump({"schema_version": 2, "project": {"name": "Gen"}, "paths": {"wiki_root": "knowledge/wiki"}, "expected_surfaces": {"workflows": []}}, sort_keys=False),
+                encoding="utf-8",
+            )
+            apps = [
+                {"id": "backend", "name": "Backend", "stack": "spring-backend", "repository": "workspace", "path": "backend", "generation": "scaffolded"},
+                {"id": "partner", "name": "Partner", "stack": "android-compose", "repository": "mobile", "path": "apps/partner", "generation": "registered"},
+            ]
+            path = write_workspace_manifest(root, self.ANSWERS, prism_cli_version="0.3.0", apps=apps, repositories=[{"id": "mobile", "remote": "https://example.com/acme/mobile.git"}])
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            keys = list(data)
+            self.assertLess(keys.index("project"), keys.index("repositories"))
+            self.assertLess(keys.index("repositories"), keys.index("apps"))
+            self.assertEqual({"backend"}, set(data["app_maturity"]), "only a scaffolded app has a maturity")
+            self.assertEqual([".github/workflows/backend.yml"], data["expected_surfaces"]["workflows"])
+            model, diagnostics = normalize_manifest(data, path=Path(MANIFEST_FILE))
+            self.assertEqual([], diagnostics)
+            self.assertEqual(["scaffolded", "registered"], [app.generation for app in model.apps])
+
     def test_the_minimum_cli_version_is_the_running_cli_version(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            path = write_workspace_manifest(root, self.ANSWERS, prism_cli_version="0.0.1")
+            path = write_workspace_manifest(root, self.ANSWERS, prism_cli_version="0.0.1", apps=self.APPS)
             data = yaml.safe_load(path.read_text(encoding="utf-8"))
             self.assertEqual(__version__, data["min_prism_cli_version"])
             self.assertEqual("0.0.1", data["generated_by"]["prism_cli_version"])
@@ -689,18 +715,26 @@ class WriteWorkspaceManifestTests(unittest.TestCase):
             self.assertEqual(before, (root / MANIFEST_FILE).read_bytes())
 
 
-class TemplateManifestTests(unittest.TestCase):
-    """The Copier template renders the apps the CLI would write for the same platforms."""
+def copy_manifest_template_source(temporary: str) -> Path:
+    """A template source with the layer root, the answers-file template, the manifest template and the pinned versions."""
 
-    def render(self, platforms: list[str], cli_version: str | None = None) -> dict:
+    repository = Path(__file__).resolve().parents[1]
+    source = Path(temporary) / "source"
+    (source / "template").mkdir(parents=True)
+    (source / "packs").mkdir()
+    for relative in ("copier.yml", "template/{{ _copier_conf.answers_file }}.jinja", "template/prism.workspace.yml.jinja", "packs/versions.yml"):
+        (source / relative).write_bytes((repository / relative).read_bytes())
+    return source
+
+
+class TemplateManifestTests(unittest.TestCase):
+    """The Copier template renders the manifest of the workspace layer; the CLI records the apps."""
+
+    def render(self, cli_version: str | None = None) -> dict:
         from copier import run_copy
 
-        repository = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as temporary:
-            source = Path(temporary) / "source"
-            (source / "template").mkdir(parents=True)
-            for relative in ("copier.yml", "template/{{ _copier_conf.answers_file }}.jinja", "template/prism.workspace.yml.jinja"):
-                (source / relative).write_bytes((repository / relative).read_bytes())
+            source = copy_manifest_template_source(temporary)
             destination = Path(temporary) / "out"
             run_copy(
                 str(source),
@@ -708,7 +742,6 @@ class TemplateManifestTests(unittest.TestCase):
                 data={
                     "project_name": "Rendered",
                     "project_slug": "rendered",
-                    "platforms": platforms,
                     "auth_methods": ["password"],
                     **({"_prism_cli_version": cli_version} if cli_version else {}),
                 },
@@ -719,30 +752,81 @@ class TemplateManifestTests(unittest.TestCase):
             return yaml.safe_load((destination / MANIFEST_FILE).read_text(encoding="utf-8"))
 
     def test_the_minimum_cli_version_is_the_version_the_cli_passes(self) -> None:
-        data = self.render(["backend"], cli_version=__version__)
+        data = self.render(cli_version=__version__)
         self.assertEqual(__version__, data["min_prism_cli_version"])
         self.assertEqual(__version__, data["generated_by"]["prism_cli_version"])
 
     def test_a_run_without_the_cli_names_no_minimum(self) -> None:
-        data = self.render(["backend"])
+        data = self.render()
         self.assertEqual("0.0.0", data["min_prism_cli_version"])
 
-    def test_all_five_platforms(self) -> None:
-        platforms = ["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"]
-        data = self.render(platforms)
+    def test_the_template_renders_no_apps_and_the_manifest_is_valid(self) -> None:
+        data = self.render()
         self.assertEqual(2, data["schema_version"])
-        self.assertEqual(apps_from_platforms(platforms), data["apps"])
-        self.assertEqual(platforms, list(data["app_maturity"]))
+        for key in ("apps", "app_maturity", "repositories"):
+            self.assertNotIn(key, data, f"the CLI records `{key}`, not the template")
+        self.assertEqual([], data["expected_surfaces"]["workflows"])
         self.assertNotIn("platforms", data["project"])
         self.assertNotIn("platform_maturity", data)
         model, diagnostics = normalize_manifest(data, path=Path(MANIFEST_FILE))
         self.assertEqual([], diagnostics)
+        self.assertEqual([], model.active_app_ids)
+
+    def test_the_cli_records_the_apps_of_all_five_platforms(self) -> None:
+        platforms = ["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = write_workspace_manifest(root, {"project_name": "Rendered"}, prism_cli_version=__version__, apps=apps_from_platforms(platforms, generation="scaffolded"))
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        self.assertEqual(platforms, list(data["app_maturity"]))
+        model, diagnostics = normalize_manifest(data, path=Path(MANIFEST_FILE))
+        self.assertEqual([], diagnostics)
         self.assertEqual(platforms, model.active_app_ids)
 
-    def test_one_platform(self) -> None:
-        data = self.render(["mobile-android"])
-        self.assertEqual(apps_from_platforms(["mobile-android"]), data["apps"])
-        self.assertEqual(["mobile-android"], list(data["app_maturity"]))
+
+class WorkspaceLayerRootTests(unittest.TestCase):
+    """`render_template_manifest` resolves the workspace layer's root itself and never reads the raw `_subdirectory`."""
+
+    def git(self, source: Path, *arguments: str) -> None:
+        subprocess.run(["git", "-c", "user.name=Prism test", "-c", "user.email=test@example.invalid", "-c", "core.autocrlf=false", *arguments], cwd=source, check=True, capture_output=True, text=True)
+
+    def build_repository(self, temporary: str) -> Path:
+        source = copy_manifest_template_source(temporary)
+        for arguments in (("init", "-q"), ("add", "-A"), ("commit", "-qm", "one"), ("tag", "v1.0.0")):
+            self.git(source, *arguments)
+        return source
+
+    def worker(self, source: Path, destination: Path, vcs_ref: str = "v1.0.0", **data):
+        from copier._main import Worker
+
+        return Worker(src_path=str(source), dst_path=destination, vcs_ref=vcs_ref, data={"project_name": "Layered", "project_slug": "layered", "auth_methods": ["password"], "_prism_cli_version": __version__, **data}, defaults=True, skip_tasks=True, unsafe=True, quiet=True)
+
+    def test_the_root_is_the_rendered_workspace_layer_whatever_layer_the_worker_holds(self) -> None:
+        from prism_cli.manifest_update import render_template_manifest, workspace_layer_root
+
+        with tempfile.TemporaryDirectory() as temporary:
+            source = self.build_repository(temporary)
+            for layer in ("workspace", "spring-backend"):
+                with self.subTest(worker_layer=layer), self.worker(source, Path(temporary) / f"out-{layer}", prism_layer=layer, app_id="api") as worker:
+                    worker._ask()
+                    self.assertIn("{{", worker.template.subdirectory, "the template's own value is an expression, not a path")
+                    self.assertEqual("template", workspace_layer_root(worker))
+                    manifest = render_template_manifest(worker)
+                    self.assertEqual("Layered", manifest["project"]["name"])
+                    self.assertEqual(__version__, manifest["min_prism_cli_version"])
+
+    def test_the_render_never_runs_template_tasks_and_names_a_missing_manifest(self) -> None:
+        from prism_cli.manifest_update import render_template_manifest
+
+        with tempfile.TemporaryDirectory() as temporary:
+            source = self.build_repository(temporary)
+            (source / "template" / "prism.workspace.yml.jinja").unlink()
+            for arguments in (("add", "-A"), ("commit", "-qm", "two"), ("tag", "v2.0.0")):
+                self.git(source, *arguments)
+            with self.worker(source, Path(temporary) / "out", vcs_ref="v2.0.0", prism_layer="workspace") as worker:
+                worker._ask()
+                with self.assertRaisesRegex(ManifestUpdateError, "Unable to render prism.workspace.yml"):
+                    render_template_manifest(worker)
 
 
 class TemplateMinimumVersionUpdateTests(unittest.TestCase):
@@ -759,11 +843,7 @@ class TemplateMinimumVersionUpdateTests(unittest.TestCase):
 
         from copier import run_copy
 
-        repository = Path(__file__).resolve().parents[1]
-        source = Path(temporary) / "source"
-        (source / "template").mkdir(parents=True)
-        for relative in ("copier.yml", "template/{{ _copier_conf.answers_file }}.jinja", "template/prism.workspace.yml.jinja"):
-            (source / relative).write_bytes((repository / relative).read_bytes())
+        source = copy_manifest_template_source(temporary)
         self.git(source, "init", "-q")
         self.git(source, "add", ".")
         self.git(source, "commit", "-qm", "version one")
@@ -772,7 +852,7 @@ class TemplateMinimumVersionUpdateTests(unittest.TestCase):
         run_copy(
             str(source),
             str(destination),
-            data={"project_name": "Update", "project_slug": "update", "platforms": ["backend"], "auth_methods": ["password"], "_prism_cli_version": __version__},
+            data={"project_name": "Update", "project_slug": "update", "auth_methods": ["password"], "_prism_cli_version": __version__},
             vcs_ref="v1.0.0",
             defaults=True,
             unsafe=True,
@@ -795,6 +875,7 @@ class TemplateMinimumVersionUpdateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             plan = prepare_manifest_update(self.build(temporary), "v1.0.0")
         self.assertEqual("99.1.0", plan.manifest["min_prism_cli_version"])
+        self.assertEqual("v2.0.0", plan.target_label)
 
     def test_a_workspace_edited_minimum_conflicts_with_a_template_change(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -805,6 +886,16 @@ class TemplateMinimumVersionUpdateTests(unittest.TestCase):
             with self.assertRaises(ManifestMergeConflict) as raised:
                 prepare_manifest_update(destination, "v1.0.0")
         self.assertEqual(["min_prism_cli_version"], raised.exception.fields)
+
+    def test_the_apps_the_cli_recorded_survive_the_merge(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = self.build(temporary)
+            data = manifest_data(destination)
+            data["apps"] = apps_from_platforms(["backend"], generation="scaffolded")
+            write_manifest(destination, data)
+            plan = prepare_manifest_update(destination, "v1.0.0")
+        self.assertEqual(["backend"], [app["id"] for app in plan.manifest["apps"]])
+        self.assertEqual("scaffolded", plan.manifest["apps"][0]["generation"])
 
 
 class BaselineCompatibilityTests(unittest.TestCase):

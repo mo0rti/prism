@@ -454,6 +454,54 @@ class VersionTwoModelTests(unittest.TestCase):
             self.assertFalse(app_model.is_slug(bad), bad)
 
 
+class GenerationFieldTests(unittest.TestCase):
+    """`generation` records whether Prism scaffolded an app's code; the default is registered."""
+
+    def app(self, **fields: object) -> dict:
+        return {"id": "api", "stack": "spring-backend", "repository": "workspace", "path": "api", **fields}
+
+    def test_the_default_is_registered_and_the_field_does_not_reach_the_reported_entries(self) -> None:
+        model, diagnostics = normalized(v2_manifest(apps=[self.app()], app_maturity={}))
+        self.assertEqual([], codes(diagnostics))
+        self.assertEqual("registered", model.apps[0].generation)
+        self.assertFalse(model.apps[0].scaffolded)
+        self.assertNotIn("generation", app_model.app_entries(model)[0], "the JSON surfaces and the board identity are unchanged")
+
+    def test_scaffolded_is_read(self) -> None:
+        model, diagnostics = normalized(v2_manifest(apps=[self.app(generation="scaffolded")], app_maturity={}))
+        self.assertEqual([], codes(diagnostics))
+        self.assertTrue(model.apps[0].scaffolded)
+
+    def test_an_unknown_value_is_an_error_and_the_app_is_dropped(self) -> None:
+        model, diagnostics = normalized(v2_manifest(apps=[self.app(generation="generated")], app_maturity={}))
+        self.assertEqual(["invalid-app-generation"], codes(diagnostics))
+        self.assertEqual([], list(model.apps))
+
+    def test_only_an_app_of_a_generated_stack_in_this_repository_can_be_scaffolded(self) -> None:
+        external = self.app(generation="scaffolded", repository="mobile-apps", stack="android-compose", path="apps/partner")
+        _model, diagnostics = normalized(v2_manifest(apps=[external], app_maturity={}))
+        self.assertEqual(["invalid-app-generation"], codes(diagnostics))
+        other = self.app(generation="scaffolded", stack="other", capabilities={"has-ui": False, "serves-api": False})
+        _model, diagnostics = normalized(v2_manifest(apps=[other], app_maturity={}))
+        self.assertEqual(["invalid-app-generation"], codes(diagnostics))
+        registered = self.app(generation="registered", repository="mobile-apps", stack="android-compose", path="apps/partner")
+        _model, diagnostics = normalized(v2_manifest(apps=[registered], app_maturity={}))
+        self.assertEqual([], codes(diagnostics))
+
+    def test_presets_and_default_apps_can_carry_the_field(self) -> None:
+        entries = apps_from_platforms(["backend", "mobile-ios"], generation="scaffolded")
+        self.assertEqual(["scaffolded", "scaffolded"], [entry["generation"] for entry in entries])
+        self.assertNotIn("generation", apps_from_platforms(["backend"])[0])
+        with self.assertRaises(ValueError):
+            apps_from_platforms(["backend"], generation="magic")
+
+    def test_every_stack_with_a_server_has_a_port_range(self) -> None:
+        self.assertEqual((8080, 8179), STACKS["spring-backend"].port_range)
+        self.assertEqual((3000, 3099), STACKS["nextjs-web"].port_range)
+        self.assertIsNone(STACKS["android-compose"].port_range)
+        self.assertIsNone(STACKS["other"].port_range)
+
+
 class CapabilityResolutionTests(unittest.TestCase):
     def test_stack_defaults(self) -> None:
         for stack_id, ui, api in (("spring-backend", False, True), ("nextjs-web", True, False), ("android-compose", True, False), ("ios-swiftui", True, False)):

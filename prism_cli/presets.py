@@ -5,15 +5,27 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from prism_cli.app_model import GENERATION_SCAFFOLDED, apps_from_platforms
+
 
 @dataclass(frozen=True)
 class Preset:
+    """A recommended start: an app list, plus any answers that are not about the apps."""
+
     slug: str
     label: str
     maturity: str
     summary: str
-    answers: dict[str, Any]
+    # The apps `prism new` scaffolds, as manifest app entries with the default IDs.
+    apps: tuple[dict[str, str], ...]
+    answers: dict[str, Any] = field(default_factory=dict)
     notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+def _scaffolded(*app_ids: str) -> tuple[dict[str, str], ...]:
+    """The default generated apps with these IDs, each scaffolded."""
+
+    return tuple(apps_from_platforms(list(app_ids), generation=GENERATION_SCAFFOLDED))
 
 
 PRESETS: tuple[Preset, ...] = (
@@ -22,25 +34,23 @@ PRESETS: tuple[Preset, ...] = (
         label="Backend Only",
         maturity="validated",
         summary="Repository shape and API contract inspection.",
-        answers={"platforms": ["backend"]},
+        apps=_scaffolded("backend"),
     ),
     Preset(
         slug="backend-mobile",
         label="Backend + Mobile",
         maturity="partial",
         summary="Backend with Android and iOS clients; iOS requires macOS/Xcode validation.",
-        answers={"platforms": ["backend", "mobile-android", "mobile-ios"]},
+        apps=_scaffolded("backend", "mobile-android", "mobile-ios"),
     ),
     Preset(
         slug="backend-web",
         label="Backend + Web",
         maturity="partial",
         summary="Combined user-web and admin-portal setup with current web caveats.",
+        apps=_scaffolded("backend", "web-user-app", "web-admin-portal"),
         # Keep these auth defaults aligned with copier.yml until manifest-driven preset sync lands.
-        answers={
-            "platforms": ["backend", "web-user-app", "web-admin-portal"],
-            "auth_methods": ["google", "password"],
-        },
+        answers={"auth_methods": ["google", "password"]},
         notes=(
             "Admin Web Portal currently requires password auth.",
         ),

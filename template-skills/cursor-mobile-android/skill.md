@@ -2,7 +2,7 @@
 name: cursor-mobile-android
 description: "Android (Kotlin, Jetpack Compose) app facts: stack, package structure, patterns and conventions."
 layers: [cursor]
-platforms: [mobile-android]
+stacks: [android-compose]
 cursor:
   file: mobile-android
   globs: "mobile-android/**"

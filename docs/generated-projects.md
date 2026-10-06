@@ -20,14 +20,13 @@ Generated projects include:
 
 - a generated `README.md` with the human overview, setup and the operation names by tool
 - a required `knowledge/` tree with raw intake and the living product wiki
-- platform-specific docs under `docs/`, `backend/docs/`, `mobile-android/docs/`,
-  `mobile-ios/docs/`, `web-user-app/docs/`, and `web-admin-portal/docs/`
-- a generated `AGENTS.md`, the single source of agent rules, and a `CLAUDE.md` that only imports it with `@AGENTS.md`; each platform folder repeats the pattern
+- the code of each scaffolded app under its own path, from a stack pack (`packs/<stack>/`) or, until the stack's pack exists, a full sample, each with its own `AGENTS.md`, `CLAUDE.md` and `docs/`; `docs/` holds the project-wide docs
+- a generated `AGENTS.md`, the single source of agent rules, and a `CLAUDE.md` that only imports it with `@AGENTS.md`; each app folder repeats the pattern
 - Cursor rules under `.cursor/rules/` that scope stack facts by file path and describe the board review; Cursor reads `AGENTS.md` itself and loads the skills in `.agents/skills/` and `.claude/skills/`
 - Codex skills in `.agents/skills/`, Claude commands in `.claude/commands/` and Claude skills in `.claude/skills/`, generated from one source in this repository (`template-skills/`), so the guidance has the same text in every tool
-- GitHub workflow files that build and test; they hold no deploy job and no secrets
+- GitHub workflow files that build and test, one `<app-id>.yml` for each scaffolded app, scoped to the app's path; they hold no deploy job and no secrets
 - Hygen generators under `_templates/`
-- a `docker-compose.yml` with the PostgreSQL development database when a backend app is selected
+- a `docker-compose.yml` with the PostgreSQL development database and one service for each backend app, when a backend app exists
 - a `deployment` skill in `.claude/skills/deployment/` and `.agents/skills/deployment/` with worked
   examples for the backend on Azure Container Apps and the web apps on Cloudflare Workers; hosting,
   secrets and deployment belong to the user and their agent
@@ -72,10 +71,13 @@ human actions (`po-handoff`, `design-start` and `dev-start`) plus an MCP endpoin
 agents. A generated project activates it with `prism workflow upgrade . --apply`; see
 [shared-board.md](shared-board.md).
 
-A generated project's `prism.workspace.yml` declares the platforms you selected as apps, with
-the IDs `backend`, `web-user-app`, `web-admin-portal`, `mobile-android` and `mobile-ios`, all
-in this repository. `prism status` lists them, and `prism app add` registers another app, in
-this repository or in another one, without generating code. A machine that keeps an external
+A generated project's `prism.workspace.yml` declares the apps you listed, each `scaffolded` (Prism
+generated its code) or `registered`. A preset's apps have the IDs `backend`, `web-user-app`,
+`web-admin-portal`, `mobile-android` and `mobile-ios`, all in this repository. `prism status` lists
+them, `prism app add` registers another app, in this repository or in another one, without generating
+code, and `prism app add --scaffold` generates a new app into the workspace from its recorded template
+tag ([workspace-model.md](workspace-model.md#scaffolding-apps)). `prism update` brings the workspace layer
+and every scaffolded app to a newer template tag on a branch, one commit per layer. A machine that keeps an external
 repository's checkout records it in `prism.local.yml`, which the generated `.gitignore`
 excludes. [workspace-model.md](workspace-model.md) describes the manifest.
 
@@ -106,13 +108,13 @@ tree.
 If you are trying to understand the generated implementation surface, read the generated
 docs and platform slices together.
 
-If the generated project includes the backend, the first successful local startup usually
+If the generated project includes a backend app, the first successful local startup usually
 looks like this:
 
 - start only the database container with `docker compose up -d db`
-- run the backend locally with the `local` Spring profile
-- in IntelliJ IDEA, configure the backend run to activate the `local` Spring profile,
-  either through a run configuration or the active profiles field
+- run the backend with `task <app-id>:run` (for the default app, `task backend:run`), on the port
+  recorded in the app's answers file and `application.yml` (`8080` for the first backend, `8081` for
+  the next); `GET /api/health` answers `{"status":"UP"}`
 
 ## AI Agent Surfaces
 
@@ -274,7 +276,7 @@ The generated workflow set is:
 | Workflow | Generated | Purpose |
 |----------|-----------|---------|
 | `api-contracts.yml` | Always | Validate the OpenAPI contract |
-| `backend.yml` | With `backend` | Backend test |
+| `<app-id>.yml` | One for each scaffolded `spring-backend` app (`backend.yml` for the default app) | Backend test, scoped to the app's path |
 | `mobile-android.yml` | With `mobile-android` | Android test, lint, instrumented tests and debug build |
 | `mobile-ios.yml` | With `mobile-ios` | iOS test |
 | `web-user-app.yml` | With `web-user-app` | User web app install, lint, typecheck and build |

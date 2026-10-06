@@ -29,8 +29,8 @@ $ARGUMENTS
 ## 2. Verify contracts and parity
 
 - Cross-check `shared/api-contracts/openapi.yml` when endpoints, DTOs, or enums are involved.
-{% if "backend" in platforms %}- Cross-check `backend/` when behavior or response semantics need confirmation.
-{% endif %}{% if "mobile-android" in platforms %}- Cross-check `mobile-android/` when product parity or UX intent matters.
+{% if "spring-backend" in stacks %}- Cross-check `backend/` when behavior or response semantics need confirmation.
+{% endif %}{% if "android-compose" in stacks %}- Cross-check `mobile-android/` when product parity or UX intent matters.
 {% endif %}
 
 ## 3. Map affected layers

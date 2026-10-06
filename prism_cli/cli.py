@@ -16,6 +16,7 @@ import tempfile
 import webbrowser
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,9 +24,44 @@ import yaml
 
 from prism_cli import __version__
 from prism_cli.arguments import IntermixedParser
-from prism_cli.app_model import ALL_PLATFORM_CHOICES, GENERATED_PLATFORM_STACKS, SLUG_PATTERN
+from prism_cli.app_model import (
+    ALL_PLATFORM_CHOICES,
+    GENERATION_REGISTERED,
+    GENERATION_SCAFFOLDED,
+    SLUG_PATTERN,
+    STACKS,
+    WORKSPACE_REPOSITORY_ID,
+    apps_from_platforms,
+    normalize_manifest,
+)
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, find_cloud_placeholder
-from prism_cli.manifest_update import ManifestUpdateError, prepare_manifest_update
+from prism_cli.layers import (
+    GitError,
+    Layer,
+    LayerResult,
+    branch_exists,
+    changed_paths,
+    commit_layer,
+    create_branch,
+    current_branch,
+    has_commit_identity,
+    scan_conflicts,
+)
+from prism_cli.manifest_update import ManifestUpdateError, load_workspace_manifest, prepare_manifest_update
+from prism_cli.packs import (
+    PACKAGE_IDENTIFIER_PATTERN,
+    RESERVED_IDENTIFIERS,
+    WORKSPACE_LAYER,
+    app_answers_path,
+    assign_ports,
+    has_pack,
+    pack_answers,
+    parse_app_list,
+    read_app_answers,
+    scaffoldable_stacks,
+    validate_scaffold,
+    workspace_data,
+)
 from prism_cli.presets import (
     ALL_AUTH_CHOICES,
     DEFAULT_ANSWERS,
@@ -38,7 +74,6 @@ from prism_cli.presets import (
 from prism_cli.render import render_or_print_wiki_query, render_status_result, render_wiki_lint_result
 from prism_cli.status import BoardCheck, build_board_checks, build_status
 from prism_cli.workspace import (
-    GENERATION_ANSWER_FIELDS,
     MANIFEST_FILE,
     detect_workspace_kind,
     inspect_workspace,
@@ -79,6 +114,7 @@ EXIT_USAGE = 2
 EXIT_VALIDATION = 3
 EXIT_ENVIRONMENT = 4
 EXIT_COPIER = 5
+EXIT_UPDATE_CONFLICT = 6
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_TEMPLATE_URL = "https://github.com/mo0rti/prism.git"
@@ -803,9 +839,9 @@ def build_doctor_checks(incubation_mode: bool) -> list[DoctorCheck]:
 
 
 def preset_stacks(preset: Preset) -> set[str]:
-    """The stacks of a preset's generated platforms."""
+    """The stacks of a preset's apps."""
 
-    return {GENERATED_PLATFORM_STACKS[platform_id] for platform_id in preset.answers.get("platforms", [])}
+    return {app["stack"] for app in preset.apps}
 
 
 def evaluate_doctor_checks(checks: list[DoctorCheck], system: str, target_stacks: set[str]) -> list[DoctorResult]:
@@ -1184,11 +1220,17 @@ def cmd_update(args: argparse.Namespace) -> int:
     src_path = answers_data.get("_src_path")
     if not ensure_template_trust(str(src_path), getattr(args, "trust_template", False)):
         return EXIT_VALIDATION
+    layers, layer_problems = plan_update_layers(project_path)
+    if layer_problems:
+        for message in layer_problems:
+            print(error(message), file=sys.stderr)
+        return EXIT_VALIDATION
     review_lines = [
         f"Project: {project_path}",
         f"Answers file: {answers_path.name}",
         f"Template source: {src_path or 'unknown'}",
         f"Strategy: {strategy}",
+        f"Layers, committed one by one on an update branch: {', '.join(layer.name for layer in layers)}",
     ]
     show_command_intro(args, "Update a generated project from its original template")
     print(panel("Review", review_lines))
@@ -1277,11 +1319,16 @@ def cmd_new(args: argparse.Namespace) -> int:
     dest_path = Path(destination).expanduser().resolve()
     if "project_slug" not in merged_answers:
         merged_answers["project_slug"] = derive_project_slug(merged_answers["project_name"])
+    merged_answers.setdefault("package_identifier", default_package_identifier(merged_answers["project_slug"]))
     validation_errors, validation_warnings = validate_answers(merged_answers)
     if validation_errors:
         for message in validation_errors:
             print(error(message), file=sys.stderr)
         return EXIT_VALIDATION
+    # From here on the app list is the normalized one: manifest entries, and the repositories they declare.
+    apps, repositories, _app_errors = parse_app_list(merged_answers.get("apps"))
+    merged_answers["apps"] = apps
+    merged_answers["repositories"] = repositories
 
     if not ensure_template_trust(template_path, getattr(args, "trust_template", False)):
         return EXIT_VALIDATION
@@ -1303,6 +1350,12 @@ def cmd_new(args: argparse.Namespace) -> int:
 
     vcs_ref = f"v{__version__}" if args.template is None and template_path == DEFAULT_TEMPLATE_URL else None
     return run_copier(template_path, dest_path, merged_answers, vcs_ref=vcs_ref)
+
+
+def default_package_identifier(project_slug: str) -> str:
+    """The package identifier `copier.yml` derives from a slug when none is given."""
+
+    return f"com.example.{project_slug.replace('-', '')}"
 
 
 def detect_validation_target(path: Path) -> str:
@@ -1515,7 +1568,7 @@ def resolve_preset_answers(args: argparse.Namespace) -> dict[str, Any] | None:
             print(error(f"Unknown preset: {args.preset}"), file=sys.stderr)
             return None
         print(info(f"Using preset: {preset.label} ({preset.maturity})"))
-        return dict(preset.answers)
+        return preset_answers(preset)
 
     selected = prompt_preset()
     if selected == "advanced":
@@ -1528,7 +1581,13 @@ def resolve_preset_answers(args: argparse.Namespace) -> dict[str, Any] | None:
     print(info(f"Using preset: {preset.label} ({preset.maturity})"))
     for note in preset.notes:
         print(warn(note))
-    return dict(preset.answers)
+    return preset_answers(preset)
+
+
+def preset_answers(preset: Preset) -> dict[str, Any]:
+    """A preset's answers: its app list, which `prism new` scaffolds, and its other answers."""
+
+    return {**{key: value for key, value in preset.answers.items()}, "apps": [dict(app) for app in preset.apps]}
 
 
 def prompt_preset() -> str:
@@ -1591,7 +1650,9 @@ def prompt_advanced_answers() -> dict[str, Any]:
     description = prompt_text("Description", DEFAULT_ANSWERS["description"])
     package_identifier = prompt_text("Package identifier", f"com.example.{slugify(project_name).replace('-', '')}")
     github_org = prompt_text("GitHub organization or username", "")
-    platforms = prompt_multiselect("Select platforms", ALL_PLATFORM_CHOICES, default_values=["backend", "mobile-android"])
+    selected = prompt_multiselect("Select the apps to scaffold (none is fine)", ALL_PLATFORM_CHOICES, default_values=["backend"], allow_empty=True)
+    apps = apps_from_platforms(selected, generation=GENERATION_SCAFFOLDED)
+    apps.extend(prompt_more_apps({app["id"] for app in apps}))
     auth_default = DEFAULT_ANSWERS["auth_methods"]
     auth_methods = prompt_multiselect(
         "Select auth methods (keep Username + Password selected)",
@@ -1605,9 +1666,40 @@ def prompt_advanced_answers() -> dict[str, Any]:
         "description": description,
         "package_identifier": package_identifier,
         "github_org": github_org,
-        "platforms": platforms,
+        "apps": apps,
         "auth_methods": auth_methods,
     }
+
+
+def prompt_more_apps(taken_ids: set[str]) -> list[dict[str, Any]]:
+    """Ask for further apps, each with an ID, a stack, a path and whether Prism scaffolds it or only registers it."""
+
+    apps: list[dict[str, Any]] = []
+    stack_choices = tuple((stack_id, stack_id) for stack_id in STACKS)
+    while True:
+        app_id = prompt_text("ID of another app (empty to finish)", "")
+        if not app_id:
+            return apps
+        if app_id in taken_ids:
+            print(warn(f"App `{app_id}` is already listed."))
+            continue
+        stack = prompt_multiselect(f"Stack of `{app_id}` (choose one)", stack_choices, allow_empty=False)[0]
+        stack_info = STACKS[stack]
+        entry: dict[str, Any] = {"id": app_id, "stack": stack, "name": prompt_text("Display name", app_id)}
+        repository = prompt_text("Repository ID (`workspace` is this repository)", WORKSPACE_REPOSITORY_ID)
+        if repository != WORKSPACE_REPOSITORY_ID:
+            entry["repository"] = repository
+            remote = prompt_text("Remote URL of that repository (empty if declared by an earlier app)", "")
+            if remote:
+                entry["remote"] = remote
+        entry["path"] = prompt_text("Path in its repository", stack_info.default_path or app_id)
+        audience = prompt_text("Audience (free text, empty for none)", "")
+        if audience:
+            entry["audience"] = audience
+        if repository == WORKSPACE_REPOSITORY_ID and stack in scaffoldable_stacks():
+            entry["generation"] = GENERATION_SCAFFOLDED if confirm(f"Scaffold `{app_id}` now? Otherwise it is only registered.", default=True) else GENERATION_REGISTERED
+        taken_ids.add(app_id)
+        apps.append(entry)
 
 
 def prompt_text(label: str, default: str | None = None) -> str:
@@ -1745,8 +1837,11 @@ def is_generation_safe_existing_destination(entries: list[Path]) -> bool:
     return has_git_dir
 
 
-# The questions Copier asks, plus the values it derives from them.
-ANSWER_KEYS = frozenset(GENERATION_ANSWER_FIELDS) | {"ios_module_name", "package_path"}
+# What an answers file may set: the questions of the workspace layer and the app list. The values Copier
+# derives (`ios_module_name`, `package_path`) are accepted for an answers file that records them.
+ANSWER_KEYS = frozenset(
+    {"project_name", "project_slug", "package_identifier", "description", "auth_methods", "github_org", "apps", "ios_module_name", "package_path"}
+)
 
 
 def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -1763,9 +1858,7 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
         if field_name in answers and not isinstance(answers[field_name], str):
             errors.append(f"{field_name} must be a string.")
 
-    platform_values = answers.get("platforms", [])
     auth_values = answers.get("auth_methods", [])
-    platforms = validate_choice_list("platforms", platform_values, {value for value, _label in ALL_PLATFORM_CHOICES}, errors)
     auth_methods = validate_choice_list("auth_methods", auth_values, {value for value, _label in ALL_AUTH_CHOICES}, errors)
 
     unknown_answers = sorted(key for key in answers if not key.startswith("_") and key not in ANSWER_KEYS)
@@ -1775,7 +1868,9 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
             f"Prism asks only for: {', '.join(sorted(ANSWER_KEYS))}."
         )
 
+    package = ""
     project_name = answers.get("project_name")
+    slug = ""
     if project_name or "project_slug" in answers:
         slug = answers.get("project_slug")
         if slug is None and isinstance(project_name, str):
@@ -1783,21 +1878,27 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
         if not isinstance(slug, str) or not SLUG_PATTERN.fullmatch(slug):
             errors.append("Project slug must start with a lowercase letter and contain lowercase letters, digits, and single hyphens.")
             slug = ""
-        package = answers.get("package_identifier", f"com.example.{slug.replace('-', '')}")
-        reserved = set("as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while abstract assert boolean byte case catch char const default double enum extends final finally float goto implements import instanceof int long native new private protected public short static strictfp switch synchronized throws transient void volatile".split())
-        if not isinstance(package, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", package) or any(part in reserved for part in package.split(".")):
+        package = answers.get("package_identifier", default_package_identifier(slug))
+        if not isinstance(package, str) or not PACKAGE_IDENTIFIER_PATTERN.fullmatch(package) or any(part in RESERVED_IDENTIFIERS for part in package.split(".")):
             errors.append("Package identifier must contain valid dot-separated Kotlin/Java identifiers, starting with letters and without reserved keywords.")
         module = answers.get("ios_module_name", slug.replace("-", " ").title().replace(" ", ""))
         if not isinstance(module, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", module):
             errors.append("iOS module name must be a valid Swift identifier.")
 
-    if not platforms:
-        errors.append("At least one platform must be selected.")
-    if platforms and "password" not in auth_methods:
+    apps: list[dict[str, Any]] = []
+    if "apps" not in answers:
+        errors.append("The app list is missing: name the workspace's apps under `apps` (an empty list is allowed).")
+    else:
+        apps, _repositories, app_errors = parse_app_list(answers["apps"])
+        errors.extend(app_errors)
+        if not app_errors:
+            errors.extend(validate_scaffold(apps))
+
+    if apps and "password" not in auth_methods:
         errors.append("Prism currently requires Username + Password auth as the baseline sign-in method.")
     if "apple" in auth_methods:
         warnings.append("Apple Sign-In remains experimental.")
-    if "mobile-ios" in platforms:
+    if any(app["stack"] == "ios-swiftui" and app["generation"] == GENERATION_SCAFFOLDED for app in apps):
         warnings.append("Validate iOS generation locally on macOS before treating it as build-proven.")
     return errors, warnings
 
@@ -1817,7 +1918,6 @@ def validate_choice_list(field_name: str, value: Any, allowed: set[str], errors:
 
 
 def render_summary(answers: dict[str, Any], dest_path: Path, template_path: str, warnings: list[str]) -> None:
-    platform_labels = dict(ALL_PLATFORM_CHOICES)
     auth_labels = dict(ALL_AUTH_CHOICES)
     body: list[str] = []
     body.append(colorize("Project", STYLE.bold, STYLE.blue))
@@ -1836,15 +1936,12 @@ def render_summary(answers: dict[str, Any], dest_path: Path, template_path: str,
     body.extend(review_key_value("Template", template_path, STYLE.dim))
 
     body.append("")
-    body.append(colorize("Stack", STYLE.bold, STYLE.blue))
-    body.extend(
-        review_key_value(
-            "Platforms",
-            ", ".join(platform_labels[p] for p in answers.get("platforms", [])),
-            STYLE.cyan,
-            STYLE.bold,
-        )
-    )
+    body.append(colorize("Apps", STYLE.bold, STYLE.blue))
+    app_lines = [
+        f"{app['id']} ({app['stack']}, {'scaffolded' if app.get('generation') == GENERATION_SCAFFOLDED else 'registered'}) at {app['path']}"
+        for app in answers.get("apps", [])
+    ]
+    body.extend(review_key_value("Apps", "; ".join(app_lines) or "None", STYLE.cyan, STYLE.bold))
     body.extend(
         review_key_value(
             "Auth",
@@ -1864,6 +1961,12 @@ def render_summary(answers: dict[str, Any], dest_path: Path, template_path: str,
 
 
 def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, vcs_ref: str | None = None) -> int:
+    """Generate a workspace: the workspace layer, then one app layer for each scaffolded app that has a pack.
+
+    ``answers`` holds the project answers and ``apps``: the manifest entries of every app, and the
+    ``repositories`` that external apps declare. Both layers come from one template, so one release tag covers them.
+    """
+
     dest_path = dest_path.expanduser().resolve()
     if dest_path.exists() and dest_path.is_file():
         print(error(f"Destination already exists as a file: {dest_path}"), file=sys.stderr)
@@ -1874,55 +1977,94 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, 
             print(error(f"Destination already exists and is not empty: {dest_path}"), file=sys.stderr)
             return EXIT_VALIDATION
 
+    apps = [dict(app) for app in answers.get("apps", [])]
+    repositories = [dict(item) for item in answers.get("repositories", [])]
+    project = {
+        "project_name": answers["project_name"],
+        "project_slug": answers["project_slug"],
+        "package_identifier": answers.get("package_identifier") or default_package_identifier(answers["project_slug"]),
+    }
+    ports = assign_ports(apps)
+    workspace_answers = {key: value for key, value in answers.items() if key not in ("apps", "repositories") and not key.startswith("_")}
+    workspace_answers.update(workspace_data(project, apps, ports))
+    layers: list[tuple[Layer, dict[str, Any]]] = [(Layer(name=WORKSPACE_LAYER, answers_file=COPIER_ANSWERS_FILE), workspace_answers)]
+    for app in apps:
+        if app.get("generation") == GENERATION_SCAFFOLDED and has_pack(app["stack"]):
+            layer = Layer(name=app["id"], answers_file=app_answers_path(app["path"]), app_id=app["id"], app_path=app["path"])
+            layers.append((layer, pack_answers(project, app, port=ports.get(app["id"]))))
+
     print(section("Generating"))
     print(info("Running Copier with the resolved Prism configuration..."))
     if vcs_ref:
         print(info(f"Default generation requires the matching template release tag `{vcs_ref}`."))
     print()
 
+    event_count = 0
     using_staged_template = should_stage_template_path(template_path)
     with staged_template_path(template_path) as effective_template:
         if using_staged_template:
             print(info("Using a temporary clean copy of the local template for generation."))
-        command = [sys.executable, "-m", "copier", "copy", "--trust", "--defaults", "--answers-file", COPIER_ANSWERS_FILE]
-        if vcs_ref:
-            command.extend(["--vcs-ref", vcs_ref])
-        for key, value in answers.items():
-            if key.startswith("_"):
-                continue
-            command.extend(["--data", f"{key}={format_data_value(value)}"])
-        # This private context value lets the template carry truthful CLI
-        # provenance even when the manifest post-processing step is skipped.
-        command.extend(["--data", f"_prism_cli_version={__version__}"])
-        command.extend([str(effective_template), str(dest_path)])
-        result = run_copier_generation_process(command, REPO_ROOT, capture_stderr=bool(vcs_ref))
-        if result["returncode"] != 0 and vcs_ref and is_missing_template_tag_failure(vcs_ref, result):
-            print(error(missing_template_tag_message(vcs_ref)), file=sys.stderr)
-            return EXIT_VALIDATION
-        if result.get("stderr"):
-            print(result["stderr"], end="", file=sys.stderr)
-        if result["returncode"] != 0:
-            print(error("Copier generation failed."), file=sys.stderr)
-            if result["tail"]:
-                print(panel("Copier output", list(result["tail"])), file=sys.stderr)
-            return EXIT_COPIER
-        ensure_copier_answers_file(dest_path, template_path, answers)
-    if not refresh_workspace_manifest(dest_path, template_path, answers):
+        for layer, data in layers:
+            if not layer.is_workspace:
+                print(info(f"Generating app `{layer.name}` at `{layer.app_path}`..."))
+            command = copier_copy_command(effective_template, dest_path, data, answers_file=layer.answers_file, vcs_ref=vcs_ref, cli_version=layer.is_workspace)
+            result = run_copier_generation_process(command, REPO_ROOT, capture_stderr=bool(vcs_ref))
+            if result["returncode"] != 0 and vcs_ref and is_missing_template_tag_failure(vcs_ref, result):
+                print(error(missing_template_tag_message(vcs_ref)), file=sys.stderr)
+                return EXIT_VALIDATION
+            if result.get("stderr"):
+                print(result["stderr"], end="", file=sys.stderr)
+            if result["returncode"] != 0:
+                what = "Copier generation failed." if layer.is_workspace else f"Copier generation failed for app `{layer.name}`."
+                print(error(what), file=sys.stderr)
+                if result["tail"]:
+                    print(panel("Copier output", list(result["tail"])), file=sys.stderr)
+                return EXIT_COPIER
+            event_count += result["event_count"]
+            ensure_copier_answers_file(dest_path, template_path, data, answers_relpath=layer.answers_file)
+    manifest_answers = {key: answers[key] for key in ("project_name", "project_slug", "package_identifier", "description", "auth_methods", "github_org") if key in answers}
+    if not refresh_workspace_manifest(dest_path, template_path, manifest_answers, apps=apps, repositories=repositories):
         return EXIT_VALIDATION
 
     print()
-    if result["event_count"]:
-        print(success(f"Generated {result['event_count']} file updates in {dest_path.name}."))
+    if event_count:
+        print(success(f"Generated {event_count} file updates in {dest_path.name}."))
         print()
     next_steps = [
         f"Open the generated repo: {dest_path}",
         "Read README.md and AGENTS.md",
         "Run setup-project inside the generated repository",
         "Watch your product truth take shape: prism wiki graph --serve",
-        "Validate the selected platform slices before treating them as settled",
+        "Build and test each scaffolded app before treating its slice as settled",
     ]
     print(panel("Success", next_steps))
     return 0
+
+
+def copier_copy_command(
+    template: Any,
+    dest_path: Path,
+    data: dict[str, Any],
+    *,
+    answers_file: str,
+    vcs_ref: str | None,
+    cli_version: bool = False,
+) -> list[str]:
+    """The `copier copy` command of one layer: its answers file, its answers as data and the template."""
+
+    command = [sys.executable, "-m", "copier", "copy", "--trust", "--defaults", "--answers-file", answers_file]
+    if vcs_ref:
+        command.extend(["--vcs-ref", vcs_ref])
+    for key, value in data.items():
+        if key.startswith("_"):
+            continue
+        command.extend(["--data", f"{key}={format_data_value(value)}"])
+    if cli_version:
+        # This private context value lets the template carry truthful CLI
+        # provenance even when the manifest post-processing step is skipped.
+        command.extend(["--data", f"_prism_cli_version={__version__}"])
+    command.extend([str(template), str(dest_path)])
+    return command
 
 
 def parse_copier_progress_line(line: str) -> tuple[str, str] | None:
@@ -2033,88 +2175,405 @@ def run_copier_generation_process(command: list[str], cwd: Path, *, capture_stde
     return {"returncode": returncode, "event_count": event_count, "tail": list(output_tail)}
 
 
+def plan_update_layers(project_path: Path) -> tuple[list[Layer], list[str]]:
+    """The layers `prism update` brings along: the workspace layer, then each active scaffolded app that has a pack.
+
+    A scaffolded app whose own answers file is missing cannot be updated; that is a problem, reported before anything changes.
+    """
+
+    layers = [Layer(name=WORKSPACE_LAYER, answers_file=COPIER_ANSWERS_FILE)]
+    problems: list[str] = []
+    try:
+        manifest = load_workspace_manifest(project_path / MANIFEST_FILE)
+    except ManifestUpdateError as exc:
+        return layers, [f"Unable to read {MANIFEST_FILE}: {exc}"]
+    model, _diagnostics = normalize_manifest(manifest, path=project_path / MANIFEST_FILE)
+    for app in model.workspace_apps(active_only=True):
+        if not app.scaffolded or not has_pack(app.stack):
+            continue
+        recorded = read_app_answers(project_path, app.path)
+        if recorded is None or "_src_path" not in recorded:
+            problems.append(f"App `{app.id}` is scaffolded, but `{app_answers_path(app.path)}` is missing or does not record its template.")
+            continue
+        layers.append(Layer(name=app.id, answers_file=app_answers_path(app.path), app_id=app.id, app_path=app.path))
+    return layers, problems
+
+
+def workspace_layer_data_from_manifest(project_path: Path) -> dict[str, Any]:
+    """The answers the manifest decides for the workspace layer: the stacks and the app list of its scaffolded apps.
+
+    A retired app stays on the list: retiring changes only its manifest entry, so the workspace layer keeps
+    rendering its files (a full sample's directory, its compose service and task include) until its code is removed.
+    """
+
+    manifest = load_workspace_manifest(project_path / MANIFEST_FILE)
+    model, _diagnostics = normalize_manifest(manifest, path=project_path / MANIFEST_FILE)
+    apps = [
+        {"id": app.id, "name": app.name, "stack": app.stack, "path": app.path, "audience": app.audience, "generation": app.generation}
+        for app in model.workspace_apps()
+        if app.scaffolded
+    ]
+    ports: dict[str, int | None] = {}
+    for app in apps:
+        recorded = read_app_answers(project_path, app["path"]) if has_pack(app["stack"]) else None
+        port = recorded.get("port") if recorded else None
+        ports[app["id"]] = port if isinstance(port, int) and not isinstance(port, bool) else None
+    data = workspace_data({}, apps, ports)
+    return {"stacks": data["stacks"], "apps": data["apps"]}
+
+
 def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy: str) -> int:
+    """Bring every layer of a generated workspace to one template revision, on an update branch with one commit per layer.
+
+    The workspace layer goes first, then each scaffolded app from its own answers file. Copier needs a clean
+    git tree for each update, so each layer is committed before the next. Copier exits 0 on a conflict, so
+    after each layer the CLI scans for `.rej` files and conflict markers and reports per layer. The branch is
+    left checked out for the user to review and merge; when any layer conflicted, the update stops there and
+    names the layers to resolve first.
+    """
+
     src_path = str(answers_data["_src_path"])
     manifest_plan = None
     print(section("Updating"))
+    layers, problems = plan_update_layers(project_path)
+    if problems:
+        for message in problems:
+            print(error(message), file=sys.stderr)
+        return EXIT_VALIDATION
+    if not has_commit_identity(project_path):
+        print(error("`prism update` commits each layer on an update branch, and git does not know who you are."), file=sys.stderr)
+        print(info("Set `git config user.name` and `git config user.email` in this project, then retry."), file=sys.stderr)
+        return EXIT_VALIDATION
+
     if strategy == "update":
         revision = answers_data.get("_commit")
         if not isinstance(revision, str) or not revision.strip():
             print(error("Copier smart update requires a trustworthy versioned template baseline."), file=sys.stderr)
             print(info("Use `prism update --strategy recopy` to explicitly reapply an unversioned template snapshot."), file=sys.stderr)
             return EXIT_VALIDATION
+        for layer in layers[1:]:
+            recorded = read_app_answers(project_path, layer.app_path) or {}
+            if not has_trustworthy_template_baseline(recorded.get("_src_path"), recorded):
+                print(error(f"App `{layer.name}` records an unversioned or unknown template snapshot, so Copier cannot update it."), file=sys.stderr)
+                print(info("Use `prism update --strategy recopy` to explicitly reapply the template."), file=sys.stderr)
+                return EXIT_VALIDATION
         try:
             manifest_plan = prepare_manifest_update(project_path, revision)
         except ManifestUpdateError as exc:
             print(error(f"Unable to safely update {MANIFEST_FILE}: {exc}"), file=sys.stderr)
             print(info("Resolve the manifest issue or conflict, commit the project, then retry."), file=sys.stderr)
             return EXIT_VALIDATION
-
-        print(info("Running Copier update with Prism-managed guardrails..."))
+        branch = f"prism-update-{branch_safe(manifest_plan.target_label or manifest_plan.target_ref[:8])}"
+        print(info("Running Copier update, one layer at a time, with Prism-managed guardrails..."))
     else:
-        print(info("Running Copier recopy with Prism-managed guardrails..."))
+        branch = f"prism-recopy-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        print(info("Running Copier recopy, one layer at a time, with Prism-managed guardrails..."))
         print(warn("Recopy reapplies the template with the saved answers and does not preserve manual drift like `copier update`."))
     print()
 
-    if strategy == "update":
-        temp_answers_name = None
-        temp_answers_path = None
-        command = [sys.executable, "-m", "copier", "update", "--trust", "--defaults"]
-        command.extend(["--vcs-ref", manifest_plan.target_ref, "--skip", MANIFEST_FILE])
-        command.extend(["--data", f"_prism_cli_version={__version__}"])
-    else:
-        temp_answers_name = ".copier-answers.prism-recopy.yml"
-        temp_answers_path = project_path / temp_answers_name
+    try:
+        if branch_exists(project_path, branch):
+            print(error(f"The update branch `{branch}` already exists."), file=sys.stderr)
+            print(info("Merge or delete it, then retry."), file=sys.stderr)
+            return EXIT_VALIDATION
+        original = current_branch(project_path)
+        data_for_workspace = workspace_layer_data_from_manifest(project_path)
+        create_branch(project_path, branch)
+    except (GitError, ManifestUpdateError) as exc:
+        print(error(str(exc)), file=sys.stderr)
+        return EXIT_VALIDATION
+    print(info(f"Updating on branch `{branch}`; the layers are committed one by one."))
+    print()
 
+    results: list[LayerResult] = []
     using_staged_template = should_stage_template_path(src_path)
     with staged_template_path(src_path) as effective_template:
-        if strategy == "recopy":
-            updated_answers = dict(answers_data)
-            updated_answers["_src_path"] = str(effective_template)
+        if strategy == "recopy" and using_staged_template:
+            print(info("Using a temporary clean copy of the local template for recopy."))
+        for layer in layers:
+            result = update_layer(
+                project_path,
+                layer,
+                strategy,
+                answers_data=answers_data,
+                effective_template=effective_template,
+                src_path=src_path,
+                manifest_plan=manifest_plan,
+                workspace_answers=data_for_workspace,
+            )
+            results.append(result)
+            if result.outcome == "failed":
+                break
+
+    return report_update(project_path, branch, original, results, layers_total=len(layers), strategy=strategy)
+
+
+def manifest_apps_snapshot(project_path: Path) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
+    """The apps and repositories a workspace's manifest declares, as written, or ``None`` when it cannot be read."""
+
+    try:
+        data = yaml.safe_load((project_path / MANIFEST_FILE).read_text(encoding="utf-8-sig")) or {}
+    except (OSError, UnicodeError, yaml.YAMLError, ValueError, OverflowError):
+        return None, None
+    if not isinstance(data, dict):
+        return None, None
+    apps = data.get("apps")
+    repositories = data.get("repositories")
+    return (
+        [dict(item) for item in apps if isinstance(item, dict)] if isinstance(apps, list) else None,
+        [dict(item) for item in repositories if isinstance(item, dict)] if isinstance(repositories, list) else None,
+    )
+
+
+def branch_safe(label: str) -> str:
+    """A git branch name part from a template revision label."""
+
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", label).strip("-.")
+    return cleaned or "update"
+
+
+def update_layer(
+    project_path: Path,
+    layer: Layer,
+    strategy: str,
+    *,
+    answers_data: dict[str, Any],
+    effective_template: Any,
+    src_path: str,
+    manifest_plan: Any,
+    workspace_answers: dict[str, Any],
+) -> LayerResult:
+    """Update one layer with Copier, then scan it for conflicts and commit it."""
+
+    label = "workspace layer" if layer.is_workspace else f"app `{layer.name}`"
+    print(info(f"Updating the {label}..."))
+    if layer.is_workspace:
+        layer_answers = answers_data
+    else:
+        layer_answers = read_app_answers(project_path, layer.app_path) or {}
+
+    # A recopy renders the template's manifest again, which names no apps: the workspace keeps its own.
+    recorded_apps, recorded_repositories = manifest_apps_snapshot(project_path) if layer.is_workspace and strategy == "recopy" else (None, None)
+    temp_answers_path: Path | None = None
+    try:
+        if strategy == "update":
+            command = [sys.executable, "-m", "copier", "update", "--trust", "--defaults", "--conflict", "inline"]
+            command.extend(["--vcs-ref", manifest_plan.target_ref, "--answers-file", layer.answers_file])
+            if layer.is_workspace:
+                command.extend(["--skip", MANIFEST_FILE, "--data", f"_prism_cli_version={__version__}"])
+                for key, value in workspace_answers.items():
+                    command.extend(["--data", f"{key}={format_data_value(value)}"])
+        else:
+            temp_relative = f"{layer.answers_file[: -len(COPIER_ANSWERS_FILE)]}.copier-answers.prism-recopy.yml"
+            temp_answers_path = project_path / temp_relative
+            recorded = dict(layer_answers)
+            recorded["_src_path"] = str(effective_template)
             with temp_answers_path.open("w", encoding="utf-8") as handle:
-                yaml.safe_dump(updated_answers, handle, sort_keys=False)
-            command = [sys.executable, "-m", "copier", "recopy", "--trust", "--defaults", "--overwrite", "--answers-file", temp_answers_name]
-            command.extend(["--data", f"_prism_cli_version={__version__}"])
-        if using_staged_template:
-            print(info(f"Using a temporary clean copy of the local template for {strategy}."))
+                yaml.safe_dump(recorded, handle, sort_keys=False)
+            command = [sys.executable, "-m", "copier", "recopy", "--trust", "--defaults", "--overwrite", "--answers-file", temp_relative]
+            if layer.is_workspace:
+                command.extend(["--data", f"_prism_cli_version={__version__}"])
+        command.append(str(project_path))
+        completed = subprocess.run(command, cwd=str(project_path))
+        if completed.returncode == 0 and temp_answers_path is not None and temp_answers_path.exists():
+            shutil.copyfile(temp_answers_path, project_path / layer.answers_file)
+    finally:
+        if temp_answers_path is not None and temp_answers_path.exists():
+            temp_answers_path.unlink()
 
-        try:
-            command.append(str(project_path))
-            result = subprocess.run(command, cwd=str(project_path))
-            if result.returncode == 0 and temp_answers_path and temp_answers_path.exists():
-                shutil.copyfile(temp_answers_path, project_path / COPIER_ANSWERS_FILE)
-        finally:
-            if temp_answers_path and temp_answers_path.exists():
-                temp_answers_path.unlink()
+    if completed.returncode != 0:
+        print(error(f"Updating the {label} failed."), file=sys.stderr)
+        if strategy == "update" and layer.is_workspace:
+            print(info("If this project was generated from the local incubation template, retry with `prism update --strategy recopy`."), file=sys.stderr)
+        return LayerResult(layer, "failed", detail=f"Copier exited with {completed.returncode}")
 
-        if result.returncode != 0:
-            if strategy == "update":
-                print(error("Project update failed."), file=sys.stderr)
-                print(info("If this project was generated from the local incubation template, retry with `prism update --strategy recopy`."), file=sys.stderr)
-            else:
-                print(error("Project recopy failed."), file=sys.stderr)
-            return EXIT_COPIER
+    if layer.is_workspace:
+        ensure_copier_answers_file(project_path, src_path, {})
+        if not refresh_workspace_manifest(
+            project_path,
+            src_path,
+            answers_data,
+            manifest_data=manifest_plan.manifest if manifest_plan else None,
+            expected_manifest_bytes=manifest_plan.source_manifest_bytes if manifest_plan else None,
+            apps=recorded_apps,
+            repositories=recorded_repositories,
+        ):
+            return LayerResult(layer, "failed", detail="the manifest could not be written")
+    elif strategy == "recopy":
+        ensure_copier_answers_file(project_path, src_path, {}, answers_relpath=layer.answers_file)
 
-    ensure_copier_answers_file(project_path, src_path, {})
-    if not refresh_workspace_manifest(
-        project_path,
-        src_path,
-        answers_data,
-        manifest_data=manifest_plan.manifest if manifest_plan else None,
-        expected_manifest_bytes=manifest_plan.source_manifest_bytes if manifest_plan else None,
-    ):
-        return EXIT_VALIDATION
+    try:
+        conflicts = scan_conflicts(project_path)
+        changed = bool(changed_paths(project_path))
+        commit = commit_layer(project_path, update_commit_message(layer, strategy, manifest_plan, conflicts))
+    except GitError as exc:
+        print(error(str(exc)), file=sys.stderr)
+        return LayerResult(layer, "failed", detail=str(exc))
+    if conflicts:
+        return LayerResult(layer, "conflicted", conflicts=conflicts, commit=commit)
+    return LayerResult(layer, "updated" if changed and commit else "unchanged", commit=commit)
+
+
+def update_commit_message(layer: Layer, strategy: str, manifest_plan: Any, conflicts: list[str]) -> str:
+    verb = "Recopy" if strategy == "recopy" else "Update"
+    label = "workspace layer" if layer.is_workspace else f"app {layer.name}"
+    target = f" to {manifest_plan.target_label or manifest_plan.target_ref[:8]}" if manifest_plan else ""
+    message = f"{verb} {label}{target}"
+    if conflicts:
+        message += f"\n\nUnresolved conflicts in {len(conflicts)} file(s):\n" + "\n".join(f"- {path}" for path in conflicts)
+    return message
+
+
+def report_update(
+    project_path: Path,
+    branch: str,
+    original: str | None,
+    results: list[LayerResult],
+    *,
+    layers_total: int,
+    strategy: str,
+) -> int:
+    """Report each layer, and say what to do next. Returns the exit code."""
 
     print()
-    if strategy == "update":
-        print(success("Project update finished. Review the changes before committing."))
-    else:
-        print(success("Project recopy finished. Review the regenerated changes before committing."))
+    lines: list[str] = []
+    for result in results:
+        name = "workspace layer" if result.layer.is_workspace else f"app {result.layer.name}"
+        if result.outcome == "conflicted":
+            lines.append(f"{name}: CONFLICT in {len(result.conflicts)} file(s), committed as {result.commit}")
+            lines.extend(f"    {path}" for path in result.conflicts)
+        elif result.outcome == "updated":
+            lines.append(f"{name}: updated, committed as {result.commit}")
+        elif result.outcome == "unchanged":
+            lines.append(f"{name}: already up to date")
+        else:
+            lines.append(f"{name}: FAILED ({result.detail})")
+    skipped = layers_total - len(results)
+    if skipped:
+        lines.append(f"{skipped} later layer(s) were not updated.")
+    print(panel("Update report", lines))
+    print()
+
+    return_to = f"git switch {original}" if original else "git switch -"
+    if any(result.outcome == "failed" for result in results):
+        print(error("The update stopped at a failed layer."), file=sys.stderr)
+        print(info(f"Run `git status` on branch `{branch}` to see what was applied. To abandon the update: `{return_to}` then `git branch -D {branch}`."), file=sys.stderr)
+        return EXIT_COPIER
+    conflicted = [result.layer for result in results if result.outcome == "conflicted"]
+    if conflicted:
+        names = ", ".join("the workspace layer" if layer.is_workspace else f"app `{layer.name}`" for layer in conflicted)
+        print(error(f"Update stopped before merging: {names} conflicted."), file=sys.stderr)
+        print(info(f"The branch `{branch}` holds one commit per layer, with the conflicts as `<<<<<<<` markers. Resolve them there, commit, then merge it: `{return_to}` and `git merge {branch}`."), file=sys.stderr)
+        return EXIT_UPDATE_CONFLICT
+    verb = "recopy" if strategy == "recopy" else "update"
+    print(success(f"Project {verb} finished on branch `{branch}`, one commit per layer. Review it, then merge it: `{return_to}` and `git merge --ff-only {branch}`."))
     return 0
 
 
-def ensure_copier_answers_file(dest_path: Path, template_path: str, answers: dict[str, Any]) -> None:
-    answers_path = dest_path / COPIER_ANSWERS_FILE
+def scaffold_app(
+    workspace: Path,
+    app: dict[str, Any],
+    scaffold: dict[str, Any],
+    *,
+    write_manifest: Any,
+    trust_template: bool = False,
+) -> dict[str, Any]:
+    """Generate one new app into a generated workspace, on a branch with one commit per layer.
+
+    The workspace layer is brought in line with the new app list first: Copier updates it at the revision the
+    workspace already records, with the new app in its data, so its compose file, task includes and guidance
+    list the app. The app layer then comes from that same revision, with its own answers file, and
+    ``write_manifest`` records the app. Returns the receipt fields: ``status`` (``applied`` or ``conflict``),
+    ``conflicts``, ``branch`` and ``commits``. Nothing is printed, so a JSON receipt stays clean.
+    """
+
+    problems: list[str] = []
+    answers = load_copier_answers(workspace / COPIER_ANSWERS_FILE)
+    if answers is None:
+        return {"status": "conflict", "conflicts": [f"The workspace's {COPIER_ANSWERS_FILE} is missing or unreadable."]}
+    src_path = str(answers["_src_path"])
+    ref = answers.get("_commit")
+    if not has_trustworthy_template_baseline(src_path, answers):
+        problems.append("The workspace records an unversioned or unknown template snapshot, so its template tag is unknown.")
+    repo_state = inspect_git_worktree(workspace)
+    if not is_direct_git_worktree(workspace, repo_state):
+        problems.append("The workspace must be its own git repository to scaffold an app.")
+    elif repo_state["is_dirty"]:
+        problems.append("The working tree is not clean; commit or stash your changes, then retry.")
+    elif not has_commit_identity(workspace):
+        problems.append("Git does not know who commits; set `git config user.name` and `user.email` in this project.")
+    if not template_is_trusted(src_path, trust_template):
+        problems.append(f"The workspace's template `{src_path}` can execute code; review it and pass `--trust-template`.")
+    branch = str(scaffold["branch"])
+    try:
+        if not problems and branch_exists(workspace, branch):
+            problems.append(f"The branch `{branch}` already exists; merge or delete it, then retry.")
+    except GitError as exc:
+        problems.append(str(exc))
+    if problems:
+        return {"status": "conflict", "conflicts": problems}
+
+    project = {key: answers[key] for key in ("project_name", "project_slug", "package_identifier")}
+    port = scaffold.get("port")
+    try:
+        layer_data = workspace_layer_data_from_manifest(workspace)
+    except ManifestUpdateError as exc:
+        return {"status": "conflict", "conflicts": [f"Unable to read {MANIFEST_FILE}: {exc}"]}
+    new_entry = {"id": app["id"], "name": app.get("name") or app["id"], "stack": app["stack"], "path": app["path"], "audience": app.get("audience") or "", "port": port or 0}
+    apps_data = [*layer_data["apps"], new_entry]
+    stacks_data = sorted({entry["stack"] for entry in apps_data})
+
+    def run_quietly(command: list[str]) -> tuple[bool, str]:
+        completed = subprocess.run(command, cwd=str(workspace), capture_output=True, text=True, errors="replace")
+        return completed.returncode == 0, "\n".join(((completed.stdout or "") + (completed.stderr or "")).strip().splitlines()[-8:])
+
+    abandon = f"To abandon it: `git switch {current_branch(workspace) or '-'}` then `git branch -D {branch}`."
+    commits: list[str] = []
+    conflicts: list[str] = []
+    try:
+        create_branch(workspace, branch)
+        workspace_command = [sys.executable, "-m", "copier", "update", "--trust", "--defaults", "--conflict", "inline"]
+        workspace_command.extend(["--vcs-ref", str(ref), "--answers-file", COPIER_ANSWERS_FILE, "--skip", MANIFEST_FILE])
+        workspace_command.extend(["--data", f"_prism_cli_version={__version__}"])
+        workspace_command.extend(["--data", f"stacks={format_data_value(stacks_data)}", "--data", f"apps={format_data_value(apps_data)}"])
+        workspace_command.append(str(workspace))
+        ok, output = run_quietly(workspace_command)
+        if not ok:
+            return {"status": "conflict", "branch": branch, "conflicts": [f"Updating the workspace layer failed: {output}", abandon]}
+        workspace_conflicts = scan_conflicts(workspace)
+        conflicts.extend(f"{path} (workspace layer)" for path in workspace_conflicts)
+        note = f"\n\nUnresolved conflicts in {len(workspace_conflicts)} file(s)" if workspace_conflicts else ""
+        commit = commit_layer(workspace, f"Scaffold {app['id']}: workspace layer{note}")
+        if commit:
+            commits.append(commit)
+
+        data = pack_answers(project, app, port=port)
+        app_command = copier_copy_command(src_path, workspace, data, answers_file=app_answers_path(app["path"]), vcs_ref=str(ref))
+        ok, output = run_quietly(app_command)
+        if not ok:
+            return {"status": "conflict", "branch": branch, "commits": commits, "conflicts": [f"Generating app `{app['id']}` failed: {output}", abandon]}
+        ensure_copier_answers_file(workspace, src_path, data, answers_relpath=app_answers_path(app["path"]))
+        write_manifest()
+        app_conflicts = scan_conflicts(workspace)
+        conflicts.extend(f"{path} (app layer)" for path in app_conflicts)
+        commit = commit_layer(workspace, f"Scaffold {app['id']}: app layer and manifest")
+        if commit:
+            commits.append(commit)
+    except (GitError, OSError, ValueError) as exc:
+        return {"status": "conflict", "branch": branch, "commits": commits, "conflicts": [str(exc), abandon]}
+    if conflicts:
+        details = [f"Unresolved conflict in {item}" for item in conflicts]
+        details.append(f"The branch `{branch}` holds the work; resolve the markers there, commit, then merge it.")
+        return {"status": "conflict", "branch": branch, "commits": commits, "conflicts": details}
+    return {"status": "applied", "conflicts": [], "branch": branch, "commits": commits}
+
+
+def ensure_copier_answers_file(dest_path: Path, template_path: str, answers: dict[str, Any], *, answers_relpath: str = COPIER_ANSWERS_FILE) -> None:
+    answers_path = dest_path / answers_relpath
+    if is_remote_template(template_path) and answers_path.exists():
+        # Copier recorded the template and its revision itself. Its rendering of this file is what a later
+        # `copier update` compares against, so the file stays exactly as Copier wrote it.
+        return
     remembered_answers: dict[str, Any] = {}
     if answers_path.exists():
         with contextlib.suppress(OSError, UnicodeError, yaml.YAMLError, ValueError, OverflowError):
@@ -2139,8 +2598,10 @@ def refresh_workspace_manifest(
     *,
     manifest_data: dict[str, Any] | None = None,
     expected_manifest_bytes: bytes | None = None,
+    apps: list[dict[str, Any]] | None = None,
+    repositories: list[dict[str, Any]] | None = None,
 ) -> bool:
-    """Record known generation metadata after an explicit copy/update."""
+    """Record known generation metadata after an explicit copy/update, and the chosen apps after a generation."""
 
     effective_answers = dict(answers)
     recorded_answers = load_copier_answers(destination / COPIER_ANSWERS_FILE)
@@ -2164,6 +2625,8 @@ def refresh_workspace_manifest(
                 template_source=normalize_template_path(template_path),
                 template_version=template_version,
                 template_commit=template_commit,
+                apps=apps,
+                repositories=repositories,
             )
         else:
             with tempfile.TemporaryDirectory(prefix="prism-manifest-") as temp_dir:
@@ -2259,6 +2722,9 @@ def staged_template_path(template_path: str):
 def format_data_value(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, (list, dict)) and not (isinstance(value, list) and all(isinstance(item, str) for item in value)):
+        # Nested values go through as JSON, which is also YAML.
+        return json.dumps(value)
     if isinstance(value, list):
         return "[" + ", ".join(str(item) for item in value) + "]"
     return str(value)
@@ -2277,10 +2743,16 @@ def is_remote_template(template_path: str) -> bool:
     )
 
 
-def ensure_template_trust(template_path: str, explicitly_trusted: bool = False) -> bool:
+def template_is_trusted(template_path: str, explicitly_trusted: bool = False) -> bool:
+    """Whether a template may execute code without asking: the canonical one, this checkout, or one the user trusted."""
+
     canonical = {DEFAULT_TEMPLATE_URL, DEFAULT_TEMPLATE_URL.removesuffix(".git"), "gh:mo0rti/prism"}
     local_maintainer = (REPO_ROOT / "copier.yml").is_file() and not is_remote_template(template_path) and Path(template_path).expanduser().resolve() == REPO_ROOT
-    if explicitly_trusted or template_path in canonical or local_maintainer:
+    return bool(explicitly_trusted or template_path in canonical or local_maintainer)
+
+
+def ensure_template_trust(template_path: str, explicitly_trusted: bool = False) -> bool:
+    if template_is_trusted(template_path, explicitly_trusted):
         return True
     print(warn(f"Custom template `{template_path}` can execute Python extensions, hooks, and validation scripts."))
     if sys.stdin.isatty() and confirm("Trust this template to execute code?", default=False):

@@ -84,5 +84,5 @@ This is valid in the current backend implementation. For example:
 ## Related Docs
 
 - [Architecture Overview](../architecture.md) for platform boundaries and auth flow
-{% if "backend" in platforms %}- [Backend Guide](../../backend/docs/guide.md) for exception, module, and migration conventions
-{% endif %}- [OpenAPI Contract](../../shared/api-contracts/openapi.yml) for the source-of-truth endpoint definitions
+{% for app in apps if app.stack == "spring-backend" %}- [{{ app.name }} Guide](../../{{ app.path }}/docs/guide.md) for exception, module, and migration conventions
+{% endfor %}- [OpenAPI Contract](../../shared/api-contracts/openapi.yml) for the source-of-truth endpoint definitions

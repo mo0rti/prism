@@ -39,8 +39,8 @@ Load only the reference file the task needs:
 ## Cross-check sources
 
 - Use `shared/api-contracts/openapi.yml` as the primary source for endpoint shapes.
-{% if "backend" in platforms %}- Use `backend/` to confirm behavior when the spec is ambiguous.
-{% endif %}{% if "mobile-android" in platforms %}- Use `mobile-android/` to confirm parity expectations when iOS should mirror Android behavior.
+{% if "spring-backend" in stacks %}- Use `backend/` to confirm behavior when the spec is ambiguous.
+{% endif %}{% if "android-compose" in stacks %}- Use `mobile-android/` to confirm parity expectations when iOS should mirror Android behavior.
 {% endif %}
 
 ## Validation
