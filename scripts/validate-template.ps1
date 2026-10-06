@@ -224,7 +224,7 @@ function New-GeneratedProject {
     $target = Join-Path $OutputRoot $Name
     Remove-TreeIfExists -Path $target
 
-    $arguments = @("copy", "--trust", "--defaults")
+    $arguments = @("copy", "--trust", "--defaults", "--vcs-ref", "HEAD")
     foreach ($dataArg in $DataArgs) {
         $arguments += "--data"
         $arguments += $dataArg
@@ -329,7 +329,8 @@ function Validate-WikiStructure {
 
     # Current wiki usability artifacts
     Assert-PathExists -Path (Join-Path $Root "prism.workspace.yml") -Message "Generated project missing prism.workspace.yml."
-    Assert-FileContains -Path (Join-Path $Root "prism.workspace.yml") -Needle "schema_version: 1" -Message "prism.workspace.yml must declare schema_version: 1."
+    Assert-FileContains -Path (Join-Path $Root "prism.workspace.yml") -Needle "schema_version: 2" -Message "prism.workspace.yml must declare schema_version: 2."
+    Assert-FileContains -Path (Join-Path $Root "prism.workspace.yml") -Needle "apps:" -Message "prism.workspace.yml must declare the workspace apps."
     Assert-FileContains -Path (Join-Path $Root "prism.workspace.yml") -Needle "min_prism_cli_version:" -Message "prism.workspace.yml must declare min_prism_cli_version."
     Assert-FileContains -Path (Join-Path $Root "prism.workspace.yml") -Needle "wiki_root: knowledge/wiki" -Message "prism.workspace.yml must point to knowledge/wiki."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\SETTINGS.md") -Message "Generated project missing knowledge/wiki/SETTINGS.md."
