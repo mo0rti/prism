@@ -49,7 +49,7 @@ An entry in `apps` has these fields.
 
 `app_maturity` maps an app ID to `level` and `caveat`. Status shows each app's entry as `maturity`, and prints the caveats.
 
-`prism new` records the apps you list in the manifest, each `scaffolded` or `registered`; a preset is an app list with the IDs `backend`, `web-user-app`, `web-admin-portal`, `mobile-android` and `mobile-ios`, each in the `workspace` repository ([questionnaire.md](questionnaire.md)).
+`prism new` records the apps you list in the manifest, each `scaffolded` or `registered`; a preset is an app list with the IDs `backend`, `web`, `mobile-android` and `mobile-ios`, each in the `workspace` repository ([questionnaire.md](questionnaire.md)).
 
 `min_prism_cli_version` is the version of the CLI that wrote the manifest. An older CLI reports `minimum-prism-cli-version-not-met`.
 

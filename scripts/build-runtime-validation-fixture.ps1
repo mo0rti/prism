@@ -47,8 +47,8 @@ answers:
     - {id: backend, stack: spring-backend, name: Spring Boot Backend}
     - {id: mobile-android, stack: android-compose, name: Android (Kotlin/Compose)}
     - {id: mobile-ios, stack: ios-swiftui, name: iOS (Swift/SwiftUI)}
-    - {id: web-user-app, stack: nextjs-web, name: User-Facing Web App}
-    - {id: web-admin-portal, stack: nextjs-web, name: Admin Web Portal}
+    - {id: web, stack: nextjs-web, name: Web App}
+    - {id: admin, stack: nextjs-web, name: Admin App}
 '@
 [System.IO.File]::WriteAllText($answersFile, $answers.Replace("`r`n", "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
 
@@ -185,7 +185,7 @@ id: F-010
 title: Saved Checkout
 status: ready-for-dev
 owner: dev
-apps: [backend, mobile-android, mobile-ios, web-user-app]
+apps: [backend, mobile-android, mobile-ios, web]
 sources: [knowledge/intake/fixture/offline-checkout.md]
 advisory-review: done
 ---
@@ -209,7 +209,7 @@ As a returning customer, I want to finish checkout quickly, so that I can place 
 - **backend**: Validate saved address and payment preference payloads for offline checkout recovery.
 - **mobile-android**: Pre-fill checkout with the saved address and show invalid-state handling.
 - **mobile-ios**: Pre-fill checkout with the saved address and show invalid-state handling.
-- **web-user-app**: Reuse saved checkout details in the account dashboard flow.
+- **web**: Reuse saved checkout details in the account dashboard flow.
 
 ## Design
 See `knowledge/wiki/design/F-010-saved-checkout.md`.
@@ -233,7 +233,7 @@ id: F-011
 title: Nutrition Score
 status: ready-for-design
 owner: designer
-apps: [mobile-android, mobile-ios, web-user-app]
+apps: [mobile-android, mobile-ios, web]
 sources: [knowledge/intake/fixture/nutrition-score.md]
 advisory-review: pending
 ---
@@ -256,7 +256,7 @@ As a health-conscious customer, I want a quick nutrition score, so that I can co
 ## App scope
 - **mobile-android**: Show nutrition score chips in recommendations.
 - **mobile-ios**: Show nutrition score chips in recommendations.
-- **web-user-app**: Show nutrition score chips on meal cards.
+- **web**: Show nutrition score chips on meal cards.
 
 ## Design
 Empty until design starts.
@@ -280,7 +280,7 @@ id: F-012
 title: Notification Preferences
 status: in-design
 owner: designer
-apps: [mobile-ios, web-user-app]
+apps: [mobile-ios, web]
 sources: [knowledge/intake/fixture/notification-preferences.md]
 advisory-review: not-needed
 ---
@@ -302,7 +302,7 @@ As a customer, I want to choose my alerts, so that I only receive messages that 
 
 ## App scope
 - **mobile-ios**: Preferences form and local alert summary.
-- **web-user-app**: Preferences page in account settings.
+- **web**: Preferences page in account settings.
 
 ## Design
 Empty.
@@ -326,7 +326,7 @@ id: F-013
 title: Recurring Delivery
 status: ready-for-dev
 owner: dev
-apps: [backend, mobile-android, mobile-ios, web-user-app]
+apps: [backend, mobile-android, mobile-ios, web]
 sources: [knowledge/intake/fixture/recurring-delivery.md]
 advisory-review: done
 ---
@@ -350,7 +350,7 @@ As a repeat customer, I want a recurring delivery schedule, so that I do not hav
 - **backend**: Delivery schedule creation, pause, and resume.
 - **mobile-android**: Schedule configuration and status display.
 - **mobile-ios**: Schedule configuration and status display.
-- **web-user-app**: Schedule configuration and status display.
+- **web**: Schedule configuration and status display.
 
 ## Design
 See `knowledge/wiki/design/F-013-recurring-delivery.md`.
@@ -422,7 +422,7 @@ id: F-020
 title: Auth Session Hardening
 status: ready-for-dev
 owner: dev
-apps: [backend, mobile-android, mobile-ios, web-user-app, web-admin-portal]
+apps: [backend, mobile-android, mobile-ios, web, admin]
 sources: [knowledge/intake/fixture/auth-session.md]
 advisory-review: done
 ---
@@ -446,8 +446,8 @@ As a security-conscious user, I want my auth session to stay protected, so that 
 - **backend**: Auth session issuance, rotation, and revocation.
 - **mobile-android**: Auth session reauthentication prompts.
 - **mobile-ios**: Auth session reauthentication prompts.
-- **web-user-app**: Auth session management UI.
-- **web-admin-portal**: Auth session audit view.
+- **web**: Auth session management UI.
+- **admin**: Auth session audit view.
 
 ## Design
 See `knowledge/wiki/design/F-020-auth-session-hardening.md`.
@@ -871,10 +871,10 @@ See `knowledge/wiki/api-contracts/F-010.md`.
 knowledge/wiki/app-requirements/F-010-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-010-web-user-app.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-010-web.md") @'
 ---
 feature-id: F-010
-app: web-user-app
+app: web
 status: pending
 ---
 
@@ -949,10 +949,10 @@ See `knowledge/wiki/api-contracts/F-013.md`.
 knowledge/wiki/app-requirements/F-013-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-013-web-user-app.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-013-web.md") @'
 ---
 feature-id: F-013
-app: web-user-app
+app: web
 status: pending
 ---
 
@@ -1131,10 +1131,10 @@ See `knowledge/wiki/api-contracts/F-020.md`.
 knowledge/wiki/app-requirements/F-020-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-020-web-user-app.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-020-web.md") @'
 ---
 feature-id: F-020
-app: web-user-app
+app: web
 status: pending
 ---
 
@@ -1157,10 +1157,10 @@ See `knowledge/wiki/api-contracts/F-020.md`.
 knowledge/wiki/app-requirements/F-020-backend.md
 '@
 
-Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-020-web-admin-portal.md") @'
+Write-Utf8File (Join-Path $wikiRoot "app-requirements\F-020-admin.md") @'
 ---
 feature-id: F-020
-app: web-admin-portal
+app: admin
 status: pending
 ---
 

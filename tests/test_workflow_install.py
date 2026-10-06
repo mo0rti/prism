@@ -28,7 +28,7 @@ class WorkflowInstallTests(unittest.TestCase):
     def test_empty_workspace_preview_apply_and_repeat_are_idempotent(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            plan = plan_install(root, name="Editorial", apps=["web-user-app", "backend"])
+            plan = plan_install(root, name="Editorial", apps=["web", "backend"])
 
             self.assertEqual([], plan["conflicts"])
             self.assertEqual("workflow", plan["mode"])
@@ -43,7 +43,7 @@ class WorkflowInstallTests(unittest.TestCase):
             self.assertEqual("Editorial", manifest["project"]["name"])
             self.assertNotIn("platforms", manifest["project"])
             self.assertEqual(
-                [("backend", "spring-backend", "workspace", "backend"), ("web-user-app", "nextjs-web", "workspace", "web-user-app")],
+                [("backend", "spring-backend", "workspace", "backend"), ("web", "nextjs-web", "workspace", "web")],
                 [(app["id"], app["stack"], app["repository"], app["path"]) for app in manifest["apps"]],
             )
             self.assertEqual("workflow", manifest["workflow"]["mode"])

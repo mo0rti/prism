@@ -126,14 +126,22 @@ def read_yaml(path: Path) -> Any:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def generate_default_apps(destination: Path, app_ids: list[str], scratch: Path, project_name: str = "Scope Check", **answers: Any) -> Path:
+def generate_default_apps(
+    destination: Path,
+    app_ids: list[str],
+    scratch: Path,
+    project_name: str = "Scope Check",
+    extra_apps: list[dict[str, Any]] | None = None,
+    **answers: Any,
+) -> Path:
     """Generate a workspace from this checkout's working tree with the default apps of these IDs.
 
     This is what the template tests need in place of a raw `copier copy --data platforms=...`: the CLI
     runs the workspace layer and each app's pack, and a full sample comes from the workspace layer.
+    ``extra_apps`` are further app entries, such as a second app of a stack, listed after the defaults.
     """
 
-    apps = apps_from_platforms(app_ids, generation=GENERATION_SCAFFOLDED)
+    apps = apps_from_platforms(app_ids, generation=GENERATION_SCAFFOLDED) + list(extra_apps or [])
     answers_file = write_answers(scratch / f"{destination.name}-answers.yml", {"project_name": project_name, "apps": apps, **answers})
     code, out, err = run_cli("new", "--answers", str(answers_file), "--dest", str(destination), "--yes")
     if code != 0:

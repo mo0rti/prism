@@ -8,7 +8,6 @@ on:
       - ".github/workflows/template-validation.yml"
       - "copier.yml"
       - "scripts/validate-template.ps1"
-      - "scripts/check-web-auth.mjs"
       - "prism_cli/**"
       - "template/**"
       - "packs/**"
@@ -19,7 +18,6 @@ on:
       - ".github/workflows/template-validation.yml"
       - "copier.yml"
       - "scripts/validate-template.ps1"
-      - "scripts/check-web-auth.mjs"
       - "prism_cli/**"
       - "template/**"
       - "packs/**"
@@ -108,11 +106,10 @@ jobs:
           schema_version: 1
           answers:
             project_name: Review Web
-            auth_methods: [google, apple, facebook, microsoft, password]
             apps:
               - {id: backend, stack: spring-backend, name: Spring Boot Backend}
-              - {id: web-user-app, stack: nextjs-web, name: User-Facing Web App}
-              - {id: web-admin-portal, stack: nextjs-web, name: Admin Web Portal}
+              - {id: web, stack: nextjs-web, name: Web App, audience: B2C}
+              - {id: admin, stack: nextjs-web, name: Admin App, audience: internal}
           YAML
           python -m prism_cli new --answers "$RUNNER_TEMP/web-answers.yml" --dest "$TARGET" --yes
           echo "PRISM_WEB_TARGET=$TARGET" >> "$GITHUB_ENV"
@@ -121,13 +118,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for app in web-user-app web-admin-portal; do
+          for app in web admin; do
             echo "Running web smoke tests for $app"
             pushd "$PRISM_WEB_TARGET/$app" >/dev/null
-            npm install
+            npm ci
             npm run lint
             npm run typecheck
-            node "$GITHUB_WORKSPACE/scripts/check-web-auth.mjs" "$PRISM_WEB_TARGET/$app"
+            npm test
             npm run build
             popd >/dev/null
           done

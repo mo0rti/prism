@@ -112,13 +112,12 @@ STACKS: Mapping[str, Stack] = MappingProxyType(
 # The platform IDs the questionnaire offers, each the ID of the app that
 # generating it registers. Iteration order is the order of the platform
 # directory table.
-GENERATED_PLATFORM_IDS = ("backend", "mobile-android", "mobile-ios", "web-user-app", "web-admin-portal")
+GENERATED_PLATFORM_IDS = ("backend", "mobile-android", "mobile-ios", "web")
 
 GENERATED_PLATFORM_STACKS: Mapping[str, str] = MappingProxyType(
     {
         "backend": "spring-backend",
-        "web-user-app": "nextjs-web",
-        "web-admin-portal": "nextjs-web",
+        "web": "nextjs-web",
         "mobile-android": "android-compose",
         "mobile-ios": "ios-swiftui",
     }
@@ -128,8 +127,7 @@ GENERATED_PLATFORM_STACKS: Mapping[str, str] = MappingProxyType(
 GENERATED_PLATFORM_LABELS: Mapping[str, str] = MappingProxyType(
     {
         "backend": "Spring Boot Backend",
-        "web-user-app": "User-Facing Web App",
-        "web-admin-portal": "Admin Web Portal",
+        "web": "Web App",
         "mobile-android": "Android (Kotlin/Compose)",
         "mobile-ios": "iOS (Swift/SwiftUI)",
     }

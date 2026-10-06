@@ -72,9 +72,9 @@ agents. A generated project activates it with `prism workflow upgrade . --apply`
 [shared-board.md](shared-board.md).
 
 A generated project's `prism.workspace.yml` declares the apps you listed, each `scaffolded` (Prism
-generated its code) or `registered`. A preset's apps have the IDs `backend`, `web-user-app`,
-`web-admin-portal`, `mobile-android` and `mobile-ios`, all in this repository. `prism status` lists
-them, `prism app add` registers another app, in this repository or in another one, without generating
+generated its code) or `registered`. A preset's apps have the IDs `backend`, `web`, `mobile-android`
+and `mobile-ios`, all in this repository; any other slug names a further app, such as a second web app
+`admin`. `prism status` lists them, `prism app add` registers another app, in this repository or in another one, without generating
 code, and `prism app add --scaffold` generates a new app into the workspace from its recorded template
 tag ([workspace-model.md](workspace-model.md#scaffolding-apps)). `prism update` brings the workspace layer
 and every scaffolded app to a newer template tag on a branch, one commit per layer. A machine that keeps an external
@@ -115,6 +115,22 @@ looks like this:
 - run the backend with `task <app-id>:run` (for the default app, `task backend:run`), on the port
   recorded in the app's answers file and `application.yml` (`8080` for the first backend, `8081` for
   the next); `GET /api/health` answers `{"status":"UP"}`
+
+If the generated project includes a web app (`nextjs-web`), each one is a Next.js app under its own path
+(`web/` for the default app) with one working slice and its tests:
+
+- copy `<app>/.env.example` to `<app>/.env.local`, run `npm ci` and `task <app-id>:dev`, on the port
+  recorded in the app's answers file (`3000` for the first web app, `3001` for the next)
+- the "Local development sign-in" page signs in through the backend's dev identity
+  (`POST /api/dev-identity/token`, served only when the backend runs under its `local` profile) and keeps the
+  token in an httpOnly cookie; the home page shows `GET /api/me` through the API client that
+  `openapi-typescript` generates from `shared/api-contracts/openapi.yml`
+- the dev identity is not complete authentication: replace it with your identity provider before anything
+  ships (the generated `web-conventions` and `security-auth` skills describe how)
+- `task <app-id>:test` runs the Vitest and Testing Library tests, and `task lint` and `task test` at the
+  root run lint, typecheck and the tests of every web app
+- the app's `audience` (for example `B2C` or `internal`) is display text; no route or check reads it, and
+  a label never enforces authorization
 
 ## AI Agent Surfaces
 
@@ -258,7 +274,6 @@ Generated projects include these Hygen generators under `_templates/`:
 | `feature new` | Scaffold a backend + Android + iOS feature slice and create a dated intake note in `knowledge/intake/pending/YYYY-MM-DD-feature-name/` for `po-intake` to process |
 | `screen new` | Scaffold a new Android or iOS screen |
 | `endpoint new` | Scaffold an OpenAPI path snippet and backend endpoint starter |
-| `page new` | Scaffold a new page for generated web slices when `web-user-app` or `web-admin-portal` is included |
 
 Typical usage inside a generated project:
 
@@ -266,7 +281,6 @@ Typical usage inside a generated project:
 npx hygen feature new
 npx hygen screen new
 npx hygen endpoint new
-npx hygen page new
 ```
 
 ## GitHub Actions
@@ -279,8 +293,7 @@ The generated workflow set is:
 | `<app-id>.yml` | One for each scaffolded `spring-backend` app (`backend.yml` for the default app) | Backend test, scoped to the app's path |
 | `mobile-android.yml` | With `mobile-android` | Android test, lint, instrumented tests and debug build |
 | `mobile-ios.yml` | With `mobile-ios` | iOS test |
-| `web-user-app.yml` | With `web-user-app` | User web app install, lint, typecheck and build |
-| `web-admin-portal.yml` | With `web-admin-portal` | Admin web portal install, lint, typecheck and build |
+| `<app-id>.yml` | One for each scaffolded `nextjs-web` app (`web.yml` for the default app) | `npm ci`, lint, typecheck, Vitest tests and `next build` on a clean runner, scoped to the app's path |
 
 No workflow deploys. The `deployment` skill describes the deploy jobs to add once you choose a host.
 

@@ -219,11 +219,12 @@ function Assert-NoCopierPlaceholders {
     }
 }
 
-# The default generated apps: the ID, the stack and the display name `prism new` gives each.
+# The apps the validation generates: the ID, the stack and the display name `prism new` gives each. `admin` is a second
+# nextjs-web app, and `web` and `admin` carry an audience.
 $DefaultApps = @{
     "backend"          = @{ Stack = "spring-backend";  Name = "Spring Boot Backend" }
-    "web-user-app"     = @{ Stack = "nextjs-web";      Name = "User-Facing Web App" }
-    "web-admin-portal" = @{ Stack = "nextjs-web";      Name = "Admin Web Portal" }
+    "web"              = @{ Stack = "nextjs-web";      Name = "Web App";             Audience = "B2C" }
+    "admin"            = @{ Stack = "nextjs-web";      Name = "Admin App";           Audience = "internal" }
     "mobile-android"   = @{ Stack = "android-compose"; Name = "Android (Kotlin/Compose)" }
     "mobile-ios"       = @{ Stack = "ios-swiftui";     Name = "iOS (Swift/SwiftUI)" }
 }
@@ -259,6 +260,9 @@ function New-GeneratedProject {
                 $lines += "    - id: $app"
                 $lines += "      stack: $($DefaultApps[$app].Stack)"
                 $lines += "      name: `"$($DefaultApps[$app].Name)`""
+                if ($DefaultApps[$app].ContainsKey("Audience")) {
+                    $lines += "      audience: $($DefaultApps[$app].Audience)"
+                }
             }
         }
         $answersFile = Join-Path $OutputRoot "$Name-answers.yml"
@@ -462,7 +466,7 @@ function Assert-NoDeploymentArtifacts {
     Assert-PathMissing -Path (Join-Path $Root "infra") -Message "Generated project must not contain infra/."
     Assert-PathMissing -Path (Join-Path $Root "backend\docs\azure-setup.md") -Message "Generated project must not contain backend/docs/azure-setup.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\deployment\cloudflare-setup.md") -Message "Generated project must not contain docs/deployment/cloudflare-setup.md."
-    foreach ($webApp in @("web-user-app", "web-admin-portal")) {
+    foreach ($webApp in @("web", "admin")) {
         foreach ($hostingFile in @("wrangler.jsonc", "open-next.config.ts", ".dev.vars.example")) {
             Assert-PathMissing -Path (Join-Path $Root "$webApp\$hostingFile") -Message "Generated project must not contain $webApp/$hostingFile."
         }
@@ -519,13 +523,11 @@ function Assert-DeploymentSkill {
         if ($Web) {
             Assert-FileContains -Path (Join-Path $skill "references\cloudflare-setup.md") -Needle 'Cloudflare Workers' -Message "Cloudflare guide should describe Workers, not Pages."
             Assert-PathExists -Path (Join-Path $skill "references\cloudflare\open-next.config.ts") -Message "$layer deployment skill missing the OpenNext config example."
-            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.web-user-app.jsonc") -Needle '"observability": {' -Message "User web Wrangler example should enable observability."
-            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.web-user-app.jsonc") -Needle '"upload_source_maps": true' -Message "User web Wrangler example should upload source maps."
-            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.web-user-app.jsonc") -Needle '"API_BASE_URL": "https://api.' -Message "User web Wrangler example should include API_BASE_URL."
-            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.web-admin-portal.jsonc") -Needle '"observability": {' -Message "Admin web Wrangler example should enable observability."
-            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.web-admin-portal.jsonc") -Needle '"API_BASE_URL": "https://api.' -Message "Admin web Wrangler example should include API_BASE_URL."
-            Assert-PathExists -Path (Join-Path $skill "references\cloudflare\dev.vars.web-user-app.example") -Message "$layer deployment skill missing the user web preview variables example."
-            Assert-PathExists -Path (Join-Path $skill "references\cloudflare\dev.vars.web-admin-portal.example") -Message "$layer deployment skill missing the admin web preview variables example."
+            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.jsonc") -Needle '"observability": {' -Message "Web Wrangler example should enable observability."
+            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.jsonc") -Needle '"upload_source_maps": true' -Message "Web Wrangler example should upload source maps."
+            Assert-FileContains -Path (Join-Path $skill "references\cloudflare\wrangler.jsonc") -Needle '"API_BASE_URL": "https://api.' -Message "Web Wrangler example should include API_BASE_URL."
+            Assert-FileNotContains -Path (Join-Path $skill "references\cloudflare\wrangler.jsonc") -Needle 'AUTH_' -Message "The slice's web apps read no AUTH_ variable, so the Wrangler example must not set one."
+            Assert-PathExists -Path (Join-Path $skill "references\cloudflare\dev.vars.example") -Message "$layer deployment skill missing the web preview variables example."
         }
         else {
             Assert-PathMissing -Path (Join-Path $skill "references\cloudflare") -Message "$layer deployment skill must not carry the Cloudflare example without a web app."
@@ -551,7 +553,7 @@ function Validate-BackendOnly {
     # AGENTS.md must not contain absent platform directories
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-android/" -Message "Backend-only AGENTS.md should not reference mobile-android/."
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-ios/" -Message "Backend-only AGENTS.md should not reference mobile-ios/."
-    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "web-user-app/" -Message "Backend-only AGENTS.md should not reference web-user-app/."
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "-> Next.js" -Message "Backend-only AGENTS.md should not describe a web app."
 
     Assert-PathExists -Path (Join-Path $Root "backend\gradlew") -Message "Backend-only sample is missing gradlew."
     Assert-PathExists -Path (Join-Path $Root "backend\gradlew.bat") -Message "Backend-only sample is missing gradlew.bat."
@@ -567,9 +569,8 @@ function Validate-BackendOnly {
     Assert-FileContains -Path (Join-Path $Root "prism.workspace.yml") -Needle "generation: scaffolded" -Message "prism.workspace.yml must record the backend as scaffolded."
     Assert-PathMissing -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\modules") -Message "The retired full backend sample must not be generated."
 
-    Assert-PathMissing -Path (Join-Path $Root "web-user-app") -Message "Backend-only sample should not generate web-user-app."
-    Assert-PathMissing -Path (Join-Path $Root "web-admin-portal") -Message "Backend-only sample should not generate web-admin-portal."
-    Assert-PathMissing -Path (Join-Path $Root "_templates\page") -Message "Backend-only sample should not include page generators."
+    Assert-PathMissing -Path (Join-Path $Root "web") -Message "Backend-only sample should not generate a web app."
+    Assert-PathMissing -Path (Join-Path $Root "_templates\page") -Message "Page generators of the retired web samples must not be generated."
     Assert-NoDeploymentArtifacts -Root $Root
     Assert-DeploymentSkill -Root $Root -Backend $true -Web $false -AllAuthMethods $true
     Assert-PathExists -Path (Join-Path $Root "docker-compose.yml") -Message "A sample with a backend app must generate docker-compose.yml for the local development database."
@@ -586,7 +587,7 @@ function Validate-BackendOnly {
     Assert-FileContains -Path (Join-Path $Root "backend\Dockerfile") -Needle 'RUN sed -i ''s/\r$//'' gradlew && chmod +x gradlew' -Message "Backend Dockerfile should normalize gradlew for Linux builds."
 
     Assert-FileContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/auth/oauth/callback:" -Message "Backend-only sample should generate the OAuth callback path when Google and Apple are selected."
-    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "Implement backend -> web-user-app -> web-admin-portal -> Android -> iOS as applicable" -Message "Root AGENTS guidance should not assume absent platform slices."
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "Implement backend -> web -> Android -> iOS as applicable" -Message "Root AGENTS guidance should not assume absent platform slices."
     Assert-PathMissing -Path (Join-Path $Root "docs\advisory-board.md") -Message "Generated project must not contain legacy docs/advisory-board.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\auth.md") -Message "Generated project must not contain legacy docs/features/auth.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\example-feature.md") -Message "Generated project must not contain legacy docs/features/example-feature.md."
@@ -755,36 +756,6 @@ function Get-IosApiPaths {
     return @($paths)
 }
 
-function Get-WebApiPaths {
-    param(
-        [string]$Content,
-        [bool]$IsRouteMap = $false
-    )
-
-    $paths = @()
-    if ($IsRouteMap) {
-        # PATH_MAPPINGS maps a frontend /api/v1 path to a backend path. Backend paths under /actuator/
-        # are infrastructure endpoints outside the OpenAPI contract, so those entries are not API calls.
-        foreach ($match in [regex]::Matches($Content, '"(/api/v1/[^"]*)"\s*:\s*"([^"]*)"')) {
-            if ($match.Groups[2].Value.StartsWith('/actuator/')) {
-                continue
-            }
-            $paths += (ConvertTo-ComparableApiPath -Path $match.Groups[1].Value.Substring('/api/v1'.Length))
-            $backendPath = $match.Groups[2].Value
-            if ($backendPath.StartsWith('/api/v1/')) {
-                $backendPath = $backendPath.Substring('/api/v1'.Length)
-            }
-            $paths += (ConvertTo-ComparableApiPath -Path $backendPath)
-        }
-        return @($paths)
-    }
-
-    foreach ($match in [regex]::Matches($Content, '/api/v1(/[A-Za-z][A-Za-z0-9_\-/{}$]*)')) {
-        $paths += (ConvertTo-ComparableApiPath -Path $match.Groups[1].Value)
-    }
-    return @($paths)
-}
-
 function Find-ClientPathsMissingFromSpec {
     param(
         [object[]]$ClientPaths,
@@ -816,28 +787,6 @@ function Get-ClientApiPaths {
         $sources += [pscustomobject]@{ Client = "ios"; File = $file.FullName; Paths = (Get-IosApiPaths -Content (Get-Content -Raw -LiteralPath $file.FullName)) }
     }
 
-    foreach ($webApp in @("web-user-app", "web-admin-portal")) {
-        $webRoot = Join-Path $Root $webApp
-        if (-not (Test-Path -LiteralPath $webRoot)) {
-            continue
-        }
-        $webFiles = @(Get-ChildItem -LiteralPath $webRoot -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
-            $relativePath = $_.FullName.Substring($webRoot.Length)
-            ($_.Extension -eq ".ts" -or $_.Extension -eq ".tsx") -and
-            $relativePath -notmatch '[\\/](node_modules|\.next|\.open-next|\.wrangler|dist|tests?|__tests__)[\\/]' -and
-            $_.Name -notmatch '\.(test|spec)\.tsx?$'
-        })
-        $routeFiles = @($webFiles | Where-Object { $_.Name -eq "api-routes.ts" })
-        if ($routeFiles.Count -eq 0) {
-            throw "$webApp is missing lib/config/api-routes.ts, so its API path mappings cannot be checked."
-        }
-        foreach ($file in $webFiles) {
-            $content = Get-Content -Raw -LiteralPath $file.FullName
-            $isRouteMap = $file.Name -eq "api-routes.ts"
-            $sources += [pscustomobject]@{ Client = $webApp; File = $file.FullName; Paths = (Get-WebApiPaths -Content $content -IsRouteMap $isRouteMap) }
-        }
-    }
-
     foreach ($source in $sources) {
         foreach ($path in $source.Paths) {
             $clientPaths += [pscustomobject]@{ Client = $source.Client; File = $source.File; Path = $path }
@@ -862,8 +811,6 @@ function Assert-ClientPathsInOpenApi {
     $expectedClients = @()
     if (Test-Path -LiteralPath (Join-Path $Root "mobile-android")) { $expectedClients += "android" }
     if (Test-Path -LiteralPath (Join-Path $Root "mobile-ios")) { $expectedClients += "ios" }
-    if (Test-Path -LiteralPath (Join-Path $Root "web-user-app")) { $expectedClients += "web-user-app" }
-    if (Test-Path -LiteralPath (Join-Path $Root "web-admin-portal")) { $expectedClients += "web-admin-portal" }
     foreach ($client in $expectedClients) {
         if (@($clientPaths | Where-Object { $_.Client -eq $client }).Count -eq 0) {
             throw "Found no API paths in the generated $client client, so the contract guard cannot check it."
@@ -884,14 +831,10 @@ function Assert-ClientPathGuardRejectsUnknownPaths {
 
     $plantedAndroid = '@GET("examples/{id}") suspend fun getExample(@Path("id") id: String): ExampleResponse'
     $plantedIos = 'static func listExamples() -> APIEndpoint { APIEndpoint(path: "/examples?page=\(page)", method: .get, requiresAuth: true) }'
-    $plantedWeb = 'fetch(`${apiBaseUrl}/api/v1/examples/${id}`)'
-    $plantedRouteMap = '"/api/v1/examples": "/api/v1/examples"'
 
     $cases = @(
         @{ Client = "android"; Paths = (Get-AndroidApiPaths -Content $plantedAndroid) },
-        @{ Client = "ios"; Paths = (Get-IosApiPaths -Content $plantedIos) },
-        @{ Client = "web"; Paths = (Get-WebApiPaths -Content $plantedWeb) },
-        @{ Client = "web route map"; Paths = (Get-WebApiPaths -Content $plantedRouteMap -IsRouteMap $true) }
+        @{ Client = "ios"; Paths = (Get-IosApiPaths -Content $plantedIos) }
     )
     foreach ($case in $cases) {
         $clientPaths = @($case.Paths | ForEach-Object { [pscustomobject]@{ Client = $case.Client; File = "planted"; Path = $_ } })
@@ -927,22 +870,40 @@ function Validate-WebSample {
     Validate-WikiStructure -Root $Root
     Assert-ClientPathsInOpenApi -Root $Root
 
-    # web-user-app and web-admin-portal AGENTS.md must have the wiki section and CLAUDE.md must import it
-    foreach ($platform in @("web-user-app", "web-admin-portal")) {
-        Assert-FileContains -Path (Join-Path $Root "$platform\CLAUDE.md") -Needle "@AGENTS.md" -Message "$platform/CLAUDE.md must import AGENTS.md."
-        Assert-FileContains -Path (Join-Path $Root "$platform\AGENTS.md") -Needle "knowledge/wiki/app-requirements" -Message "$platform/AGENTS.md missing wiki app-requirements reference."
-        Assert-FileContains -Path (Join-Path $Root "$platform\AGENTS.md") -Needle "advisory-review" -Message "$platform/AGENTS.md missing advisory-review check."
+    # The web apps are the nextjs-web pack: two apps of one stack, each an app layer with its own answers,
+    # workflow, Cursor rule, port, package name and session cookie.
+    $webApps = @(
+        @{ Id = "web"; Port = 3000; Name = "Web App"; Audience = "B2C" },
+        @{ Id = "admin"; Port = 3001; Name = "Admin App"; Audience = "internal" }
+    )
+    foreach ($webApp in $webApps) {
+        $app = $webApp.Id
+        Assert-PathExists -Path (Join-Path $Root $app) -Message "Web sample should generate the $app app."
+        Assert-FileContains -Path (Join-Path $Root "$app\CLAUDE.md") -Needle "@AGENTS.md" -Message "$app/CLAUDE.md must import AGENTS.md."
+        Assert-FileContains -Path (Join-Path $Root "$app\AGENTS.md") -Needle "knowledge/wiki/app-requirements/[feature-id]-$app" -Message "$app/AGENTS.md missing the wiki app-requirements reference."
+        Assert-FileContains -Path (Join-Path $Root "$app\AGENTS.md") -Needle "advisory-review" -Message "$app/AGENTS.md missing advisory-review check."
+        Assert-FileContains -Path (Join-Path $Root "$app\.copier-answers.yml") -Needle "prism_layer: nextjs-web" -Message "$app must record its own pack answers."
+        Assert-FileContains -Path (Join-Path $Root "$app\.copier-answers.yml") -Needle "port: $($webApp.Port)" -Message "$app must hold port $($webApp.Port)."
+        Assert-PathExists -Path (Join-Path $Root ".github\workflows\$app.yml") -Message "The nextjs-web pack must generate the $app workflow."
+        Assert-PathExists -Path (Join-Path $Root ".cursor\rules\$app.mdc") -Message "The nextjs-web pack must generate the $app Cursor rule."
+        foreach ($step in @("run: npm ci", "run: npm run lint", "run: npm run typecheck", "run: npm test", "run: npm run build")) {
+            Assert-FileContains -Path (Join-Path $Root ".github\workflows\$app.yml") -Needle $step -Message "The $app workflow should run '$step'."
+        }
+        Assert-FileContains -Path (Join-Path $Root "$app\package.json") -Needle "`"name`": `"review-web-$app`"" -Message "$app must have its own package name."
+        Assert-FileContains -Path (Join-Path $Root "$app\package.json") -Needle "--port $($webApp.Port)" -Message "$app must run on port $($webApp.Port)."
+        Assert-FileContains -Path (Join-Path $Root "$app\package-lock.json") -Needle "`"name`": `"review-web-$app`"" -Message "$app must commit a lockfile of its own package."
+        Assert-FileContains -Path (Join-Path $Root "$app\lib\app-info.ts") -Needle $webApp.Audience -Message "$app must show its audience as display text."
+        Assert-FileContains -Path (Join-Path $Root "$app\app\sign-in\page.tsx") -Needle "Local development sign-in" -Message "$app must label its sign-in as the local development sign-in."
+        Assert-FileContains -Path (Join-Path $Root "$app\lib\auth\session.ts") -Needle "`"${app}_session`"" -Message "$app must have its own session cookie name."
+        Assert-FileContains -Path (Join-Path $Root "$app\lib\api\client.ts") -Needle "/api/dev-identity/token" -Message "$app must sign in through the dev identity."
+        Assert-PathExists -Path (Join-Path $Root "$app\tests\session-route.test.ts") -Message "$app must generate the sign-in route handler test."
+        Assert-PathMissing -Path (Join-Path $Root "$app\middleware.ts") -Message "$app must not carry the retired NextAuth middleware."
+        Assert-PathMissing -Path (Join-Path $Root "$app\auth.ts") -Message "$app must not carry the retired NextAuth configuration."
     }
 
-    # AGENTS.md must not contain platform directories for absent platforms
-    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-android/" -Message "Web-only AGENTS.md should not reference mobile-android/."
-    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-ios/" -Message "Web-only AGENTS.md should not reference mobile-ios/."
-
-    Assert-PathExists -Path (Join-Path $Root "web-user-app") -Message "Web sample should generate web-user-app."
-    Assert-PathExists -Path (Join-Path $Root "web-admin-portal") -Message "Web sample should generate web-admin-portal."
-    Assert-PathExists -Path (Join-Path $Root ".github\workflows\web-user-app.yml") -Message "Web sample should generate the user web workflow."
-    Assert-PathExists -Path (Join-Path $Root ".github\workflows\web-admin-portal.yml") -Message "Web sample should generate the admin web workflow."
-    Assert-PathExists -Path (Join-Path $Root "_templates\page") -Message "Web sample should include page generators."
+    # No page generator and no NextAuth.
+    Assert-PathMissing -Path (Join-Path $Root "_templates\page") -Message "Page generators of the retired web samples must not be generated."
+    Assert-FileNotContains -Path (Join-Path $Root "web\package.json") -Needle "next-auth" -Message "The web app must not depend on NextAuth."
     Assert-NoDeploymentArtifacts -Root $Root
     Assert-DeploymentSkill -Root $Root -Backend $true -Web $true
 
@@ -950,33 +911,18 @@ function Validate-WebSample {
     Assert-PathMissing -Path (Join-Path $Root "docs\features\auth.md") -Message "Generated project must not contain legacy docs/features/auth.md."
     Assert-PathMissing -Path (Join-Path $Root "docs\features\example-feature.md") -Message "Generated project must not contain legacy docs/features/example-feature.md."
     Assert-TreeNotContains -Root $Root -Needle "JWT_EXPIRATION_MS" -Message "Generated web sample should not contain stale JWT_EXPIRATION_MS wiring."
-    Assert-FileContains -Path (Join-Path $Root ".github\workflows\web-user-app.yml") -Needle 'run: npm run build' -Message "User web workflow should build the app."
-    Assert-FileContains -Path (Join-Path $Root ".github\workflows\web-admin-portal.yml") -Needle 'run: npm run build' -Message "Admin web workflow should build the app."
 
     $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
     if ($RunSmoke -and $null -ne $npmCommand) {
-        foreach ($webApp in @("web-user-app", "web-admin-portal")) {
-            Push-Location (Join-Path $Root $webApp)
+        foreach ($webApp in $webApps) {
+            Push-Location (Join-Path $Root $webApp.Id)
             try {
-                Write-Host "Running web smoke tests for $webApp..."
-                & npm install | Out-Host
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Generated $webApp sample failed 'npm install'."
-                }
-
-                & npm run lint | Out-Host
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Generated $webApp sample failed 'npm run lint'."
-                }
-
-                & npm run typecheck | Out-Host
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Generated $webApp sample failed 'npm run typecheck'."
-                }
-
-                & npm run build | Out-Host
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Generated $webApp sample failed 'npm run build'."
+                Write-Host "Running web smoke tests for $($webApp.Id)..."
+                foreach ($step in @(@("ci"), @("run", "lint"), @("run", "typecheck"), @("test"), @("run", "build"))) {
+                    & npm @step | Out-Host
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Generated $($webApp.Id) app failed 'npm $($step -join ' ')'."
+                    }
                 }
             }
             finally {
@@ -1003,7 +949,7 @@ function Validate-AndroidSample {
 
     # AGENTS.md must not contain absent platform directories
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-ios/" -Message "Android-only AGENTS.md should not reference mobile-ios/."
-    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "web-user-app/" -Message "Android-only AGENTS.md should not reference web-user-app/."
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "-> Next.js" -Message "Android-only AGENTS.md should not describe a web app."
 
     Assert-PathExists -Path (Join-Path $Root "mobile-android") -Message "Android sample should generate mobile-android."
     Assert-NoDeploymentArtifacts -Root $Root
@@ -1026,7 +972,7 @@ function Validate-IosSample {
 
     # AGENTS.md must not contain absent platform directories
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-android/" -Message "iOS-only AGENTS.md should not reference mobile-android/."
-    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "web-user-app/" -Message "iOS-only AGENTS.md should not reference web-user-app/."
+    Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "-> Next.js" -Message "iOS-only AGENTS.md should not describe a web app."
 
     Assert-NoDeploymentArtifacts -Root $Root
     Assert-DeploymentSkill -Root $Root -Backend $true -Web $false
@@ -1083,7 +1029,7 @@ switch ($Mode) {
         $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods @("password")
         Validate-PasswordOnlyContract -Root $passwordOnlyRoot
 
-        $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Preset "backend-web"
+        $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Apps @("backend", "web", "admin")
         Validate-WebSample -Root $webRoot -RunSmoke $false
 
         $androidRoot = New-GeneratedProject -Name "android" -ProjectName "Review Android" -Apps @("backend", "mobile-android")
@@ -1092,7 +1038,7 @@ switch ($Mode) {
         $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios")
         Validate-IosSample -Root $iosRoot
 
-        $standaloneRoot = New-GeneratedProject -Name "standalone-web" -ProjectName "Standalone Web" -Apps @("web-user-app", "web-admin-portal") -AuthMethods @("password")
+        $standaloneRoot = New-GeneratedProject -Name "standalone-web" -ProjectName "Standalone Web" -Apps @("web", "admin") -AuthMethods @("password")
         Validate-WikiStructure -Root $standaloneRoot
         Assert-NoDeploymentArtifacts -Root $standaloneRoot
         Assert-DeploymentSkill -Root $standaloneRoot -Backend $false -Web $true
@@ -1109,7 +1055,7 @@ switch ($Mode) {
         $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods @("password")
         Validate-PasswordOnlyContract -Root $passwordOnlyRoot
 
-        $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Preset "backend-web"
+        $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Apps @("backend", "web", "admin")
         Validate-WebSample -Root $webRoot -RunSmoke $false
 
         $androidRoot = New-GeneratedProject -Name "android" -ProjectName "Review Android" -Apps @("backend", "mobile-android")

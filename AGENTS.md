@@ -33,8 +33,8 @@ and must not be referenced. They are replaced by the wiki lifecycle system
 
 ## Repository Focus
 
-- This template scaffolds an app list. Generation has two layers under one `copier.yml` and one tag: the workspace layer (`template/`) and one app layer per scaffolded app (`packs/<stack>/`, chosen by the hidden question `prism_layer`). The backend is a stack pack; the web, Android and iOS apps are still full samples rendered by the workspace layer, one switch per stack in `prism_cli/packs.py`.
-- Backend, Android and web samples are verified locally. The iOS sample is verified only by the macOS CI job. The generated `deployment` skill's Azure and Cloudflare examples are not verified against live accounts. Apple Sign-In is experimental. Keep maturity language explicit and honest, and keep `docs/current-status.md` equal to the verification that exists.
+- This template scaffolds an app list. Generation has two layers under one `copier.yml` and one tag: the workspace layer (`template/`) and one app layer per scaffolded app (`packs/<stack>/`, chosen by the hidden question `prism_layer`). The backend and the web app are stack packs; the Android and iOS apps are still full samples rendered by the workspace layer, one switch per stack in `prism_cli/packs.py`.
+- The backend and Android samples and the web pack are verified locally. The iOS sample is verified only by the macOS CI job. The generated `deployment` skill's Azure and Cloudflare examples are not verified against live accounts. Apple Sign-In is experimental. Keep maturity language explicit and honest, and keep `docs/current-status.md` equal to the verification that exists.
 - Never leave questionnaire-visible options silently generating broken output.
 
 ## Working Rules
@@ -47,7 +47,7 @@ and must not be referenced. They are replaced by the wiki lifecycle system
 - When editing files under `template/`, keep Jinja syntax valid:
   - all `{{` have matching `}}`
   - all `{% if %}` and `{% for %}` blocks are balanced
-  - stack conditionals use `{% if "spring-backend" in stacks %}` and full-sample conditionals `{% if "web-user-app" in app_ids %}`; per-app output loops over `apps`
+  - stack conditionals use `{% if "spring-backend" in stacks %}` and full-sample conditionals `{% if "mobile-android" in app_ids %}`; per-app output loops over `apps`
   - every `_exclude` entry of `copier.yml` applies to the workspace layer only (`prism_layer == 'workspace'`), because an app layer's paths are its own
   - Kotlin and Java directory paths use `{{package_path}}`
   - any file containing Jinja expressions keeps a `.jinja` suffix

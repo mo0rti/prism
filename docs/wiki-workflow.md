@@ -549,7 +549,7 @@ App requirements:
 - backend: in-progress
 - mobile-ios: pending
 - mobile-android: pending
-- web-user-app: pending
+- web: pending
 
 Current blockers:
 - api-contract-not-ready: mobile-ios app requirements depend on the API contract status changing from draft to agreed
@@ -795,8 +795,7 @@ Supported identifiers (the app IDs of the workspace; a default generated workspa
 - `backend`
 - `mobile-android`
 - `mobile-ios`
-- `web-user-app`
-- `web-admin-portal`
+- `web`
 
 Example:
 
@@ -835,8 +834,7 @@ Supported identifiers (the app IDs of the workspace; a default generated workspa
 - backend
 - mobile-android
 - mobile-ios
-- web-user-app
-- web-admin-portal
+- web
 ```
 
 ## Related Docs

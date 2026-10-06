@@ -372,7 +372,7 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("invalid_cursor", " ".join(block.text for block in invalid.content if hasattr(block, "text")))
 
 
-PLATFORMS = ["backend", "mobile-android", "mobile-ios", "web-user-app", "web-admin-portal"]
+PLATFORMS = ["backend", "mobile-android", "mobile-ios", "web"]
 BULK = ("Long detail sentence about the review workflow. " * 12).strip()
 BODY_KEYS = {"before", "after", "content"}
 DRIVE_PATH = re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/]")
@@ -568,8 +568,8 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
                             self.assertEqual(entry[f"{side}_chars"], chunk["total_chars"])
         return joined
 
-    async def test_dev_done_preview_on_five_platforms_pages_within_budget_and_reassembles_exactly(self) -> None:
-        root, changes = self.dev_done("five", PLATFORMS, BULK, "web-admin-portal")
+    async def test_dev_done_preview_on_every_default_platform_pages_within_budget_and_reassembles_exactly(self) -> None:
+        root, changes = self.dev_done("every", PLATFORMS, BULK, "web")
         async with connected(self, root, writable=True) as client:
             revisions = _read_revisions(client.service, client.actor, "dev-done", changes)
             first = await client.call("preview_skill", {"skill": "dev-done", "changes": changes, "read_revisions": revisions})
@@ -601,18 +601,18 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
             chunked = [entry for page in pages for entry in page["writes"] if "after_chunk" in entry or "before_chunk" in entry]
             self.assertTrue(chunked, "one write is larger than a page and must arrive in chunks")
 
-            receipt = await client.call("apply", {"preview_id": first["preview_id"], "operation_id": "dev-done-five"})
+            receipt = await client.call("apply", {"preview_id": first["preview_id"], "operation_id": "dev-done-every"})
             self.assertEqual("applied", receipt["state"])
             self.assertEqual(sorted([*expected, "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"]), sorted(receipt["applied_paths"]))
-            again = await client.call("operation", {"operation_id": "dev-done-five"})
+            again = await client.call("operation", {"operation_id": "dev-done-every"})
             self.assertEqual(receipt, again["receipt"])
             feed = await client.call("changes", {})
             self.assertEqual("operation-applied", feed["changes"][-1]["event"]["type"])
         for path, content in expected.items():
             self.assertEqual(content, (root / path).read_text(encoding="utf-8"))
 
-    async def test_dev_clarify_preview_on_five_platforms_pages_within_budget_and_reassembles_exactly(self) -> None:
-        root, _completion = self.dev_done("clarify", PLATFORMS, BULK, "web-admin-portal")
+    async def test_dev_clarify_preview_on_every_default_platform_pages_within_budget_and_reassembles_exactly(self) -> None:
+        root, _completion = self.dev_done("clarify", PLATFORMS, BULK, "web")
         answer = "At most 200 comments are exported; the rest are counted."
         resolved = "| 1 | Which points should a review summary highlight? | po | resolved: The key points and the outcome. |"
         feature_path = root / FEATURE_FILE
@@ -643,7 +643,7 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(write["after"], joined[write["path"]]["after"], write["path"])
                 self.assertEqual(write["after_digest"], _digest(joined[write["path"]]["after"]), write["path"])
             self.assertTrue([entry for page in pages for entry in page["writes"] if "after_chunk" in entry or "before_chunk" in entry])
-            receipt = await client.call("apply", {"preview_id": first["preview_id"], "operation_id": "dev-clarify-five"})
+            receipt = await client.call("apply", {"preview_id": first["preview_id"], "operation_id": "dev-clarify-every"})
             self.assertEqual("applied", receipt["state"])
         for item in changes:
             self.assertEqual(item["content"], (root / item["path"]).read_text(encoding="utf-8"))
@@ -709,7 +709,7 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
             assert_workspace_relative(self, "preview_skill", envelope, client.roots)
 
     async def test_an_interrupted_operation_pages_its_remaining_changes_and_recovers_within_budget(self) -> None:
-        root, changes = self.dev_done("interrupted", PLATFORMS, BULK, "web-admin-portal")
+        root, changes = self.dev_done("interrupted", PLATFORMS, BULK, "web")
         async with connected(self, root, writable=True) as client:
             revisions = _read_revisions(client.service, client.actor, "dev-done", changes)
             first = await client.call("preview_skill", {"skill": "dev-done", "changes": changes, "read_revisions": revisions})
@@ -722,14 +722,14 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
                 return original(write, **kwargs)
 
             with patch.object(client.service, "_apply_write", side_effect=interrupted):
-                receipt = await client.call("apply", {"preview_id": first["preview_id"], "operation_id": "interrupted-five"})
+                receipt = await client.call("apply", {"preview_id": first["preview_id"], "operation_id": "interrupted-every"})
             self.assertEqual("conflict", receipt["state"])
-            pages = await client.paged("operation", {"operation_id": "interrupted-five"})
+            pages = await client.paged("operation", {"operation_id": "interrupted-every"})
             self.assertGreater(len(pages), 1)
             self.assertEqual({"conflict"}, {page["state"] for page in pages})
             for page in pages:
                 self.assertEqual(len(truth["writes"]), page["remaining_changes_chunk"]["total"])
-                self.assertEqual(client.service.operation(client.actor, "interrupted-five")["recovery_review_revision"], page["recovery_review_revision"])
+                self.assertEqual(client.service.operation(client.actor, "interrupted-every")["recovery_review_revision"], page["recovery_review_revision"])
                 self.assertNotIn("source_files", json.dumps(page["moves"]))
             joined = self.reassemble(pages, "remaining_changes")
             self.assertEqual([item["path"] for item in truth["writes"]], list(joined))
@@ -737,12 +737,12 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(write["before"], joined[write["path"]]["before"], write["path"])
                 self.assertEqual(write["after"], joined[write["path"]]["after"], write["path"])
             self.assertEqual({"applied", "pending"}, {record["meta"]["state"] for record in joined.values()})
-            invalid = await client.session.call_tool("operation", {"operation_id": "interrupted-five", "cursor": pages[0]["next_cursor"][:-4] + "AAAA"})
+            invalid = await client.session.call_tool("operation", {"operation_id": "interrupted-every", "cursor": pages[0]["next_cursor"][:-4] + "AAAA"})
             self.assertTrue(invalid.is_error)
             self.assertIn("invalid_cursor", " ".join(block.text for block in invalid.content if hasattr(block, "text")))
-            recovered = await client.call("recover", {"operation_id": "interrupted-five"})
+            recovered = await client.call("recover", {"operation_id": "interrupted-every"})
             self.assertEqual("applied", recovered["state"])
-            done = await client.call("operation", {"operation_id": "interrupted-five"})
+            done = await client.call("operation", {"operation_id": "interrupted-every"})
             self.assertEqual("applied", done["state"])
             self.assertIsNone(done["next_cursor"] if "next_cursor" in done else None)
 

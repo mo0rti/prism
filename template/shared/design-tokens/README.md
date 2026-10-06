@@ -4,11 +4,11 @@
 
 ## How Each Platform Uses Tokens
 
-### Web / Admin (Tailwind CSS)
-The web apps define their own theme as HSL custom properties in `app/globals.css`, which the Tailwind config references. They do not import `tokens.json`, so copy any token change into those variables:
+### Web (CSS custom properties)
+Each web app defines its own colors as CSS custom properties in `app/globals.css`, with a dark-mode override. They do not import `tokens.json`, so copy any token change into those variables:
 ```css
 :root {
-  --accent: 145 63% 42%;
+  --accent: #2456d6;
 }
 ```
 

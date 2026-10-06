@@ -1,0 +1,51 @@
+// @vitest-environment node
+import { describe, expect, it, vi } from "vitest"
+
+import { createDevIdentityToken, getCurrentUser } from "@/lib/api/client"
+
+type Fetcher = (request: Request) => Promise<Response>
+
+const profile = { id: "5b0e1c52-6d1d-4e3e-9a55-4c8f0d6f1a10", email: "ada@example.com", displayName: "Ada", createdAt: "2026-10-06T10:00:00Z" }
+
+describe("generated API client", () => {
+  it("reads GET /api/me with the bearer token", async () => {
+    vi.stubEnv("API_BASE_URL", "http://backend.test/")
+    const backend = vi.fn<Fetcher>(async () => Response.json(profile))
+
+    const result = await getCurrentUser("token-123", backend)
+
+    expect(result).toEqual({ status: 200, user: profile })
+    const request = backend.mock.calls[0][0]
+    expect(request.method).toBe("GET")
+    expect(request.url).toBe("http://backend.test/api/me")
+    expect(request.headers.get("authorization")).toBe("Bearer token-123")
+  })
+
+  it("returns the status and no profile when the backend answers 401", async () => {
+    const backend = vi.fn<Fetcher>(async () => Response.json({ code: "UNAUTHORIZED", message: "Sign in" }, { status: 401 }))
+
+    expect(await getCurrentUser("stale", backend)).toEqual({ status: 401, user: undefined })
+  })
+
+  it("posts POST /api/dev-identity/token without credentials", async () => {
+    vi.stubEnv("API_BASE_URL", "http://backend.test")
+    const backend = vi.fn<Fetcher>(async () => Response.json({ accessToken: "token-123", tokenType: "Bearer", expiresIn: 600 }))
+
+    const result = await createDevIdentityToken({ email: "ada@example.com" }, backend)
+
+    expect(result).toEqual({ status: 200, accessToken: "token-123", expiresIn: 600 })
+    const request = backend.mock.calls[0][0]
+    expect(request.method).toBe("POST")
+    expect(request.url).toBe("http://backend.test/api/dev-identity/token")
+    expect(request.headers.get("authorization")).toBeNull()
+  })
+
+  it("defaults to the first backend's port", async () => {
+    vi.stubEnv("API_BASE_URL", "")
+    const backend = vi.fn<Fetcher>(async () => Response.json(profile))
+
+    await getCurrentUser("token-123", backend)
+
+    expect(backend.mock.calls[0][0].url).toBe("http://localhost:8080/api/me")
+  })
+})

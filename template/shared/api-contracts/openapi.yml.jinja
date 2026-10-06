@@ -13,6 +13,53 @@ security:
 
 paths:
   # ===========================================================================
+  # Local development identity and the signed-in user
+  # ===========================================================================
+  /api/dev-identity/token:
+    post:
+      operationId: createDevToken
+      tags: [dev-identity]
+      x-prism-dev-only: true
+      security: []
+      summary: Issue a token for the local development identity
+      description: >-
+        Development only. The backend offers this operation under its `local` profile and to loopback
+        requests, so anywhere else it answers 404. It is not complete authentication.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevIdentityTokenRequest'
+      responses:
+        '200':
+          description: A short-lived bearer token for the development identity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DevIdentityToken'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/me:
+    get:
+      operationId: getMe
+      tags: [users]
+      summary: The profile of the signed-in user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The signed-in user's profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ===========================================================================
   # Authentication
   # ===========================================================================
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
@@ -334,6 +381,47 @@ paths:
 # =============================================================================
 components:
   schemas:
+    # --- Local development identity and current user ---
+    DevIdentityTokenRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 200
+        displayName:
+          type: string
+          maxLength: 200
+
+    DevIdentityToken:
+      type: object
+      required: [accessToken, tokenType, expiresIn]
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiresIn:
+          type: integer
+          description: Seconds until the token expires.
+
+    UserProfile:
+      type: object
+      required: [id, displayName, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        email:
+          type: string
+          format: email
+        createdAt:
+          type: string
+          format: date-time
+
     # --- Auth ---
 {% if "google" in auth_methods or "apple" in auth_methods or "facebook" in auth_methods or "microsoft" in auth_methods %}
     OAuthTokenRequest:
@@ -431,7 +519,7 @@ components:
         authProvider:
           type: string
           enum: [LOCAL, GOOGLE, APPLE, FACEBOOK, MICROSOFT]
-          description: `LOCAL` is always available for password-based accounts, and selected OAuth providers may also be used for sign-in.
+          description: "`LOCAL` is always available for password-based accounts, and selected OAuth providers may also be used for sign-in."
         role:
           type: string
           enum: [USER, ADMIN]

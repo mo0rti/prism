@@ -17,10 +17,11 @@
 An app is `{id, stack}` plus optional `name`, `path`, `audience`, `repository`, `remote` and `generation`:
 
 - `id` is a stable slug. `stack` comes from the registry: `spring-backend`, `nextjs-web`, `android-compose`, `ios-swiftui` or `other`.
-- `path` defaults to the stack's default path (`backend`, `mobile-android`, `mobile-ios`), else the ID.
+- `path` defaults to the stack's default path (`backend`, `mobile-android`, `mobile-ios`), else the ID (`web` for the default web app).
+- `audience` is free text, for example `B2C` or `internal`. No gate reads it. For a `nextjs-web` app it is display text in the app's header and guidance, nothing more. The interactive flow asks for it, and `prism app add --audience` sets it.
 - `generation` is `scaffolded` (Prism generates the code and `prism update` keeps it current) or `registered` (the manifest records it; the code lives elsewhere). An app of a generated stack in this repository defaults to `scaffolded`; an app in an external repository, or of the `other` stack, is always registered. An external app also names its repository's `remote`.
 
-A preset is an app list: `backend-only` is `backend`; `backend-mobile` is `backend`, `mobile-android` and `mobile-ios`; `backend-web` is `backend`, `web-user-app` and `web-admin-portal`. An answers file carries the same list:
+A preset is an app list: `backend-only` is `backend`; `backend-mobile` is `backend`, `mobile-android` and `mobile-ios`; `backend-web` is `backend` and `web`. An answers file carries the same list, and a second web app is one more entry of the same stack:
 
 ```yaml
 schema_version: 1
@@ -29,6 +30,8 @@ answers:
   apps:
     - {id: backend, stack: spring-backend}
     - {id: partner-api, stack: spring-backend, path: services/partner-api, audience: B2B}
+    - {id: web, stack: nextjs-web, audience: B2C}
+    - {id: admin, stack: nextjs-web, audience: internal}
     - {id: customer-android, stack: android-compose, repository: mobile, remote: "https://example.com/acme/mobile.git", path: apps/customer}
 ```
 
@@ -41,7 +44,8 @@ The CLI derives, validates and records these in the app's own answers file (`<pa
 - `app_package_segment`: the ID without hyphens. It must pass the package-identifier rules (a letter first, no Kotlin or Java keyword) and be unique across every app of the workspace, so `my-app` and `myapp` collide.
 - the package, directory path and module name: `<package_identifier>.<segment>`, its path, and the ID in PascalCase.
 - the CI workflow name and `paths:` filters, scoped to the app's path.
-- `port`: the first free port of the stack's range (`spring-backend` from 8080), chosen when the app is added and kept in its answers. Removing another app never moves it.
+- `port`: the first free port of the stack's range (`spring-backend` from 8080, `nextjs-web` from 3000), chosen when the app is added and kept in its answers. Removing another app never moves it.
+- the web package name, `<project_slug>-<app id>`, and the session cookie name, `<app id>_session` with hyphens as underscores: each web app has its own, because apps on `localhost` share one cookie jar whatever their port.
 
 An app ID and path must not replace a file of the workspace layer: an ID such as `api-contracts` (a workspace workflow) or a path inside `docs/`, `knowledge/`, `shared/` or `.github/` is refused, and an app's own path must be empty or absent.
 
@@ -50,10 +54,11 @@ An app ID and path must not replace a file of the workspace layer: an ID such as
 | Stack | What `prism new` generates today |
 |-------|----------------------------------|
 | `spring-backend` | The `spring-backend` pack: a Spring Boot app with a health endpoint, a context test, a CI workflow and a Cursor rule, under the app's path |
-| `nextjs-web`, `android-compose`, `ios-swiftui` | The full sample, rendered by the workspace layer, only for the default apps (`web-user-app` and `web-admin-portal`, `mobile-android`, `mobile-ios`) at their default paths; another app of these stacks can only be registered until the stack's pack exists |
+| `nextjs-web` | The `nextjs-web` pack, once per web app: a Next.js app with a "Local development sign-in" route that keeps the dev-identity token in an httpOnly cookie, one page that shows `GET /api/me` through a client generated from the shared OpenAPI contract, Vitest and Testing Library tests, a committed `package-lock.json`, a CI workflow that runs `npm ci`, lint, typecheck, test and build, and a Cursor rule, under the app's path. Any number of web apps, each with its own port, package name and workflow |
+| `android-compose`, `ios-swiftui` | The full sample, rendered by the workspace layer, only for the default apps (`mobile-android`, `mobile-ios`) at their default paths; another app of these stacks can only be registered until the stack's pack exists |
 | `other` | Registered only |
 
-The backend, Android and web samples are verified locally. The iOS sample is verified only by the macOS CI job. `web-user-app` and `web-admin-portal` pass install, lint, typecheck, the auth check and the Next.js build locally; no hosting configuration is generated. [current-status.md](current-status.md) records the verification per platform.
+The backend and Android samples are verified locally. The iOS sample is verified only by the macOS CI job. A generated web app passes `npm ci`, lint, typecheck, its tests and the Next.js build locally and in CI, with a mocked backend; its sign-in against a running backend is checked by hand, and no hosting configuration is generated. [current-status.md](current-status.md) records the verification per platform.
 
 ## Current Notes Per Input
 
@@ -78,4 +83,4 @@ An answers file or `--data` value for a question that no longer exists (`databas
 
 - **Backend only** for contract inspection and repository-shape validation
 - **Backend + Mobile** for the Android and iOS client path; iOS needs macOS and Xcode validation
-- **Backend + Web** to evaluate the combined user-web and admin-portal setup
+- **Backend + Web** to evaluate the web slice against the backend; add a second web app for another audience with `prism app add admin --stack nextjs-web --audience internal --scaffold`

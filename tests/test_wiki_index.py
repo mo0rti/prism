@@ -414,7 +414,7 @@ class IndexLintTests(unittest.TestCase):
 class ProjectDocsTemplateTests(unittest.TestCase):
     """The general index of a generated workspace lists the template-owned `docs/` pages, one line each."""
 
-    ALL_PLATFORMS = ["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"]
+    ALL_PLATFORMS = ["backend", "web", "mobile-android", "mobile-ios"]
 
     def template_docs(self) -> list[str]:
         docs = REPO_ROOT / "template" / "docs"
@@ -424,7 +424,7 @@ class ProjectDocsTemplateTests(unittest.TestCase):
         return render_template_text((TEMPLATE_KNOWLEDGE / "wiki" / "index.md.jinja").read_text(encoding="utf-8"), apps=[{"id": item} for item in platforms])
 
     def test_every_template_docs_page_has_exactly_one_line(self) -> None:
-        for platforms in (["backend"], ["web-user-app"], ["mobile-ios"], self.ALL_PLATFORMS):
+        for platforms in (["backend"], ["web"], ["mobile-ios"], self.ALL_PLATFORMS):
             with self.subTest(platforms=platforms):
                 targets = [entry.target for entry in parse_index_entries(self.rendered_index(platforms)) if is_project_doc_target(entry.target)]
                 expected = [f"../../docs/{page}" for page in self.template_docs()]

@@ -1,0 +1,48 @@
+name: {{ ci_workflow_name | tojson }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+{%- for path in ci_paths %}
+      - {{ path | tojson }}
+{%- endfor %}
+  pull_request:
+    branches: [main]
+    paths:
+{%- for path in ci_paths %}
+      - {{ path | tojson }}
+{%- endfor %}
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Install, lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: {{ app_path }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: {{ versions.node | tojson }}
+          cache: npm
+          cache-dependency-path: {{ app_path }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

@@ -17,7 +17,7 @@ from tests.layered_support import generate_default_apps
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = REPO_ROOT / "template"
 PACKS = REPO_ROOT / "packs"
-APPS = ("backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios")
+APPS = ("backend", "web", "mobile-android", "mobile-ios")
 IMPORT_LINE = "@AGENTS.md"
 
 # Rules that must be written once across a folder's AGENTS.md and CLAUDE.md, with whitespace collapsed.
@@ -40,8 +40,10 @@ STACK_RULES = {
         "Spring beans must inject `tools.jackson.databind.ObjectMapper`",
         "`runBlocking` in MVC controllers",
     ),
-    "web-user-app": ("Keep dashboard routes product-focused, not admin-focused.",),
-    "web-admin-portal": ("Treat role checks and audit visibility as first-class requirements.",),
+    "web": (
+        "Calling the backend from the browser, or putting the token in `localStorage`, a response body or a client component",
+        "Reading `audience` anywhere but the display text",
+    ),
     "mobile-android": (
         "`AppResult<T>` instead of `kotlin.Result`",
         "Cleartext HTTP is allowed only in debug builds",
@@ -67,8 +69,11 @@ class TemplateSourceTests(unittest.TestCase):
 
     def test_every_claude_file_imports_the_agents_file_next_to_it(self) -> None:
         claude_files = sorted(TEMPLATE.glob("CLAUDE.md.jinja")) + sorted(TEMPLATE.glob("*/CLAUDE.md.jinja")) + sorted(PACKS.glob("*/*/CLAUDE.md.jinja"))
-        self.assertEqual(1 + len(APPS) + len(list(PACKS.glob("*/*/CLAUDE.md.jinja"))), len(claude_files))
+        agents_files = sorted(TEMPLATE.glob("AGENTS.md.jinja")) + sorted(TEMPLATE.glob("*/AGENTS.md.jinja")) + sorted(PACKS.glob("*/*/AGENTS.md.jinja"))
+        self.assertEqual(len(agents_files), len(claude_files), "every AGENTS.md has its CLAUDE.md")
         self.assertTrue(list(PACKS.glob("*/*/CLAUDE.md.jinja")), "a pack carries its own CLAUDE.md")
+        for stack in ("spring-backend", "nextjs-web"):
+            self.assertEqual(1, len(list((PACKS / stack).glob("*/CLAUDE.md.jinja"))), stack)
         for path in claude_files:
             with self.subTest(path=path.relative_to(REPO_ROOT).as_posix()):
                 self.assertTrue((path.parent / "AGENTS.md.jinja").is_file())
@@ -88,7 +93,6 @@ class TemplateSourceTests(unittest.TestCase):
                 "api-conventions.mdc.jinja",
                 "mobile-android.mdc.jinja",
                 "mobile-ios.mdc.jinja",
-                "web.mdc.jinja",
             ],
             rules,
         )
@@ -110,7 +114,7 @@ class TemplateSourceTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("copier"), "Copier is required for rendered template checks")
 class GeneratedInstructionTests(unittest.TestCase):
-    """A generated workspace with all five apps."""
+    """A generated workspace with all four default apps."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -194,7 +198,7 @@ class GeneratedInstructionTests(unittest.TestCase):
             ("backend.mdc", ("backend",)),
             ("mobile-android.mdc", ("mobile-android",)),
             ("mobile-ios.mdc", ("mobile-ios",)),
-            ("web.mdc", ("web-user-app", "web-admin-portal")),
+            ("web.mdc", ("web",)),
         ):
             with self.subTest(scoped=name):
                 globs = re.search(r'^globs: "([^"]+)"', (rules / name).read_text(encoding="utf-8"), re.M)

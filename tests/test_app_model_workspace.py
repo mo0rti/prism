@@ -245,11 +245,11 @@ class VersionTwoFilesystemTests(unittest.TestCase):
         self.assertEqual([], self.drift())
 
     def test_an_undeclared_legacy_directory_is_a_warning(self) -> None:
-        for name in ("mobile-android", "backend", "web-user-app"):
+        for name in ("mobile-android", "backend", "web"):
             (self.root / name).mkdir()
         drift = self.drift()
         self.assertEqual(["warning"], [item.severity for item in drift])
-        self.assertTrue(item_path_endswith(drift[0].path, "web-user-app"))
+        self.assertTrue(item_path_endswith(drift[0].path, "web"))
 
     def test_an_app_at_a_custom_path_counts_as_declared(self) -> None:
         self.manifest["apps"][2]["path"] = "services/api"
@@ -395,7 +395,7 @@ class TwoAppBoardTests(TwoAppWorkspaceCase):
         self.assertIn("devices/kiosk", checked)
         self.assertIn("mobile-android", checked)
         self.assertNotIn("apps/partner", checked)
-        self.assertNotIn("web-user-app", checked)
+        self.assertNotIn("web", checked)
         service.validate_graph_inputs()
 
 
@@ -565,15 +565,15 @@ class WorkflowInstallAppsTests(TwoAppWorkspaceCase):
     def test_new_installs_write_the_chosen_platforms_as_apps(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            install_workflow(root, name="Fresh", platforms=("mobile-ios", "backend", "web-admin-portal"))
+            install_workflow(root, name="Fresh", platforms=("mobile-ios", "backend", "web"))
             data = manifest_data(root)
         self.assertEqual(2, data["schema_version"])
         self.assertNotIn("platforms", data["project"])
-        self.assertEqual(apps_from_platforms(["backend", "mobile-ios", "web-admin-portal"]), data["apps"])
+        self.assertEqual(apps_from_platforms(["backend", "mobile-ios", "web"]), data["apps"])
         self.assertNotIn("repositories", data)
         model, diagnostics = normalize_manifest(data, path=Path(MANIFEST_FILE))
         self.assertEqual([], diagnostics)
-        self.assertEqual(["backend", "mobile-ios", "web-admin-portal"], model.active_app_ids)
+        self.assertEqual(["backend", "mobile-ios", "web"], model.active_app_ids)
 
     def test_other_schema_versions_are_still_rejected_for_adoption(self) -> None:
         data = manifest_data(self.root)
@@ -622,7 +622,7 @@ class ManifestUpdateAppsTests(TwoAppWorkspaceCase):
     def test_competing_edits_to_the_apps_are_a_conflict(self) -> None:
         previous = fixture_manifest("Example", ["backend"])
         current = fixture_manifest("Example", ["backend", "mobile-ios"])
-        latest = fixture_manifest("Example", ["backend", "web-user-app"])
+        latest = fixture_manifest("Example", ["backend", "web"])
         with self.assertRaises(ManifestMergeConflict) as raised:
             merge_workspace_manifest(previous, current, latest)
         self.assertEqual(["apps"], raised.exception.fields)
@@ -772,8 +772,8 @@ class TemplateManifestTests(unittest.TestCase):
         self.assertEqual([], diagnostics)
         self.assertEqual([], model.active_app_ids)
 
-    def test_the_cli_records_the_apps_of_all_five_platforms(self) -> None:
-        platforms = ["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"]
+    def test_the_cli_records_the_apps_of_all_the_default_platforms(self) -> None:
+        platforms = ["backend", "web", "mobile-android", "mobile-ios"]
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             path = write_workspace_manifest(root, {"project_name": "Rendered"}, prism_cli_version=__version__, apps=apps_from_platforms(platforms, generation="scaffolded"))
@@ -916,7 +916,7 @@ class BaselineCompatibilityTests(unittest.TestCase):
             with self.subTest(workspace=name, section=section):
                 self.assertEqual(expected[section], captured[section])
 
-    def test_a_generated_workspace_with_all_five_platforms_reads_identically(self) -> None:
+    def test_a_generated_workspace_with_all_the_default_platforms_reads_identically(self) -> None:
         self.check("full", app_model_baseline.build_full_workspace)
 
     def test_a_workflow_only_workspace_with_two_platforms_reads_identically(self) -> None:
@@ -926,8 +926,8 @@ class BaselineCompatibilityTests(unittest.TestCase):
         expected = json.loads((FIXTURES / "full.json").read_text(encoding="utf-8"))
         self.assertEqual({"board", "cli", "inspection", "lint", "status"}, set(expected))
         self.assertEqual({"doctor-workspace", "status-json", "validate", "wiki-lint-json"}, set(expected["cli"]))
-        self.assertEqual(["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"], expected["inspection"]["app_ids"])
-        self.assertEqual(["backend", "web-user-app", "web-admin-portal", "mobile-android", "mobile-ios"], expected["board"]["identity-app-ids"])
+        self.assertEqual(["backend", "web", "mobile-android", "mobile-ios"], expected["inspection"]["app_ids"])
+        self.assertEqual(["backend", "web", "mobile-android", "mobile-ios"], expected["board"]["identity-app-ids"])
         workflow_only = json.loads((FIXTURES / "workflow-only.json").read_text(encoding="utf-8"))
         self.assertEqual(["backend", "mobile-android"], workflow_only["board"]["identity-app-ids"])
         self.assertEqual({"read_only": False, "reason": None}, expected["board"]["compatibility"])

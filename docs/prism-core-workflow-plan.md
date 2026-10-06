@@ -32,7 +32,7 @@ Agents connect to a Prism board through one shared, provider-neutral interface. 
 - Freshness rejects changes to relevant action inputs, preserves unrelated work and the human's unsent inputs, and rechecks deterministic conditions at apply time. A calendar change alone is not reported as a source edit.
 - Durable operation receipts and recoverable writes support human-only recovery through the board. Actor attribution lives in the operation journal and a versioned history format. Legacy and direct-file changes are unattributed.
 - A workspace pinned to an old workflow contract stays read-only until an explicit workflow upgrade. A blocked mapped drop opens an explanatory preview with confirmation disabled.
-- Adoption supports existing repositories and empty workspaces. The manifest declares the workspace's apps ([workspace-model.md](workspace-model.md)); `--app` registers any of the five generated app IDs (`backend`, `web-user-app`, `web-admin-portal`, `mobile-android`, `mobile-ios`), and `prism app add` registers others. A workspace may have no apps. Application files and custom guidance are preserved through a reviewed setup diff, and agent-led `setup-project` initializes the workflow after the assets are installed.
+- Adoption supports existing repositories and empty workspaces. The manifest declares the workspace's apps ([workspace-model.md](workspace-model.md)); `--app` registers any of the four generated app IDs (`backend`, `web`, `mobile-android`, `mobile-ios`), and `prism app add` registers others. A workspace may have no apps. Application files and custom guidance are preserved through a reviewed setup diff, and agent-led `setup-project` initializes the workflow after the assets are installed.
 - Connected intake is text-only and clearly reports unsupported attachments.
 - A writable human can review and recover an interrupted agent operation after that agent's grant is revoked. Recovery requires a fresh review of the remaining changes and records the original and recovering actors separately.
 - Ordinary workflow blockers are readiness information for `prism validate`. Integrity errors fail validation, and a blocked transition preflight exits 3.
@@ -59,7 +59,7 @@ Source anchors: [workflow model](prism-model.md), [lifecycle contract](../templa
 | Adoption | `prism workflow install` and `prism workflow upgrade` preview every file and apply only with `--apply`. | Existing knowledge and custom guidance are preserved; conflicts stop the command and name the file. |
 | Board actions | Humans confirm their own named actions; agents follow skill confirmations in their CLI. Both use one service. | No second approval queue for agents and no automatic agent launcher. |
 | Human and agent ownership | Roles stay PO, designer and dev. The service records the registered participant that performs each connected operation. | A token establishes a participant, not an independently verified person. Named assignment is deferred. |
-| Project scope | The manifest declares apps with a stack, repository and path. Feature scope uses the five generated app IDs. | A feature cannot yet name an app with another ID. |
+| Project scope | The manifest declares apps with a stack, repository and path. Feature scope uses the four generated app IDs. | A feature cannot yet name an app with another ID. |
 | Agent protocol | One standard MCP endpoint and a versioned tool contract (contract 3), backed by the shared service and packaged skills. | The official SDK is pinned (`mcp==2.2.0`). There are no provider-specific workflow connectors. |
 | Deployment model | One local process per workspace with separate revocable participant tokens. | Remote hosting and authorization are not supported. |
 | Human action coverage | Direct `po-handoff`, `design-start` and `dev-start`; the other six actions are agent-led. | Existing prerequisites and review obligations apply. A gesture cannot author missing evidence. |
@@ -218,7 +218,7 @@ The core scenario is a small product-neutral workspace that spans intake, an una
 - Remote access and its authorization.
 - Direct human completion of `po-specify`, `design-handoff`, `dev-done` and the three reopen routes.
 - Named participant assignment, work claims and a board chat.
-- Feature scope that names an app other than the five generated app IDs.
+- Feature scope that names an app other than the four generated app IDs.
 - PDF and image extraction for connected intake.
 - Release tag and publication.
 - Remaining application-sample hardening, which is tracked in [current-status.md](current-status.md) and does not define core acceptance.

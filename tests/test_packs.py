@@ -106,10 +106,13 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual([], validate_scaffold([scaffolded("backend"), scaffolded("api-two", path="services/api-two")]))
 
     def test_an_id_that_would_replace_a_workspace_file_is_rejected(self) -> None:
-        for reserved in ("api-contracts", "web"):
+        for reserved in ("api-contracts", "api-conventions", "advisory-review"):
             with self.subTest(app=reserved):
                 errors = validate_scaffold([scaffolded(reserved)])
                 self.assertTrue(any("workflow or Cursor rule" in message for message in errors), errors)
+
+    def test_web_is_an_ordinary_app_id_because_the_workspace_layer_has_no_web_rule(self) -> None:
+        self.assertEqual([], validate_scaffold([scaffolded("web", "nextjs-web")]))
 
     def test_a_path_inside_a_folder_of_the_workspace_layer_is_rejected(self) -> None:
         for path in ("docs/api", ".github/apps", "knowledge", "shared/x"):
@@ -122,21 +125,27 @@ class ValidationTests(unittest.TestCase):
         self.assertTrue(any("cannot be scaffolded" in message for message in errors), errors)
 
     def test_a_stack_with_only_a_full_sample_is_scaffolded_only_as_its_default_app(self) -> None:
-        self.assertEqual([], validate_scaffold([scaffolded("web-user-app", "nextjs-web")]))
         self.assertEqual([], validate_scaffold([scaffolded("mobile-android", "android-compose", "mobile-android")]))
-        errors = validate_scaffold([scaffolded("customer-web", "nextjs-web")])
-        self.assertTrue(any("has no pack yet" in message and "register `customer-web`" in message for message in errors), errors)
-        errors = validate_scaffold([scaffolded("web-user-app", "nextjs-web", "apps/web")])
-        self.assertTrue(any("only at `web-user-app/`" in message or "default path" in message or "generated only at" in message for message in errors), errors)
+        errors = validate_scaffold([scaffolded("partner-android", "android-compose")])
+        self.assertTrue(any("has no pack yet" in message and "register `partner-android`" in message for message in errors), errors)
+        errors = validate_scaffold([scaffolded("mobile-android", "android-compose", "apps/android")])
+        self.assertTrue(any("only at `mobile-android/`" in message or "default path" in message or "generated only at" in message for message in errors), errors)
+
+    def test_any_number_of_nextjs_web_apps_scaffold_at_any_path(self) -> None:
+        apps = [scaffolded("web", "nextjs-web"), scaffolded("admin", "nextjs-web"), scaffolded("partner-portal", "nextjs-web", "apps/partner")]
+        self.assertEqual([], validate_scaffold(apps))
+        # Two apps of one stack differ only in their identifiers: the hyphen collision is still caught.
+        errors = validate_scaffold([scaffolded("my-web", "nextjs-web"), scaffolded("myweb", "nextjs-web")])
+        self.assertTrue(any("share the package segment" in message for message in errors), errors)
 
     def test_a_sample_app_id_cannot_name_an_app_of_another_stack(self) -> None:
         errors = validate_scaffold([scaffolded("mobile-ios", "spring-backend")])
         self.assertTrue(any("ID of the `ios-swiftui` full sample" in message for message in errors), errors)
 
     def test_only_limits_the_scaffold_checks_to_the_new_app(self) -> None:
-        apps = [scaffolded("web-user-app", "nextjs-web"), scaffolded("customer-web", "nextjs-web")]
-        self.assertEqual([], validate_scaffold(apps, only=["web-user-app"]))
-        self.assertTrue(validate_scaffold(apps, only=["customer-web"]))
+        apps = [scaffolded("mobile-android", "android-compose"), scaffolded("partner-android", "android-compose")]
+        self.assertEqual([], validate_scaffold(apps, only=["mobile-android"]))
+        self.assertTrue(validate_scaffold(apps, only=["partner-android"]))
 
     def test_an_existing_path_or_file_of_the_pack_blocks_the_scaffold(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -248,22 +257,25 @@ class PortTests(unittest.TestCase):
 
 class SampleSwitchTests(unittest.TestCase):
     def test_each_stack_without_a_pack_has_one_named_switch(self) -> None:
-        self.assertTrue(packs.NEXTJS_WEB_FULL_SAMPLE)
         self.assertTrue(packs.ANDROID_COMPOSE_FULL_SAMPLE)
         self.assertTrue(packs.IOS_SWIFTUI_FULL_SAMPLE)
-        self.assertEqual(
-            {"web-user-app": "nextjs-web", "web-admin-portal": "nextjs-web", "mobile-android": "android-compose", "mobile-ios": "ios-swiftui"},
-            full_sample_apps(),
-        )
-        self.assertEqual(("spring-backend",), PACK_STACKS)
+        self.assertEqual({"mobile-android": "android-compose", "mobile-ios": "ios-swiftui"}, full_sample_apps())
+        self.assertEqual(("spring-backend", "nextjs-web"), PACK_STACKS)
         self.assertEqual(("spring-backend", "nextjs-web", "android-compose", "ios-swiftui"), scaffoldable_stacks())
 
+    def test_a_stack_whose_pack_landed_has_no_switch_and_no_sample(self) -> None:
+        self.assertFalse(hasattr(packs, "NEXTJS_WEB_FULL_SAMPLE"))
+        self.assertNotIn("nextjs-web", set(full_sample_apps().values()))
+        self.assertFalse((REPO_ROOT / "template" / "web-user-app").exists())
+        self.assertFalse((REPO_ROOT / "template" / "web-admin-portal").exists())
+
     def test_turning_a_switch_off_removes_that_sample_only(self) -> None:
-        with patch.object(packs, "NEXTJS_WEB_FULL_SAMPLE", False):
-            self.assertEqual({"mobile-android": "android-compose", "mobile-ios": "ios-swiftui"}, full_sample_apps())
-            self.assertNotIn("nextjs-web", scaffoldable_stacks())
+        with patch.object(packs, "ANDROID_COMPOSE_FULL_SAMPLE", False):
+            self.assertEqual({"mobile-ios": "ios-swiftui"}, full_sample_apps())
+            self.assertNotIn("android-compose", scaffoldable_stacks())
         with patch.object(packs, "IOS_SWIFTUI_FULL_SAMPLE", False), patch.object(packs, "ANDROID_COMPOSE_FULL_SAMPLE", False):
-            self.assertEqual({"web-user-app": "nextjs-web", "web-admin-portal": "nextjs-web"}, full_sample_apps())
+            self.assertEqual({}, full_sample_apps())
+            self.assertEqual(("spring-backend", "nextjs-web"), scaffoldable_stacks())
 
 
 def hard_coded_versions(pack_root: Path, pins: dict[str, str]) -> list[str]:
@@ -271,8 +283,8 @@ def hard_coded_versions(pack_root: Path, pins: dict[str, str]) -> list[str]:
 
     found: list[str] = []
     for path in sorted(pack_root.rglob("*")):
-        if not path.is_file():
-            continue
+        if not path.is_file() or path.name.startswith("package-lock.json"):
+            continue  # a lockfile records every resolved version; its agreement with the pins has its own test
         data = path.read_bytes()
         if b"\0" in data:
             continue
@@ -309,6 +321,8 @@ class VersionPinTests(unittest.TestCase):
             (pack / "build.gradle.kts.jinja").write_text("2021 and 8.14.3 and 4.0.10\n", encoding="utf-8")
             (pack / "settings.gradle.kts").unlink()
             self.assertEqual([], hard_coded_versions(pack, pins), "a version inside a longer number is not the pin")
+            (pack / "package-lock.json.jinja").write_text('{"version": "4.0.1", "node": ">=21"}\n', encoding="utf-8")
+            self.assertEqual([], hard_coded_versions(pack, pins), "a lockfile repeats the pins by design")
 
     def test_the_packs_read_versions_through_the_versions_question(self) -> None:
         text = (REPO_ROOT / "copier.yml").read_text(encoding="utf-8")
@@ -425,7 +439,7 @@ class WorkspaceDataFromManifestTests(unittest.TestCase):
             "schema_version": 2,
             "apps": [
                 {**scaffolded("backend"), "status": "retired"},
-                scaffolded("web-user-app", "nextjs-web"),
+                scaffolded("web", "nextjs-web"),
                 {"id": "partner", "stack": "android-compose", "repository": "workspace", "path": "apps/partner"},
             ],
         }
@@ -436,7 +450,7 @@ class WorkspaceDataFromManifestTests(unittest.TestCase):
             (root / "backend" / ".copier-answers.yml").write_text(yaml.safe_dump({"port": 8085, "_src_path": "x"}), encoding="utf-8")
             data = cli.workspace_layer_data_from_manifest(root)
         self.assertEqual(["nextjs-web", "spring-backend"], data["stacks"])
-        self.assertEqual([("backend", 8085), ("web-user-app", 0)], [(entry["id"], entry["port"]) for entry in data["apps"]])
+        self.assertEqual([("backend", 8085), ("web", 0)], [(entry["id"], entry["port"]) for entry in data["apps"]])
         self.assertEqual({"id", "name", "stack", "path", "audience", "port"}, set(data["apps"][0]))
 
 

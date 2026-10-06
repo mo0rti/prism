@@ -21,22 +21,6 @@ Desktop.ini
 .env.local
 .env.*.local
 
-{% if "web-user-app" in app_ids %}
-# =============================================================================
-# Web (Next.js)
-# =============================================================================
-web-user-app/node_modules/
-web-user-app/.next/
-web-user-app/out/
-{% endif %}
-{% if "web-admin-portal" in app_ids %}
-# =============================================================================
-# Admin (Next.js)
-# =============================================================================
-web-admin-portal/node_modules/
-web-admin-portal/.next/
-web-admin-portal/out/
-{% endif %}
 {% if "android-compose" in stacks %}
 # =============================================================================
 # Android

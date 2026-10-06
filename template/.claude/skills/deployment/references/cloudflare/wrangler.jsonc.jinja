@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // One Worker per web app: replace <app-id> with the app's ID.
+  "name": "{{ project_slug }}-<app-id>",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-03-26",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "upload_source_maps": true,
+  // Uncomment if the Worker spends most of its time talking to one backend region.
+  // "placement": {
+  //   "mode": "smart"
+  // },
+  // Use vars for non-sensitive runtime config. The generated web apps hold no secret of their own:
+  // the session cookie carries the backend's token. Put any secret you add in Cloudflare Worker
+  // secrets via `wrangler secret put`.
+  "vars": {
+    "NODE_ENV": "production",
+    "API_BASE_URL": "https://api.{{ project_slug }}.com"
+  }
+}

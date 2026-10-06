@@ -9,9 +9,8 @@
 | Platform | Tech Stack | Hosting | Purpose |
 |----------|-----------|---------|---------|
 {% for app in apps if app.stack == "spring-backend" %}| {{ app.name }} | Spring Boot, Kotlin, Java {{ pack_versions["spring-backend"].java }} | Project owner's choice (see the `deployment` skill) | REST API and business logic ({{ app.path }}/) |
-{% endfor %}{% if "web-user-app" in app_ids %}| User Web App | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5, next-intl 4 | Project owner's choice (see the `deployment` skill) | User-facing marketing and authenticated dashboard |
-{% endif %}{% if "web-admin-portal" in app_ids %}| Admin Web Portal | Next.js 14.2, React 18, TypeScript 5.6, Tailwind CSS 3, NextAuth 5 | Project owner's choice (see the `deployment` skill) | Internal admin operations and management UI |
-{% endif %}{% if "android-compose" in stacks %}| Android | Kotlin 2.2+, Java 21, Jetpack Compose, Hilt, Retrofit 3 | Google Play | Native Android app |
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| {{ app.name }} | Next.js {{ pack_versions["nextjs-web"].next }}, React {{ pack_versions["nextjs-web"].react }}, TypeScript {{ pack_versions["nextjs-web"].typescript }} | Project owner's choice (see the `deployment` skill) | Web app{% if app.audience %} for {{ app.audience }}{% endif %} ({{ app.path }}/) |
+{% endfor %}{% if "android-compose" in stacks %}| Android | Kotlin 2.2+, Java 21, Jetpack Compose, Hilt, Retrofit 3 | Google Play | Native Android app |
 {% endif %}{% if "ios-swiftui" in stacks %}| iOS | Swift 6, SwiftUI, iOS 17+, XcodeGen | App Store | Native iOS app |
 {% endif %}| Database | PostgreSQL 16 | Local development in Docker Compose; hosting is the project owner's choice | Data persistence |
 
@@ -54,12 +53,12 @@ Flow:
 1. Client submits login credentials or completes the OAuth provider callback
 2. Backend validates credentials, exchanges the OAuth authorization code, or verifies the web provider token
 3. Backend issues JWT access and refresh tokens
-4. Native clients store tokens locally; web sessions keep them in encrypted HttpOnly cookies
-5. Native clients and server-side web proxies attach the access token to authenticated API requests
+4. Native clients store tokens locally; a web app keeps the token in an httpOnly cookie
+5. Native clients and the web apps' servers attach the access token to authenticated API requests
 
 The backend allows one active refresh session per account, with a 10-second retry window
 for the immediately previous rotating token. New login and backend logout revoke old refresh
-state; previously issued access JWTs last until expiry. Public web sessions omit credentials.
+state; previously issued access JWTs last until expiry. A web app's browser code never calls the backend.
 
 ### Design Tokens
 

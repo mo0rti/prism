@@ -1,6 +1,6 @@
 ---
 name: platform-builder
-description: Add or extend a platform slice in this Copier template repo by following the current repo docs, matching established template patterns, updating docs and AI context, and validating generation. Use when working on backend, web-user-app, web-admin-portal, mobile-android, or mobile-ios template support.
+description: Add or extend a platform slice in this Copier template repo by following the current repo docs, matching established template patterns, updating docs and AI context, and validating generation. Use when working on backend, web, mobile-android, or mobile-ios template support.
 ---
 
 # Platform Builder

@@ -7,7 +7,7 @@
 ![Workflow](https://img.shields.io/badge/workflow-wiki--driven-0A7EA4)
 ![API](https://img.shields.io/badge/API-OpenAPI--first-6BA539)
 {% if "spring-backend" in stacks %}![Backend](https://img.shields.io/badge/backend-Spring%20Boot%204%20%2B%20Kotlin-6DB33F?logo=springboot&logoColor=white)
-{% endif %}{% if "web-user-app" in app_ids or "web-admin-portal" in app_ids %}![Web](https://img.shields.io/badge/web-Next.js-000000?logo=nextdotjs&logoColor=white)
+{% endif %}{% if "nextjs-web" in stacks %}![Web](https://img.shields.io/badge/web-Next.js-000000?logo=nextdotjs&logoColor=white)
 {% endif %}{% if "android-compose" in stacks %}![Android](https://img.shields.io/badge/android-Compose-3DDC84?logo=android&logoColor=white)
 {% endif %}{% if "ios-swiftui" in stacks %}![iOS](https://img.shields.io/badge/iOS-SwiftUI-F05138?logo=swift&logoColor=white)
 {% endif %}
@@ -33,9 +33,8 @@ or iOS.
 This generated workspace currently includes:
 
 {% for app in apps if app.stack == "spring-backend" %}- **{{ app.path }}/** - {{ app.name }}: Spring Boot (Kotlin) REST API
-{% endfor %}{% if "web-user-app" in app_ids %}- **web-user-app/** - Next.js user-facing web app (TypeScript)
-{% endif %}{% if "web-admin-portal" in app_ids %}- **web-admin-portal/** - Next.js admin web portal (TypeScript)
-{% endif %}{% if "android-compose" in stacks %}- **mobile-android/** - Android app (Kotlin/Jetpack Compose, MVVM)
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}- **{{ app.path }}/** - {{ app.name }}: Next.js web app (TypeScript){% if app.audience %}, for {{ app.audience }}{% endif %}
+{% endfor %}{% if "android-compose" in stacks %}- **mobile-android/** - Android app (Kotlin/Jetpack Compose, MVVM)
 {% endif %}{% if "ios-swiftui" in stacks %}- **mobile-ios/** - iOS app (Swift/SwiftUI, MVVM)
 {% endif %}- **shared/** - OpenAPI contract and shared design tokens
 - **knowledge/** - Product wiki and delivery workflow metadata
@@ -120,9 +119,8 @@ and `$generate-clients`.
 {% endif %}{% if "ios-swiftui" in stacks %}# iOS API config is already generated in the git-ignored `mobile-ios/Config/Debug.xcconfig`
 # On a fresh clone, `task mobile-ios:generate-project` creates it from `Config/Debug.xcconfig.example`
 # Update `mobile-ios/Config/Release.xcconfig` and its `.example` copy, which CI builds from, before production or TestFlight builds
-{% endif %}{% if "web-user-app" in app_ids %}cp web-user-app/.env.example web-user-app/.env.local
-{% endif %}{% if "web-admin-portal" in app_ids %}cp web-admin-portal/.env.example web-admin-portal/.env.local
-{% endif %}# Edit the local config files as needed for your machine and credentials
+{% endif %}{% for app in apps if app.stack == "nextjs-web" %}cp {{ app.path }}/.env.example {{ app.path }}/.env.local
+{% endfor %}# Edit the local config files as needed for your machine and credentials
 
 {% if "spring-backend" in stacks %}# Start the local database first
 docker compose up -d db
@@ -130,13 +128,10 @@ docker compose up -d db
 {% endif %}{% for app in apps if app.stack == "spring-backend" %}# Start {{ app.id }} locally on port {{ app.port }}
 task {{ app.id }}:run
 
-{% endfor %}{% if "web-user-app" in app_ids %}# Start the user web app
-task web-user-app:dev
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}# Start {{ app.id }} on port {{ app.port }} (its "Local development sign-in" needs a backend running under its `local` profile)
+task {{ app.id }}:dev
 
-{% endif %}{% if "web-admin-portal" in app_ids %}# Start the admin web portal
-task web-admin-portal:dev
-
-{% endif %}# Generate clients after any OpenAPI contract change
+{% endfor %}# Generate clients after any OpenAPI contract change
 # npm install -g @openapitools/openapi-generator-cli
 task generate-clients
 ```
@@ -150,9 +145,8 @@ task generate-clients
 - [Architecture Overview](docs/architecture.md) for system boundaries, platform map, and auth flow
 - [API Conventions](docs/api/conventions.md) for URL structure, versioning, auth headers, and error responses
 {% for app in apps if app.stack == "spring-backend" %}- [{{ app.name }} Guide]({{ app.path }}/docs/guide.md) for the structure, conventions and commands of `{{ app.id }}`
-{% endfor %}{% if "web-user-app" in app_ids %}- [User Web App Guide](web-user-app/docs/guide.md) for web-user-app structure, conventions, and commands
-{% endif %}{% if "web-admin-portal" in app_ids %}- [Admin Web Portal Guide](web-admin-portal/docs/guide.md) for internal web structure, conventions, and commands
-{% endif %}{% if "android-compose" in stacks %}- [Android Guide](mobile-android/docs/guide.md) for Android architecture, setup, and verification workflow
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}- [{{ app.name }} Guide]({{ app.path }}/docs/guide.md) for the structure, sign-in slice and commands of `{{ app.id }}`
+{% endfor %}{% if "android-compose" in stacks %}- [Android Guide](mobile-android/docs/guide.md) for Android architecture, setup, and verification workflow
 {% endif %}{% if "ios-swiftui" in stacks %}- [iOS Guide](mobile-ios/docs/guide.md) for iOS structure, build setup, and verification workflow
 {% endif %}- [CI/CD](docs/deployment/ci-cd.md) for the generated GitHub Actions workflow layout (build and test)
 - Deployment: the `deployment` skill (`.claude/skills/deployment/`, `.agents/skills/deployment/`) holds worked examples for the backend on Azure Container Apps and the web apps on Cloudflare; hosting, secrets and deployment are yours to choose
@@ -162,10 +156,8 @@ task generate-clients
 | Action | Command |
 |--------|---------|
 | Generate API clients | `task generate-clients` |
-{% if "web-user-app" in app_ids %}| Install user web app deps | `task web-user-app:install` |
-{% endif %}{% if "web-admin-portal" in app_ids %}| Install admin web portal deps | `task web-admin-portal:install` |
-{% endif %}{% for app in apps if app.stack == "spring-backend" %}| Start {{ app.id }} | `task {{ app.id }}:run` |
-{% endfor %}{% if "web-user-app" in app_ids %}| Start user web app | `task web-user-app:dev` |
-{% endif %}{% if "web-admin-portal" in app_ids %}| Start admin web portal | `task web-admin-portal:dev` |
-{% endif %}| Run all tests | `task test` |
+{% for app in apps if app.stack == "nextjs-web" %}| Install {{ app.id }} dependencies | `task {{ app.id }}:install` |
+{% endfor %}{% for app in apps if app.stack == "spring-backend" %}| Start {{ app.id }} | `task {{ app.id }}:run` |
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| Start {{ app.id }} | `task {{ app.id }}:dev` |
+{% endfor %}| Run all tests | `task test` |
 | Lint all platforms | `task lint` |
