@@ -886,7 +886,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root)
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
             write_wiki_page(root, "design", "F-001-checkout.md", "feature-id: F-001\n", "## Summary\nCheckout design.\n")
 
@@ -908,7 +908,7 @@ class WikiQueryTests(unittest.TestCase):
             (root / ".copier-answers.yml").write_text("_src_path: test-template\nplatforms: [backend]\n", encoding="utf-8")
             (root / "backend").mkdir()
             write_feature(root)
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
 
             data = wiki_show(root, "F-001")
 
@@ -923,7 +923,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="in-dev", owner="dev", advisory_review="pending", platforms=["backend"])
-            write_index(root, "| F-001 | Checkout | in-dev | dev | pending | 2026-01-01 |\n")
+            write_index(root, "| F-001 | Checkout | in-dev | dev | pending |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
 
             data = wiki_blockers(root)
@@ -946,7 +946,7 @@ class WikiQueryTests(unittest.TestCase):
                     "| 1 | Who approves refunds? | po | open |\n"
                 ),
             )
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
 
             data = wiki_owner(root, "po")
 
@@ -958,7 +958,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="ready-for-dev", owner="dev", advisory_review="done", platforms=["backend"])
-            write_index(root, "| F-001 | Checkout | ready-for-dev | dev | done | 2026-01-01 |\n")
+            write_index(root, "| F-001 | Checkout | ready-for-dev | dev | done |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
 
             data = wiki_app(root, "backend")
@@ -971,7 +971,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="raw", owner="po", platforms=["backend"])
-            write_index(root, "| F-001 | Checkout | raw | po | not-needed | 2026-01-01 |\n")
+            write_index(root, "| F-001 | Checkout | raw | po | not-needed |\n")
 
             data = wiki_app(root, "backend")
 
@@ -982,7 +982,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, extra_body="## Summary\nCheckout supports refunds.\n")
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
 
             data = wiki_search(root, "refund")
 
@@ -1173,8 +1173,6 @@ class WikiLintTests(unittest.TestCase):
                 "title: Login\n"
                 "status: specified\n"
                 "owner: po\n"
-                "introduced: 2026-01-01\n"
-                "last-updated: 2026-01-01\n"
                 "apps: [backend]\n"
                 "sources: []\n"
                 "advisory-review: not-needed\n"
@@ -1186,8 +1184,6 @@ class WikiLintTests(unittest.TestCase):
                 "title: Search\n"
                 "status: specified\n"
                 "owner: po\n"
-                "introduced: 2026-01-01\n"
-                "last-updated: 2026-01-01\n"
                 "apps: [backend]\n"
                 "sources: []\n"
                 "advisory-review: not-needed\n"
@@ -1218,7 +1214,7 @@ class WikiLintTests(unittest.TestCase):
             write_feature(root, status="ready-for-design", owner="designer", advisory_review="done")
             write_index(
                 root,
-                "| F-001 | Checkout | specified | po | pending | 2026-01-01 |\n",
+                "| F-001 | Checkout | specified | po | pending |\n",
             )
 
             result = lint_wiki(root)
@@ -1236,7 +1232,7 @@ class WikiLintTests(unittest.TestCase):
             write_feature(root)
             write_index(
                 root,
-                "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n",
+                "| F-001 | Checkout | specified | po | not-needed |\n",
                 separator="|:---|:---:|---:|:---|:---|:---|\n",
             )
 
@@ -1250,7 +1246,7 @@ class WikiLintTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
             feature_path = root / "knowledge" / "wiki" / "features" / "F-001-checkout.md"
             feature_path.write_text(
                 "\ufeff---\n"
@@ -1258,8 +1254,6 @@ class WikiLintTests(unittest.TestCase):
                 "title: Checkout\n"
                 "status: specified\n"
                 "owner: po\n"
-                "introduced: 2026-01-01\n"
-                "last-updated: 2026-01-01\n"
                 "apps: [backend]\n"
                 "sources: []\n"
                 "advisory-review: not-needed\n"
@@ -1346,15 +1340,14 @@ class WikiGraphTests(unittest.TestCase):
         create_wiki_skeleton(root)
         write_feature(root, status="ready-for-dev", owner="dev", platforms=["backend"])
         (root / "knowledge" / "wiki" / "features" / "F-002-refunds.md").write_text(
-            "---\nid: F-002\ntitle: Refunds\nstatus: raw\nowner: po\nintroduced: 2026-01-01\n"
-            "last-updated: 2026-01-01\napps: [backend]\nsources: []\nadvisory-review: not-needed\n---\n\n"
+            "---\nid: F-002\ntitle: Refunds\nstatus: raw\nowner: po\n"
             "## Summary\nRefund handling.\n\n## Related features\n- [F-001](F-001-checkout.md) - refunds follow checkout\n- F-999 does not exist\n",
             encoding="utf-8",
         )
         write_index(
             root,
-            "| F-001 | Checkout | ready-for-dev | dev | not-needed | 2026-01-01 |\n"
-            "| F-002 | Refunds | raw | po | not-needed | 2026-01-01 |\n",
+            "| F-001 | Checkout | ready-for-dev | dev | not-needed |\n"
+            "| F-002 | Refunds | raw | po | not-needed |\n",
         )
         write_platform_requirement(root, feature_id="F-001", platform="backend")
         write_wiki_page(root, "design", "F-001-checkout.md", "feature-id: F-001\ntitle: Checkout design\n", "## Summary\nDesign.\n")
@@ -1448,7 +1441,7 @@ class WikiGraphTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="in-dev", owner="dev", advisory_review="pending", platforms=["backend"])
-            write_index(root, "| F-001 | Checkout | in-dev | dev | pending | 2026-01-01 |\n")
+            write_index(root, "| F-001 | Checkout | in-dev | dev | pending |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
             data = build_graph(root)
             mermaid = render_mermaid(data, "lifecycle")
@@ -1491,7 +1484,7 @@ class WikiGraphTests(unittest.TestCase):
                 "| 1 | What is the offline story? | po | open |\n"
                 "| 2 | Empty state? | designer | resolved: minimal |\n",
             )
-            write_index(root, "| F-001 | Checkout | specified | po | not-needed | 2026-01-01 |\n")
+            write_index(root, "| F-001 | Checkout | specified | po | not-needed |\n")
             data = build_graph(root)
 
         feature = next(node for node in data["facts"]["nodes"] if node["id"] == "F-001")
@@ -1510,7 +1503,7 @@ class WikiGraphHtmlTests(unittest.TestCase):
     def _graph_envelope(self, root: Path) -> dict:
         create_wiki_skeleton(root)
         write_feature(root, status="in-dev", owner="dev", platforms=["backend"])
-        write_index(root, "| F-001 | Checkout | in-dev | dev | not-needed | 2026-01-01 |\n")
+        write_index(root, "| F-001 | Checkout | in-dev | dev | not-needed |\n")
         write_platform_requirement(root, feature_id="F-001", platform="backend")
         return build_graph(root)
 
@@ -1598,8 +1591,8 @@ def create_wiki_skeleton(root: Path) -> None:
         (wiki / directory).mkdir()
     (root / "knowledge" / "intake" / "pending").mkdir(parents=True)
     (root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
-    (wiki / "SCHEMA.md").write_text("# Schema\n", encoding="utf-8")
-    (wiki / "LIFECYCLE.md").write_text("# Lifecycle\n", encoding="utf-8")
+    (wiki / "SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Schema\n", encoding="utf-8")
+    (wiki / "LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Lifecycle\n", encoding="utf-8")
     (wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 14\n---\n", encoding="utf-8")
     write_index(root)
     # The features in these tests are scoped to generated apps, which the workspace model must declare.
@@ -1618,10 +1611,10 @@ def write_board_placeholder(root: Path) -> None:
     )
 
 
-def write_index(root: Path, rows: str = "", separator: str = "|----|---------|--------|-------|--------------|------------|\n") -> None:
+def write_index(root: Path, rows: str = "", separator: str = "|----|---------|--------|-------|--------------|\n") -> None:
     (root / "knowledge" / "wiki" / "index.md").write_text(
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
+        "| ID | Feature | Status | Owner | Board Review |\n"
         f"{separator}"
         f"{rows}"
         "\n## Other wiki pages\n",
@@ -1645,8 +1638,6 @@ def write_feature(
         "title: Checkout\n"
         f"status: {status}\n"
         f"owner: {owner}\n"
-        "introduced: 2026-01-01\n"
-        "last-updated: 2026-01-01\n"
         f"apps: {platform_yaml}\n"
         "sources: []\n"
         f"advisory-review: {advisory_review}\n"

@@ -116,7 +116,6 @@ def _blocked_workspace(root: Path) -> Path:
     frontmatter.update({
         "status": "in-dev",
         "owner": "dev",
-        "last-updated": CHECK_DATE.isoformat(),
         "advisory-review": "pending",
     })
     body = page.split("---", 2)[2]
@@ -126,9 +125,9 @@ def _blocked_workspace(root: Path) -> Path:
     )
     (root / "knowledge/wiki/index.md").write_text(
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-        "|----|---------|--------|-------|--------------|------------|\n"
-        f"| F-001 | Document review | in-dev | dev | pending | {CHECK_DATE.isoformat()} |\n",
+        "| ID | Feature | Status | Owner | Board Review |\n"
+        "|----|---------|--------|-------|--------------|\n"
+        f"| F-001 | Document review | in-dev | dev | pending |\n",
         encoding="utf-8",
     )
     return root

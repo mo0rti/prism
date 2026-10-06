@@ -39,8 +39,6 @@ id: {feature_id}
 title: {title}
 status: {status}
 owner: {owner}
-introduced: 2026-09-01
-last-updated: 2026-09-08
 apps: [{platforms}]
 sources: []
 advisory-review: {advisory}
@@ -121,17 +119,17 @@ class WikiTransitionTests(unittest.TestCase):
         (self.root / "backend").mkdir()
         (self.root / "knowledge" / "intake" / "pending").mkdir(parents=True)
         (self.root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
-        (self.wiki_root / "SCHEMA.md").write_text("# Wiki schema\n", encoding="utf-8")
-        (self.wiki_root / "LIFECYCLE.md").write_text("# Wiki lifecycle\n", encoding="utf-8")
+        (self.wiki_root / "SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Wiki schema\n", encoding="utf-8")
+        (self.wiki_root / "LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Wiki lifecycle\n", encoding="utf-8")
         (self.wiki_root / "SETTINGS.md").write_text(
             "---\nwiki-stale-after-days: 14\n---\n",
             encoding="utf-8",
         )
         (self.wiki_root / "index.md").write_text(
             "# Feature Status Board\n\n"
-            "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-            "|----|---------|--------|-------|--------------|------------|\n"
-            "| F-001 | Payout summary | specified | po | not-needed | 2026-09-01 |\n",
+            "| ID | Feature | Status | Owner | Board Review |\n"
+            "|----|---------|--------|-------|--------------|\n"
+            "| F-001 | Payout summary | specified | po | not-needed |\n",
             encoding="utf-8",
         )
         (self.root / "prism.workspace.yml").write_text(
@@ -169,7 +167,7 @@ class WikiTransitionTests(unittest.TestCase):
         lines = index_path.read_text(encoding="utf-8").splitlines()
         lines = [
             (
-                f"| F-001 | Payout summary | {status} | {owner} | {advisory} | 2026-09-01 |"
+                f"| F-001 | Payout summary | {status} | {owner} | {advisory} |"
                 if line.startswith("| F-001 |")
                 else line
             )
@@ -383,7 +381,7 @@ class WikiTransitionTests(unittest.TestCase):
         )
         (self.wiki_root / "personas").mkdir(parents=True, exist_ok=True)
         (self.wiki_root / "personas" / "operator.md").write_text(
-            "---\nid: P-001\nname: Operator\nintroduced: 2026-09-01\nsources: []\n---\n",
+            "---\nid: P-001\nname: Operator\nsources: []\n---\n",
             encoding="utf-8",
         )
 

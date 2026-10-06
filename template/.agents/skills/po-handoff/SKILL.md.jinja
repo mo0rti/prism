@@ -124,7 +124,7 @@ produce a fresh preview if any value differs or cannot be reconciled.
    once more. If they still match, update the feature fields atomically as far as
    the available file operations allow, include a confirmed advisory skip reason
    when applicable, update the matching `index.md` row, and append the required
-   `log.md` entry. Do not write a design brief as a substitute for those source
+   `log.md` entry in the log format that the wiki schema defines. Do not write a design brief as a substitute for those source
    updates. If the user declines or cancels, stop with no feature, advisory, index,
    or log mutation. If a multi-file write is partial, report each observed change,
    stop, and require a fresh reread for recovery; no transaction is implied.

@@ -15,14 +15,14 @@ INDEX = """# Feature Status Board
 
 This file is maintained by the AI agent. Do not edit directly.
 
-| ID | Feature | Status | Owner | Board Review | Introduced |
-|----|---------|--------|-------|--------------|------------|
-| F-009 | Old row | raw | po | not-needed | 2026-01-01 |
+| ID | Feature | Status | Owner | Board Review |
+|----|---------|--------|-------|--------------|
+| F-009 | Old row | raw | po | not-needed |
 
 ## Other wiki pages
-| Page | Type | Summary | Date |
-|------|------|---------|------|
-| [SCHEMA.md](SCHEMA.md) | meta | Wiki conventions and operational rules | n/a |
+| Page | Type | Summary |
+|------|------|---------|
+| [SCHEMA.md](SCHEMA.md) | meta | Wiki conventions and operational rules |
 """
 
 PAGE = """---
@@ -30,8 +30,6 @@ id: F-001
 title: Review summary export
 status: ready-for-dev
 owner: dev
-introduced: '2026-10-05'
-last-updated: '2026-10-05'
 apps:
 - backend
 advisory-review: not-needed
@@ -56,7 +54,7 @@ class PageParsingTests(unittest.TestCase):
         front = ws.parse_front_matter(PAGE)
         self.assertEqual(front["status"], "ready-for-dev")
         self.assertEqual(front["owner"], "dev")
-        self.assertEqual(front["introduced"], "2026-10-05")
+        self.assertEqual(front["advisory-review"], "not-needed")
         self.assertNotIn("- backend", front)
 
     def test_questions_come_only_from_the_open_questions_table(self):
@@ -73,7 +71,7 @@ class PageParsingTests(unittest.TestCase):
 class IndexTests(unittest.TestCase):
     def test_rewrite_index_replaces_the_feature_rows_and_keeps_everything_else(self):
         row = ws.feature_row(ws.parse_front_matter(PAGE))
-        self.assertEqual(row, "| F-001 | Review summary export | ready-for-dev | dev | not-needed | 2026-10-05 |")
+        self.assertEqual(row, "| F-001 | Review summary export | ready-for-dev | dev | not-needed |")
         rewritten = ws.rewrite_index(INDEX, row)
         self.assertIn(row, rewritten)
         self.assertNotIn("F-009", rewritten)

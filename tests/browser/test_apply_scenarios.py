@@ -211,13 +211,13 @@ class ApplyScenarioTests(BrowserCase):
         new_meta, new_body = split_page(after[feature_path].decode("utf-8"))
         self.assertEqual(dict(old_meta, status=target_stage, owner=target_owner), new_meta)
         self.assertEqual(list(old_meta), list(new_meta), "Frontmatter key order is preserved.")
-        self.assertEqual(CHECK_DATE.isoformat(), new_meta["last-updated"])
+        self.assertNotIn("last-updated", new_meta, "A transition writes no date into the feature page.")
         self.assertEqual(old_body, new_body, "The page body is untouched.")
         run.effect(f"{feature.feature_id} {action}: frontmatter status {source_stage} -> {target_stage}, owner {target_owner}, body unchanged")
 
         old_rows = before[INDEX_PATH].decode("utf-8").splitlines()
         new_rows = after[INDEX_PATH].decode("utf-8").splitlines()
-        expected_row = f"| {feature.feature_id} | {feature.title} | {target_stage} | {target_owner} | not-needed | {CHECK_DATE.isoformat()} |"
+        expected_row = f"| {feature.feature_id} | {feature.title} | {target_stage} | {target_owner} | not-needed |"
         self.assertEqual([expected_row], [row for row in new_rows if row.startswith(f"| {feature.feature_id} ")])
         self.assertEqual(
             [row for row in old_rows if not row.startswith(f"| {feature.feature_id} ")],
@@ -231,11 +231,15 @@ class ApplyScenarioTests(BrowserCase):
         actor = harness.actor("human")
         match = re.fullmatch(
             r"\n?<!-- prism:board-history:v1 preview=(?P<preview>" + UUID.pattern + r") -->\n"
-            rf"## {CHECK_DATE.isoformat()} \[board-{action}\] \| {feature.feature_id}\n"
+            rf"## {CHECK_DATE.isoformat()} board-{action} \| {feature.feature_id}\n"
+            rf"- paths: {re.escape(feature_path)}, {re.escape(INDEX_PATH)}\n"
+            r"- evidence: board preview (?P<evidence>" + UUID.pattern + r")\n"
+            r"- by: Browser human \(human\)\n"
             r"<!-- prism:board-actor:v1 (?P<actor>\{[^\n]*\}) -->\n",
             entry,
         )
         self.assertIsNotNone(match, entry)
+        self.assertEqual(match.group("preview"), match.group("evidence"), "The entry's evidence is the preview that produced it.")
         actor_comment = yaml.safe_load(match.group("actor"))
         self.assertEqual(
             {"action": action, "kind": "human", "name": "Browser human", "participant_id": actor.participant_id, "preview_id": match.group("preview")},

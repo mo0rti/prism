@@ -35,8 +35,8 @@ class BoardCliTests(unittest.TestCase):
 
     def manifest(self, root, digest):
         (root / "knowledge/wiki").mkdir(parents=True, exist_ok=True)
-        (root / "knowledge/wiki/SCHEMA.md").write_text("# Schema\n", encoding="utf-8")
-        (root / "knowledge/wiki/LIFECYCLE.md").write_text("# Lifecycle\n", encoding="utf-8")
+        (root / "knowledge/wiki/SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Schema\n", encoding="utf-8")
+        (root / "knowledge/wiki/LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Lifecycle\n", encoding="utf-8")
         (root / "knowledge/wiki/index.md").write_text("# Index\n", encoding="utf-8")
         (root / "prism.workspace.yml").write_text(yaml.safe_dump({
             **manifest_data("Editorial", ["backend"]),

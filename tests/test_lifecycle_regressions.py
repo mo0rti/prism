@@ -55,8 +55,8 @@ class LifecycleRegressionTests(unittest.TestCase):
         (self.root / "backend").mkdir()
         (self.root / "knowledge" / "intake" / "pending").mkdir(parents=True)
         (self.root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
-        (self.wiki_root / "SCHEMA.md").write_text("# Wiki schema\n", encoding="utf-8")
-        (self.wiki_root / "LIFECYCLE.md").write_text("# Wiki lifecycle\n", encoding="utf-8")
+        (self.wiki_root / "SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Wiki schema\n", encoding="utf-8")
+        (self.wiki_root / "LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Wiki lifecycle\n", encoding="utf-8")
         (self.wiki_root / "SETTINGS.md").write_text(
             "---\nwiki-stale-after-days: 14\n---\n",
             encoding="utf-8",
@@ -67,8 +67,8 @@ class LifecycleRegressionTests(unittest.TestCase):
         )
         (self.wiki_root / "index.md").write_text(
             "# Feature Status Board\n\n"
-            "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-            "|----|---------|--------|-------|--------------|------------|\n",
+            "| ID | Feature | Status | Owner | Board Review |\n"
+            "|----|---------|--------|-------|--------------|\n",
             encoding="utf-8",
         )
         self._write_feature()
@@ -125,8 +125,6 @@ class LifecycleRegressionTests(unittest.TestCase):
             f"title: {title}\n"
             f"status: {status}\n"
             f"owner: {owner}\n"
-            "introduced: 2026-09-01\n"
-            "last-updated: 2026-09-08\n"
             f"apps: [{', '.join(platforms)}]\n"
             "sources: []\n"
             f"advisory-review: {advisory}\n"
@@ -156,7 +154,7 @@ class LifecycleRegressionTests(unittest.TestCase):
     def _upsert_index(self, feature_id: str, title: str, status: str, owner: str, advisory: str) -> None:
         index_path = self.wiki_root / "index.md"
         lines = index_path.read_text(encoding="utf-8").splitlines()
-        row = f"| {feature_id} | {title} | {status} | {owner} | {advisory} | 2026-09-01 |"
+        row = f"| {feature_id} | {title} | {status} | {owner} | {advisory} |"
         replaced = False
         updated: list[str] = []
         for line in lines:
@@ -248,7 +246,6 @@ class LifecycleRegressionTests(unittest.TestCase):
             f"feature-id: {feature_id}\n"
             "title: Payout summary design\n"
             "designer: regression\n"
-            "date: 2026-09-08\n"
             "figma: not applicable\n"
             "---\n\n"
             "## Summary\nThe review view covers the payout summary.\n\n"
@@ -294,7 +291,7 @@ class LifecycleRegressionTests(unittest.TestCase):
             raise AssertionError(f"Missing {code!r} check in {transition.get('checks')!r}")
         return matches[-1]
 
-    def test_staleness_warns_without_blocking_lifecycle_actions(self) -> None:
+    def test_page_age_does_not_affect_lifecycle_actions(self) -> None:
         self._write_requirement(status="done")
         self._write_design()
         self._write_review(required_action=False)
@@ -329,19 +326,17 @@ class LifecycleRegressionTests(unittest.TestCase):
                         self.assertTrue(transition["supported"])
                         self.assertEqual({"codex", "claude"}, set(transition["invocations"]))
                     for envelope in (preflight, graph):
-                        warnings = [item for item in envelope["diagnostics"] if item["code"] == "stale-page"]
-                        self.assertEqual(age > 14, bool(warnings))
-                        self.assertTrue(all(item["severity"] == "warning" for item in warnings))
-                    self.assertEqual("warning" if age > 14 else "ok", node["health"])
+                        self.assertEqual([], [item for item in envelope["diagnostics"] if item["code"] == "stale-page"])
+                    self.assertEqual("ok", node["health"])
             after = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
             self.assertEqual(before, after)
 
-    def test_stale_pages_do_not_hide_source_integrity_errors(self) -> None:
+    def test_page_age_does_not_hide_source_integrity_errors(self) -> None:
         self.clock.today.return_value = CHECK_DATE + timedelta(days=365)
         self._write_design()
         original = self.feature_path.read_text(encoding="utf-8")
         cases = (
-            ("invalid-feature-date", original.replace("last-updated: 2026-09-08", "last-updated: invalid-date")),
+            ("history-date-on-page", original.replace("apps:", "last-updated: 2026-09-08\napps:", 1)),
             ("broken-wiki-link", original + "\n[Missing design](../design/missing.md)\n"),
         )
         for code, body in cases:
@@ -356,9 +351,9 @@ class LifecycleRegressionTests(unittest.TestCase):
                     self.assertFalse(transition["supported"])
                     self.assertEqual("unknown", self._check(transition, f"source-integrity:{code}")["status"])
                 for envelope in (preflight, graph):
-                    self.assertIn("stale-page", {item["code"] for item in envelope["diagnostics"]})
+                    self.assertIn(code, {item["code"] for item in envelope["diagnostics"]})
 
-    def test_stale_pages_do_not_hide_workflow_blockers(self) -> None:
+    def test_page_age_does_not_hide_workflow_blockers(self) -> None:
         self.clock.today.return_value = CHECK_DATE + timedelta(days=365)
         self._write_feature(advisory="pending")
 

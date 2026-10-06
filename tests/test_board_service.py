@@ -227,15 +227,10 @@ class BoardServiceValidatorTests(unittest.TestCase):
         self.assertIn("over 512 KiB", intake_error.exception.message)
         self.assertEqual([limit + 1], observed_sizes)
 
-    def test_parse_markdown_normalizes_only_known_yaml_date_scalars(self) -> None:
-        content = (
-            "---\nintroduced: 2026-09-22\nlast-updated: 2026-09-22\n"
-            "date: 2026-09-22\nunrelated-value: 2026-09-22\n---\nBody\n"
-        )
+    def test_parse_markdown_leaves_yaml_date_scalars_as_parsed(self) -> None:
+        content = "---\neffective-date: 2026-09-22\nunrelated-value: 2026-09-22\n---\nBody\n"
         frontmatter, _body = _parse_markdown(content)
-        self.assertEqual("2026-09-22", frontmatter["introduced"])
-        self.assertEqual("2026-09-22", frontmatter["last-updated"])
-        self.assertEqual("2026-09-22", frontmatter["date"])
+        self.assertEqual("date", type(frontmatter["effective-date"]).__name__)
         self.assertEqual("date", type(frontmatter["unrelated-value"]).__name__)
 
     def test_schema_boolean_cannot_reuse_an_integer_schema_grant(self) -> None:
@@ -1930,7 +1925,6 @@ def _set_feature_stage(content: str, status: str, owner: str, service: BoardServ
     frontmatter, body = _parse_markdown(content)
     frontmatter["status"] = status
     frontmatter["owner"] = owner
-    frontmatter["last-updated"] = CHECK_DATE.isoformat()
     if service is not None:
         return service._replace_frontmatter(content, frontmatter)
     return f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---\n{body}"
@@ -1939,7 +1933,7 @@ def _set_feature_stage(content: str, status: str, owner: str, service: BoardServ
 def _design_page() -> str:
     return (
         "---\nfeature-id: F-001\ntitle: Document review\ndesigner: Reviewer\n"
-        f"date: '{CHECK_DATE.isoformat()}'\nfigma: reviewed-document-flow\n---\n\n"
+        "figma: reviewed-document-flow\n---\n\n"
         "## Summary\nThe reviewer sees the document title and review status.\n\n"
         "## Key design decisions\nKeep the review outcome beside the source document.\n\n"
         "## States covered\nThe page shows pending and completed reviews.\n\n"
@@ -1951,7 +1945,7 @@ def _design_page() -> str:
 def _persona_page(name: str) -> str:
     return (
         "---\nid: P-001\n"
-        f"name: {name}\nintroduced: '{CHECK_DATE.isoformat()}'\n"
+        f"name: {name}\n"
         "sources:\n- knowledge/intake/processed/document-review-brief/brief.md\n"
         "---\n\n"
         "## Who they are\nA person assigned to review a document.\n\n"
@@ -2003,11 +1997,11 @@ def _write_index_rows(root: Path, rows: list[tuple[str, str, str, str]]) -> None
     index = root / "knowledge/wiki/index.md"
     content = (
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-        "|----|---------|--------|-------|--------------|------------|\n"
+        "| ID | Feature | Status | Owner | Board Review |\n"
+        "|----|---------|--------|-------|--------------|\n"
     )
     for feature_id, title, status, owner in rows:
-        content += f"| {feature_id} | {title} | {status} | {owner} | not-needed | {CHECK_DATE.isoformat()} |\n"
+        content += f"| {feature_id} | {title} | {status} | {owner} | not-needed |\n"
     index.write_text(content, encoding="utf-8")
 
 
@@ -2054,7 +2048,6 @@ def _set_stage_and_revalidation(
     frontmatter, _body = _parse_markdown(content)
     frontmatter["status"] = status
     frontmatter["owner"] = owner
-    frontmatter["last-updated"] = CHECK_DATE.isoformat()
     frontmatter["revalidation"] = domains
     return service._replace_frontmatter(content, frontmatter)
 
@@ -2062,7 +2055,6 @@ def _set_stage_and_revalidation(
 def _journey_persona_page() -> str:
     return (
         "---\nid: P-001\nname: Reviewer\n"
-        f"introduced: '{CHECK_DATE.isoformat()}'\n"
         "sources:\n- knowledge/intake/processed/document-review-brief/brief.md\n"
         "---\n\n"
         "## Who they are\nA person assigned to review a document.\n\n"
@@ -2075,7 +2067,6 @@ def _journey_persona_page() -> str:
 def _journey_business_rule_page() -> str:
     return (
         "---\nid: BR-001\ntitle: Retain review outcome\n"
-        f"introduced: '{CHECK_DATE.isoformat()}'\n"
         "source: knowledge/intake/processed/document-review-brief/brief.md\n"
         "---\n\n"
         "## Rule\nA recorded review keeps its outcome and requested follow-up together.\n\n"
@@ -2088,7 +2079,7 @@ def _journey_business_rule_page() -> str:
 def _journey_design_page() -> str:
     return (
         "---\nfeature-id: F-001\ntitle: Document review\ndesigner: Reviewer\n"
-        f"date: '{CHECK_DATE.isoformat()}'\nfigma: reviewed-document-flow\n---\n\n"
+        "figma: reviewed-document-flow\n---\n\n"
         "## Summary\nThe reviewer sees the document title and review status.\n\n"
         "## Key design decisions\nKeep the review outcome beside the source document.\n\n"
         "## States covered\nThe page shows pending and completed reviews.\n\n"

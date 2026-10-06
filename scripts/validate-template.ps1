@@ -361,8 +361,16 @@ function Validate-WikiStructure {
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\advisory\BOARD.md") -Needle "setup-project" -Message "advisory/BOARD.md placeholder must reference setup-project."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\advisory\PROJECT_FOUNDATION.md") -Needle "setup-project" -Message "advisory/PROJECT_FOUNDATION.md placeholder must reference setup-project."
 
-    # index.md must have Board Review column
+    # index.md must have Board Review column and no date column
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "Board Review" -Message "wiki/index.md must include a Board Review column."
+    Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "Introduced" -Message "wiki/index.md must not carry a date column."
+
+    # SCHEMA.md and LIFECYCLE.md carry a schema version; SCHEMA.md defines the log format, and pages carry no history dates
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "schema-version: 1" -Message "SCHEMA.md must declare schema-version: 1."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\LIFECYCLE.md") -Needle "schema-version: 1" -Message "LIFECYCLE.md must declare schema-version: 1."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## YYYY-MM-DD <operation> | <subject>" -Message "SCHEMA.md must define the log entry format."
+    Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\features\_FORMAT.md") -Needle "last-updated" -Message "The feature format must not carry a history date."
+    Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\LIFECYCLE.md") -Needle "last-updated: YYYY-MM-DD" -Message "The feature page format must not carry a history date."
 
     # CONTEXT.md must render with setup instructions for all three tools and no unrendered Jinja2
     Assert-FileContains -Path (Join-Path $Root "CONTEXT.md") -Needle "setup-project" -Message "Rendered CONTEXT.md must reference setup-project."

@@ -275,7 +275,7 @@ board membership, review, domain advice, or a production decision.
             wiki_root / "advisory" / "PROJECT_FOUNDATION.md",
             f"""# Project Foundation
 
-Initialized for this synthetic local dashboard fixture on {today.isoformat()}.
+Synthetic local dashboard fixture.
 
 ## Project identity
 - Name: {PRODUCT_NAME}
@@ -310,9 +310,11 @@ The board area is included to make the review state visible in a local dashboard
         wiki_root / "log.md",
         f"""# Wiki change log
 
-## {today.isoformat()}
-- Seeded synthetic local `{stage}` stage for dashboard capture.
-- This entry describes fixture generation, not observed project history or a real review event.
+## {today.isoformat()} seed-demo | {stage} stage
+- paths: knowledge/wiki
+- evidence: none
+- by: scripts/build-wiki-demo.py
+Synthetic fixture generation for dashboard capture, not observed project history or a real review event.
 """,
     )
 
@@ -346,8 +348,6 @@ def _feature_frontmatter(feature: dict[str, Any], today: date) -> dict[str, Any]
         "title": feature["title"],
         "status": feature["status"],
         "owner": feature["owner"],
-        "introduced": today.isoformat(),
-        "last-updated": today.isoformat(),
         "apps": list(PLATFORMS),
         "sources": ["synthetic-local-demo"],
         "advisory-review": feature["advisory"],
@@ -445,7 +445,6 @@ No unfinished app dependency is asserted in this synthetic fixture.
                 "feature-id": feature_id,
                 "title": f"{feature['title']} interaction design",
                 "designer": "synthetic-demo",
-                "date": today.isoformat(),
                 "figma": "not applicable",
             },
             f"""## Summary
@@ -517,7 +516,6 @@ Synthetic reviewer perspective included only to make the advisory relationship v
         {
             "id": "BR-001",
             "title": "Approval precedes settlement",
-            "introduced": today.isoformat(),
             "source": "synthetic-local-demo",
         },
         """## Rule
@@ -538,7 +536,6 @@ No exceptions.
         {
             "id": "BR-002",
             "title": "Settlement outcome remains auditable",
-            "introduced": today.isoformat(),
             "source": "synthetic-local-demo",
         },
         """## Rule
@@ -562,7 +559,7 @@ No exceptions.
     for persona_id, slug, name, description, feature_id in personas:
         _write_page(
             wiki_root / "personas" / f"{slug}.md",
-            {"id": persona_id, "name": name, "introduced": today.isoformat(), "sources": ["synthetic-local-demo"]},
+            {"id": persona_id, "name": name, "sources": ["synthetic-local-demo"]},
             f"""## Who they are
 {description}
 
@@ -597,7 +594,7 @@ Clients must render each state, while audits can follow one stable request ident
 
 def _write_populated_index(destination: Path, today: date) -> None:
     rows = [
-        f"| {feature['id']} | [{feature['title']}](features/{feature['id']}-{feature['slug']}.md) | {feature['status']} | {feature['owner']} | {feature['advisory']} | {today.isoformat()} |"
+        f"| {feature['id']} | [{feature['title']}](features/{feature['id']}-{feature['slug']}.md) | {feature['status']} | {feature['owner']} | {feature['advisory']} |"
         for feature in FEATURES
     ]
     _write_text(
@@ -606,17 +603,17 @@ def _write_populated_index(destination: Path, today: date) -> None:
 
 This file is maintained by the AI agent. Do not edit directly.
 
-| ID | Feature | Status | Owner | Board Review | Introduced |
-|----|---------|--------|-------|--------------|------------|
+| ID | Feature | Status | Owner | Board Review |
+|----|---------|--------|-------|--------------|
 """
         + "\n".join(rows)
         + """
 
 ## Other wiki pages
-| Page | Type | Summary | Date |
-|------|------|---------|------|
-| [SCHEMA.md](SCHEMA.md) | meta | Wiki conventions and operational rules | n/a |
-| [BOARD.md](advisory/BOARD.md) | config | Synthetic local advisory board state | n/a |
+| Page | Type | Summary |
+|------|------|---------|
+| [SCHEMA.md](SCHEMA.md) | meta | Wiki conventions and operational rules |
+| [BOARD.md](advisory/BOARD.md) | config | Synthetic local advisory board state |
 """,
     )
 

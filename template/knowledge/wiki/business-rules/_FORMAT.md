@@ -7,7 +7,6 @@ Filename: `BR-XXX-[slug].md`.
 ---
 id: BR-XXX
 title: [Rule name]
-introduced: YYYY-MM-DD
 source: [intake source or board review that established this rule]
 ---
 

@@ -255,6 +255,19 @@ and confirmation.
   confirms that the contract says what the API surface means. A declared API surface with no
   page is rejected with `api_contract_required`.
 
+A transition changes the lifecycle fields of the feature's front matter (`status` and `owner`, and the advisory and revalidation fields where the action allows it) and writes no date, because pages carry none. It updates the feature's index row, which has no date column. Every apply appends one entry to `knowledge/wiki/log.md` in the log format that `SCHEMA.md` defines. A `design-start` by a participant named Riley wrote:
+
+```text
+<!-- prism:board-history:v1 preview=27a3751e-2a5b-45bb-802e-d89658f34609 -->
+## 2026-10-06 board-design-start | F-001
+- paths: knowledge/wiki/features/F-001-document-review.md, knowledge/wiki/index.md
+- evidence: board preview 27a3751e-2a5b-45bb-802e-d89658f34609
+- by: Riley (human)
+<!-- prism:board-actor:v1 {"action":"design-start","kind":"human","name":"Riley","participant_id":"54448713-7e43-4b1d-9b24-e0f2b92bdcb9","preview_id":"27a3751e-2a5b-45bb-802e-d89658f34609"} -->
+```
+
+`paths` lists the files the operation wrote (`log.md` itself is left out), `evidence` is the board preview, followed by the processed intake folders a move creates, and `by` is the participant's name and kind. The two comments are the idempotence marker and the recorded actor. Existing entries are never edited.
+
 Relevant source changes invalidate the preview. Unrelated index rows and log additions are preserved. Direct filesystem edits are external changes with no invented participant attribution. Service access controls do not restrict a coding agent's independent filesystem permissions.
 
 ### Live updates and expired sessions

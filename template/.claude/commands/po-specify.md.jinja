@@ -88,9 +88,9 @@ comparison requires a fresh preview.
 7. Reread all sources immediately before confirmation and once again before
    writing. Ask the user to confirm the complete write set, including the body.
 8. After confirmation, write the confirmed body and metadata, update the feature
-   to `specified` with `owner: po`, update the matching index row, append the log
-   entry, and update `last-updated`. Do not move intake folders or write
-   unrelated files.
+   to `specified` with `owner: po`, update the matching index row, and append the log
+   entry in the log format that the wiki schema defines. Feature pages carry no date field; do not add
+   one. Do not move intake folders or write unrelated files.
 
 If the user declines or cancels, make no feature, index, or log mutation. If a
 multi-file write is partially applied, report the exact observed changes and stop

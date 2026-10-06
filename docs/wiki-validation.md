@@ -39,7 +39,6 @@ The seeded fixture includes:
 
 - valid features
 - incomplete features
-- stale content
 - broad search coverage
 - malformed pages
 
@@ -48,7 +47,7 @@ This makes it possible to exercise both normal and failure/partial-state behavio
 Representative seeded scenarios included:
 
 - a complete feature
-- a feature with pending board review and stale state
+- a feature with pending board review
 - a feature missing a design page
 - a feature missing app requirements for one app
 - a feature with unresolved open questions plus a draft API contract
@@ -72,7 +71,7 @@ Required generated sections validated:
 - advisory review snapshot
 - open questions by owner
 - blocker snapshot
-- recently updated wiki pages
+- recently changed wiki pages
 - structural health pointer
 - suggested next actions
 
@@ -123,7 +122,6 @@ result threshold.
 Validated for:
 
 - owner grouping
-- stale detection
 - invalid-owner handling
 
 ### `wiki-app`

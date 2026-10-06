@@ -6,7 +6,6 @@ Use this format for every file in `wiki/personas/`. Filename: `[slug].md`.
 ---
 id: P-XXX
 name: [Persona name, e.g. "Restaurant Manager"]
-introduced: YYYY-MM-DD
 sources: [intake sources that established this persona]
 ---
 

@@ -3,8 +3,6 @@ id: F-001
 title: Review summary export
 status: specified
 owner: po
-introduced: 2026-10-05
-last-updated: 2026-10-05
 apps: [backend]
 sources: [knowledge/intake/processed/review-summary]
 advisory-review: not-needed

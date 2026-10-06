@@ -112,8 +112,6 @@ id: F-{number:03d}
 title: Document review {number:03d}
 status: raw
 owner: po
-introduced: {TODAY}
-last-updated: {TODAY}
 apps:
 - backend
 sources:
@@ -157,11 +155,12 @@ def build_workspace(root: Path, feature_count: int) -> None:
     rows = []
     for number in range(1, feature_count + 1):
         (features / f"F-{number:03d}-document-review.md").write_text(_feature_page(number), encoding="utf-8", newline="\n")
-        rows.append(f"| F-{number:03d} | Document review {number:03d} | raw | po | not-needed | {TODAY} |\n")
+        # The title links the page, as an agent-written index does; the index then spans more than one result page.
+        rows.append(f"| F-{number:03d} | [Document review {number:03d}](features/F-{number:03d}-document-review.md) | raw | po | not-needed |\n")
     (root / "knowledge/wiki/index.md").write_text(
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-        "|----|---------|--------|-------|--------------|------------|\n" + "".join(rows),
+        "| ID | Feature | Status | Owner | Board Review |\n"
+        "|----|---------|--------|-------|--------------|\n" + "".join(rows),
         encoding="utf-8",
         newline="\n",
     )
@@ -411,8 +410,6 @@ def _dev_feature_page(status: str, owner: str, platforms: list[str], evidence_ro
         "title": "Document review",
         "status": status,
         "owner": owner,
-        "introduced": TODAY,
-        "last-updated": TODAY,
         "apps": platforms,
         "sources": [PROCESSED_SOURCE.rsplit("/", 1)[0]],
         "advisory-review": "not-needed",
@@ -476,7 +473,7 @@ def _dev_requirement_page(platform: str, status: str, bulk: str) -> str:
 
 def _dev_design_page() -> str:
     return (
-        f"---\nfeature-id: F-001\ntitle: Document review\ndesigner: Reviewer\ndate: '{TODAY}'\nfigma: reviewed-document-flow\n---\n\n"
+        f"---\nfeature-id: F-001\ntitle: Document review\ndesigner: Reviewer\nfigma: reviewed-document-flow\n---\n\n"
         "## Summary\nThe reviewer sees the document title and review status.\n\n"
         "## Key design decisions\nKeep the review outcome beside the source document.\n\n"
         "## States covered\nThe page shows pending and completed reviews.\n\n"
@@ -521,9 +518,9 @@ def build_dev_done_workspace(root: Path, platforms: list[str], bulk: str, large_
         write(f"knowledge/wiki/app-requirements/F-001-{platform}.md", _dev_requirement_page(platform, "in-progress", requirement_bulk(platform)))
     (wiki / "index.md").write_text(
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-        "|----|---------|--------|-------|--------------|------------|\n"
-        f"| F-001 | Document review | in-dev | dev | not-needed | {TODAY} |\n",
+        "| ID | Feature | Status | Owner | Board Review |\n"
+        "|----|---------|--------|-------|--------------|\n"
+        f"| F-001 | Document review | in-dev | dev | not-needed |\n",
         encoding="utf-8",
         newline="\n",
     )

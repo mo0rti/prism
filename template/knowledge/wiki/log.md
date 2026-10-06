@@ -1,11 +1,6 @@
 # Wiki log
 
-Append-only record of all wiki operations. Most recent entry at the bottom.
-Format: ## YYYY-MM-DD [operation] | [subject]
-
----
-
-## [project-creation-date] init | Wiki initialized
-
-Wiki created from Prism template. Run setup-project to initialize the advisory board,
-record the setup interview in advisory/PROJECT_FOUNDATION.md, and complete project setup.
+Append-only record of all wiki operations, and the only home for history. Most recent
+entry at the bottom.
+Entry format, defined in `SCHEMA.md` (log.md conventions): the line
+`## YYYY-MM-DD <operation> | <subject>`, then the `paths`, `evidence` and `by` lines.

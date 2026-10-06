@@ -60,7 +60,7 @@ and never authorizes a write.
 9. If the check passes:
    - Show the user: status → `ready-for-dev`, owner → `dev`
    - Wait for confirmation
-   - Update feature file frontmatter only: change `status`, `owner` and `last-updated`
+   - Update feature file frontmatter only: change `status` and `owner`
      (and clear the verified `design` revalidation domain). Leave every body section,
      including `## Design`, exactly as it is; the service rejects any other change
    - Generate app-requirements pages for all apps in scope, incorporating
@@ -69,7 +69,7 @@ and never authorizes a write.
      section or a plain statement that there is none, such as `None.`) and no API
      contract exists for the feature, create `knowledge/wiki/api-contracts/F-XXX.md` as
      a new page (see "API contract" below)
-   - Update `index.md` and append to `log.md`
+   - Update `index.md` and append a `log.md` entry in the log format that the wiki schema defines
 
 Before confirmation show every feature, generated requirement, index, and log
 write. Reread the source and context immediately before confirmation and once

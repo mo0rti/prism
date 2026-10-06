@@ -104,7 +104,7 @@ Create the initial wiki state:
   - why the initial advisory board composition fits this domain
   - links to any initial personas and business rules created from setup
 - Write initial `knowledge/wiki/index.md` with empty status board
-- Write initial `knowledge/wiki/log.md` with initialization entry
+- Append a `setup-project` entry to `knowledge/wiki/log.md`
 - If the domain risk interview revealed clear business rules (e.g. "all recommendations
   must include a medical disclaimer"), create the first business rule entries in
   `knowledge/wiki/business-rules/`
@@ -115,14 +115,13 @@ Show the user a summary of everything created. State explicitly: "The advisory b
 can be revised at any time by editing BOARD.md directly or by asking me to regenerate
 a specific board member. The board composition is a living document."
 
-When writing `knowledge/wiki/log.md`:
-- If the scaffold placeholder entry is still present, replace the placeholder date with
-  the real initialization date and update its wording so it no longer tells the team to
-  run setup again.
-- Append:
-  `## [today's date] setup-project | Project initialization`
-  Followed by: project name, platforms, board member count, any business rules and
-  personas created, and a reference to `advisory/PROJECT_FOUNDATION.md`.
+When writing `knowledge/wiki/log.md`, append one entry in the log format that
+the wiki schema defines, and do not edit existing entries:
+- `## YYYY-MM-DD setup-project | Project initialization`, with today's date
+- `- paths:` every path the setup created, including any business rules and personas
+- `- evidence:` `advisory/PROJECT_FOUNDATION.md`
+- `- by:` who ran the setup
+- optionally one sentence naming the project and the number of board members
 
 ## Notes for the agent
 

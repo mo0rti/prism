@@ -269,13 +269,12 @@ def rewrite_index(index_text: str, row: str | None) -> str:
 
 
 def feature_row(front_matter: dict[str, str]) -> str:
-    return "| {id} | {title} | {status} | {owner} | {review} | {introduced} |".format(
+    return "| {id} | {title} | {status} | {owner} | {review} |".format(
         id=front_matter["id"],
         title=front_matter["title"],
         status=front_matter["status"],
         owner=front_matter["owner"],
         review=front_matter.get("advisory-review", "not-needed"),
-        introduced=front_matter.get("introduced", "").strip("'"),
     )
 
 

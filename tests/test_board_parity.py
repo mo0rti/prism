@@ -169,7 +169,12 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             for key in ("participant_id", "kind", "name", "preview_id"):
                 value[key] = "<actor-metadata>"
             return "<!-- prism:board-actor:v1 " + json.dumps(value, sort_keys=True) + " -->"
+        def by_line(match):
+            self.assertEqual(f"Parity {kind} ({kind})", match.group(1))
+            return "- by: <actor>"
         text = re.sub(r"<!-- prism:board-actor:v1 (\{[^\n]*\}) -->", actor, text)
+        text = re.sub(r"(?m)^- by: (.*)$", by_line, text)
+        text = re.sub(r"(?m)^- evidence: board preview [a-f0-9-]+$", "- evidence: board preview <preview>", text)
         text = re.sub(r"<!-- prism:board-history:v1 preview=[a-f0-9-]+ -->", "<!-- prism:board-history:v1 preview=<preview> -->", text)
         return text.encode("utf-8")
 

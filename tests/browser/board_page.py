@@ -104,7 +104,8 @@ class BoardPage:
 
         result: dict[str, dict[str, str]] = {}
         for path in paths:
-            section = dialog.get_by_role("group").filter(has_text=path).filter(has=dialog.page.get_by_role("heading", name="Before", exact=True))
+            # The summary names the written path; a log entry's text may mention another path too.
+            section = dialog.get_by_role("group").filter(has=dialog.page.locator("summary", has_text=path)).filter(has=dialog.page.get_by_role("heading", name="Before", exact=True))
             expect(section).to_have_count(1)
             result[path] = {
                 "before": section.get_by_role("heading", name="Before", exact=True).locator("xpath=following-sibling::pre").text_content(),

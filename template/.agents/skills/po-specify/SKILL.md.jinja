@@ -116,8 +116,8 @@ or authorize the next handoff.
 
 After a second confirmation-gated reread, write the confirmed structured body
 and metadata, update the feature status to `specified`, keep `owner: po`,
-update the matching `index.md` row, and append the required `log.md` entry.
-Update `last-updated` as part of the feature change.
+update the matching `index.md` row, and append the required `log.md` entry in the
+log format that the wiki schema defines. Feature pages carry no date field; do not add one.
 Do not move intake folders or write unrelated wiki files. If the user declines
 or cancels, make no feature, index, or log change. If a multi-file write is
 partially applied, report every file and observed field that changed, stop, and

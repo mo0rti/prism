@@ -153,8 +153,6 @@ def _feature_page() -> str:
         "title": "Document review",
         "status": "raw",
         "owner": "po",
-        "introduced": CHECK_DATE.isoformat(),
-        "last-updated": CHECK_DATE.isoformat(),
         "apps": ["backend"],
         "sources": [PROCESSED_INTAKE_ITEM.as_posix()],
         "advisory-review": "not-needed",
@@ -199,7 +197,6 @@ def _set_stage(root: Path, status: str, owner: str) -> None:
     frontmatter = yaml.safe_load(frontmatter_text)
     frontmatter["status"] = status
     frontmatter["owner"] = owner
-    frontmatter["last-updated"] = CHECK_DATE.isoformat()
     updated = (
         "---\n"
         + yaml.safe_dump(frontmatter, sort_keys=False).rstrip()
@@ -214,9 +211,9 @@ def _write_index(root: Path, status: str, owner: str) -> None:
     index = root / "knowledge/wiki/index.md"
     index.write_text(
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-        "|----|---------|--------|-------|--------------|------------|\n"
-        f"| {FEATURE_ID} | Document review | {status} | {owner} | not-needed | {CHECK_DATE.isoformat()} |\n",
+        "| ID | Feature | Status | Owner | Board Review |\n"
+        "|----|---------|--------|-------|--------------|\n"
+        f"| {FEATURE_ID} | Document review | {status} | {owner} | not-needed |\n",
         encoding="utf-8",
     )
 

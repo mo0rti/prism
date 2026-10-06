@@ -7,7 +7,6 @@ Use this format for every file in `wiki/design/`. Filename: `F-XXX-[slug].md`.
 feature-id: F-XXX
 title: [Design title]
 designer: [name, optional]
-date: YYYY-MM-DD
 figma: [Figma URL or "not applicable"]
 ---
 

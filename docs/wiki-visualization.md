@@ -59,9 +59,8 @@ diagnostics.
 | Guide | Understand setup, intake, and review state before navigating the graph. Completion is derived from current files and feature presence. |
 
 The dashboard separates workflow blockers from page integrity. A pending
-review or open question is a workflow obligation. A malformed page or stale
-page is a source health diagnostic; stale or advisory warnings are not called
-malformed pages.
+review or open question is a workflow obligation. A malformed page is a source
+health diagnostic; advisory warnings are not called malformed pages.
 
 ## Transition requests are copy-only
 
@@ -148,7 +147,7 @@ Graph facts are rebuilt from the current source files. The live server watches
 the markdown pages consumed by the graph, manifest and Copier answers identity
 inputs, queue entry names/types, generated app directory presence, all
 generated lifecycle capability files under `.agents/skills/` and
-`.claude/commands/`, and the calendar date used for staleness checks. This
+`.claude/commands/`, and the calendar date. This
 includes the selected `po-handoff` skill/command used by the browser request. A
 relevant change refreshes the data endpoint and sends an update to connected
 browsers. A failed rebuild leaves the last successful snapshot available and

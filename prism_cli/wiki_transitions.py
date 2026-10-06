@@ -2151,10 +2151,6 @@ def _relevant_integrity_checks(
             continue
         if diagnostic.code in WIKI_BLOCKER_CODES:
             continue
-        if diagnostic.code == "stale-page" and diagnostic.severity == "warning":
-            # Page age remains visible in diagnostics and graph health, but does
-            # not make otherwise valid source data unsafe to use in a request.
-            continue
         diagnostic_path = diagnostic.resolved_path
         if diagnostic.code == "unknown-app-id" and diagnostic_path == path:
             # The feature's own scope: the app-scope check reports an app outside the workspace as blocked.

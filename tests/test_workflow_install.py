@@ -524,7 +524,7 @@ class WorkflowInstallTests(unittest.TestCase):
             wiki = root / "knowledge/wiki"
             wiki.mkdir(parents=True)
             placeholder = wiki / "SCHEMA.md"
-            placeholder.write_text("# Schema\n", encoding="utf-8")
+            placeholder.write_text("---\nschema-version: 1\n---\n# Schema\n", encoding="utf-8")
             with fake_reparse(placeholder, CLOUD_TAG):
                 plan = plan_install(root, name="Editorial", apps=["backend"])
                 self.assertTrue(any(CLOUD_SYNC_MESSAGE in item for item in plan["conflicts"]))

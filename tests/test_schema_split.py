@@ -22,6 +22,12 @@ HEADING = re.compile(r"#{1,6} ")
 LIFECYCLE_TITLE = "# Wiki lifecycle protocol - features, board and advisory files"
 
 
+def _after_front_matter(text: str) -> str:
+    """The text below the leading `---` front matter block of a wiki file."""
+
+    return text.split("---", 2)[2] if text.startswith("---") else text
+
+
 def _headings(path: Path) -> list[str]:
     return [line for line in path.read_text(encoding="utf-8").splitlines() if HEADING.match(line)]
 
@@ -43,8 +49,8 @@ class SchemaSplitTests(unittest.TestCase):
     def test_each_file_points_at_the_other(self) -> None:
         schema = (WIKI_TEMPLATE / "SCHEMA.md").read_text(encoding="utf-8")
         lifecycle = (WIKI_TEMPLATE / "LIFECYCLE.md").read_text(encoding="utf-8")
-        self.assertIn("`LIFECYCLE.md` holds the feature, board and advisory protocol", " ".join(schema.split("---")[0].split()))
-        self.assertIn("This file extends `SCHEMA.md`, which is read first.", " ".join(lifecycle.split("---")[0].split()))
+        self.assertIn("`LIFECYCLE.md` holds the feature, board and advisory protocol", " ".join(_after_front_matter(schema).split("---")[0].split()))
+        self.assertIn("This file extends `SCHEMA.md`, which is read first.", " ".join(_after_front_matter(lifecycle).split("---")[0].split()))
         # The lifecycle protocol never points at itself as "this schema", and the core never claims lifecycle sections.
         self.assertNotIn("read this schema,", lifecycle)
         for heading in ("### Lifecycle action registry", "### Status and owner lifecycle", "## Feature page format"):

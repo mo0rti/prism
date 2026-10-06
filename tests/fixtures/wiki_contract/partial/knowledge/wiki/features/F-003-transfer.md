@@ -3,8 +3,6 @@ id: F-003
 title: Transfer
 status: ready-for-dev
 owner: dev
-introduced: 2026-09-01
-last-updated: 2026-09-01
 apps: [backend, web-user-app]
 sources: []
 advisory-review: done

@@ -140,13 +140,13 @@ def _feature_page_for(feature: FixtureFeature) -> str:
 
 def _index_text(features: tuple[FixtureFeature, ...]) -> str:
     rows = "".join(
-        f"| {feature.feature_id} | {feature.title} | {feature.status} | {feature.owner} | {feature.advisory} | {CHECK_DATE.isoformat()} |\n"
+        f"| {feature.feature_id} | {feature.title} | {feature.status} | {feature.owner} | {feature.advisory} |\n"
         for feature in features
     )
     return (
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-        "|----|---------|--------|-------|--------------|------------|\n" + rows
+        "| ID | Feature | Status | Owner | Board Review |\n"
+        "|----|---------|--------|-------|--------------|\n" + rows
     )
 
 

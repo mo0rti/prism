@@ -1,3 +1,7 @@
+---
+schema-version: 1
+---
+
 # Wiki lifecycle protocol - features, board and advisory files
 
 This file extends `SCHEMA.md`, which is read first. It holds the feature page format,
@@ -17,8 +21,6 @@ id: F-XXX
 title: [Feature name]
 status: raw | specified | ready-for-design | in-design | ready-for-dev | in-dev | done
 owner: po | designer | dev | none
-introduced: YYYY-MM-DD
-last-updated: YYYY-MM-DD
 apps: [list of app IDs this feature affects - use the app IDs `prism.workspace.yml` declares]
 sources: [paths to intake/processed/ items that produced this page]
 advisory-review: not-needed | pending | done | skipped
@@ -438,8 +440,6 @@ change over time, and a change never edits a feature's scope by itself:
 
 ```markdown
 # Project Foundation
-
-Initialized by `setup-project` on YYYY-MM-DD for [Project Name].
 
 ## Project identity
 - Name: [project name]

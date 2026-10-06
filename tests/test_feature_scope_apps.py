@@ -84,7 +84,7 @@ class WikiWorkspaceCase(unittest.TestCase):
         (self.root / "knowledge" / "intake" / "pending").mkdir(parents=True)
         (self.root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
         for name in ("SCHEMA.md", "LIFECYCLE.md"):
-            (self.wiki / name).write_text("# Wiki\n", encoding="utf-8")
+            (self.wiki / name).write_text("---\nschema-version: 1\n---\n# Wiki\n", encoding="utf-8")
         (self.wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 36500\n---\n", encoding="utf-8")
         self.declare([CUSTOMER, PARTNER, BACKEND])
 
@@ -105,16 +105,16 @@ class WikiWorkspaceCase(unittest.TestCase):
     def write_feature(self, apps: list[str], *, status: str = "ready-for-dev", owner: str = "dev", extra: str = "", api: str = "None.") -> Path:
         scope = "\n".join(f"- **{app}**: Deliver the summary in {app}." for app in apps)
         text = (
-            f"---\nid: F-001\ntitle: Payout summary\nstatus: {status}\nowner: {owner}\nintroduced: 2026-09-01\nlast-updated: 2026-09-08\n"
+            f"---\nid: F-001\ntitle: Payout summary\nstatus: {status}\nowner: {owner}\n"
             f"apps: [{', '.join(apps)}]\nsources: []\nadvisory-review: not-needed\n{extra}---\n\n"
             + FEATURE_BODY.format(scope=scope, api=api)
         )
         path = self.wiki / "features" / "F-001-payout-summary.md"
         path.write_text(text, encoding="utf-8")
         (self.wiki / "index.md").write_text(
-            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-            "|----|---------|--------|-------|--------------|------------|\n"
-            f"| F-001 | Payout summary | {status} | {owner} | not-needed | 2026-09-01 |\n",
+            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review |\n"
+            "|----|---------|--------|-------|--------------|\n"
+            f"| F-001 | Payout summary | {status} | {owner} | not-needed |\n",
             encoding="utf-8",
         )
         return path
@@ -127,7 +127,7 @@ class WikiWorkspaceCase(unittest.TestCase):
 
     def write_design(self) -> None:
         (self.wiki / "design" / "F-001-payout-summary.md").write_text(
-            "---\nfeature-id: F-001\ntitle: Payout summary\ndate: 2026-09-08\nfigma: not applicable\n---\n\n## Summary\nThe summary screen.\n",
+            "---\nfeature-id: F-001\ntitle: Payout summary\nfigma: not applicable\n---\n\n## Summary\nThe summary screen.\n",
             encoding="utf-8",
         )
 

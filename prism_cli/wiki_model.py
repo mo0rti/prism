@@ -359,7 +359,7 @@ def load_markdown_page(path: Path) -> MarkdownPage:
 
 
 def read_wiki_settings(wiki_root: Path) -> WikiSettings:
-    """Read the canonical stale-page setting with its documented fallback."""
+    """Read the canonical `wiki-stale-after-days` setting with its documented fallback."""
 
     settings_path = wiki_root / "SETTINGS.md"
     if not settings_path.exists():
@@ -930,13 +930,37 @@ def parse_iso_date(value: Any) -> date | None:
     return None
 
 
-def page_date_field(page: MarkdownPage) -> tuple[str, Any] | None:
-    """Return the first known lifecycle date field present on a page."""
+# Front matter fields that say when a page was written, decided, verified or
+# amended. That is history: it lives in log.md, never on a current-state page.
+# Names are compared in lower case with `_` read as `-`.
+HISTORY_DATE_FIELDS = frozenset(
+    {
+        "introduced",
+        "last-updated",
+        "last-modified",
+        "last-verified",
+        "created",
+        "updated",
+        "modified",
+        "verified",
+        "reviewed",
+        "date",
+        "date-created",
+        "date-updated",
+        "date-modified",
+        "date-verified",
+    }
+)
 
-    for field_name in ("last-updated", "reviewed", "date", "introduced"):
-        if field_name in page.frontmatter:
-            return field_name, page.frontmatter[field_name]
-    return None
+
+def history_date_fields(page: MarkdownPage) -> list[str]:
+    """The front matter keys of a page that are history-date fields, as written, in file order."""
+
+    return [
+        key
+        for key in page.frontmatter
+        if isinstance(key, str) and key.strip().casefold().replace("_", "-") in HISTORY_DATE_FIELDS
+    ]
 
 
 def parse_index_feature_rows(index_path: Path) -> tuple[list[IndexFeatureRow], list[str]]:
@@ -956,9 +980,9 @@ def parse_index_feature_rows(index_path: Path) -> tuple[list[IndexFeatureRow], l
         if not line.startswith("|"):
             continue
         cells = [cell.strip() for cell in line.strip("|").split("|")]
-        if len(cells) < 6:
+        if len(cells) < 5:
             continue
-        if cells[:6] == ["ID", "Feature", "Status", "Owner", "Board Review", "Introduced"]:
+        if cells == ["ID", "Feature", "Status", "Owner", "Board Review"]:
             in_feature_table = True
             header_seen = True
             continue
@@ -966,7 +990,7 @@ def parse_index_feature_rows(index_path: Path) -> tuple[list[IndexFeatureRow], l
             continue
         if _is_separator_row(cells):
             continue
-        feature_id, title, status, owner, advisory_review, _introduced = cells[:6]
+        feature_id, title, status, owner, advisory_review = cells[:5]
         if not feature_id:
             errors.append("index.md contains a feature row with an empty ID.")
             continue

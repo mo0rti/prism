@@ -424,7 +424,7 @@ class FeatureLaterTests(KnowledgeRootCase):
             for app in apps
         )
         (self.wiki / "features" / "F-001-invoice-history.md").write_text(
-            "---\nid: F-001\ntitle: Invoice history\nstatus: in-dev\nowner: dev\nintroduced: 2026-09-01\nlast-updated: 2026-09-08\n"
+            "---\nid: F-001\ntitle: Invoice history\nstatus: in-dev\nowner: dev\n"
             f"apps: [{', '.join(apps)}]\nsources: []\nadvisory-review: not-needed\ndesign: not-applicable\n"
             "design-exemption-reason: The history reuses the existing list screen.\n---\n\n"
             + FEATURE_BODY.format(scope=scope, rows=rows),
@@ -436,9 +436,9 @@ class FeatureLaterTests(KnowledgeRootCase):
                 encoding="utf-8",
             )
         (self.wiki / "index.md").write_text(
-            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-            "|----|---------|--------|-------|--------------|------------|\n"
-            "| F-001 | Invoice history | in-dev | dev | not-needed | 2026-09-01 |\n",
+            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review |\n"
+            "|----|---------|--------|-------|--------------|\n"
+            "| F-001 | Invoice history | in-dev | dev | not-needed |\n",
             encoding="utf-8",
         )
 

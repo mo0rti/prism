@@ -8,8 +8,6 @@ id: F-XXX
 title: [Feature name]
 status: raw | specified | ready-for-design | in-design | ready-for-dev | in-dev | done
 owner: po | designer | dev | none
-introduced: YYYY-MM-DD
-last-updated: YYYY-MM-DD
 apps: [list of app IDs this feature affects]
 sources: [paths to intake/processed/ items that produced this page]
 advisory-review: not-needed | pending | done | skipped

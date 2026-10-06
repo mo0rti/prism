@@ -61,7 +61,6 @@ if str(REPO_ROOT) not in sys.path:
 
 DEFAULT_SIZES = (10, 100, 500, 1000)
 SEED = 20261004
-FIXED_DATE = "2026-09-22"  # fixed so generated pages are byte-identical between runs
 WARMUP_REQUESTS = 5
 VIEWER_WINDOW_SECONDS = 10.0
 VIEWER_COUNTS = (1, 5)
@@ -347,8 +346,6 @@ def feature_page(number: int, rng: random.Random) -> tuple[str, dict[str, str]]:
         f"title: {title}\n"
         f"status: {plan['status']}\n"
         f"owner: {plan['owner']}\n"
-        f"introduced: {FIXED_DATE}\n"
-        f"last-updated: {FIXED_DATE}\n"
         "apps:\n- backend\n"
         f"sources:\n- {PROCESSED_SOURCE}\n"
         "advisory-review: not-needed\n"
@@ -392,13 +389,13 @@ def build_workspace(root: Path, count: int, seed: int = SEED) -> dict[str, Any]:
     for number in range(1, count + 1):
         page, facts = feature_page(number, rng)
         (features / f"{facts['id']}-{facts['slug']}.md").write_text(page, encoding="utf-8", newline="\n")
-        index_rows.append(f"| {facts['id']} | {facts['title']} | {facts['status']} | {facts['owner']} | not-needed | {FIXED_DATE} |\n")
+        index_rows.append(f"| {facts['id']} | {facts['title']} | {facts['status']} | {facts['owner']} | not-needed |\n")
         counts[facts["status"]] += 1
         counts["open_questions"] += sum(1 for _owner, is_open in feature_plan(number)["questions"] if is_open)
     (root / "knowledge/wiki/index.md").write_text(
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-        "|----|---------|--------|-------|--------------|------------|\n" + "".join(index_rows),
+        "| ID | Feature | Status | Owner | Board Review |\n"
+        "|----|---------|--------|-------|--------------|\n" + "".join(index_rows),
         encoding="utf-8",
         newline="\n",
     )

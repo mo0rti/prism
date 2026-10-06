@@ -98,7 +98,7 @@ class BoardOperationTests(unittest.TestCase):
             self.assertEqual("recovery_review_required", error.exception.code)
         # Preserve unrelated work that arrives while the human reviews the
         # target row and remaining writes.
-        extra = "| F-002 | Keep unrelated work | raw | po | not-needed | 2026-09-22 |\n"
+        extra = "| F-002 | Keep unrelated work | raw | po | not-needed |\n"
         self.put(self.index, self.read(self.index) + extra)
         self.put(self.log, self.read(self.log) + "\nExternal note during recovery review.\n")
         receipt = self.service.recover(self.actor, "agent-operation", inspected["recovery_review_revision"], True)
@@ -127,7 +127,7 @@ class BoardOperationTests(unittest.TestCase):
         self.put(self.feature, self.read(self.feature).replace("status: in-design", "status: ready-for-design"))
         # Use a distinct feature so unresolved agent work cannot overlap.
         self.put("knowledge/wiki/features/F-002-second-review.md", self.read(self.feature).replace("F-001", "F-002"))
-        self.put(self.index, self.read(self.index) + "| F-002 | Second review | ready-for-design | designer | not-needed | 2026-09-22 |\n")
+        self.put(self.index, self.read(self.index) + "| F-002 | Second review | ready-for-design | designer | not-needed |\n")
         preview = self.preview("F-002")
         self.partial(preview, "human-operation", crash=True)
         other_grant = self.service.create_participant("Other human", "human", True)
@@ -201,7 +201,7 @@ class BoardOperationTests(unittest.TestCase):
 
     def test_unrelated_index_bytes_and_log_append_are_preserved(self):
         preview = self.preview()
-        extra = "| F-002 | Keep  exact spacing | raw | po | not-needed | 2026-09-22 |\r\n"
+        extra = "| F-002 | Keep  exact spacing | raw | po | not-needed |\r\n"
         self.put(self.index, self.read(self.index).replace("\r\n", "\n").replace("\n", "\r\n") + extra)
         old_log = self.read(self.log) + "\r\nExternal human note: preserve these bytes.\r\n"
         self.put(self.log, old_log)
@@ -275,7 +275,7 @@ class BoardOperationTests(unittest.TestCase):
     def test_unrelated_operation_can_finish_while_first_is_pending(self):
         feature2 = "knowledge/wiki/features/F-002-another-review.md"
         self.put(feature2, self.read(self.feature).replace("F-001", "F-002"))
-        self.put(self.index, self.read(self.index) + "| F-002 | Document review | ready-for-design | designer | not-needed | 2026-09-22 |\n")
+        self.put(self.index, self.read(self.index) + "| F-002 | Document review | ready-for-design | designer | not-needed |\n")
         first, second = self.preview(), self.preview("F-002")
         self.partial(first, "first")
         receipt = self.apply(second, "second")

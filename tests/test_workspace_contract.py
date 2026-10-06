@@ -40,13 +40,13 @@ def write_workspace(root: Path, *, manifest: dict | None = None, answers: dict |
         (wiki / directory).mkdir(parents=True, exist_ok=True)
     (root / "knowledge" / "intake" / "pending").mkdir(parents=True, exist_ok=True)
     (root / "knowledge" / "intake" / "quarantined").mkdir(parents=True, exist_ok=True)
-    (wiki / "SCHEMA.md").write_text("# Schema\n", encoding="utf-8")
-    (wiki / "LIFECYCLE.md").write_text("# Lifecycle\n", encoding="utf-8")
+    (wiki / "SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Schema\n", encoding="utf-8")
+    (wiki / "LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Lifecycle\n", encoding="utf-8")
     (wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 21\n---\n", encoding="utf-8")
     (wiki / "index.md").write_text(
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-        "|----|---------|--------|-------|--------------|------------|\n",
+        "| ID | Feature | Status | Owner | Board Review |\n"
+        "|----|---------|--------|-------|--------------|\n",
         encoding="utf-8",
     )
     (wiki / "advisory" / "BOARD.md").write_text("# Advisory Board\n", encoding="utf-8")

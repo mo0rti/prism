@@ -44,7 +44,7 @@ The preflight is copy-only and never authorizes a write.
    contract page when one is required, and the write set.
 6. Reread immediately before asking for confirmation and once again after it.
    After confirmation, update the feature, generate requirements, update `index.md`,
-   and append to `log.md`.
+   and append a `log.md` entry in the log format that the wiki schema defines.
 
 Any CLI preflight or copied request is copy-only and never authorizes a write.
 Decline or cancel means no mutation. If a multi-file write is partial, report the
@@ -61,7 +61,7 @@ exact observed changes and recover from a fresh reread; no transaction is implie
 - if `advisory-review: pending`, stop and route through board review or require an explicit skip reason
 - if board review actions required before development remain open, list them before proceeding
 - do not write status changes or app requirements until the user confirms the handoff
-- on the feature page change only the lifecycle metadata (`status`, `owner`, `last-updated`
+- on the feature page change only the lifecycle metadata (`status`, `owner`
   and the verified `design` revalidation domain); leave every body section, including
   `## Design`, exactly as it is
 - if `## API surface` declares API work (anything other than an empty section or a plain

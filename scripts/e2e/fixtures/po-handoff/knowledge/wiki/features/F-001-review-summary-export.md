@@ -3,8 +3,6 @@ id: F-001
 title: Review summary export
 status: ready-for-design
 owner: designer
-introduced: '2026-10-05'
-last-updated: '2026-10-05'
 apps:
 - backend
 sources:

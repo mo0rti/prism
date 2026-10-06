@@ -89,7 +89,7 @@ class WikiContractLintTests(unittest.TestCase):
         self.assertIn("invalid-feature-apps", codes)
         self.assertIn("invalid-api-contract-status", codes)
         self.assertIn("invalid-wiki-stale-after-days", codes)
-        self.assertIn("stale-page", codes)
+        self.assertIn("history-date-on-page", codes)
         self.assertIn("broken-wiki-link", codes)
         self.assertTrue(any(diagnostic.feature_id == "F-002" for diagnostic in self.diagnostics_for(result, "broken-wiki-link")))
 
@@ -343,7 +343,6 @@ class WikiContractLintTests(unittest.TestCase):
             shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
             (target_wiki / "features" / "F-001-second.md").write_text(
                 "---\nid: F-001\ntitle: Duplicate checkout\nstatus: specified\nowner: po\n"
-                "introduced: 2026-09-01\nlast-updated: 2026-09-01\napps: [backend]\n"
                 "sources: []\nadvisory-review: not-needed\n---\n\n## Summary\nDuplicate.\n",
                 encoding="utf-8",
             )
@@ -375,7 +374,7 @@ class WikiContractLintTests(unittest.TestCase):
 
         self.assertFalse(any(node["path"] and node["path"].endswith("PROJECT_FOUNDATION.md") for node in graph["facts"]["nodes"]))
 
-    def test_mermaid_keeps_blocker_badge_when_feature_has_stale_warning(self) -> None:
+    def test_mermaid_keeps_blocker_badge_for_a_blocked_feature(self) -> None:
         graph = build_graph(FIXTURES / "partial")
 
         mermaid = render_mermaid(graph, "lifecycle")

@@ -33,7 +33,7 @@ from prism_cli.wiki_model import (
     candidate_relative_markdown_link as _candidate_relative_link,
     normalize_feature_id,
     feature_id_from_path,
-    page_date_field,
+    history_date_fields,
     parse_index_feature_rows,
     parse_iso_date,
     parse_open_question_rows,
@@ -89,6 +89,14 @@ _NON_SOURCE_FILENAMES = {
     "WIKI_REPORT.md",
     "log.md",
 }
+# `## YYYY-MM-DD <operation> | <subject>`, then `paths`, `evidence` and `by` lines.
+_LOG_HEADING_PATTERN = re.compile(r"^## (\d{4}-\d{2}-\d{2}) [a-z][a-z0-9-]* \| \S.*$")
+_LOG_FIELD_PATTERN = re.compile(r"^- (paths|evidence|by): (\S.*)$")
+_LOG_FIELDS = ("paths", "evidence", "by")
+_SCHEMA_VERSION_FILES = ("SCHEMA.md", "LIFECYCLE.md")
+SUPPORTED_SCHEMA_VERSION = 1
+# A dated record keeps its own date field; every other page kind carries none.
+_RECORD_DATE_FIELDS = {"decisions": "date"}
 _FRONTMATTER_PAGE_DIRECTORIES = {
     "api-contracts",
     "business-rules",
@@ -223,6 +231,8 @@ def _resolve(path: Path) -> Path:
 
 @within_wiki_read_scope
 def lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintResult:
+    """Lint the wiki of one workspace. `today` is the clock for freshness checks; no check reads it yet."""
+
     token = _RESOLVE_MEMO.set({})
     try:
         return _lint_wiki(workspace_root, today=today)
@@ -253,8 +263,7 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                 )
             )
 
-    stale_after_days, settings_diagnostics = _read_stale_after_days(wiki_root)
-    diagnostics.extend(settings_diagnostics)
+    diagnostics.extend(_read_wiki_settings_diagnostics(wiki_root))
 
     model = workspace_model(root, resolved=True)
     diagnostics.extend(_lint_unknown_app_capabilities(model, root / MANIFEST_FILE))
@@ -320,7 +329,9 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
     )
     diagnostics.extend(_lint_api_contract_blockers(feature_pages, requirement_pages, all_pages, wiki_root))
     diagnostics.extend(_lint_cross_app_dependencies(requirement_pages, feature_pages, wiki_root))
-    diagnostics.extend(_lint_stale_pages(all_pages, wiki_root, stale_after_days, today or date.today()))
+    diagnostics.extend(_lint_history_dates(all_pages, wiki_root))
+    diagnostics.extend(_lint_schema_versions(all_pages, wiki_root))
+    diagnostics.extend(_lint_log_entries(wiki_root / "log.md"))
     diagnostics.extend(
         _lint_relative_links(
             all_pages,
@@ -396,13 +407,12 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
     return WikiLintResult(root=root, diagnostics=diagnostics, feature_count=len(feature_pages))
 
 
-def _read_stale_after_days(wiki_root: Path) -> tuple[int, list[WikiDiagnostic]]:
+def _read_wiki_settings_diagnostics(wiki_root: Path) -> list[WikiDiagnostic]:
     settings = read_wiki_settings(wiki_root)
-    diagnostics = [
+    return [
         _diag(code, "warning", settings.path, message)
         for code, message in settings.diagnostics
     ]
-    return settings.stale_after_days, diagnostics
 
 
 def _lint_done_completion(
@@ -850,48 +860,125 @@ def _requirement_label(requirement: AppRequirementPage) -> str:
     return requirement.page.path.stem
 
 
-def _lint_stale_pages(
-    pages: list[MarkdownPage],
-    wiki_root: Path,
-    stale_after_days: int,
-    today: date,
-) -> list[WikiDiagnostic]:
+def _lint_history_dates(pages: list[MarkdownPage], wiki_root: Path) -> list[WikiDiagnostic]:
+    """Report a history-date field in the front matter of a current-state page.
+
+    A decision keeps its own `date` and an advisory review its own `reviewed`: those
+    are dated records. Every other page says when something happened in log.md.
+    """
+
     diagnostics: list[WikiDiagnostic] = []
     for page in pages:
         if _is_non_source_page(page.path, wiki_root):
             continue
-        field = page_date_field(page)
-        if field is None:
-            continue
-        field_name, raw_value = field
-        parsed = parse_iso_date(raw_value)
-        if parsed is None:
-            if page.path.parent.name == "features":
-                # Feature date fields have a more specific diagnostic in
-                # _lint_feature; do not emit a duplicate generic warning.
+        allowed = _record_date_field(page.path, wiki_root)
+        for field_name in history_date_fields(page):
+            if field_name.strip().casefold().replace("_", "-") == allowed:
                 continue
             diagnostics.append(
                 _diag(
-                    "invalid-wiki-date",
+                    "history-date-on-page",
                     "error",
                     page.path,
-                    f"`{field_name}` must be an ISO date (YYYY-MM-DD) for staleness checks.",
-                    feature_id_from_path(page.path),
-                )
-            )
-            continue
-        age_days = (today - parsed).days
-        if age_days > stale_after_days:
-            diagnostics.append(
-                _diag(
-                    "stale-page",
-                    "warning",
-                    page.path,
-                    f"Page is {age_days} days old (wiki-stale-after-days: {stale_after_days}).",
+                    f"`{field_name}` is a history date and does not belong on a current-state page. Remove it and record when it happened in log.md.",
                     feature_id_from_path(page.path),
                 )
             )
     return diagnostics
+
+
+def _record_date_field(path: Path, wiki_root: Path) -> str | None:
+    """The date field a dated record keeps, or ``None`` for a current-state page."""
+
+    try:
+        relative = _resolve(path).relative_to(_resolve(wiki_root))
+    except ValueError:
+        return None
+    if len(relative.parts) >= 2 and relative.parts[0] in _RECORD_DATE_FIELDS:
+        return _RECORD_DATE_FIELDS[relative.parts[0]]
+    if len(relative.parts) == 2 and relative.parts[0] == "advisory" and relative.name.startswith("F-") and relative.name.endswith("-review.md"):
+        return "reviewed"
+    return None
+
+
+def _lint_schema_versions(pages: list[MarkdownPage], wiki_root: Path) -> list[WikiDiagnostic]:
+    """SCHEMA.md and LIFECYCLE.md each start with front matter `schema-version: 1`."""
+
+    diagnostics: list[WikiDiagnostic] = []
+    by_name = {page.path.name: page for page in pages if page.path.parent == wiki_root}
+    for name in _SCHEMA_VERSION_FILES:
+        page = by_name.get(name)
+        if page is None:
+            continue  # a missing file is reported as missing-required-wiki-file
+        value = page.frontmatter.get("schema-version")
+        if isinstance(value, bool) or value != SUPPORTED_SCHEMA_VERSION:
+            diagnostics.append(
+                _diag(
+                    "missing-schema-version",
+                    "error",
+                    page.path,
+                    f"{name} must start with front matter `schema-version: {SUPPORTED_SCHEMA_VERSION}`.",
+                )
+            )
+    return diagnostics
+
+
+def _lint_log_entries(log_path: Path) -> list[WikiDiagnostic]:
+    """Check each log.md entry against the log format. Entries are reported, never rewritten."""
+
+    try:
+        text = log_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return []
+    entries: list[tuple[int, str, list[str]]] = []
+    in_fence = False
+    for number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.rstrip()
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.startswith("## "):
+            entries.append((number, line, []))
+            continue
+        stripped = line.strip()
+        if not entries or not stripped or (stripped.startswith("<!--") and stripped.endswith("-->")):
+            continue
+        entries[-1][2].append(stripped)
+
+    diagnostics: list[WikiDiagnostic] = []
+    for number, heading, body in entries:
+        problem = _log_entry_problem(heading, body)
+        if problem is None:
+            continue
+        label = heading if len(heading) <= 80 else heading[:77] + "..."
+        diagnostics.append(
+            _diag(
+                "malformed-log-entry",
+                "warning",
+                log_path,
+                f"Log entry at line {number} (`{label}`) is not in the log format: {problem} See the log.md conventions in SCHEMA.md.",
+            )
+        )
+    return diagnostics
+
+
+def _log_entry_problem(heading: str, body: list[str]) -> str | None:
+    match = _LOG_HEADING_PATTERN.match(heading)
+    if match is None or parse_iso_date(match.group(1)) is None:
+        return "the heading must be `## YYYY-MM-DD <operation> | <subject>`."
+    for index, field_name in enumerate(_LOG_FIELDS):
+        line = body[index] if index < len(body) else ""
+        field_match = _LOG_FIELD_PATTERN.match(line)
+        if field_match is None or field_match.group(1) != field_name:
+            return f"line {index + 1} after the heading must be `- {field_name}: <value>`."
+    extra = body[len(_LOG_FIELDS):]
+    if len(extra) > 1:
+        return "after the `by` line only one optional line of plain text may follow."
+    if extra and extra[0].startswith(("-", "#", "|", ">")):
+        return "the optional line after the `by` line must be plain text."
+    return None
 
 
 def _lint_relative_links(
@@ -1056,7 +1143,6 @@ def _lint_api_contract_page(page: MarkdownPage, feature_id: str | None) -> list[
 def _lint_design_page(page: MarkdownPage, feature_id: str | None) -> list[WikiDiagnostic]:
     diagnostics = _lint_aux_required_string(page, "feature-id", "design", feature_id)
     diagnostics.extend(_lint_aux_required_string(page, "title", "design", feature_id))
-    diagnostics.extend(_lint_aux_required_date(page, "date", "design", feature_id))
     diagnostics.extend(_lint_aux_required_string(page, "figma", "design", feature_id))
     if "designer" in page.frontmatter and not isinstance(page.frontmatter["designer"], str):
         diagnostics.append(_diag("invalid-design-designer", "error", page.path, "`designer` must be a string when present.", feature_id))
@@ -1073,7 +1159,6 @@ def _lint_advisory_review_page(page: MarkdownPage, feature_id: str | None) -> li
 def _lint_business_rule_page(page: MarkdownPage) -> list[WikiDiagnostic]:
     diagnostics = _lint_aux_required_string(page, "id", "business-rule", None)
     diagnostics.extend(_lint_aux_required_string(page, "title", "business-rule", None))
-    diagnostics.extend(_lint_aux_required_date(page, "introduced", "business-rule", None))
     diagnostics.extend(_lint_aux_required_string(page, "source", "business-rule", None))
     return diagnostics
 
@@ -1081,7 +1166,6 @@ def _lint_business_rule_page(page: MarkdownPage) -> list[WikiDiagnostic]:
 def _lint_persona_page(page: MarkdownPage) -> list[WikiDiagnostic]:
     diagnostics = _lint_aux_required_string(page, "id", "persona", None)
     diagnostics.extend(_lint_aux_required_string(page, "name", "persona", None))
-    diagnostics.extend(_lint_aux_required_date(page, "introduced", "persona", None))
     diagnostics.extend(_lint_aux_required_string_list(page, "sources", "persona", None))
     return diagnostics
 
@@ -1178,7 +1262,7 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
         diagnostics.append(_diag("malformed-frontmatter", "error", path, message, feature_id))
 
     frontmatter = feature.page.frontmatter
-    required_fields = ("id", "title", "status", "owner", "introduced", "last-updated", "apps", "sources", "advisory-review")
+    required_fields = ("id", "title", "status", "owner", "apps", "sources", "advisory-review")
     for field_name in required_fields:
         if field_name not in frontmatter:
             diagnostics.append(_diag("missing-feature-frontmatter", "error", path, f"Required frontmatter field `{field_name}` is missing.", feature_id))
@@ -1243,18 +1327,6 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
         for problem in delivery_problems:
             code = RELEASE_EVIDENCE_REQUIRED if problem.code == RELEASE_EVIDENCE_REQUIRED else "done-delivery-evidence"
             diagnostics.append(_diag(code, "error", path, problem.message, feature_id))
-
-    for field_name in ("introduced", "last-updated"):
-        if field_name in frontmatter and parse_iso_date(frontmatter[field_name]) is None:
-            diagnostics.append(
-                _diag(
-                    "invalid-feature-date",
-                    "error",
-                    path,
-                    f"`{field_name}` must be an ISO date (YYYY-MM-DD).",
-                    feature_id,
-                )
-            )
 
     if "platforms" in frontmatter:
         diagnostics.append(

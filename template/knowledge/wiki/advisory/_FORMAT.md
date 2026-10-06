@@ -13,8 +13,6 @@ Use this format for the setup-project foundation artifact:
 ```markdown
 # Project Foundation
 
-Initialized by `setup-project` on YYYY-MM-DD for [Project Name].
-
 ## Project identity
 - Name: [project name]
 - Description: [one-sentence summary]

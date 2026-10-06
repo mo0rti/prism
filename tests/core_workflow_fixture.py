@@ -39,11 +39,13 @@ def create_core_workflow_fixture(root: Path) -> Path:
     # tests; behavior under test still comes from the canonical parser and
     # transition rules applied to the feature pages below.
     (wiki_root / "SCHEMA.md").write_text(
+        "---\nschema-version: 1\n---\n"
         "# Wiki schema fixture\n\n"
         "Feature and evidence fields follow the template wiki schema.\n",
         encoding="utf-8",
     )
     (wiki_root / "LIFECYCLE.md").write_text(
+        "---\nschema-version: 1\n---\n"
         "# Wiki lifecycle fixture\n\n"
         "Feature lifecycle and evidence fields follow the template lifecycle protocol.\n",
         encoding="utf-8",
@@ -53,8 +55,8 @@ def create_core_workflow_fixture(root: Path) -> Path:
     )
     (wiki_root / "index.md").write_text(
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-        "|----|---------|--------|-------|--------------|------------|\n",
+        "| ID | Feature | Status | Owner | Board Review |\n"
+        "|----|---------|--------|-------|--------------|\n",
         encoding="utf-8",
     )
     (root / "prism.workspace.yml").write_text(

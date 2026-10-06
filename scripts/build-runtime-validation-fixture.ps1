@@ -56,42 +56,42 @@ Write-Utf8File (Join-Path $wikiRoot "index.md") @'
 
 This file is maintained by the AI agent. Do not edit directly.
 
-| ID | Feature | Status | Owner | Board Review | Introduced |
-|----|---------|--------|-------|--------------|------------|
-| F-010 | Saved Checkout | ready-for-dev | dev | done | 2026-04-01 |
-| F-011 | Nutrition Score | ready-for-design | designer | pending | 2026-03-15 |
-| F-012 | Notification Preferences | in-design | designer | not-needed | 2026-04-02 |
-| F-013 | Recurring Delivery | ready-for-dev | dev | done | 2026-04-03 |
-| F-014 | Goal Alerts | in-dev | dev | done | 2026-04-04 |
-| F-020 | Auth Session Hardening | ready-for-dev | dev | done | 2026-04-01 |
-| F-099 | Broken Fixture Page | unknown | none | not-needed | 2026-04-01 |
+| ID | Feature | Status | Owner | Board Review |
+|----|---------|--------|-------|--------------|
+| F-010 | Saved Checkout | ready-for-dev | dev | done |
+| F-011 | Nutrition Score | ready-for-design | designer | pending |
+| F-012 | Notification Preferences | in-design | designer | not-needed |
+| F-013 | Recurring Delivery | ready-for-dev | dev | done |
+| F-014 | Goal Alerts | in-dev | dev | done |
+| F-020 | Auth Session Hardening | ready-for-dev | dev | done |
+| F-099 | Broken Fixture Page | unknown | none | not-needed |
 
 ## Other wiki pages
-| Page | Type | Summary | Date |
-|------|------|---------|------|
-| [SCHEMA.md](SCHEMA.md) | meta | Wiki conventions and operational rules | - |
-| [SETTINGS.md](SETTINGS.md) | config | Wiki read/query settings | 2026-04-09 |
-| [BOARD.md](advisory/BOARD.md) | config | Advisory board composition | 2026-04-09 |
+| Page | Type | Summary |
+|------|------|---------|
+| [SCHEMA.md](SCHEMA.md) | meta | Wiki conventions and operational rules |
+| [SETTINGS.md](SETTINGS.md) | config | Wiki read/query settings |
+| [BOARD.md](advisory/BOARD.md) | config | Advisory board composition |
 '@
 
 Write-Utf8File (Join-Path $wikiRoot "log.md") @'
 # Wiki log
 
-Append-only record of all wiki operations. Most recent entry at the bottom.
-Format: ## YYYY-MM-DD [operation] | [subject]
-
----
-
-## 2026-04-01 init | Wiki initialized
-
-Wiki created from Prism template and seeded for runtime validation.
+Append-only record of all wiki operations, and the only home for history. Most recent
+entry at the bottom.
+Entry format, defined in `SCHEMA.md` (log.md conventions): the line
+`## YYYY-MM-DD <operation> | <subject>`, then the `paths`, `evidence` and `by` lines.
 
 ## 2026-04-02 po-intake | F-010
-
+- paths: knowledge/wiki/features/F-010-saved-checkout.md
+- evidence: none
+- by: runtime validation fixture
 Saved Checkout drafted from fixture corpus.
 
 ## 2026-04-05 design-handoff | F-013
-
+- paths: knowledge/wiki/features/F-013-recurring-delivery.md
+- evidence: none
+- by: runtime validation fixture
 Recurring Delivery moved to ready-for-dev.
 '@
 
@@ -114,7 +114,6 @@ Write-Utf8File (Join-Path $wikiRoot "business-rules\BR-004-checkout-address-vali
 ---
 id: BR-004
 title: Checkout Address Validation
-introduced: 2026-04-01
 source: fixture-offline-checkout
 ---
 
@@ -135,7 +134,6 @@ Write-Utf8File (Join-Path $wikiRoot "business-rules\BR-020-auth-token-rotation.m
 ---
 id: BR-020
 title: Auth Token Rotation
-introduced: 2026-04-02
 source: security-fixture
 ---
 
@@ -179,8 +177,6 @@ id: F-010
 title: Saved Checkout
 status: ready-for-dev
 owner: dev
-introduced: 2026-04-01
-last-updated: 2026-04-08
 apps: [backend, mobile-android, mobile-ios, web-user-app]
 sources: [knowledge/intake/fixture/offline-checkout.md]
 advisory-review: done
@@ -229,8 +225,6 @@ id: F-011
 title: Nutrition Score
 status: ready-for-design
 owner: designer
-introduced: 2026-03-15
-last-updated: 2026-03-20
 apps: [mobile-android, mobile-ios, web-user-app]
 sources: [knowledge/intake/fixture/nutrition-score.md]
 advisory-review: pending
@@ -278,8 +272,6 @@ id: F-012
 title: Notification Preferences
 status: in-design
 owner: designer
-introduced: 2026-04-02
-last-updated: 2026-04-07
 apps: [mobile-ios, web-user-app]
 sources: [knowledge/intake/fixture/notification-preferences.md]
 advisory-review: not-needed
@@ -326,8 +318,6 @@ id: F-013
 title: Recurring Delivery
 status: ready-for-dev
 owner: dev
-introduced: 2026-04-03
-last-updated: 2026-04-06
 apps: [backend, mobile-android, mobile-ios, web-user-app]
 sources: [knowledge/intake/fixture/recurring-delivery.md]
 advisory-review: done
@@ -376,8 +366,6 @@ id: F-014
 title: Goal Alerts
 status: in-dev
 owner: dev
-introduced: 2026-04-04
-last-updated: 2026-04-05
 apps: [backend, mobile-android, mobile-ios]
 sources: [knowledge/intake/fixture/goal-alerts.md]
 advisory-review: done
@@ -426,8 +414,6 @@ id: F-020
 title: Auth Session Hardening
 status: ready-for-dev
 owner: dev
-introduced: 2026-04-01
-last-updated: 2026-04-08
 apps: [backend, mobile-android, mobile-ios, web-user-app, web-admin-portal]
 sources: [knowledge/intake/fixture/auth-session.md]
 advisory-review: done
@@ -476,8 +462,6 @@ Write-Utf8File (Join-Path $wikiRoot "features\F-099-broken.md") @'
 id: F-099
 title: Broken Fixture Page
 owner: none
-introduced: 2026-04-01
-last-updated: 2026-04-08
 apps: [backend]
 sources: [knowledge/intake/fixture/broken.md]
 advisory-review: not-needed
@@ -492,7 +476,6 @@ Write-Utf8File (Join-Path $wikiRoot "design\F-010-saved-checkout.md") @'
 feature-id: F-010
 title: Saved Checkout
 designer: Riley Chen
-date: 2026-04-07
 figma: not applicable
 ---
 
@@ -522,7 +505,6 @@ Write-Utf8File (Join-Path $wikiRoot "design\F-013-recurring-delivery.md") @'
 feature-id: F-013
 title: Recurring Delivery
 designer: Riley Chen
-date: 2026-04-05
 figma: not applicable
 ---
 
@@ -550,7 +532,6 @@ Write-Utf8File (Join-Path $wikiRoot "design\F-014-goal-alerts.md") @'
 feature-id: F-014
 title: Goal Alerts
 designer: Riley Chen
-date: 2026-04-05
 figma: not applicable
 ---
 
@@ -578,7 +559,6 @@ Write-Utf8File (Join-Path $wikiRoot "design\F-020-auth-session-hardening.md") @'
 feature-id: F-020
 title: Auth Session Hardening
 designer: Morgan Patel
-date: 2026-04-08
 figma: not applicable
 ---
 

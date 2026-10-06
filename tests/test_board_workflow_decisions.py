@@ -424,7 +424,7 @@ class DevClarifyTests(_BoardWorkspace):
     def test_it_cannot_create_or_write_other_page_types(self) -> None:
         feature = {"path": FEATURE, "content": self.answered(self.read(FEATURE))}
         pages = {
-            DESIGN: "---\nfeature-id: F-001\ntitle: Review\ndate: 2026-09-22\nfigma: not applicable\n---\n\n## Summary\nx\n",
+            DESIGN: "---\nfeature-id: F-001\ntitle: Review\nfigma: not applicable\n---\n\n## Summary\nx\n",
             "knowledge/wiki/api-contracts/F-001.md": "---\nfeature-id: F-001\nversion: 1\nstatus: draft\n---\n\n## Endpoints\nx\n",
         }
         for path, content in pages.items():

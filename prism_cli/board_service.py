@@ -86,7 +86,8 @@ _WIKI_DIRS = (
     "advisory",
     "decisions",
 )
-_INDEX_ROW = re.compile(r"^\|\s*(F-\d+)\s*\|\s*(.*?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*$", re.IGNORECASE)
+_INDEX_ROW = re.compile(r"^\|\s*(F-\d+)\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$", re.IGNORECASE)
+_INDEX_HEADER = re.compile(r"^\s*\|\s*ID\s*\|\s*Feature\s*\|\s*Status\s*\|\s*Owner\s*\|\s*Board Review\s*\|\s*$", re.IGNORECASE)
 _FRONTMATTER = re.compile(r"\A\ufeff?---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 
 
@@ -639,7 +640,6 @@ class BoardService:
             after_feature = dict(feature["frontmatter"])
             after_feature["status"] = transition.get("target_status")
             after_feature["owner"] = transition.get("target_owner")
-            after_feature["last-updated"] = date.today().isoformat()
             after_feature.update(frontmatter_overrides)
             if advisory_override is not None:
                 after_feature["advisory-review"] = "skipped"
@@ -1456,7 +1456,7 @@ class BoardService:
             writes.append(self._write_record(index_path, index_before, index_after, role="index", merge={"kind": "index", "expected_rows": expected, "after_rows": {feature_id: after_row}}))
         log_path = "knowledge/wiki/log.md"
         log_before = self._optional_text(self._safe_path(log_path, allow_missing=True))
-        log_entry = _actor_log_entry(actor, operation, feature_id, preview_id)
+        log_entry = _actor_log_entry(actor, operation, feature_id, preview_id, [write["path"] for write in writes])
         log_after = _append_once(log_before or "", f"<!-- prism:board-history:v1 preview={preview_id} -->", log_entry)
         if merge_log and log_after != (log_before or ""):
             writes.append(self._write_record(log_path, log_before, log_after, role="log", merge={"kind": "log", "marker": f"preview={preview_id}", "entry": log_entry}))
@@ -1886,7 +1886,14 @@ class BoardService:
 
         log_subject = ", ".join(sorted(str(after_frontmatter[p].get("id")) for p in feature_changes)) or _move_subject(normalized_moves) or skill
         log_before = self._optional_text(self._safe_path("knowledge/wiki/log.md", allow_missing=True))
-        log_entry = _actor_log_entry(actor, skill, log_subject, preview_id)
+        log_entry = _actor_log_entry(
+            actor,
+            skill,
+            log_subject,
+            preview_id,
+            [write["path"] for write in writes],
+            [move["destination"] for move in normalized_moves],
+        )
         log_after = _append_once(log_before or "", f"<!-- prism:board-history:v1 preview={preview_id} -->", log_entry)
         writes.append(self._write_record("knowledge/wiki/log.md", log_before, log_after, role="log", merge={"kind": "log", "marker": f"preview={preview_id}", "entry": log_entry}))
 
@@ -2196,7 +2203,7 @@ class BoardService:
         """
 
         frontmatter, body = _parse_markdown(content, relative)
-        self._assert_frontmatter_fields(frontmatter, {"id", "title", "status", "owner", "introduced", "last-updated", "apps", "sources", "advisory-review", "advisory-skip-reason", "design", "design-exemption-reason", "revalidation"}, relative)
+        self._assert_frontmatter_fields(frontmatter, {"id", "title", "status", "owner", "apps", "sources", "advisory-review", "advisory-skip-reason", "design", "design-exemption-reason", "revalidation"}, relative)
         feature_id = frontmatter.get("id")
         if not isinstance(feature_id, str) or not re.fullmatch(r"F-\d+", feature_id):
             raise BoardError("invalid_feature_output", f"Feature output `{relative}` must have a canonical F-number id.", 409)
@@ -2209,8 +2216,6 @@ class BoardService:
         owner = frontmatter.get("owner")
         if status not in {"raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done"} or owner not in {"po", "designer", "dev", "none"}:
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` has an invalid status or owner.", 409)
-        if not self._valid_iso_date(frontmatter.get("introduced")) or not self._valid_iso_date(frontmatter.get("last-updated")):
-            raise BoardError("invalid_feature_output", f"Feature `{feature_id}` requires ISO introduced and last-updated dates.", 409)
         sources = frontmatter.get("sources")
         if not isinstance(sources, list) or any(not isinstance(path, str) or not path.strip() or ".." in PurePosixPath(path).parts or PurePosixPath(path).is_absolute() for path in sources):
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` sources must be relative workspace paths.", 409)
@@ -2325,7 +2330,7 @@ class BoardService:
             old_text = before[feature["path"]] or ""
             old_fm, old_body = _parse_markdown(old_text, feature["path"])
             new_fm, new_body = _parse_markdown(supplied[feature["path"]], feature["path"])
-            if {key: value for key, value in old_fm.items() if key != "last-updated"} != {key: value for key, value in new_fm.items() if key != "last-updated"}:
+            if old_fm != new_fm:
                 raise BoardError("design_intake_frontmatter_scope", "Design intake preserves feature identity and lifecycle metadata.", 409)
             self._assert_only_body_sections_changed(
                 old_body,
@@ -2686,7 +2691,7 @@ class BoardService:
     ) -> None:
         old_fm, old_body = _parse_markdown(original, relative)
         new_fm, new_body = _parse_markdown(proposed, relative)
-        allowed_frontmatter = {"status", "owner", "last-updated"}
+        allowed_frontmatter = {"status", "owner"}
         if action == "po-handoff":
             allowed_frontmatter |= {"advisory-review", "advisory-skip-reason", "revalidation"}
         elif action == "design-handoff":
@@ -2708,12 +2713,6 @@ class BoardService:
                 409,
                 {"path": relative, "fields": offending, "allowed": allowed_names},
             )
-        timestamp = new_fm.get("last-updated")
-        if timestamp is not None:
-            try:
-                date.fromisoformat(str(timestamp))
-            except ValueError as exc:
-                raise BoardError("invalid_last_updated", "Lifecycle updates require an ISO date in last-updated.", 409) from exc
         if action == "po-handoff":
             if old_fm.get("advisory-review") == new_fm.get("advisory-review"):
                 if old_fm.get("advisory-skip-reason") != new_fm.get("advisory-skip-reason"):
@@ -3273,15 +3272,14 @@ class BoardService:
 
         old_frontmatter, old_body = _parse_markdown(before, relative)
         new_frontmatter, new_body = _parse_markdown(after, relative)
-        mutable_frontmatter = {"last-updated"}
-        if {key: value for key, value in old_frontmatter.items() if key not in mutable_frontmatter} != {key: value for key, value in new_frontmatter.items() if key not in mutable_frontmatter}:
+        if old_frontmatter != new_frontmatter:
             changed_fields = _names(
                 key for key in set(old_frontmatter) | set(new_frontmatter)
-                if key not in mutable_frontmatter and old_frontmatter.get(key) != new_frontmatter.get(key)
+                if old_frontmatter.get(key) != new_frontmatter.get(key)
             )
             raise BoardError(
                 "clarify_frontmatter_change",
-                f"Skill `{skill}` cannot alter feature lifecycle or identity metadata; `{relative}` changes frontmatter field(s) {_quoted(changed_fields)}. Restore them; only `last-updated` may change.",
+                f"Skill `{skill}` cannot alter feature lifecycle or identity metadata; `{relative}` changes frontmatter field(s) {_quoted(changed_fields)}. Restore them to their current values.",
                 409,
                 {"path": relative, "fields": changed_fields},
             )
@@ -3477,24 +3475,24 @@ class BoardService:
 
     def _validate_persona(self, relative: str, content: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
-        self._assert_frontmatter_fields(frontmatter, {"id", "name", "introduced", "sources"}, relative)
+        self._assert_frontmatter_fields(frontmatter, {"id", "name", "sources"}, relative)
         if not isinstance(frontmatter.get("id"), str) or not re.fullmatch(r"P-\d+", frontmatter["id"]):
             raise BoardError("invalid_persona", f"Persona `{relative}` requires a P-number id.", 409)
         if not isinstance(frontmatter.get("name"), str) or not frontmatter["name"].strip():
             raise BoardError("invalid_persona", f"Persona `{relative}` requires a nonblank name.", 409)
-        if not self._valid_iso_date(frontmatter.get("introduced")) or not isinstance(frontmatter.get("sources"), list) or not frontmatter["sources"]:
-            raise BoardError("invalid_persona", f"Persona `{relative}` requires an introduced date and source list.", 409)
+        if not isinstance(frontmatter.get("sources"), list) or not frontmatter["sources"]:
+            raise BoardError("invalid_persona", f"Persona `{relative}` requires a source list.", 409)
         self._assert_named_id_available(relative, frontmatter["id"], "id")
         _require_headings(body, ("Who they are", "Goals", "Pain points", "Features that serve this persona"), relative)
         _validate_no_placeholders(body, relative)
 
     def _validate_business_rule(self, relative: str, content: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
-        self._assert_frontmatter_fields(frontmatter, {"id", "title", "introduced", "source"}, relative)
+        self._assert_frontmatter_fields(frontmatter, {"id", "title", "source"}, relative)
         if not isinstance(frontmatter.get("id"), str) or not re.fullmatch(r"BR-\d+", frontmatter["id"]):
             raise BoardError("invalid_business_rule", f"Business rule `{relative}` requires a BR-number id.", 409)
-        if not isinstance(frontmatter.get("title"), str) or not frontmatter["title"].strip() or not self._valid_iso_date(frontmatter.get("introduced")) or not isinstance(frontmatter.get("source"), str) or not frontmatter["source"].strip():
-            raise BoardError("invalid_business_rule", f"Business rule `{relative}` requires title, introduced date, and source.", 409)
+        if not isinstance(frontmatter.get("title"), str) or not frontmatter["title"].strip() or not isinstance(frontmatter.get("source"), str) or not frontmatter["source"].strip():
+            raise BoardError("invalid_business_rule", f"Business rule `{relative}` requires title and source.", 409)
         self._assert_named_id_available(relative, frontmatter["id"], "id")
         _require_headings(body, ("Rule", "Rationale", "Affected features", "Exceptions"), relative)
         if not PurePosixPath(relative).stem.casefold().startswith(frontmatter["id"].casefold() + "-"):
@@ -3503,11 +3501,11 @@ class BoardService:
 
     def _validate_design(self, relative: str, content: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
-        self._assert_frontmatter_fields(frontmatter, {"feature-id", "title", "designer", "date", "figma"}, relative)
+        self._assert_frontmatter_fields(frontmatter, {"feature-id", "title", "designer", "figma"}, relative)
         if not isinstance(frontmatter.get("feature-id"), str):
             raise BoardError("invalid_design", f"Design page `{relative}` must identify its feature.", 409)
-        if not isinstance(frontmatter.get("title"), str) or not frontmatter["title"].strip() or not self._valid_iso_date(frontmatter.get("date")) or not isinstance(frontmatter.get("figma"), str) or not frontmatter["figma"].strip():
-            raise BoardError("invalid_design", f"Design page `{relative}` requires a title, date, and Figma reference or `not applicable`.", 409)
+        if not isinstance(frontmatter.get("title"), str) or not frontmatter["title"].strip() or not isinstance(frontmatter.get("figma"), str) or not frontmatter["figma"].strip():
+            raise BoardError("invalid_design", f"Design page `{relative}` requires a title and a Figma reference or `not applicable`.", 409)
         _require_headings(body, ("Summary", "Key design decisions", "States covered", "Component references", "Open design questions"), relative)
         _validate_no_placeholders(body, relative)
 
@@ -3538,12 +3536,6 @@ class BoardService:
                 409,
                 {"path": relative, "fields": unknown_names, "allowed": sorted(allowed)},
             )
-
-    @staticmethod
-    def _valid_iso_date(value: Any) -> bool:
-        from prism_cli.wiki_model import parse_iso_date
-
-        return parse_iso_date(value) is not None
 
     def _assert_feature_id_available(self, feature_id: str, *, except_path: str | None) -> None:
         from prism_cli.wiki_model import read_feature_pages, normalize_feature_id
@@ -4360,12 +4352,6 @@ def _parse_markdown(content: str, path: str | None = None) -> tuple[dict[str, An
             409,
             {**base, "problem": f"frontmatter is a {kind}, not a mapping"},
         )
-    from prism_cli.wiki_model import parse_iso_date
-
-    for field in ("introduced", "last-updated", "date"):
-        normalized = parse_iso_date(loaded.get(field))
-        if normalized is not None:
-            loaded[field] = normalized.isoformat()
     return loaded, match.group(2)
 
 
@@ -4559,16 +4545,14 @@ def _index_row(frontmatter: Mapping[str, Any]) -> dict[str, str]:
     status = frontmatter.get("status")
     owner = frontmatter.get("owner")
     advisory = frontmatter.get("advisory-review")
-    introduced = frontmatter.get("introduced")
-    if not all(isinstance(value, str) and value.strip() for value in (feature_id, title, status, owner, advisory, introduced)):
-        raise BoardError("invalid_index_fields", "Feature index fields id, title, status, owner, advisory-review, and introduced are required.", 409)
+    if not all(isinstance(value, str) and value.strip() for value in (feature_id, title, status, owner, advisory)):
+        raise BoardError("invalid_index_fields", "Feature index fields id, title, status, owner, and advisory-review are required.", 409)
     return {
         "id": feature_id.strip(),
         "title": re.sub(r"\s+", " ", title.strip()).replace("|", "&#124;"),
         "status": status.strip(),
         "owner": owner.strip(),
         "advisory_review": advisory.strip(),
-        "introduced": introduced.strip(),
     }
 
 
@@ -4579,18 +4563,17 @@ def _index_row_from_match(match: re.Match[str]) -> dict[str, str]:
         "status": match.group(3).strip(),
         "owner": match.group(4).strip(),
         "advisory_review": match.group(5).strip(),
-        "introduced": match.group(6).strip(),
     }
 
 
 def _format_index_row(row: Mapping[str, str]) -> str:
-    return f"| {row['id']} | {row['title']} | {row['status']} | {row['owner']} | {row['advisory_review']} | {row['introduced']} |"
+    return f"| {row['id']} | {row['title']} | {row['status']} | {row['owner']} | {row['advisory_review']} |"
 
 
 def _render_index(content: str, expected: Mapping[str, Any], after: Mapping[str, Mapping[str, str]]) -> str:
     lines = content.splitlines(keepends=True)
     newline = "\r\n" if "\r\n" in content else "\n"
-    header_index = next((i for i, line in enumerate(lines) if re.match(r"^\s*\|\s*ID\s*\|\s*Feature\s*\|\s*Status\s*\|", line, re.IGNORECASE)), None)
+    header_index = next((i for i, line in enumerate(lines) if _INDEX_HEADER.match(line.rstrip("\r\n"))), None)
     if header_index is None or header_index + 1 >= len(lines) or "---" not in lines[header_index + 1]:
         raise BoardError("invalid_index", "knowledge/wiki/index.md must contain the canonical feature status table.", 409)
     end = header_index + 2
@@ -4617,9 +4600,25 @@ def _render_index(content: str, expected: Mapping[str, Any], after: Mapping[str,
     return "".join(lines)
 
 
-def _actor_log_entry(actor: Actor, action: str, subject: str, preview_id: str) -> str:
+def _actor_log_entry(
+    actor: Actor,
+    action: str,
+    subject: str,
+    preview_id: str,
+    paths: Iterable[str],
+    evidence: Iterable[str] = (),
+) -> str:
+    """One log.md entry in the SCHEMA.md log format: heading, `paths`, `evidence` and `by` lines, then the actor marker.
+
+    `paths` are the files the operation writes (log.md itself is left out); `evidence` adds
+    the processed intake folders a move creates to the board preview that produced the entry.
+    """
+
     clean_subject = re.sub(r"[\r\n]+", " ", subject).strip()[:180] or "workflow"
     safe_action = re.sub(r"[^a-z0-9-]", "-", action.lower())[:64]
+    changed = ", ".join(dict.fromkeys(path for path in paths if path != "knowledge/wiki/log.md")) or "none"
+    evidence_links = ", ".join([f"board preview {preview_id}", *evidence])
+    by = re.sub(r"\s+", " ", f"{actor.name} ({actor.kind})").strip()[:120]
     actor_payload = {
         "participant_id": actor.participant_id,
         "kind": actor.kind,
@@ -4628,7 +4627,10 @@ def _actor_log_entry(actor: Actor, action: str, subject: str, preview_id: str) -
         "action": action,
     }
     return (
-        f"## {date.today().isoformat()} [board-{safe_action}] | {clean_subject}\n"
+        f"## {date.today().isoformat()} board-{safe_action} | {clean_subject}\n"
+        f"- paths: {changed}\n"
+        f"- evidence: {evidence_links}\n"
+        f"- by: {by}\n"
         f"<!-- prism:board-actor:v1 {_json(actor_payload)} -->"
     )
 

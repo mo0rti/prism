@@ -35,6 +35,44 @@ The most important rule is simple:
 
 If `WIKI_REPORT.md` disagrees with the underlying wiki files, the wiki files win.
 
+## Current State And History
+
+Wiki pages state what is true now. No page carries a date about itself: feature,
+persona, business-rule, design, app-requirement and API-contract pages have no
+`introduced`, `last-updated` or similar field, and `index.md` has no date column. A
+date about the world, such as an effective date or a deadline, is a domain fact and
+may appear in a page.
+
+Two kinds of record keep their own date, because the date is part of what they
+record: an ADR (`date`), an advisory review (`reviewed`) and each entry under a
+feature's `## Reopen history`.
+
+When something was written, decided, verified or amended is recorded in
+`knowledge/wiki/log.md`, which is append-only and the only home for history. Every
+entry has the same shape:
+
+```text
+## 2026-10-06 po-handoff | F-001
+- paths: knowledge/wiki/features/F-001-review-summary-export.md, knowledge/wiki/index.md
+- evidence: knowledge/intake/processed/review-summary
+- by: Claude Code (confirmed by Riley)
+Handed to design after the board review.
+```
+
+`paths` lists the changed paths, `evidence` links to the evidence and never copies
+it, and `by` names who made the change. One optional line of plain text, at most one
+sentence, may follow. The board service writes its entries in this format; its
+`evidence` is the board preview, and it keeps the actor and a preview marker as HTML
+comments inside the entry. `SCHEMA.md` defines the format.
+
+`prism wiki lint` reports:
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `history-date-on-page` | error | A history-date field (`introduced`, `last-updated`, `created`, `updated`, `date-updated` and similar) in the front matter of a current-state page. The message points to `log.md`. |
+| `malformed-log-entry` | warning | A `log.md` entry that is not in the format. Lint reports it and never rewrites the log. |
+| `missing-schema-version` | error | `SCHEMA.md` or `LIFECYCLE.md` without the front matter `schema-version: 1`. |
+
 ## Feature Lifecycle Actions
 
 Lifecycle actions are named, feature-only workflows. They resolve one exact
@@ -130,9 +168,9 @@ Project-level settings for wiki read/query behavior.
 Commands that use this setting must fall back cleanly to `14` if the file is missing, the
 key is missing, or the value is malformed.
 
-A `stale-page` warning remains visible in lint, transition preflight diagnostics,
-and dashboard health. Page age alone does not make a lifecycle request unavailable;
-source integrity errors and action-specific prerequisites still gate requests.
+Pages carry no date, so lint does not report page age. Freshness is derived from
+`log.md`, never from a date on the page; `status` still reports the setting. Source
+integrity errors and action-specific prerequisites gate lifecycle requests.
 
 ## Start Here By Role
 
@@ -230,7 +268,7 @@ It should produce:
   - advisory review snapshot
   - open questions by owner
   - blocker snapshot
-  - recently updated wiki pages
+  - recently changed wiki pages
   - structural health pointer to `lint-wiki`
   - suggested next actions
 
@@ -491,9 +529,6 @@ Open questions:
 Waiting on designer:
 - F-012 - Saved Checkout [ready-for-design]
 - F-014 - Nutrition Goal Alerts [in-design]
-
-Potentially stale:
-- F-011 - Account Merge Flow [ready-for-design, last updated 18 days ago]
 
 Suggested next actions:
 - Run design-intake for F-012

@@ -192,8 +192,6 @@ def _feature(feature_id: str, title: str, status: str, owner: str, apps: list[st
         "title": title,
         "status": status,
         "owner": owner,
-        "introduced": CHECK_DATE.isoformat(),
-        "last-updated": CHECK_DATE.isoformat(),
         "apps": apps,
         "sources": [],
         "advisory-review": review,
@@ -228,12 +226,12 @@ def add_baseline_wiki_content(root: Path, wide_scope: list[str]) -> None:
         path.write_text(page, encoding="utf-8")
         frontmatter = yaml.safe_load(page.split("---", 2)[1])
         rows.append(
-            f"| {frontmatter['id']} | {frontmatter['title']} | {frontmatter['status']} | {frontmatter['owner']} | not-needed | {CHECK_DATE.isoformat()} |"
+            f"| {frontmatter['id']} | {frontmatter['title']} | {frontmatter['status']} | {frontmatter['owner']} | not-needed |"
         )
     (root / "knowledge/wiki/index.md").write_text(
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-        "|----|---------|--------|-------|--------------|------------|\n" + "\n".join(rows) + "\n",
+        "| ID | Feature | Status | Owner | Board Review |\n"
+        "|----|---------|--------|-------|--------------|\n" + "\n".join(rows) + "\n",
         encoding="utf-8",
     )
     requirements = root / "knowledge/wiki/app-requirements"

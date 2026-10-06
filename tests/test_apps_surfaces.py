@@ -744,9 +744,9 @@ class ZeroAppWorkspaceTests(unittest.TestCase):
         (self.root / relative).parent.mkdir(parents=True, exist_ok=True)
         (self.root / relative).write_text(page, encoding="utf-8")
         (self.root / "knowledge" / "wiki" / "index.md").write_text(
-            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review | Introduced |\n"
-            "|----|---------|--------|-------|--------------|------------|\n"
-            "| F-001 | Outcome capture | specified | po | not-needed | 2026-09-22 |\n",
+            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review |\n"
+            "|----|---------|--------|-------|--------------|\n"
+            "| F-001 | Outcome capture | specified | po | not-needed |\n",
             encoding="utf-8",
         )
 
@@ -774,7 +774,7 @@ class ZeroAppWorkspaceTests(unittest.TestCase):
         service = BoardService(self.root).start()
         self.addCleanup(service.close)
         page = (
-            "---\nid: F-001\ntitle: Outcome\nstatus: raw\nowner: po\nintroduced: 2026-09-22\nlast-updated: 2026-09-22\n"
+            "---\nid: F-001\ntitle: Outcome\nstatus: raw\nowner: po\n"
             "apps:\n- backend\nsources: []\nadvisory-review: not-needed\n---\n\n## Summary\nx\n"
         )
         with self.assertRaises(BoardError) as error:

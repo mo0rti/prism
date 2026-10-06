@@ -95,8 +95,8 @@ knowledge/
     features/
     personas/
     app-requirements/
-    index.md
-    log.md
+    index.md        # feature status board and page list, no date columns
+    log.md          # append-only log, the only home for history
     SCHEMA.md       # core wiki conventions, read before every wiki operation
     LIFECYCLE.md    # feature, board and advisory protocol, read for lifecycle operations
     SETTINGS.md
@@ -107,6 +107,8 @@ Important meanings:
 
 - `quarantined/` is the conflict-resolution state for intake that cannot be applied safely
 - `SETTINGS.md` holds project-level wiki behavior settings such as `wiki-stale-after-days`
+- pages state the current state and carry no date about themselves; when something was written, decided, verified or amended is a `log.md` entry (`## YYYY-MM-DD <operation> | <subject>` with `paths`, `evidence` and `by` lines), while an ADR, an advisory review and each reopen-history entry keep their own date as dated records
+- `SCHEMA.md` and `LIFECYCLE.md` start with front matter `schema-version: 1`
 - `WIKI_REPORT.md` is a generated orientation artifact, not a source-of-truth document
 
 ## Source Of Truth

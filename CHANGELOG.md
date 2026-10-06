@@ -4,6 +4,23 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- **`history-date-on-page`, `malformed-log-entry` and `missing-schema-version` lint findings.** `prism wiki lint` reports a history-date field (`introduced`, `last-updated`, `created`, `updated`, `date-updated` and similar, in any spelling) in the front matter of a current-state page as the error `history-date-on-page`, with a message that points to `log.md`. An ADR keeps its `date` and an advisory review its `reviewed`, because a dated record's date is part of what it records. A `log.md` entry that is not in the log format is the warning `malformed-log-entry`: lint reports it and never rewrites the log. `SCHEMA.md` or `LIFECYCLE.md` without the front matter `schema-version: 1` is the error `missing-schema-version`.
+
+### Changed
+
+- **`log.md` is the only home for history, and every entry has one structured shape.** An entry is `## YYYY-MM-DD <operation> | <subject>` followed by `- paths:` (the changed paths), `- evidence:` (links to evidence, never copied evidence) and `- by:` (the actor), and at most one optional line of plain text. `SCHEMA.md` defines the format, states that the log is append-only, and states the rule for pages: a current-state page carries no date about itself, a date about the world stays in the page, and an ADR, an advisory review and each `## Reopen history` entry keep their own date as dated records. The board's entries use the format with `evidence: board preview <id>` and `by: <name> (<kind>)`, and keep the preview marker and the actor as HTML comments; a move's processed intake folder is listed under `evidence`. The skills, commands and the Cursor advisory rule that append to the log name the format, and `setup-project` appends its entry in it. The template `log.md` starts with no entry.
+- **`SCHEMA.md` and `LIFECYCLE.md` start with front matter `schema-version: 1`.**
+- **The status board has no date column.** `index.md` lists `| ID | Feature | Status | Owner | Board Review |`, and its other-pages table is `| Page | Type | Summary |`. The board renders, merges and reads only that header; a table with an `Introduced` column is refused as `invalid_index`, and lint reports it as `malformed-index`.
+- **A board transition writes no date.** `preview_transition` and `apply` change `status` and `owner` in the feature front matter and nothing else, and the lifecycle, clarify and design-intake checks no longer allow any date field. The packaged `po-specify`, `design-handoff` and `po-intake` guidance no longer asks for one.
+- **The status board's "Recently updated wiki pages" report section is "Recently changed wiki pages"** and lists the paths of the newest `log.md` entries.
+
+### Removed
+
+- **`introduced` and `last-updated` on feature pages, `introduced` on persona and business-rule pages and `date` on design pages.** The board rejects them as `unknown_frontmatter_fields`, lint reports them as `history-date-on-page`, and the formats, examples and lint's required fields no longer list them. The `invalid_last_updated` board error and the lint codes `invalid-feature-date`, `invalid-design-date`, `invalid-business-rule-introduced`, `invalid-persona-introduced` and `invalid-wiki-date` are gone with them.
+- **The `stale-page` warning.** Pages carry no date, so lint no longer reports page age. `wiki-stale-after-days` is still read and reported by `prism status`; freshness checks will derive a page's last verification from `log.md`.
+
 ## [0.4.0]
 
 Release date: 2026-10-06
