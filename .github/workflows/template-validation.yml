@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/template-validation.yml"
+      - ".gitattributes"
       - "copier.yml"
       - "scripts/validate-template.ps1"
       - "scripts/check-web-auth.mjs"
@@ -14,9 +15,11 @@ on:
       - "packs/**"
       - "template-skills/**"
       - "scripts/build-skill-layers.py"
+  workflow_dispatch:
   pull_request:
     paths:
       - ".github/workflows/template-validation.yml"
+      - ".gitattributes"
       - "copier.yml"
       - "scripts/validate-template.ps1"
       - "scripts/check-web-auth.mjs"
