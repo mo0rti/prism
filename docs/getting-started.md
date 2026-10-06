@@ -101,6 +101,8 @@ prism doctor --preset backend-mobile
 prism presets
 ```
 
+`prism presets` lists the generation presets, and under "Workflow presets" the knowledge root, a workflow-only workspace for apps in other repositories. `prism presets --json` returns the two lists separately.
+
 `prism doctor` separates Prism core readiness from workflow and platform checks, so it
 is the fastest way to see what is blocked versus what can wait.
 

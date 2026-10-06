@@ -116,9 +116,197 @@ prism status
 
 ## Workspaces with no apps
 
-A workspace created by `prism workflow install` without `--app` has `apps: []`. It loads, lints, reports status (`Apps: none declared`) and is served by the board with writes enabled; `discover` lists no apps. Register apps later with `prism app add`.
+A workspace created by `prism workflow install` without `--app` has `apps: []`. [A knowledge root](#knowledge-root-over-several-repositories) is one, with `workflow.purpose: knowledge-root`. It loads, lints, reports status (`Apps: none declared`) and is served by the board with writes enabled; `discover` lists no apps. Register apps later with `prism app add`.
 
 An operation that needs an app scope still stops at its own check. A feature that names `backend` in a workspace with no apps is blocked at the `app-scope` check of `po-handoff` and its preview, and a write that scopes a feature is rejected with `invalid_feature_output`. Both messages say that the workspace declares no apps and point to `prism app add`.
+
+## Knowledge root over several repositories
+
+A **knowledge root** is a workflow-only workspace that holds the shared wiki for several applications whose code lives in other repositories. It generates no application code, it may have no feature pages at all, and the feature lifecycle is optional. Start one with a single command:
+
+```text
+prism workflow install PATH --name NAME --knowledge-root [--apply [--yes]] [--json]
+```
+
+- **A new workspace.** `--knowledge-root` is an option of `install` only. It starts a workspace in an empty folder or in a repository that has no `prism.workspace.yml`. It stops, with exit code 3 and no changes, for a generated workspace and for an existing manifest that is not already a knowledge root; repeating it on a knowledge root is safe and changes nothing.
+- **No apps of its own.** `--knowledge-root` cannot be combined with `--app`. The apps of a knowledge root live in other repositories, so you register them with `prism app add`.
+- **The manifest.** `workflow.mode` stays `workflow`, and `workflow.purpose: knowledge-root` records what the workspace is for. The field is optional and has one valid value. Any other value, or a purpose on a workspace whose mode is not `workflow`, is the error `invalid-workflow-purpose`, and the board stays read-only until it is fixed.
+- **What reads the purpose.** It describes the workspace and gates nothing. `prism status` shows `Purpose: knowledge root` and says that there are no features yet when that is so. `prism status --json`, `prism wiki lint --json`, the wiki queries and the graph report `workspace.purpose`, and the board's `discover` reports `board.purpose`; all of them leave the field out for any other workspace. The board page shows a "no features yet" guide instead of the feature pipeline while the wiki has no features, and the generated `AGENTS.md` and `CLAUDE.md` say that the workspace is a knowledge root.
+- **The coordination contract.** The workspace governs feature scope, delivery evidence and the wiki. Each external repository governs its own code, builds and instructions, and keeps its own guidance files. Neither overrides the other, and Prism never writes into a checkout of an external repository.
+- **Presets.** `prism presets` lists the knowledge root with its command, under "Workflow presets", apart from the generation presets. `prism presets --json` has the two lists `generation_presets` and `workflow_presets`.
+
+### Worked example
+
+Acme keeps one wiki for two applications: an Android app in the `mobile-apps` repository and a billing API that is the whole `billing-service` repository. The commands below ran in an empty folder that was a Git repository, and the output is copied from that run. Paths that Prism prints are shortened with `…`.
+
+**1. Start the knowledge root.**
+
+```text
+$ prism workflow install . --name "Acme knowledge" --knowledge-root --apply --yes
+```
+
+Without `--apply` the command previews every file. With it, the command prints the file diffs and then a JSON receipt:
+
+```json
+{
+  "schema_version": 1,
+  "status": "applied",
+  "plan_id": "a66433cb-c399-4cb0-8102-3436e4421509",
+  "digest": "a60819e6f51bee384ca73c4db60b9bbd063ae89d75a8a1fa57a25aa0c31a5750",
+  "root": "…/acme-knowledge",
+  "version": "1",
+  "mode": "workflow",
+  "purpose": "knowledge-root",
+  "board_id": "cd1a6d2c-f87a-4c72-8ae4-7d38422983c4",
+  "asset_digest": "b0c7175b90ff23d1249b1339792dfa900a8c7b53018d4f93b1a710d128f72a16",
+  "name": "Acme knowledge",
+  "apps": [],
+  "applied": [ … 35 files … ]
+}
+```
+
+**2. Register the two apps.** Each command edits `prism.workspace.yml` only. `--remote` declares the external repository together with its first app, and the path `.` is the whole repository.
+
+```text
+$ prism app add customer-android --stack android-compose --name "Customer app" --audience B2C --repository mobile-apps --remote https://github.com/acme/mobile-apps.git --path apps/customer --apply --yes
+Registered app `customer-android` in prism.workspace.yml.
+$ prism app add billing-api --stack spring-backend --name "Billing API" --repository billing-service --remote https://github.com/acme/billing-service.git --path . --apply --yes
+Registered app `billing-api` in prism.workspace.yml.
+```
+
+Each command also prints the manifest diff, a warning that the repository has no checkout on this machine yet, and a notice that the board identity changed (see [`prism app add`](#prism-app-add)). The manifest is now:
+
+```yaml
+schema_version: 2
+min_prism_cli_version: 0.3.0
+project:
+  name: Acme knowledge
+repositories:
+- id: mobile-apps
+  remote: https://github.com/acme/mobile-apps.git
+- id: billing-service
+  remote: https://github.com/acme/billing-service.git
+apps:
+- id: customer-android
+  name: Customer app
+  stack: android-compose
+  repository: mobile-apps
+  path: apps/customer
+  audience: B2C
+- id: billing-api
+  name: Billing API
+  stack: spring-backend
+  repository: billing-service
+  path: .
+workflow:
+  version: '1'
+  mode: workflow
+  purpose: knowledge-root
+  board_id: cd1a6d2c-f87a-4c72-8ae4-7d38422983c4
+  asset_digest: b0c7175b90ff23d1249b1339792dfa900a8c7b53018d4f93b1a710d128f72a16
+paths:
+  wiki_root: knowledge/wiki
+  intake_root: knowledge/intake
+  advisory_board: knowledge/wiki/advisory/BOARD.md
+```
+
+**3. Map the checkouts you have.** Write `prism.local.yml` next to the manifest. It lists the repositories you cloned on this machine and is not committed. Here only `mobile-apps` is cloned:
+
+```yaml
+repositories:
+  mobile-apps: /srv/checkouts/mobile-apps
+```
+
+**4. Check the status.** The unresolved `billing-service` checkout is the workspace's one warning. The empty wiki is not a problem.
+
+```text
+$ prism status .
+Workspace status
+
++ Workspace -------------------------------------------------------------------------+
+|Project: Acme knowledge                                                             |
+|Kind: workflow-project                                                              |
+|Purpose: knowledge root                                                             |
+|Apps: customer-android, billing-api                                                 |
+|Setup: not initialized                                                              |
+|Confidence: degraded                                                                |
++------------------------------------------------------------------------------------+
+
+Apps
+ID                Name          Stack            Repository       Path           Status  Maturity
+customer-android  Customer app  android-compose  mobile-apps      apps/customer  active  -
+billing-api       Billing API   spring-backend   billing-service  .              active  -
+Repository mobile-apps: checkout resolved
+Repository billing-service: checkout unresolved (add it to prism.local.yml)
+
++ Queues and wiki -------------------------------------------------------------------+
+|Pending intake: 0                                                                   |
+|Quarantined intake: 0                                                               |
+|Features: 0                                                                         |
+|Blockers: 0                                                                         |
+|Wiki errors: 0                                                                      |
+|Wiki warnings: 0                                                                    |
++------------------------------------------------------------------------------------+
+
+setup-project has not initialized the wiki yet.
+
+No features yet. A knowledge root holds shared knowledge for apps in other repositories; the feature lifecycle is optional.
+
+Feature lifecycle
+- none
+
+Attention
+- external-repository-unresolved: External repository `billing-service` has no checkout on this machine (prism.local.yml has no entry for it); add `repositories: {billing-service: <absolute path>}` to prism.local.yml. Links into it are skipped.
+  …/acme-knowledge/prism.local.yml
+```
+
+`prism wiki lint .` and `prism validate .` pass (`Wiki contract checks passed.` and `Workflow identity and wiki contract checks passed.`), and `prism doctor --workspace .` ends with `Prism workflow checks passed.` The warning leaves the confidence `degraded` and changes no exit code. Add the `billing-service` entry to `prism.local.yml` once you clone it, and the warning goes.
+
+**5. Start the board.** Issue a grant for yourself (the token is printed once; it is shown as `<shown once>` here), then serve the workspace. The board is writable even though the wiki has no features.
+
+```text
+$ prism board grant "Product owner" --kind human --write --path .
+{
+  "schema_version": 1,
+  "participant": {
+    "participant_id": "a6aa00f5-0510-412f-8c7c-8ece315e1f5f",
+    "kind": "human",
+    "name": "Product owner",
+    "writable": true,
+    "board_id": "cd1a6d2c-f87a-4c72-8ae4-7d38422983c4",
+    "workflow_version": "1",
+    "scopes": [
+      "read",
+      "write"
+    ]
+  },
+  "token": "<shown once>"
+}
+$ prism board serve . --port 8765 --no-open
+Prism board: http://127.0.0.1:8765/
+MCP endpoint: http://127.0.0.1:8765/mcp
+Issue a participant grant (the token is printed once): prism board grant "NAME" --kind human|agent [--write] --path .
+Local only. Press Ctrl+C to stop.
+```
+
+Sign in with the token. The board opens on a guide that says there are no features yet, and its header calls the workspace a knowledge root.
+
+### What passes with no features
+
+A knowledge root with no apps and no feature pages passes `prism wiki lint`, `prism validate`, `prism status`, `prism doctor --workspace` and the board, which is writable. The same holds after you register external apps with `prism app add --repository … --remote …`; the only finding is one `external-repository-unresolved` warning for each external repository without a checkout in `prism.local.yml`. Status and the board say there are no features yet and treat that as normal.
+
+### Adding a feature later
+
+A feature is added as in any workflow workspace, through the agent's PO skills and the board, and its scope names registered apps. Every ID in `apps:` must be an app of `prism.workspace.yml`, whether its repository is this one or an external one. Delivery evidence for an external app lives in its own repository and is linked by URL; an unresolved local checkout never blocks it. For `customer-android` the `Delivery evidence` section of the feature page can read:
+
+```markdown
+## Delivery evidence
+| App | Implementation | Tests | Release |
+|---|---|---|---|
+| customer-android | https://github.com/acme/mobile-apps/pull/42 | https://github.com/acme/mobile-apps/actions/runs/1187 | https://github.com/acme/mobile-apps/releases/tag/v1.4.0 |
+```
+
+The `dev-done` checks accept this table, as in any workspace; an agent still verifies each link before it writes Done.
 
 ## What the output looks like
 

@@ -37,6 +37,11 @@ UNKNOWN = "unknown"
 
 APP_STATUSES = ("active", "retired")
 
+# What a workflow workspace is for, from the optional ``workflow.purpose`` field.
+# No gate reads it; status, the board and the generated guidance describe it.
+PURPOSE_KNOWLEDGE_ROOT = "knowledge-root"
+WORKFLOW_PURPOSES = (PURPOSE_KNOWLEDGE_ROOT,)
+
 
 @dataclass(frozen=True)
 class WorkspaceDiagnostic:
@@ -213,6 +218,11 @@ class WorkspaceModel:
     repositories: tuple[Repository, ...] = (Repository(WORKSPACE_REPOSITORY_ID),)
     apps: tuple[App, ...] = ()
     app_maturity: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    purpose: str | None = None
+
+    @property
+    def knowledge_root(self) -> bool:
+        return self.purpose == PURPOSE_KNOWLEDGE_ROOT
 
     @property
     def active_app_ids(self) -> list[str]:
@@ -331,10 +341,46 @@ def _normalize_manifest(data: Mapping[str, Any], path: Path) -> tuple[WorkspaceM
     apps, declared_ids = _read_apps(data.get("apps"), repositories, path, diagnostics)
     maturity = _read_app_maturity(data.get("app_maturity"), declared_ids, path, diagnostics)
     _check_path_conflicts(apps, path, diagnostics)
+    purpose = _read_purpose(data.get("workflow"), path, diagnostics)
     return (
-        WorkspaceModel(schema_version=MANIFEST_SCHEMA_VERSION, repositories=tuple(repositories), apps=tuple(apps), app_maturity=maturity),
+        WorkspaceModel(
+            schema_version=MANIFEST_SCHEMA_VERSION,
+            repositories=tuple(repositories),
+            apps=tuple(apps),
+            app_maturity=maturity,
+            purpose=purpose,
+        ),
         diagnostics,
     )
+
+
+def _read_purpose(workflow: Any, path: Path, diagnostics: list[WorkspaceDiagnostic]) -> str | None:
+    """The workspace purpose: ``knowledge-root`` or absent. Anything else is an error."""
+
+    if not isinstance(workflow, dict) or "purpose" not in workflow:
+        return None
+    purpose = workflow["purpose"]
+    if purpose not in WORKFLOW_PURPOSES or not isinstance(purpose, str):
+        diagnostics.append(
+            _diag(
+                "invalid-workflow-purpose",
+                "error",
+                path,
+                f"Manifest `workflow.purpose` must be `{PURPOSE_KNOWLEDGE_ROOT}` or absent.",
+            )
+        )
+        return None
+    if workflow.get("mode") != "workflow":
+        diagnostics.append(
+            _diag(
+                "invalid-workflow-purpose",
+                "error",
+                path,
+                f"`workflow.purpose: {purpose}` belongs to a workflow-only workspace; `workflow.mode` must be `workflow`.",
+            )
+        )
+        return None
+    return purpose
 
 
 def is_slug(value: Any) -> bool:

@@ -257,6 +257,7 @@ def render_status_result(result: WorkspaceStatus, full: bool) -> None:
     workspace_lines = [
         f"Project: {result.project_name or 'unknown'}",
         f"Kind: {result.workspace_kind}",
+        *([f"Purpose: {info('knowledge root')}"] if result.knowledge_root else []),
         f"Apps: {', '.join(app['id'] for app in result.apps) if result.apps else 'none declared'}",
         f"Setup: {format_setup_state(result.setup_state)}",
         f"Confidence: {format_confidence(result.confidence)}",
@@ -285,6 +286,9 @@ def render_status_result(result: WorkspaceStatus, full: bool) -> None:
     if result.setup_state == "not-initialized":
         print()
         print(warn("setup-project has not initialized the wiki yet."))
+    if result.knowledge_root and result.wiki_lint.feature_count == 0:
+        print()
+        print(info("No features yet. A knowledge root holds shared knowledge for apps in other repositories; the feature lifecycle is optional."))
 
     caveats = [
         (app["id"], app["maturity"].get("caveat", ""))

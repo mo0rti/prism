@@ -29,6 +29,7 @@ from prism_cli.presets import (
     ALL_AUTH_CHOICES,
     DEFAULT_ANSWERS,
     PRESETS,
+    WORKFLOW_PRESETS,
     Preset,
     get_preset,
     merge_answers,
@@ -148,6 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_app_commands(subparsers)
 
     presets_parser = subparsers.add_parser("presets", help="Show recommended Prism presets.")
+    presets_parser.add_argument("--json", action="store_true", help="Emit the presets as machine-readable JSON.")
     presets_parser.set_defaults(func=cmd_presets)
 
     doctor_parser = subparsers.add_parser("doctor", help="Check local prerequisites.")
@@ -498,6 +500,9 @@ def show_command_intro(args: argparse.Namespace, subtitle: str) -> None:
 
 
 def cmd_presets(_args: argparse.Namespace) -> int:
+    if getattr(_args, "json", False):
+        print(json.dumps(presets_to_dict(), indent=2))
+        return 0
     show_command_intro(_args, "Recommended generation paths")
     for preset in PRESETS:
         print(f"{preset.slug:<24} {maturity_badge(preset.maturity)}")
@@ -505,7 +510,44 @@ def cmd_presets(_args: argparse.Namespace) -> int:
         for note in preset.notes:
             print(f"  {warn(note)}")
         print()
+    print(section("Workflow presets (no application is generated)"))
+    for workflow_preset in WORKFLOW_PRESETS:
+        print(workflow_preset.slug)
+        print(f"  {workflow_preset.label}: {workflow_preset.summary}")
+        print(f"  Command: {workflow_preset.command}")
+        for note in workflow_preset.notes:
+            print(f"  {note}")
+        print()
     return 0
+
+
+def presets_to_dict() -> dict[str, Any]:
+    """The presets for ``prism presets --json``: generation presets and workflow presets are separate lists."""
+
+    return {
+        "schema_version": 1,
+        "command": "presets",
+        "generation_presets": [
+            {
+                "slug": preset.slug,
+                "label": preset.label,
+                "maturity": preset.maturity,
+                "summary": preset.summary,
+                "notes": list(preset.notes),
+            }
+            for preset in PRESETS
+        ],
+        "workflow_presets": [
+            {
+                "slug": preset.slug,
+                "label": preset.label,
+                "summary": preset.summary,
+                "command": preset.command,
+                "notes": list(preset.notes),
+            }
+            for preset in WORKFLOW_PRESETS
+        ],
+    }
 
 
 def cmd_doctor(_args: argparse.Namespace) -> int:

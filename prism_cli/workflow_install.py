@@ -14,7 +14,13 @@ from uuid import UUID, uuid4
 
 import yaml
 
-from prism_cli.app_model import LOCAL_OVERRIDE_FILE, MANIFEST_SCHEMA_VERSION, apps_from_platforms, normalize_manifest
+from prism_cli.app_model import (
+    LOCAL_OVERRIDE_FILE,
+    MANIFEST_SCHEMA_VERSION,
+    PURPOSE_KNOWLEDGE_ROOT,
+    apps_from_platforms,
+    normalize_manifest,
+)
 from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, PLATFORM_DIRS
 from prism_cli.workflow_assets import asset_digest, bootstrap_files, guidance_pointer, previous_digests
 from prism_cli.board_store import BoardLockError, unresolved_board_operations, workspace_process_lock
@@ -35,15 +41,25 @@ def plan_install(
     name: str | None = None,
     apps: list[str] | None = None,
     upgrade: bool = False,
+    knowledge_root: bool = False,
 ) -> dict[str, Any]:
     """Build an exact, non-mutating file plan for installing or upgrading.
 
     ``apps`` names the generated app IDs (the ``--app`` values) to register
     in a manifest that declares no apps. A new workspace without them has no apps.
+    ``knowledge_root`` starts a workflow-only workspace that records
+    ``workflow.purpose: knowledge-root``; it has no apps of its own, so it
+    cannot be combined with ``apps``.
     """
 
     workspace = _validated_root(root)
     selected_apps = _validate_requested_apps(apps)
+    if type(knowledge_root) is not bool:
+        raise ValueError("knowledge_root must be true or false.")
+    if knowledge_root and selected_apps is not None:
+        raise ValueError(
+            "`--knowledge-root` cannot be combined with `--app`: a knowledge root has no apps of its own; register the apps of other repositories with `prism app add`."
+        )
     if name is not None:
         _validate_name(name)
     if type(upgrade) is not bool:
@@ -122,7 +138,7 @@ def plan_install(
         problem_codes = sorted({item.code for item in model_diagnostics if item.severity == "error"})
         if problem_codes:
             conflicts.append(
-                f"{MANIFEST_FILE} has invalid repository or app declarations ({', '.join(problem_codes)}); fix them before adopting or upgrading the workflow."
+                f"{MANIFEST_FILE} has invalid repository, app or workflow declarations ({', '.join(problem_codes)}); fix them before adopting or upgrading the workflow."
             )
         if scope_declared and model is not None:
             chosen_apps = model.active_app_ids
@@ -132,6 +148,7 @@ def plan_install(
         else:
             chosen_apps = _choose_apps(inferred_answers, selected_apps, conflicts)
         mode = "generated" if is_generated else "workflow"
+        purpose = _choose_purpose(old_workflow, knowledge_root, is_generated, before_manifest is not None, conflicts)
 
         if not conflicts:
             if before_manifest is None:
@@ -148,6 +165,7 @@ def plan_install(
                 {
                     "version": WORKFLOW_VERSION,
                     "mode": mode,
+                    **({"purpose": purpose} if purpose is not None else {}),
                     "board_id": board_id,
                     "asset_digest": digest,
                 }
@@ -198,8 +216,8 @@ def plan_install(
             else:
                 preserved.append(relative)
 
-        _plan_guidance_pointer(workspace, "AGENTS.md", changes, preserved, updated, optional_steps, conflicts)
-        _plan_guidance_pointer(workspace, "CLAUDE.md", changes, preserved, updated, optional_steps, conflicts)
+        _plan_guidance_pointer(workspace, "AGENTS.md", purpose, changes, preserved, updated, optional_steps, conflicts)
+        _plan_guidance_pointer(workspace, "CLAUDE.md", purpose, changes, preserved, updated, optional_steps, conflicts)
         _plan_gitignore(workspace, changes, unchanged, conflicts)
         _plan_gitattributes(workspace, changes, unchanged, conflicts)
 
@@ -212,6 +230,7 @@ def plan_install(
             "root": str(workspace),
             "version": WORKFLOW_VERSION,
             "mode": mode,
+            "purpose": purpose,
             "asset_digest": digest,
             "board_id": board_id,
             "name": chosen_name,
@@ -240,6 +259,7 @@ def plan_install(
             "root": str(workspace),
             "version": WORKFLOW_VERSION,
             "mode": "generated" if _safe_exists(workspace, COPIER_ANSWERS_FILE) else "workflow",
+            "purpose": PURPOSE_KNOWLEDGE_ROOT if knowledge_root else None,
             "asset_digest": digest,
             "board_id": None,
             "name": name,
@@ -671,6 +691,33 @@ def _choose_apps(
     return []
 
 
+def _choose_purpose(
+    old_workflow: dict[str, Any] | None,
+    knowledge_root: bool,
+    is_generated: bool,
+    manifest_exists: bool,
+    conflicts: list[str],
+) -> str | None:
+    """The workspace purpose to record: a knowledge root when requested or already recorded, else none.
+
+    A knowledge root starts a workspace. An existing manifest keeps its purpose
+    and is never turned into a knowledge root, and a generated workspace never is one.
+    """
+
+    existing = old_workflow.get("purpose") if isinstance(old_workflow, dict) else None
+    if existing is not None and existing != PURPOSE_KNOWLEDGE_ROOT:
+        return None  # The normalizer reports the invalid value as an error, so the plan is already in conflict.
+    if not knowledge_root:
+        return existing
+    if is_generated:
+        conflicts.append("`--knowledge-root` cannot apply to a generated workspace, which holds application code.")
+    elif manifest_exists and existing != PURPOSE_KNOWLEDGE_ROOT:
+        conflicts.append(
+            f"`--knowledge-root` starts a new workspace; {MANIFEST_FILE} already exists and is not a knowledge root. Use an empty folder or a repository without {MANIFEST_FILE}."
+        )
+    return PURPOSE_KNOWLEDGE_ROOT
+
+
 def _workflow_identity(
     workflow: dict[str, Any] | None,
     *,
@@ -729,6 +776,7 @@ def _is_future_version(version: str) -> bool:
 def _plan_guidance_pointer(
     root: Path,
     relative: str,
+    purpose: str | None,
     changes: list[dict[str, str | None]],
     preserved: list[str],
     updated: list[str],
@@ -741,7 +789,7 @@ def _plan_guidance_pointer(
         conflicts.append(f"Unable to inspect optional {relative} guidance: {exc}")
         return
     if current is not None:
-        pointer = guidance_pointer(relative, WORKFLOW_VERSION)
+        pointer = guidance_pointer(relative, WORKFLOW_VERSION, purpose)
         if _lf(current) != _lf(pointer.encode("utf-8")) and _is_earlier_shipped_copy(relative, current):
             changes.append({"path": relative, "before": current.decode("utf-8"), "after": pointer})
             updated.append(relative)
@@ -757,7 +805,7 @@ def _plan_guidance_pointer(
             )
         return
     _check_missing_parent_chain(root, relative)
-    changes.append({"path": relative, "before": None, "after": guidance_pointer(relative, WORKFLOW_VERSION)})
+    changes.append({"path": relative, "before": None, "after": guidance_pointer(relative, WORKFLOW_VERSION, purpose)})
 
 
 def _lf(content: bytes) -> bytes:
@@ -975,6 +1023,7 @@ def _receipt(plan: dict[str, Any], *, status: str, **details: Any) -> dict[str, 
         "root": plan.get("root"),
         "version": plan.get("version"),
         "mode": plan.get("mode"),
+        "purpose": plan.get("purpose"),
         "board_id": plan.get("board_id"),
         "asset_digest": plan.get("asset_digest"),
         "name": plan.get("name"),

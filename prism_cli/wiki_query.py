@@ -191,6 +191,7 @@ def _envelope(
         "workspace": {
             "kind": detect_workspace_kind(root),
             "project_name": inspection.project_name,
+            **({"purpose": inspection.model.purpose} if inspection.model.purpose else {}),
             "apps": inspection.apps,
         },
         "facts": facts,

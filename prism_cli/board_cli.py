@@ -29,6 +29,12 @@ def register_commands(subparsers) -> None:
             choices=sorted(PLATFORM_DIRS),
             help="Generated app ID to register when the manifest declares no apps; repeat for several. Without it a new workspace has no apps.",
         )
+        if action == "install":
+            parser.add_argument(
+                "--knowledge-root",
+                action="store_true",
+                help="Start a workflow-only knowledge root with no apps, for apps that live in other repositories; cannot be combined with --app.",
+            )
         parser.add_argument("--apply", action="store_true", help="Apply the displayed plan after confirmation.")
         parser.add_argument("--yes", action="store_true", help="Confirm --apply without an interactive prompt.")
         parser.add_argument("--json", action="store_true", help="Emit the full installation plan or receipt as JSON.")
@@ -75,7 +81,13 @@ def cmd_workflow(args: argparse.Namespace) -> int:
 
     try:
         root = Path(args.path).expanduser()
-        plan = plan_install(root, name=args.name, apps=args.app, upgrade=args.workflow_command == "upgrade")
+        plan = plan_install(
+            root,
+            name=args.name,
+            apps=args.app,
+            upgrade=args.workflow_command == "upgrade",
+            knowledge_root=getattr(args, "knowledge_root", False),
+        )
         if args.json:
             if not args.apply:
                 _json(plan)

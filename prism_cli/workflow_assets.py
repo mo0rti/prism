@@ -90,12 +90,13 @@ def _validate_asset(asset: dict[str, Any], name: str) -> None:
         or len(set(bootstrap_paths)) != len(bootstrap_paths)
     ):
         raise ValueError(f"Packaged workflow asset {name} has invalid bootstrap paths.")
-    pointers = asset.get("guidance_pointers")
-    if not isinstance(pointers, dict) or any(
-        not isinstance(pointers.get(path), str) or not pointers[path].strip()
-        for path in ("AGENTS.md", "CLAUDE.md")
-    ):
-        raise ValueError(f"Packaged workflow asset {name} has invalid root guidance pointers.")
+    for key in ("guidance_pointers", "knowledge_root_pointers"):
+        pointers = asset.get(key)
+        if not isinstance(pointers, dict) or any(
+            not isinstance(pointers.get(path), str) or not pointers[path].strip()
+            for path in ("AGENTS.md", "CLAUDE.md")
+        ):
+            raise ValueError(f"Packaged workflow asset {name} has invalid root guidance pointers ({key}).")
 
     history = asset.get("previous_digests")
     if not isinstance(history, dict):
@@ -199,12 +200,18 @@ def bootstrap_files(version: str = "1") -> list[dict[str, str]]:
     return deepcopy(result)
 
 
-def guidance_pointer(name: str, version: str = "1") -> str:
-    """Return the generated minimal root pointer for Codex or Claude Code."""
+def guidance_pointer(name: str, version: str = "1", purpose: str | None = None) -> str:
+    """Return the generated minimal root pointer for Codex or Claude Code.
+
+    A knowledge root (``purpose="knowledge-root"``) gets the same pointer plus
+    the knowledge-root paragraph, both built from one packaged source.
+    """
 
     if name not in ("AGENTS.md", "CLAUDE.md"):
         raise ValueError(f"Unsupported workflow guidance pointer {name!r}.")
-    pointers = _load(version).get("guidance_pointers")
+    if purpose is not None and purpose != "knowledge-root":
+        raise ValueError(f"Unsupported workspace purpose {purpose!r}.")
+    pointers = _load(version).get("knowledge_root_pointers" if purpose else "guidance_pointers")
     value = pointers.get(name) if isinstance(pointers, dict) else None
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Packaged workflow asset version {version!r} has no {name} pointer.")
@@ -215,7 +222,7 @@ def previous_digests(path: str, version: str = "1") -> tuple[str, ...]:
     """Return the SHA-256 digests of every earlier shipped content of one installer-managed file.
 
     The history covers the bootstrap files and the generated root pointers
-    (`AGENTS.md`, `CLAUDE.md`). It lets an installer recognise an untouched copy
+    (`AGENTS.md`, `CLAUDE.md`, in both the workflow and knowledge-root forms). It lets an installer recognise an untouched copy
     of an earlier canonical version without network access.
     """
 

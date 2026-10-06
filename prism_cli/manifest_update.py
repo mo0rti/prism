@@ -140,7 +140,7 @@ def read_workspace_manifest(path: Path, label: str) -> tuple[dict[str, Any], byt
     problems = sorted({item.code for item in diagnostics if item.severity == "error"})
     if problems:
         raise ManifestUpdateError(
-            f"The {label} {MANIFEST_FILE} has invalid repository or app declarations ({', '.join(problems)}); fix them before updating."
+            f"The {label} {MANIFEST_FILE} has invalid repository, app or workflow declarations ({', '.join(problems)}); fix them before updating."
         )
     return manifest, source_bytes
 

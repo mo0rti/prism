@@ -1012,6 +1012,9 @@ function transitionReason(node, index) {
 function workspaceAppIds(ws) {
   return Array.isArray(ws.apps) ? ws.apps.map(app => app && app.id).filter(id => typeof id === "string") : [];
 }
+function isKnowledgeRoot() {
+  return (state.data.workspace || {}).purpose === "knowledge-root";
+}
 function workspaceIdentity() {
   const ws = state.data.workspace || {};
   const apps = workspaceAppIds(ws).join(", ");
@@ -2705,7 +2708,7 @@ function logoutBoardSession() {
 function renderHeader() {
   const ws = state.data.workspace || {};
   document.getElementById("project-name").textContent = ws.project_name || "Unnamed workspace";
-  document.getElementById("kind-chip").textContent = ws.kind === "generated-project" ? "generated project" : (ws.kind || "unknown");
+  document.getElementById("kind-chip").textContent = ws.purpose === "knowledge-root" ? "knowledge root" : ws.kind === "generated-project" ? "generated project" : (ws.kind || "unknown");
   const dot = document.getElementById("confidence-dot");
   dot.className = "status-dot " + (state.data.confidence || "high");
   document.getElementById("confidence-text").textContent = state.data.confidence;
@@ -2765,7 +2768,18 @@ for (const id of ["statusline", "confidence-light"]) {
 }
 
 /* ==================== first-run teaching page ==================== */
+function renderKnowledgeRootGuide() {
+  const ids = workspaceAppIds(state.data.workspace || {});
+  const apps = ids.length
+    ? `The registered apps are <b>${escapeHtml(ids.join(" · "))}</b>.`
+    : "No apps are registered yet; <code>prism app add</code> registers one that lives in another repository.";
+  document.getElementById("firstrun-view").innerHTML = `
+    <div class="sec-label"><b>00</b> KNOWLEDGE ROOT</div>
+    <div class="fr-headline">One wiki.<br><em>Apps in other repositories.</em></div>
+    <div class="fr-sub">No features yet, and nothing is wrong. This workspace holds shared knowledge for apps that live in other repositories, and the feature lifecycle is optional. ${apps} When a feature is worth tracking, it appears on this board the moment it exists. ${CONFIG.mode === "live" ? "This page updates itself as your agent works." : "This is a snapshot — rerun <code>prism wiki graph --open</code> to refresh."}</div>`;
+}
 function renderFirstRunPage() {
+  if (isKnowledgeRoot() && featureNodes().length === 0) { renderKnowledgeRootGuide(); return; }
   const facts = state.data.facts;
   const intake = intakeFacts();
   const setupDone = facts.setup_state === "initialized";

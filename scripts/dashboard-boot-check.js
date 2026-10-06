@@ -1747,7 +1747,16 @@ const anyFeature = data.facts.nodes.some(n => n.type === "feature");
 const firstrun = elements["firstrun-view"];
 if (!anyFeature) {
   const html = firstrun ? firstrun.innerHTML : "";
-  if (html.includes("WORKSPACE SETUP") && html.includes("FIRST-RUN.TXT") && html.includes("pipe-track")) {
+  const knowledgeRoot = !!data.workspace && data.workspace.purpose === "knowledge-root";
+  if (knowledgeRoot) {
+    // A knowledge root with no features says so instead of teaching the feature pipeline.
+    if (html.includes("KNOWLEDGE ROOT") && html.includes("No features yet") && !html.includes("FIRST-RUN.TXT")) {
+      console.log("FIRSTRUN OK — knowledge root guide rendered for a workspace with no features");
+    } else {
+      console.error("FIRSTRUN MISSING — knowledge root did not render its no-features guide");
+      process.exit(1);
+    }
+  } else if (html.includes("WORKSPACE SETUP") && html.includes("FIRST-RUN.TXT") && html.includes("pipe-track")) {
     console.log("FIRSTRUN OK — teaching page (pipeline + setup steps) rendered for fresh workspace");
   } else {
     console.error("FIRSTRUN MISSING — fresh workspace did not render the teaching page");
