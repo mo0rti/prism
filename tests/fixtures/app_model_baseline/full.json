@@ -122,6 +122,7 @@
       "po-specify",
       "prep-sprint",
       "setup-project",
+      "verify-pages",
       "wiki-app",
       "wiki-blockers",
       "wiki-owner",
@@ -1374,6 +1375,30 @@
       "confidence": "error",
       "diagnostics": [
         {
+          "code": "never-verified",
+          "message": "`knowledge/wiki/app-requirements/F-003-backend.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/app-requirements/F-003-backend.md`.",
+          "path": "knowledge/wiki/app-requirements/F-003-backend.md",
+          "severity": "info"
+        },
+        {
+          "code": "never-verified",
+          "message": "`knowledge/wiki/direction.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/direction.md`.",
+          "path": "knowledge/wiki/direction.md",
+          "severity": "info"
+        },
+        {
+          "code": "never-verified",
+          "message": "`knowledge/wiki/features/F-001-outcome-capture.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/features/F-001-outcome-capture.md`.",
+          "path": "knowledge/wiki/features/F-001-outcome-capture.md",
+          "severity": "info"
+        },
+        {
+          "code": "never-verified",
+          "message": "`knowledge/wiki/features/F-002-outcome-review.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/features/F-002-outcome-review.md`.",
+          "path": "knowledge/wiki/features/F-002-outcome-review.md",
+          "severity": "info"
+        },
+        {
           "code": "missing-app-requirements",
           "feature_id": "F-003",
           "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
@@ -1388,11 +1413,23 @@
           "severity": "error"
         },
         {
+          "code": "never-verified",
+          "message": "`knowledge/wiki/features/F-003-outcome-export.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/features/F-003-outcome-export.md`.",
+          "path": "knowledge/wiki/features/F-003-outcome-export.md",
+          "severity": "info"
+        },
+        {
           "code": "unresolved-open-questions",
           "feature_id": "F-003",
           "message": "Feature `F-003` has an open question assigned to `po` (#1).",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
+        },
+        {
+          "code": "never-verified",
+          "message": "`knowledge/wiki/roadmap.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/roadmap.md`.",
+          "path": "knowledge/wiki/roadmap.md",
+          "severity": "info"
         }
       ],
       "experimental": true,
@@ -2399,6 +2436,30 @@
         "confidence": "error",
         "diagnostics": [
           {
+            "code": "never-verified",
+            "message": "`knowledge/wiki/app-requirements/F-003-backend.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/app-requirements/F-003-backend.md`.",
+            "path": "<ROOT>/knowledge/wiki/app-requirements/F-003-backend.md",
+            "severity": "info"
+          },
+          {
+            "code": "never-verified",
+            "message": "`knowledge/wiki/direction.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/direction.md`.",
+            "path": "<ROOT>/knowledge/wiki/direction.md",
+            "severity": "info"
+          },
+          {
+            "code": "never-verified",
+            "message": "`knowledge/wiki/features/F-001-outcome-capture.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/features/F-001-outcome-capture.md`.",
+            "path": "<ROOT>/knowledge/wiki/features/F-001-outcome-capture.md",
+            "severity": "info"
+          },
+          {
+            "code": "never-verified",
+            "message": "`knowledge/wiki/features/F-002-outcome-review.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/features/F-002-outcome-review.md`.",
+            "path": "<ROOT>/knowledge/wiki/features/F-002-outcome-review.md",
+            "severity": "info"
+          },
+          {
             "code": "missing-app-requirements",
             "feature_id": "F-003",
             "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
@@ -2413,11 +2474,23 @@
             "severity": "error"
           },
           {
+            "code": "never-verified",
+            "message": "`knowledge/wiki/features/F-003-outcome-export.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/features/F-003-outcome-export.md`.",
+            "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+            "severity": "info"
+          },
+          {
             "code": "unresolved-open-questions",
             "feature_id": "F-003",
             "message": "Feature `F-003` has an open question assigned to `po` (#1).",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
+          },
+          {
+            "code": "never-verified",
+            "message": "`knowledge/wiki/roadmap.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/roadmap.md`.",
+            "path": "<ROOT>/knowledge/wiki/roadmap.md",
+            "severity": "info"
           }
         ],
         "experimental": true,
@@ -2614,6 +2687,30 @@
     "confidence": "error",
     "diagnostics": [
       {
+        "code": "never-verified",
+        "message": "`knowledge/wiki/app-requirements/F-003-backend.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/app-requirements/F-003-backend.md`.",
+        "path": "<ROOT>/knowledge/wiki/app-requirements/F-003-backend.md",
+        "severity": "info"
+      },
+      {
+        "code": "never-verified",
+        "message": "`knowledge/wiki/direction.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/direction.md`.",
+        "path": "<ROOT>/knowledge/wiki/direction.md",
+        "severity": "info"
+      },
+      {
+        "code": "never-verified",
+        "message": "`knowledge/wiki/features/F-001-outcome-capture.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/features/F-001-outcome-capture.md`.",
+        "path": "<ROOT>/knowledge/wiki/features/F-001-outcome-capture.md",
+        "severity": "info"
+      },
+      {
+        "code": "never-verified",
+        "message": "`knowledge/wiki/features/F-002-outcome-review.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/features/F-002-outcome-review.md`.",
+        "path": "<ROOT>/knowledge/wiki/features/F-002-outcome-review.md",
+        "severity": "info"
+      },
+      {
         "code": "missing-app-requirements",
         "feature_id": "F-003",
         "message": "Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.",
@@ -2628,11 +2725,23 @@
         "severity": "error"
       },
       {
+        "code": "never-verified",
+        "message": "`knowledge/wiki/features/F-003-outcome-export.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/features/F-003-outcome-export.md`.",
+        "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
+        "severity": "info"
+      },
+      {
         "code": "unresolved-open-questions",
         "feature_id": "F-003",
         "message": "Feature `F-003` has an open question assigned to `po` (#1).",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
+      },
+      {
+        "code": "never-verified",
+        "message": "`knowledge/wiki/roadmap.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/roadmap.md`.",
+        "path": "<ROOT>/knowledge/wiki/roadmap.md",
+        "severity": "info"
       }
     ],
     "experimental": true,

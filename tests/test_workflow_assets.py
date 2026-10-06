@@ -18,7 +18,7 @@ EXPECTED_SKILLS = {
     "ask", "audit-feature", "board-review", "design-clarify", "design-handoff",
     "design-intake", "design-start", "dev-clarify", "dev-done", "dev-start", "feature-reopen",
     "feature-status", "ingest", "lint-wiki", "po-clarify", "po-handoff", "po-intake",
-    "po-specify", "prep-sprint", "setup-project", "wiki-blockers", "wiki-owner",
+    "po-specify", "prep-sprint", "setup-project", "verify-pages", "wiki-blockers", "wiki-owner",
     "wiki-app", "wiki-query", "wiki-show",
 }
 

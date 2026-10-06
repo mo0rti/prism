@@ -42,6 +42,23 @@ PAGE_DIRECTORIES = (
 )
 # Page kinds with no `_FORMAT.md` folder: single pages in the wiki root.
 ROOT_PAGE_KINDS = {"direction.md": "direction", "roadmap.md": "roadmap"}
+# Pages that state what is true now. Decisions and advisory reviews are records; the index, the log,
+# the status board and the generated report are service-maintained views. Freshness and evidence
+# labels apply to current-state pages only.
+CURRENT_STATE_DIRECTORIES = frozenset(
+    {
+        "api-contracts",
+        "app-requirements",
+        "business-rules",
+        "design",
+        "features",
+        "personas",
+        "topics",
+        "research",
+        "plans",
+        *ROOT_PAGE_KINDS,
+    }
+)
 # The folders whose pages carry a `kind` front matter field, and the kind each one holds.
 GENERAL_PAGE_FOLDERS = {"topics": "topic", "research": "research", "plans": "plan"}
 GENERAL_PAGE_KINDS = frozenset({*GENERAL_PAGE_FOLDERS.values(), *ROOT_PAGE_KINDS.values()})
@@ -121,6 +138,21 @@ def is_page_path(relative: str) -> bool:
     if len(parts) == 1:
         return parts[0] not in NON_PAGE_ROOT_FILES
     return len(parts) == 2 and parts[0] in PAGE_DIRECTORIES
+
+
+def is_current_state_page(relative: str) -> bool:
+    """Whether a wiki-relative path is a current-state page: a page that states what is true now.
+
+    A record (a decision or an advisory review), the index, the log, the status board, the root
+    schema files and the generated report are not.
+    """
+
+    parts = PurePosixPath(relative).parts
+    if not is_page_path(relative):
+        return False
+    if len(parts) == 1:
+        return parts[0] in ROOT_PAGE_KINDS
+    return parts[0] in CURRENT_STATE_DIRECTORIES
 
 
 def is_project_doc_target(target: str) -> bool:

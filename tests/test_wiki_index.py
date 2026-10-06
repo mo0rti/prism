@@ -279,6 +279,11 @@ class IndexLintTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = workspace(Path(temporary.name))
         self.wiki = self.root / "knowledge" / "wiki"
+        # The processed item that the topic page links and lists in its `sources`.
+        item = self.root / "knowledge" / "intake" / "processed" / "2026-10-06-client-call"
+        item.mkdir(parents=True)
+        (item / "notes.md").write_text("# Notes\n", encoding="utf-8")
+        (item / "MANIFEST.md").write_text("# Manifest\n\nNo pages extracted.\n", encoding="utf-8")
 
     def write(self, relative: str, text: str) -> Path:
         path = self.wiki / relative
@@ -310,7 +315,7 @@ class IndexLintTests(unittest.TestCase):
         self.assertEqual(1, len(found))
         self.assertIn("`topics/gone.md`", found[0].message)
         self.assertEqual("warning", found[0].severity)
-        self.assertNotIn("broken-wiki-link", self.codes(), "the index is not also reported as a broken link")
+        self.assertNotIn("broken-link", self.codes(), "the index is not also reported as a broken link")
 
     def test_a_second_line_for_one_page_is_a_duplicate(self) -> None:
         text = (self.wiki / "index.md").read_text(encoding="utf-8")

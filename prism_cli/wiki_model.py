@@ -127,6 +127,8 @@ class MarkdownPage:
     frontmatter: dict[str, Any]
     body: str
     parse_errors: list[str] = field(default_factory=list)
+    # The number of file lines above the body, so a line of the body maps to a line of the file.
+    body_offset: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "frontmatter", freeze(self.frontmatter))
@@ -242,15 +244,16 @@ def parse_markdown_text(path: Path, text: str) -> MarkdownPage:
         return MarkdownPage(path=path, frontmatter={}, body=text, parse_errors=["Missing YAML frontmatter."])
 
     raw_frontmatter, body = match.groups()
+    offset = text.count("\n", 0, match.start(2))
     try:
         loaded = yaml.safe_load(raw_frontmatter) or {}
     except (yaml.YAMLError, TypeError, ValueError, OverflowError) as exc:
-        return MarkdownPage(path=path, frontmatter={}, body=body, parse_errors=[f"Invalid YAML frontmatter: {exc}"])
+        return MarkdownPage(path=path, frontmatter={}, body=body, parse_errors=[f"Invalid YAML frontmatter: {exc}"], body_offset=offset)
 
     if not isinstance(loaded, dict):
-        return MarkdownPage(path=path, frontmatter={}, body=body, parse_errors=["YAML frontmatter must be a mapping."])
+        return MarkdownPage(path=path, frontmatter={}, body=body, parse_errors=["YAML frontmatter must be a mapping."], body_offset=offset)
 
-    return MarkdownPage(path=path, frontmatter=loaded, body=body)
+    return MarkdownPage(path=path, frontmatter=loaded, body=body, body_offset=offset)
 
 
 class WikiPageScope:

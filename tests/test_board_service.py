@@ -101,6 +101,8 @@ class BoardServiceValidatorTests(unittest.TestCase):
                 "knowledge/wiki/app-requirements/*.md",
                 "knowledge/wiki/api-contracts/*.md",
             ],
+            # It supplies no file: the verified pages are named in `read_revisions` and the log entry is service-managed.
+            "verify-pages": [],
         }
         discovered = {item["name"]: item for item in self.service.list_skills(self.actor)["skills"]}
         self.assertEqual(set(expected), {name for name, item in discovered.items() if item["write_supported"]})
@@ -539,7 +541,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
 
     def test_every_listed_reference_of_every_skill_resolves_through_get_skill_reference(self) -> None:
         names = [item["name"] for item in self.service.list_skills(self.actor)["skills"]]
-        self.assertEqual(25, len(names))
+        self.assertEqual(26, len(names))
         for name in names:
             with self.subTest(skill=name):
                 page = self.service.get_skill(self.actor, name)
@@ -1150,12 +1152,10 @@ class BoardServiceValidatorTests(unittest.TestCase):
         pending = INTAKE_ITEM.parent.as_posix()
         processed = pending.replace("pending", "processed", 1)
         feature_path = "knowledge/wiki/features/F-002-document-review.md"
-        feature = _unquote_yaml_date_fields(
-            _journey_feature_page(
+        feature = _journey_feature_page(
                 "F-002", "Document review", "raw", "po", sources,
                 ["| 1 | Which details should the summary emphasize? | po | open |"],
             )
-        )
         manifest = f"# Processed intake\n\n- {feature_path} (F-002)\n"
         changes = [
             {"path": feature_path, "content": feature},
@@ -1247,12 +1247,10 @@ class BoardServiceValidatorTests(unittest.TestCase):
         processed = pending.replace("pending", "processed", 1)
         move = [{"source": pending, "destination": processed, "source_files": {"brief.md": "digest"}, "source_directories": []}]
         feature_path = "knowledge/wiki/features/F-002-document-review.md"
-        feature = _unquote_yaml_date_fields(
-            _journey_feature_page(
+        feature = _journey_feature_page(
                 "F-002", "Document review", "specified", "po", [PROCESSED_INTAKE_ITEM.as_posix()], ["| 1 | Which details? | po | open |"]
             )
-        )
-        persona = _unquote_yaml_date_fields(_journey_persona_page())
+        persona = _journey_persona_page()
         persona_path = "knowledge/wiki/personas/P-001-reviewer.md"
         rule = _journey_business_rule_page()
         rule_path = "knowledge/wiki/business-rules/BR-001-review-record.md"
@@ -1340,7 +1338,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         # separately creates the specified document-review feature below.
         raw_path = self.root / "knowledge/wiki/features/F-002-review-follow-up.md"
         raw_path.parent.mkdir(parents=True, exist_ok=True)
-        raw_page = _unquote_yaml_date_fields(_journey_feature_page("F-002", "Review follow-up", "raw", "po", [], []))
+        raw_page = _journey_feature_page("F-002", "Review follow-up", "raw", "po", [], [])
         raw_path.write_bytes(raw_page.encode("utf-8"))
         _write_index_rows(self.root, [("F-002", "Review follow-up", "raw", "po")])
 
@@ -1376,12 +1374,12 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             [processed_folder + "/brief.md"],
             ["| 1 | Which details should the summary emphasize? | po | open |"],
         )
-        feature = _unquote_yaml_date_fields(feature)
+        feature = feature
         self._submit_skill(
             "po-intake",
             [
                 {"path": feature_path, "content": feature},
-                {"path": persona_path, "content": _unquote_yaml_date_fields(_journey_persona_page())},
+                {"path": persona_path, "content": _journey_persona_page()},
                 {"path": rule_path, "content": _journey_business_rule_page()},
                 {"path": intake_manifest_path, "content": intake_manifest},
             ],
@@ -1446,7 +1444,7 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             "design-intake",
             [
                 {"path": feature_path, "content": design_intake_feature},
-                {"path": design_path, "content": _unquote_yaml_date_fields(_journey_design_page())},
+                {"path": design_path, "content": _journey_design_page()},
                 {"path": design_destination + "/MANIFEST.md", "content": f"# Processed intake\n\n- {design_path} (design for F-001)\n- {feature_path} (F-001)\n"},
             ],
             [{"source": design_source, "destination": design_destination}],
@@ -2124,14 +2122,6 @@ def _set_requirement_status(content: str, status: str) -> str:
     frontmatter, _body = _parse_markdown(content)
     frontmatter["status"] = status
     return f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---\n{_parse_markdown(content)[1]}"
-
-
-def _unquote_yaml_date_fields(content: str) -> str:
-    return re.sub(
-        r"(?m)^(introduced|last-updated|date): '(\d{4}-\d{2}-\d{2})'$",
-        r"\1: \2",
-        content,
-    )
 
 
 if __name__ == "__main__":

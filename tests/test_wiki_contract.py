@@ -90,8 +90,8 @@ class WikiContractLintTests(unittest.TestCase):
         self.assertIn("invalid-api-contract-status", codes)
         self.assertIn("invalid-wiki-stale-after-days", codes)
         self.assertIn("history-date-on-page", codes)
-        self.assertIn("broken-wiki-link", codes)
-        self.assertTrue(any(diagnostic.feature_id == "F-002" for diagnostic in self.diagnostics_for(result, "broken-wiki-link")))
+        self.assertIn("broken-link", codes)
+        self.assertTrue(any(diagnostic.feature_id == "F-002" for diagnostic in self.diagnostics_for(result, "broken-link")))
 
     def test_invalid_auxiliary_frontmatter_is_visible_and_page_remains_a_graph_node(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -282,9 +282,12 @@ class WikiContractLintTests(unittest.TestCase):
 
             result = lint_wiki(workspace, today=CHECK_DATE)
 
-        broken = self.diagnostics_for(result, "broken-wiki-link")
-        self.assertEqual(1, len(broken))
-        self.assertIn("missing page.md", broken[0].message)
+        broken = self.diagnostics_for(result, "broken-link")
+        # The encoded link is decoded before it is looked up, and a link to a file outside the wiki is checked too.
+        self.assertEqual(2, len(broken))
+        self.assertTrue(any("missing%20page.md" in item.message for item in broken))
+        self.assertTrue(any("intake/processed/brief.md" in item.message for item in broken))
+        self.assertFalse(any("::1" in item.message for item in broken), "a malformed URI is not a relative link")
 
     def test_invalid_bytes_in_frontmatter_page_are_reported(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

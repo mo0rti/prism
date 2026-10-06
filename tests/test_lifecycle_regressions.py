@@ -334,7 +334,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         original = self.feature_path.read_text(encoding="utf-8")
         cases = (
             ("history-date-on-page", original.replace("apps:", "last-updated: 2026-09-08\napps:", 1)),
-            ("broken-wiki-link", original + "\n[Missing design](../design/missing.md)\n"),
+            ("broken-link", original + "\n[Missing design](../design/missing.md)\n"),
         )
         for code, body in cases:
             with self.subTest(code=code):

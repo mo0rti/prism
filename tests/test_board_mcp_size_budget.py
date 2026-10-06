@@ -254,7 +254,7 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
             listed = await client.call("list_skills", {})
             self.assertEqual(3, discovered["mcp_contract"])
             self.assertEqual(3, listed["mcp_contract"])
-            self.assertEqual(25, len(listed["skills"]))
+            self.assertEqual(26, len(listed["skills"]))
             self.assertEqual(listed["read_support"], discovered["capability"]["read_support"])
             for item in discovered["skills"]:
                 self.assertEqual({"name", "description"}, set(item))
@@ -266,7 +266,7 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
     async def test_every_skill_and_reference_chunk_stays_within_budget_and_reassembles_to_its_digest(self) -> None:
         async with connected(self, self.small_root) as client:
             names = [item["name"] for item in (await client.call("list_skills", {}))["skills"]]
-            self.assertEqual(25, len(names))
+            self.assertEqual(26, len(names))
             for name in names:
                 with self.subTest(skill=name):
                     pages = await client.paged("get_skill", {"name": name})

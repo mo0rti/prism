@@ -175,6 +175,7 @@ Examples:
 - `wiki-query`
 - `wiki-owner`
 - `wiki-app`
+- `verify-pages`
 
 This is acceptable as long as the generated-project guidance stays explicit about how to
 invoke them in each tool.

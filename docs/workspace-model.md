@@ -29,6 +29,8 @@ repositories:
 
 `prism.local.yml` is per machine and is not committed: a generated project's `.gitignore` lists it, and `prism workflow install` adds the rule to an existing `.gitignore`. Without a usable entry for an external repository, the workspace still loads. Status shows one `external-repository-unresolved` warning for that repository and reports its `checkout` as `unresolved`; with a checkout that exists, the warning goes and `checkout` is `resolved`. Status never prints the local path. Prism only checks that the checkout exists. It does not read from it or write to it, and it ignores a `prism.local.yml` or a checkout that is a symlink or reparse point.
 
+A wiki page links a file or folder of an external repository as `repo:<repository-id>/<path>`, in a body link or a `sources` entry (`[Login](repo:mobile-apps/apps/partner/Login.kt)`); `workspace` means this repository. `prism wiki lint` resolves it through `prism.local.yml`. Without an entry for the repository it reports one `external-repository-unresolved` warning for that repository and skips its links. With a checkout, a path that is not there is `broken-link`. Lint only asks whether the path exists: it never reads a file in the checkout, never follows a symlink inside it and never writes there.
+
 ## Apps
 
 An entry in `apps` has these fields.

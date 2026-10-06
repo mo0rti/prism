@@ -1,0 +1,56 @@
+---
+name: verify-pages
+description: Record that current-state wiki pages were checked against their sources. Use after reviewing pages for freshness; it appends one verify entry to log.md and never edits a page.
+---
+
+# Verify Pages
+
+Use this skill to record a verification: a person or an agent checked these pages against their sources and found them current. Freshness lint (`stale-page`, `never-verified`) reads the entry from `knowledge/wiki/log.md`; the pages carry no date.
+
+## Usage
+
+`$verify-pages <page>... [evidence link]`
+
+A page is a current-state page, named as `knowledge/wiki/topics/pricing.md` or `topics/pricing.md`: a feature, persona, business rule, design page, app requirement, API contract, topic, research page, plan, `direction.md` or `roadmap.md`.
+
+## Workflow
+
+1. Read `knowledge/wiki/SCHEMA.md` (its Freshness section), `knowledge/wiki/LIFECYCLE.md` and every page to verify
+2. For each page, compare its labeled claims with the sources it links and lists in `sources`, and with the current workspace; check only what you can check. A claim you cannot check stays as it is and does not count against the page
+3. If a page is no longer true, do not verify it. Tell the user which claims are out of date and which operation corrects them (`$ingest` or the page kind's own skill); verification never edits a page
+4. Show the user the pages you verified and the evidence you will link, and wait for confirmation
+5. Record the verification once, for all confirmed pages:
+   - connected board: call `preview_skill` with `skill` set to `verify-pages`, an empty `changes` list, no `moves`, and `read_revisions` naming each verified page with the digest `read_workspace` returned for the page you read. This is the one skill that needs `read_revisions`. Then `apply` the preview after the user confirms it
+   - with the Prism CLI (version 0.4.0 or newer): `prism wiki verify <page>... --evidence <link> --by <name>`
+   - without either: append one entry to `knowledge/wiki/log.md` by hand, in the log format of the wiki schema: `## YYYY-MM-DD verify | <subject>`, then the `paths` line (the verified pages, from the repository root, comma-separated), the `evidence` line (a link, or `none`) and the `by` line
+
+## Rules
+
+- write-capable skill; it writes only the `log.md` entry
+- verifies current-state pages only: a record (an ADR, an advisory review), `index.md`, `log.md`, `status-board.md`, `SCHEMA.md` and generated files are exempt from freshness
+- never edit a page, an index line or a status board row, and never change a status or an owner
+- never verify a page you did not read in this session
+- link the evidence; never copy it into the log
+- one verification entry per confirmation, never one per page
+- do not append to `log.md` any other way when a connected board is available
+
+## Canonical format reference
+
+Mirror the detailed workflow and write behavior from:
+
+- `.claude/commands/verify-pages.md`
+
+## Output behavior
+
+Return:
+
+- the pages verified, by path
+- the pages left out and why
+- the entry's operation, date and evidence
+- how it was recorded: the preview and operation, the CLI command, or the manual entry
+
+## Error and stop conditions
+
+- if a page does not exist or is not a current-state page, say so and leave it out
+- if a connected call is rejected, read the error and retry only with what it names, at most 2 more times, then stop and report it
+- if the user does not confirm, stop without writing

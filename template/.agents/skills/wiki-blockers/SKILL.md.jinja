@@ -27,6 +27,10 @@ Summarize `facts.blockers`, `blocker_facts`, `required_obligations`,
 six canonical blocker categories; do not duplicate blocker parsing or add
 categories on this path. Treat returned diagnostics, including errors, as facts
 to surface rather than replacing them with optimistic manual state.
+Link findings (`broken-link`, `broken-anchor`, `external-repository-unresolved`) and freshness
+findings (`stale-page`, `never-verified`) are not blockers: report them as diagnostics and never as
+a blocker category, and never use them to change a status.
+
 
 ## Fallback path
 

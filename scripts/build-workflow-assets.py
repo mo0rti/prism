@@ -48,6 +48,7 @@ SKILL_NAMES = (
     "po-specify",
     "prep-sprint",
     "setup-project",
+    "verify-pages",
     "wiki-app",
     "wiki-blockers",
     "wiki-owner",
@@ -81,6 +82,7 @@ LIFECYCLE_SKILLS = frozenset(
         "po-intake",
         "po-specify",
         "prep-sprint",
+        "verify-pages",
         "wiki-blockers",
     }
 )
@@ -123,6 +125,7 @@ SKILL_REFERENCE_GROUPS = {
     "po-specify": ("features",),
     "prep-sprint": ("features", "requirements"),
     "setup-project": ("intake", "features", "business", "personas", "decisions", "advisory"),
+    "verify-pages": (),
     "wiki-app": ("features", "requirements"),
     "wiki-blockers": ("features", "design", "requirements", "api", "business", "personas", "decisions", "advisory"),
     "wiki-owner": ("features",),

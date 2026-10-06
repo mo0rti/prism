@@ -58,6 +58,12 @@ class WorkspaceCase(unittest.TestCase):
 
 
 class EvidenceLabelTests(WorkspaceCase):
+    def setUp(self) -> None:
+        super().setUp()
+        # The processed item that the claims link as their evidence.
+        self.write_intake("processed/2026-10-06-client-call/notes.md", "# Notes\n")
+        self.write_intake("processed/2026-10-06-client-call/MANIFEST.md", "# Manifest\n\nNo pages extracted.\n")
+
     def test_the_five_labels_are_the_defined_vocabulary(self) -> None:
         self.assertEqual(("Decided", "Observed", "Proposed", "Assumed", "Unknown"), EVIDENCE_LABELS)
 

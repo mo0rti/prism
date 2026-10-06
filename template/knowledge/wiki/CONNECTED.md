@@ -169,6 +169,12 @@ lists every page it writes by full relative path and canonical ID, and a new fea
 replaced in place, so read it before you propose its new text; a persona, business rule,
 decision or feature is created and never rewritten.
 
+The `verify-pages` skill records that current-state pages were checked against their sources.
+It changes no page: send an empty `changes` list and no `moves`, and name each verified page in
+`read_revisions` with the digest `read_workspace` returned for it (the one skill that needs
+`read_revisions`). The preview writes one `verify` entry to `log.md`, and applying it is refused
+as stale when a verified page changed after the preview.
+
 The moved folder is named `YYYY-MM-DD-slug` (`intake_name_invalid` otherwise), and its
 processed destination must not exist yet: a write into an existing processed item is
 rejected with `processed_source_immutable`. A quarantine move carries only a

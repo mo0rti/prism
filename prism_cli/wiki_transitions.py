@@ -2141,7 +2141,8 @@ def _relevant_integrity_checks(
     for diagnostic in lint_result.diagnostics:
         if ignore_codes and diagnostic.code in ignore_codes:
             continue
-        if diagnostic.code in WIKI_BLOCKER_CODES:
+        if diagnostic.code in WIKI_BLOCKER_CODES or not diagnostic.gates:
+            # A finding that asks for a review (freshness) or describes a page's sources never gates a lifecycle action.
             continue
         diagnostic_path = diagnostic.resolved_path
         if diagnostic.code == "unknown-app-id" and diagnostic_path == path:

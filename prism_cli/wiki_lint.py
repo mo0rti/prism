@@ -8,13 +8,14 @@ from dataclasses import dataclass, field
 from datetime import date
 from functools import cached_property
 from pathlib import Path
-from typing import Any
-from urllib.parse import unquote
+from typing import Any, NamedTuple
+from urllib.parse import unquote, urlsplit
 
 from prism_cli.app_model import (
     CAPABILITIES,
     CAPABILITY_HAS_UI,
     UNKNOWN,
+    WORKSPACE_REPOSITORY_ID,
     WorkspaceModel,
     api_surface_without_api_app_message,
     retired_in_scope_message,
@@ -29,8 +30,11 @@ from prism_cli.wiki_model import (
     AppRequirementPage,
     FeaturePage,
     MarkdownPage,
-    extract_markdown_links,
     candidate_relative_markdown_link as _candidate_relative_link,
+    extract_markdown_links,
+    is_pending_intake_source,
+    processed_source_path,
+    source_link_parts,
     normalize_feature_id,
     feature_id_from_path,
     history_date_fields,
@@ -49,15 +53,32 @@ from prism_cli.wiki_model import (
     section_text,
     within_wiki_read_scope,
 )
+from prism_cli.fs_safety import reparse_kind
 from prism_cli.wiki_index import (
+    CURRENT_STATE_DIRECTORIES,
     GENERAL_PAGE_FOLDERS,
     GENERAL_PAGE_STATUSES,
     ROOT_PAGE_KINDS,
+    is_current_state_page,
     is_page_path,
     is_project_doc_target,
     parse_index_entries,
 )
-from prism_cli.workspace import MANIFEST_FILE, detect_workspace_kind, inspect_workspace, workspace_model
+from prism_cli.wiki_links import heading_anchors, iter_markdown_links, parse_external_link
+from prism_cli.wiki_log import (
+    LOG_FIELD_PATTERN,
+    LOG_FIELDS,
+    LOG_HEADING_PATTERN,
+    last_verifications,
+    split_log_entries,
+)
+from prism_cli.workspace import (
+    MANIFEST_FILE,
+    WorkspaceLoadResult,
+    detect_workspace_kind,
+    inspect_workspace,
+    load_resolved_workspace,
+)
 
 
 DEFAULT_WIKI_STALE_AFTER_DAYS = 14
@@ -99,10 +120,6 @@ _NON_SOURCE_FILENAMES = {
     "log.md",
     "status-board.md",
 }
-# `## YYYY-MM-DD <operation> | <subject>`, then `paths`, `evidence` and `by` lines.
-_LOG_HEADING_PATTERN = re.compile(r"^## (\d{4}-\d{2}-\d{2}) [a-z][a-z0-9-]* \| \S.*$")
-_LOG_FIELD_PATTERN = re.compile(r"^- (paths|evidence|by): (\S.*)$")
-_LOG_FIELDS = ("paths", "evidence", "by")
 _SCHEMA_VERSION_FILES = ("SCHEMA.md", "LIFECYCLE.md")
 SUPPORTED_SCHEMA_VERSION = 1
 # A dated record keeps its own date field; every other page kind carries none.
@@ -117,18 +134,9 @@ _EVIDENCE_LABEL_LINE = re.compile(r"^(?P<indent>[ \t]*)(?P<marker>(?:[-*+]|\d+[.
 _LIST_ITEM_LINE = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+")
 _CLAIM_EVIDENCE_LINK = re.compile(r"\[[^\]]+\]\(\s*<?[^)\s>]+|https?://\S+")
 # Pages that state what is true now. Decisions and advisory reviews are records.
-_CURRENT_STATE_DIRECTORIES = frozenset(
-    {
-        "api-contracts",
-        "app-requirements",
-        "business-rules",
-        "design",
-        "features",
-        "personas",
-        *GENERAL_PAGE_FOLDERS,
-        *ROOT_PAGE_KINDS,
-    }
-)
+_CURRENT_STATE_DIRECTORIES = CURRENT_STATE_DIRECTORIES
+# Freshness asks for a review and never gates a lifecycle action or changes a status.
+FRESHNESS_CODES = frozenset({"stale-page", "never-verified"})
 _ADR_ID_PATTERN = re.compile(r"^ADR-\d+$", re.IGNORECASE)
 _FRONTMATTER_PAGE_DIRECTORIES = {
     "api-contracts",
@@ -147,6 +155,8 @@ class WikiDiagnostic:
     path: str
     message: str
     feature_id: str | None = None
+    # False for a finding that asks for a review or reports a link outside the wiki: it never gates a lifecycle action.
+    gates: bool = True
 
     @cached_property
     def resolved_path(self) -> Path:
@@ -171,6 +181,14 @@ class WikiLintResult:
     root: Path
     diagnostics: list[WikiDiagnostic] = field(default_factory=list)
     feature_count: int = 0
+    # Findings that only `prism wiki lint` reports (`never-verified`). Status, queries, the graph and the lifecycle gates read `diagnostics`.
+    information: list[WikiDiagnostic] = field(default_factory=list)
+
+    @property
+    def all_diagnostics(self) -> list[WikiDiagnostic]:
+        """The diagnostics and the information findings in report order."""
+
+        return sorted([*self.diagnostics, *self.information], key=_diagnostic_order)
 
     @property
     def error_count(self) -> int:
@@ -240,7 +258,7 @@ class WikiLintResult:
                 if diagnostic.code in WIKI_BLOCKER_CODES
             ],
             "sources": [str(self.root / "knowledge" / "wiki")],
-            "diagnostics": [diagnostic.to_dict() for diagnostic in self.diagnostics],
+            "diagnostics": [diagnostic.to_dict() for diagnostic in self.all_diagnostics],
         }
 
 
@@ -265,7 +283,7 @@ def _resolve(path: Path) -> Path:
 
 @within_wiki_read_scope
 def lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintResult:
-    """Lint the wiki of one workspace. `today` is the clock for freshness checks; no check reads it yet."""
+    """Lint the wiki of one workspace. `today` is the clock for the freshness checks."""
 
     token = _RESOLVE_MEMO.set({})
     try:
@@ -297,9 +315,11 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                 )
             )
 
-    diagnostics.extend(_read_wiki_settings_diagnostics(wiki_root))
+    settings = read_wiki_settings(wiki_root)
+    diagnostics.extend(_diag(code, "warning", settings.path, message) for code, message in settings.diagnostics)
 
-    model = workspace_model(root, resolved=True)
+    load = load_resolved_workspace(root)
+    model = load.manifest.model if load.manifest is not None else WorkspaceModel(schema_version=0)
     diagnostics.extend(_lint_unknown_app_capabilities(model, root / MANIFEST_FILE))
 
     feature_pages = read_feature_pages(wiki_root)
@@ -365,19 +385,15 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
     diagnostics.extend(_lint_cross_app_dependencies(requirement_pages, feature_pages, wiki_root))
     diagnostics.extend(_lint_history_dates(all_pages, wiki_root))
     diagnostics.extend(_lint_schema_versions(all_pages, wiki_root))
-    diagnostics.extend(_lint_log_entries(wiki_root / "log.md"))
+    log = _read_log(wiki_root / "log.md")
+    diagnostics.extend(_lint_log_entries(log))
     diagnostics.extend(_lint_evidence_labels(all_pages, wiki_root))
     diagnostics.extend(_lint_decision_supersession(all_pages, wiki_root))
     diagnostics.extend(_lint_superseded_decision_citations(all_pages, wiki_root))
     diagnostics.extend(_lint_intake_items(root))
-    diagnostics.extend(
-        _lint_relative_links(
-            all_pages,
-            wiki_root,
-            feature_pages,
-            requirement_pages,
-        )
-    )
+    diagnostics.extend(_lint_links(all_pages, wiki_root, root, feature_pages, requirement_pages, load))
+    stale, information = _lint_freshness(all_pages, wiki_root, root, log, settings.stale_after_days, today or date.today())
+    diagnostics.extend(stale)
 
     diagnostics.extend(_lint_index_entries(all_pages, wiki_root))
 
@@ -443,16 +459,8 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                     )
                 )
 
-    diagnostics.sort(key=lambda diagnostic: (diagnostic.path, diagnostic.code, diagnostic.feature_id or "", diagnostic.message))
-    return WikiLintResult(root=root, diagnostics=diagnostics, feature_count=len(feature_pages))
-
-
-def _read_wiki_settings_diagnostics(wiki_root: Path) -> list[WikiDiagnostic]:
-    settings = read_wiki_settings(wiki_root)
-    return [
-        _diag(code, "warning", settings.path, message)
-        for code, message in settings.diagnostics
-    ]
+    diagnostics.sort(key=_diagnostic_order)
+    return WikiLintResult(root=root, diagnostics=diagnostics, feature_count=len(feature_pages), information=sorted(information, key=_diagnostic_order))
 
 
 def _lint_done_completion(
@@ -963,32 +971,21 @@ def _lint_schema_versions(pages: list[MarkdownPage], wiki_root: Path) -> list[Wi
     return diagnostics
 
 
-def _lint_log_entries(log_path: Path) -> list[WikiDiagnostic]:
-    """Check each log.md entry against the log format. Entries are reported, never rewritten."""
+def _read_log(log_path: Path) -> tuple[Path, str]:
+    """The path of log.md and its text, empty when it cannot be read."""
 
     try:
-        text = log_path.read_text(encoding="utf-8")
+        return log_path, log_path.read_text(encoding="utf-8")
     except (OSError, UnicodeError):
-        return []
-    entries: list[tuple[int, str, list[str]]] = []
-    in_fence = False
-    for number, raw_line in enumerate(text.splitlines(), start=1):
-        line = raw_line.rstrip()
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        if line.startswith("## "):
-            entries.append((number, line, []))
-            continue
-        stripped = line.strip()
-        if not entries or not stripped or (stripped.startswith("<!--") and stripped.endswith("-->")):
-            continue
-        entries[-1][2].append(stripped)
+        return log_path, ""
 
+
+def _lint_log_entries(log: tuple[Path, str]) -> list[WikiDiagnostic]:
+    """Check each log.md entry against the log format. Entries are reported, never rewritten."""
+
+    log_path, text = log
     diagnostics: list[WikiDiagnostic] = []
-    for number, heading, body in entries:
+    for number, heading, body in split_log_entries(text):
         problem = _log_entry_problem(heading, body)
         if problem is None:
             continue
@@ -1005,15 +1002,15 @@ def _lint_log_entries(log_path: Path) -> list[WikiDiagnostic]:
 
 
 def _log_entry_problem(heading: str, body: list[str]) -> str | None:
-    match = _LOG_HEADING_PATTERN.match(heading)
+    match = LOG_HEADING_PATTERN.match(heading)
     if match is None or parse_iso_date(match.group(1)) is None:
         return "the heading must be `## YYYY-MM-DD <operation> | <subject>`."
-    for index, field_name in enumerate(_LOG_FIELDS):
+    for index, field_name in enumerate(LOG_FIELDS):
         line = body[index] if index < len(body) else ""
-        field_match = _LOG_FIELD_PATTERN.match(line)
+        field_match = LOG_FIELD_PATTERN.match(line)
         if field_match is None or field_match.group(1) != field_name:
             return f"line {index + 1} after the heading must be `- {field_name}: <value>`."
-    extra = body[len(_LOG_FIELDS):]
+    extra = body[len(LOG_FIELDS):]
     if len(extra) > 1:
         return "after the `by` line only one optional line of plain text may follow."
     if extra and extra[0].startswith(("-", "#", "|", ">")):
@@ -1066,6 +1063,7 @@ def _lint_evidence_labels(pages: list[MarkdownPage], wiki_root: Path) -> list[Wi
                         page.path,
                         f"`**{label}:**` (body line {index + 1}) is not an evidence label. Use one of {', '.join(f'`{item}`' for item in EVIDENCE_LABELS)}. See Evidence labels in SCHEMA.md.",
                         feature_id,
+                        gates=False,
                     )
                 )
                 continue
@@ -1079,6 +1077,7 @@ def _lint_evidence_labels(pages: list[MarkdownPage], wiki_root: Path) -> list[Wi
                         page.path,
                         f"The `{label}` claim at body line {index + 1} links no evidence. Link a processed intake item, a record or a URL. See Evidence labels in SCHEMA.md.",
                         feature_id,
+                        gates=False,
                     )
                 )
     return diagnostics
@@ -1191,6 +1190,7 @@ def _lint_superseded_decision_citations(pages: list[MarkdownPage], wiki_root: Pa
                         page.path,
                         f"This page links {key}, which is superseded. Update the page to {current} and state the current decision.",
                         _page_feature_id(page, {}, {}),
+                        gates=False,
                     )
                 )
     return diagnostics
@@ -1360,46 +1360,321 @@ def _lint_project_doc_lines(index_path: Path, wiki_root: Path, target: str, line
     return diagnostics
 
 
-def _lint_relative_links(
+def _lint_links(
     pages: list[MarkdownPage],
     wiki_root: Path,
+    root: Path,
     feature_pages: list[FeaturePage],
     requirement_pages: list[AppRequirementPage],
+    load: WorkspaceLoadResult,
 ) -> list[WikiDiagnostic]:
-    wiki_root = _resolve(wiki_root)
+    """Check every relative Markdown link and every `sources` entry of the wiki pages.
+
+    `root` is the resolved workspace root. A link or source that does not resolve is `broken-link` (error).
+    An anchor with no heading is `broken-anchor` (warning). A `repo:<repository-id>/<path>` link is resolved
+    through `prism.local.yml`: an unresolved repository is one `external-repository-unresolved` warning and its
+    links are skipped. URLs are never fetched, and an external checkout is only asked whether a path exists.
+
+    Only a broken link to a file of the wiki gates a lifecycle action, as it always has; the other findings
+    describe the page's sources and never block.
+    """
+
+    checker = _LinkChecker(root, _resolve(wiki_root), load)
     feature_by_path = {_resolve(feature.page.path): feature for feature in feature_pages}
     requirement_by_path = {_resolve(requirement.page.path): requirement for requirement in requirement_pages}
     diagnostics: list[WikiDiagnostic] = []
     for page in pages:
         if _is_non_source_page(page.path, wiki_root):
             continue
+        links = list(iter_markdown_links(page.body))
+        source_fields = _source_fields(page, wiki_root)
+        if not links and not source_fields:
+            continue
         feature_id = _page_feature_id(page, feature_by_path, requirement_by_path)
-        for raw_target in sorted(set(extract_markdown_links(page.body))):
-            candidate = _candidate_relative_link(page.path, raw_target)
-            if candidate is None:
-                continue
-            try:
-                candidate.relative_to(wiki_root)
-            except ValueError:
-                # The wiki contract covers links between wiki pages. Source
-                # references may intentionally point to intake, repository,
-                # or other files outside knowledge/wiki.
-                continue
-            try:
-                exists = candidate.is_file()
-            except (OSError, ValueError):
-                exists = False
-            if not exists:
-                diagnostics.append(
-                    _diag(
-                        "broken-wiki-link",
-                        "error",
-                        page.path,
-                        f"Relative markdown link `{raw_target}` does not resolve to an existing wiki page.",
-                        feature_id,
-                    )
-                )
+        # One finding per distinct problem, with every line it occurs on.
+        findings: dict[_LinkFinding, list[int]] = {}
+        for line, raw_target in links:
+            finding = checker.check_link(page.path, raw_target)
+            if finding is not None:
+                findings.setdefault(finding, []).append(page.body_offset + line)
+        source_text: str | None = None
+        for field_name, path_only, entries in source_fields:
+            for entry in entries:
+                finding = checker.check_source(entry, field_name, path_only)
+                if finding is None:
+                    continue
+                if source_text is None:
+                    source_text = _read_page_text(page)
+                findings.setdefault(finding, []).append(_source_line(source_text, field_name, entry))
+        for finding, lines in findings.items():
+            where = f"line {lines[0]}" if len(lines) == 1 else "lines " + ", ".join(str(number) for number in lines)
+            diagnostics.append(
+                _diag(finding.code, finding.severity, page.path, f"{finding.subject} ({where}) {finding.problem}", feature_id, gates=finding.gates)
+            )
+    diagnostics.extend(checker.unresolved_repository_diagnostics())
     return diagnostics
+
+
+class _LinkFinding(NamedTuple):
+    code: str
+    severity: str
+    subject: str
+    problem: str
+    gates: bool = False
+
+
+class _LinkChecker:
+    """Resolves one lint call's links against the workspace and, for `repo:` links, its external checkouts."""
+
+    def __init__(self, root: Path, wiki_root: Path, load: WorkspaceLoadResult) -> None:
+        self.root = root
+        self.wiki_root = wiki_root
+        self.load = load
+        manifest = load.manifest
+        model = manifest.model if manifest is not None else WorkspaceModel(schema_version=0)
+        self.declared = {repository.id for repository in model.repositories}
+        self.unresolved: set[str] = set()
+        self._anchors: dict[Path, set[str] | None] = {}
+
+    def check_link(self, page_path: Path, raw_target: str) -> _LinkFinding | None:
+        """The finding for one Markdown link target as written, or ``None`` when it is fine or not checked."""
+
+        target = raw_target.strip()
+        external = parse_external_link(unquote(target))
+        if external is not None:
+            return self._check_external(*external, subject=f"Link `{raw_target}`")
+        try:
+            parsed = urlsplit(target)
+        except ValueError:
+            return None
+        if not target or parsed.scheme or parsed.netloc or parsed.path.startswith("/"):
+            return None  # a URL, a mail link or an absolute path is not a relative link
+        subject = f"Relative link `{raw_target}`"
+        fragment = unquote(parsed.fragment)
+        if not parsed.path:
+            return self._anchor_finding(page_path, fragment, subject, "this page") if fragment else None
+        try:
+            candidate = (page_path.parent / unquote(parsed.path)).resolve()
+        except (OSError, RuntimeError, ValueError):
+            return _LinkFinding("broken-link", "error", subject, "does not resolve to an existing file or folder.")
+        try:
+            candidate.relative_to(self.root)
+        except ValueError:
+            return _LinkFinding(
+                "broken-link",
+                "error",
+                subject,
+                "leaves the workspace. Link a file of an external repository as `repo:<repository-id>/<path>`.",
+            )
+        if not _path_exists(candidate):
+            return _LinkFinding("broken-link", "error", subject, "does not resolve to an existing file or folder.", gates=self._in_wiki(candidate))
+        if fragment and candidate.suffix.lower() == ".md" and candidate.is_file():
+            return self._anchor_finding(candidate, fragment, subject, f"`{candidate.name}`")
+        return None
+
+    def check_source(self, entry: Any, field_name: str, path_only: bool) -> _LinkFinding | None:
+        """The finding for one `sources` entry, or ``None`` when it is fine, a URL or free text."""
+
+        if not isinstance(entry, str):
+            return None
+        subject = f"`{field_name}` entry `{entry}`"
+        external = parse_external_link(entry.strip())
+        if external is not None:
+            return self._check_external(*external, subject=subject)
+        parts = source_link_parts(entry, path_only=path_only)
+        if parts is None or _path_exists(self.root.joinpath(*parts)):
+            return None
+        hint = (
+            f" It is in the pending intake queue, which moves when intake applies; list `{processed_source_path(parts)}` instead."
+            if is_pending_intake_source(parts)
+            else ""
+        )
+        return _LinkFinding("broken-link", "error", subject, f"does not exist in the workspace.{hint}")
+
+    def unresolved_repository_diagnostics(self) -> list[WikiDiagnostic]:
+        """One `external-repository-unresolved` warning per repository a link points into, reusing the model's finding."""
+
+        diagnostics: list[WikiDiagnostic] = []
+        for repository in sorted(self.unresolved):
+            model_finding = next(
+                (item for item in self.load.diagnostics if item.code == "external-repository-unresolved" and f"`{repository}`" in item.message),
+                None,
+            )
+            if model_finding is not None:
+                diagnostics.append(_diag(model_finding.code, "warning", Path(model_finding.path), model_finding.message))
+                continue
+            diagnostics.append(
+                _diag(
+                    "external-repository-unresolved",
+                    "warning",
+                    self.root / "prism.local.yml",
+                    f"External repository `{repository}` has no checkout on this machine; add `repositories: {{{repository}: <absolute path>}}` to prism.local.yml. Links into it are skipped.",
+                )
+            )
+        return diagnostics
+
+    def _in_wiki(self, candidate: Path) -> bool:
+        try:
+            candidate.relative_to(self.wiki_root)
+        except ValueError:
+            return False
+        return True
+
+    def _check_external(self, repository: str, path: str, problem: str | None, *, subject: str) -> _LinkFinding | None:
+        if problem is not None:
+            return _LinkFinding("broken-link", "error", subject, f"is not a repository link: {problem}")
+        if repository == WORKSPACE_REPOSITORY_ID:
+            checkout: Path | None = self.root
+        elif repository in self.declared:
+            checkout = self.load.local_repositories.get(repository)
+            if checkout is None:
+                self.unresolved.add(repository)
+                return None
+        else:
+            known = ", ".join(f"`{item}`" for item in sorted(self.declared - {WORKSPACE_REPOSITORY_ID})) or "none"
+            return _LinkFinding(
+                "broken-link",
+                "error",
+                subject,
+                f"names repository `{repository}`, which prism.workspace.yml does not declare (external repositories: {known}).",
+            )
+        found = _exists_in_checkout(checkout, path)
+        if found is None:
+            return _LinkFinding(
+                "broken-link",
+                "error",
+                subject,
+                f"passes through a symlink or reparse point in the checkout of repository `{repository}`, which lint does not follow.",
+            )
+        if not found:
+            return _LinkFinding("broken-link", "error", subject, f"does not exist in the checkout of repository `{repository}`.")
+        return None
+
+    def _anchor_finding(self, target: Path, fragment: str, subject: str, where: str) -> _LinkFinding | None:
+        if target not in self._anchors:
+            try:
+                self._anchors[target] = {item.casefold() for item in heading_anchors(target.read_text(encoding="utf-8-sig"))}
+            except (OSError, UnicodeError):
+                self._anchors[target] = None
+        anchors = self._anchors[target]
+        if anchors is None or fragment.casefold() in anchors:
+            return None
+        return _LinkFinding("broken-anchor", "warning", subject, f"names the anchor `#{fragment}`, which no heading of {where} gives.")
+
+
+def _path_exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except (OSError, ValueError):
+        return False
+
+
+def _exists_in_checkout(checkout: Path, relative: str) -> bool | None:
+    """Whether `relative` exists below `checkout`, or ``None`` when the walk meets a symlink or reparse point.
+
+    The walk only looks at directory entries: it never reads a file and never leaves the checkout.
+    """
+
+    current = checkout
+    for part in relative.split("/"):
+        current = current / part
+        try:
+            info = current.lstat()
+        except OSError:
+            return False
+        if reparse_kind(info) != "none":
+            return None
+    return True
+
+
+def _source_fields(page: MarkdownPage, wiki_root: Path) -> list[tuple[str, bool, list[Any]]]:
+    """The source fields a page kind carries, as `(field, path_only, entries)`.
+
+    A feature's `sources` are paths. A persona, a general page and a business rule may hold free text
+    in their source fields, so only an entry that is a `knowledge/` path (or a `repo:` link) is checked.
+    """
+
+    directory = _wiki_directory(page.path, wiki_root)
+    if directory == "features":
+        field_name, path_only = "sources", True
+    elif directory == "business-rules":
+        field_name, path_only = "source", False
+    elif directory in {"personas", *GENERAL_PAGE_FOLDERS, *ROOT_PAGE_KINDS}:
+        field_name, path_only = "sources", False
+    else:
+        return []
+    value = page.frontmatter.get(field_name)
+    entries = [value] if isinstance(value, str) else list(value) if isinstance(value, list) else []
+    return [(field_name, path_only, entries)] if entries else []
+
+
+def _read_page_text(page: MarkdownPage) -> str:
+    try:
+        return page.path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
+        return ""
+
+
+def _source_line(text: str, field_name: str, entry: Any) -> int:
+    """The file line of a source entry: the line that holds it below the field name, else the field's own line."""
+
+    field_line = 0
+    for number, line in enumerate(text.splitlines(), start=1):
+        if line.startswith(f"{field_name}:"):
+            field_line = number
+        if field_line and isinstance(entry, str) and entry in line:
+            return number
+    return field_line or 1
+
+
+def _lint_freshness(
+    pages: list[MarkdownPage], wiki_root: Path, root: Path, log: tuple[Path, str], stale_after_days: int, today: date
+) -> tuple[list[WikiDiagnostic], list[WikiDiagnostic]]:
+    """Ask for review of a current-state page that nobody has verified lately: `(stale-page warnings, never-verified information)`.
+
+    A page's last verification is the latest `verify` entry of `log.md` whose `paths` include it.
+    `stale-page` means the last verification is older than `wiki-stale-after-days`; `never-verified`
+    means there is none. Records, the log, the index and generated artifacts are exempt. Freshness never
+    changes a status and never gates a lifecycle action.
+    """
+
+    verified = last_verifications(log[1])
+    resolved_wiki = _resolve(wiki_root)
+    stale: list[WikiDiagnostic] = []
+    never: list[WikiDiagnostic] = []
+    for page in pages:
+        resolved = _resolve(page.path)
+        try:
+            relative = resolved.relative_to(resolved_wiki).as_posix()
+            workspace_path = resolved.relative_to(root).as_posix()
+        except ValueError:
+            continue
+        if not is_current_state_page(relative):
+            continue
+        last = verified.get(workspace_path)
+        if last is None:
+            never.append(
+                _diag(
+                    "never-verified",
+                    "info",
+                    page.path,
+                    f"`{workspace_path}` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify {workspace_path}`.",
+                    gates=False,
+                )
+            )
+            continue
+        age = (today - last).days
+        if age > stale_after_days:
+            stale.append(
+                _diag(
+                    "stale-page",
+                    "warning",
+                    page.path,
+                    f"`{workspace_path}` was last verified {last.isoformat()}, {age} days ago; `wiki-stale-after-days` is {stale_after_days}. Check it against its sources and run `prism wiki verify {workspace_path}`.",
+                    gates=False,
+                )
+            )
+    return stale, never
 
 
 def _wiki_path_references(body: str, directory: str) -> list[str]:
@@ -1815,5 +2090,9 @@ def _lint_app_requirement(requirement: AppRequirementPage, model: WorkspaceModel
     return diagnostics
 
 
-def _diag(code: str, severity: str, path: Path, message: str, feature_id: str | None = None) -> WikiDiagnostic:
-    return WikiDiagnostic(code=code, severity=severity, path=str(path), message=message, feature_id=feature_id)
+def _diag(code: str, severity: str, path: Path, message: str, feature_id: str | None = None, *, gates: bool = True) -> WikiDiagnostic:
+    return WikiDiagnostic(code=code, severity=severity, path=str(path), message=message, feature_id=feature_id, gates=gates)
+
+
+def _diagnostic_order(diagnostic: WikiDiagnostic) -> tuple[str, str, str, str]:
+    return (diagnostic.path, diagnostic.code, diagnostic.feature_id or "", diagnostic.message)

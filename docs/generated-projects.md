@@ -162,7 +162,8 @@ the agent to run the same named operation.
 | Shared | `/wiki-show F-XXX` | `$wiki-show F-XXX` | Assemble focused feature context from linked wiki files |
 | Shared | `/wiki-blockers` | `$wiki-blockers` | Show blockers using the canonical blocker categories |
 | Shared | `/wiki-query "text"` | `$wiki-query "text"` | Retrieval-assisted search across the wiki |
-| Shared | `/wiki-owner po\|designer\|dev\|none` | `$wiki-owner po\|designer\|dev\|none` | Show pending work and stale items for one owner role |
+| Shared | `/wiki-owner po\|designer\|dev\|none` | `$wiki-owner po\|designer\|dev\|none` | Show pending work and stale pages (last verification older than `wiki-stale-after-days`) for one owner role |
+| Shared | `/verify-pages <page>...` | `$verify-pages <page>...` | Record that current-state pages were checked against their sources: one `verify` entry in `log.md`, no page edited |
 | Shared | `/wiki-app <app-id>` | `$wiki-app <app-id>` | Show the active feature queue for one app |
 
 Recommended first use:

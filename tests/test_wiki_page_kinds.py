@@ -58,6 +58,11 @@ class PageKindCase(unittest.TestCase):
         copy_template_knowledge(self.root / "knowledge")
         (self.root / "prism.workspace.yml").write_text(manifest_text("Kinds", ["backend"], slug="kinds"), encoding="utf-8")
         (self.root / "backend").mkdir()
+        # The processed source that the pages link and list in `sources`.
+        note = self.root / "knowledge" / "intake" / "processed" / "2026-10-06-client-call" / "notes.md"
+        note.parent.mkdir(parents=True)
+        note.write_text("Captured: 2026-10-06\n\nThe client call.\n", encoding="utf-8")
+        (note.parent / "MANIFEST.md").write_text("# Processed intake\n\nNo pages extracted.\n", encoding="utf-8")
         self.wiki = self.root / "knowledge" / "wiki"
 
     def write(self, relative: str, text: str) -> None:
@@ -206,7 +211,7 @@ class SharedLintTests(PageKindCase):
             with self.subTest(page=relative):
                 prefix = "" if "/" not in relative else "../"
                 self.write(relative, PAGES[relative] + f"\nSee [the rule]({prefix}business-rules/BR-404-missing.md).\n")
-                self.assertEqual(1, len(self.diagnostics("broken-wiki-link")))
+                self.assertEqual(1, len(self.diagnostics("broken-link")))
                 self.write(relative, PAGES[relative])
 
     def test_a_superseded_decision_cited_by_a_topic_is_a_warning(self) -> None:

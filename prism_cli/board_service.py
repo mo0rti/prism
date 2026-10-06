@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+import getpass
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import secrets
 import stat
@@ -37,14 +38,17 @@ from prism_cli.wiki_index import (
     GENERAL_PAGE_FOLDERS,
     GENERAL_PAGE_SECTIONS,
     GENERAL_PAGE_STATUSES,
+    PAGE_DIRECTORIES,
     ROOT_PAGE_KINDS,
     general_page_kind,
     index_line,
+    is_current_state_page,
     is_page_path,
     parse_index_entries,
     remove_index_lines,
     render_index_lines,
 )
+from prism_cli.wiki_log import VERIFY_OPERATION, append_log_entry, format_verification_entry
 from prism_cli.wiki_model import (
     api_surface_declared,
     intake_item_name_problem,
@@ -90,7 +94,11 @@ _DEV_CLARIFY_REQUIREMENT_ORDER = ("What to build", "Technical constraints", "API
 _DEV_CLARIFY_REQUIREMENT_SECTIONS = set(_DEV_CLARIFY_REQUIREMENT_ORDER)
 _QUESTION_SKILLS = {"po-clarify": "po", "design-clarify": "designer", "dev-clarify": "dev", "ask": None}
 _INTAKE_SKILLS = {"po-intake", "design-intake", "ingest"}
-_WRITE_SKILLS = frozenset((*_LIFECYCLE_SKILLS, *_QUESTION_SKILLS, *_INTAKE_SKILLS))
+# `verify-pages` records a verification of current-state pages as one `verify` entry in log.md and changes no page.
+VERIFY_SKILL = "verify-pages"
+_WRITE_SKILLS = frozenset((*_LIFECYCLE_SKILLS, *_QUESTION_SKILLS, *_INTAKE_SKILLS, VERIFY_SKILL))
+# The log operation a skill's entry carries. Every other skill's entry is `board-<skill>`; freshness reads `verify` by that exact name.
+_LOG_OPERATION_BY_SKILL = {VERIFY_SKILL: VERIFY_OPERATION}
 _WIKI_DIRS = (
     "features",
     "personas",
@@ -107,6 +115,9 @@ _WIKI_DIRS = (
 _INDEX_PATH = "knowledge/wiki/index.md"
 _STATUS_BOARD_PATH = "knowledge/wiki/status-board.md"
 _LOG_PATH = "knowledge/wiki/log.md"
+_WIKI_PREFIX = "knowledge/wiki/"
+# A direct append is retried this many times when the log changes between the read and the swap.
+_LOG_APPEND_ATTEMPTS = 3
 _MANAGED_PATHS = frozenset({_INDEX_PATH, _STATUS_BOARD_PATH, _LOG_PATH})
 # The write roles whose merge is by key: a feature row of the status board, a page line of the index.
 _ROW_ROLES = frozenset({"index", "status-board"})
@@ -1330,6 +1341,13 @@ class BoardService:
                 "a proposal that writes into an existing one is rejected with `processed_source_immutable`. A quarantine writes only a valid CONFLICT.md "
                 "with `status: open` and leaves every wiki page unchanged."
             )
+        if name == VERIFY_SKILL:
+            limitations.append(
+                "Records a verification of current-state wiki pages as one `verify` entry in knowledge/wiki/log.md and changes no page. "
+                "Send an empty `changes` list and no `moves`, and name each verified page in `read_revisions` with the digest `read_workspace` returned for it; "
+                "this is the one skill that needs `read_revisions`. A record, the index, the log, the status board and generated files cannot be verified. "
+                "Applying is refused as stale when a verified page changed after the preview."
+            )
         if name == "po-intake":
             limitations.append(
                 "New features are created as `raw` + `po`. po-specify then completes the page and moves it to `specified`."
@@ -1840,6 +1858,174 @@ class BoardService:
             raise BoardError("invalid_text", f"`{field_name}` must be nonblank UTF-8 text of at most {max_length} characters.", 400)
         return value.strip()
 
+    # -- Verification: a `verify` entry in log.md, never an edit of a page -----------------------------
+
+    def record_verification(
+        self,
+        pages: Iterable[str],
+        *,
+        evidence: str | None = None,
+        by: str | None = None,
+        today: date | None = None,
+    ) -> dict[str, Any]:
+        """Append one `verify` entry for `pages` to log.md, the way a board operation appends its history.
+
+        This is the direct, human-run path of `prism wiki verify`. It never edits a page, an index line or a status
+        row. The entry is appended with the board's guards: no symlink or reparse point on the path, a fresh file
+        written beside the log and swapped in only while the log still holds the text that was read. A log that
+        changed in between is read again, so a concurrent entry is never lost.
+        """
+
+        paths = self._verification_pages(pages)
+        clean_evidence = self._clean_text(evidence, "evidence", max_length=500) if evidence is not None else None
+        clean_by = self._clean_text(by, "by", max_length=120) if by is not None else _local_user()
+        entry = format_verification_entry(day=today or date.today(), pages=paths, evidence=clean_evidence, by=clean_by)
+        with self._lock:
+            for attempt in range(_LOG_APPEND_ATTEMPTS):
+                log_path = self._safe_path(_LOG_PATH, allow_missing=True)
+                current = self._optional_text(log_path)
+                if current is None:
+                    raise BoardError("log_missing", "knowledge/wiki/log.md is missing; restore it from the template before recording a verification.", 409)
+                try:
+                    self._atomic_replace(log_path, append_log_entry(current, entry), expected=current)
+                except BoardError as exc:
+                    if exc.code == "write_changed" and attempt + 1 < _LOG_APPEND_ATTEMPTS:
+                        continue
+                    raise
+                break
+        return {"schema_version": 1, "log": _LOG_PATH, "paths": paths, "entry": entry}
+
+    def _verification_pages(self, pages: Iterable[str]) -> list[str]:
+        """Check the pages a verification names and return them as workspace paths, in order and without repeats.
+
+        A page is a current-state wiki page that exists: a feature, persona, business rule, design page, app
+        requirement, API contract, topic, research page, plan, `direction.md` or `roadmap.md`. It is named from the
+        workspace root (`knowledge/wiki/topics/pricing.md`) or from the wiki (`topics/pricing.md`).
+        """
+
+        requested = list(pages)
+        if not requested:
+            raise BoardError("verify_pages_required", "Name at least one wiki page to verify.", 400)
+        verified: list[str] = []
+        for raw in requested:
+            relative = self._verification_page_path(raw)
+            path = self._safe_path(relative, allow_missing=True)
+            if not path.is_file():
+                raise BoardError("verify_page_unknown", f"`{_clip(relative, 160)}` is not a page of this wiki.", 404, {"path": _clip(relative, 160)})
+            if not is_current_state_page(relative[len(_WIKI_PREFIX):]):
+                raise BoardError(
+                    "verify_page_not_current_state",
+                    f"`{_clip(relative, 160)}` is not a current-state page. A verification covers features, personas, business rules, design pages, "
+                    "app requirements, API contracts, topics, research pages, plans, direction.md and roadmap.md; a record, the index, the log, "
+                    "the status board and generated files are exempt from freshness.",
+                    409,
+                    {"path": _clip(relative, 160)},
+                )
+            if relative not in verified:
+                verified.append(relative)
+        return verified
+
+    def _verification_page_path(self, raw: Any) -> str:
+        """A page named by the user as a workspace path: from the workspace root or from the wiki; anything else is outside the wiki."""
+
+        if not isinstance(raw, str) or not raw.strip():
+            raise BoardError("invalid_path", "A page to verify must be a nonblank path.", 400)
+        text = raw.strip().replace("\\", "/")
+        if PurePosixPath(text).is_absolute() or PureWindowsPath(text).is_absolute():
+            try:
+                text = Path(text).resolve().relative_to(self.root).as_posix()
+            except (OSError, ValueError, RuntimeError):
+                raise BoardError("verify_path_outside_wiki", f"`{_clip(raw, 160)}` is outside this workspace; only pages of knowledge/wiki can be verified.", 403) from None
+        while text.startswith("./"):
+            text = text[2:]
+        parts = PurePosixPath(text).parts
+        in_wiki = text.startswith(_WIKI_PREFIX) or (bool(parts) and (len(parts) == 1 or parts[0] in PAGE_DIRECTORIES))
+        if ".." in parts or not in_wiki:
+            raise BoardError("verify_path_outside_wiki", f"`{_clip(raw, 160)}` is outside knowledge/wiki; only pages of the wiki can be verified.", 403)
+        return self._relative_path(text if text.startswith(_WIKI_PREFIX) else _WIKI_PREFIX + text)
+
+    def _preview_verification(
+        self,
+        actor: Actor,
+        changes: list[dict[str, Any]],
+        moves: list[dict[str, Any]],
+        read_revisions: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """The preview of a `verify-pages` proposal: one `verify` entry in log.md and no change to any page.
+
+        The verified pages are the keys of `read_revisions`, each with the digest `read_workspace` returned for the
+        page the participant read. Applying is refused as stale when a page changed after the preview, so a
+        verification always covers the text that was read.
+        """
+
+        if changes or moves:
+            raise BoardError(
+                "verify_writes_nothing",
+                "`verify-pages` records a verification and changes no page: send an empty `changes` list and no `moves`, and name each verified page in `read_revisions`.",
+                400,
+            )
+        if not read_revisions:
+            raise BoardError(
+                "verify_pages_required",
+                "Name each verified page in `read_revisions`, with the digest `read_workspace` returned for the page you read.",
+                400,
+            )
+        digests: dict[str, str] = {}
+        for raw_path, expected in read_revisions.items():
+            relative = self._verification_page_path(raw_path)
+            if relative in digests:
+                raise BoardError("duplicate_read_revision", f"Page `{relative}` is named more than once.", 400)
+            if not isinstance(expected, str):
+                raise BoardError("invalid_read_revision", f"The digest for `{relative}` must be the digest `read_workspace` returned.", 400)
+            digests[relative] = expected
+        pages = self._verification_pages(digests)
+        self._assert_verified_digests(digests)
+
+        preview_id = str(uuid4())
+        log_before = self._optional_text(self._safe_path(_LOG_PATH, allow_missing=True))
+        if log_before is None:
+            raise BoardError("log_missing", "knowledge/wiki/log.md is missing; restore it from the template before recording a verification.", 409)
+        subject = ", ".join(PurePosixPath(page).name for page in pages)
+        log_entry = _actor_log_entry(actor, VERIFY_SKILL, subject, preview_id, pages)
+        log_after = _append_once(log_before, f"<!-- prism:board-history:v1 preview={preview_id} -->", log_entry)
+        writes = [self._write_record(_LOG_PATH, log_before, log_after, role="log", merge={"kind": "log", "marker": f"preview={preview_id}", "entry": log_entry})]
+        source_map = self._fingerprint_paths(pages)
+        payload = {
+            "preview_id": preview_id,
+            "kind": "skill",
+            "skill": VERIFY_SKILL,
+            "action": None,
+            "feature_id": None,
+            "participant_id": actor.participant_id,
+            "source_revision": _revision(source_map),
+            "source_map": source_map,
+            "classification": "ready",
+            "applicable": True,
+            "checks": [
+                {
+                    "code": "verify-pages",
+                    "status": "pass",
+                    "message": f"{len(pages)} current-state wiki page(s) exist and match the digest read. The entry records a verification in log.md and changes no page.",
+                }
+            ],
+            "blockers": [],
+            "source": None,
+            "target": None,
+            "writes": writes,
+            "moves": [],
+            "created_at": _now(),
+            "proposed_changes": [],
+            "read_revisions": digests,
+        }
+        self._save_preview(payload)
+        return self._preview_envelope(payload)
+
+    def _assert_verified_digests(self, digests: Mapping[str, str]) -> None:
+        for relative, expected in digests.items():
+            actual = _sha256(self._safe_path(relative).read_bytes())
+            if expected != actual:
+                raise self._read_revision_error(relative, expected, actual)
+
     def _preview_skill_proposal(
         self,
         actor: Actor,
@@ -1879,6 +2065,8 @@ class BoardService:
             )
         if not isinstance(read_revisions, Mapping):
             raise BoardError("invalid_read_revisions", "Read revisions must be a path-to-digest mapping.", 400)
+        if skill == VERIFY_SKILL:
+            return self._preview_verification(actor, changes, moves, read_revisions)
         supplied: dict[str, str] = {}
         for index, item in enumerate(changes):
             if not isinstance(item, Mapping) or set(item) - {"path", "content"} or not isinstance(item.get("path"), str) or not isinstance(item.get("content"), str):
@@ -3974,6 +4162,16 @@ class BoardService:
             if current.get("classification") != "ready" or not current.get("supported"):
                 raise BoardError("checks_changed", "Current workflow checks no longer permit this action. Refresh the preview; calendar freshness is re-evaluated at apply time.", 409)
             return
+        if payload.get("skill") == VERIFY_SKILL:
+            digests = dict(payload.get("read_revisions", {}))
+            self._verification_pages(digests)
+            try:
+                self._assert_verified_digests(digests)
+            except BoardError as exc:
+                if exc.code not in {"stale_read_revision", "read_digest_mismatch"}:
+                    raise
+                raise BoardError("stale_preview", "A verified page changed after the preview; read it again and preview again.", 409, exc.details) from None
+            return
         supplied = {item["path"]: item["content"] for item in payload.get("proposed_changes", [])}
         before = {path: self._optional_text(self._safe_path(path, allow_missing=True)) for path in supplied}
         for path in before:
@@ -4914,6 +5112,7 @@ def _actor_log_entry(
 
     clean_subject = re.sub(r"[\r\n]+", " ", subject).strip()[:180] or "workflow"
     safe_action = re.sub(r"[^a-z0-9-]", "-", action.lower())[:64]
+    operation = _LOG_OPERATION_BY_SKILL.get(action) or f"board-{safe_action}"
     changed = ", ".join(dict.fromkeys(path for path in paths if path != "knowledge/wiki/log.md")) or "none"
     evidence_links = ", ".join([f"board preview {preview_id}", *evidence])
     by = re.sub(r"\s+", " ", f"{actor.name} ({actor.kind})").strip()[:120]
@@ -4925,12 +5124,21 @@ def _actor_log_entry(
         "action": action,
     }
     return (
-        f"## {date.today().isoformat()} board-{safe_action} | {clean_subject}\n"
+        f"## {date.today().isoformat()} {operation} | {clean_subject}\n"
         f"- paths: {changed}\n"
         f"- evidence: {evidence_links}\n"
         f"- by: {by}\n"
         f"<!-- prism:board-actor:v1 {_json(actor_payload)} -->"
     )
+
+
+def _local_user() -> str:
+    """The operating-system user, the default actor of a direct verification."""
+
+    try:
+        return getpass.getuser().strip() or "unknown"
+    except (KeyError, OSError, ImportError):
+        return "unknown"
 
 
 def _append_once(existing: str, marker: str, entry: str) -> str:

@@ -40,6 +40,9 @@ DEMO_TODAY = date.today()
 
 WIKI_TEMPLATE_ROOT = REPO_ROOT / "template" / "knowledge" / "wiki"
 INTAKE_TEMPLATE_ROOT = REPO_ROOT / "template" / "knowledge" / "intake"
+# The processed intake item that the seeded features list in `sources`; the features' `sources` entries are workspace paths.
+PROCESSED_ITEM = "2026-09-20-payout-workflow-brief"
+PROCESSED_BRIEF = f"knowledge/intake/processed/{PROCESSED_ITEM}"
 
 FEATURES: tuple[dict[str, Any], ...] = (
     {
@@ -163,14 +166,6 @@ The source of truth is `knowledge/wiki`; this folder does not contain an applica
 """,
     )
     _write_text(
-        destination / "CONTEXT.md",
-        f"""# Context
-
-{PRODUCT_NAME} is a synthetic finance operations story covering payout requests, manager approval,
-and finance-admin settlement/history review. This local fixture is documentation only.
-""",
-    )
-    _write_text(
         destination / "AGENTS.md",
         """# Local demo guidance
 
@@ -238,7 +233,7 @@ def _write_workspace_contract(destination: Path, today: date) -> None:
     }
     manifest["expected_surfaces"] = {
         "ai": ["AGENTS.md", "CLAUDE.md", ".agents/skills", ".claude/commands", ".cursor/rules"],
-        "docs": ["README.md", "CONTEXT.md", "docs/"],
+        "docs": ["README.md", "docs/"],
         "workflows": [
             ".github/workflows/backend.yml",
             ".github/workflows/mobile-android.yml",
@@ -320,6 +315,22 @@ Synthetic fixture generation for dashboard capture, not observed project history
     )
 
 
+def _write_processed_item(destination: Path) -> None:
+    item_root = destination / "knowledge" / "intake" / "processed" / PROCESSED_ITEM
+    _write_text(
+        item_root / "brief.md",
+        """# Synthetic payout workflow brief
+
+Operators request payouts, managers approve or reject them, and finance admins settle them and review
+the history. This note is synthetic source material for dashboard QA; it records no real interview.
+""",
+    )
+    pages = "\n".join(
+        f"- knowledge/wiki/features/{feature['id']}-{feature['slug']}.md ({feature['id']})" for feature in FEATURES
+    )
+    _write_text(item_root / "MANIFEST.md", f"# Processed intake\n\n{pages}")
+
+
 def _write_intake_item(destination: Path, name: str, *, quarantined: bool) -> None:
     queue = "quarantined" if quarantined else "pending"
     item_root = destination / "knowledge" / "intake" / queue / name
@@ -365,7 +376,7 @@ def _feature_frontmatter(feature: dict[str, Any], today: date) -> dict[str, Any]
         "status": feature["status"],
         "owner": feature["owner"],
         "apps": list(PLATFORMS),
-        "sources": ["synthetic-local-demo"],
+        "sources": [PROCESSED_BRIEF],
         "advisory-review": feature["advisory"],
     }
 
@@ -641,9 +652,14 @@ def _build_stage(destination: Path, stage: str, today: date) -> None:
         _write_intake_item(destination, "2026-09-29-payout-approval-brief", quarantined=False)
     if stage == "populated":
         _write_intake_item(destination, "2026-09-30-future-refund-brief", quarantined=False)
+        _write_processed_item(destination)
         _write_feature_pages(destination, today)
         _write_linked_context(destination, today)
         _write_populated_index(destination, today)
+    else:
+        # The template ships `index.md` as a Jinja file, so the copied wiki has none; build it as the board does.
+        wiki_root = destination / "knowledge" / "wiki"
+        _write_text(wiki_root / "index.md", build_index(wiki_root))
 
 
 def _reserve_destination(destination: Path) -> Path:

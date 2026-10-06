@@ -216,7 +216,8 @@ mirror much of the Claude command surface for Codex:
 | `feature-status` | Shows the full feature pipeline and may refresh only `WIKI_REPORT.md`; it does not change lifecycle state |
 | `lint-wiki` | Checks the wiki for structure or consistency problems |
 | `wiki-blockers` | Surfaces unresolved blockers from the wiki |
-| `wiki-owner` | Read-only owner dashboard showing open questions, waiting work, and stale items for `po`, `designer`, `dev`, or `none` |
+| `wiki-owner` | Read-only owner dashboard showing open questions, waiting work, and stale pages (last verification older than `wiki-stale-after-days`) for `po`, `designer`, `dev`, or `none` |
+| `verify-pages` | Records that current-state pages were checked against their sources: one `verify` entry in `log.md`; it never edits a page |
 | `wiki-app` | Focuses a feature view by app |
 | `wiki-query` | Searches and summarizes wiki content |
 | `wiki-show` | Opens a specific feature or wiki record |

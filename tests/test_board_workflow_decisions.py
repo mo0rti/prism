@@ -16,7 +16,7 @@ from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_transitions import build_transition_preflight
 from prism_cli.workflow_install import apply_install, plan_install
-from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, create_core_workflow_fixture
+from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, create_core_workflow_fixture, write_processed_brief
 from tests.test_board_service import (
     _journey_business_rule_page,
     _journey_feature_page,
@@ -27,7 +27,6 @@ from tests.test_board_service import (
     _replace_body_section_text,
     _set_feature_stage,
     _set_requirement_status,
-    _unquote_yaml_date_fields,
     _write_index_rows,
 )
 from tests.test_core_workflow_fixture import CHECK_DATE
@@ -104,9 +103,7 @@ class RawIntakeTests(_BoardWorkspace):
         self.start()
 
     def feature_page(self, status: str, owner: str = "po", *, blank_trailing: bool = False) -> str:
-        page = _unquote_yaml_date_fields(
-            _journey_feature_page("F-001", "Document review", status, owner, [self.PROCESSED + "/brief.md"], [PO_QUESTION])
-        )
+        page = _journey_feature_page("F-001", "Document review", status, owner, [self.PROCESSED + "/brief.md"], [PO_QUESTION])
         if blank_trailing:
             for heading in ("Design", "Related features", "Board review summary", "Post-ship notes"):
                 page = _replace_body_section(self.service, page, heading, "")
@@ -119,7 +116,7 @@ class RawIntakeTests(_BoardWorkspace):
         )
         return [
             {"path": FEATURE, "content": self.feature_page(status, blank_trailing=blank_trailing)},
-            {"path": self.PERSONA, "content": _unquote_yaml_date_fields(_journey_persona_page())},
+            {"path": self.PERSONA, "content": _journey_persona_page()},
             {"path": self.RULE, "content": _journey_business_rule_page()},
             {"path": self.MANIFEST, "content": manifest},
         ]
@@ -264,9 +261,8 @@ class DevClarifyTests(_BoardWorkspace):
 
     def set_stage(self, status: str, owner: str, questions: list[str] | None = None, requirement: bool = True) -> None:
         questions = questions or [PO_QUESTION.replace("| po | open |", "| po | resolved: Key points and follow-up. |"), DEV_QUESTION, DESIGNER_QUESTION]
-        page = _unquote_yaml_date_fields(
-            _journey_feature_page("F-001", "Document review", status, owner, ["knowledge/intake/processed/2026-10-06-document-review-brief"], questions)
-        )
+        page = _journey_feature_page("F-001", "Document review", status, owner, ["knowledge/intake/processed/2026-10-06-document-review-brief"], questions)
+        write_processed_brief(self.root)
         self.write(FEATURE, page)
         if requirement:
             self.write(REQUIREMENT, _journey_requirement_page("in-progress"))
@@ -468,9 +464,8 @@ class _DevDoneWorkspace(_BoardWorkspace):
 
     def setUp(self) -> None:
         super().setUp()
-        page = _unquote_yaml_date_fields(
-            _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [PO_QUESTION.replace("| po | open |", "| po | resolved: Key points. |")])
-        )
+        page = _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [PO_QUESTION.replace("| po | open |", "| po | resolved: Key points. |")])
+        write_processed_brief(self.root)
         self.write(FEATURE, page)
         self.write(REQUIREMENT, _journey_requirement_page("in-progress"))
         _write_index_rows(self.root, [("F-001", "Document review", "in-dev", "dev")])
@@ -625,9 +620,8 @@ class HandoffApiContractTests(_BoardWorkspace):
             PO_QUESTION.replace("| po | open |", "| po | resolved: Key points. |"),
             DEV_QUESTION.replace("| dev | open |", "| dev | resolved: At most 200 comments. |"),
         ]
-        page = _unquote_yaml_date_fields(
-            _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/2026-10-06-document-review-brief"], questions)
-        )
+        page = _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/2026-10-06-document-review-brief"], questions)
+        write_processed_brief(self.root)
         self.write(FEATURE, _replace_body_section(None, page, "API surface", surface))
         _write_index_rows(self.root, [("F-001", "Document review", "in-design", "designer")])
 

@@ -9,7 +9,7 @@ from typing import Any
 
 from prism_cli.app_model import WorkspaceModel
 from prism_cli.status import detect_setup_state, list_queue_items
-from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, lint_wiki
+from prism_cli.wiki_lint import FRESHNESS_CODES, WIKI_BLOCKER_CODES, lint_wiki
 from prism_cli.wiki_index import general_page_kind
 from prism_cli.wiki_links import NON_PAGE_FILENAMES, markdown_files, page_references_feature
 from prism_cli.wiki_model import (
@@ -145,11 +145,11 @@ def build_graph(root: Path) -> dict[str, Any]:
     }
     edges = [edge for edge in edges if edge.source in nodes and edge.target in nodes]
 
-    # Blocker diagnostics describe workflow state, not page integrity — they
-    # surface as blocker badges, never as node health.
+    # Blocker diagnostics describe workflow state and freshness diagnostics ask
+    # for a review; neither is page integrity, so neither is node health.
     health_by_path: dict[str, str] = {}
     for diagnostic in lint_result.diagnostics:
-        if diagnostic.code in WIKI_BLOCKER_CODES:
+        if diagnostic.code in WIKI_BLOCKER_CODES or diagnostic.code in FRESHNESS_CODES:
             continue
         current = health_by_path.get(diagnostic.path)
         if diagnostic.severity == "error" or current == "error":

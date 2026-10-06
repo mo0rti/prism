@@ -130,7 +130,7 @@ docs/          -> Human-readable reference documentation
 - `wiki-show F-XXX` - focused context bundle for one feature
 - `wiki-blockers` - blockers view using the canonical blocker categories
 - `wiki-query "text"` - retrieval-assisted wiki search across features, rules, design, and requirements
-- `wiki-owner po|designer|dev|none` - role dashboard for open questions, waiting work, and stale items
+- `wiki-owner po|designer|dev|none` - role dashboard for open questions, waiting work, and stale pages (last verification older than `wiki-stale-after-days`)
 - `wiki-app <app-id>` - app queue for active features, requirement state, and blockers
 
 Read `knowledge/wiki/WIKI_REPORT.md` first when present. If it is absent, run
@@ -176,15 +176,17 @@ find pages), `status-board.md`, feature pages, app requirements, and only the re
 design, API, advisory, business-rule, persona, and decision pages. Keep malformed pages
 visible and compute only categories proved by files; the canonical blocker categories are
 `pending-board-review`, `missing-design`, `missing-app-requirements`,
-`unresolved-open-questions`, `api-contract-not-ready`, and `cross-app-dependency`. Read
-`SETTINGS.md` for staleness and use `wiki-stale-after-days: 14` when absent or invalid. All
-reads are read-only.
+`unresolved-open-questions`, `api-contract-not-ready`, and `cross-app-dependency`. Pages carry
+no date, so freshness comes from `log.md`: a current-state page's last verification is the latest
+`verify` entry that lists it, and it is stale when older than `wiki-stale-after-days` in
+`SETTINGS.md` (14 when absent or invalid). All reads are read-only.
 
 ### Lifecycle / write
 
 - `setup-project` - interactive project initialization (run once after scaffolding)
 - `po-intake [folder]` - process raw PO notes into feature specs
 - `ingest [folder]` - process raw notes into topics, research, plans, direction, roadmap, personas, business rules, decisions or features (any role)
+- `verify-pages <page>...` - record that current-state pages were checked against their sources (one `verify` entry in `log.md`; it never edits a page)
 - `po-clarify` - answer open questions assigned to PO
 - `po-specify [F-XXX]` - author one raw page as a structured `specified` draft
 - `po-handoff [F-XXX]` - prepare the confirmed `specified` + `po` to `ready-for-design` + `designer` handoff

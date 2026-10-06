@@ -23,6 +23,7 @@ from prism_cli.workflow_install import apply_install, plan_install
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 from tests.wiki_files import write_index, write_status_board
 from tests import real_temp  # noqa: F401
+from tests.core_workflow_fixture import write_processed_brief
 
 
 class _BoardError(Exception):
@@ -379,6 +380,7 @@ class BoardServerTests(unittest.TestCase):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
             self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
+            write_processed_brief(root)
             ids = [f"F-{number:03d}" for number in range(1, 15)]
             for feature_id in ids:
                 page = _feature_page().replace("F-001", feature_id).replace("Document review", f"Document review {feature_id}")

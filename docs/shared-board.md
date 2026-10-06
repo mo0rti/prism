@@ -186,11 +186,15 @@ Claude instruction folders are not required. Copying dispatches no agent and
 writes no lifecycle state. A stale or unavailable connection disables copying;
 static and legacy boards retain their existing tool-specific copy behavior.
 
-Skill discovery exposes 25 complete canonical skills. Connected writes are
+Skill discovery exposes 26 complete canonical skills. Connected writes are
 available for `po-intake`, `design-intake`, `ingest`, `ask`, `po-clarify`, `design-clarify`,
 `dev-clarify`, `po-specify`, `po-handoff`, `design-start`, `design-handoff`,
-`dev-start`, `dev-done`, and `feature-reopen`. The three reopen routes are actions
-of the last skill. Other skills provide guidance or read operations: always
+`dev-start`, `dev-done`, `feature-reopen` and `verify-pages`. The three reopen routes are actions
+of `feature-reopen`. `verify-pages` records that current-state pages were checked against their
+sources and changes no page: its `preview_skill` call has an empty `changes` list and names each
+verified page in `read_revisions` with the digest `read_workspace` returned for it, and the preview
+writes one `verify` entry to `log.md` (`prism wiki verify` is the direct path). Applying it is refused
+as stale when a verified page changed after the preview. Other skills provide guidance or read operations: always
 inspect `write_supported` and `limitations`. An unavailable connected write stops
 that attempt. When the board rejects a proposal, the agent may correct exactly what
 the error names and preview again, at most 2 more times, without widening the

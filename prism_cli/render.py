@@ -80,15 +80,20 @@ def render_wiki_lint_result(result: WikiLintResult, *, readiness: bool = False) 
         f"Features: {result.feature_count}",
         f"Errors: {result.error_count}",
         f"Warnings: {result.warning_count}",
+        *([f"Information: {len(result.information)}"] if result.information else []),
     ]
     print(panel("Wiki lint", summary))
     print()
+    findings = result.all_diagnostics
     if result.is_clean:
         print(success("Wiki contract checks passed."))
-        return
-
-    print(section("Diagnostics"))
-    for diagnostic in result.diagnostics:
+        if not findings:
+            return
+        print()
+        print(section("Findings"))
+    else:
+        print(section("Diagnostics"))
+    for diagnostic in findings:
         formatter = error if diagnostic.severity == "error" else info if diagnostic.severity == "info" else warn
         location = diagnostic.path
         if diagnostic.feature_id:

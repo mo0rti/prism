@@ -34,6 +34,7 @@ $CurrentClaudeCommands = @(
     "po-specify",
     "prep-sprint",
     "setup-project",
+    "verify-pages",
     "wiki-blockers",
     "wiki-owner",
     "wiki-app",
@@ -64,6 +65,7 @@ $CurrentWorkflowSkills = @(
     "po-specify",
     "prep-sprint",
     "setup-project",
+    "verify-pages",
     "wiki-blockers",
     "wiki-owner",
     "wiki-app",
@@ -89,7 +91,8 @@ $ExplicitOnlyWorkflowSkills = @(
     "po-handoff",
     "po-intake",
     "po-specify",
-    "setup-project"
+    "setup-project",
+    "verify-pages"
 )
 
 $PermissiveWorkflowSkills = @(

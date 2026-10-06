@@ -428,6 +428,41 @@ paragraph:
 
 ---
 
+## Links and sources
+
+Every relative Markdown link in a page and every `sources` entry must resolve, so that
+whoever follows one never lands on nothing. `prism wiki lint` checks the form and never
+whether the target supports the claim; it fetches no URL.
+
+- **Relative links.** A relative link resolves, from the page it is written in, to an
+  existing file or folder of the workspace. Links in code blocks and in inline code are
+  examples and are not checked. A link that does not resolve, or that leaves the
+  workspace, is `broken-link` (error); the finding names the page, the link and the line.
+- **Anchors.** A `#heading` anchor is checked against the headings of the page it points
+  to, named as GitHub names them (lowercase words joined by hyphens). An anchor that no
+  heading gives is `broken-anchor` (warning).
+- **`sources`.** Each entry of a feature's `sources` is a workspace path and must exist.
+  A persona, topic, research page, plan, `direction.md` or `roadmap.md` lists `sources`
+  and a business rule lists one `source`; these may be URLs or free text, so only an entry
+  that is a `knowledge/` path is checked. An entry that does not exist is `broken-link`; a
+  path in the pending intake queue names the processed path to list instead.
+- **External repositories.** A file or folder in an app's external repository is linked as
+  `repo:<repository-id>/<path>`, in a body link or in a `sources` entry:
+
+  ```markdown
+  - **Observed:** The partner app signs in on one screen ([Login](repo:mobile-apps/apps/partner/Login.kt)).
+  ```
+
+  `<repository-id>` is a repository of `prism.workspace.yml`; `workspace` means this
+  repository. Lint finds the checkout in the untracked `prism.local.yml`. Without an entry
+  for the repository it reports one `external-repository-unresolved` (warning) for the
+  repository, however many links point into it, and skips those links. With a checkout, a
+  path that does not exist there is `broken-link`. Lint only asks whether the path exists:
+  it never reads a file in a checkout, never follows a symlink inside one and never writes
+  there.
+
+---
+
 ## Records and decision supersession
 
 ADRs in `wiki/decisions/` and advisory reviews in `wiki/advisory/` are records. A record
@@ -648,8 +683,8 @@ operation appends one entry in this format:
 - by: <actor>
 ```
 
-- `<operation>` is a lowercase name with hyphens, such as `po-intake`, `po-handoff`
-  or `setup-project`.
+- `<operation>` is a lowercase name with hyphens, such as `po-intake`, `po-handoff`,
+  `setup-project` or `verify` (see "Freshness").
 - `<subject>` is what the operation concerned, such as a feature ID or an intake folder.
 - `paths` lists every path the operation changed, relative to the repository root and
   comma-separated, without `log.md` itself.
@@ -663,6 +698,40 @@ Never edit existing entries. Most recent entry at the bottom. `prism wiki lint` 
 an entry that is not in this format as the warning `malformed-log-entry` and never
 rewrites it. Lint ignores HTML comment lines, which the board service uses as markers
 inside the entries it writes.
+
+---
+
+## Freshness
+
+Pages carry no date, so freshness comes from `log.md`. A **verification** is a log entry
+whose operation is `verify`; the pages on its `paths` line were checked against their
+sources on the entry's date:
+
+```text
+## 2026-10-06 verify | pricing.md, roadmap.md
+- paths: knowledge/wiki/topics/pricing.md, knowledge/wiki/roadmap.md
+- evidence: https://example.com/pricing
+- by: Riley
+```
+
+- **Verifying is a review, not an edit.** It never changes a page. A page that is no
+  longer true is corrected by its own operation first (see "Ingest" and the page kind's
+  skill), and verified after.
+- **Recording.** `prism wiki verify <page>... [--evidence <link>] [--by <name>]` appends
+  the entry and refuses a path outside the wiki and a page that does not exist. Through
+  the connected board, the `verify-pages` skill records it: the agent names the pages it
+  read, and a human confirms the preview.
+- **Which pages.** Current-state pages: features, personas, business rules, design pages,
+  app requirements, API contracts, topics, research pages, plans, `direction.md` and
+  `roadmap.md`. Records (ADRs, advisory reviews), `log.md`, `index.md`, `status-board.md`,
+  the schema files and generated files are exempt.
+- **Lint.** A page's last verification is the latest `verify` entry that lists it.
+  `prism wiki lint` reports `stale-page` (warning) when it is older than
+  `wiki-stale-after-days` in `SETTINGS.md` (14 when absent or invalid), and
+  `never-verified` (information) when there is none. The two are separate: a page that
+  was verified and has gone overdue is not a page that nobody has ever checked.
+- **Only a request for review.** Freshness never changes a status, and never blocks a
+  lifecycle action or a board write.
 
 ---
 
@@ -687,8 +756,8 @@ Project-level settings for wiki read/query behavior.
 
 Rules:
 
-- `SCHEMA.md` defines the meaning of the setting, but the project-specific value lives in
-  `SETTINGS.md`
+- `SCHEMA.md` defines the meaning of the setting (the days a verification stays fresh; see
+  "Freshness"), but the project-specific value lives in `SETTINGS.md`
 - if `SETTINGS.md` is absent, commands fall back to `wiki-stale-after-days: 14`
 - if the key is absent, commands fall back to `wiki-stale-after-days: 14`
 - if the value is malformed or non-numeric, commands should:
@@ -778,7 +847,8 @@ Follow these rules in every wiki operation:
 6. **Only create app-requirements pages** for apps listed in the feature's `apps`
    frontmatter. Do not create pages for any other app.
 
-7. **Use relative markdown links** between wiki pages.
+7. **Use relative markdown links** between wiki pages, and make every link and every
+   `sources` entry resolve (see "Links and sources").
 
 8. **Before running `/board-review`**, always read [`advisory/BOARD.md`](advisory/BOARD.md) in full.
 

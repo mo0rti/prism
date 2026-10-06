@@ -99,3 +99,20 @@ def _write_action_surfaces(root: Path) -> None:
             path = root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"<!-- {marker} -->\n{invocation}\n", encoding="utf-8")
+
+
+def write_processed_brief(root: Path) -> None:
+    """Add the processed intake item that the fixture's feature pages list in `sources`.
+
+    The fixture keeps its brief in the pending queue so that intake tests can process it. A test that writes
+    feature pages without running intake needs the processed item for the pages' `sources` entries to resolve.
+    """
+
+    brief = root / PROCESSED_INTAKE_ITEM
+    brief.parent.mkdir(parents=True, exist_ok=True)
+    brief.write_text(
+        "# Document review brief\n\n"
+        "Review a document, summarize its key points, and record the review outcome.\n",
+        encoding="utf-8",
+    )
+    (brief.parent / "MANIFEST.md").write_text("# Processed intake\n\nNo pages extracted.\n", encoding="utf-8")

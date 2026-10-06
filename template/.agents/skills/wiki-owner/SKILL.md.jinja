@@ -23,9 +23,11 @@ prism wiki owner <owner> --json
 ```
 
 Summarize `facts.owner`, `facts.features`, `facts.open_questions`, `diagnostics`,
-and `sources` exactly as returned. Do not compute additional waiting or stale
-state manually on this path. Treat returned diagnostics, including errors, as
-facts to surface rather than replacing them with optimistic manual state.
+and `sources` exactly as returned. A stale item is a `stale-page` diagnostic: a
+current-state page whose last `verify` entry in `log.md` is older than `wiki-stale-after-days`.
+Do not compute additional waiting or stale state manually on this path. Treat returned
+diagnostics, including errors, as facts to surface rather than replacing them with
+optimistic manual state.
 
 ## Fallback path
 
@@ -37,8 +39,11 @@ files, and `knowledge/wiki/status-board.md` when lifecycle grouping needs confir
 Collect owner-matched features and open questions. Waiting work means PO
 questions or intake conflicts for `po`, `ready-for-design` or `in-design` plus
 designer questions for `designer`, and `ready-for-dev` or `in-dev` plus dev
-questions for `dev`. Use `wiki-stale-after-days`; absent or malformed SETTINGS
-falls back to `14` and must be reported.
+questions for `dev`. A stale item is a current-state page of those features whose last
+`verify` entry in `knowledge/wiki/log.md` (the latest `## YYYY-MM-DD verify | ...` entry whose
+`paths` line lists the page) is older than `wiki-stale-after-days`; a page with no `verify` entry
+is never verified, not stale. Absent or malformed SETTINGS falls back to `14` and must be
+reported.
 
 ## Rules and output
 

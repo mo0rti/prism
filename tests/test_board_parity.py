@@ -206,7 +206,6 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             _replace_body_section,
             _set_feature_stage,
             _set_requirement_status,
-            _unquote_yaml_date_fields,
             _write_index_rows,
         )
 
@@ -223,11 +222,9 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             create_core_workflow_fixture(root)
             self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
             (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/2026-10-06-document-review-brief")
-            page = _unquote_yaml_date_fields(
-                _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [
+            page = _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [
                     "| 1 | Which points should a review summary highlight? | po | resolved: Key points. |", question,
                 ])
-            )
             (root / feature_relative).write_bytes(page.encode("utf-8"))
             (root / requirement_relative).write_bytes(_journey_requirement_page("in-progress").encode("utf-8"))
             _write_index_rows(root, [("F-001", "Document review", "in-dev", "dev")])
@@ -309,7 +306,6 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             _read_revisions,
             _replace_body_section,
             _set_feature_stage,
-            _unquote_yaml_date_fields,
             _write_index_rows,
         )
 
@@ -332,9 +328,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                 create_core_workflow_fixture(root)
                 self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
                 (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/2026-10-06-document-review-brief")
-                page = _unquote_yaml_date_fields(
-                    _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [question])
-                )
+                page = _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [question])
                 page = _replace_body_section(None, page, "API surface", surface)
                 (root / feature_relative).write_bytes(page.encode("utf-8"))
                 _write_index_rows(root, [("F-001", "Document review", "in-design", "designer")])

@@ -197,6 +197,15 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_lint_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
     wiki_lint_parser.add_argument("--json", action="store_true", help="Emit versioned machine-readable lint output.")
     wiki_lint_parser.set_defaults(func=cmd_wiki_lint)
+    wiki_verify_parser = wiki_subparsers.add_parser(
+        "verify",
+        help="Record that wiki pages were checked against their sources: one `verify` entry in knowledge/wiki/log.md, no page changed.",
+    )
+    wiki_verify_parser.add_argument("pages", nargs="+", metavar="page", help="A current-state wiki page, as `knowledge/wiki/topics/pricing.md` or `topics/pricing.md`.")
+    wiki_verify_parser.add_argument("--path", default=".", help="Generated project path. Defaults to the current directory.")
+    wiki_verify_parser.add_argument("--evidence", help="A link to what was checked. Recorded as `none` when omitted.")
+    wiki_verify_parser.add_argument("--by", help="Who verified the pages. Defaults to the operating-system user.")
+    wiki_verify_parser.set_defaults(func=cmd_wiki_verify)
     wiki_show_parser = wiki_subparsers.add_parser("show", help="Show one feature and its app requirements.")
     wiki_show_parser.add_argument("feature_id", help="Feature id to show, for example F-001.")
     wiki_show_parser.add_argument("path", nargs="?", default=".", help="Generated project path. Defaults to the current directory.")
@@ -1011,6 +1020,22 @@ def cmd_wiki_lint(args: argparse.Namespace) -> int:
     show_command_intro(args, "Validate generated-project wiki contract")
     render_wiki_lint_result(result)
     return 0 if result.is_clean else EXIT_VALIDATION
+
+
+def cmd_wiki_verify(args: argparse.Namespace) -> int:
+    from prism_cli.board_service import BoardError, BoardService
+
+    try:
+        with BoardService(Path(args.path)) as service:
+            result = service.record_verification(args.pages, evidence=args.evidence, by=args.by)
+    except (BoardError, OSError, ValueError) as exc:
+        print(error(f"Verification failed: {exc}"), file=sys.stderr)
+        return EXIT_VALIDATION
+    count = len(result["paths"])
+    print(success(f"Recorded one verification of {count} page{'s' if count != 1 else ''} in {result['log']}."))
+    for page in result["paths"]:
+        print(f"- {page}")
+    return 0
 
 
 def cmd_wiki_show(args: argparse.Namespace) -> int:

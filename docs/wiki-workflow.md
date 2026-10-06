@@ -135,11 +135,76 @@ comments inside the entry. `SCHEMA.md` defines the format.
 | `feature-missing-from-status-board` | error | A feature page with no row in `status-board.md`. |
 | `status-board-missing-feature` | error | A `status-board.md` row with no feature page. |
 | `status-board-frontmatter-drift` | error | A row's status, owner or board review differs from the feature's front matter. |
+| `broken-link` | error | A relative Markdown link or a `sources` entry that does not resolve to an existing file or folder, that leaves the workspace, or is a malformed or undeclared `repo:` link, or a `repo:` link whose target is missing from a resolved checkout. The finding names the page, the link and the line. |
+| `broken-anchor` | warning | A `#heading` anchor that no heading of its target page gives. |
+| `external-repository-unresolved` | warning | A `repo:<repository-id>/<path>` link into an external repository that has no checkout in `prism.local.yml`. One per repository, however many links point into it; its links are skipped. |
+| `stale-page` | warning | A current-state page whose last `verify` entry in `log.md` is older than `wiki-stale-after-days`. |
+| `never-verified` | information | A current-state page that no `verify` entry in `log.md` lists. Only `prism wiki lint` and its JSON report it. |
 | `missing-<kind>-frontmatter`, `missing-<kind>-kind`, `invalid-<kind>-kind`, `invalid-<kind>-title`, `missing-<kind>-status`, `invalid-<kind>-status`, `invalid-<kind>-sources` | error | The front matter of a topic, research page, plan, direction or roadmap page (`<kind>` is `topic`, `research`, `plan`, `direction` or `roadmap`). |
 
 Lint is mechanical: it checks the form of labels, links and records and never judges
 whether evidence supports a claim or whether two claims contradict each other.
 Detecting a contradiction is the ingest skill's job.
+
+### Links and sources
+
+Every relative Markdown link in a page and every `sources` entry must resolve. Lint resolves a
+link from the page it is written in to a file or folder of the workspace, and reports one that does
+not as `broken-link`, with the page, the link and the line. Links in code blocks and inline code,
+URLs, images and absolute paths are not checked, and no URL is fetched. A `#heading` anchor is
+checked against the headings of its target and is `broken-anchor` when none gives it.
+
+A feature's `sources` entries are workspace paths. A persona, topic, research page, plan,
+`direction.md` or `roadmap.md` lists `sources` and a business rule one `source`; these may be URLs or
+free text, so only an entry that is a `knowledge/` path (or a `repo:` link) is checked, and a path in the
+pending intake queue names the processed path to list instead. Only a broken link to a page of the wiki
+gates a lifecycle action, as it always has; the other link findings never block.
+
+A file or folder in an app's external repository is linked as `repo:<repository-id>/<path>`, in a body
+link or in `sources`:
+
+```markdown
+- **Observed:** The partner app signs in on one screen ([Login](repo:mobile-apps/apps/partner/Login.kt)).
+```
+
+`<repository-id>` is a repository of `prism.workspace.yml`, and `workspace` means this repository. Lint
+finds the checkout in the untracked `prism.local.yml` ([the workspace model](workspace-model.md#repositories-and-prismlocalyml)).
+Without an entry for the repository it reports one `external-repository-unresolved` warning for that
+repository and skips its links. With a checkout, a path that is not there is `broken-link`. Lint only asks
+whether the path exists: it never reads a file in the checkout, never follows a symlink inside it and never
+writes there.
+
+### Freshness and verification
+
+Pages carry no date, so freshness comes from `log.md`. A verification is a log entry whose operation is
+`verify`; the pages on its `paths` line were checked against their sources on the entry's date. For each
+current-state page, lint takes the latest `verify` entry that lists it. It reports `stale-page` (warning)
+when that entry is older than `wiki-stale-after-days` and `never-verified` (information) when there is none,
+so an overdue page is not confused with a page that nobody has checked. Records (ADRs and advisory
+reviews), `log.md`, `index.md`, `status-board.md`, the schema files and generated files are exempt.
+Freshness only asks for a review: it never changes a status and never blocks a lifecycle action or a board
+write.
+
+```text
+prism wiki verify knowledge/wiki/topics/pricing.md roadmap.md --evidence https://example.com/pricing --by Riley
+```
+
+The command appends one entry and changes nothing else:
+
+```text
+## 2026-10-06 verify | pricing.md, roadmap.md
+- paths: knowledge/wiki/topics/pricing.md, knowledge/wiki/roadmap.md
+- evidence: https://example.com/pricing
+- by: Riley
+```
+
+A page is named from the workspace root or from the wiki (`topics/pricing.md`). The command refuses a path
+outside `knowledge/wiki`, a page that does not exist and a page that is not a current-state page, and
+writes nothing when it refuses any of them. It appends the way the board does: it rejects a symlink or
+reparse point on the path, swaps the log in atomically only while it is unchanged, and reads it again when
+another writer got in between. Through the connected board, the `verify-pages` skill records the same entry:
+the agent names the pages it read in `read_revisions`, each with the digest `read_workspace` returned, and a
+human confirms the preview. Applying is refused as stale when a verified page changed after the preview.
 
 ### Evidence labels
 
@@ -320,9 +385,11 @@ Project-level settings for wiki read/query behavior.
 Commands that use this setting must fall back cleanly to `14` if the file is missing, the
 key is missing, or the value is malformed.
 
-Pages carry no date, so lint does not report page age. Freshness is derived from
-`log.md`, never from a date on the page; `status` still reports the setting. Source
-integrity errors and action-specific prerequisites gate lifecycle requests.
+`wiki-stale-after-days` is the number of days a verification stays fresh; freshness is derived from
+`log.md`, never from a date on the page (see [Freshness and verification](#freshness-and-verification)),
+and `status` reports the setting. Source integrity errors, including a broken link to a wiki page, and
+action-specific prerequisites gate lifecycle requests; freshness findings, broken `sources` entries,
+broken anchors and external links never do.
 
 ## Start Here By Role
 
@@ -441,7 +508,7 @@ Purpose:
 
 It:
 
-- reports deterministic wiki diagnostics in the response by default
+- reports deterministic wiki diagnostics in the response by default, including broken links and sources, `stale-page` and `never-verified`
 - writes a dated lint report to the wiki directory (`knowledge/wiki/lint-YYYY-MM-DD.md`) only when explicitly requested
 - appends to `knowledge/wiki/log.md` only when explicitly requested
 - never writes or refreshes `WIKI_REPORT.md`
@@ -704,6 +771,18 @@ Supported values:
 - dev
 - none
 ```
+
+## `verify-pages`
+
+Purpose:
+
+- record that current-state pages were checked against their sources
+
+It:
+
+- compares each page's labeled claims with its sources, and verifies only pages that are still true
+- appends one `verify` entry to `knowledge/wiki/log.md`, through the board's `preview_skill` and `apply`, with `prism wiki verify`, or by hand in the log format
+- never edits a page, an index line or a status board row, and never changes a status or an owner
 
 ## `wiki-app`
 

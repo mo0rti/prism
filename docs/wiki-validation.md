@@ -54,6 +54,26 @@ Representative seeded scenarios included:
 - a broad auth-heavy search corpus for refinement testing
 - a malformed feature page missing required state
 
+## What `prism wiki lint` Checks
+
+Lint is mechanical. It checks structure (front matter, enums, duplicate IDs, the index and the status
+board), links, unresolved conflicts and freshness, and never judges whether a claim is true or whether two
+claims contradict each other; detecting a contradiction is the ingest skill's job.
+
+- **Links.** `broken-link` (error) for a relative Markdown link or a `sources` entry that does not resolve,
+  with the page, the link and the line; `broken-anchor` (warning) for a heading anchor that no heading
+  gives; `external-repository-unresolved` (warning, once per repository) for `repo:<repository-id>/<path>`
+  links into a repository with no checkout in `prism.local.yml`. URLs are never fetched, and an external
+  checkout is only asked whether a path exists.
+- **Conflicts.** `unresolved-conflict` (warning) and `malformed-conflict` (error) for quarantined sources.
+- **Freshness.** `stale-page` (warning) when a current-state page's last `verify` entry in `log.md` is older
+  than `wiki-stale-after-days`, and `never-verified` (information) when it has none. Freshness never changes
+  a status and never blocks a transition.
+
+`verify-pages` and `prism wiki verify` are covered by Python regression tests: each appends exactly one `verify`
+entry in the log format, never touches a page, and refuses a path outside the wiki and an unknown page. No
+agent host ran them.
+
 ## Validated Wiki Operations
 
 ### `feature-status`

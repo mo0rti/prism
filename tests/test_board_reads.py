@@ -14,6 +14,7 @@ from prism_cli.workflow_install import apply_install, plan_install
 from prism_cli.wiki_query import wiki_show
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 from tests import real_temp  # noqa: F401
+from tests.core_workflow_fixture import write_processed_brief
 from tests.wiki_files import write_index, write_status_board
 
 
@@ -178,6 +179,7 @@ class PagedReadTests(unittest.TestCase):
         self.root = Path(temporary.name)
         receipt = apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))
         self.assertEqual("applied", receipt["status"])
+        write_processed_brief(self.root)
         self.ids = [f"F-{number:03d}" for number in range(1, 15)]
         for feature_id in self.ids:
             page = _feature_page().replace("F-001", feature_id).replace("Document review", f"Document review {feature_id}")

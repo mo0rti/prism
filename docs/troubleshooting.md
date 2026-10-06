@@ -12,6 +12,8 @@ Each entry gives the symptom, its cause and the fix. Start with `prism doctor --
 - [An operation is stuck in conflict and blocks other writes](#an-operation-is-stuck-in-conflict-and-blocks-other-writes)
 - [Grants stop working after prism.workspace.yml was deleted](#grants-stop-working-after-prismworkspaceyml-was-deleted)
 - [Status warns that an external repository has no checkout](#status-warns-that-an-external-repository-has-no-checkout)
+- [Lint reports broken-link or broken-anchor](#lint-reports-broken-link-or-broken-anchor)
+- [Lint reports stale-page or never-verified](#lint-reports-stale-page-or-never-verified)
 - [A cursor is rejected as invalid_cursor or stale_cursor](#a-cursor-is-rejected-as-invalid_cursor-or-stale_cursor)
 - [The agent host does not show the Prism tools](#the-agent-host-does-not-show-the-prism-tools)
 - [The agent can read but cannot write](#the-agent-can-read-but-cannot-write)
@@ -277,9 +279,35 @@ To keep Git from rewriting the line endings of the Prism-owned text, `prism work
 External repository `mobile-apps` has no checkout on this machine (prism.local.yml has no entry for it); add `repositories: {mobile-apps: <absolute path>}` to prism.local.yml. Links into it are skipped.
 ```
 
-**Cause.** An app lives in a repository other than the workspace, and this machine has not said where it keeps a checkout. `prism.local.yml` is per machine and is not committed. The checkout also stays unresolved, with the reason in the same warning, when the recorded folder does not exist or is a symlink or reparse point, and a relative path is reported as `invalid-local-repository-path`. A `prism.local.yml` that is a symlink or reparse point is ignored.
+**Cause.** An app lives in a repository other than the workspace, and this machine has not said where it keeps a checkout. `prism.local.yml` is per machine and is not committed. The checkout also stays unresolved, with the reason in the same warning, when the recorded folder does not exist or is a symlink or reparse point, and a relative path is reported as `invalid-local-repository-path`. A `prism.local.yml` that is a symlink or reparse point is ignored. `prism wiki lint` reports the same warning once for each repository that a `repo:<repository-id>/<path>` link points into, and skips those links.
 
 **Fix.** Create `prism.local.yml` next to `prism.workspace.yml` with the absolute path of your checkout: `repositories:` followed by an indented `mobile-apps: /path/to/mobile-apps`. The warning is harmless otherwise: the workspace loads, and only links into that repository are skipped. [The workspace model](workspace-model.md#repositories-and-prismlocalyml) describes the file.
+
+## Lint reports broken-link or broken-anchor
+
+**Symptom.** `prism wiki lint` reports `broken-link` (error) or `broken-anchor` (warning) on a page, with the link and its line:
+
+```text
+- broken-link: Relative link `../design/missing.md` (line 12) does not resolve to an existing file or folder.
+- broken-link: `sources` entry `knowledge/intake/pending/2026-10-06-brief` (line 5) does not exist in the workspace. It is in the pending intake queue, which moves when intake applies; list `knowledge/intake/processed/2026-10-06-brief` instead.
+```
+
+**Cause.** Every relative Markdown link and every `sources` entry must resolve to an existing file or folder. The target was moved, renamed or never created; a pending intake folder moved to `processed`; the link leaves the workspace; or a `repo:<repository-id>/<path>` link names a repository that `prism.workspace.yml` does not declare, a malformed path, or a path that is missing from the checkout in `prism.local.yml`. A `broken-anchor` means the target page has no heading that gives the anchor.
+
+**Fix.** Correct the link or the `sources` entry to the real path (the processed intake path for a moved folder), or restore the target. Link a file of another repository as `repo:<repository-id>/<path>`, not as a path that leaves the workspace. A link that only an agent can fix goes through the page's own operation; lint never rewrites a page. Only a broken link to a page of the wiki blocks a lifecycle action. [`SCHEMA.md`](../template/knowledge/wiki/SCHEMA.md) defines the rules under "Links and sources".
+
+## Lint reports stale-page or never-verified
+
+**Symptom.** `prism wiki lint` reports `stale-page` (warning) or `never-verified` (information) for a current-state page:
+
+```text
+- stale-page: `knowledge/wiki/topics/pricing.md` was last verified 2026-09-01, 35 days ago; `wiki-stale-after-days` is 14. Check it against its sources and run `prism wiki verify knowledge/wiki/topics/pricing.md`.
+- never-verified: `knowledge/wiki/roadmap.md` has no `verify` entry in log.md. Once someone has checked it against its sources, record that with `prism wiki verify knowledge/wiki/roadmap.md`.
+```
+
+**Cause.** Pages carry no date, so freshness comes from `log.md`: the latest `verify` entry that lists the page. `stale-page` means that entry is older than `wiki-stale-after-days` in `SETTINGS.md` (14 when the file or the key is absent or invalid); `never-verified` means no `verify` entry lists the page, which is the state of every new page. Records, the log, the index, the status board and generated files are exempt. Neither finding changes a status or blocks a lifecycle action.
+
+**Fix.** Check the page against its sources. If it is still true, record that with `prism wiki verify <page>... [--evidence <link>] [--by <name>]`, or through the connected board with the `verify-pages` skill; it appends one entry to `log.md` and never edits the page. If the page is out of date, correct it through its own operation first. Raise `wiki-stale-after-days` in `SETTINGS.md` if the interval does not suit the project. `prism wiki verify` refuses a path outside `knowledge/wiki`, a page that does not exist and a page that is not a current-state page, and then writes nothing.
 
 ## A proposal is rejected as invalid_path for a file or folder name
 
