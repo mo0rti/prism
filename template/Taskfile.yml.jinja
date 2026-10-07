@@ -14,11 +14,10 @@ includes:
     taskfile: ./{{ app.path }}/Taskfile.yml
     dir: ./{{ app.path }}
 {% endfor %}
-{% if "android-compose" in stacks %}
-  mobile-android:
-    taskfile: ./mobile-android/Taskfile.yml
-    dir: ./mobile-android
-{% endif %}
+{% for app in apps if app.stack == "android-compose" %}  {{ app.id }}:
+    taskfile: ./{{ app.path }}/Taskfile.yml
+    dir: ./{{ app.path }}
+{% endfor %}
 {% if "ios-swiftui" in stacks %}
   mobile-ios:
     taskfile: ./mobile-ios/Taskfile.yml
@@ -37,9 +36,6 @@ tasks:
 {% endfor %}
 {% for app in apps if app.stack == "nextjs-web" %}      - task: {{ app.id }}:generate-api
 {% endfor %}
-{% if "android-compose" in stacks %}
-      - task: generate-client-mobile-android
-{% endif %}
 {% if "ios-swiftui" in stacks %}
       - task: generate-client-mobile-ios
 {% endif %}
@@ -58,20 +54,6 @@ tasks:
         --additional-properties=interfaceOnly=true,useSpringBoot3=true,useTags=true
         --package-name="{{ package_identifier }}.{{ app.id | replace('-', '') }}.api"
 {% endfor %}
-
-{% if "android-compose" in stacks %}
-  generate-client-mobile-android:
-    desc: "Generate Kotlin Retrofit client from OpenAPI"
-    internal: true
-    cmds:
-      - >
-        {{'{{'}} .OPENAPI_GENERATOR {{'}}'}} generate
-        -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
-        -g kotlin
-        -o ./mobile-android/app/src/main/java/generated
-        --additional-properties=library=jvm-retrofit2,serializationLibrary=kotlinx_serialization
-        --package-name="{{ package_identifier }}.api"
-{% endif %}
 
 {% if "ios-swiftui" in stacks %}
   generate-client-mobile-ios:
@@ -97,9 +79,8 @@ tasks:
 {% for app in apps if app.stack == "nextjs-web" %}      - task: {{ app.id }}:lint
       - task: {{ app.id }}:typecheck
 {% endfor %}
-{% if "android-compose" in stacks %}
-      - task: mobile-android:lint
-{% endif %}
+{% for app in apps if app.stack == "android-compose" %}      - task: {{ app.id }}:lint
+{% endfor %}
 
   test:
     desc: "Run tests for all platforms"
@@ -108,9 +89,8 @@ tasks:
 {% endfor %}
 {% for app in apps if app.stack == "nextjs-web" %}      - task: {{ app.id }}:test
 {% endfor %}
-{% if "android-compose" in stacks %}
-      - task: mobile-android:test
-{% endif %}
+{% for app in apps if app.stack == "android-compose" %}      - task: {{ app.id }}:test
+{% endfor %}
 
   # ===========================================================================
   # Utilities

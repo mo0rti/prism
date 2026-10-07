@@ -36,12 +36,11 @@ WORKSPACE_LAYER = "workspace"
 COPIER_ANSWERS_FILE = ".copier-answers.yml"
 
 # Stacks with a pack under packs/<stack>/. Each pack work package adds its stack here.
-PACK_STACKS = ("spring-backend", "nextjs-web")
+PACK_STACKS = ("spring-backend", "nextjs-web", "android-compose")
 
 # One switch per stack that has no pack yet. While it is true, the workspace layer still generates that
-# stack's full sample (mobile-android, mobile-ios) from template/. The work package that lands the
-# stack's pack deletes its sample, its switch and its row in full_sample_apps().
-ANDROID_COMPOSE_FULL_SAMPLE = True
+# stack's full sample (mobile-ios) from template/. The work package that lands the stack's pack deletes
+# its sample, its switch and its row in full_sample_apps().
 IOS_SWIFTUI_FULL_SAMPLE = True
 
 
@@ -49,8 +48,6 @@ def full_sample_apps() -> dict[str, str]:
     """The default app ID and the stack of every full sample the workspace layer still generates."""
 
     samples: dict[str, str] = {}
-    if ANDROID_COMPOSE_FULL_SAMPLE:
-        samples["mobile-android"] = "android-compose"
     if IOS_SWIFTUI_FULL_SAMPLE:
         samples["mobile-ios"] = "ios-swiftui"
     return samples

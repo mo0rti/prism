@@ -1,0 +1,66 @@
+package {{ app_package }}.ui.signin
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import {{ app_package }}.data.api.ApiClient
+import {{ app_package }}.data.api.ApiError
+import {{ app_package }}.data.api.ApiResult
+import {{ app_package }}.session.SessionStore
+
+/** Why the local development sign-in failed. The screen turns each into a message. */
+enum class SignInError {
+    /** The backend does not serve the dev identity: it does not run under its `local` profile. */
+    DevIdentityUnavailable,
+
+    /** The backend answered, but the request did not arrive from its loopback interface (no `adb reverse`). */
+    LoopbackOnly,
+
+    /** The backend could not be reached. */
+    Network,
+
+    /** Any other answer. */
+    Unexpected,
+}
+
+data class SignInUiState(
+    val isLoading: Boolean = false,
+    val error: SignInError? = null,
+)
+
+/**
+ * Signs in through the backend's local development identity (`createDevToken`) and opens the session.
+ * This is a development sign-in, not authentication: replace it with the project's identity provider.
+ */
+class SignInViewModel(
+    private val apiClient: ApiClient,
+    private val sessionStore: SessionStore,
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(SignInUiState())
+    val uiState: StateFlow<SignInUiState> = _uiState.asStateFlow()
+
+    fun onSignInClick() {
+        if (_uiState.value.isLoading) return
+        _uiState.value = SignInUiState(isLoading = true)
+        viewModelScope.launch {
+            when (val result = apiClient.createDevToken()) {
+                is ApiResult.Success -> {
+                    sessionStore.open(result.value.accessToken)
+                    _uiState.value = SignInUiState()
+                }
+                is ApiResult.Failure -> _uiState.value = SignInUiState(error = result.error.toSignInError())
+            }
+        }
+    }
+}
+
+private fun ApiError.toSignInError(): SignInError = when (this) {
+    ApiError.NotServed -> SignInError.DevIdentityUnavailable
+    ApiError.LoopbackOnly -> SignInError.LoopbackOnly
+    ApiError.Network -> SignInError.Network
+    ApiError.Unauthorized, ApiError.Server, ApiError.Unexpected -> SignInError.Unexpected
+}

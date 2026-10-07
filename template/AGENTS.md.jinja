@@ -97,8 +97,8 @@ the implemented platform routes.
 ```text
 {% for app in apps if app.stack == "spring-backend" %}{{ app.path }}/ -> Spring Boot (Kotlin, Java {{ pack_versions["spring-backend"].java }})
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}{{ app.path }}/ -> Next.js (TypeScript, Node {{ pack_versions["nextjs-web"].node }}), port {{ app.port }}
-{% endfor %}{% if "android-compose" in stacks %}mobile-android/ -> Kotlin + Jetpack Compose (MVVM, Hilt, Room)
-{% endif %}{% if "ios-swiftui" in stacks %}mobile-ios/     -> Swift 6 + SwiftUI (MVVM, SwiftData) - Mac/Xcode only
+{% endfor %}{% for app in apps if app.stack == "android-compose" %}{{ app.path }}/ -> Android (Kotlin {{ pack_versions["android-compose"].kotlin }} + Jetpack Compose, MVVM, hand-wired), application ID {{ package_identifier }}.{{ app.id | replace('-', '') }}
+{% endfor %}{% if "ios-swiftui" in stacks %}mobile-ios/     -> Swift 6 + SwiftUI (MVVM, SwiftData) - Mac/Xcode only
 {% endif %}shared/        -> OpenAPI spec + design tokens
 knowledge/     -> Living product wiki (single source of truth for features)
 docs/          -> Human-readable reference documentation
@@ -113,9 +113,10 @@ docs/          -> Human-readable reference documentation
 | Test {{ app.id }} | `task {{ app.id }}:test` |
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| Start {{ app.id }} | `task {{ app.id }}:dev` |
 | Test {{ app.id }} | `task {{ app.id }}:test` |
-{% endfor %}{% if "android-compose" in stacks %}| Build Android | `task mobile-android:build` |
-| Android tests | `task mobile-android:test` |
-{% endif %}{% if "ios-swiftui" in stacks %}| Build iOS (Mac) | `task mobile-ios:build` |
+{% endfor %}{% for app in apps if app.stack == "android-compose" %}| Build {{ app.id }} | `task {{ app.id }}:build` |
+| Test {{ app.id }} | `task {{ app.id }}:test` |
+| Reach the local backend from a device or emulator ({{ app.id }}) | `task {{ app.id }}:reverse` |
+{% endfor %}{% if "ios-swiftui" in stacks %}| Build iOS (Mac) | `task mobile-ios:build` |
 | iOS tests (Mac) | `task mobile-ios:test` |
 {% endif %}| Run all tests | `task test` |
 
@@ -295,8 +296,8 @@ Workspace-level conventions list only the slices present in the generated worksp
 - **Security**: bearer-JWT-protected routes with explicit public routes; the dev identity exists only under the `local` profile
 - **Backend testing**: JUnit Jupiter 6 + MockK for service logic, plus Spring integration tests against Testcontainers PostgreSQL for security and request-path behavior
 {% endif %}{% if "android-compose" in stacks or "ios-swiftui" in stacks %}- **Mobile MVVM**: ViewModel + UiState/ViewState on the generated mobile platforms
-{% endif %}{% if "android-compose" in stacks %}- **Android DI**: Hilt-backed feature and network wiring
-- **Android testing**: use the platform guide for JUnit, Compose/UI, and integration coverage
+{% endif %}{% if "android-compose" in stacks %}- **Android structure**: ViewModels depend on one `ApiClient` interface and an in-memory session, wired by hand; the client is hand-written and checked against the contract by `ApiContractTest`; the Android app guides and `$android-conventions` describe them
+- **Android testing**: JVM unit tests only (ViewModels, client, contract, a Robolectric Compose test); `./gradlew assembleDebug testDebugUnitTest` closes a change
 {% endif %}{% if "ios-swiftui" in stacks %}- **iOS DI**: protocol-based container with async/await flows
 - **iOS testing**: use the platform guide for XCTest, async flows, and feature-level coverage
 {% endif %}{% if "nextjs-web" in stacks %}- **Web structure**: server-side calls through the generated API client, an httpOnly session cookie and Vitest tests; the web app guides and `$web-conventions` describe them
@@ -326,8 +327,8 @@ and adds only what is specific to Claude Code:
 
 {% for app in apps if app.stack == "spring-backend" %}- `{{ app.path }}/AGENTS.md` - {{ app.id }}: Spring Boot, Kotlin, Gradle
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}- `{{ app.path }}/AGENTS.md` - {{ app.id }}: Next.js, the local development sign-in slice, Vitest
-{% endfor %}{% if "android-compose" in stacks %}- `mobile-android/AGENTS.md` - Compose, Hilt, Retrofit 3, Room
-{% endif %}{% if "ios-swiftui" in stacks %}- `mobile-ios/AGENTS.md` - SwiftUI, async/await, Keychain, SwiftData, local iOS skills, mobile-ios/docs/ references
+{% endfor %}{% for app in apps if app.stack == "android-compose" %}- `{{ app.path }}/AGENTS.md` - {{ app.id }}: Compose, Retrofit, the local development sign-in slice, JVM tests
+{% endfor %}{% if "ios-swiftui" in stacks %}- `mobile-ios/AGENTS.md` - SwiftUI, async/await, Keychain, SwiftData, local iOS skills, mobile-ios/docs/ references
 {% endif %}
 
 ## Adding Features

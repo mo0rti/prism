@@ -25,7 +25,7 @@ Use the smallest path that answers your question.
 Recommended first evaluation paths:
 
 - **Backend only** for repository shape and contract inspection
-- **Backend + Mobile** for the Android and iOS client path; iOS needs macOS and Xcode validation
+- **Backend + Mobile** for the Android and iOS client path; the Android app builds and passes its JVM tests with JDK 21 and an Android SDK, and iOS needs macOS and Xcode validation
 - **Backend + Web** to inspect the web slice: a Next.js app with a local development sign-in and one authenticated read, built, tested and proven in CI
 
 For the maturity notes behind those recommendations, read
@@ -211,6 +211,7 @@ Platform-specific caution:
   in its folder, then start a backend under its `local` profile and try the "Local development
   sign-in"; that sign-in is a development identity, not complete authentication, and hosting is yours
   to choose (see the `deployment` skill)
+- for each Android app, run `./gradlew assembleDebug testDebugUnitTest` in its folder (JDK 21 and an Android SDK with the platform its `README.md` names), then start a backend under its `local` profile, run `adb reverse tcp:8080 tcp:8080` (`task <app-id>:reverse`) and try the "Local development sign-in" on an emulator or a USB device; that sign-in is a development identity, not complete authentication
 - for `mobile-ios`, validate locally on macOS before treating the slice as build-proven
 
 Do not assume every command, workflow, or platform combination has been fully hardened just

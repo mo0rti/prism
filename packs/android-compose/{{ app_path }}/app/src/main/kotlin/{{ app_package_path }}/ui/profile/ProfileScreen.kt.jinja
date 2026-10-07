@@ -1,0 +1,99 @@
+package {{ app_package }}.ui.profile
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import {{ app_package }}.R
+import {{ app_package }}.data.api.UserProfile
+import {{ app_package }}.designsystem.components.ErrorView
+import {{ app_package }}.designsystem.components.LoadingIndicator
+import {{ app_package }}.designsystem.theme.AppTheme
+import {{ app_package }}.designsystem.theme.Spacing
+
+/** The signed-in user, as `GET /api/me` returns them. */
+@Composable
+fun ProfileScreen(
+    state: ProfileUiState,
+    onRetryClick: () -> Unit,
+    onSignOutClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        when (state) {
+            ProfileUiState.Loading -> LoadingIndicator()
+            is ProfileUiState.Failed -> ErrorView(
+                message = stringResource(state.error.messageResource()),
+                onRetry = onRetryClick,
+            )
+            is ProfileUiState.Loaded -> ProfileDetails(profile = state.profile, onSignOutClick = onSignOutClick)
+        }
+    }
+}
+
+@Composable
+private fun ProfileDetails(profile: UserProfile, onSignOutClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .safeDrawingPadding()
+            .padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        Text(text = stringResource(R.string.profile_title), style = MaterialTheme.typography.headlineMedium)
+        ProfileField(label = stringResource(R.string.profile_name_label), value = profile.displayName)
+        ProfileField(
+            label = stringResource(R.string.profile_email_label),
+            value = profile.email ?: stringResource(R.string.profile_email_missing),
+        )
+        ProfileField(label = stringResource(R.string.profile_id_label), value = profile.id)
+        ProfileField(label = stringResource(R.string.profile_created_label), value = profile.createdAt)
+        Spacer(Modifier.height(Spacing.sm))
+        OutlinedButton(onClick = onSignOutClick) {
+            Text(stringResource(R.string.profile_sign_out))
+        }
+    }
+}
+
+@Composable
+private fun ProfileField(label: String, value: String) {
+    Column {
+        Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text = value, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+private fun ProfileError.messageResource(): Int = when (this) {
+    ProfileError.Network -> R.string.profile_error_network
+    ProfileError.Server -> R.string.profile_error_server
+    ProfileError.Unexpected -> R.string.profile_error_unexpected
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun ProfileScreenPreview() {
+    AppTheme {
+        ProfileScreen(
+            state = ProfileUiState.Loaded(
+                UserProfile(
+                    id = "0b6f0b3e-0000-4000-8000-000000000000",
+                    displayName = "Local Developer",
+                    email = "developer@example.test",
+                    createdAt = "2026-01-01T00:00:00Z",
+                ),
+            ),
+            onRetryClick = {},
+            onSignOutClick = {},
+        )
+    }
+}

@@ -153,6 +153,25 @@ If the generated project includes a web app (`nextjs-web`), each one is a Next.j
 - the app's `audience` (for example `B2C` or `internal`) is display text; no route or check reads it, and
   a label never enforces authorization
 
+If the generated project includes an Android app (`android-compose`), each one is a Kotlin and Jetpack Compose
+app under its own path (`mobile-android/` for the default app) with one working slice and its tests, and no
+example business features:
+
+- the "Local development sign-in" screen signs in through the backend's dev identity, and the profile screen
+  shows `GET /api/me`, through a hand-written Retrofit client that a unit test checks against
+  `shared/api-contracts/openapi.yml`; the token lives in memory only and is never logged
+- the dev identity answers loopback requests only, so the app calls `http://localhost:8080/` and
+  `adb reverse tcp:8080 tcp:8080` (`task <app-id>:reverse`) carries that to your machine, from an emulator
+  and from a USB device; `10.0.2.2` and LAN addresses are refused by design (the app's `README.md` has the steps)
+- `./gradlew assembleDebug testDebugUnitTest` (or `task <app-id>:build` and `task <app-id>:test`) builds the
+  debug APK and runs the JVM tests: both ViewModels against a fake client, the client against a MockWebServer,
+  the contract check and a Compose UI test of the sign-in screen under Robolectric; no emulator is needed
+- the dev identity is not complete authentication: replace it with your identity provider before anything
+  ships (the generated `android-conventions` and `security-auth` skills describe how); release signing and
+  store upload are yours, and the `deployment` skill's mobile note describes them
+- two Android apps in one workspace differ in application ID, namespace, package directories, Gradle project
+  name and workflow, all derived from the app ID
+
 ## AI Agent Surfaces
 
 Generated projects include agent context for Claude, Codex, and Cursor.
@@ -292,8 +311,8 @@ Generated projects include these Hygen generators under `_templates/`:
 
 | Generator | Purpose |
 |-----------|---------|
-| `feature new` | Scaffold a backend + Android + iOS feature slice and create a dated intake note in `knowledge/intake/pending/YYYY-MM-DD-feature-name/` for `po-intake` to process |
-| `screen new` | Scaffold a new Android or iOS screen |
+| `feature new` | Scaffold a backend + iOS feature slice and create a dated intake note in `knowledge/intake/pending/YYYY-MM-DD-feature-name/` for `po-intake` to process |
+| `screen new` | Scaffold a new iOS screen |
 | `endpoint new` | Scaffold an OpenAPI path snippet and backend endpoint starter |
 
 Typical usage inside a generated project:
@@ -312,7 +331,7 @@ The generated workflow set is:
 |----------|-----------|---------|
 | `api-contracts.yml` | Always | Validate the OpenAPI contract |
 | `<app-id>.yml` | One for each scaffolded `spring-backend` app (`backend.yml` for the default app) | `./gradlew build` (compile, every test with Testcontainers PostgreSQL, the jar), scoped to the app's path |
-| `mobile-android.yml` | With `mobile-android` | Android test, lint, instrumented tests and debug build |
+| `<app-id>.yml` | One for each scaffolded `android-compose` app (`mobile-android.yml` for the default app) | `./gradlew assembleDebug testDebugUnitTest` on a clean runner (the debug APK and the JVM unit tests), scoped to the app's path |
 | `mobile-ios.yml` | With `mobile-ios` | iOS test |
 | `<app-id>.yml` | One for each scaffolded `nextjs-web` app (`web.yml` for the default app) | `npm ci`, lint, typecheck, Vitest tests and `next build` on a clean runner, scoped to the app's path |
 

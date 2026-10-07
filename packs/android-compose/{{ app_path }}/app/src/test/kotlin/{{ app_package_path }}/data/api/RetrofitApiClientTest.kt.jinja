@@ -1,0 +1,109 @@
+package {{ app_package }}.data.api
+
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.runBlocking
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class RetrofitApiClientTest {
+
+    private val server = MockWebServer().apply { start() }
+    private val client = RetrofitApiClient(createApiService(server.url("/").toString()))
+
+    @After
+    fun tearDown() {
+        server.shutdown()
+    }
+
+    private fun json(body: String, code: Int = 200) =
+        MockResponse().setResponseCode(code).setHeader("Content-Type", "application/json").setBody(body)
+
+    private fun takeRequest(): RecordedRequest = server.takeRequest(5, TimeUnit.SECONDS) ?: error("The client sent no request")
+
+    @Test
+    fun `createDevToken posts to the dev identity and reads the token`() = runBlocking {
+        server.enqueue(json("""{"accessToken":"jwt-value","tokenType":"Bearer","expiresIn":900}"""))
+
+        val result = client.createDevToken()
+
+        assertEquals(ApiResult.Success(DevTokenResponse("jwt-value", "Bearer", 900)), result)
+        val request = takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/api/dev-identity/token", request.path)
+        assertNull(request.getHeader("Authorization"))
+        assertEquals("{}", request.body.readUtf8())
+    }
+
+    @Test
+    fun `getMe sends the bearer token and reads the profile`() = runBlocking {
+        server.enqueue(json("""{"id":"u-1","displayName":"Local Developer","createdAt":"2026-01-01T00:00:00Z","unknown":1}"""))
+
+        val result = client.getMe("jwt-value")
+
+        assertEquals(ApiResult.Success(UserProfile("u-1", "Local Developer", null, "2026-01-01T00:00:00Z")), result)
+        val request = takeRequest()
+        assertEquals("GET", request.method)
+        assertEquals("/api/me", request.path)
+        assertEquals("Bearer jwt-value", request.getHeader("Authorization"))
+    }
+
+    @Test
+    fun `a 404 from the dev identity means the backend does not run under its local profile`() = runBlocking {
+        server.enqueue(json("{}", code = 404))
+
+        assertEquals(ApiResult.Failure(ApiError.NotServed), client.createDevToken())
+    }
+
+    @Test
+    fun `a 403 from the dev identity means the request did not come from loopback`() = runBlocking {
+        server.enqueue(json("{}", code = 403))
+
+        assertEquals(ApiResult.Failure(ApiError.LoopbackOnly), client.createDevToken())
+    }
+
+    @Test
+    fun `a 401 from me means the token is rejected`() = runBlocking {
+        server.enqueue(json("{}", code = 401))
+
+        assertEquals(ApiResult.Failure(ApiError.Unauthorized), client.getMe("jwt-value"))
+    }
+
+    @Test
+    fun `other statuses are server errors`() = runBlocking {
+        server.enqueue(json("{}", code = 500))
+        server.enqueue(json("{}", code = 404))
+
+        assertEquals(ApiResult.Failure(ApiError.Server), client.getMe("jwt-value"))
+        assertEquals(ApiResult.Failure(ApiError.Server), client.getMe("jwt-value"))
+    }
+
+    @Test
+    fun `an answer that is not the contract's shape is unexpected`() = runBlocking {
+        server.enqueue(json("""{"unexpected":true}"""))
+
+        assertEquals(ApiResult.Failure(ApiError.Unexpected), client.getMe("jwt-value"))
+    }
+
+    @Test
+    fun `an unreachable backend is a network failure`() = runBlocking {
+        server.shutdown()
+
+        assertEquals(ApiResult.Failure(ApiError.Network), client.createDevToken())
+    }
+
+    @Test
+    fun `the token never appears in what the app can print`() = runBlocking {
+        server.enqueue(json("""{"accessToken":"jwt-value","tokenType":"Bearer","expiresIn":900}"""))
+
+        val result = client.createDevToken()
+
+        assertFalse(result.toString().contains("jwt-value"))
+        assertFalse(DevTokenResponse("jwt-value", "Bearer", 900).toString().contains("jwt-value"))
+    }
+}

@@ -22,7 +22,7 @@ generation and verification, not a product-wiki lifecycle state transition.
 
 ## What this does
 
-Reads `shared/api-contracts/openapi.yml` and generates typed client code for each platform: openapi-generator for the backend and mobile apps, and `openapi-typescript` for each web app.
+Reads `shared/api-contracts/openapi.yml` and generates typed client code for each platform: openapi-generator for the backend and the iOS app, and `openapi-typescript` for each web app. An Android app's client is hand-written, and its `ApiContractTest` fails when the client and the contract disagree.
 
 ## Workflow
 
@@ -31,16 +31,16 @@ Reads `shared/api-contracts/openapi.yml` and generates typed client code for eac
 3. Verify the generated output for the relevant platforms only:
 {% for app in apps if app.stack == "spring-backend" %}- `task {{ app.id }}:build`
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}- `task {{ app.id }}:typecheck` and `task {{ app.id }}:test`
-{% endfor %}{% if "android-compose" in stacks %}- `task mobile-android:build`
-{% endif %}{% if "ios-swiftui" in stacks %}- `task mobile-ios:build` (Mac only)
+{% endfor %}{% for app in apps if app.stack == "android-compose" %}- `task {{ app.id }}:test` (its `ApiContractTest` checks the hand-written client against the contract)
+{% endfor %}{% if "ios-swiftui" in stacks %}- `task mobile-ios:build` (Mac only)
 {% endif %}
 4. If generation or verification fails, report the first blocking error and stop before hand-editing generated code.
 
 ## Generated output
 
 {% for app in apps if app.stack == "nextjs-web" %}- **TypeScript** ({{ app.id }}): `{{ app.path }}/lib/api/generated/schema.d.ts`, written by `openapi-typescript` (`task {{ app.id }}:generate-api`) and ignored by git
-{% endfor %}{% if "android-compose" in stacks %}- **Kotlin** (Android): `mobile-android/app/src/main/kotlin/.../data/remote/generated/`
-{% endif %}{% if "ios-swiftui" in stacks %}- **Swift** (iOS): `mobile-ios/{{ project_slug }}/Data/Network/Generated/`
+{% endfor %}{% for app in apps if app.stack == "android-compose" %}- **Kotlin** ({{ app.id }}): not generated; edit `{{ app.path }}/app/src/main/kotlin/{{ package_identifier | replace('.', '/') }}/{{ app.id | replace('-', '') }}/data/api/` by hand (`ApiService.kt`, `ApiModels.kt`) and extend `ApiContractTest`
+{% endfor %}{% if "ios-swiftui" in stacks %}- **Swift** (iOS): `mobile-ios/{{ project_slug }}/Data/Network/Generated/`
 {% endif %}
 ## When to run
 

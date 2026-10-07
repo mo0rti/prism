@@ -1,12 +1,12 @@
 ---
 name: android-conventions
-description: "Android repository rules for Kotlin, Compose, MVVM, Hilt, navigation, networking, strings, and documentation sync. Use when writing, refactoring, or reviewing code under `mobile-android/`, especially for architecture-sensitive changes."
+description: "Conventions for the generated Android apps: the sign-in and profile slice, MVVM, the contract client, the in-memory session, strings, tests and commands. Use when writing, extending or reviewing code under an Android app folder, or when replacing the local development sign-in."
 layers: [codex, claude-skill]
 stacks: [android-compose]
 codex:
   display_name: "Android Conventions"
-  short_description: "Apply Android MVVM and repository guardrails"
-  default_prompt: "Use @@invoke:android-conventions@@ when updating Android code in this project."
+  short_description: "Apply the Android slice conventions and MVVM guardrails"
+  default_prompt: "Use @@invoke:android-conventions@@ when updating an Android app of this project."
   implicit: true
 claude-skill:
   user-invocable: false
@@ -14,49 +14,63 @@ claude-skill:
 
 # Android Conventions
 
-Apply these rules whenever you change Android app code in this repository.
+Apply these rules whenever you change an Android app of this workspace. Each Android app is one `android-compose` app generated from the same pack, so the paths below are relative to the app's folder: {% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/` (application ID `{{ package_identifier }}.{{ app.id | replace('-', '') }}`){{ ", " if not loop.last }}{% endfor %}. Kotlin sources live under `app/src/main/kotlin/<package path>/`, where `<package path>` is the app's application ID written with slashes.
 
 ## Role boundary
 
-- Use this skill for repository-wide guardrails that apply across features.
-- Keep feature sequencing in `@@invoke:android-feature-delivery@@`, backend-facing contract details in `@@invoke:android-contract-alignment@@`, shared Compose guidance in `@@invoke:compose-design-system@@`, and task selection in `@@invoke:android-build-verify@@`.
+- Use this skill for the guardrails that apply across the app: structure, state, the client, the session, strings and the dev identity.
+- Keep feature sequencing in `@@invoke:android-feature-delivery@@`, contract details in `@@invoke:android-contract-alignment@@`, shared Compose guidance in `@@invoke:compose-design-system@@`, test patterns in `@@invoke:android-testing@@` and task selection in `@@invoke:android-build-verify@@`.
+
+## The slice
+
+The pack generates one vertical slice and no example business features. Under `<package path>/`:
+
+- `ui/signin/SignInScreen.kt` is the screen labelled "Local development sign-in"; `SignInRoute.kt` and `SignInViewModel.kt` wire it. Signing in calls `createDevToken` and opens the session.
+- `ui/profile/ProfileScreen.kt`, `ProfileRoute.kt` and `ProfileViewModel.kt` show the signed-in user from `GET /api/me` (`getMe`). A rejected token closes the session.
+- `ui/AppRoot.kt` shows the profile while a session is open and the sign-in otherwise.
+- `data/api/ApiService.kt` (Retrofit), `ApiModels.kt` (the DTOs), `ApiClient.kt` (the interface and `ApiResult`) and `RetrofitApiClient.kt` are the client of `shared/api-contracts/openapi.yml`.
+- `session/SessionStore.kt` keeps the access token in memory only.
+- `AppContainer.kt` wires the app by hand; `App.kt` owns it and `MainActivity.kt` hosts the content.
+- `designsystem/` holds `AppTheme`, `Spacing`, `LoadingIndicator` and `ErrorView`.
+- `app/src/test/kotlin/<package path>/` holds the JVM tests of all of the above.
 
 ## Core rules
 
-- Keep app code inside the single `:app` module unless a module split is explicitly requested.
-- The current generated scaffold is Navigation 2-oriented: keep routes in `navigation/Screen.kt` and destination wiring in `navigation/NavGraph.kt` unless a scaffold migration is explicitly requested.
-- Each destination follows Route/Screen split:
-  - Route handles navigation wiring, lifecycle-aware state collection, and ViewModel coordination.
-  - Screen is a pure composable that receives state plus callbacks.
-- Follow MVVM per screen:
-  - `uiState: StateFlow<...>`
-  - one-off events or effects via `SharedFlow`
-  - explicit ViewModel intent methods such as `onRefresh()` or `onSaveClicked()`
-- Co-locate the screen's `UiState` type with the ViewModel file so state shape and intent handling evolve together.
-- Observe `StateFlow` from Route or host composables with `collectAsStateWithLifecycle()`, not plain `collectAsState()`, unless a lower-level Compose API genuinely requires otherwise.
-- Use `LaunchedEffect` for one-off UI effects such as navigation, snackbar triggers, and scroll reactions. Do not encode one-time navigation as a persistent success state that will retrigger on recomposition or back navigation.
-- Repositories return `AppResult<T>` for fallible work, and ViewModels map `AppResult.Error` into `UiText` before exposing error state.
-- Keep repositories as concrete classes in `feature/*/data/repository/`. Do not introduce repository interfaces or a repository binding module unless explicitly requested.
-- Add endpoints to `ApiService` in `core/network/`. A separate Retrofit interface belongs in `feature/*/data/remote/api/` and is provided from the existing Hilt modules under `core/di/`.
-- Use `SessionManager` for auth state and logout flows; keep token reads and refresh wiring inside `TokenStorage`, `AuthInterceptor`, and `TokenAuthenticator`.
-- Put user-facing strings in `app/src/main/res/values/strings.xml`.
-- Move reusable Compose components, modifiers, and drawing helpers into `designsystem/` instead of duplicating them in features.
-- Treat AGP, Kotlin, Compose BOM, Hilt, Room, and KSP version changes as coordinated toolchain work. Update `gradle/libs.versions.toml`, preserve KSP-first annotation processing, and re-run stronger verification when compatibility changes.
+- Keep the app inside the single `:app` module unless a module split is explicitly requested.
+- Follow MVVM per screen: a ViewModel exposes `uiState: StateFlow<...>` and explicit intent methods such as `onSignInClick()` or `onRetryClick()`. Co-locate the screen's `UiState` type with its ViewModel file.
+- Each destination follows the Route/Screen split: the Route (`SignInRoute`) collects state with `collectAsStateWithLifecycle()` and passes it to a stateless Screen (`SignInScreen`) together with callbacks.
+- ViewModels depend on the `ApiClient` interface and `SessionStore`, never on Retrofit. They are built in `AppContainer.viewModelFactory`. When the app outgrows hand wiring, introduce a DI framework in `AppContainer` only.
+- Fallible calls return `ApiResult`; a ViewModel maps `ApiError` into its own error enum and the Screen maps that to a string resource. ViewModels hold no `Context` and no resource ids.
+- Put user-facing strings in `app/src/main/res/values/strings.xml`. The sign-in label stays "Local development sign-in".
+- Put reusable Compose components in `designsystem/` instead of duplicating them in features.
+- Every owning activity calls `enableEdgeToEdge()` before `setContent` (see `MainActivity.kt`), and screens apply `safeDrawingPadding()` or a `Scaffold`'s `PaddingValues`.
+- Treat AGP, Kotlin, Compose BOM and Gradle changes as toolchain work: the pins live in `packs/versions.yml` of the Prism template and `gradle/libs.versions.toml` follows them. Re-run `./gradlew assembleDebug testDebugUnitTest` after any of them changes.
 
-## Read these docs only when needed
+## The session and the token
 
-- `mobile-android/docs/architecture.md` for layer rules and repository conventions
-- `mobile-android/docs/build-and-environments.md` for Gradle tasks, SDK levels, and toolchain expectations
-- `mobile-android/docs/file-structure.md` for package locations
-- `mobile-android/docs/networking-and-di.md` for Retrofit, auth, and DI wiring
-- `mobile-android/docs/navigation-and-screens.md` for route and host patterns
-- `mobile-android/docs/design-system-and-theme.md` for shared Compose components
-- `mobile-android/docs/testing.md` for unit test, instrumentation test, and Hilt Android testing patterns
-- `mobile-android/docs/conventions-and-workflow.md` for strings, workflow, and doc-sync rules
+- The access token lives in `SessionStore` only, in memory. Never log it, print it, put it in `toString()`, an `Intent`, a navigation argument or a string template, and never write it to `SharedPreferences` or a file unless you choose encrypted storage on purpose.
+- The client adds no HTTP logging interceptor, because every request after sign-in carries the token. `DevTokenResponse.toString()` redacts it and `RetrofitApiClientTest` checks that.
+- A new process starts signed out. A 401 from `getMe` closes the session through `ProfileViewModel`; features do not handle 401s themselves.
+
+## The local development sign-in
+
+The sign-in is the contract's `POST /api/dev-identity/token`, which the backend serves only under its `local` profile and only to requests from its own loopback interface. It is not complete authentication and the app must never present it as such. Its limits (the project's own identity provider, authorization and secrets stay with the project) are stated in `README.md` and `AGENTS.md` of the app.
+
+The app reaches the backend at `localhost` (`apiBaseUrl` in `gradle.properties`) and `adb reverse tcp:8080 tcp:8080` (`task <app-id>:reverse`) carries that to the host, from an emulator and from a USB device. Never switch to `10.0.2.2` or a LAN address, never add them to the debug network security config, and never weaken the backend's loopback check. Cleartext HTTP is allowed in `app/src/debug/` for `localhost` only; release builds are HTTPS-only and the release tasks refuse an `apiBaseUrl` that is not `https://`.
+
+To replace the dev identity with the project's identity provider, follow `@@invoke:security-auth@@` for the backend side, then in each Android app:
+
+1. Replace `ApiClient.createDevToken` and the body of `SignInViewModel` with the provider's flow, and keep the token in `SessionStore` (or in encrypted storage you choose and document).
+2. Change `SignInScreen.kt` and the strings to the provider's sign-in, and remove the "Local development sign-in" label with the dev-identity call.
+3. Update `SignInViewModelTest`, `RetrofitApiClientTest`, `ApiContractTest` and `SignInScreenTest` to the new flow. They are the executable description of what the session must do.
+
+## Read these only when needed
+
+- `README.md` of the app for how to run it and reach the backend; `docs/guide.md` for the structure and the tests
+- `@@invoke:android-testing@@` before adding or changing tests
 
 ## Minimum verification
 
-- Run `./gradlew compileDebugKotlin` (or `gradlew.bat` on Windows) after architecture-sensitive changes.
-- Add a targeted test or build task when navigation, networking, session, packaging, or resources change.
-- If AGP, Kotlin, Compose BOM, or shrinker-related build configuration changes, escalate to release validation instead of stopping at debug-only tasks.
-- If implementation changes docs-described behavior, update the relevant file in `mobile-android/docs/` in the same session.
+- Run `./gradlew assembleDebug testDebugUnitTest` (or `gradlew.bat` on Windows) in the app's folder before closing a change.
+- Add `./gradlew lintDebug` when resources, manifests or accessibility-sensitive UI change.
+- Update the app's `docs/guide.md` and `AGENTS.md` when the structure or the documented behaviour changes.

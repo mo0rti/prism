@@ -1,0 +1,26 @@
+package {{ app_package }}
+
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import {{ app_package }}.data.api.ApiClient
+import {{ app_package }}.data.api.RetrofitApiClient
+import {{ app_package }}.data.api.createApiService
+import {{ app_package }}.session.SessionStore
+import {{ app_package }}.ui.profile.ProfileViewModel
+import {{ app_package }}.ui.signin.SignInViewModel
+
+/**
+ * Wires the app by hand: one session, one client, and the factory that builds the ViewModels.
+ * A project that outgrows this adds a DI framework here, in one place.
+ */
+class AppContainer(
+    apiBaseUrl: String,
+    val sessionStore: SessionStore = SessionStore(),
+    val apiClient: ApiClient = RetrofitApiClient(createApiService(apiBaseUrl)),
+) {
+    val viewModelFactory: ViewModelProvider.Factory = viewModelFactory {
+        initializer { SignInViewModel(apiClient, sessionStore) }
+        initializer { ProfileViewModel(apiClient, sessionStore) }
+    }
+}

@@ -1,47 +1,48 @@
 {# Generated from template-skills/android-testing/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: android-testing
-description: Android testing patterns for ViewModels, repositories, Compose UI, and Hilt-aware instrumentation. Use when adding or updating tests under `app/src/test/` or `app/src/androidTest/`, or when deciding the right Android test shape for a change.
+description: Android testing patterns for ViewModels, the contract client and Compose UI under Robolectric. Use when adding or updating tests under an Android app's `app/src/test/`, or when deciding the right Android test shape for a change.
 disable-model-invocation: true
 ---
 
 # Android Testing
 
-Use this skill when Android work needs test coverage, test refactors, or test-shape decisions.
+Use this skill when Android work needs test coverage, test refactors, or test-shape decisions. Tests live in `app/src/test/kotlin/<package path>/` of the app ({% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}), where `<package path>` is the application ID written with slashes. They all run on the JVM with `./gradlew testDebugUnitTest`, so CI proves them without an emulator.
 
 ## Role boundary
 
-- Own test authoring patterns for unit tests and instrumentation or Compose UI tests.
+- Own test authoring patterns for unit and Compose UI tests.
 - Defer production architecture rules to `android-conventions`.
 - Defer Gradle task selection to `android-build-verify`.
 - Defer shared UI behavior rules to `compose-design-system`.
 
-## Unit-test rules
+## The tests of the slice
 
-- Prefer unit tests for ViewModel state, repository mapping, session behavior, and helper logic.
-- Use `runTest` with an explicit `TestCoroutineScheduler` when coroutine ordering matters.
-- Prefer `UnconfinedTestDispatcher` or `StandardTestDispatcher` injected through dispatcher qualifiers instead of real dispatchers.
-- Assert `StateFlow` and one-off effects with Turbine when stream behavior matters.
-- Keep unit tests under `app/src/test/` and mirror the source package structure where practical.
+- `ui/signin/SignInViewModelTest.kt` and `ui/profile/ProfileViewModelTest.kt` test the state holders against `support/FakeApiClient.kt`: loading, success, each failure, retry, sign-out and session expiry.
+- `data/api/RetrofitApiClientTest.kt` tests the real client against a MockWebServer: the route and method of each call, the bearer header, the status mapping and that the token never reaches `toString()`.
+- `data/api/ApiContractTest.kt` reads `shared/api-contracts/openapi.yml` (the build passes its path as the `prism.apiContract` system property) and fails when `ApiService`, the DTOs or `getMe`'s bearer security drift from it.
+- `ui/signin/SignInScreenTest.kt` is a Compose UI test under Robolectric. It asserts the literal text "Local development sign-in", so a change of the label or of its meaning fails a test.
 
-## Compose UI and instrumentation rules
+## ViewModel test rules
 
-- Use `createAndroidComposeRule<MainActivity>()` for screen-level Compose tests that need the real activity and navigation host.
-- Keep instrumentation tests focused on screen state, routing, accessibility surfaces, and critical user flows rather than duplicating unit-test logic.
-- Preserve stable semantics and test tags or content descriptions that important UI tests depend on.
-- Keep instrumentation tests under `app/src/androidTest/`.
+- Use `MainDispatcherRule` (an `UnconfinedTestDispatcher` as the main dispatcher) and create the ViewModel in `@Before`: a ViewModel takes its `viewModelScope` when it is created, so a ViewModel built in a field initializer runs before the rule and never sees the test dispatcher.
+- Substitute `FakeApiClient`: set `tokenResult` or `meResult`, and set `gate` to a `CompletableDeferred` to hold a call and assert the loading state.
+- Assert `StateFlow.value` after each action; with the unconfined dispatcher a launched coroutine has run when the call returns. Reach for `StandardTestDispatcher` and `advanceUntilIdle()` only when ordering matters.
+- Keep a fake as small as the tests need; add the interface method to `FakeApiClient` in the same change as to `ApiClient`.
 
-## Hilt-aware instrumentation
+## Compose UI test rules
 
-- The template supports Hilt Android testing for instrumentation tests.
-- Use `@HiltAndroidTest` plus `HiltAndroidRule` when a UI test needs DI overrides or fake bindings.
-- Use `@UninstallModules` only when a test genuinely needs to replace app bindings; prefer simple fake inputs when DI overrides are unnecessary.
+- Use `createComposeRule()` with `@RunWith(RobolectricTestRunner::class)` and test a stateless Screen by passing it a `UiState` and a callback; this needs no ViewModel and no activity.
+- Find nodes by visible text or semantics, not by position. Assert the strings that carry meaning (the sign-in label, error explanations), and preserve stable semantics that tests depend on.
+- Robolectric reads `app/src/test/resources/robolectric.properties` for its SDK level; resources are merged because the build sets `isIncludeAndroidResources`.
+- A test that needs a real device or emulator belongs in `app/src/androidTest/` with `./gradlew connectedDebugAndroidTest`; the pack ships none, and CI does not run an emulator.
 
 ## Picking the right test
 
-- If the change is ViewModel, repository, mapper, or session logic: add or update a unit test first.
-- If the change is Compose UI behavior, auth gating, navigation wiring, or screen semantics: add or update an instrumentation or Compose UI test when the behavior is not already covered.
-- If both logic and UI are touched, prefer a unit test for the logic plus the smallest instrumentation smoke test that protects the user flow.
+- ViewModel, mapping or session logic: add or update a ViewModel test first.
+- A new operation or status: add a `RetrofitApiClientTest` case and extend `ApiContractTest`.
+- Screen content or semantics: add a Compose UI test of the Screen.
+- If both logic and UI are touched, prefer a ViewModel test for the logic plus the smallest Compose test that protects what the person sees.
 
 ## Validation
 

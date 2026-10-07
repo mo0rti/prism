@@ -174,18 +174,25 @@ jobs:
             project_name: Review Android
             apps:
               - {id: backend, stack: spring-backend, name: Spring Boot Backend}
-              - {id: mobile-android, stack: android-compose, name: Android (Kotlin/Compose)}
+              - {id: mobile-android, stack: android-compose, name: Customer App}
+              - {id: partner-android, stack: android-compose, name: Partner App, path: apps/partner}
           YAML
           python -m prism_cli new --answers "$RUNNER_TEMP/android-answers.yml" --dest "$TARGET" --yes
           echo "PRISM_ANDROID_TARGET=$TARGET" >> "$GITHUB_ENV"
 
-      - name: Test, Assemble and Lint Android
+      # The same steps as the app's own workflow, for both Android apps of the workspace.
+      - name: Build the Debug APK and Run the Unit Tests
         shell: bash
         run: |
           set -euo pipefail
-          cd "$PRISM_ANDROID_TARGET/mobile-android"
-          chmod +x gradlew
-          ./gradlew testDebugUnitTest assembleDebug lintDebug
+          for app in mobile-android apps/partner; do
+            echo "Building and testing $app"
+            pushd "$PRISM_ANDROID_TARGET/$app" >/dev/null
+            chmod +x gradlew
+            ./gradlew assembleDebug testDebugUnitTest
+            test -f app/build/outputs/apk/debug/app-debug.apk
+            popd >/dev/null
+          done
 
   ios-build:
     runs-on: macos-26

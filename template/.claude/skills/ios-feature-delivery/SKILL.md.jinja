@@ -30,8 +30,8 @@ $ARGUMENTS
 
 - Cross-check `shared/api-contracts/openapi.yml` when endpoints, DTOs, or enums are involved.
 {% if "spring-backend" in stacks %}- Cross-check `backend/` when behavior or response semantics need confirmation.
-{% endif %}{% if "android-compose" in stacks %}- Cross-check `mobile-android/` when product parity or UX intent matters.
-{% endif %}
+{% endif %}{% for app in apps if app.stack == "android-compose" %}- Cross-check `{{ app.path }}/` when product parity or UX intent matters.
+{% endfor %}
 
 ## 3. Map affected layers
 

@@ -1,6 +1,6 @@
 # Mobile Store Releases - {{ project_name }}
 
-The generated mobile CI builds and tests only. Store releases are the project owner's decision: which stores, which signing material, which secrets. The Fastlane lanes stay in each mobile app; the notes below describe how a tag-triggered release job can drive them.
+The generated mobile CI builds and tests only. Store releases are the project owner's decision: which stores, which signing material, which secrets. The notes below describe how a tag-triggered release job can build and upload each mobile app.
 
 Add a `tags: ['v*']` trigger to the app's workflow, then a release job that runs only on a `v*` tag, uses `environment: production` and does nothing while a secret is missing (report a **Deploy skipped** warning naming the secrets, as the Azure and Cloudflare examples do). Never commit secret values; the project owner creates them.
 
@@ -8,12 +8,14 @@ Add a `tags: ['v*']` trigger to the app's workflow, then a release job that runs
 
 ## Android: Play Store
 
-Job `release` in `.github/workflows/mobile-android.yml`, after the test and lint jobs, on `ubuntu-latest`:
+The `android-compose` pack ships no signing configuration, no Fastlane lane and no release job: its release build type is unsigned and unshrunk, and a release build refuses an `apiBaseUrl` that is not `https://`. Replace the app's local development sign-in with the project's identity provider before a release (see `security-auth`): the dev identity does not exist on a deployed backend.
 
-1. Check out, make `mobile-android/gradlew` executable, set up JDK 21, set up Ruby 3.2 with `bundler-cache: true` and `working-directory: mobile-android`.
-2. Decode the keystore: `echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > app/keystore.jks` in `mobile-android`.
-3. Build the bundle: `./gradlew bundleRelease` with `-Pandroid.injected.signing.store.file=$PWD/app/keystore.jks`, `...store.password`, `...key.alias` and `...key.password` from the secrets below.
-4. Upload: `bundle exec fastlane release` with `SUPPLY_JSON_KEY_DATA` set to the Play Console service account JSON.
+For each Android app ({% for app in apps if app.stack == "android-compose" %}`{{ app.id }}` in `{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}), add job `release` to `.github/workflows/<app-id>.yml`, after the build job, on `ubuntu-latest`:
+
+1. Check out, make `<app folder>/gradlew` executable, and set up JDK {{ pack_versions["android-compose"].jdk }} and the Android SDK as the build job does.
+2. Decode the keystore outside the checkout: `echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"`.
+3. Build the bundle in `<app folder>`: `./gradlew bundleRelease -PapiBaseUrl=https://<production backend>/` with `-Pandroid.injected.signing.store.file=$RUNNER_TEMP/release.jks`, `...store.password`, `...key.alias` and `...key.password` from the secrets below.
+4. Upload `app/build/outputs/bundle/release/app-release.aab` to the Play Console with a publishing action or a Fastlane `supply` lane that you add, using the service account JSON.
 
 | Secret | Description |
 |--------|-------------|
@@ -22,8 +24,6 @@ Job `release` in `.github/workflows/mobile-android.yml`, after the test and lint
 | `ANDROID_KEY_ALIAS` | Key alias |
 | `ANDROID_KEY_PASSWORD` | Key password |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Play Console service account |
-
-The lane is defined in `mobile-android/fastlane/Fastfile`.
 {%- endif %}
 
 {%- if "ios-swiftui" in stacks %}

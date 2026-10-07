@@ -1,6 +1,6 @@
 ---
 name: android-build-verify
-description: "Choose the cheapest trustworthy Gradle validation for Android changes. Use when asked to compile, assemble, test, debug build failures, or decide which Android verification task should run after edits in `mobile-android/`."
+description: "Choose the cheapest trustworthy Gradle validation for Android changes. Use when asked to compile, assemble, test, debug build failures, or decide which Android verification task should run after edits in an Android app folder."
 layers: [codex, claude-skill]
 stacks: [android-compose]
 codex:
@@ -16,7 +16,7 @@ claude-skill:
 
 # Android Build Verify
 
-Use the smallest Gradle task that gives trustworthy feedback for the Android change.
+Use the smallest Gradle task that gives trustworthy feedback for the Android change. Run Gradle from the app's folder ({% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}) on JDK {{ pack_versions["android-compose"].jdk }} with an Android SDK that has platform {{ pack_versions["android-compose"].compile_sdk }}.
 
 ::: only claude-skill
 ## Request
@@ -26,30 +26,25 @@ $ARGUMENTS
 :::
 ## Default Task Selection
 
-- `./gradlew compileDebugKotlin` or `gradlew.bat compileDebugKotlin`
-  - Use for most Kotlin, Compose, ViewModel, DI, and navigation edits.
 - `./gradlew testDebugUnitTest` or `gradlew.bat testDebugUnitTest`
-  - Prefer when ViewModel, repository, session, mapper, or helper logic changes.
-- `./gradlew compileDebugAndroidTestKotlin` or `gradlew.bat compileDebugAndroidTestKotlin`
-  - Add when screen APIs, Compose test fixtures, semantics-sensitive UI, or instrumentation-only dependencies change.
+  - The default for most edits: it compiles the app and runs the ViewModel, client, contract and Compose UI tests, all on the JVM.
+- `./gradlew assembleDebug testDebugUnitTest`
+  - What CI runs and what closes a change: add `assembleDebug` when resources, manifests, packaging or dependencies may be affected.
+- `./gradlew compileDebugKotlin` or `gradlew.bat compileDebugKotlin`
+  - The fastest compile check for Kotlin and Compose edits while iterating.
 - `./gradlew lintDebug` or `gradlew.bat lintDebug`
-  - Add when resources, manifests, accessibility-sensitive UI, or platform configuration change.
-- `./gradlew assembleDebug` or `gradlew.bat assembleDebug`
-  - Add when resources, manifests, packaging, generated sources, or broader app integration may be affected.
+  - Add when resources, manifests, accessibility-sensitive UI or platform configuration change.
 - `./gradlew assembleRelease` or `gradlew.bat assembleRelease`
-  - Add when release-only build logic, ProGuard or R8 rules, serialization DTOs, reflection targets, or dependency upgrades may affect shrinking or packaging.
-- `./gradlew bundleRelease` or `gradlew.bat bundleRelease`
-  - Add when validating the Play-distribution artifact path or matching the Fastlane and CI release flow matters.
-- `./gradlew connectedDebugAndroidTest`
-  - Use when a device or emulator is available and instrumentation coverage is relevant.
-  - Prefer an API 36 phone emulator as the baseline local UI verification target.
-  - Add an API 29 phone emulator spot-check when the change touches auth, insets, storage, or device behavior.
+  - Add when release-only build logic changes. It needs `-PapiBaseUrl=https://...`, because a release build refuses a cleartext base URL. Signing and store upload belong to the project owner (see the `deployment` skill's mobile note).
+- `./gradlew installDebug` with `adb reverse`
+  - Use when a device or emulator is available and the change affects the running app: run `task <app-id>:reverse` first so the app reaches the local backend at `localhost`.
 
 ## Troubleshooting
 
-- If Hilt or generated-code failures look stale after refactors, stop the Gradle daemon (`./gradlew --stop`), remove `app/build` and `.gradle`, and rebuild with `--no-build-cache --rerun-tasks`.
-- If a release-only failure appears after compile or debug tasks pass, escalate to `assembleRelease` before editing keep rules blindly.
-- If the change is UI-only but touches shared Compose code, prefer `compileDebugKotlin` first and escalate to `assembleDebug` only if needed.
+- A failure that looks stale after dependency or plugin changes: stop the Gradle daemon (`./gradlew --stop`), remove `app/build` and `.gradle`, and rebuild with `--no-build-cache --rerun-tasks`.
+- `SDK location not found`: set `ANDROID_HOME` or `sdk.dir` in the git-ignored `local.properties`.
+- `ApiContractTest` fails: the client and `shared/api-contracts/openapi.yml` disagree; change them together (see `@@invoke:android-contract-alignment@@`).
+- The sign-in reports an unreachable backend or a loopback refusal: the backend runs under its `local` profile and `adb reverse` is set; do not change the base URL to `10.0.2.2`.
 
 ## Report Clearly
 

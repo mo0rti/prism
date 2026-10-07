@@ -119,7 +119,7 @@ A Prism-generated repository can include:
 
 - **Backend**: Spring Boot 4, Kotlin 2.2+, Java 21
 - **Web app** (one or more, one per audience): Next.js + TypeScript with a local development sign-in and one authenticated read
-- **Android**: Kotlin + Jetpack Compose
+- **Android app** (one or more): Kotlin + Jetpack Compose with a local development sign-in and one authenticated read
 - **iOS**: Swift + SwiftUI
 
 Every generated repository also includes:
@@ -199,7 +199,7 @@ Start with:
 
 - The workflow, the shared board, the MCP tool contract and the human board actions are implemented and tested; the [plan](https://github.com/mo0rti/prism/blob/main/docs/prism-core-workflow-plan.md) states their scope and contracts.
 - Prism 0.5.0 is released: `prism-kit` on [PyPI](https://pypi.org/project/prism-kit/) and the [GitHub release](https://github.com/mo0rti/prism/releases/tag/v0.5.0) with checksums.
-- Application samples: backend, Android and web are verified locally and in CI, and the iOS sample is built and tested by the macOS CI job. Generated workspaces ship no deployment: the `deployment` skill holds unverified worked examples for Azure Container Apps and Cloudflare, and Apple Sign-In is experimental.
+- Application samples: the backend, Android and web packs are verified locally and in CI, and the iOS sample is built and tested by the macOS CI job. Generated workspaces ship no deployment: the `deployment` skill holds unverified worked examples for Azure Container Apps and Cloudflare, and Apple Sign-In is experimental.
 - Core acceptance uses disposable neutral workspaces. Sample behavior does not define the core workflow.
 - Prism is released under the MIT license and published to PyPI as `prism-kit`, with the `@mortitech/prism` launcher on npm. The [changelog](https://github.com/mo0rti/prism/blob/main/CHANGELOG.md) lists what each version contains.
 

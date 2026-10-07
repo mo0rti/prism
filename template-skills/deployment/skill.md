@@ -39,7 +39,7 @@ This project does not choose a cloud, hold credentials or deploy anything. The g
 - Web apps that pass `npm ci`, `npm run lint`, `npm run typecheck`, `npm test` and `npm run build` with no hosting files. `API_BASE_URL` is their only runtime variable; each app's `.env.example` lists the local value.
 {%- endif %}
 {%- if "android-compose" in stacks or "ios-swiftui" in stacks %}
-- Mobile apps with Fastlane lanes under their `fastlane/` folders; CI builds and tests them but does not release them.
+- Mobile apps that CI builds and tests; they carry no release job and no signing material.
 {%- endif %}
 {%- if "spring-backend" in stacks %}
 
@@ -74,7 +74,7 @@ Reference: `references/cloudflare-setup.md` (the guide) and `references/cloudfla
 
 ## Mobile: Store Releases
 
-Reference: `references/mobile-store-release.md`. It describes a tag-triggered release job that runs the Fastlane lanes, and the signing secrets it needs. The user owns the store accounts and the signing material.
+Reference: `references/mobile-store-release.md`. It describes a tag-triggered release job that builds and uploads each mobile app, and the signing secrets it needs. The user owns the store accounts and the signing material.
 {%- endif %}
 
 ## CI Deploy Jobs

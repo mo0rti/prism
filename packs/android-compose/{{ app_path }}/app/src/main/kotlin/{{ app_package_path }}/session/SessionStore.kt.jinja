@@ -1,0 +1,27 @@
+package {{ app_package }}.session
+
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Holds the access token of the signed-in user, in memory only: nothing writes it to disk, and a new
+ * process starts signed out. The token is a credential, so it never reaches a log, a string template or
+ * `toString()`.
+ */
+class SessionStore {
+    private val token = MutableStateFlow<String?>(null)
+
+    /** The current access token, or `null` while signed out. */
+    val accessToken: StateFlow<String?> = token.asStateFlow()
+
+    fun open(accessToken: String) {
+        token.value = accessToken
+    }
+
+    fun close() {
+        token.value = null
+    }
+
+    override fun toString(): String = "SessionStore(signedIn=${token.value != null})"
+}

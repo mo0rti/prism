@@ -118,7 +118,7 @@ Generation has two layers, and one `copier.yml` and one template tag cover both:
 - **The workspace layer** (`template/`) holds the knowledge base, the guidance, `shared/` and `docker-compose.yml`. It receives the `stacks` and the app list of the scaffolded apps, so its compose file has one service for each backend app, the root `Taskfile.yml` includes each app's tasks, and its guidance lists them.
 - **An app layer** (`packs/<stack>/`) holds one app. Copier applies it to the repository root, once for each scaffolded app, with every path under the app's path, plus the app's workflow `.github/workflows/<id>.yml` and Cursor rule `.cursor/rules/<id>.mdc`. Each app keeps its own answers at `<path>/.copier-answers.yml`, which is Copier's documented way to apply one template several times to one project. The workspace's own answers stay in `.copier-answers.yml`.
 
-The versions a pack pins are in `packs/versions.yml`, the one place a release moves them. Packs exist for `spring-backend`, whose slice is the dev identity and `GET /api/me` with their tests; the other generated stacks still generate their full samples through the workspace layer until their packs land.
+The versions a pack pins are in `packs/versions.yml`, the one place a release moves them. Packs exist for `spring-backend`, whose slice is the dev identity and `GET /api/me` with their tests, for `nextjs-web` and for `android-compose`, whose slices are the local development sign-in and the profile read with their tests; `ios-swiftui` still generates its full sample through the workspace layer until its pack lands.
 
 `prism app add --scaffold` generates a new app into an existing generated workspace:
 

@@ -48,7 +48,7 @@ LAYERS = ("codex", "command", "claude-skill", "cursor")
 LAYER_GROUPS = {"claude": ("command", "claude-skill")}
 # The stacks a skill can need, and the full-sample apps a reference file can belong to.
 STACKS = ("spring-backend", "nextjs-web", "android-compose", "ios-swiftui")
-SAMPLE_APPS = ("mobile-android", "mobile-ios")
+SAMPLE_APPS = ("mobile-ios",)
 # Everything under these folders of the template is generated from the sources.
 MANAGED_ROOTS = (".agents/skills", ".claude/commands", ".claude/skills", ".cursor/rules")
 HEADER = "{# Generated from template-skills/%s/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}\n"

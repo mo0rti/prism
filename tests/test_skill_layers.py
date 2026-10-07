@@ -114,7 +114,7 @@ class GeneratorTests(unittest.TestCase):
             codex.write_text(codex.read_text(encoding="utf-8") + "\nAn edit that has no source.\n", encoding="utf-8")
             command = template / ".claude" / "commands" / "po-handoff.md.jinja"
             command.write_text(command.read_text(encoding="utf-8").replace("exactly one", "exactly two", 1), encoding="utf-8")
-            cursor = template / ".cursor" / "rules" / "mobile-android.mdc.jinja"
+            cursor = template / ".cursor" / "rules" / "api-conventions.mdc.jinja"
             cursor.write_text(cursor.read_text(encoding="utf-8") + "- one more fact\n", encoding="utf-8")
             (template / ".agents" / "skills" / "ask" / "agents" / "openai.yaml").write_text("interface: {}\n", encoding="utf-8")
             reference = template / ".claude" / "skills" / "compose-design-system" / "references" / "compose-components.md"
@@ -123,7 +123,7 @@ class GeneratorTests(unittest.TestCase):
             for path in (
                 ".agents/skills/ask/SKILL.md.jinja",
                 ".claude/commands/po-handoff.md.jinja",
-                ".cursor/rules/mobile-android.mdc.jinja",
+                ".cursor/rules/api-conventions.mdc.jinja",
                 ".agents/skills/ask/agents/openai.yaml",
                 ".claude/skills/compose-design-system/references/compose-components.md",
             ):
@@ -171,11 +171,11 @@ class GeneratorTests(unittest.TestCase):
                 self.assertIn(condition(f"{layer}/{name}", "android-compose"), lines)
             for name in ("ios-build-verify", "ios-contract-alignment", "ios-conventions", "ios-feature-delivery", "ios-testing", "swiftui-design-system"):
                 self.assertIn(condition(f"{layer}/{name}", "ios-swiftui"), lines)
-        self.assertIn(condition(".claude/skills/deploy-device", "android-compose", "ios-swiftui"), lines)
+        self.assertIn(condition(".claude/skills/deploy-device", "android-compose"), lines)
         # The backend's Cursor rule belongs to its pack, per app, so no source and no exclusion names it.
         self.assertFalse([line for line in lines if ".cursor/rules/backend.mdc" in line])
         self.assertFalse([line for line in lines if ".cursor/rules/web.mdc" in line], "the web Cursor rule belongs to the nextjs-web pack")
-        self.assertIn(condition(".cursor/rules/mobile-android.mdc", "android-compose"), lines)
+        self.assertFalse([line for line in lines if ".cursor/rules/mobile-android.mdc" in line], "the Android Cursor rule belongs to the android-compose pack")
         self.assertIn(condition(".cursor/rules/mobile-ios.mdc", "ios-swiftui"), lines)
         for layer in (".agents/skills", ".claude/skills"):
             base = f"{layer}/deployment/references"
@@ -321,7 +321,7 @@ class GeneratorTests(unittest.TestCase):
                 layers: [codex, claude-skill]
                 stacks: [spring-backend]
                 reference-stacks: {references/extra: [ios-swiftui]}
-                reference-apps: {references/extra: [mobile-android]}
+                reference-apps: {references/extra: [mobile-ios]}
                 codex: {display_name: Demo, short_description: Demo, default_prompt: Use it., implicit: true}
                 """,
                 "# Demo\n\nBody.",
@@ -335,7 +335,7 @@ class GeneratorTests(unittest.TestCase):
             lines = GENERATOR.exclude_lines(skills)
             self.assertIn("  - \"{% if prism_layer == 'workspace' and 'spring-backend' not in stacks %}.agents/skills/demo{% endif %}\"", lines)
             self.assertIn("  - \"{% if prism_layer == 'workspace' and 'ios-swiftui' not in stacks %}.claude/skills/demo/references/extra{% endif %}\"", lines)
-            self.assertIn("  - \"{% if prism_layer == 'workspace' and 'mobile-android' not in app_ids %}.claude/skills/demo/references/extra{% endif %}\"", lines)
+            self.assertIn("  - \"{% if prism_layer == 'workspace' and 'mobile-ios' not in app_ids %}.claude/skills/demo/references/extra{% endif %}\"", lines)
         with tempfile.TemporaryDirectory(prefix="prism-skill-sources-") as temporary:
             root = Path(temporary)
             write_source(
@@ -372,7 +372,7 @@ def owner(skills, rendered: str):
 
 STACK_OF_APP = {"backend": "spring-backend", "web": "nextjs-web", "mobile-android": "android-compose", "mobile-ios": "ios-swiftui"}
 # The Cursor rule of a pack's app is the pack's own file, so no skill source names it.
-PACK_APP_RULES = {".cursor/rules/backend.mdc", ".cursor/rules/web.mdc"}
+PACK_APP_RULES = {".cursor/rules/backend.mdc", ".cursor/rules/web.mdc", ".cursor/rules/mobile-android.mdc"}
 
 
 def rendered_names(skills, app_ids) -> set[str]:
@@ -593,6 +593,7 @@ class AllAppsDiscoveryTests(RenderedWorkspace, unittest.TestCase):
                 self.assertTrue((self.root / layer / name / "SKILL.md").is_file(), f"{layer}/{name}")
         self.assertTrue((self.root / ".claude" / "skills" / "deploy-device" / "SKILL.md").is_file())
         self.assertTrue((self.root / ".cursor" / "rules" / "web.mdc").is_file())
+        self.assertTrue((self.root / ".cursor" / "rules" / "mobile-android.mdc").is_file(), "the android-compose pack carries its app's Cursor rule")
         self.assertTrue((self.root / ".agents" / "skills" / "deployment" / "references" / "cloudflare" / "open-next.config.ts").is_file())
 
     def test_a_workflow_skill_has_one_body_in_the_codex_and_claude_layouts(self) -> None:

@@ -1,0 +1,34 @@
+package {{ app_package }}.data.api
+
+import kotlinx.serialization.Serializable
+
+/*
+ * The request and response shapes of `shared/api-contracts/openapi.yml` that the slice uses.
+ * `ApiContractTest` fails when a field here and the contract disagree.
+ */
+
+/** `DevTokenRequest`: who the development identity signs in as. Both fields are optional. */
+@Serializable
+data class DevTokenRequest(
+    val email: String? = null,
+    val displayName: String? = null,
+)
+
+/** `DevTokenResponse`. The access token is a credential, so `toString()` hides it. */
+@Serializable
+data class DevTokenResponse(
+    val accessToken: String,
+    val tokenType: String,
+    val expiresIn: Long,
+) {
+    override fun toString(): String = "DevTokenResponse(accessToken=<redacted>, tokenType=$tokenType, expiresIn=$expiresIn)"
+}
+
+/** `UserProfile`, the answer of `GET /api/me`. */
+@Serializable
+data class UserProfile(
+    val id: String,
+    val displayName: String,
+    val email: String? = null,
+    val createdAt: String,
+)

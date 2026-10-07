@@ -1,0 +1,42 @@
+---
+description: {{ (app_name ~ " (Android, Kotlin, Jetpack Compose): stack, structure, sign-in slice, the local backend and commands.") | tojson }}
+globs: "{{ app_path }}/**"
+---
+
+# {{ app_name }} - Android (Kotlin + Jetpack Compose, MVVM)
+
+## Stack
+- Kotlin {{ versions.kotlin }}, Jetpack Compose (BOM {{ versions.compose_bom }}), Android Gradle Plugin {{ versions.agp }}, Gradle {{ versions.gradle }}, JDK {{ versions.jdk }}
+- Retrofit {{ versions.retrofit }} with kotlinx.serialization, OkHttp {{ versions.okhttp }}; no DI framework, no database
+- Min SDK {{ versions.min_sdk }}, target and compile SDK {{ versions.target_sdk }}
+- Tests on the JVM: JUnit {{ versions.junit }}, coroutines-test, MockWebServer, Robolectric {{ versions.robolectric }} with the Compose test rule
+- Release and signing are the project owner's choice (see the `deployment` skill, `.agents/skills/deployment/SKILL.md`)
+
+## Structure
+```
+{{ app_path }}/app/src/main/kotlin/{{ app_package_path }}/
+  ui/signin/        -> "Local development sign-in": SignInScreen, SignInRoute, SignInViewModel
+  ui/profile/       -> GET /api/me: ProfileScreen, ProfileRoute, ProfileViewModel
+  ui/AppRoot.kt     -> profile while a session is open, sign-in otherwise
+  data/api/         -> ApiService (Retrofit), ApiModels, ApiClient, RetrofitApiClient
+  session/          -> SessionStore (the token, in memory only)
+  designsystem/     -> AppTheme, Spacing, LoadingIndicator, ErrorView
+{{ app_path }}/app/src/test/  -> JVM tests: ViewModels, client, contract, Compose UI
+```
+
+## Patterns
+- MVVM: a ViewModel exposes `StateFlow<UiState>` and explicit `onXxxClick()` methods; a Route collects state with `collectAsStateWithLifecycle()` and hands it to a stateless Screen
+- ViewModels depend on the `ApiClient` interface, so tests substitute `FakeApiClient`; `ApiContractTest` keeps the client equal to `shared/api-contracts/openapi.yml`
+- The token lives in `SessionStore` only: never logged, persisted, passed as an argument or added to `toString()`; the client adds no HTTP logging
+- The sign-in is the backend's local development identity. It is not complete authentication; replace it with your identity provider (see the `security-auth` skill)
+- User-facing text is in `strings.xml`; the sign-in label stays "Local development sign-in"
+
+## The local backend
+- The dev identity answers loopback requests only, so the app calls `http://localhost:8080/` and `adb reverse tcp:8080 tcp:8080` (`task {{ app_id }}:reverse`) carries it to the host
+- Never use `10.0.2.2` or a LAN address, and never weaken the backend's guard
+- Debug builds allow cleartext to `localhost` only; release builds are HTTPS-only
+
+## Commands
+- `./gradlew assembleDebug testDebugUnitTest` or `task {{ app_id }}:build` and `task {{ app_id }}:test`
+- `./gradlew lintDebug` or `task {{ app_id }}:lint`
+- `task {{ app_id }}:reverse`, then `task {{ app_id }}:install`

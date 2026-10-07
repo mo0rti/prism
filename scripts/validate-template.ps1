@@ -220,12 +220,13 @@ function Assert-NoCopierPlaceholders {
 }
 
 # The apps the validation generates: the ID, the stack and the display name `prism new` gives each. `admin` is a second
-# nextjs-web app, and `web` and `admin` carry an audience.
+# nextjs-web app, `web` and `admin` carry an audience, and `partner-android` is a second android-compose app at its own path.
 $DefaultApps = @{
     "backend"          = @{ Stack = "spring-backend";  Name = "Spring Boot Backend" }
     "web"              = @{ Stack = "nextjs-web";      Name = "Web App";             Audience = "B2C" }
     "admin"            = @{ Stack = "nextjs-web";      Name = "Admin App";           Audience = "internal" }
     "mobile-android"   = @{ Stack = "android-compose"; Name = "Android (Kotlin/Compose)" }
+    "partner-android"  = @{ Stack = "android-compose"; Name = "Partner App";         Path = "apps/partner" }
     "mobile-ios"       = @{ Stack = "ios-swiftui";     Name = "iOS (Swift/SwiftUI)" }
 }
 
@@ -262,6 +263,9 @@ function New-GeneratedProject {
                 $lines += "      name: `"$($DefaultApps[$app].Name)`""
                 if ($DefaultApps[$app].ContainsKey("Audience")) {
                     $lines += "      audience: $($DefaultApps[$app].Audience)"
+                }
+                if ($DefaultApps[$app].ContainsKey("Path")) {
+                    $lines += "      path: $($DefaultApps[$app].Path)"
                 }
             }
         }
@@ -826,7 +830,8 @@ function Get-ClientApiPaths {
     $clientPaths = @()
     $sources = @()
 
-    $androidService = @(Get-ChildItem -LiteralPath (Join-Path $Root "mobile-android") -Recurse -Filter "ApiService.kt" -File -ErrorAction SilentlyContinue)
+    # Every android-compose app keeps its client at data/api/ApiService.kt under its package directories.
+    $androidService = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter "ApiService.kt" -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match 'data[\\/]api[\\/]ApiService\.kt$' })
     foreach ($file in $androidService) {
         $sources += [pscustomobject]@{ Client = "android"; File = $file.FullName; Paths = (Get-AndroidApiPaths -Content (Get-Content -Raw -LiteralPath $file.FullName)) }
     }
@@ -844,13 +849,13 @@ function Get-ClientApiPaths {
     return @($clientPaths)
 }
 
-# The contract defines the slice's operations (the dev-identity token and GET /api/me). The full samples that the
-# workspace layer still generates (Android, iOS) were written against the retired backend sample's operations, so
-# their client paths are not checked against the contract until their stack's pack replaces the sample. Each pack
-# package (android-compose, ios-swiftui) removes its client from this list and writes it against the contract. The
-# nextjs-web pack's client is generated from the contract and type-checked against it by the app's own generate:api
-# and typecheck, so it is not path-matched here.
-$ClientsWithoutPack = @("android", "ios")
+# The contract defines the slice's operations (the dev-identity token and GET /api/me). The full sample that the
+# workspace layer still generates (iOS) was written against the retired backend sample's operations, so its client
+# paths are not checked against the contract until its stack's pack replaces the sample. That pack's package
+# (ios-swiftui) removes its client from this list and writes it against the contract. The nextjs-web pack's client is
+# generated from the contract and type-checked against it by the app's own generate:api and typecheck, so it is not
+# path-matched here. The android-compose pack's Retrofit client is hand-written, so its ApiService.kt is path-matched.
+$ClientsWithoutPack = @("ios")
 
 function Assert-ClientPathsInOpenApi {
     param([string]$Root)
@@ -1000,16 +1005,64 @@ function Validate-AndroidSample {
     Validate-WikiStructure -Root $Root
     Assert-ClientPathsInOpenApi -Root $Root
 
-    # mobile-android AGENTS.md must have the wiki section and CLAUDE.md must import it with app-specific path
-    Assert-FileContains -Path (Join-Path $Root "mobile-android\CLAUDE.md") -Needle "@AGENTS.md" -Message "mobile-android/CLAUDE.md must import AGENTS.md."
-    Assert-FileContains -Path (Join-Path $Root "mobile-android\AGENTS.md") -Needle "app-requirements/[feature-id]-mobile-android" -Message "mobile-android/AGENTS.md missing mobile-android app-requirements reference."
-    Assert-FileContains -Path (Join-Path $Root "mobile-android\AGENTS.md") -Needle "advisory-review" -Message "mobile-android/AGENTS.md missing advisory-review check."
+    # The Android apps are the android-compose pack: two apps of one stack, each an app layer with its own answers,
+    # workflow, Cursor rule, application ID, namespace, package directories and Gradle project name.
+    $androidApps = @(
+        @{ Id = "mobile-android"; Path = "mobile-android"; Segment = "mobileandroid" },
+        @{ Id = "partner-android"; Path = "apps/partner"; Segment = "partnerandroid" }
+    )
+    $packageRoot = "com.example.reviewandroid"
+    foreach ($androidApp in $androidApps) {
+        $app = $androidApp.Id
+        $dir = $androidApp.Path -replace "/", "\"
+        $package = "$packageRoot.$($androidApp.Segment)"
+        $packageDir = "com\example\reviewandroid\$($androidApp.Segment)"
+        Assert-PathExists -Path (Join-Path $Root $dir) -Message "Android sample should generate the $app app at $($androidApp.Path)."
+        Assert-FileContains -Path (Join-Path $Root "$dir\CLAUDE.md") -Needle "@AGENTS.md" -Message "$app/CLAUDE.md must import AGENTS.md."
+        Assert-FileContains -Path (Join-Path $Root "$dir\AGENTS.md") -Needle "knowledge/wiki/app-requirements/[feature-id]-$app" -Message "$app/AGENTS.md missing the wiki app-requirements reference."
+        Assert-FileContains -Path (Join-Path $Root "$dir\AGENTS.md") -Needle "advisory-review" -Message "$app/AGENTS.md missing advisory-review check."
+        Assert-FileContains -Path (Join-Path $Root "$dir\AGENTS.md") -Needle "adb reverse" -Message "$app/AGENTS.md must explain how the app reaches the local backend."
+        Assert-FileContains -Path (Join-Path $Root "$dir\.copier-answers.yml") -Needle "prism_layer: android-compose" -Message "$app must record its own pack answers."
+        Assert-FileContains -Path (Join-Path $Root "$dir\.copier-answers.yml") -Needle "app_package: $package" -Message "$app must derive its application ID from its app ID."
+        Assert-PathExists -Path (Join-Path $Root ".github\workflows\$app.yml") -Message "The android-compose pack must generate the $app workflow."
+        Assert-PathExists -Path (Join-Path $Root ".cursor\rules\$app.mdc") -Message "The android-compose pack must generate the $app Cursor rule."
+        Assert-FileContains -Path (Join-Path $Root ".github\workflows\$app.yml") -Needle "run: ./gradlew assembleDebug testDebugUnitTest" -Message "The $app workflow should build the debug APK and run the unit tests."
+        Assert-FileContains -Path (Join-Path $Root ".github\workflows\$app.yml") -Needle "working-directory: $($androidApp.Path)" -Message "The $app workflow should run in the app's folder."
+        Assert-FileContains -Path (Join-Path $Root "$dir\app\build.gradle.kts") -Needle "namespace = `"$package`"" -Message "$app must have its own namespace."
+        Assert-FileContains -Path (Join-Path $Root "$dir\app\build.gradle.kts") -Needle "applicationId = `"$package`"" -Message "$app must have its own application ID."
+        Assert-FileContains -Path (Join-Path $Root "$dir\settings.gradle.kts") -Needle "rootProject.name = `"$app`"" -Message "$app must have its own Gradle project name."
+        Assert-FileContains -Path (Join-Path $Root "$dir\gradle.properties") -Needle "apiBaseUrl=http://localhost:8080/" -Message "$app must call the backend at localhost, which adb reverse reaches."
+        Assert-FileContains -Path (Join-Path $Root "$dir\app\src\main\res\values\strings.xml") -Needle "Local development sign-in" -Message "$app must label its sign-in as the local development sign-in."
+        Assert-FileContains -Path (Join-Path $Root "$dir\app\src\main\kotlin\$packageDir\data\api\ApiService.kt") -Needle "api/dev-identity/token" -Message "$app must sign in through the dev identity."
+        Assert-FileContains -Path (Join-Path $Root "$dir\app\src\main\kotlin\$packageDir\data\api\ApiService.kt") -Needle "api/me" -Message "$app must read GET /api/me."
+        Assert-FileContains -Path (Join-Path $Root "$dir\app\src\test\kotlin\$packageDir\ui\signin\SignInScreenTest.kt") -Needle "Local development sign-in" -Message "$app must test that its sign-in carries the local development label."
+        foreach ($test in @("ui\signin\SignInViewModelTest.kt", "ui\profile\ProfileViewModelTest.kt", "data\api\RetrofitApiClientTest.kt", "data\api\ApiContractTest.kt")) {
+            Assert-PathExists -Path (Join-Path $Root "$dir\app\src\test\kotlin\$packageDir\$test") -Message "$app must generate $test."
+        }
+        # The debug network policy allows localhost only: the dev identity answers loopback requests only.
+        Assert-FileContains -Path (Join-Path $Root "$dir\app\src\debug\res\xml\network_security_config.xml") -Needle ">localhost<" -Message "$app debug builds must allow cleartext to localhost."
+        Assert-FileNotContains -Path (Join-Path $Root "$dir\app\src\debug\res\xml\network_security_config.xml") -Needle ">10.0.2.2<" -Message "$app must not allow cleartext to the emulator's host alias."
+        Assert-FileNotContains -Path (Join-Path $Root "$dir\app\src\main\AndroidManifest.xml") -Needle "networkSecurityConfig" -Message "$app release builds must stay HTTPS-only."
+        # The retired full sample is gone: no Hilt, Room, DataStore, OAuth credentials or Fastlane.
+        foreach ($retired in @("hilt", "room", "datastore", "credentials")) {
+            Assert-FileNotContains -Path (Join-Path $Root "$dir\gradle\libs.versions.toml") -Needle $retired -Message "$app must not depend on $retired of the retired sample."
+        }
+        Assert-PathMissing -Path (Join-Path $Root "$dir\fastlane") -Message "$app must not carry the retired Fastlane files."
+        Assert-PathMissing -Path (Join-Path $Root "$dir\local.config.properties") -Message "$app must not carry the retired local config file."
+        Assert-PathMissing -Path (Join-Path $Root "$dir\app\src\main\kotlin\$packageDir\feature") -Message "$app must not carry the retired example features."
+    }
+
+    # Two apps of one stack differ in their identifiers and nothing else.
+    Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: ./apps/partner/Taskfile.yml" -Message "The root Taskfile must include the second Android app."
+    Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: ./mobile-android/Taskfile.yml" -Message "The root Taskfile must include the first Android app."
 
     # AGENTS.md must not contain absent platform directories
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-ios/" -Message "Android-only AGENTS.md should not reference mobile-ios/."
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "-> Next.js" -Message "Android-only AGENTS.md should not describe a web app."
 
-    Assert-PathExists -Path (Join-Path $Root "mobile-android") -Message "Android sample should generate mobile-android."
+    # No full-sample leftovers in the workspace layer.
+    Assert-PathMissing -Path (Join-Path $Root "_templates\screen\new\android-screen.kt.ejs.t") -Message "Android hygen templates of the retired sample must not be generated."
+    Assert-FileNotContains -Path (Join-Path $Root ".gitignore") -Needle "mobile-android/" -Message "The workspace .gitignore must not carry the retired sample's Android paths."
     Assert-NoDeploymentArtifacts -Root $Root
     Assert-DeploymentSkill -Root $Root -Backend $true -Web $false
     Assert-PathExists -Path (Join-Path $Root ".claude\skills\deployment\references\mobile-store-release.md") -Message "Android sample should carry the mobile store release notes in the deployment skill."
@@ -1090,7 +1143,7 @@ switch ($Mode) {
         $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Apps @("backend", "web", "admin")
         Validate-WebSample -Root $webRoot -RunSmoke $false
 
-        $androidRoot = New-GeneratedProject -Name "android" -ProjectName "Review Android" -Apps @("backend", "mobile-android")
+        $androidRoot = New-GeneratedProject -Name "android" -ProjectName "Review Android" -Apps @("backend", "mobile-android", "partner-android")
         Validate-AndroidSample -Root $androidRoot
 
         $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios")
@@ -1116,7 +1169,7 @@ switch ($Mode) {
         $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Apps @("backend", "web", "admin")
         Validate-WebSample -Root $webRoot -RunSmoke $false
 
-        $androidRoot = New-GeneratedProject -Name "android" -ProjectName "Review Android" -Apps @("backend", "mobile-android")
+        $androidRoot = New-GeneratedProject -Name "android" -ProjectName "Review Android" -Apps @("backend", "mobile-android", "partner-android")
         Validate-AndroidSample -Root $androidRoot
 
         $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios")

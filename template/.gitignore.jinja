@@ -21,17 +21,6 @@ Desktop.ini
 .env.local
 .env.*.local
 
-{% if "android-compose" in stacks %}
-# =============================================================================
-# Android
-# =============================================================================
-mobile-android/.gradle/
-mobile-android/build/
-mobile-android/app/build/
-mobile-android/local.properties
-mobile-android/local.config.properties
-mobile-android/app/src/main/java/generated/
-{% endif %}
 {% if "ios-swiftui" in stacks %}
 # =============================================================================
 # iOS

@@ -1,0 +1,21 @@
+package {{ app_package }}.ui
+
+import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import {{ app_package }}.AppContainer
+import {{ app_package }}.ui.profile.ProfileRoute
+import {{ app_package }}.ui.profile.ProfileViewModel
+import {{ app_package }}.ui.signin.SignInRoute
+import {{ app_package }}.ui.signin.SignInViewModel
+
+/** Shows the profile while a session is open and the local development sign-in otherwise. */
+@Composable
+fun AppRoot(container: AppContainer) {
+    val signedIn = container.sessionStore.accessToken.collectAsStateWithLifecycle().value != null
+    if (signedIn) {
+        ProfileRoute(viewModel = viewModel<ProfileViewModel>(factory = container.viewModelFactory))
+    } else {
+        SignInRoute(viewModel = viewModel<SignInViewModel>(factory = container.viewModelFactory))
+    }
+}

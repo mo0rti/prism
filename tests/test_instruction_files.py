@@ -45,9 +45,9 @@ STACK_RULES = {
         "Reading `audience` anywhere but the display text",
     ),
     "mobile-android": (
-        "`AppResult<T>` instead of `kotlin.Result`",
-        "Cleartext HTTP is allowed only in debug builds",
-        "update `docs/networking-and-di.md`",
+        "Logging, printing or persisting the access token, and adding an HTTP logging interceptor",
+        "Allowing cleartext HTTP in `src/main`; it belongs to `src/debug` and to `localhost` only",
+        "Never use `10.0.2.2` or a LAN address, and never loosen the backend's loopback check",
     ),
     "mobile-ios": (
         "ViewModels that drive SwiftUI state should be `@MainActor @Observable` by default.",
@@ -72,7 +72,7 @@ class TemplateSourceTests(unittest.TestCase):
         agents_files = sorted(TEMPLATE.glob("AGENTS.md.jinja")) + sorted(TEMPLATE.glob("*/AGENTS.md.jinja")) + sorted(PACKS.glob("*/*/AGENTS.md.jinja"))
         self.assertEqual(len(agents_files), len(claude_files), "every AGENTS.md has its CLAUDE.md")
         self.assertTrue(list(PACKS.glob("*/*/CLAUDE.md.jinja")), "a pack carries its own CLAUDE.md")
-        for stack in ("spring-backend", "nextjs-web"):
+        for stack in ("spring-backend", "nextjs-web", "android-compose"):
             self.assertEqual(1, len(list((PACKS / stack).glob("*/CLAUDE.md.jinja"))), stack)
         for path in claude_files:
             with self.subTest(path=path.relative_to(REPO_ROOT).as_posix()):
@@ -91,7 +91,6 @@ class TemplateSourceTests(unittest.TestCase):
             [
                 "advisory-review.mdc.jinja",
                 "api-conventions.mdc.jinja",
-                "mobile-android.mdc.jinja",
                 "mobile-ios.mdc.jinja",
             ],
             rules,

@@ -198,7 +198,7 @@ class TwoBackendsTests(LayeredTestCase):
 class SampleStacksTests(LayeredTestCase):
     """A stack without a pack keeps its full sample through the workspace layer, one switch per stack."""
 
-    def test_the_default_android_and_ios_apps_are_still_generated_as_samples_and_the_web_app_is_a_pack(self) -> None:
+    def test_the_default_ios_app_is_still_generated_as_a_sample_and_the_web_and_android_apps_are_packs(self) -> None:
         apps = [
             BACKEND,
             {"id": "web", "stack": "nextjs-web", "name": "Web App"},
@@ -206,30 +206,68 @@ class SampleStacksTests(LayeredTestCase):
             {"id": "mobile-ios", "stack": "ios-swiftui", "name": "iOS (Swift/SwiftUI)"},
         ]
         ws = self.generate("samples", apps)
-        for name in ("mobile-android", "mobile-ios"):
+        for name in ("mobile-ios",):
             self.assertTrue((ws / name / "AGENTS.md").is_file(), name)
             self.assertTrue((ws / ".github" / "workflows" / f"{name}.yml").is_file(), name)
             self.assertFalse((ws / name / ".copier-answers.yml").exists(), "a sample has no layer of its own; the workspace layer renders it")
-        for name in ("backend", "web"):
+        for name in ("backend", "web", "mobile-android"):
             self.assertTrue((ws / name / ".copier-answers.yml").is_file(), f"{name} is a pack with a layer of its own")
         self.assertTrue((ws / "web" / "package-lock.json").is_file())
         self.assertTrue((ws / ".github" / "workflows" / "web.yml").is_file())
         self.assertTrue((ws / ".cursor" / "rules" / "web.mdc").is_file())
         workspace = read_yaml(ws / ".copier-answers.yml")
         self.assertEqual(["android-compose", "ios-swiftui", "nextjs-web", "spring-backend"], workspace["stacks"])
+        self.assertTrue((ws / "mobile-android" / ".copier-answers.yml").is_file(), "the Android app is a pack with a layer of its own")
         self.assertEqual(["backend", "web", "mobile-android", "mobile-ios"], [entry["id"] for entry in workspace["apps"]])
         manifest = read_yaml(ws / "prism.workspace.yml")
         self.assertEqual({"backend", "web", "mobile-android", "mobile-ios"}, set(manifest["app_maturity"]))
         self.assertEqual("experimental", manifest["app_maturity"]["mobile-ios"]["level"])
         self.assertEqual("provisional", manifest["app_maturity"]["web"]["level"])
 
-    def test_a_custom_android_app_cannot_be_scaffolded_before_its_pack_exists(self) -> None:
-        answers = write_answers(self.root / "custom.yml", {"project_name": "Custom", "apps": [{"id": "customer-android", "stack": "android-compose"}]})
+    def test_a_custom_ios_app_cannot_be_scaffolded_before_its_pack_exists(self) -> None:
+        answers = write_answers(self.root / "custom.yml", {"project_name": "Custom", "apps": [{"id": "customer-ios", "stack": "ios-swiftui"}]})
         code, _out, err = run_cli("new", "--template", template_url(self.repo), "--trust-template", "--answers", str(answers), "--dest", str(self.root / "custom"), "--yes")
         self.assertEqual(3, code)
         self.assertIn("has no pack yet", err)
-        self.assertIn("register `customer-android`", err)
+        self.assertIn("register `customer-ios`", err)
         self.assertFalse((self.root / "custom").exists())
+
+    def test_two_android_apps_are_two_app_layers_with_their_own_identifiers(self) -> None:
+        apps = [
+            BACKEND,
+            {"id": "mobile-android", "stack": "android-compose", "name": "Customer App", "audience": "B2C"},
+            {"id": "partner-android", "stack": "android-compose", "name": "Partner App", "path": "apps/partner", "audience": "partners"},
+        ]
+        ws = self.generate("two-android", apps)
+        identifiers = {}
+        for app_id, path, segment in (("mobile-android", "mobile-android", "mobileandroid"), ("partner-android", "apps/partner", "partnerandroid")):
+            answers = read_yaml(ws / path / ".copier-answers.yml")
+            self.assertEqual(("android-compose", app_id, path, f"com.example.layeredapp.{segment}", 0), (answers["prism_layer"], answers["app_id"], answers["app_path"], answers["app_package"], answers["port"]))
+            package_dir = ws / path / "app" / "src" / "main" / "kotlin" / "com" / "example" / "layeredapp" / segment
+            self.assertTrue((package_dir / "ui" / "signin" / "SignInScreen.kt").is_file(), app_id)
+            self.assertTrue((ws / path / "app" / "src" / "test" / "kotlin" / "com" / "example" / "layeredapp" / segment / "ui" / "signin" / "SignInScreenTest.kt").is_file(), app_id)
+            gradle = (ws / path / "app" / "build.gradle.kts").read_text(encoding="utf-8")
+            self.assertIn(f'namespace = "com.example.layeredapp.{segment}"', gradle)
+            self.assertIn(f'applicationId = "com.example.layeredapp.{segment}"', gradle)
+            self.assertIn(f'rootProject.name = "{app_id}"', (ws / path / "settings.gradle.kts").read_text(encoding="utf-8"))
+            workflow = (ws / ".github" / "workflows" / f"{app_id}.yml").read_text(encoding="utf-8")
+            self.assertIn(f"working-directory: {path}", workflow)
+            self.assertIn("./gradlew assembleDebug testDebugUnitTest", workflow)
+            self.assertIn(f"{path}/**", workflow)
+            rule = (ws / ".cursor" / "rules" / f"{app_id}.mdc").read_text(encoding="utf-8")
+            self.assertIn(f'globs: "{path}/**"', rule)
+            identifiers[app_id] = (answers["app_package"], f"{app_id}.yml", gradle)
+        self.assertEqual(2, len({value[0] for value in identifiers.values()}), "two apps never share an application ID")
+        self.assertEqual(2, len({value[2] for value in identifiers.values()}), "two apps never share a build file")
+        workspace = read_yaml(ws / ".copier-answers.yml")
+        self.assertEqual(["android-compose", "spring-backend"], workspace["stacks"])
+        taskfile = (ws / "Taskfile.yml").read_text(encoding="utf-8")
+        self.assertIn("taskfile: ./mobile-android/Taskfile.yml", taskfile)
+        self.assertIn("taskfile: ./apps/partner/Taskfile.yml", taskfile)
+        self.assertFalse((ws / "mobile-android" / "local.config.properties").exists(), "the retired sample's local config is gone")
+        self.assertFalse((ws / "mobile-android" / "fastlane").exists())
+        manifest = read_yaml(ws / "prism.workspace.yml")
+        self.assertEqual({"backend", "mobile-android", "partner-android"}, set(manifest["app_maturity"]))
 
     def test_a_custom_web_app_is_scaffolded_at_its_own_path_by_the_pack(self) -> None:
         apps = [BACKEND, {"id": "customer-portal", "stack": "nextjs-web", "name": "Customer Portal", "path": "apps/portal", "audience": "customers"}]
@@ -437,7 +475,7 @@ class ScaffoldTests(LayeredTestCase):
 
     def test_a_stack_without_a_pack_is_registered_not_scaffolded(self) -> None:
         ws = self.copy("nopack")
-        code, _out, err = run_cli("app", "add", "customer-android", "--stack", "android-compose", "--scaffold", str(ws))
+        code, _out, err = run_cli("app", "add", "customer-ios", "--stack", "ios-swiftui", "--scaffold", str(ws))
         self.assertEqual(3, code)
         self.assertIn("has no pack yet", err)
         code, _out, err = run_cli("app", "add", "tool", "--stack", "other", "--has-ui", "false", "--serves-api", "false", "--scaffold", str(ws))

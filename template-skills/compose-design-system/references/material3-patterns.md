@@ -10,7 +10,7 @@ top-level Compose rules.
 - Prefer shared UI in `designsystem/` and keep feature screens focused on
   composition plus feature behavior.
 - Treat this as guidance for the generated Android app, not as permission to
-  bypass `mobile-android/docs/`.
+  bypass the app's `docs/guide.md`.
 
 ## Theme and token usage
 

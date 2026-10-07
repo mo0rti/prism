@@ -10,8 +10,8 @@
 |----------|-----------|---------|---------|
 {% for app in apps if app.stack == "spring-backend" %}| {{ app.name }} | Spring Boot, Kotlin, Java {{ pack_versions["spring-backend"].java }} | Project owner's choice (see the `deployment` skill) | REST API and business logic ({{ app.path }}/) |
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| {{ app.name }} | Next.js {{ pack_versions["nextjs-web"].next }}, React {{ pack_versions["nextjs-web"].react }}, TypeScript {{ pack_versions["nextjs-web"].typescript }} | Project owner's choice (see the `deployment` skill) | Web app{% if app.audience %} for {{ app.audience }}{% endif %} ({{ app.path }}/) |
-{% endfor %}{% if "android-compose" in stacks %}| Android | Kotlin 2.2+, Java 21, Jetpack Compose, Hilt, Retrofit 3 | Google Play | Native Android app |
-{% endif %}{% if "ios-swiftui" in stacks %}| iOS | Swift 6, SwiftUI, iOS 17+, XcodeGen | App Store | Native iOS app |
+{% endfor %}{% for app in apps if app.stack == "android-compose" %}| {{ app.name }} | Kotlin {{ pack_versions["android-compose"].kotlin }}, Jetpack Compose, Retrofit {{ pack_versions["android-compose"].retrofit }} | Project owner's choice (see the `deployment` skill) | Android app{% if app.audience %} for {{ app.audience }}{% endif %} ({{ app.path }}/) |
+{% endfor %}{% if "ios-swiftui" in stacks %}| iOS | Swift 6, SwiftUI, iOS 17+, XcodeGen | App Store | Native iOS app |
 {% endif %}| Database | PostgreSQL 16 | Local development in Docker Compose; hosting is the project owner's choice | Data persistence |
 
 ## Architecture Pattern
@@ -28,11 +28,11 @@ View (UI)  ->  ViewModel (State + Logic)  ->  Repository  ->  Data Source (API/L
 | Layer | Android | iOS |
 |-------|---------|-----|
 | View | `@Composable` functions | SwiftUI `View` structs |
-| ViewModel | `@HiltViewModel` + `StateFlow<UiState>` | `@Observable` + `ViewState` enum |
-| Repository | Concrete repository classes (`@Inject` + Hilt) | Protocol + implementation (`DependencyContainer`) |
-| API Client | Retrofit 3 + OkHttp + Kotlinx Serialization | `APIClient` actor over URLSession + `async/await` |
-| Local Storage | DataStore | Keychain |
-| DI | Hilt | `DependencyContainer` via SwiftUI environment |
+| ViewModel | `ViewModel` + `StateFlow<UiState>` | `@Observable` + `ViewState` enum |
+| Repository | `ApiClient` interface + `RetrofitApiClient` | Protocol + implementation (`DependencyContainer`) |
+| API Client | Retrofit + OkHttp + Kotlinx Serialization, hand-written and checked against the contract | `APIClient` actor over URLSession + `async/await` |
+| Local Storage | In-memory session (nothing persisted) | Keychain |
+| DI | Hand-wired `AppContainer` | `DependencyContainer` via SwiftUI environment |
 
 {% elif "spring-backend" in stacks and apps | length == 1 %}
 This generation is backend-only. The backend is organized into feature modules under `modules/<domain>/`, each with the folders it needs of `controller/`, `dto/`, `error/`, `model/`, `repository/` and `service/`. Framework wiring goes in `bootstrap/` and cross-cutting code in `shared/` once the app has some.
@@ -42,7 +42,7 @@ This generation is backend-only. The backend is organized into feature modules u
 
 Single source of truth: [shared/api-contracts/openapi.yml](../shared/api-contracts/openapi.yml)
 
-All platform API clients are **generated** from this spec. Never manually edit generated client code. Run `task generate-clients` after any spec change.
+Generated API clients come from this spec; never manually edit generated client code. Run `task generate-clients` after any spec change.{% if "android-compose" in stacks %} An Android app's client is hand-written, and its `ApiContractTest` fails when the client and the spec disagree.{% endif %}
 
 ### Authentication
 

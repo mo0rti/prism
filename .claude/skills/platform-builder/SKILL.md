@@ -1,6 +1,6 @@
 ---
 name: platform-builder
-description: Add or extend a platform template (web, backend, mobile-android, or mobile-ios) following established patterns from completed platforms.
+description: Add or extend a platform template (web, backend, android, or ios) following established patterns from completed platforms.
 argument-hint: [platform-name]
 disable-model-invocation: true
 ---
@@ -20,16 +20,15 @@ $ARGUMENTS
 2. **Read the spec** - Infer the current platform contract from `copier.yml`, `template/`, `README.md`, and the maintainer docs.
 
 3. **Study reference platforms** - Read completed platform templates and packs to understand patterns:
-   - `packs/spring-backend/` and `packs/nextjs-web/` - the pack shape: every path under `{{ app_path }}/`, its own workflow and Cursor rule, pinned versions read from `packs/versions.yml`, one tested slice; `spring-backend` adds the dev identity and its guards, Spring Boot patterns, Jinja usage, CLAUDE.md structure; `nextjs-web` also commits a lockfile that a script rewrites from the pins
-   - `template/mobile-android/` - MVVM patterns, feature structure, Hilt DI, `mobile-android/docs/` for technical docs with 7 doc files
-   - `template/mobile-ios/` - MVVM patterns mirroring Android, SwiftUI conventions
+   - `packs/spring-backend/`, `packs/nextjs-web/` and `packs/android-compose/` - the pack shape: every path under `{{ app_path }}/`, its own workflow and Cursor rule, pinned versions read from `packs/versions.yml`, one tested slice; `spring-backend` adds the dev identity and its guards, Spring Boot patterns, Jinja usage, CLAUDE.md structure; `nextjs-web` also commits a lockfile that a script rewrites from the pins; `android-compose` shows MVVM with a hand-wired container, a hand-written client checked against the contract, the Gradle wrapper and JVM tests with Robolectric
+   - `template/mobile-ios/` - MVVM patterns mirroring the Android pack, SwiftUI conventions
 
 4. **Create the platform directory** - A new stack is a pack: build `packs/{stack}/` with every path under `{{ app_path }}/` (plus `.github/workflows/{{ app_id }}.yml` and `.cursor/rules/{{ app_id }}.mdc`), add the stack to `PACK_STACKS` in `prism_cli/packs.py` and the layer choices of `copier.yml`, and pin its versions in `packs/versions.yml`. Until the pack exists a stack keeps a full sample under `template/{platform}/`, with the files required by the current platform contract:
    - Add `.jinja` suffix if it contains any Jinja2 expressions
    - Use `{{ project_name }}`, `{{ project_slug }}`, `{{ package_identifier }}` for project identity
    - Use `{% if "provider" in auth_methods %}` for conditional auth provider code
 
-5. **Create platform documentation** - Create `template/{platform}/docs/` with platform-specific technical docs (guide.md.jinja at minimum, more for complex platforms like Android's 7-doc structure).
+5. **Create platform documentation** - Create `template/{platform}/docs/` with platform-specific technical docs (guide.md.jinja at minimum).
 
 6. **Create platform AI context** - Create `CLAUDE.md.jinja` and `AGENTS.md.jinja` for the platform:
    - Include doc table pointing to `docs/` within the platform directory

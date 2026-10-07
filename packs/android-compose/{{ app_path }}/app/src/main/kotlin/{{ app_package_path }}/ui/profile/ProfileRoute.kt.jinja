@@ -1,0 +1,15 @@
+package {{ app_package }}.ui.profile
+
+import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+/** Connects the profile screen to its ViewModel. */
+@Composable
+fun ProfileRoute(viewModel: ProfileViewModel) {
+    val state = viewModel.uiState.collectAsStateWithLifecycle().value
+    ProfileScreen(
+        state = state,
+        onRetryClick = viewModel::onRetryClick,
+        onSignOutClick = viewModel::onSignOutClick,
+    )
+}

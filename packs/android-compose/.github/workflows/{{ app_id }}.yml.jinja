@@ -1,0 +1,69 @@
+name: {{ ci_workflow_name | tojson }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+{%- for path in ci_paths %}
+      - {{ path | tojson }}
+{%- endfor %}
+  pull_request:
+    branches: [main]
+    paths:
+{%- for path in ci_paths %}
+      - {{ path | tojson }}
+{%- endfor %}
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the debug APK and run the unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x {{ app_path }}/gradlew
+
+      - name: Set up JDK {{ versions.jdk }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: '{{ versions.jdk }}'
+          distribution: 'temurin'
+
+      # The platform of the app's compileSdk and the build tools of its Android Gradle Plugin.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-{{ versions.compile_sdk }} build-tools;{{ versions.build_tools }}
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: {% raw %}${{ runner.os }}-gradle-${{ hashFiles({% endraw %}'{{ app_path }}/**/*.gradle*', '{{ app_path }}/gradle/libs.versions.toml', '{{ app_path }}/gradle/wrapper/gradle-wrapper.properties'{% raw %}) }}{% endraw %}
+
+      # The build needs no secret and no production credential, and no emulator: the Compose UI test
+      # runs on the JVM with Robolectric.
+      - name: Build the debug APK and run the unit tests
+        working-directory: {{ app_path }}
+        run: ./gradlew assembleDebug testDebugUnitTest
+
+      - name: Upload the debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: {{ app_path }}/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: {{ app_path }}/app/build/reports/tests/

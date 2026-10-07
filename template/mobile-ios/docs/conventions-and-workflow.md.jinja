@@ -24,7 +24,7 @@
 2. Inspect the closest existing feature and the relevant docs.
 3. Verify endpoint shapes in [shared/api-contracts/openapi.yml](../../shared/api-contracts/openapi.yml).
 {% if "spring-backend" in stacks %}4. Cross-check `backend/` when the contract needs behavioral clarification.
-{% if "android-compose" in stacks %}5. Cross-check `mobile-android/` when parity matters.
+{% if "android-compose" in stacks %}5. Cross-check {% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %} when parity matters.
 6. Update only the layers the task needs.
 7. Add the smallest useful test when ViewModel or repository logic changes, and prefer `task mobile-ios:test-unit` when UI is unaffected.
 8. Run the smallest sufficient iOS build or test task on Mac.
@@ -33,7 +33,7 @@
 6. Add the smallest useful test when ViewModel or repository logic changes, and prefer `task mobile-ios:test-unit` when UI is unaffected.
 7. Run the smallest sufficient iOS build or test task on Mac.
 8. Update affected docs before closing the task.
-{% endif %}{% else %}{% if "android-compose" in stacks %}4. Cross-check `mobile-android/` when parity matters.
+{% endif %}{% else %}{% if "android-compose" in stacks %}4. Cross-check {% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %} when parity matters.
 5. Update only the layers the task needs.
 6. Add the smallest useful test when ViewModel or repository logic changes, and prefer `task mobile-ios:test-unit` when UI is unaffected.
 7. Run the smallest sufficient iOS build or test task on Mac.
