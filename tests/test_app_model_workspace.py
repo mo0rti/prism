@@ -742,7 +742,6 @@ class TemplateManifestTests(unittest.TestCase):
                 data={
                     "project_name": "Rendered",
                     "project_slug": "rendered",
-                    "auth_methods": ["password"],
                     **({"_prism_cli_version": cli_version} if cli_version else {}),
                 },
                 defaults=True,
@@ -799,7 +798,7 @@ class WorkspaceLayerRootTests(unittest.TestCase):
     def worker(self, source: Path, destination: Path, vcs_ref: str = "v1.0.0", **data):
         from copier._main import Worker
 
-        return Worker(src_path=str(source), dst_path=destination, vcs_ref=vcs_ref, data={"project_name": "Layered", "project_slug": "layered", "auth_methods": ["password"], "_prism_cli_version": __version__, **data}, defaults=True, skip_tasks=True, unsafe=True, quiet=True)
+        return Worker(src_path=str(source), dst_path=destination, vcs_ref=vcs_ref, data={"project_name": "Layered", "project_slug": "layered", "_prism_cli_version": __version__, **data}, defaults=True, skip_tasks=True, unsafe=True, quiet=True)
 
     def test_the_root_is_the_rendered_workspace_layer_whatever_layer_the_worker_holds(self) -> None:
         from prism_cli.manifest_update import render_template_manifest, workspace_layer_root
@@ -853,7 +852,7 @@ class TemplateMinimumVersionUpdateTests(unittest.TestCase):
         run_copy(
             str(source),
             str(destination),
-            data={"project_name": "Update", "project_slug": "update", "auth_methods": ["password"], "_prism_cli_version": __version__},
+            data={"project_name": "Update", "project_slug": "update", "_prism_cli_version": __version__},
             vcs_ref="v1.0.0",
             defaults=True,
             unsafe=True,

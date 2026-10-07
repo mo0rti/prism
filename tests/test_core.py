@@ -64,42 +64,41 @@ from tests.wiki_files import write_index as write_general_index
 
 class ValidateAnswersTests(unittest.TestCase):
     def test_requires_the_app_list_and_accepts_an_empty_one(self) -> None:
-        errors, _warnings = validate_answers({"auth_methods": ["password"]})
+        errors, _warnings = validate_answers({})
         self.assertIn("The app list is missing: name the workspace's apps under `apps` (an empty list is allowed).", errors)
-        errors, warnings = validate_answers({"apps": [], "auth_methods": []})
-        self.assertEqual([], errors, "a workspace may have no apps, and then needs no sign-in method")
+        errors, warnings = validate_answers({"apps": []})
+        self.assertEqual([], errors, "a workspace may have no apps")
         self.assertEqual([], warnings)
 
-    def test_requires_password_auth_globally(self) -> None:
-        errors, _warnings = validate_answers({"apps": [{"id": "web", "stack": "nextjs-web"}], "auth_methods": []})
-        self.assertIn("Prism currently requires Username + Password auth as the baseline sign-in method.", errors)
+    def test_accepts_a_second_web_app_and_a_backend_without_any_sign_in_answer(self) -> None:
+        for apps in (
+            [{"id": "web", "stack": "nextjs-web"}, {"id": "admin", "stack": "nextjs-web", "audience": "internal"}],
+            [{"id": "backend", "stack": "spring-backend"}],
+        ):
+            with self.subTest(apps=apps):
+                errors, _warnings = validate_answers({"apps": apps})
+                self.assertEqual([], errors)
 
-    def test_requires_password_for_a_second_web_app(self) -> None:
-        errors, _warnings = validate_answers({"apps": [{"id": "web", "stack": "nextjs-web"}, {"id": "admin", "stack": "nextjs-web", "audience": "internal"}], "auth_methods": ["google"]})
-        self.assertIn("Prism currently requires Username + Password auth as the baseline sign-in method.", errors)
-
-    def test_requires_password_for_backend_only_projects(self) -> None:
-        errors, _warnings = validate_answers({"apps": [{"id": "backend", "stack": "spring-backend"}], "auth_methods": ["google"]})
-        self.assertIn("Prism currently requires Username + Password auth as the baseline sign-in method.", errors)
+    def test_rejects_the_answers_of_the_retired_questions(self) -> None:
+        apps = [{"id": "backend", "stack": "spring-backend"}]
+        for removed in ("auth_methods", "github_org", "ios_module_name", "package_path"):
+            with self.subTest(removed=removed):
+                errors, _warnings = validate_answers({"apps": apps, removed: "anything"})
+                self.assertEqual(1, len(errors), errors)
+                self.assertIn(f"Unknown answer(s): {removed}.", errors[0])
 
     def test_emits_expected_warnings(self) -> None:
-        errors, warnings = validate_answers(
-            {
-                "apps": [{"id": "mobile-ios", "stack": "ios-swiftui"}, {"id": "web", "stack": "nextjs-web"}],
-                "auth_methods": ["apple", "password"],
-            }
-        )
+        errors, warnings = validate_answers({"apps": [{"id": "mobile-ios", "stack": "ios-swiftui"}, {"id": "web", "stack": "nextjs-web"}]})
         self.assertEqual([], errors)
-        self.assertIn("Apple Sign-In remains experimental.", warnings)
         self.assertIn("Validate iOS generation locally on macOS before treating it as build-proven.", warnings)
-        self.assertEqual(2, len(warnings))
+        self.assertEqual(1, len(warnings))
 
 
 class MergeAnswersTests(unittest.TestCase):
     def test_override_wins(self) -> None:
-        merged = merge_answers({"project_name": "Base", "github_org": "base"}, {"github_org": "other"})
+        merged = merge_answers({"project_name": "Base", "description": "base"}, {"description": "other"})
         self.assertEqual("Base", merged["project_name"])
-        self.assertEqual("other", merged["github_org"])
+        self.assertEqual("other", merged["description"])
 
 
 class LoadAnswersFileTests(unittest.TestCase):

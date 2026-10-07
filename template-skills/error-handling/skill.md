@@ -56,20 +56,17 @@ Use this skill for backend exception taxonomy and API error-shape decisions.
 - Prefer throwing from services or auth collaborators rather than repositories.
 - Align documented error behavior with `shared/api-contracts/openapi.yml` when relevant.
 
-## Key Files
+## Slice files
 
-Source roots of the backend apps (the paths below are relative to one of them):
-{% for app in apps if app.stack == "spring-backend" %}
-- `{{ app.path }}/src/main/kotlin/{{ (package_identifier ~ "." ~ (app.id | replace("-", ""))) | replace(".", "/") }}/`
-{%- endfor %}
+Paths are inside the backend app's folder{% for app in apps if app.stack == "spring-backend" %}{{ " (" if loop.first else ", " }}`{{ app.path }}/`{{ ")" if loop.last }}{% endfor %}. `<package path>` is the app's package, `<package_identifier>.<app id without hyphens>`, written with slashes. The error contract is also in `shared/api-contracts/openapi.yml` at the workspace root.
 
-- `shared/error/ErrorCode.kt`, `shared/error/CommonErrorCode.kt`
-- `shared/exception/ApiException.kt` and `shared/exception/*Exception.kt`
-- `shared/exception/GlobalExceptionHandler.kt`
-- `shared/model/ApiErrorResponse.kt`
-- `modules/devidentity/error/DevIdentityErrorCode.kt` - a module-owned code, thrown as `ForbiddenException(DevIdentityErrorCode.LOOPBACK_ONLY)` by `DevIdentityController`
-- `src/test/kotlin/.../shared/exception/ErrorModelTest.kt` - the tests of the model
-- `shared/api-contracts/openapi.yml` (workspace root)
+- `src/main/kotlin/<package path>/shared/error/ErrorCode.kt` - the code interface
+- `src/main/kotlin/<package path>/shared/error/CommonErrorCode.kt` - the shared codes
+- `src/main/kotlin/<package path>/shared/exception/ApiException.kt` - the base exception; the typed exceptions sit beside it in `src/main/kotlin/<package path>/shared/exception/`
+- `src/main/kotlin/<package path>/shared/exception/GlobalExceptionHandler.kt` - turns exceptions into the error response
+- `src/main/kotlin/<package path>/shared/model/ApiErrorResponse.kt` - the response body
+- `src/main/kotlin/<package path>/modules/devidentity/error/DevIdentityErrorCode.kt` - a module-owned code, thrown as `ForbiddenException(DevIdentityErrorCode.LOOPBACK_ONLY)` by `DevIdentityController`
+- `src/test/kotlin/<package path>/shared/exception/ErrorModelTest.kt` - the tests of the model
 
 ## Minimum Verification
 

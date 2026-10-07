@@ -1857,12 +1857,7 @@
           },
           "generation": {
             "answers": {
-              "auth_methods": [
-                "google",
-                "password"
-              ],
               "description": "Baseline full workspace",
-              "github_org": "",
               "package_identifier": "com.example.baselinefull",
               "project_name": "Baseline Full",
               "project_slug": "baseline-full",
@@ -1885,12 +1880,7 @@
             }
           },
           "generation_answers": {
-            "auth_methods": [
-              "google",
-              "password"
-            ],
             "description": "Baseline full workspace",
-            "github_org": "",
             "package_identifier": "com.example.baselinefull",
             "project_name": "Baseline Full",
             "project_slug": "baseline-full",
@@ -2544,12 +2534,7 @@
       },
       "generation": {
         "answers": {
-          "auth_methods": [
-            "google",
-            "password"
-          ],
           "description": "Baseline full workspace",
-          "github_org": "",
           "package_identifier": "com.example.baselinefull",
           "project_name": "Baseline Full",
           "project_slug": "baseline-full",
@@ -2572,12 +2557,7 @@
         }
       },
       "generation_answers": {
-        "auth_methods": [
-          "google",
-          "password"
-        ],
         "description": "Baseline full workspace",
-        "github_org": "",
         "package_identifier": "com.example.baselinefull",
         "project_name": "Baseline Full",
         "project_slug": "baseline-full",

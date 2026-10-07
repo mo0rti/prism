@@ -82,7 +82,7 @@ class RetirementTests(unittest.TestCase):
 class ContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        text = Environment(keep_trailing_newline=True).from_string(read(CONTRACT)).render(project_name="Contract Check", description="A contract check", auth_methods=["password"])
+        text = Environment(keep_trailing_newline=True).from_string(read(CONTRACT)).render(project_name="Contract Check", description="A contract check")
         cls.contract = yaml.safe_load(text)
 
     def test_the_contract_defines_exactly_the_two_slice_operations(self) -> None:
@@ -222,7 +222,7 @@ class GeneratedWorkspaceTests(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory(prefix="prism-slice-")
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.root = Path(cls.temporary.name)
-        cls.single = generate_default_apps(cls.root / "single", ["backend"], cls.root, project_name="Slice App", auth_methods=["google", "password"])
+        cls.single = generate_default_apps(cls.root / "single", ["backend"], cls.root, project_name="Slice App")
         answers = write_answers(
             cls.root / "double-answers.yml",
             {
@@ -314,8 +314,9 @@ class GeneratedWorkspaceTests(unittest.TestCase):
         for layer in (".claude", ".agents"):
             skill = read(self.single / layer / "skills" / "security-auth" / "SKILL.md")
             self.assertIn("Replacing The Dev Identity With A Real Identity Provider", skill)
-            self.assertIn("backend/src/main/kotlin/com/example/sliceapp/backend/", skill)
-            self.assertIn("bootstrap/SecurityConfig.kt", skill)
+            self.assertIn("## Slice files", skill)
+            self.assertIn("Paths are inside the backend app's folder (`backend/`)", skill)
+            self.assertIn("`src/main/kotlin/<package path>/bootstrap/SecurityConfig.kt`", skill)
             self.assertIn("SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", skill)
             self.assertNotIn("{%", skill)
 

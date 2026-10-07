@@ -16,6 +16,18 @@ claude-skill:
 
 Use this skill when Compose work should stay aligned with the app's shared UI language. The Android apps are {% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}; the shared UI lives under `app/src/main/kotlin/<package path>/designsystem/` (the application ID written with slashes).
 
+## Slice files
+
+Paths are inside the Android app's folder ({% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}). `<package path>` is the app's application ID, `<package_identifier>.<app id without hyphens>`, written with slashes.
+
+- `app/src/main/kotlin/<package path>/designsystem/theme/Theme.kt` - `AppTheme`
+- `app/src/main/kotlin/<package path>/designsystem/theme/Spacing.kt` - the spacing tokens
+- `app/src/main/kotlin/<package path>/designsystem/components/ErrorView.kt` - a shared error component
+- `app/src/main/kotlin/<package path>/designsystem/components/LoadingIndicator.kt` - a shared loading component
+- `app/src/main/kotlin/<package path>/ui/AppRoot.kt` - chooses the screen from the session
+- `app/src/main/kotlin/<package path>/MainActivity.kt` - hosts the content and enables edge-to-edge
+- `app/src/main/res/values/strings.xml` - the user-facing strings
+
 ## Role boundary
 
 - Own shared UI language, reusable Compose primitives, previews, and cross-feature visual patterns.

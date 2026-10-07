@@ -205,7 +205,7 @@ class PackFilesTests(unittest.TestCase):
         self.assertGreater(checked, 25)
 
     def test_the_old_web_samples_and_their_helpers_are_gone(self) -> None:
-        for path in ("template/web-user-app", "template/web-admin-portal", "template/_templates/page", "scripts/check-web-auth.mjs", "template-skills/cursor-web", "template/.cursor/rules/web.mdc.jinja"):
+        for path in ("template/web-user-app", "template/web-admin-portal", "template/_templates", "scripts/check-web-auth.mjs", "template-skills/cursor-web", "template/.cursor/rules/web.mdc.jinja"):
             self.assertFalse((REPO_ROOT / path).exists(), path)
         for workflow in ("web-user-app.yml.jinja", "web-admin-portal.yml.jinja"):
             self.assertFalse((REPO_ROOT / "template" / ".github" / "workflows" / workflow).exists(), workflow)

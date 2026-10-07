@@ -22,7 +22,7 @@ Use this skill to validate that template changes still render a coherent generat
    - `.cursor/`
    - `docs/`
    - `shared/`
-4. Search for leftover `{{`, `{%`, or unescaped EJS markers in rendered non-template files.
+4. Search for leftover `{{` or `{%` in rendered non-template files.
 5. If the change touched stack or app gating, generate at least one focused subset variant as well (for example `prism new --preset backend-only`).
 6. Run `./scripts/validate-template.ps1 -Mode contract`, which checks rendered files and workflows (it needs actionlint on PATH or `-ActionlintPath`).
 7. Summarize what was validated and any failures found.

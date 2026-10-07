@@ -407,7 +407,7 @@ class RenderedWorkspace:
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.root = Path(cls.temporary.name) / "generated"
         cls.skills = GENERATOR.load_sources()
-        generate_default_apps(cls.root, list(cls.app_ids), Path(cls.temporary.name), project_name="Skill Discovery", auth_methods=["password"])
+        generate_default_apps(cls.root, list(cls.app_ids), Path(cls.temporary.name), project_name="Skill Discovery")
 
     def files(self, *folders: str) -> set[str]:
         found: set[str] = set()

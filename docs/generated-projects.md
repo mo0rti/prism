@@ -7,7 +7,7 @@ They also include:
 - project documentation
 - AI context for multiple tools
 - the product wiki and lifecycle wiring
-- generators and workflow scaffolding inside the generated repo
+- workflow scaffolding inside the generated repo
 
 This page answers two questions:
 
@@ -25,7 +25,6 @@ Generated projects include:
 - Cursor rules under `.cursor/rules/` that scope stack facts by file path and describe the board review; Cursor reads `AGENTS.md` itself and loads the skills in `.agents/skills/` and `.claude/skills/`
 - Codex skills in `.agents/skills/`, Claude commands in `.claude/commands/` and Claude skills in `.claude/skills/`, generated from one source in this repository (`template-skills/`), so the guidance has the same text in every tool
 - GitHub workflow files that build and test, one `<app-id>.yml` for each scaffolded app, scoped to the app's path; they hold no deploy job and no secrets
-- Hygen generators under `_templates/`
 - a `docker-compose.yml` with the PostgreSQL development database and one service for each backend app, when a backend app exists
 - a `deployment` skill in `.claude/skills/deployment/` and `.agents/skills/deployment/` with worked
   examples for the backend on Azure Container Apps and the web apps on Cloudflare Workers; hosting,
@@ -304,22 +303,6 @@ Important wiki artifacts include:
 
 If you are new to the Prism workflow, continue with [wiki-workflow.md](wiki-workflow.md)
 after reading this page.
-
-## Code Generators
-
-Generated projects include these Hygen generators under `_templates/`:
-
-| Generator | Purpose |
-|-----------|---------|
-| `feature new` | Scaffold a backend feature slice and create a dated intake note in `knowledge/intake/pending/YYYY-MM-DD-feature-name/` for `po-intake` to process |
-| `endpoint new` | Scaffold an OpenAPI path snippet and backend endpoint starter |
-
-Typical usage inside a generated project:
-
-```bash
-npx hygen feature new
-npx hygen endpoint new
-```
 
 ## GitHub Actions
 

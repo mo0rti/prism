@@ -25,7 +25,7 @@ $ARGUMENTS
 4. **Create the platform directory** - A new stack is a pack: build `packs/{stack}/` with every path under `{{ app_path }}/` (plus `.github/workflows/{{ app_id }}.yml` and `.cursor/rules/{{ app_id }}.mdc`), add the stack to `PACK_STACKS` in `prism_cli/packs.py` and the layer choices of `copier.yml`, and pin its versions in `packs/versions.yml`. The pack holds the files the current platform contract requires:
    - Add `.jinja` suffix if it contains any Jinja2 expressions
    - Use `{{ project_name }}`, `{{ project_slug }}`, `{{ package_identifier }}` for project identity
-   - Use `{% if "provider" in auth_methods %}` for conditional auth provider code
+   - Use `{{ app_id }}`, `{{ app_path }}`, `{{ app_package }}` and `{{ versions.<name> }}` for the app's own identity and pinned versions
 
 5. **Create platform documentation** - Create `packs/{stack}/{{ app_path }}/docs/` with platform-specific technical docs (guide.md.jinja at minimum).
 
@@ -43,7 +43,6 @@ $ARGUMENTS
    - `template/CLAUDE.md.jinja` - add to architecture map and platform-specific context section
    - `template/AGENTS.md.jinja` - mirror changes
    - `packs/{stack}/` carries the stack's own Cursor rule (`.cursor/rules/{{ app_id }}.mdc.jinja`) and CI/CD workflow (`.github/workflows/{{ app_id }}.yml.jinja`)
-   - `template/_templates/` - add Hygen generators if applicable
 
 9. **Update progress** - Update the committed repo docs when the public template contract changes, especially `docs/current-status.md`, `docs/maintainer-workflow.md`, and `README.md` where relevant.
 

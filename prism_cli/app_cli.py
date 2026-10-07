@@ -34,7 +34,6 @@ from prism_cli.app_model import (
 )
 from prism_cli.packs import (
     allocate_port,
-    has_pack,
     scaffold_collisions,
     stack_maturity,
     taken_ports,
@@ -230,10 +229,6 @@ def plan_app_add(
                 conflicts.append("--scaffold generates the app in this repository; do not pass --repository or --remote.")
             elif not stack_info.generated:
                 conflicts.append(f"Stack `{stack}` cannot be scaffolded; register the app instead.")
-            elif not has_pack(stack):
-                conflicts.append(
-                    f"Stack `{stack}` has no pack, so `--scaffold` cannot generate it; register the app instead."
-                )
             else:
                 app_entry["generation"] = GENERATION_SCAFFOLDED
 

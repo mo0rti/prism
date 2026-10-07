@@ -23,9 +23,9 @@ Apply these rules whenever you change an iOS app of this workspace. Each iOS app
 - Keep contract and client decisions in `@@invoke:ios-contract-alignment@@`.
 - Keep UI patterns in `@@invoke:swiftui-design-system@@`, tests in `@@invoke:ios-testing@@` and build selection in `@@invoke:ios-build-verify@@`.
 
-## The slice
+## Slice files
 
-The pack generates one vertical slice and no example business features:
+The pack generates one vertical slice and no example business features. Paths are inside the iOS app's folder ({% for app in apps if app.stack == "ios-swiftui" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}).
 
 - `Sources/SignIn/SignInView.swift` is the screen labelled "Local development sign-in", and `Sources/SignIn/SignInViewModel.swift` is its state.
 - `Sources/Profile/ProfileView.swift` shows the signed-in user's profile from `GET /api/me`, and `Sources/Profile/ProfileViewModel.swift` is its state.

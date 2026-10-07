@@ -20,14 +20,13 @@ from tests import real_temp  # noqa: F401
 class CliAnswerValidationTests(unittest.TestCase):
     BACKEND = [{"id": "backend", "stack": "spring-backend"}]
 
-    def test_rejects_wrong_app_list_and_auth_types_and_values(self) -> None:
+    def test_rejects_wrong_app_list_and_identity_types(self) -> None:
         cases = (
-            ({"apps": "backend", "auth_methods": ["password"]}, "`apps` must be a list"),
-            ({"apps": [{"id": "x", "stack": "desktop"}], "auth_methods": ["password"]}, "needs a `stack` from the registry"),
-            ({"apps": ["backend"], "auth_methods": ["password"]}, "`apps[0]` must be a mapping"),
-            ({"apps": self.BACKEND, "auth_methods": "password"}, "auth_methods must be a list"),
-            ({"apps": self.BACKEND, "auth_methods": ["magic"]}, "Unsupported auth_methods value"),
-            ({"auth_methods": ["password"]}, "The app list is missing"),
+            ({"apps": "backend"}, "`apps` must be a list"),
+            ({"apps": [{"id": "x", "stack": "desktop"}]}, "needs a `stack` from the registry"),
+            ({"apps": ["backend"]}, "`apps[0]` must be a mapping"),
+            ({"apps": self.BACKEND, "description": ["not", "text"]}, "description must be a string"),
+            ({}, "The app list is missing"),
         )
         for answers, expected in cases:
             with self.subTest(answers=answers):
@@ -35,11 +34,20 @@ class CliAnswerValidationTests(unittest.TestCase):
                 self.assertTrue(any(expected in error for error in errors), errors)
 
     def test_rejects_answers_for_questions_that_no_longer_exist(self) -> None:
-        for removed in ("database", "supporting_services", "use_docker", "cloud_provider", "web_hosting", "platforms"):
+        for removed in (
+            "database",
+            "supporting_services",
+            "use_docker",
+            "cloud_provider",
+            "web_hosting",
+            "platforms",
+            "auth_methods",
+            "github_org",
+            "ios_module_name",
+            "package_path",
+        ):
             with self.subTest(removed=removed):
-                errors, _warnings = cli.validate_answers(
-                    {"apps": self.BACKEND, "auth_methods": ["password"], removed: "anything"}
-                )
+                errors, _warnings = cli.validate_answers({"apps": self.BACKEND, removed: "anything"})
                 self.assertEqual(1, len(errors), errors)
                 self.assertIn(f"Unknown answer(s): {removed}.", errors[0])
 
@@ -51,8 +59,6 @@ class CliAnswerValidationTests(unittest.TestCase):
                 "package_identifier": "com.example.demo",
                 "description": "Demo",
                 "apps": self.BACKEND,
-                "auth_methods": ["password"],
-                "github_org": "",
                 "_prism_private": "ignored",
             }
         )
@@ -123,7 +129,7 @@ class CliAnswerValidationTests(unittest.TestCase):
             root = Path(temp_dir)
             answers_path = root / "answers.yml"
             answers_path.write_text(
-                "schema_version: 1\nanswers:\n  project_name: Bad Data\n  apps: backend\n  auth_methods: [password]\ndestination: "
+                "schema_version: 1\nanswers:\n  project_name: Bad Data\n  apps: backend\ndestination: "
                 + str(root / "project")
                 + "\n",
                 encoding="utf-8",

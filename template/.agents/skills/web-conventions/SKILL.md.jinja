@@ -8,14 +8,15 @@ description: "Conventions for the generated Next.js web apps: the sign-in and pr
 
 Apply these rules whenever you change a web app of this workspace. Each web app is one `nextjs-web` app generated from the same pack, so the paths below are relative to the app's folder: {% for app in apps if app.stack == "nextjs-web" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}.
 
-## The slice
+## Slice files
 
-The pack generates one vertical slice and no example business features:
+The pack generates one vertical slice and no example business features. Paths are inside the web app's folder:
 
 - `app/sign-in/page.tsx` is the page labelled "Local development sign-in".
 - `app/api/session/route.ts` is the route handler. `POST` asks the backend's local development identity for a token and keeps it in an httpOnly cookie; `DELETE` removes the cookie. Neither returns the token.
 - `app/page.tsx` shows the signed-in user's profile from `GET /api/me`.
-- `lib/api/client.ts` is the typed client of `shared/api-contracts/openapi.yml`. `lib/auth/session.ts` holds the cookie name and options.
+- `lib/api/client.ts` is the typed client of the shared OpenAPI contract.
+- `lib/auth/session.ts` holds the cookie name and options.
 - `lib/app-info.ts` holds the app's display name and `audience`. The audience is display text only: no route, check or permission reads it, and a label never enforces authorization. A separate app is the answer when audiences differ in deployment or security boundary.
 - `tests/` holds the Vitest unit and component tests of all of the above.
 

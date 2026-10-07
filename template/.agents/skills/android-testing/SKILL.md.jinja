@@ -15,12 +15,16 @@ Use this skill when Android work needs test coverage, test refactors, or test-sh
 - Defer Gradle task selection to `$android-build-verify`.
 - Defer shared UI behavior rules to `$compose-design-system`.
 
-## The tests of the slice
+## Slice files
 
-- `ui/signin/SignInViewModelTest.kt` and `ui/profile/ProfileViewModelTest.kt` test the state holders against `support/FakeApiClient.kt`: loading, success, each failure, retry, sign-out and session expiry.
-- `data/api/RetrofitApiClientTest.kt` tests the real client against a MockWebServer: the route and method of each call, the bearer header, the status mapping and that the token never reaches `toString()`.
-- `data/api/ApiContractTest.kt` reads `shared/api-contracts/openapi.yml` (the build passes its path as the `prism.apiContract` system property) and fails when `ApiService`, the DTOs or `getMe`'s bearer security drift from it.
-- `ui/signin/SignInScreenTest.kt` is a Compose UI test under Robolectric. It asserts the literal text "Local development sign-in", so a change of the label or of its meaning fails a test.
+The tests of the slice. Paths are inside the Android app's folder ({% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}). `<package path>` is the app's application ID, `<package_identifier>.<app id without hyphens>`, written with slashes.
+
+- `app/src/test/kotlin/<package path>/ui/signin/SignInViewModelTest.kt` and `app/src/test/kotlin/<package path>/ui/profile/ProfileViewModelTest.kt` test the state holders against `app/src/test/kotlin/<package path>/support/FakeApiClient.kt`: loading, success, each failure, retry, sign-out and session expiry.
+- `app/src/test/kotlin/<package path>/support/MainDispatcherRule.kt` sets the main dispatcher for them.
+- `app/src/test/kotlin/<package path>/data/api/RetrofitApiClientTest.kt` tests the real client against a MockWebServer: the route and method of each call, the bearer header, the status mapping and that the token never reaches `toString()`.
+- `app/src/test/kotlin/<package path>/data/api/ApiContractTest.kt` reads the shared OpenAPI contract (the build passes its path in a system property) and fails when `ApiService`, the DTOs or `getMe`'s bearer security drift from it.
+- `app/src/test/kotlin/<package path>/ui/signin/SignInScreenTest.kt` is a Compose UI test under Robolectric. It asserts the literal text "Local development sign-in", so a change of the label or of its meaning fails a test.
+- `app/src/test/resources/robolectric.properties` sets Robolectric's SDK level.
 
 ## ViewModel test rules
 

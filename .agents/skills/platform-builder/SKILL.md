@@ -15,7 +15,7 @@ Use this skill for template-repo work that adds a new platform slice or material
 3. Edit the files of the stack: its pack under `packs/{stack}/`.
    - Keep Jinja syntax balanced.
    - Add `.jinja` to any file with template expressions.
-   - Use `{% if "stack" in stacks %}` or `{% if "app-id" in app_ids %}` guards only when the file truly needs them.
+   - Use `{% if "stack" in stacks %}` guards, or a loop over `apps`, only when the file truly needs them.
 4. Update the app's docs: `packs/{stack}/{{ app_path }}/docs/`.
 5. Update AI context when the platform contract changes:
    - `template/CLAUDE.md.jinja`
@@ -25,7 +25,6 @@ Use this skill for template-repo work that adds a new platform slice or material
    - `template/Taskfile.yml.jinja`
    - `template/.github/workflows/` (a pack carries its own workflow)
    - `copier.yml` and `prism_cli/packs.py`
-   - `template/_templates/`
 7. Keep maturity language explicit: implemented, partial, experimental, or planned.
 8. Run `$test-template` or an equivalent `prism new` generation before finishing.
 

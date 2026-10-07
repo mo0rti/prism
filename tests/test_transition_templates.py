@@ -286,8 +286,6 @@ class TransitionTemplateContractTests(unittest.TestCase):
                     "project_name=Transition Contract",
                     "--data",
                     "project_slug=transition-contract",
-                    "--data",
-                    "auth_methods=[password]",
                     str(REPO_ROOT),
                     str(destination),
                 ],

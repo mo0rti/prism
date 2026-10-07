@@ -45,8 +45,6 @@ GENERATION_ANSWER_FIELDS = (
     "package_identifier",
     "description",
     "stacks",
-    "auth_methods",
-    "github_org",
 )
 
 _VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?$")
@@ -498,8 +496,6 @@ def write_workspace_manifest(
         "project_slug": "slug",
         "package_identifier": "package_identifier",
         "description": "description",
-        "auth_methods": "auth_methods",
-        "github_org": "github_org",
     }
     for answer_key, project_key in answer_to_project.items():
         if answer_key in answers:
@@ -578,8 +574,6 @@ def _compare_manifest_answers(
         "project_slug": "slug",
         "package_identifier": "package_identifier",
         "description": "description",
-        "auth_methods": "auth_methods",
-        "github_org": "github_org",
     }
     diagnostics: list[WorkspaceDiagnostic] = []
     for answer_key, project_key in answer_to_project.items():

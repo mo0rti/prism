@@ -1,6 +1,6 @@
 # Questionnaire
 
-`prism new` collects these inputs. Copier does not ask about apps: the CLI collects the app list, from a preset, an answers file or the interactive flow, and gives each generation layer its answers ([workspace-model.md](workspace-model.md) describes the layers).
+`prism new` collects the project identity and the app list. Copier does not ask about apps: the CLI collects the app list, from a preset, an answers file or the interactive flow, and gives each generation layer its answers ([workspace-model.md](workspace-model.md) describes the layers).
 
 | Input | Description | Default |
 |-------|-------------|---------|
@@ -9,8 +9,8 @@
 | **Package identifier** | Reverse-domain ID (e.g., `com.example.myawesomeapp`) | derived from slug |
 | **Description** | One-line project description | `A multi-platform application` |
 | **Apps** | The workspace's apps: each has an ID, a stack, a name, a path, an audience, a repository and whether Prism scaffolds it or only registers it | the preset's apps |
-| **Auth methods** | Username + Password plus optional Google, Apple, Facebook, or Microsoft sign-in | Google, Password |
-| **GitHub org** | GitHub organization or username | *(empty)* |
+
+The agent integrations are not a question: every generated workspace carries guidance for Claude Code, Codex and Cursor from one source, and `prism workflow install` adds the workflow to an existing repository.
 
 ## Apps
 
@@ -21,7 +21,16 @@ An app is `{id, stack}` plus optional `name`, `path`, `audience`, `repository`, 
 - `audience` is free text, for example `B2C` or `internal`. No gate reads it. For a `nextjs-web` app it is display text in the app's header and guidance, nothing more. The interactive flow asks for it, and `prism app add --audience` sets it.
 - `generation` is `scaffolded` (Prism generates the code and `prism update` keeps it current) or `registered` (the manifest records it; the code lives elsewhere). An app of a generated stack in this repository defaults to `scaffolded`; an app in an external repository, or of the `other` stack, is always registered. An external app also names its repository's `remote`.
 
-A preset is an app list: `backend-only` is `backend`; `backend-mobile` is `backend`, `mobile-android` and `mobile-ios`; `backend-web` is `backend` and `web`. An answers file carries the same list, and a second web app is one more entry of the same stack:
+A preset is an app list over the four packs, and `prism presets` (and `prism presets --json`) show each one's apps:
+
+| Preset | Apps |
+|--------|------|
+| `backend-only` | `backend` |
+| `backend-web` | `backend`, `web` |
+| `backend-mobile` | `backend`, `mobile-android`, `mobile-ios` |
+| `full` | `backend`, `web`, `mobile-android`, `mobile-ios` |
+
+An answers file carries the same list, and a second web app is one more entry of the same stack:
 
 ```yaml
 schema_version: 1
@@ -59,12 +68,12 @@ An app ID and path must not replace a file of the workspace layer: an ID such as
 | `ios-swiftui` | The `ios-swiftui` pack, once per scaffolded app at its own path: an XcodeGen project, a "Local development sign-in" and a profile screen, XCTest unit tests and one UI test, and the app's workflow and Cursor rule. Each app has its own module, target, scheme, Xcode project name and bundle identifier, derived from its ID |
 | `other` | Registered only |
 
-The backend and Android packs are verified locally, and a generated Android app builds its debug APK and passes its JVM tests locally and in CI; its sign-in against a running backend through `adb reverse` was checked by hand on an emulator. The iOS pack is verified only by the macOS CI job (XcodeGen, a simulator build and the tests); its sign-in works in the simulator only, because the backend serves the dev identity to loopback requests. A generated web app passes `npm ci`, lint, typecheck, its tests and the Next.js build locally and in CI, with a mocked backend; its sign-in against a running backend is checked by hand, and no hosting configuration is generated. [current-status.md](current-status.md) records the verification per platform.
+The backend and Android packs are verified locally, and a generated Android app builds its debug APK and passes its JVM tests locally and in CI; its sign-in against a running backend through `adb reverse` was checked by hand on an emulator. The iOS pack is verified only by the macOS CI job (XcodeGen, a simulator build and the tests), which passes against it; its sign-in works in the simulator only, because the backend serves the dev identity to loopback requests. A generated web app passes `npm ci`, lint, typecheck, its tests and the Next.js build locally and in CI, with a mocked backend; its sign-in against a running backend is checked by hand, and no hosting configuration is generated. [current-status.md](current-status.md) records the verification per platform.
 
 ## Current Notes Per Input
 
-- `Auth methods`: Username + Password is the baseline sign-in method in the current Prism model. OAuth providers are additive. Google is the secondary default; Apple Sign-In is selectable but experimental. No generated app reads this answer: the sign-in of a `spring-backend`, a `nextjs-web`, an `android-compose` or an `ios-swiftui` app is the local development identity, which Prism's auth contract defines, and the real identity provider is yours to choose.
 - `Package identifier`: every scaffolded app gets its own package under it, so two apps of one stack never share a package.
+- Sign-in: the sign-in of a `spring-backend`, a `nextjs-web`, an `android-compose` or an `ios-swiftui` app is the local development identity, which Prism's auth contract defines, so no question asks for an authentication method. The real identity provider is yours to choose, and the generated `security-auth` skill explains the replacement.
 
 ## What The Questionnaire Does Not Ask
 
@@ -74,7 +83,7 @@ Prism owns project identity, the app list, the auth contract and the agent integ
 - Cloud deployment is a skill. Every generated workspace carries a `deployment` skill in `.claude/skills/deployment/` and `.agents/skills/deployment/` with worked examples for the backend container on Azure Container Apps and the web apps on Cloudflare Workers through OpenNext, and notes on mobile store releases. The user and their agent own the cloud choice, the secrets and the deployment; the files are an example for one choice and are not copied into the project.
 - Generated GitHub Actions build and test only.
 
-An answers file or `--data` value for a question that no longer exists (`database`, `supporting_services`, `use_docker`, `cloud_provider`, `web_hosting`, `platforms`) is rejected by `prism new` with an "Unknown answer(s)" error. Copier itself ignores such a value.
+An answers file or `--data` value for a question that no longer exists (`database`, `supporting_services`, `use_docker`, `cloud_provider`, `web_hosting`, `platforms`, `auth_methods`, `github_org`, `ios_module_name`, `package_path`) is rejected by `prism new` with an "Unknown answer(s)" error. Copier itself ignores such a value.
 
 ## Raw Copier
 
@@ -83,5 +92,6 @@ An answers file or `--data` value for a question that no longer exists (`databas
 ## Recommended First Selections
 
 - **Backend only** for contract inspection and repository-shape validation
-- **Backend + Mobile** for the Android and iOS client path; iOS needs macOS and Xcode validation
+- **Backend + Mobile** for the Android and iOS client path; the iOS pack is built and tested by the macOS CI job
 - **Backend + Web** to evaluate the web slice against the backend; add a second web app for another audience with `prism app add admin --stack nextjs-web --audience internal --scaffold`
+- **Full** for one app of each of the four stacks

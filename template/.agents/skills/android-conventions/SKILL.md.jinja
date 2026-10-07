@@ -13,17 +13,17 @@ Apply these rules whenever you change an Android app of this workspace. Each And
 - Use this skill for the guardrails that apply across the app: structure, state, the client, the session, strings and the dev identity.
 - Keep feature sequencing in `$android-feature-delivery`, contract details in `$android-contract-alignment`, shared Compose guidance in `$compose-design-system`, test patterns in `$android-testing` and task selection in `$android-build-verify`.
 
-## The slice
+## Slice files
 
-The pack generates one vertical slice and no example business features. Under `<package path>/`:
+The pack generates one vertical slice and no example business features. Paths are inside the Android app's folder ({% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}). `<package path>` is the app's application ID, `<package_identifier>.<app id without hyphens>`, written with slashes.
 
-- `ui/signin/SignInScreen.kt` is the screen labelled "Local development sign-in"; `SignInRoute.kt` and `SignInViewModel.kt` wire it. Signing in calls `createDevToken` and opens the session.
-- `ui/profile/ProfileScreen.kt`, `ProfileRoute.kt` and `ProfileViewModel.kt` show the signed-in user from `GET /api/me` (`getMe`). A rejected token closes the session.
-- `ui/AppRoot.kt` shows the profile while a session is open and the sign-in otherwise.
-- `data/api/ApiService.kt` (Retrofit), `ApiModels.kt` (the DTOs), `ApiClient.kt` (the interface and `ApiResult`) and `RetrofitApiClient.kt` are the client of `shared/api-contracts/openapi.yml`.
-- `session/SessionStore.kt` keeps the access token in memory only.
-- `AppContainer.kt` wires the app by hand; `App.kt` owns it and `MainActivity.kt` hosts the content.
-- `designsystem/` holds `AppTheme`, `Spacing`, `LoadingIndicator` and `ErrorView`.
+- `app/src/main/kotlin/<package path>/ui/signin/SignInScreen.kt` is the screen labelled "Local development sign-in"; `app/src/main/kotlin/<package path>/ui/signin/SignInRoute.kt` and `app/src/main/kotlin/<package path>/ui/signin/SignInViewModel.kt` wire it. Signing in calls `createDevToken` and opens the session.
+- `app/src/main/kotlin/<package path>/ui/profile/ProfileScreen.kt`, `app/src/main/kotlin/<package path>/ui/profile/ProfileRoute.kt` and `app/src/main/kotlin/<package path>/ui/profile/ProfileViewModel.kt` show the signed-in user from `GET /api/me` (`getMe`). A rejected token closes the session.
+- `app/src/main/kotlin/<package path>/ui/AppRoot.kt` shows the profile while a session is open and the sign-in otherwise.
+- `app/src/main/kotlin/<package path>/data/api/ApiService.kt` (Retrofit), `app/src/main/kotlin/<package path>/data/api/ApiModels.kt` (the DTOs), `app/src/main/kotlin/<package path>/data/api/ApiClient.kt` (the interface and `ApiResult`) and `app/src/main/kotlin/<package path>/data/api/RetrofitApiClient.kt` are the client of the shared OpenAPI contract.
+- `app/src/main/kotlin/<package path>/session/SessionStore.kt` keeps the access token in memory only.
+- `app/src/main/kotlin/<package path>/AppContainer.kt` wires the app by hand; `app/src/main/kotlin/<package path>/App.kt` owns it and `app/src/main/kotlin/<package path>/MainActivity.kt` hosts the content.
+- `app/src/main/kotlin/<package path>/designsystem/` holds `AppTheme`, `Spacing`, `LoadingIndicator` and `ErrorView`.
 - `app/src/test/kotlin/<package path>/` holds the JVM tests of all of the above.
 
 ## Core rules

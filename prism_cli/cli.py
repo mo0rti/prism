@@ -63,7 +63,6 @@ from prism_cli.packs import (
     workspace_data,
 )
 from prism_cli.presets import (
-    ALL_AUTH_CHOICES,
     DEFAULT_ANSWERS,
     PRESETS,
     WORKFLOW_PRESETS,
@@ -318,7 +317,6 @@ def build_parser() -> argparse.ArgumentParser:
     new_parser.add_argument("--project-slug", help="Explicit lowercase project slug used by Copier and the default destination.")
     new_parser.add_argument("--description")
     new_parser.add_argument("--package-identifier")
-    new_parser.add_argument("--github-org")
     new_parser.add_argument("--dest")
     new_parser.add_argument("--template", help="Custom template path or URL. Installed defaults use the matching Prism release tag.")
     new_parser.add_argument("--trust-template", action="store_true", help="Allow a custom template to execute code.")
@@ -560,6 +558,7 @@ def cmd_presets(_args: argparse.Namespace) -> int:
     for preset in PRESETS:
         print(f"{preset.slug:<24} {maturity_badge(preset.maturity)}")
         print(f"  {preset.label}: {preset.summary}")
+        print(f"  Apps: {preset_apps_text(preset)}")
         for note in preset.notes:
             print(f"  {warn(note)}")
         print()
@@ -574,6 +573,12 @@ def cmd_presets(_args: argparse.Namespace) -> int:
     return 0
 
 
+def preset_apps_text(preset: Preset) -> str:
+    """A preset's app list on one line: each app's ID and stack."""
+
+    return ", ".join(f"{app['id']} ({app['stack']})" for app in preset.apps)
+
+
 def presets_to_dict() -> dict[str, Any]:
     """The presets for ``prism presets --json``: generation presets and workflow presets are separate lists."""
 
@@ -586,6 +591,7 @@ def presets_to_dict() -> dict[str, Any]:
                 "label": preset.label,
                 "maturity": preset.maturity,
                 "summary": preset.summary,
+                "apps": [{"id": app["id"], "stack": app["stack"], "path": app["path"]} for app in preset.apps],
                 "notes": list(preset.notes),
             }
             for preset in PRESETS
@@ -1281,7 +1287,6 @@ def cmd_new(args: argparse.Namespace) -> int:
         "project_slug": args.project_slug,
         "description": args.description,
         "package_identifier": args.package_identifier,
-        "github_org": args.github_org,
     }
     for key, value in cli_overrides.items():
         if value is not None and (key == "project_slug" or value):
@@ -1596,7 +1601,7 @@ def prompt_preset() -> str:
                 value=preset.slug,
                 label=preset.label,
                 meta=f"[{preset.slug}]",
-                description=preset.summary,
+                description=f"{preset.summary} Apps: {preset_apps_text(preset)}.",
                 notes=preset.notes,
                 accent=preset.maturity,
             )
@@ -1617,6 +1622,7 @@ def prompt_preset() -> str:
     for index, preset in enumerate(PRESETS, start=1):
         print(f"{index}. {preset.label} [{preset.slug}] - {maturity_badge(preset.maturity)}")
         print(f"   {preset.summary}")
+        print(f"   Apps: {preset_apps_text(preset)}")
         for note in preset.notes:
             print(f"   {warn(note)}")
     advanced_index = len(PRESETS) + 1
@@ -1648,7 +1654,6 @@ def prompt_advanced_answers() -> dict[str, Any]:
     project_name = prompt_text("Project name")
     description = prompt_text("Description", DEFAULT_ANSWERS["description"])
     package_identifier = prompt_text("Package identifier", f"com.example.{slugify(project_name).replace('-', '')}")
-    github_org = prompt_text("GitHub organization or username", "")
     selected = prompt_multiselect("Select the apps to scaffold (none is fine)", ALL_PLATFORM_CHOICES, default_values=["backend"], allow_empty=True)
     apps = apps_from_platforms(selected, generation=GENERATION_SCAFFOLDED)
     for app in apps:
@@ -1657,21 +1662,12 @@ def prompt_advanced_answers() -> dict[str, Any]:
             if audience:
                 app["audience"] = audience
     apps.extend(prompt_more_apps({app["id"] for app in apps}))
-    auth_default = DEFAULT_ANSWERS["auth_methods"]
-    auth_methods = prompt_multiselect(
-        "Select auth methods (keep Username + Password selected)",
-        ALL_AUTH_CHOICES,
-        default_values=auth_default,
-        allow_empty=False,
-    )
 
     return {
         "project_name": project_name,
         "description": description,
         "package_identifier": package_identifier,
-        "github_org": github_org,
         "apps": apps,
-        "auth_methods": auth_methods,
     }
 
 
@@ -1841,11 +1837,8 @@ def is_generation_safe_existing_destination(entries: list[Path]) -> bool:
     return has_git_dir
 
 
-# What an answers file may set: the questions of the workspace layer and the app list. The values Copier
-# derives (`ios_module_name`, `package_path`) are accepted for an answers file that records them.
-ANSWER_KEYS = frozenset(
-    {"project_name", "project_slug", "package_identifier", "description", "auth_methods", "github_org", "apps", "ios_module_name", "package_path"}
-)
+# What an answers file may set: the project identity and the app list.
+ANSWER_KEYS = frozenset({"project_name", "project_slug", "package_identifier", "description", "apps"})
 
 
 def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -1856,14 +1849,9 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
         "project_slug",
         "description",
         "package_identifier",
-        "github_org",
-        "ios_module_name",
     ):
         if field_name in answers and not isinstance(answers[field_name], str):
             errors.append(f"{field_name} must be a string.")
-
-    auth_values = answers.get("auth_methods", [])
-    auth_methods = validate_choice_list("auth_methods", auth_values, {value for value, _label in ALL_AUTH_CHOICES}, errors)
 
     unknown_answers = sorted(key for key in answers if not key.startswith("_") and key not in ANSWER_KEYS)
     if unknown_answers:
@@ -1885,9 +1873,6 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
         package = answers.get("package_identifier", default_package_identifier(slug))
         if not isinstance(package, str) or not PACKAGE_IDENTIFIER_PATTERN.fullmatch(package) or any(part in RESERVED_IDENTIFIERS for part in package.split(".")):
             errors.append("Package identifier must contain valid dot-separated Kotlin/Java identifiers, starting with letters and without reserved keywords.")
-        module = answers.get("ios_module_name", slug.replace("-", " ").title().replace(" ", ""))
-        if not isinstance(module, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", module):
-            errors.append("iOS module name must be a valid Swift identifier.")
 
     apps: list[dict[str, Any]] = []
     if "apps" not in answers:
@@ -1898,31 +1883,12 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
         if not app_errors:
             errors.extend(validate_scaffold(apps))
 
-    if apps and "password" not in auth_methods:
-        errors.append("Prism currently requires Username + Password auth as the baseline sign-in method.")
-    if "apple" in auth_methods:
-        warnings.append("Apple Sign-In remains experimental.")
     if any(app["stack"] == "ios-swiftui" and app["generation"] == GENERATION_SCAFFOLDED for app in apps):
         warnings.append("Validate iOS generation locally on macOS before treating it as build-proven.")
     return errors, warnings
 
 
-def validate_choice_list(field_name: str, value: Any, allowed: set[str], errors: list[str]) -> list[str]:
-    if not isinstance(value, list):
-        errors.append(f"{field_name} must be a list of values.")
-        return []
-    invalid = [item for item in value if not isinstance(item, str) or item not in allowed]
-    if invalid:
-        errors.append(
-            f"Unsupported {field_name} value(s): {', '.join(repr(item) for item in invalid)}. "
-            f"Allowed values: {', '.join(sorted(allowed))}."
-        )
-        return []
-    return value
-
-
 def render_summary(answers: dict[str, Any], dest_path: Path, template_path: str, warnings: list[str]) -> None:
-    auth_labels = dict(ALL_AUTH_CHOICES)
     body: list[str] = []
     body.append(colorize("Project", STYLE.bold, STYLE.blue))
     body.extend(review_key_value("Name", answers["project_name"], STYLE.bold, STYLE.white))
@@ -1946,15 +1912,6 @@ def render_summary(answers: dict[str, Any], dest_path: Path, template_path: str,
         for app in answers.get("apps", [])
     ]
     body.extend(review_key_value("Apps", "; ".join(app_lines) or "None", STYLE.cyan, STYLE.bold))
-    body.extend(
-        review_key_value(
-            "Auth",
-            ", ".join(auth_labels[a] for a in answers.get("auth_methods", [])) or "None",
-            STYLE.green if answers.get("auth_methods") else STYLE.yellow,
-        )
-    )
-    if answers.get("github_org"):
-        body.extend(review_key_value("GitHub org", answers["github_org"], STYLE.magenta))
     print()
     print(panel("Generation Review", body))
     print()
@@ -2026,7 +1983,7 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, 
                 return EXIT_COPIER
             event_count += result["event_count"]
             ensure_copier_answers_file(dest_path, template_path, data, answers_relpath=layer.answers_file)
-    manifest_answers = {key: answers[key] for key in ("project_name", "project_slug", "package_identifier", "description", "auth_methods", "github_org") if key in answers}
+    manifest_answers = {key: answers[key] for key in ("project_name", "project_slug", "package_identifier", "description") if key in answers}
     if not refresh_workspace_manifest(dest_path, template_path, manifest_answers, apps=apps, repositories=repositories):
         return EXIT_VALIDATION
 

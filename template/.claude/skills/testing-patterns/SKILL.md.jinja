@@ -14,23 +14,27 @@ The app's `build.gradle.kts` declares MockK, `spring-boot-starter-test`, `spring
 
 ## File Location
 
-Tests mirror the main source structure. The slice's tests are the reference; source roots of the backend apps (replace `main` with `test` in the path):
-{% for app in apps if app.stack == "spring-backend" %}
-- `{{ app.path }}/src/main/kotlin/{{ (package_identifier ~ "." ~ (app.id | replace("-", ""))) | replace(".", "/") }}/`
-{%- endfor %}
-
-- `modules/users/UserServiceTest.kt` - a MockK unit test of a service
-- `modules/devidentity/DevIdentityTokenServiceTest.kt`, `LoopbackRequestPolicyTest.kt` - plain unit tests
-- `DefaultProfileIntegrationTest.kt`, `LocalProfileIntegrationTest.kt` - `@SpringBootTest` + `MockMvc` against Testcontainers PostgreSQL
-- `DevIdentityStartupGuardTest.kt` - a startup failure asserted with `SpringApplicationBuilder`
-- `OpenApiContractTest.kt` - the contract and the served routes agree
-- `support/PostgresTestConfiguration.kt` - the Testcontainers PostgreSQL, `support/TokenFixtures.kt` - tokens the dev identity never issues
+Tests mirror the main source structure; the slice's tests (below) are the reference.
 
 ```
 src/test/kotlin/<app package path>/
   modules/<domain>/
     <ServiceName>Test.kt
 ```
+
+## Slice files
+
+Paths are inside the backend app's folder{% for app in apps if app.stack == "spring-backend" %}{{ " (" if loop.first else ", " }}`{{ app.path }}/`{{ ")" if loop.last }}{% endfor %}. `<package path>` is the app's package, `<package_identifier>.<app id without hyphens>`, written with slashes.
+
+- `src/test/kotlin/<package path>/modules/users/UserServiceTest.kt` - a MockK unit test of a service
+- `src/test/kotlin/<package path>/modules/devidentity/DevIdentityTokenServiceTest.kt` - a plain unit test
+- `src/test/kotlin/<package path>/modules/devidentity/LoopbackRequestPolicyTest.kt` - a plain unit test
+- `src/test/kotlin/<package path>/DefaultProfileIntegrationTest.kt` - `@SpringBootTest` + `MockMvc` against Testcontainers PostgreSQL, default profile
+- `src/test/kotlin/<package path>/LocalProfileIntegrationTest.kt` - the same, with the `local` profile
+- `src/test/kotlin/<package path>/DevIdentityStartupGuardTest.kt` - a startup failure asserted with `SpringApplicationBuilder`
+- `src/test/kotlin/<package path>/OpenApiContractTest.kt` - the contract and the served routes agree
+- `src/test/kotlin/<package path>/support/PostgresTestConfiguration.kt` - the Testcontainers PostgreSQL
+- `src/test/kotlin/<package path>/support/TokenFixtures.kt` - tokens the dev identity never issues
 
 ## Unit Tests (Service / Domain Logic)
 

@@ -51,10 +51,6 @@ project:
   slug: baseline-full
   package_identifier: com.example.baselinefull
   description: Baseline full workspace
-  auth_methods:
-  - google
-  - password
-  github_org: ''
 apps:
   - id: backend
     name: Spring Boot Backend
@@ -120,10 +116,6 @@ stacks:
 - nextjs-web
 - android-compose
 - ios-swiftui
-auth_methods:
-- google
-- password
-github_org: ''
 """
 
 

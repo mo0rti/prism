@@ -16,6 +16,14 @@ claude-skill:
 
 Use this skill when SwiftUI work should stay consistent and accessible. The slice has two screens (`Sources/SignIn/SignInView.swift`, `Sources/Profile/ProfileView.swift`) built from system styles, and no custom theme: they are the starting point.
 
+## Slice files
+
+Paths are inside the iOS app's folder ({% for app in apps if app.stack == "ios-swiftui" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}).
+
+- `Sources/SignIn/SignInView.swift` - the sign-in screen
+- `Sources/Profile/ProfileView.swift` - the profile screen
+- `Sources/RootView.swift` - chooses the screen from the session
+
 ## Role boundary
 
 - Own screen composition, shared views, accessibility and visual patterns.

@@ -16,6 +16,17 @@ claude-skill:
 
 Use this skill when backend-facing iOS code changes. Paths are relative to the iOS app's folder.
 
+## Slice files
+
+Paths are inside the iOS app's folder ({% for app in apps if app.stack == "ios-swiftui" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}).
+
+- `Sources/Networking/APIEndpoint.swift` - the path of each operation
+- `Sources/Networking/APIClient.swift` - the `APIClient` protocol and `URLSessionAPIClient`
+- `Sources/Models/Models.swift` - the request and response models
+- `Sources/Info.plist` - carries `API_BASE_URL`
+- `project.yml` - sets `API_BASE_URL` per build configuration
+- `Tests/APIClientTests.swift` - covers request building and response reading
+
 ## Role boundary
 
 - Own request and response shapes, endpoint paths, the API client and the auth-boundary wiring.

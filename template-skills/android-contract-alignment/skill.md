@@ -23,11 +23,15 @@ Use this skill when backend-facing Android code changes. The paths below are und
 
 ## The client is hand-written and checked
 
-The Android client is not generated. `shared/api-contracts/openapi.yml` is the source, and the client matches it in four places that change together:
+The Android client is not generated. `shared/api-contracts/openapi.yml` is the source, and the client matches it in four places that change together (the slice files below).
 
-- `data/api/ApiService.kt`: one Retrofit method per operation, with the contract's method and path (`createDevToken` is `POST /api/dev-identity/token`, `getMe` is `GET /api/me`).
-- `data/api/ApiModels.kt`: one `@Serializable` data class per schema, with the schema's property names. A property that is not `required` has a default.
-- `data/api/ApiClient.kt` and `RetrofitApiClient.kt`: the interface the ViewModels use, and its mapping of statuses to `ApiError`.
+## Slice files
+
+Paths are inside the Android app's folder ({% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}). `<package path>` is the app's application ID, `<package_identifier>.<app id without hyphens>`, written with slashes.
+
+- `app/src/main/kotlin/<package path>/data/api/ApiService.kt`: one Retrofit method per operation, with the contract's method and path (`createDevToken` is `POST /api/dev-identity/token`, `getMe` is `GET /api/me`).
+- `app/src/main/kotlin/<package path>/data/api/ApiModels.kt`: one `@Serializable` data class per schema, with the schema's property names. A property that is not `required` has a default.
+- `app/src/main/kotlin/<package path>/data/api/ApiClient.kt` and `app/src/main/kotlin/<package path>/data/api/RetrofitApiClient.kt`: the interface the ViewModels use, and its mapping of statuses to `ApiError`.
 - `app/src/test/kotlin/<package path>/data/api/ApiContractTest.kt`: reads the contract and fails when the routes `ApiService` calls, the fields of the DTOs or `getMe`'s bearer security differ from it. Extend it with every operation you add.
 
 ## DTO rules

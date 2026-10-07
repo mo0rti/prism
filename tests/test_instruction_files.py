@@ -120,7 +120,7 @@ class GeneratedInstructionTests(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory(prefix="prism-instruction-files-")
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.root = Path(cls.temporary.name) / "generated"
-        generate_default_apps(cls.root, list(APPS), Path(cls.temporary.name), project_name="Instruction Files", auth_methods=["password"])
+        generate_default_apps(cls.root, list(APPS), Path(cls.temporary.name), project_name="Instruction Files")
 
     def text(self, relative: str) -> str:
         return (self.root / relative).read_text(encoding="utf-8")

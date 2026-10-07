@@ -512,12 +512,30 @@ class PresetsTests(unittest.TestCase):
         self.assertEqual("presets", data["command"])
         self.assertEqual([preset.slug for preset in PRESETS], [item["slug"] for item in data["generation_presets"]])
         for item in data["generation_presets"]:
-            self.assertEqual({"slug", "label", "maturity", "summary", "notes"}, set(item))
+            self.assertEqual({"slug", "label", "maturity", "summary", "apps", "notes"}, set(item))
         self.assertEqual(["knowledge-root"], [item["slug"] for item in data["workflow_presets"]])
         knowledge_root = data["workflow_presets"][0]
         self.assertEqual({"slug", "label", "summary", "command", "notes"}, set(knowledge_root))
         self.assertEqual(WORKFLOW_PRESETS[0].command, knowledge_root["command"])
         self.assertNotIn("maturity", knowledge_root)
+
+    def test_every_preset_is_an_app_list_over_the_four_packs_and_the_outputs_show_it(self) -> None:
+        expected = {
+            "backend-only": [("backend", "spring-backend")],
+            "backend-web": [("backend", "spring-backend"), ("web", "nextjs-web")],
+            "backend-mobile": [("backend", "spring-backend"), ("mobile-android", "android-compose"), ("mobile-ios", "ios-swiftui")],
+            "full": [("backend", "spring-backend"), ("web", "nextjs-web"), ("mobile-android", "android-compose"), ("mobile-ios", "ios-swiftui")],
+        }
+        self.assertEqual(sorted(expected), sorted(preset.slug for preset in PRESETS))
+        data = run_json("presets", "--json")
+        for item in data["generation_presets"]:
+            with self.subTest(preset=item["slug"]):
+                self.assertEqual(expected[item["slug"]], [(app["id"], app["stack"]) for app in item["apps"]])
+                self.assertTrue(all(app["path"] for app in item["apps"]))
+        code, out, _err = run_cli("presets")
+        self.assertEqual(0, code)
+        for slug, apps in expected.items():
+            self.assertIn("Apps: " + ", ".join(f"{app_id} ({stack})" for app_id, stack in apps), out, slug)
 
     def test_a_workflow_preset_is_not_a_generation_preset(self) -> None:
         self.assertNotIn("knowledge-root", {preset.slug for preset in PRESETS})

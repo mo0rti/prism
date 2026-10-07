@@ -29,21 +29,22 @@ Use this skill for backend auth exposure, JWT validation, the local development 
 
 Prism owns the auth **contract**: `shared/api-contracts/openapi.yml` defines `POST /api/dev-identity/token` (tagged `x-prism-dev-only`) and `GET /api/me`, and the backend slice implements them. The user and their agent own the **real identity provider**, the authorization policy, the secrets and the deployment. The generated backend is a bearer-token resource server; it never stores passwords, runs OAuth flows or issues production tokens.
 
-## Where The Code Is
+## Slice files
 
-Source roots of the backend apps (every path below is relative to one of them):
-{% for app in apps if app.stack == "spring-backend" %}
-- `{{ app.path }}/src/main/kotlin/{{ (package_identifier ~ "." ~ (app.id | replace("-", ""))) | replace(".", "/") }}/`
-{%- endfor %}
+Paths are inside the backend app's folder{% for app in apps if app.stack == "spring-backend" %}{{ " (" if loop.first else ", " }}`{{ app.path }}/`{{ ")" if loop.last }}{% endfor %}. `<package path>` is the app's package, `<package_identifier>.<app id without hyphens>`, written with slashes. The contract is `shared/api-contracts/openapi.yml` at the workspace root.
 
-- `bootstrap/SecurityConfig.kt` - filter chain, route exposure, which decoder validates tokens
-- `bootstrap/security/ApiAuthenticationEntryPoint.kt` - 401 reply in the shared error format
-- `bootstrap/security/RejectingJwtDecoder.kt` - the decoder of an app with no identity provider
-- `bootstrap/DevIdentityConfig.kt`, `bootstrap/DevIdentityGuard.kt`, `bootstrap/properties/DevIdentityProperties.kt` - the dev identity (profile `local`)
-- `modules/devidentity/` - `controller/DevIdentityController.kt`, `service/DevIdentityTokenService.kt`, `service/LoopbackRequestPolicy.kt`
-- `modules/users/controller/MeController.kt`, `modules/users/service/UserService.kt` - `GET /api/me` and the first-call profile creation
+- `src/main/kotlin/<package path>/bootstrap/SecurityConfig.kt` - filter chain, route exposure, which decoder validates tokens
+- `src/main/kotlin/<package path>/bootstrap/security/ApiAuthenticationEntryPoint.kt` - 401 reply in the shared error format
+- `src/main/kotlin/<package path>/bootstrap/security/RejectingJwtDecoder.kt` - the decoder of an app with no identity provider
+- `src/main/kotlin/<package path>/bootstrap/DevIdentityConfig.kt` - the dev identity beans (profile `local`)
+- `src/main/kotlin/<package path>/bootstrap/DevIdentityGuard.kt` - the startup guard that refuses `local` together with an issuer
+- `src/main/kotlin/<package path>/bootstrap/properties/DevIdentityProperties.kt` - the dev identity's properties
+- `src/main/kotlin/<package path>/modules/devidentity/controller/DevIdentityController.kt` - the token route
+- `src/main/kotlin/<package path>/modules/devidentity/service/DevIdentityTokenService.kt` - issues the token
+- `src/main/kotlin/<package path>/modules/devidentity/service/LoopbackRequestPolicy.kt` - accepts loopback requests only
+- `src/main/kotlin/<package path>/modules/users/controller/MeController.kt` - `GET /api/me`
+- `src/main/kotlin/<package path>/modules/users/service/UserService.kt` - the first-call profile creation
 - `src/main/resources/application.yml` - datasource, schema, `prism.dev-identity.token-ttl`
-- `shared/api-contracts/openapi.yml` (workspace root)
 
 ## Current Security Model
 

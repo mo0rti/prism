@@ -49,11 +49,16 @@ PRESETS: tuple[Preset, ...] = (
         maturity="partial",
         summary="Backend with one Next.js web app that signs in through the local development identity.",
         apps=_scaffolded("backend", "web"),
-        # Keep these auth defaults aligned with copier.yml until manifest-driven preset sync lands.
-        answers={"auth_methods": ["google", "password"]},
         notes=(
             "Add further web apps, for example an internal admin app, with `prism app add ID --stack nextjs-web --scaffold`.",
         ),
+    ),
+    Preset(
+        slug="full",
+        label="Full",
+        maturity="partial",
+        summary="Backend, web, Android and iOS apps, one of each stack; iOS requires macOS/Xcode validation.",
+        apps=_scaffolded("backend", "web", "mobile-android", "mobile-ios"),
     ),
 )
 
@@ -84,18 +89,8 @@ WORKFLOW_PRESETS: tuple[WorkflowPreset, ...] = (
     ),
 )
 
-ALL_AUTH_CHOICES: tuple[tuple[str, str], ...] = (
-    ("password", "Username + Password (required)"),
-    ("google", "Google OAuth"),
-    ("apple", "Apple Sign-In"),
-    ("facebook", "Facebook Login"),
-    ("microsoft", "Microsoft Account"),
-)
-
 DEFAULT_ANSWERS: dict[str, Any] = {
     "description": "A multi-platform application",
-    "auth_methods": ["google", "password"],
-    "github_org": "",
 }
 
 

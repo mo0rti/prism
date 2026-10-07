@@ -25,8 +25,9 @@ Use the smallest path that answers your question.
 Recommended first evaluation paths:
 
 - **Backend only** for repository shape and contract inspection
-- **Backend + Mobile** for the Android and iOS client path; the Android app builds and passes its JVM tests with JDK 21 and an Android SDK, and iOS needs macOS and Xcode validation
+- **Backend + Mobile** for the Android and iOS client path; the Android app builds and passes its JVM tests with JDK 21 and an Android SDK, and the iOS app is built and tested by the macOS CI job
 - **Backend + Web** to inspect the web slice: a Next.js app with a local development sign-in and one authenticated read, built, tested and proven in CI
+- **Full** for one app of every stack: the backend, a web app, an Android app and an iOS app
 
 For the maturity notes behind those recommendations, read
 [current-status.md](current-status.md).
@@ -114,7 +115,6 @@ Required for shared tooling in generated projects:
 
 - Node.js LTS
 - `npm install -g @openapitools/openapi-generator-cli`
-- `npm install -g hygen`
 
 Required for common backend and container workflows:
 
@@ -157,7 +157,7 @@ If you run `prism new` with no extra flags, Prism starts the guided interactive 
 - shows the recommended presets, each an app list
 - lets you choose a preset or advanced mode
 - asks for missing project details
-- uses interactive selectors for the apps to scaffold, further apps (an ID, a stack, a path and whether to scaffold or only register them) and auth choices
+- uses interactive selectors for the apps to scaffold, and further apps (an ID, a stack, a path and whether to scaffold or only register them)
 - defaults the destination folder to `workspaces/<project-slug>`
 - shows a final review screen before generation
 

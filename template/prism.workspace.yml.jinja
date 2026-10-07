@@ -13,11 +13,6 @@ project:
   slug: {{ project_slug | tojson }}
   package_identifier: {{ package_identifier | tojson }}
   description: {{ description | tojson }}
-  auth_methods:
-{% for auth_method in auth_methods %}
-    - {{ auth_method }}
-{% endfor %}
-  github_org: {{ github_org | tojson }}
 paths:
   wiki_root: knowledge/wiki
   intake_root: knowledge/intake

@@ -35,7 +35,6 @@ PROJECT_SLUG = "treasury-flow"
 PACKAGE_IDENTIFIER = "com.mortitech.treasuryflow"
 DESCRIPTION = "A finance operations platform for payout approvals, settlements, and transaction oversight"
 PLATFORMS = ["backend", "mobile-android", "mobile-ios"]  # the generated platform IDs, which are also the demo's app IDs
-AUTH_METHODS = ["password", "google"]
 TEMPLATE_SOURCE = "synthetic-local-demo"
 DEMO_TODAY = date.today()
 
@@ -108,8 +107,6 @@ def _answers() -> dict[str, Any]:
         "project_slug": PROJECT_SLUG,
         "package_identifier": PACKAGE_IDENTIFIER,
         "description": DESCRIPTION,
-        "auth_methods": list(AUTH_METHODS),
-        "github_org": "",
     }
 
 
@@ -273,7 +270,6 @@ Synthetic local dashboard fixture.
 - Name: {PRODUCT_NAME}
 - Description: {DESCRIPTION}
 - Apps: {', '.join(PLATFORMS)}
-- Auth methods: {', '.join(AUTH_METHODS)}
 - Local development services: Postgres through Docker Compose
 - Important correction or note: Synthetic local documentation; no application or compliance claim.
 

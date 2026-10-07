@@ -199,10 +199,7 @@ class PackFilesTests(unittest.TestCase):
             "template/.github/workflows/mobile-ios.yml.jinja",
             "template/.cursor/rules/mobile-ios.mdc.jinja",
             "template-skills/cursor-mobile-ios",
-            "template/_templates/feature/new/ios-view.swift.ejs.t.jinja",
-            "template/_templates/feature/new/ios-viewmodel.swift.ejs.t.jinja",
-            "template/_templates/screen/new/ios-view.swift.ejs.t.jinja",
-            "template/_templates/screen/new/ios-viewmodel.swift.ejs.t.jinja",
+            "template/_templates",
             "template/.agents/skills/ios-conventions/references/swiftdata-patterns.md",
         ):
             self.assertFalse((REPO_ROOT / path).exists(), path)

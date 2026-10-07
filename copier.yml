@@ -109,22 +109,6 @@ package_identifier:
     Package identifier segments cannot be Kotlin or Java keywords.
     {% endif %}{% endfor %}
 
-package_path:
-  type: str
-  help: "Package path derived from package identifier (used for directory names)"
-  default: "{{ package_identifier | replace('.', '/') }}"
-  when: false
-
-ios_module_name:
-  type: str
-  help: "Valid Swift/Xcode module name derived from the project slug"
-  default: "{{ project_slug | replace('-', ' ') | replace('_', ' ') | title | replace(' ', '') }}"
-  when: false
-  validator: >-
-    {% if not (ios_module_name | regex_search('^[A-Za-z_][A-Za-z0-9_]*$')) %}
-    iOS module name must be a valid Swift identifier.
-    {% endif %}
-
 # =============================================================================
 # Workspace layer
 # =============================================================================
@@ -145,32 +129,6 @@ apps:
   type: yaml
   help: "Internal: the scaffolded apps, each with id, name, stack, path, audience and port. The Prism CLI sets it."
   default: "[]"
-  when: "{{ prism_layer == 'workspace' }}"
-
-app_ids:
-  type: yaml
-  help: "The IDs of the scaffolded apps, derived from the app list"
-  default: "{{ apps | map(attribute='id') | list | tojson }}"
-  when: false
-
-auth_methods:
-  type: yaml
-  multiselect: true
-  help: "Which authentication methods do you want to support? Keep Username + Password selected; OAuth providers are additive."
-  validator: "{% if 'password' not in auth_methods %}Prism currently requires Username + Password auth as the baseline sign-in method{% endif %}"
-  choices:
-    Username + Password (required): password
-    Google OAuth: google
-    Apple Sign-In: apple
-    Facebook Login: facebook
-    Microsoft Account: microsoft
-  default: "[google, password]"
-  when: "{{ prism_layer == 'workspace' }}"
-
-github_org:
-  type: str
-  help: "GitHub organization or username (leave empty to skip)"
-  default: ""
   when: "{{ prism_layer == 'workspace' }}"
 
 # =============================================================================

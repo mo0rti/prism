@@ -17,7 +17,6 @@ template/             # Files copied into generated projects (the workspace laye
   .agents/            # Codex skills (generated from template-skills/)
   .cursor/            # Cursor rules: scoped stack facts and the board review (generated from template-skills/)
   .github/            # Workflow templates
-  _templates/         # Hygen generators
   shared/             # OpenAPI and design tokens
   docs/               # Generated-project documentation
   knowledge/          # Generated-project product wiki skeleton
@@ -78,6 +77,8 @@ python scripts/build-skill-layers.py --check  # fails when a generated file diff
 
 `tests/test_skill_layers.py` runs the check, fails when a layer file is edited without its source, and tests how each tool discovers the rendered skills.
 
+A skill that teaches a stack's slice cites the files it teaches from in a `## Slice files` section, one bullet each, with the path inside the app's folder (`<package path>` stands for the app's package written with slashes). `tests/test_stack_skill_slice_paths.py` generates a workspace with all four stacks and checks that every cited path exists in every app of the skill's stack, in both skill layers; a skill source that names one stack and has no such section fails it, except the build and deploy task skills. Change a slice file and its skill in the same commit.
+
 ## Recommended Validation Variants
 
 - `backend` alone, and `backend` with a second backend at another path (`prism app add api-two --stack spring-backend --path services/api-two --scaffold`)
@@ -87,6 +88,7 @@ python scripts/build-skill-layers.py --check  # fails when a generated file diff
 - `backend`, `mobile-ios` and `partner-ios` (two apps of the `ios-swiftui` stack, the second at `apps/partner-ios`)
 - `backend` and `web`
 - `backend`, `web` and `admin` (two apps of the `nextjs-web` stack, with different audiences)
+- `backend`, `web`, `mobile-android` and `mobile-ios` (the `full` preset)
 - the preset defaults as a contract-sanity check, not as the main proof of usability
 
 Generate each through the CLI, with a preset or an answers file that lists the apps, because Copier does not ask about apps. Generation renders the working tree (tracked or not), so a test that needs committed state, such as an update across a tag, builds a snapshot repository under a temporary folder (`tests/layered_support.py`).
@@ -102,6 +104,7 @@ Contract validation requires actionlint on PATH (CI installs 1.7.12), or an expl
 ./scripts/validate-template.ps1
 prism new --preset backend-only --project-name "Test App" --dest ../template-test-backend --yes
 prism new --preset backend-web --project-name "Test Web App" --dest ../template-test-web --yes
+prism new --preset full --project-name "Test Full App" --dest ../template-test-full --yes
 copier copy --trust --defaults --data "project_name=Test App" . ../template-test-workspace-layer   # one layer only
 ```
 

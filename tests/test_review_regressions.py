@@ -27,10 +27,10 @@ FIXTURE = Path(__file__).parent / "fixtures" / "wiki_contract" / "healthy"
 
 class ReviewRegressions(unittest.TestCase):
     def test_identifier_validation_rejects_uncompilable_names(self):
-        base = {"project_name": "Demo", "apps": [{"id": "backend", "stack": "spring-backend"}], "auth_methods": ["password"]}
+        base = {"project_name": "Demo", "apps": [{"id": "backend", "stack": "spring-backend"}]}
         for bad in ({"project_name": "2048 Game"}, {"project_slug": "two--hyphens"},
                     {"package_identifier": "com.2048.app"}, {"package_identifier": "com.class.app"},
-                    {"ios_module_name": "2048Game"}, {"project_slug": 2048}):
+                    {"project_slug": 2048}):
             with self.subTest(bad=bad):
                 self.assertTrue(cli.validate_answers({**base, **bad})[0])
         self.assertEqual([], cli.validate_answers({**base, "project_slug": "game-2048", "package_identifier": "com.example.game2048"})[0])
@@ -48,12 +48,11 @@ class ReviewRegressions(unittest.TestCase):
                 ({"project_slug": "bad--slug"}, "Project slug must start"),
                 ({"package_identifier": "com.2048.app"}, "Package identifier must"),
                 ({"package_identifier": "com.class.app"}, "cannot be Kotlin or Java keywords"),
-                ({"ios_module_name": "2048Game"}, "valid Swift identifier"),
             ]
             for index, (bad, message) in enumerate(cases):
                 with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, message):
-                    run_copy(str(source), str(root / f"invalid-{index}"), data={"project_name": "Demo", "auth_methods": ["password"], **bad}, defaults=True, unsafe=True, quiet=True)
-            run_copy(str(source), str(root / "valid"), data={"project_name": "2048 Game", "project_slug": "game-2048", "auth_methods": ["password"]}, defaults=True, unsafe=True, quiet=True)
+                    run_copy(str(source), str(root / f"invalid-{index}"), data={"project_name": "Demo", **bad}, defaults=True, unsafe=True, quiet=True)
+            run_copy(str(source), str(root / "valid"), data={"project_name": "2048 Game", "project_slug": "game-2048"}, defaults=True, unsafe=True, quiet=True)
 
     def test_custom_template_trust_is_explicit(self):
         with patch("sys.stdin.isatty", return_value=False), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
@@ -139,28 +138,28 @@ class ReviewRegressions(unittest.TestCase):
             self.assertIn("Choose another --port", output.getvalue())
             browser.assert_not_called()
 
-    def test_advanced_flow_asks_only_for_identity_apps_and_auth(self):
+    def test_advanced_flow_asks_only_for_identity_and_apps(self):
         # The last empty answer ends the list of further apps.
-        with patch.object(cli, "prompt_text", side_effect=["Demo", "Description", "com.example.demo", "", ""]), patch.object(cli, "prompt_multiselect", side_effect=[["backend"], ["password"]]) as multiselect, contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(cli, "prompt_text", side_effect=["Demo", "Description", "com.example.demo", ""]), patch.object(cli, "prompt_multiselect", side_effect=[["backend"]]) as multiselect, contextlib.redirect_stdout(io.StringIO()):
             answers = cli.prompt_advanced_answers()
-        self.assertEqual(2, multiselect.call_count)
+        self.assertEqual(1, multiselect.call_count)
         self.assertEqual(
-            {"project_name", "description", "package_identifier", "github_org", "apps", "auth_methods"},
+            {"project_name", "description", "package_identifier", "apps"},
             set(answers),
         )
         self.assertEqual([("backend", "spring-backend", "scaffolded")], [(app["id"], app["stack"], app["generation"]) for app in answers["apps"]])
 
     def test_advanced_flow_asks_for_the_audience_of_a_default_web_app(self):
-        texts = ["Demo", "Description", "com.example.demo", "", "B2C", ""]
-        with patch.object(cli, "prompt_text", side_effect=texts), patch.object(cli, "prompt_multiselect", side_effect=[["backend", "web"], ["password"]]), contextlib.redirect_stdout(io.StringIO()):
+        texts = ["Demo", "Description", "com.example.demo", "B2C", ""]
+        with patch.object(cli, "prompt_text", side_effect=texts), patch.object(cli, "prompt_multiselect", side_effect=[["backend", "web"]]), contextlib.redirect_stdout(io.StringIO()):
             answers = cli.prompt_advanced_answers()
         entries = {app["id"]: app for app in answers["apps"]}
         self.assertEqual(("nextjs-web", "B2C", "scaffolded"), (entries["web"]["stack"], entries["web"]["audience"], entries["web"]["generation"]))
         self.assertNotIn("audience", entries["backend"], "only a web app is asked for its audience here")
 
     def test_advanced_flow_asks_for_further_apps_with_a_stack_a_path_and_scaffold_or_register(self):
-        texts = ["Demo", "Description", "com.example.demo", "", "api-two", "Second API", "workspace", "services/api-two", "B2B", ""]
-        selections = [["backend"], ["spring-backend"], ["password"]]
+        texts = ["Demo", "Description", "com.example.demo", "api-two", "Second API", "workspace", "services/api-two", "B2B", ""]
+        selections = [["backend"], ["spring-backend"]]
         with patch.object(cli, "prompt_text", side_effect=texts), patch.object(cli, "prompt_multiselect", side_effect=selections), patch.object(cli, "confirm", return_value=True), contextlib.redirect_stdout(io.StringIO()):
             answers = cli.prompt_advanced_answers()
         self.assertEqual(["backend", "api-two"], [app["id"] for app in answers["apps"]])

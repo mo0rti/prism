@@ -13,17 +13,19 @@ codex:
 
 This project uses **Spring Boot {{ pack_versions["spring-backend"].spring_boot }}** with **Kotlin {{ pack_versions["spring-backend"].kotlin }}** and **Java {{ pack_versions["spring-backend"].java }}** (pinned in `packs/versions.yml` of the Prism template). Each backend app follows a package-based modular structure under `<app package>.modules.<domain>`; the app package is the workspace's `package_identifier`, a dot and the app ID without hyphens.
 
-## The Slice As The Reference
+## Slice files
 
-Each backend app is generated with one working slice. Read it before inventing a pattern. Source roots of the backend apps (the paths below are relative to one of them):
-{% for app in apps if app.stack == "spring-backend" %}
-- `{{ app.path }}/src/main/kotlin/{{ (package_identifier ~ "." ~ (app.id | replace("-", ""))) | replace(".", "/") }}/`
-{%- endfor %}
+Each backend app is generated with one working slice. Read it before inventing a pattern. Paths are inside the backend app's folder{% for app in apps if app.stack == "spring-backend" %}{{ " (" if loop.first else ", " }}`{{ app.path }}/`{{ ")" if loop.last }}{% endfor %}. `<package path>` is the app's package, `<package_identifier>.<app id without hyphens>`, written with slashes.
 
-- `modules/users/controller/MeController.kt` -> `modules/users/service/UserService.kt` -> `modules/users/repository/UserRepository.kt` -> `modules/users/model/User.kt`
-- `modules/users/dto/UserProfileResponse.kt` and `modules/users/dto/UserMappers.kt` - the response DTO and its extension-function mapper
-- `bootstrap/SecurityConfig.kt` - framework wiring lives in `bootstrap/`
-- `shared/` - the error model, exception handler and audit base class
+- `src/main/kotlin/<package path>/modules/users/controller/MeController.kt` - the controller of `GET /api/me`; it calls the service
+- `src/main/kotlin/<package path>/modules/users/service/UserService.kt` - the service the controller calls
+- `src/main/kotlin/<package path>/modules/users/repository/UserRepository.kt` - the repository the service calls
+- `src/main/kotlin/<package path>/modules/users/model/User.kt` - the entity
+- `src/main/kotlin/<package path>/modules/users/dto/UserProfileResponse.kt` - the response DTO
+- `src/main/kotlin/<package path>/modules/users/dto/UserMappers.kt` - the extension-function mapper
+- `src/main/kotlin/<package path>/bootstrap/SecurityConfig.kt` - framework wiring lives in the `bootstrap` package
+- `src/main/kotlin/<package path>/shared/exception/GlobalExceptionHandler.kt` - the error model and exception handler live in the `shared` package
+- `src/main/kotlin/<package path>/shared/audit/AuditableEntity.kt` - the audit base class
 - `src/main/resources/db/migration/V1__users.sql` - the first Flyway migration
 
 ## Role Boundary

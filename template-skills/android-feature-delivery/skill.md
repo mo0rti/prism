@@ -26,6 +26,16 @@ Invoke it explicitly with `/android-feature-delivery <feature-description>` when
 - Pull in companion skills for detailed rules instead of restating repository, contract, UI, or verification conventions here.
 - The Android apps are {% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}. Their sources are under `app/src/main/kotlin/<package path>/` (the application ID written with slashes).
 
+## Slice files
+
+The slice is the pattern to extend. Paths are inside the Android app's folder ({% for app in apps if app.stack == "android-compose" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}). `<package path>` is the app's application ID, `<package_identifier>.<app id without hyphens>`, written with slashes.
+
+- `app/src/main/kotlin/<package path>/ui/signin/SignInRoute.kt`, `app/src/main/kotlin/<package path>/ui/signin/SignInScreen.kt` and `app/src/main/kotlin/<package path>/ui/signin/SignInViewModel.kt` show the Route, Screen and ViewModel pattern.
+- `app/src/main/kotlin/<package path>/ui/profile/ProfileViewModel.kt` shows a state holder that reads through the client and handles a rejected token.
+- `app/src/main/kotlin/<package path>/data/api/ApiClient.kt` is the client interface a new operation extends.
+- `app/src/main/kotlin/<package path>/designsystem/components/ErrorView.kt` is a shared component.
+- `app/src/main/kotlin/<package path>/AppContainer.kt` is where a new ViewModel is wired.
+
 ## Request
 
 $ARGUMENTS
@@ -33,7 +43,7 @@ $ARGUMENTS
 ## 1. Research the current shape
 
 - Read the wiki feature page and this app's requirements page (`knowledge/wiki/app-requirements/[feature-id]-<app-id>.md`) first.
-- Inspect the slice you extend: `ui/signin/` and `ui/profile/` show the Route, Screen and ViewModel pattern; `data/api/` shows the client; `designsystem/` holds the shared components.
+- Inspect the slice files you extend (listed above) and reuse their pattern.
 - Read only the app docs the task needs, starting with `docs/guide.md`, and reuse nearby patterns before inventing a new one.
 
 ## 2. Verify external contracts

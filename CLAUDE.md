@@ -4,13 +4,13 @@ Prism's core is the workflow and board shared by humans and agents. Application 
 
 Copier template that scaffolds workspaces from an app list: Backend (Spring Boot 4, a stack pack), web apps (Next.js, a stack pack, one per audience), Android apps (Kotlin/Compose, a stack pack) and iOS apps (Swift/SwiftUI, a stack pack).
 
-Generation has two layers under one `copier.yml` and one template tag. The hidden question `prism_layer` chooses `workspace` (`template/`) or a stack with a pack (`packs/<stack>/`, one app, every path under `{{ app_path }}/`). The Prism CLI collects the app list and runs the workspace layer and then each scaffolded app's pack, each from its own answers file. The backend, web and Android packs are verified locally; the iOS pack is verified only by the macOS CI job. Deployment is a generated skill with worked examples that are not verified against live accounts. Apple Sign-In is experimental. `docs/current-status.md` records the verification per platform.
+Generation has two layers under one `copier.yml` and one template tag. The hidden question `prism_layer` chooses `workspace` (`template/`) or a stack with a pack (`packs/<stack>/`, one app, every path under `{{ app_path }}/`). The Prism CLI collects the app list and runs the workspace layer and then each scaffolded app's pack, each from its own answers file. The backend, web and Android packs are verified locally; the iOS pack is verified only by the macOS CI job. Deployment is a generated skill with worked examples that are not verified against live accounts. `docs/current-status.md` records the verification per platform.
 
 ## Project Structure
 
 ```
 docs/                    # Documentation for this template repository
-copier.yml              # Template questionnaire: the hidden prism_layer, project identity, the layers' internal answers, auth
+copier.yml              # Template questionnaire: the hidden prism_layer, project identity, the layers' internal answers
 packs/                  # App layers: one pack per stack, rendered once per scaffolded app
   versions.yml          # The one place that pins versions; packs read it as `versions`
   spring-backend/       # Spring Boot pack, one tested slice (dev identity + GET /api/me): everything under {{ app_path }}/, plus .github/workflows/{{ app_id }}.yml and .cursor/rules/{{ app_id }}.mdc
@@ -25,7 +25,6 @@ template/               # The workspace layer - Jinja2 files (.jinja suffix stri
   .agents/              # Codex skills for generated projects (generated from template-skills/)
   .cursor/              # Cursor rules for generated projects: scoped stack facts and the board review (generated from template-skills/)
   .github/              # CI/CD workflow templates
-  _templates/           # Hygen in-project generators
 ```
 
 ## Two distinct AI context layers

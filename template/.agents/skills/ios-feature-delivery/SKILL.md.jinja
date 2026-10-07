@@ -13,6 +13,15 @@ Use this skill to coordinate non-trivial feature work that crosses layers.
 - Use this skill as the delivery checklist and orchestration layer for multi-step work.
 - Pull in companion skills for detailed rules instead of restating repository, contract, UI or verification conventions here.
 
+## Slice files
+
+The slice is the pattern to follow. Paths are inside the iOS app's folder ({% for app in apps if app.stack == "ios-swiftui" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}).
+
+- `Sources/SignIn/SignInView.swift` and `Sources/SignIn/SignInViewModel.swift` - a screen and its view model
+- `Sources/Profile/ProfileView.swift` and `Sources/Profile/ProfileViewModel.swift` - a screen that reads through the client
+- `Sources/Networking/APIClient.swift` - the client a new operation extends
+- `Sources/RootView.swift` - the composition root, where a new screen is wired
+
 ## Request
 
 $ARGUMENTS

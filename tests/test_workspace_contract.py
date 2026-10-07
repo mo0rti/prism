@@ -127,8 +127,6 @@ class WorkspaceSchemaContractTests(unittest.TestCase):
                     f"project_name={name}",
                     "--data",
                     "project_slug=quote-project",
-                    "--data",
-                    "auth_methods=[password]",
                     ".",
                     str(output),
                 ],

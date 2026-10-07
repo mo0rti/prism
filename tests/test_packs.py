@@ -337,7 +337,7 @@ class LayerQuestionTests(unittest.TestCase):
         self.assertEqual("{{ 'template' if prism_layer == 'workspace' else 'packs/' ~ prism_layer }}", self.config["_subdirectory"])
 
     def test_every_question_belongs_to_a_layer(self) -> None:
-        both = {"prism_layer", "project_name", "project_slug", "package_identifier", "reserved_identifiers", "package_path", "ios_module_name", "pack_versions", "versions"}
+        both = {"prism_layer", "project_name", "project_slug", "package_identifier", "reserved_identifiers", "pack_versions", "versions"}
         for name, details in self.config.items():
             if name.startswith("_") or name in both:
                 continue

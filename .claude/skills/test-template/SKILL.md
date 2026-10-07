@@ -24,7 +24,6 @@ Test the Copier template by generating a project and verifying the output.
 
 3. Scan for common template issues:
    - Search for leftover `{{` or `{%` in non-`.jinja` output files (indicates broken rendering)
-   - Search for `<%= %>` or EJS tags that should have been escaped
    - Check that platform-conditional content is correctly included/excluded
 
 4. Test with a subset of apps:

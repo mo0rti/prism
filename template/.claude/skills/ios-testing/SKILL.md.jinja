@@ -9,6 +9,15 @@ disable-model-invocation: true
 
 Use this skill when iOS work needs test coverage, test refactors, or test-shape decisions. Paths are relative to the iOS app's folder.
 
+## Slice files
+
+The tests of the slice. Paths are inside the iOS app's folder ({% for app in apps if app.stack == "ios-swiftui" %}`{{ app.path }}/`{{ ", " if not loop.last }}{% endfor %}).
+
+- `Tests/Support/FakeAPIClient.swift` - the fake client the view model tests use
+- `Tests/SignInViewModelTests.swift` and `Tests/ProfileViewModelTests.swift` - the view model tests
+- `Tests/APIClientTests.swift` - the request building and response reading of the real client
+- `UITests/SignInUITests.swift` - the one UI test of the sign-in screen
+
 ## Role boundary
 
 - Own test authoring patterns for unit tests and UI tests.

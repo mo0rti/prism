@@ -208,9 +208,7 @@ function Assert-NoCopierPlaceholders {
         "{{ project_",
         "{{ package_",
         "{{package_",
-        "{{ ios_module_name",
         "{{ description",
-        "{{ auth_methods",
         "{{ platforms"
     )
 
@@ -238,7 +236,6 @@ function New-GeneratedProject {
         [string]$Name,
         [string]$ProjectName,
         [string[]]$Apps = @(),
-        [string[]]$AuthMethods = @(),
         [string]$Preset = ""
     )
 
@@ -251,9 +248,6 @@ function New-GeneratedProject {
     }
     else {
         $lines = @("schema_version: 1", "answers:", "  project_name: `"$ProjectName`"")
-        if ($AuthMethods.Count -gt 0) {
-            $lines += "  auth_methods: [" + ($AuthMethods -join ", ") + "]"
-        }
         if ($Apps.Count -eq 0) {
             $lines += "  apps: []"
         }
@@ -597,7 +591,7 @@ function Validate-BackendOnly {
     Assert-PathMissing -Path (Join-Path $Root "backend\src\main\kotlin\com\example\reviewbackend\backend\modules\transactions") -Message "The slice has no transactions module."
 
     Assert-PathMissing -Path (Join-Path $Root "web") -Message "Backend-only sample should not generate a web app."
-    Assert-PathMissing -Path (Join-Path $Root "_templates\page") -Message "Page generators of the retired web samples must not be generated."
+    Assert-PathMissing -Path (Join-Path $Root "_templates") -Message "The Hygen generators are removed: the slice is the example of how code looks, so no _templates folder is generated."
     Assert-NoDeploymentArtifacts -Root $Root
     Assert-DeploymentSkill -Root $Root -Backend $true -Web $false
     Assert-PathExists -Path (Join-Path $Root "docker-compose.yml") -Message "A sample with a backend app must generate docker-compose.yml for the local development database."
@@ -729,7 +723,7 @@ function Remove-TreeIfExists {
 }
 
 function Validate-AuthContract {
-    # The auth contract is the dev-identity token route (dev only) and GET /api/me; it does not depend on any auth answer.
+    # The auth contract is the dev-identity token route (dev only) and GET /api/me.
     param([string]$Root)
 
     $spec = Join-Path $Root "shared\api-contracts\openapi.yml"
@@ -740,14 +734,6 @@ function Validate-AuthContract {
     foreach ($retired in @("/auth/register:", "/auth/login:", "/auth/refresh:", "/auth/oauth/callback:", "/auth/oauth/token:", "/transactions:", "OAuthTokenRequest", "RefreshTokenRequest")) {
         Assert-FileNotContains -Path $spec -Needle $retired -Message "The contract must not define the retired $retired of the full backend sample."
     }
-}
-
-function Validate-AuthContractWithoutAuthAnswers {
-    param([string]$Root)
-
-    Assert-NoCopierPlaceholders -Root $Root
-    Assert-NoDeploymentArtifacts -Root $Root
-    Validate-AuthContract -Root $Root
 }
 
 function ConvertTo-ComparableApiPath {
@@ -826,12 +812,27 @@ function Find-ClientPathsMissingFromSpec {
     return @($missing)
 }
 
-function Get-IosAppRoots {
-    # The folders of the ios-swiftui apps of a generated workspace: each holds an answers file that names the layer.
-    param([string]$Root)
+function Get-PackAppRoots {
+    # The folders of the apps of one stack in a generated workspace: each holds an answers file that names the layer.
+    param(
+        [string]$Root,
+        [string]$Stack
+    )
 
     $answers = @(Get-ChildItem -LiteralPath $Root -Recurse -Depth 3 -Force -Filter ".copier-answers.yml" -File -ErrorAction SilentlyContinue)
-    return @($answers | Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -match 'prism_layer:\s*ios-swiftui' } | ForEach-Object { $_.DirectoryName })
+    return @($answers | Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -match "prism_layer:\s*$([regex]::Escape($Stack))" } | ForEach-Object { $_.DirectoryName })
+}
+
+function Get-AndroidAppRoots {
+    param([string]$Root)
+
+    return @(Get-PackAppRoots -Root $Root -Stack "android-compose")
+}
+
+function Get-IosAppRoots {
+    param([string]$Root)
+
+    return @(Get-PackAppRoots -Root $Root -Stack "ios-swiftui")
 }
 
 function Get-ClientApiPaths {
@@ -841,7 +842,7 @@ function Get-ClientApiPaths {
     $sources = @()
 
     # Every android-compose app keeps its client at data/api/ApiService.kt under its package directories.
-    $androidService = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter "ApiService.kt" -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match 'data[\\/]api[\\/]ApiService\.kt$' })
+    $androidService = @(Get-AndroidAppRoots -Root $Root | ForEach-Object { Get-ChildItem -LiteralPath $_ -Recurse -Filter "ApiService.kt" -File -ErrorAction SilentlyContinue } | Where-Object { $_.FullName -match 'data[\\/]api[\\/]ApiService\.kt$' })
     foreach ($file in $androidService) {
         $sources += [pscustomobject]@{ Client = "android"; File = $file.FullName; Paths = (Get-AndroidApiPaths -Content (Get-Content -Raw -LiteralPath $file.FullName)) }
     }
@@ -876,13 +877,15 @@ function Assert-ClientPathsInOpenApi {
 
     $clientPaths = @(Get-ClientApiPaths -Root $Root)
 
-    # Each rendered client must yield paths. An empty result would mean the extraction no longer matches the code.
+    # The client of every android-compose and ios-swiftui app must yield paths. An empty result would mean the
+    # extraction no longer matches the code.
     $expectedClients = @()
-    if (Test-Path -LiteralPath (Join-Path $Root "mobile-android")) { $expectedClients += "android" }
-    if (@(Get-IosAppRoots -Root $Root).Count -gt 0) { $expectedClients += "ios" }
-    foreach ($client in $expectedClients) {
-        if (@($clientPaths | Where-Object { $_.Client -eq $client }).Count -eq 0) {
-            throw "Found no API paths in the generated $client client, so the contract guard cannot check it."
+    $expectedClients += @(Get-AndroidAppRoots -Root $Root | ForEach-Object { [pscustomobject]@{ Client = "android"; Root = $_ } })
+    $expectedClients += @(Get-IosAppRoots -Root $Root | ForEach-Object { [pscustomobject]@{ Client = "ios"; Root = $_ } })
+    foreach ($expected in $expectedClients) {
+        $appRoot = $expected.Root
+        if (@($clientPaths | Where-Object { $_.Client -eq $expected.Client -and $_.File.StartsWith($appRoot, [System.StringComparison]::OrdinalIgnoreCase) }).Count -eq 0) {
+            throw "Found no API paths in the generated $($expected.Client) client of $appRoot, so the contract guard cannot check it."
         }
     }
 
@@ -970,8 +973,8 @@ function Validate-WebSample {
         Assert-PathMissing -Path (Join-Path $Root "$app\auth.ts") -Message "$app must not carry the retired NextAuth configuration."
     }
 
-    # No page generator and no NextAuth.
-    Assert-PathMissing -Path (Join-Path $Root "_templates\page") -Message "Page generators of the retired web samples must not be generated."
+    # No NextAuth.
+    Assert-PathMissing -Path (Join-Path $Root "_templates") -Message "The Hygen generators are removed: the slice is the example of how code looks, so no _templates folder is generated."
     Assert-FileNotContains -Path (Join-Path $Root "web\package.json") -Needle "next-auth" -Message "The web app must not depend on NextAuth."
     Assert-NoDeploymentArtifacts -Root $Root
     Assert-DeploymentSkill -Root $Root -Backend $true -Web $true
@@ -1067,7 +1070,7 @@ function Validate-AndroidSample {
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "-> Next.js" -Message "Android-only AGENTS.md should not describe a web app."
 
     # No full-sample leftovers in the workspace layer.
-    Assert-PathMissing -Path (Join-Path $Root "_templates\screen\new\android-screen.kt.ejs.t") -Message "Android hygen templates of the retired sample must not be generated."
+    Assert-PathMissing -Path (Join-Path $Root "_templates") -Message "The Hygen generators are removed: no _templates folder is generated."
     Assert-FileNotContains -Path (Join-Path $Root ".gitignore") -Needle "mobile-android/" -Message "The workspace .gitignore must not carry the retired sample's Android paths."
     Assert-NoDeploymentArtifacts -Root $Root
     Assert-DeploymentSkill -Root $Root -Backend $true -Web $false
@@ -1170,28 +1173,20 @@ function Validate-IosSample {
 Remove-TreeIfExists -Path $OutputRoot
 New-Item -ItemType Directory -Path $OutputRoot | Out-Null
 
-$AllAuthMethods = @("google", "apple", "facebook", "microsoft", "password")
-
 switch ($Mode) {
     "backend-smoke" {
-        $backendRoot = New-GeneratedProject -Name "backend" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods $AllAuthMethods
+        $backendRoot = New-GeneratedProject -Name "backend" -ProjectName "Review Backend" -Apps @("backend")
         Validate-BackendOnly -Root $backendRoot -RunSmoke $true
-
-        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods @("password")
-        Validate-AuthContractWithoutAuthAnswers -Root $passwordOnlyRoot
     }
     "contract" {
         Assert-ClientPathGuardRejectsUnknownPaths
 
-        $backendRoot = New-GeneratedProject -Name "backend" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods $AllAuthMethods
+        $backendRoot = New-GeneratedProject -Name "backend" -ProjectName "Review Backend" -Apps @("backend")
         Validate-BackendOnly -Root $backendRoot -RunSmoke $false
 
         $presetRoot = New-GeneratedProject -Name "backend-preset" -ProjectName "Review Backend" -Preset "backend-only"
         Assert-NoCopierPlaceholders -Root $presetRoot
         Assert-PathExists -Path (Join-Path $presetRoot "backend\.copier-answers.yml") -Message "The backend-only preset must scaffold the backend pack."
-
-        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods @("password")
-        Validate-AuthContractWithoutAuthAnswers -Root $passwordOnlyRoot
 
         $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Apps @("backend", "web", "admin")
         Validate-WebSample -Root $webRoot -RunSmoke $false
@@ -1202,7 +1197,7 @@ switch ($Mode) {
         $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios", "partner-ios")
         Validate-IosSample -Root $iosRoot
 
-        $standaloneRoot = New-GeneratedProject -Name "standalone-web" -ProjectName "Standalone Web" -Apps @("web", "admin") -AuthMethods @("password")
+        $standaloneRoot = New-GeneratedProject -Name "standalone-web" -ProjectName "Standalone Web" -Apps @("web", "admin")
         Validate-WikiStructure -Root $standaloneRoot
         Assert-NoDeploymentArtifacts -Root $standaloneRoot
         Assert-DeploymentSkill -Root $standaloneRoot -Backend $false -Web $true
@@ -1213,11 +1208,8 @@ switch ($Mode) {
     "full" {
         Assert-ClientPathGuardRejectsUnknownPaths
 
-        $backendRoot = New-GeneratedProject -Name "backend" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods $AllAuthMethods
+        $backendRoot = New-GeneratedProject -Name "backend" -ProjectName "Review Backend" -Apps @("backend")
         Validate-BackendOnly -Root $backendRoot -RunSmoke $true
-
-        $passwordOnlyRoot = New-GeneratedProject -Name "backend-password-only" -ProjectName "Review Backend" -Apps @("backend") -AuthMethods @("password")
-        Validate-AuthContractWithoutAuthAnswers -Root $passwordOnlyRoot
 
         $webRoot = New-GeneratedProject -Name "web" -ProjectName "Review Web" -Apps @("backend", "web", "admin")
         Validate-WebSample -Root $webRoot -RunSmoke $false

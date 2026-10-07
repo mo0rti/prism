@@ -24,12 +24,20 @@ from tests import real_temp  # noqa: F401
 from tests.layered_support import generate_default_apps
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-REMOVED_QUESTIONS = ("database", "supporting_services", "use_docker", "cloud_provider", "web_hosting")
+REMOVED_QUESTIONS = (
+    "database",
+    "supporting_services",
+    "use_docker",
+    "cloud_provider",
+    "web_hosting",
+    "auth_methods",
+    "github_org",
+    "ios_module_name",
+    "package_path",
+    "app_ids",
+)
 SKILL_LAYERS = (".claude/skills/deployment", ".agents/skills/deployment")
 DEPLOYMENT_FILE_NAMES = {"wrangler.jsonc", "open-next.config.ts", ".dev.vars.example", "azure-setup.md", "cloudflare-setup.md"}
-
-
-ALL_AUTH_METHODS = ["google", "apple", "facebook", "microsoft", "password"]
 
 
 # A second nextjs-web app, for the workspaces that carry two web apps.
@@ -37,11 +45,11 @@ ADMIN_APP = {"id": "admin", "name": "Admin App", "stack": "nextjs-web", "reposit
 
 
 def generate(destination: Path, apps: list[str]) -> Path:
-    """A workspace of the default apps with these IDs (and `admin`, a second web app) and every auth method, generated through the CLI."""
+    """A workspace of the default apps with these IDs (and `admin`, a second web app), generated through the CLI."""
 
     defaults = [app for app in apps if app != ADMIN_APP["id"]]
     extra = [ADMIN_APP] if ADMIN_APP["id"] in apps else []
-    return generate_default_apps(destination, defaults, destination.parent, extra_apps=extra, auth_methods=ALL_AUTH_METHODS)
+    return generate_default_apps(destination, defaults, destination.parent, extra_apps=extra)
 
 
 def generate_raw_workspace_layer(destination: Path, extra_data: dict[str, str] | None = None) -> Path:
@@ -51,7 +59,6 @@ def generate_raw_workspace_layer(destination: Path, extra_data: dict[str, str] |
         "project_name": "Scope Check",
         "stacks": "[spring-backend]",
         "apps": '[{"id": "backend", "name": "Backend", "stack": "spring-backend", "path": "backend", "audience": "", "port": 8080}]',
-        "auth_methods": "[google, apple, facebook, microsoft, password]",
         **(extra_data or {}),
     }
     with cli.staged_template_path(str(REPO_ROOT)) as template:
@@ -78,8 +85,8 @@ class QuestionnaireTests(unittest.TestCase):
         self.assertNotIn("platforms", questions)
         self.assertEqual(
             [
-                "prism_layer", "project_name", "project_slug", "reserved_identifiers", "package_identifier", "package_path", "ios_module_name",
-                "description", "stacks", "apps", "app_ids", "auth_methods", "github_org", "pack_versions", "versions",
+                "prism_layer", "project_name", "project_slug", "reserved_identifiers", "package_identifier",
+                "description", "stacks", "apps", "pack_versions", "versions",
                 "app_id", "app_name", "app_path", "audience", "port", "app_package_segment", "app_package", "app_package_path",
                 "app_module_name", "ci_workflow_name", "ci_paths",
             ],
@@ -201,6 +208,7 @@ class GeneratedWorkspaceTests(unittest.TestCase):
             "backend-only": {"azure", "azure-setup.md"},
             "backend-web": {"azure", "azure-setup.md", "cloudflare", "cloudflare-setup.md"},
             "backend-mobile": {"azure", "azure-setup.md", "mobile-store-release.md"},
+            "full": {"azure", "azure-setup.md", "cloudflare", "cloudflare-setup.md", "mobile-store-release.md"},
             "web-only": {"cloudflare", "cloudflare-setup.md"},
             "mobile-only": {"mobile-store-release.md"},
         }
