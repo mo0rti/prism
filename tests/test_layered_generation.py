@@ -125,7 +125,7 @@ class WorkspaceAndBackendTests(LayeredTestCase):
         workflow = yaml.safe_load((self.workspace / ".github" / "workflows" / "backend.yml").read_text(encoding="utf-8"))
         triggers = workflow.get("on", workflow.get(True))
         self.assertEqual(["backend/**", "shared/api-contracts/**", ".github/workflows/backend.yml"], triggers["push"]["paths"])
-        self.assertEqual("Spring Boot Backend CI", workflow["name"])
+        self.assertEqual("Spring Boot Backend CI (backend)", workflow["name"])
         text = (self.workspace / ".github" / "workflows" / "backend.yml").read_text(encoding="utf-8")
         self.assertIn('APP_PATH: "backend"', text)
         self.assertIn("working-directory: ${{ env.APP_PATH }}", text)
@@ -159,7 +159,7 @@ class TwoBackendsTests(LayeredTestCase):
         self.assertEqual((8080, 8081), (first["port"], second["port"]))
         self.assertEqual(("com.example.layeredapp.backend", "com.example.layeredapp.apitwo"), (first["app_package"], second["app_package"]))
         self.assertEqual(("Backend", "ApiTwo"), (first["app_module_name"], second["app_module_name"]))
-        self.assertEqual(("Spring Boot Backend CI", "Second API CI"), (first["ci_workflow_name"], second["ci_workflow_name"]))
+        self.assertEqual(("Spring Boot Backend CI (backend)", "Second API CI (api-two)"), (first["ci_workflow_name"], second["ci_workflow_name"]))
         for path, package in (("backend", "backend"), ("services/api-two", "apitwo")):
             self.assertTrue((self.workspace / path / "src" / "main" / "kotlin" / "com" / "example" / "layeredapp" / package / "Application.kt").is_file(), path)
         settings = (self.workspace / "services" / "api-two" / "settings.gradle.kts").read_text(encoding="utf-8")
@@ -645,6 +645,8 @@ class UpdateTests(LayeredTestCase):
         code, _out, err = run_cli("update", str(ws), "--yes", "--trust-template")
         self.assertEqual(3, code)
         self.assertIn("App `api-two` is scaffolded, but `services/api-two/.copier-answers.yml` is missing", err)
+        self.assertIn("retire it (`prism app retire api-two`)", err, "the message names the way out")
+        self.assertIn("drop its entry from prism.workspace.yml", err)
         self.assertEqual("main", git(ws, "symbolic-ref", "--short", "HEAD").stdout.strip(), "nothing changed")
 
     def test_the_clean_tree_precondition_stays(self) -> None:

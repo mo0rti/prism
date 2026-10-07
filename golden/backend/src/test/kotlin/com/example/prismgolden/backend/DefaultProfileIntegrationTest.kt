@@ -2,6 +2,7 @@ package com.example.prismgolden.backend
 
 import com.example.prismgolden.backend.support.PostgresTestConfiguration
 import com.example.prismgolden.backend.support.TokenFixtures
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -9,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Import
+import org.springframework.core.env.Environment
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -32,6 +34,14 @@ class DefaultProfileIntegrationTest {
 
     @Autowired
     private lateinit var context: ApplicationContext
+
+    @Autowired
+    private lateinit var environment: Environment
+
+    @Test
+    fun `the server address is left to the deployment`() {
+        assertNull(environment.getProperty("server.address"), "only the local profile binds the server to the loopback interface")
+    }
 
     @Test
     fun `the dev identity token route does not exist`() {

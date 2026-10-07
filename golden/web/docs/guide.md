@@ -42,7 +42,7 @@ task web:build      # npm run build
 task web:generate-api
 ```
 
-Copy `.env.example` to `.env.local` first. `API_BASE_URL` is the backend's address and the only runtime variable.
+Copy `.env.example` to `.env.local` first. `API_BASE_URL` is the backend's address (generated as `http://localhost:8080`, the backend this app was generated for) and the only runtime variable.
 
 ## Sign-in And Session
 

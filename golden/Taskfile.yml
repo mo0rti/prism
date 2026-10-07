@@ -73,13 +73,15 @@ tasks:
 
 
   test:
-    desc: "Run tests for all platforms"
+    desc: "Run tests for all platforms (an iOS app's unit tests run on macOS only; its tasks skip elsewhere)"
     cmds:
       - task: backend:test
 
       - task: web:test
 
       - task: mobile-android:test
+
+      - task: mobile-ios:test-unit
 
       - task: agent-service:test
       - task: agent-service:eval

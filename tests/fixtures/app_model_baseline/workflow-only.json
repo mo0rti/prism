@@ -56,6 +56,7 @@
       "dev-done",
       "dev-start",
       "feature-reopen",
+      "feature-scope",
       "feature-status",
       "ingest",
       "lint-wiki",

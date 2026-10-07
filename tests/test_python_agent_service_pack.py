@@ -177,10 +177,10 @@ class PackFilesTests(unittest.TestCase):
             "CLAUDE.md.jinja",
             "README.md.jinja",
             "docs/guide.md.jinja",
-            ".gitignore",
-            ".env.example",
+            ".gitignore.jinja",
+            ".env.example.jinja",
             "app/main.py",
-            "app/config.py",
+            "app/config.py.jinja",
             "app/auth/startup.py",
             "app/auth/verifier.py",
             "app/auth/keys.py",
@@ -216,7 +216,7 @@ class PackFilesTests(unittest.TestCase):
             with self.subTest(file=path.relative_to(PACK).as_posix()):
                 self.assertIsNone(key.search(text))
                 self.assertIsNone(assignment.search(text))
-        env_example = (PACK_APP / ".env.example").read_text(encoding="utf-8")
+        env_example = (PACK_APP / ".env.example.jinja").read_text(encoding="utf-8")
         self.assertIn("# ANTHROPIC_API_KEY=\n", env_example, "the key variable is named, never given a value")
 
     def test_the_service_never_reads_the_environment_outside_the_settings_or_imports_the_sdk_outside_the_adapter(self) -> None:
@@ -270,7 +270,7 @@ class PackFilesTests(unittest.TestCase):
             for relative in sorted(set(cited.findall(text))):
                 checked += 1
                 with self.subTest(document=document.parent.name + "/" + document.name, path=relative):
-                    self.assertTrue((PACK_APP / relative).is_file(), relative)
+                    self.assertTrue((PACK_APP / relative).is_file() or (PACK_APP / (relative + ".jinja")).is_file(), relative)
         self.assertGreater(checked, 40)
 
     def test_the_four_skills_exist_for_the_stack(self) -> None:
@@ -354,7 +354,7 @@ class GeneratedAgentServicesTests(unittest.TestCase):
         for app, info in self.apps.items():
             with self.subTest(app=app):
                 data = yaml.safe_load(self.text(f".github/workflows/{app}.yml"))
-                self.assertEqual(f"{info['name']} CI", data["name"])
+                self.assertEqual(f"{info['name']} CI ({app})", data["name"], "the display name is unique per app")
                 triggers = data.get("on", data.get(True))
                 for event in ("push", "pull_request"):
                     self.assertEqual([f"{info['path']}/**", "shared/api-contracts/**", f".github/workflows/{app}.yml"], triggers[event]["paths"])

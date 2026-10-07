@@ -16,12 +16,13 @@ private val json = Json {
 }
 
 /**
- * Builds the Retrofit service for a base URL that ends with a slash. The client adds no logging
+ * Builds the Retrofit service for a base URL, with or without trailing slashes (Retrofit needs exactly one, so it is
+ * normalized here, as the iOS client's `APIURL.make` does). The client adds no logging
  * interceptor: a request carries the access token, and the token never reaches a log.
  */
 fun createApiService(baseUrl: String): ApiService =
     Retrofit.Builder()
-        .baseUrl(baseUrl)
+        .baseUrl(baseUrl.trimEnd('/') + "/")
         .client(OkHttpClient.Builder().build())
         .addConverterFactory(json.asConverterFactory("application/json; charset=UTF-8".toMediaType()))
         .build()

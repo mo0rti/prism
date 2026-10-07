@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     # --- Backend ----------------------------------------------------------------------------------------------
     # The backend API the tools call with the signed-in user's own token. Under `local` it must be a loopback URL.
+    # The default is the backend this service was generated for; `AGENT_BACKEND_BASE_URL` overrides it.
     backend_base_url: str = "http://localhost:8080"
     backend_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
 

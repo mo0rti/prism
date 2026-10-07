@@ -30,10 +30,10 @@ The sign-in is the backend's local development identity. The backend serves it o
 
 ## Reaching the local backend
 
-The backend accepts the dev identity from loopback only, so the app calls `http://localhost:8080/` (`apiBaseUrl` in `gradle.properties`) and `adb reverse` carries that to the host:
+The backend accepts the dev identity from loopback only, so the app calls `{{ backend_base_url.rstrip('/') }}/` (`apiBaseUrl` in `gradle.properties`, the backend this app was generated for) and `adb reverse` carries that to the host:
 
-- **Emulator or USB device**: start the backend under its `local` profile, then run `task {{ app_id }}:reverse` (`adb reverse tcp:8080 tcp:8080`) and open the app. Run it again after the emulator or device restarts or the adb server restarts.
-- **Another backend port**: `task {{ app_id }}:reverse BACKEND_PORT=8081` and build with `-PapiBaseUrl=http://localhost:8081/`.
+- **Emulator or USB device**: start the backend under its `local` profile, then run `task {{ app_id }}:reverse` (`adb reverse tcp:{{ backend_port }} tcp:{{ backend_port }}`) and open the app. Run it again after the emulator or device restarts or the adb server restarts.
+- **Another backend port**: `task {{ app_id }}:reverse BACKEND_PORT=<port>` and build with `-PapiBaseUrl=http://localhost:<port>/`.
 - **A device on the network (Wi-Fi, no adb)**: the dev identity is not reachable and the sign-in reports it. Use `adb reverse` over USB or wireless debugging, or replace the sign-in with a real identity provider.
 - Never use `10.0.2.2` or a LAN address, and never loosen the backend's loopback check or add a forwarding header to make a request pass. Debug builds allow cleartext HTTP to `localhost` only (`app/src/debug/res/xml/network_security_config.xml`); release builds are HTTPS-only and refuse an `apiBaseUrl` that is not `https://`.
 

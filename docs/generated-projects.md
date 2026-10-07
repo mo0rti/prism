@@ -113,7 +113,7 @@ looks like this:
 - start only the database container with `task db-up` (`docker compose up -d db`)
 - run the backend with `task <app-id>:dev` (for the default app, `task backend:dev`), which sets
   `SPRING_PROFILES_ACTIVE=local` explicitly, on the port recorded in the app's answers file and
-  `application.yml` (`8080` for the first backend, `8081` for the next)
+  `application.yml` (`8080` for the first backend, `8081` for the next); under the `local` profile the server listens on `127.0.0.1` only (`application-local.yml`)
 - sign in with `POST /api/dev-identity/token` and read the profile with `GET /api/me` (the app's
   `README.md` has the `curl` commands); `GET /actuator/health` is open and reports the database
 
@@ -169,8 +169,8 @@ example business features:
 - the "Local development sign-in" screen signs in through the backend's dev identity, and the profile screen
   shows `GET /api/me`, through a hand-written Retrofit client that a unit test checks against
   `shared/api-contracts/openapi.yml`; the token lives in memory only and is never logged
-- the dev identity answers loopback requests only, so the app calls `http://localhost:8080/` and
-  `adb reverse tcp:8080 tcp:8080` (`task <app-id>:reverse`) carries that to your machine, from an emulator
+- the dev identity answers loopback requests only, so the app calls the loopback address of the backend it was generated for (`http://localhost:8080/` for the first
+  backend) and `adb reverse` (`task <app-id>:reverse`) carries that port to your machine, from an emulator
   and from a USB device; `10.0.2.2` and LAN addresses are refused by design (the app's `README.md` has the steps)
 - `./gradlew assembleDebug testDebugUnitTest` (or `task <app-id>:build` and `task <app-id>:test`) builds the
   debug APK and runs the JVM tests: both ViewModels against a fake client, the client against a MockWebServer,
@@ -295,6 +295,7 @@ Recommended first use:
 | Dev | `/dev-start [F-XXX]` | `$dev-start [F-XXX]` | Start development on a feature that is ready for dev |
 | Dev | `/dev-done [F-XXX]` | `$dev-done [F-XXX]` | Mark a feature as shipped, recording the delivery evidence the developer supplies |
 | Shared | `/feature-reopen [F-XXX] [specified\|in-design\|in-dev]` | `$feature-reopen [F-XXX] [specified\|in-design\|in-dev]` | Reopen shipped work through one impact-reviewed route |
+| Shared | `/feature-scope [F-XXX]` | `$feature-scope [F-XXX]` | Edit the app scope of one feature that is not done |
 | Shared | `/ask [F-XXX] "q" --to po\|designer\|dev` | `$ask [F-XXX] "q" --to po\|designer\|dev` | Route a question to a role |
 
 Use these only when you are intentionally changing project state.

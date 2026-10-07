@@ -32,6 +32,7 @@ fun SignInScreen(
     state: SignInUiState,
     onSignInClick: () -> Unit,
     modifier: Modifier = Modifier,
+    sessionEnded: Boolean = false,
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -51,6 +52,13 @@ fun SignInScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (sessionEnded) {
+                Spacer(Modifier.height(Spacing.md))
+                Text(
+                    text = stringResource(R.string.sign_in_session_ended),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             Spacer(Modifier.height(Spacing.lg))
             Button(
                 onClick = onSignInClick,

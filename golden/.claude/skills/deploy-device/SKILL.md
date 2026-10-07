@@ -31,7 +31,7 @@ $ARGUMENTS
 1. Resolve the app from `$0` and the variant from `$1` (default `debug`).
 2. List devices with `adb devices -l`.
 3. Stop if there is no authorized device or emulator.
-4. Let the device reach the local backend: run `adb reverse tcp:8080 tcp:8080` (or the backend's port, `task <app-id>:reverse BACKEND_PORT=<port>`). The app calls `localhost`, because the backend's local development identity accepts loopback requests only. Do not point the app at `10.0.2.2` or a LAN address.
+4. Let the device reach the local backend: run `task <app-id>:reverse` (it forwards the port of the backend the app was generated for, `BACKEND_PORT` in the app's Taskfile; another port is `task <app-id>:reverse BACKEND_PORT=<port>`). The app calls `localhost`, because the backend's local development identity accepts loopback requests only. Do not point the app at `10.0.2.2` or a LAN address.
 5. Build the variant from the app's folder:
    - `./gradlew assembleDebug` (or `gradlew.bat` on Windows)
 6. Use the APK at `<app folder>/app/build/outputs/apk/debug/app-debug.apk`.

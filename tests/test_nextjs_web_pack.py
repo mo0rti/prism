@@ -138,7 +138,7 @@ class PackFilesTests(unittest.TestCase):
             "app/page.tsx",
             "app/layout.tsx",
             "lib/api/client.ts",
-            "lib/api/config.ts",
+            "lib/api/config.ts.jinja",
             "lib/auth/session.ts.jinja",
             "lib/app-info.ts.jinja",
             "components/sign-in-form.tsx",
@@ -147,7 +147,7 @@ class PackFilesTests(unittest.TestCase):
             "tests/session-route.test.ts",
             "tests/sign-in-page.test.tsx",
             "tests/profile-page.test.tsx",
-            "tests/api-client.test.ts",
+            "tests/api-client.test.ts.jinja",
             "vitest.config.mts",
             "package-lock.json.jinja",
             "AGENTS.md.jinja",
@@ -301,7 +301,7 @@ class GeneratedWebAppsTests(unittest.TestCase):
         for app, info in self.apps.items():
             with self.subTest(app=app):
                 data = yaml.safe_load(self.text(f".github/workflows/{app}.yml"))
-                self.assertEqual(f"{info['name']} CI", data["name"])
+                self.assertEqual(f"{info['name']} CI ({app})", data["name"], "the display name is unique per app")
                 triggers = data.get("on", data.get(True))
                 for event in ("push", "pull_request"):
                     self.assertEqual([f"{info['path']}/**", "shared/api-contracts/**", f".github/workflows/{app}.yml"], triggers[event]["paths"])

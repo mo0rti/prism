@@ -8,7 +8,7 @@ You need Node 22 and a backend that serves `shared/api-contracts/openapi.yml`. W
 
 ```bash
 cd web
-cp .env.example .env.local    # API_BASE_URL, the backend's address
+cp .env.example .env.local    # API_BASE_URL, the backend's address (http://localhost:8080)
 npm ci
 npm run dev                   # http://localhost:3000
 ```

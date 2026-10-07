@@ -13,9 +13,10 @@ import com.example.prismgolden.mobileandroid.ui.signin.SignInViewModel
 @Composable
 fun AppRoot(container: AppContainer) {
     val signedIn = container.sessionStore.accessToken.collectAsStateWithLifecycle().value != null
+    val sessionEnded = container.sessionStore.sessionEnded.collectAsStateWithLifecycle().value
     if (signedIn) {
         ProfileRoute(viewModel = viewModel<ProfileViewModel>(factory = container.viewModelFactory))
     } else {
-        SignInRoute(viewModel = viewModel<SignInViewModel>(factory = container.viewModelFactory))
+        SignInRoute(viewModel = viewModel<SignInViewModel>(factory = container.viewModelFactory), sessionEnded = sessionEnded)
     }
 }

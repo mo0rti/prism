@@ -246,6 +246,23 @@ class GuardSourceTests(unittest.TestCase):
         run_section = taskfile.split("  run:")[1].split("  build:")[0]
         self.assertNotIn("SPRING_PROFILES_ACTIVE", run_section)
 
+    def test_only_the_local_profile_binds_the_server_to_the_loopback_interface(self) -> None:
+        resources = APP / "src" / "main" / "resources"
+        local = yaml.safe_load(read(resources / "application-local.yml.jinja"))
+        self.assertEqual({"server": {"address": "127.0.0.1"}}, local)
+        self.assertNotIn("address:", read(resources / "application.yml.jinja"), "the default profile leaves the address to the deployment")
+        tests = APP / "src" / "test" / "kotlin" / "{{ app_package_path }}"
+        self.assertIn('assertEquals("127.0.0.1", environment.getProperty("server.address"))', read(tests / "LocalProfileIntegrationTest.kt.jinja"))
+        self.assertIn('assertNull(environment.getProperty("server.address")', read(tests / "DefaultProfileIntegrationTest.kt.jinja"))
+
+    def test_the_dockerfile_healthcheck_needs_no_tool_the_runtime_image_may_lack(self) -> None:
+        dockerfile = read(APP / "Dockerfile.jinja")
+        check = dockerfile.split("HEALTHCHECK", 1)[1].split("ENTRYPOINT", 1)[0]
+        self.assertNotIn("curl", check.replace("whether the JRE image ships curl", ""))
+        self.assertNotIn("wget", check)
+        self.assertIn("/dev/tcp/127.0.0.1/${PORT:-{{ port }}}", check, "the check reads the port the application reads")
+        self.assertIn("/actuator/health", check)
+
     def test_the_application_yml_activates_no_profile(self) -> None:
         text = read(APP / "src" / "main" / "resources" / "application.yml.jinja")
         self.assertNotIn("profiles:", text)

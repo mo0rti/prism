@@ -99,9 +99,13 @@ def create_branch(project: Path, name: str) -> None:
 
 
 def commit_layer(project: Path, message: str) -> str | None:
-    """Stage everything and commit it; ``None`` when the layer changed nothing."""
+    """Stage everything except the ``.rej`` files of a conflict and commit it; ``None`` when the layer changed nothing.
 
-    git(project, "add", "-A")
+    A ``.rej`` file is Copier's record of a hunk it could not apply. It belongs to the person resolving the conflict, so it is
+    never committed: it stays in the working tree, where ``scan_conflicts`` finds it.
+    """
+
+    git(project, "add", "-A", "--", ".", ":(exclude,glob)**/*.rej")
     if git(project, "diff", "--cached", "--quiet", check=False).returncode == 0:
         return None
     git(project, "commit", "--quiet", "-m", message)

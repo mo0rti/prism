@@ -128,7 +128,7 @@ Key command groups:
 - design workflow: `design-intake`, `design-clarify`, `design-start`, `design-handoff`
 - development helpers: `add-endpoint`, `add-integration`, `document-entity`, `generate-clients`, `create-migration`
 - backend review and debugging: `review-query`, `review-security-surface`, `debug-prod-issue`
-- delivery workflow: `prep-sprint`, `dev-clarify`, `dev-start`, `dev-done`, `feature-reopen`
+- delivery workflow: `prep-sprint`, `dev-clarify`, `dev-start`, `dev-done`, `feature-reopen`, `feature-scope`
 - governance and support: `board-review`, `feature-status`, `ask`, `audit-feature`, `lint-wiki`, `wiki-*`
 
 Read [`README.md`](../README.md) for the operation names by tool surface.
@@ -211,6 +211,7 @@ mirror much of the Claude command surface for Codex:
 | `dev-start` | Confirmation-gated `ready-for-dev` + `dev` to `in-dev` + `dev` transition |
 | `dev-done` | Wraps up delivery and updates project state |
 | `feature-reopen` | Reopens one shipped feature through a specified impact-review route and active revalidation |
+| `feature-scope` | Edits the app scope of one feature that is not `done`: its `apps`, its `## App scope` section and the requirement pages of the apps it gains |
 | `board-review` | Runs a structured advisory-board review for domain-sensitive work; not for CRUD, auth, settings, or infrastructure |
 | `ask` | Routes focused questions to the right delivery role |
 | `audit-feature` | Reviews a feature against the workspace process and expectations |

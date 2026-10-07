@@ -64,7 +64,7 @@ class DerivedIdentifierTests(unittest.TestCase):
                 "app_package": "com.example.demo.apitwo",
                 "app_package_path": "com/example/demo/apitwo",
                 "app_module_name": "ApiTwo",
-                "ci_workflow_name": "Second API CI",
+                "ci_workflow_name": "Second API CI (api-two)",
                 "ci_paths": ["services/api-two/**", "shared/api-contracts/**", ".github/workflows/api-two.yml"],
             },
             answers,
@@ -111,6 +111,17 @@ class ValidationTests(unittest.TestCase):
 
     def test_web_is_an_ordinary_app_id_because_the_workspace_layer_has_no_web_rule(self) -> None:
         self.assertEqual([], validate_scaffold([scaffolded("web", "nextjs-web")]))
+
+    def test_an_ios_app_whose_module_name_is_a_system_module_is_rejected(self) -> None:
+        for app_id in ("foundation", "swiftui", "uikit", "xctest", "core-data", "combine", "os"):
+            with self.subTest(app=app_id):
+                errors = validate_scaffold([scaffolded(app_id, "ios-swiftui")])
+                self.assertTrue(any("name of a system module" in message and f"`{app_id}`" in message for message in errors), errors)
+
+    def test_an_ios_app_with_an_ordinary_id_and_other_stacks_with_the_same_id_are_accepted(self) -> None:
+        self.assertEqual([], validate_scaffold([scaffolded("mobile-ios", "ios-swiftui"), scaffolded("partner-ios", "ios-swiftui", path="apps/partner-ios")]))
+        # The module name matters only to a Swift target: a backend or a web app may use these words as an ID.
+        self.assertEqual([], validate_scaffold([scaffolded("foundation", "spring-backend"), scaffolded("swiftui", "nextjs-web", path="swiftui")]))
 
     def test_a_path_inside_a_folder_of_the_workspace_layer_is_rejected(self) -> None:
         for path in ("docs/api", ".github/apps", "knowledge", "shared/x"):
@@ -355,10 +366,17 @@ class LayerQuestionTests(unittest.TestCase):
         text = (REPO_ROOT / "copier.yml").read_text(encoding="utf-8")
         self.assertNotRegex(text, r"in platforms\b")
 
-    def test_every_exclusion_applies_to_the_workspace_layer_only(self) -> None:
+    # Copier's own default exclusions, restored because setting `_exclude` replaces them; they apply to both layers.
+    COPIER_DEFAULT_EXCLUSIONS = ("__pycache__", "*.py[co]", ".DS_Store")
+
+    def test_every_exclusion_applies_to_the_workspace_layer_only_except_the_restored_copier_defaults(self) -> None:
         for entry in self.config["_exclude"]:
             with self.subTest(entry=entry[:60]):
+                if entry in self.COPIER_DEFAULT_EXCLUSIONS:
+                    continue
                 self.assertIn("prism_layer == 'workspace'", entry)
+        for default in self.COPIER_DEFAULT_EXCLUSIONS:
+            self.assertIn(default, self.config["_exclude"])
 
     def test_the_reserved_identifiers_match_the_cli(self) -> None:
         listed = yaml.safe_load(self.config["reserved_identifiers"]["default"])

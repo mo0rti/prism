@@ -85,6 +85,8 @@ class ApplyScenarioTests(BrowserCase):
 
         harness = self.harness
         label, source_stage, target_stage, _owner = ACTIONS[action]
+        # An earlier apply can still be publishing snapshots; a live update during the drag would cancel it.
+        board.wait_until_current()
         before = snapshot(harness.root)
         expect(board.card_in(source_stage, feature.feature_id)).to_be_visible()
 
@@ -154,6 +156,8 @@ class ApplyScenarioTests(BrowserCase):
         harness = self.harness
         page = self.page
         label, source_stage, target_stage, _owner = ACTIONS[action]
+        # A live update while the dialog is open would re-render it and move focus mid-walk.
+        board.wait_until_current()
         before = snapshot(harness.root)
         expect(board.card_in(source_stage, feature.feature_id)).to_be_visible()
 

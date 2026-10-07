@@ -21,7 +21,9 @@ USER appuser
 
 EXPOSE {{ port }}
 
+# The check needs no tool beyond bash, so it does not depend on whether the JRE image ships curl: it speaks HTTP through
+# /dev/tcp, reads PORT as the application does and passes only when the health endpoint answers 200.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:{{ port }}/actuator/health || exit 1
+  CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/${PORT:-{{ port }}} && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q 'HTTP/1.. 200'"]
 
 ENTRYPOINT ["java", "-jar", "app.jar"]

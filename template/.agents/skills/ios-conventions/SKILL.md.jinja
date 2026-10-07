@@ -43,7 +43,7 @@ The pack generates one vertical slice and no example business features. Paths ar
 
 The sign-in is the contract's `POST /api/dev-identity/token`, which the backend serves only under its `local` profile and only to loopback requests. It is not complete authentication and the app must never present it as such.
 
-It works in the simulator only. The simulator shares the Mac's network stack, so `http://localhost:8080` reaches a backend on the Mac as loopback. A physical device is not loopback: the backend answers 403, and the app says a physical device cannot use the dev identity. A device build needs the project's identity provider.
+It works in the simulator only. The simulator shares the Mac's network stack, so the loopback address in the Debug `API_BASE_URL` of `project.yml` (the backend the app was generated for; `http://localhost:8080` for the first backend) reaches a backend on the Mac as loopback. A physical device is not loopback: the backend answers 403, and the app says a physical device cannot use the dev identity. A device build needs the project's identity provider.
 
 To replace it, follow `$security-auth` for the backend side, then in each iOS app:
 

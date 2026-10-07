@@ -87,7 +87,7 @@ class QuestionnaireTests(unittest.TestCase):
             [
                 "prism_layer", "project_name", "project_slug", "reserved_identifiers", "package_identifier",
                 "description", "stacks", "apps", "pack_versions", "versions",
-                "app_id", "app_name", "app_path", "audience", "port", "app_package_segment", "app_package", "app_package_path",
+                "app_id", "app_name", "app_path", "audience", "port", "backend_base_url", "backend_port", "app_package_segment", "app_package", "app_package_path",
                 "app_module_name", "ci_workflow_name", "ci_paths",
             ],
             questions,

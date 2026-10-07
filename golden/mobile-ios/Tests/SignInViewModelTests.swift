@@ -34,25 +34,12 @@ final class SignInViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testEmptyFieldsAreNotSent() async {
+    func testTheRequestNamesNoEmailAndNoDisplayName() async {
         let (viewModel, client, _, _) = makeSUT()
-        viewModel.email = "   "
-        viewModel.displayName = ""
 
         await viewModel.signIn()
 
         XCTAssertEqual(client.tokenRequests, [DevTokenRequest(email: nil, displayName: nil)])
-    }
-
-    @MainActor
-    func testFilledFieldsAreTrimmedAndSent() async {
-        let (viewModel, client, _, _) = makeSUT()
-        viewModel.email = "  ada@example.test "
-        viewModel.displayName = "Ada Lovelace"
-
-        await viewModel.signIn()
-
-        XCTAssertEqual(client.tokenRequests, [DevTokenRequest(email: "ada@example.test", displayName: "Ada Lovelace")])
     }
 
     @MainActor

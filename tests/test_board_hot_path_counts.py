@@ -98,14 +98,15 @@ CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
         "build_graph": (0, 0),
         "scandir": (0, 42),
     },
+    # A fresh apply no longer evaluates the same files a second time in its roll-forward (the recovery revalidation).
     "apply": {
-        "page_parses": (2, 25),
-        "file_opens": (11, 384),
+        "page_parses": (1, 15),
+        "file_opens": (4, 262),
         "workspace_fingerprint": (0, 4),
-        "validate_graph_inputs": (0, 13),
-        "lint_wiki": (0, 3),
+        "validate_graph_inputs": (0, 11),
+        "lint_wiki": (0, 2),
         "build_graph": (0, 1),
-        "scandir": (0, 539),
+        "scandir": (0, 410),
     },
 }
 

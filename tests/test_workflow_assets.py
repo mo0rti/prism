@@ -16,7 +16,7 @@ from tests import real_temp  # noqa: F401
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_SKILLS = {
     "ask", "audit-feature", "board-review", "design-clarify", "design-handoff",
-    "design-intake", "design-start", "dev-clarify", "dev-done", "dev-start", "feature-reopen",
+    "design-intake", "design-start", "dev-clarify", "dev-done", "dev-start", "feature-reopen", "feature-scope",
     "feature-status", "ingest", "lint-wiki", "po-clarify", "po-handoff", "po-intake",
     "po-specify", "prep-sprint", "setup-project", "verify-pages", "wiki-blockers", "wiki-owner",
     "wiki-app", "wiki-query", "wiki-show",

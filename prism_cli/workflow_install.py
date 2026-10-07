@@ -901,12 +901,12 @@ def _plan_gitattributes(
 
 
 def _attributes_rule_is_effective(text: str) -> bool:
-    """Tell whether the last rule for `knowledge/**` already sets `eol=lf`."""
+    """Tell whether the last rule that covers `knowledge/**` (the folder's own rule or a catch-all one) sets `eol=lf`."""
 
     effective = False
     for line in text.splitlines():
         tokens = line.split()
-        if not tokens or tokens[0].startswith("#") or tokens[0] not in {"knowledge/**", "/knowledge/**"}:
+        if not tokens or tokens[0].startswith("#") or tokens[0] not in {"*", "**", "knowledge/**", "/knowledge/**"}:
             continue
         effective = "eol=lf" in tokens[1:]
     return effective

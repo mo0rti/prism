@@ -92,6 +92,11 @@ ios-swiftui:
   xcode: "26.0"
   swift: "6.0"
   ios_deployment_target: "17.0"
+  # The gem the generated Gemfile requires, exactly. A baseline decision that moves by hand with a release.
+  fastlane: "2.240.1"
+  # XcodeGen is deliberately not pinned here: the generated workflow and the README install it with Homebrew, which
+  # carries one current version and cannot install another, and `project.yml` uses only keys that every release since
+  # 2.38 reads. To pin it, install the release archive of a version and verify its checksum in the workflow.
 python-agent-service:
   python: "3.12"
   # renovate: datasource=pypi depName=uv depType=python-agent-service

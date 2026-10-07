@@ -54,6 +54,19 @@ class RetrofitApiClientTest {
     }
 
     @Test
+    fun `a base url with no trailing slash or with several works like one with a single slash`() = runBlocking {
+        for (suffix in listOf("", "/", "//")) {
+            server.enqueue(json("""{"id":"u-1","displayName":"Local Developer","createdAt":"2026-01-01T00:00:00Z"}"""))
+            val base = server.url("/").toString().trimEnd('/') + suffix
+
+            val result = RetrofitApiClient(createApiService(base)).getMe("jwt-value")
+
+            assertEquals(ApiResult.Success(UserProfile("u-1", "Local Developer", null, "2026-01-01T00:00:00Z")), result)
+            assertEquals("/api/me", takeRequest().path)
+        }
+    }
+
+    @Test
     fun `a 404 from the dev identity means the backend does not run under its local profile`() = runBlocking {
         server.enqueue(json("{}", code = 404))
 

@@ -32,7 +32,7 @@ globs: {{ (app_path ~ "/**") | tojson }}
 - User-facing text is in `strings.xml`; the sign-in label stays "Local development sign-in"
 
 ## The local backend
-- The dev identity answers loopback requests only, so the app calls `http://localhost:8080/` and `adb reverse tcp:8080 tcp:8080` (`task {{ app_id }}:reverse`) carries it to the host
+- The dev identity answers loopback requests only, so the app calls `{{ backend_base_url.rstrip('/') }}/` and `adb reverse tcp:{{ backend_port }} tcp:{{ backend_port }}` (`task {{ app_id }}:reverse`) carries it to the host
 - Never use `10.0.2.2` or a LAN address, and never weaken the backend's guard
 - Debug builds allow cleartext to `localhost` only; release builds are HTTPS-only
 

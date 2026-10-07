@@ -12,8 +12,6 @@ enum SignInState: Equatable, Sendable {
 @MainActor
 @Observable
 final class SignInViewModel {
-    var email = ""
-    var displayName = ""
     private(set) var state: SignInState = .idle
 
     private let client: any APIClient
@@ -34,7 +32,8 @@ final class SignInViewModel {
         guard !isSigningIn else { return }
         state = .signingIn
 
-        let request = DevTokenRequest(email: Self.optionalText(email), displayName: Self.optionalText(displayName))
+        // The request names no email and no display name, so the backend signs in its default developer, as the Android app does.
+        let request = DevTokenRequest()
         do {
             let response = try await client.createDevToken(request)
             await tokenStore.save(response.accessToken)
@@ -43,11 +42,5 @@ final class SignInViewModel {
         } catch {
             state = .failed(error.localizedDescription)
         }
-    }
-
-    /// A field the person left empty is not sent, so the backend applies its default.
-    private static func optionalText(_ text: String) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }

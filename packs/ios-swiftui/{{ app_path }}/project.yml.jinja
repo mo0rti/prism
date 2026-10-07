@@ -9,6 +9,8 @@ settings:
     SWIFT_VERSION: {{ versions.swift | tojson }}
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: 1
+    # fastlane's increment_build_number runs agvtool, which only works with Apple Generic versioning.
+    VERSIONING_SYSTEM: "apple-generic"
 
 targets:
   {{ app_module_name }}:
@@ -26,7 +28,7 @@ targets:
         # an https URL: a Release build neither allows cleartext (its Info.plist has no App Transport Security
         # exception) nor accepts an http URL (APIURL.swift).
         Debug:
-          API_BASE_URL: "http://localhost:8080"
+          API_BASE_URL: {{ backend_base_url.rstrip('/') | tojson }}
           INFOPLIST_FILE: Plists/Info.Debug.plist
         Release:
           API_BASE_URL: ""

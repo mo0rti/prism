@@ -15,13 +15,22 @@ on:
 {%- endfor %}
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# One run per app and branch: a newer push cancels the run it replaces.
+concurrency:
+  group: "{{ app_id }}-{% raw %}${{ github.ref }}{% endraw %}"
+  cancel-in-progress: true
+
 env:
   APP_PATH: {{ app_path | tojson }}
 
 jobs:
   verify:
     name: Generate, build, test
-    runs-on: macos-latest
+    # A pinned runner image: the `latest` label moves to a new macOS and a new default Xcode without a change here.
+    runs-on: macos-26
     timeout-minutes: 60
     defaults:
       run:
@@ -29,6 +38,29 @@ jobs:
         working-directory: {% raw %}${{ env.APP_PATH }}{% endraw %}
     steps:
       - uses: actions/checkout@v4
+
+      # The runner image keeps several Xcode versions side by side. The baseline is the pin of the Prism template this
+      # app was generated from ({{ versions.xcode }}): select that one, and stop when the image does not have it.
+      - name: Select Xcode {{ versions.xcode }}
+        run: |
+          set -euo pipefail
+          PIN="{{ versions.xcode }}"
+          APP="$(ls -d "/Applications/Xcode_${PIN}.app" "/Applications/Xcode_${PIN}."*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [ -z "$APP" ]; then
+            echo "Xcode ${PIN} is not installed on this runner. Installed versions:" >&2
+            ls -d /Applications/Xcode*.app >&2 || true
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=${APP}/Contents/Developer" >> "$GITHUB_ENV"
+          DEVELOPER_DIR="${APP}/Contents/Developer" xcodebuild -version
+
+      # Homebrew's downloads are the one slow, repeatable part of the setup, so they are cached. Derived data is not:
+      # a stale build cache hides the errors this job exists to find.
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: {% raw %}${{ runner.os }}{% endraw %}-homebrew-xcodegen
 
       - name: Install XcodeGen
         run: brew install xcodegen

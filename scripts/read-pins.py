@@ -12,9 +12,11 @@ and a later step uses ``${{ steps.<id>.outputs.jdk }}``. Every pin of the stack 
 * ``android-compose``: ``android_packages``, the SDK packages of the app's ``compile_sdk`` platform
   and ``build_tools`` for ``android-actions/setup-android``.
 
-``--get KEY`` prints one value alone. ``--check-xcode`` compares the installed Xcode
-(``xcodebuild -version``) with the stack's ``xcode`` pin and fails when it is older, which is how the
-macOS job proves the pinned baseline.
+``--get KEY`` prints one value alone. ``--select-xcode`` prints the developer directory of the installed
+Xcode that matches the stack's ``xcode`` pin (a runner image holds several side by side), for ``DEVELOPER_DIR``.
+``--check-xcode`` compares the Xcode in use (``xcodebuild -version``) with the pin and fails unless it is that
+version: the pin ``26.0`` accepts ``26.0`` and its patch releases and refuses ``26.1`` and ``27.0``, which is
+how the macOS job proves the pinned baseline.
 """
 
 from __future__ import annotations
@@ -62,12 +64,33 @@ def installed_xcode(output: str) -> str | None:
     return match.group(1) if match else None
 
 
-def xcode_satisfies(installed: str, pinned: str) -> bool:
-    """Whether the installed Xcode is the pinned baseline or newer (missing parts count as zero)."""
+def xcode_matches(installed: str, pinned: str) -> bool:
+    """Whether the installed Xcode is the pinned version: the pin's own components match, and a patch release counts.
+
+    ``26.0`` matches ``26.0`` and ``26.0.1``; it does not match ``26.1`` or ``27.0``. Missing parts count as zero.
+    """
 
     have, want = version_tuple(installed), version_tuple(pinned)
-    length = max(len(have), len(want))
-    return have + (0,) * (length - len(have)) >= want + (0,) * (length - len(want))
+    have = have + (0,) * (len(want) - len(have))
+    return have[: len(want)] == want
+
+
+def find_xcode(pinned: str, applications: Path = Path("/Applications")) -> Path | None:
+    """The developer directory of the Xcode in ``applications`` that matches the pin, the latest patch release first, or None.
+
+    A runner image keeps each Xcode as ``Xcode_<version>.app`` beside the others.
+    """
+
+    pattern = re.compile(r"Xcode_(\d+(?:\.\d+)*)\.app")
+    found: list[tuple[tuple[int, ...], Path]] = []
+    if applications.is_dir():
+        for entry in applications.iterdir():
+            match = pattern.fullmatch(entry.name)
+            if match and xcode_matches(match.group(1), pinned):
+                found.append((version_tuple(match.group(1)), entry))
+    if not found:
+        return None
+    return max(found, key=lambda item: item[0])[1] / "Contents" / "Developer"
 
 
 def check_xcode(pinned: str) -> int:
@@ -80,10 +103,19 @@ def check_xcode(pinned: str) -> int:
     if result.returncode != 0 or version is None:
         print(f"Could not read the Xcode version: {(result.stdout + result.stderr).strip()}", file=sys.stderr)
         return 1
-    if not xcode_satisfies(version, pinned):
-        print(f"Xcode {version} is older than the pinned baseline {pinned} (packs/versions.yml).", file=sys.stderr)
+    if not xcode_matches(version, pinned):
+        print(f"Xcode {version} is not the pinned baseline {pinned} (packs/versions.yml).", file=sys.stderr)
         return 1
-    print(f"Xcode {version} satisfies the pinned baseline {pinned}.", file=sys.stderr)
+    print(f"Xcode {version} is the pinned baseline {pinned}.", file=sys.stderr)
+    return 0
+
+
+def select_xcode(pinned: str) -> int:
+    developer_dir = find_xcode(pinned)
+    if developer_dir is None:
+        print(f"No Xcode {pinned} (packs/versions.yml) is installed in /Applications.", file=sys.stderr)
+        return 1
+    sys.stdout.write(f"{developer_dir}\n")
     return 0
 
 
@@ -91,7 +123,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("stack", help="A stack of packs/versions.yml, such as nextjs-web.")
     parser.add_argument("--get", metavar="KEY", help="Print only this value.")
-    parser.add_argument("--check-xcode", action="store_true", help="Fail when the installed Xcode is older than the stack's xcode pin.")
+    parser.add_argument("--check-xcode", action="store_true", help="Fail unless the Xcode in use is the stack's xcode pin (its patch releases included).")
+    parser.add_argument("--select-xcode", action="store_true", help="Print the developer directory of the installed Xcode that matches the stack's xcode pin.")
     parser.add_argument("--versions", type=Path, default=VERSIONS, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
@@ -99,11 +132,11 @@ def main(argv: list[str] | None = None) -> int:
     except KeyError as error:
         print(error.args[0], file=sys.stderr)
         return 2
-    if args.check_xcode:
+    if args.check_xcode or args.select_xcode:
         if "xcode" not in values:
             print(f"The stack {args.stack} has no xcode pin.", file=sys.stderr)
             return 2
-        return check_xcode(values["xcode"])
+        return check_xcode(values["xcode"]) if args.check_xcode else select_xcode(values["xcode"])
     if args.get:
         if args.get not in values:
             print(f"The stack {args.stack} has no pin `{args.get}`.", file=sys.stderr)

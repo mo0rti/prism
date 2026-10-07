@@ -11,7 +11,7 @@ ci_paths:
 - backend/**
 - shared/api-contracts/**
 - .github/workflows/backend.yml
-ci_workflow_name: Backend CI
+ci_workflow_name: Backend CI (backend)
 package_identifier: com.example.prismgolden
 port: 8080
 prism_layer: spring-backend

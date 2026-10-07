@@ -23,10 +23,10 @@ class SignInScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    private fun show(state: SignInUiState = SignInUiState(), onSignInClick: () -> Unit = {}) {
+    private fun show(state: SignInUiState = SignInUiState(), onSignInClick: () -> Unit = {}, sessionEnded: Boolean = false) {
         composeRule.setContent {
             AppTheme {
-                SignInScreen(state = state, onSignInClick = onSignInClick)
+                SignInScreen(state = state, onSignInClick = onSignInClick, sessionEnded = sessionEnded)
             }
         }
     }
@@ -60,6 +60,20 @@ class SignInScreenTest {
         show(SignInUiState(error = SignInError.LoopbackOnly))
 
         composeRule.onNodeWithText("adb reverse", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `an ended session is said on the screen`() {
+        show(sessionEnded = true)
+
+        composeRule.onNodeWithText("Your session ended. Sign in again.").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the notice is absent when no session ended`() {
+        show()
+
+        composeRule.onNodeWithText("Your session ended", substring = true).assertDoesNotExist()
     }
 
     @Test

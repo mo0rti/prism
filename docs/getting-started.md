@@ -337,8 +337,16 @@ app api-two: CONFLICT in 1 file(s), committed as 6565f95
 Without conflicts the branch stays checked out for you to review and merge (`git switch <original branch>` then
 `git merge --ff-only prism-update-<tag>`); Prism never merges for you. When a layer conflicted, the update exits with 6
 before merging, and the branch holds one commit per layer with the conflict as `<<<<<<<` markers: resolve them there,
-commit, then merge. The manifest is merged field by field as before. A scaffolded app whose own answers file is
-missing stops the update before anything changes.
+commit, then merge. The manifest is merged field by field as before. Copier's `.rej` files (the hunks it could not apply)
+are never committed: they stay in the working tree beside the conflict markers, for you to resolve and delete.
+
+A scaffolded app whose own answers file is missing stops the update before anything changes. The message names three
+ways out: restore the file from git, retire the app (`prism app retire <id>`), or drop its entry from
+`prism.workspace.yml` (or set its `generation` to `registered`) when Prism no longer keeps its code current.
+
+A retired app is left out of the update, but the workspace layer keeps rendering what it rendered for it: its service in
+`docker-compose.yml` and its task include in `Taskfile.yml` stay until you remove them (with the app's code, when you
+choose to). Retiring changes only the manifest entry; it deletes nothing.
 
 `prism update` uses Copier's smart update when `.copier-answers.yml` records a remote
 template source and a saved revision. A project generated from a local checkout records an

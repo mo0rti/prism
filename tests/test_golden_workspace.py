@@ -30,8 +30,17 @@ MANIFEST_A = (
     "  generated_at: '2026-10-07T08:17:08+02:00'\n"
     "project:\n"
     "  name: Prism Golden\n"
+    "workflow:\n"
+    "  version: '1'\n"
+    "  mode: generated\n"
+    "  board_id: 6f1d7c52-83a4-4c58-9b0e-2f3a1d4b5c60\n"
+    "  asset_digest: " + "a" * 64 + "\n"
 )
-MANIFEST_B = MANIFEST_A.replace("D:\\Somebody\\checkout\\prism", "/home/runner/work/prism/prism").replace("2026-10-07T08:17:08+02:00", "2027-01-02T03:04:05+00:00")
+MANIFEST_B = (
+    MANIFEST_A.replace("D:\\Somebody\\checkout\\prism", "/home/runner/work/prism/prism")
+    .replace("2026-10-07T08:17:08+02:00", "2027-01-02T03:04:05+00:00")
+    .replace("6f1d7c52-83a4-4c58-9b0e-2f3a1d4b5c60", "0b9c4e11-52d7-4f0a-8a6e-9d3c7b2f1e44")
+)
 
 
 class AnswersFileTests(unittest.TestCase):
@@ -70,6 +79,8 @@ class DeterminismTests(unittest.TestCase):
         text = a.decode()
         self.assertIn(f"  template_source: {CANONICAL}\n", text)
         self.assertIn(f"  generated_at: '{build_golden.FIXED_TIME}'\n", text)
+        self.assertIn(f"  board_id: {build_golden.FIXED_BOARD_ID}\n", text, "the board identity is random per workspace, a constant in golden/")
+        self.assertIn("  asset_digest: " + "a" * 64 + "\n", text, "the packaged assets' digest is kept as it is")
         self.assertEqual(a, build_golden.normalize("prism.workspace.yml", a), "normalizing twice changes nothing")
 
     def test_every_answers_file_names_the_canonical_template_source(self) -> None:

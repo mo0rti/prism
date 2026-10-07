@@ -145,7 +145,7 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 ## API work has no app that serves an API
 
-**Symptom.** `prism wiki lint` reports `api-surface-without-api-app`, a `design-handoff`, `dev-start` or `dev-done` check with that code is blocked, or the board rejects a `design-handoff` proposal with `api_surface_without_api_app` (409).
+**Symptom.** `prism wiki lint` reports `api-surface-without-api-app`, a `design-handoff`, `dev-start` or `dev-done` check with that code is blocked, or the board rejects a `design-handoff`, `dev-start` or `dev-done` proposal with `api_surface_without_api_app` (409).
 
 **Cause.** The feature's `## API surface` declares API work, but no active app in its `apps` has the `serves-api` capability. A retired app does not count, and `unknown` counts as serving an API.
 

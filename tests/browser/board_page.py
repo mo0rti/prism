@@ -68,6 +68,23 @@ class BoardPage:
         self.page.get_by_role("button", name="Board", exact=True).click()
         expect(self.column("specified")).to_be_visible()
 
+    def wait_until_current(self, timeout: float = 20.0) -> None:
+        """Wait until the board has adopted the newest snapshot the server holds.
+
+        A write makes the server publish more than one version when its poller sees the files
+        mid-write, and the browser adopts them one after the other. A live update that arrives
+        while a drag is in flight cancels the drag, and one that arrives while a dialog is open
+        re-renders it and moves focus. A test that starts a gesture right after an apply calls this
+        first, so no later update can land in the middle of the gesture.
+        """
+
+        expect(self.freshness()).to_have_text("LIVE")
+        self.page.wait_for_function(
+            "async () => (await (await fetch('/data.json', { cache: 'no-store' })).json()).version === state.liveVersion",
+            polling=100,
+            timeout=timeout * 1000,
+        )
+
     # -- board structure --------------------------------------------------------
 
     def column(self, stage: str) -> Locator:

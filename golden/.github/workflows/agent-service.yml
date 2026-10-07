@@ -1,4 +1,4 @@
-name: "Agent Service CI"
+name: "Agent Service CI (agent-service)"
 
 on:
   push:
@@ -17,6 +17,11 @@ on:
 
 permissions:
   contents: read
+
+# One run per app and branch: a newer push cancels the run it replaces.
+concurrency:
+  group: "agent-service-${{ github.ref }}"
+  cancel-in-progress: true
 
 env:
   APP_PATH: "agent-service"

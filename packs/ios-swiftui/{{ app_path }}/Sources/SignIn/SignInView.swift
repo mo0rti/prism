@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The sign-in screen. It is the backend's local development identity, labelled as such, and never presented as authentication.
 struct SignInView: View {
-    @Bindable var viewModel: SignInViewModel
+    let viewModel: SignInViewModel
     let notice: String?
 
     var body: some View {
@@ -27,18 +27,6 @@ struct SignInView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("signin.note")
-
-                TextField("Email (optional)", text: $viewModel.email)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("signin.email")
-
-                TextField("Display name (optional)", text: $viewModel.displayName)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("signin.display-name")
 
                 if let notice {
                     Text(notice)

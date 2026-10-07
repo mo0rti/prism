@@ -19,7 +19,7 @@ No credential of any kind is needed to install, test, evaluate or start the serv
 
 ## Run it locally
 
-Start the workspace's backend under its `local` profile (`task db-up`, then the `dev` task of your backend, which listens on port 8080 by default), then:
+Start the workspace's backend under its `local` profile (`task db-up`, then the `dev` task of your backend, which listens on port {{ backend_port }}), then:
 
 ```bash
 task {{ app_id }}:dev
@@ -30,7 +30,7 @@ Without Task: `uv sync --locked`, then `AGENT_PROFILE=local uv run uvicorn app.m
 Get a development token from the backend, then ask a question:
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8080/api/dev-identity/token \
+TOKEN=$(curl -s -X POST {{ backend_base_url.rstrip('/') }}/api/dev-identity/token \
   -H "Content-Type: application/json" \
   -d '{"email": "ada@example.test", "displayName": "Ada"}' | sed -E 's/.*"accessToken":"([^"]+)".*/\1/')
 
@@ -41,7 +41,7 @@ curl -s -X POST http://localhost:{{ port }}/api/assist \
 
 The answer names the profile the tool read from the backend. Without a token the service answers `401`. Tokens last 15 minutes and stop working when the backend restarts, because its signing key lives only in memory.
 
-If your backend is not on port 8080, set `AGENT_BACKEND_BASE_URL` (a loopback URL under `local`).
+This service was generated for the backend at `{{ backend_base_url.rstrip('/') }}` (the default of `AGENT_BACKEND_BASE_URL`). If your backend runs elsewhere, set `AGENT_BACKEND_BASE_URL` (a loopback URL under `local`).
 
 ## Authentication: no shared secret
 

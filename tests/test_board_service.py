@@ -101,6 +101,8 @@ class BoardServiceValidatorTests(unittest.TestCase):
                 "knowledge/wiki/app-requirements/*.md",
                 "knowledge/wiki/api-contracts/*.md",
             ],
+            # The explicit scope edit of one feature: its page and the requirement pages of the apps it gains.
+            "feature-scope": ["knowledge/wiki/features/*.md", "knowledge/wiki/app-requirements/*.md"],
             # It supplies no file: the verified pages are named in `read_revisions` and the log entry is service-managed.
             "verify-pages": [],
         }
@@ -131,6 +133,8 @@ class BoardServiceValidatorTests(unittest.TestCase):
             ("design-handoff", "knowledge/wiki/api-contracts/F-002-review.md"),
             ("dev-done", "knowledge/wiki/api-contracts/F-002-review.md"),
             ("feature-reopen", "knowledge/wiki/app-requirements/backend.md"),
+            ("feature-scope", "knowledge/wiki/app-requirements/F-002-backend.md"),
+            ("feature-scope", "knowledge/wiki/features/F-002-review.md"),
         )
         for skill, path in accepted:
             with self.subTest(skill=skill, accepted_path=path):
@@ -160,6 +164,8 @@ class BoardServiceValidatorTests(unittest.TestCase):
             ("dev-start", "knowledge/wiki/api-contracts/F-002-review.md"),
             ("dev-done", "knowledge/wiki/design/F-002-review.md"),
             ("feature-reopen", "knowledge/wiki/design/F-002-review.md"),
+            ("feature-scope", "knowledge/wiki/design/F-002-review.md"),
+            ("feature-scope", "knowledge/wiki/api-contracts/F-002-review.md"),
         )
         for skill, path in rejected:
             with self.subTest(skill=skill, rejected_path=path), self.assertRaises(BoardError) as error:
@@ -541,7 +547,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
 
     def test_every_listed_reference_of_every_skill_resolves_through_get_skill_reference(self) -> None:
         names = [item["name"] for item in self.service.list_skills(self.actor)["skills"]]
-        self.assertEqual(26, len(names))
+        self.assertEqual(27, len(names))
         for name in names:
             with self.subTest(skill=name):
                 page = self.service.get_skill(self.actor, name)

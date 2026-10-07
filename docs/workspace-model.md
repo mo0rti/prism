@@ -47,6 +47,9 @@ An entry in `apps` has these fields.
 | `status` | `active` (the default) or `retired`. |
 | `generation` | `scaffolded` when Prism generated the app's code, so `prism update` keeps it current, or `registered` (the default) when its code is created and kept elsewhere. Only an app of a generated stack in this repository can be scaffolded; any other value is `invalid-app-generation`. |
 | `capabilities` | Optional overrides of the stack's capabilities. |
+| `backend` | Optional, for a web, Android, iOS or agent-service app: the ID of the `spring-backend` app it calls. Without it a generated client calls the first backend Prism scaffolded. An ID that is not a backend app of the workspace is `unknown-app-backend`, and the field on any other stack is `invalid-app-backend`. |
+
+An entry carries only these fields. A key outside them, such as `satus: retired`, is an error: `unknown-app-field` for an app and `unknown-repository-field` for a repository (which has only `id` and `remote`), so a misspelling never leaves an app active or a capability undeclared without a message.
 
 `app_maturity` maps an app ID to `level` and `caveat`. Status shows each app's entry as `maturity`, and prints the caveats.
 
@@ -155,7 +158,7 @@ Retires an app: it sets `status: retired` on the app's entry in `prism.workspace
 - The preview lists the features before `done` that still name the app. Each is flagged `app-retired-in-scope` afterwards, as [Membership changes](#membership-changes) explains.
 - The app scope is part of the board identity, so the command ends with the same notice as `prism app add`: stop a running board and start it again with `prism board serve`, and reissue grants with `prism board grant` for any participant the board rejects.
 
-A retired app stays in `prism app list`, in status, in the board's app list (`discover`) and in the graph, each marked `retired` (the `status` field of its entry; the graph node carries it as `status`). It no longer counts for the checks of in-workspace paths: a missing directory of a retired app is not reported, and the directory still counts as declared.
+A retired app stays in `prism app list`, in status, in the board's app list (`discover`) and in the graph, each marked `retired` (the `status` field of its entry; the graph node carries it as `status`). It no longer counts for the checks of in-workspace paths: a missing directory of a retired app is not reported, and the directory still counts as declared. Retirement frees the app's path but never its ID: a new app may name the path of a retired app (`app-path-conflict` compares only active apps), while a scaffolded app still refuses a directory that holds files, so the retired app's code is never overwritten.
 
 ## Workspaces with no apps
 
@@ -346,7 +349,7 @@ A feature is added as in any workflow workspace, through the agent's PO skills a
 ## Delivery evidence
 | App | Implementation | Tests | Release |
 |---|---|---|---|
-| customer-android | https://github.com/acme/mobile-apps/pull/42 | https://github.com/acme/mobile-apps/actions/runs/1187 | https://github.com/acme/mobile-apps/releases/tag/v1.4.0 |
+| customer-android | https://github.com/acme/mobile-apps/pull/42 | https://github.com/acme/mobile-apps/actions/runs/1187 | release: https://github.com/acme/mobile-apps/releases/tag/v1.4.0 |
 ```
 
 The `dev-done` checks accept this table, as in any workspace; an agent still verifies each link before it writes Done.

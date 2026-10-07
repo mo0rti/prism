@@ -63,7 +63,7 @@ class ProfileViewModel(
         when (val result = apiClient.getMe(token)) {
             is ApiResult.Success -> _uiState.value = ProfileUiState.Loaded(result.value)
             is ApiResult.Failure -> when (result.error) {
-                ApiError.Unauthorized -> sessionStore.close()
+                ApiError.Unauthorized -> sessionStore.close(sessionEnded = true)
                 ApiError.Network -> _uiState.value = ProfileUiState.Failed(ProfileError.Network)
                 ApiError.Server -> _uiState.value = ProfileUiState.Failed(ProfileError.Server)
                 ApiError.NotServed, ApiError.LoopbackOnly, ApiError.Unexpected ->

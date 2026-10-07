@@ -28,8 +28,5 @@ final class SignInUITests: XCTestCase {
         let submit = app.buttons["signin.submit"]
         XCTAssertTrue(waitUntilHittable(submit, timeout: screenTimeout))
         XCTAssertEqual(submit.label, "Sign in")
-
-        XCTAssertTrue(element("signin.email", in: app).exists)
-        XCTAssertTrue(element("signin.display-name", in: app).exists)
     }
 }

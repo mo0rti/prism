@@ -1,0 +1,5 @@
+# Line endings are the same on every OS: text files are stored and checked out with LF, and only Windows
+# command scripts keep CRLF. Generated and updated files then never show up as modified after a commit.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

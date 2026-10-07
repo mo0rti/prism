@@ -7,11 +7,12 @@ app_package_path: com/example/prismgolden/mobileios
 app_package_segment: mobileios
 app_path: mobile-ios
 audience: ''
+backend_base_url: http://localhost:8080
 ci_paths:
 - mobile-ios/**
 - shared/api-contracts/**
 - .github/workflows/mobile-ios.yml
-ci_workflow_name: iOS App CI
+ci_workflow_name: iOS App CI (mobile-ios)
 package_identifier: com.example.prismgolden
 port: 0
 prism_layer: ios-swiftui

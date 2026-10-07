@@ -19,7 +19,7 @@ No credential of any kind is needed to install, test, evaluate or start the serv
 
 ## Run it locally
 
-Start the workspace's backend under its `local` profile (`task db-up`, then the `dev` task of your backend, which listens on port 8080 by default), then:
+Start the workspace's backend under its `local` profile (`task db-up`, then the `dev` task of your backend, which listens on port 8080), then:
 
 ```bash
 task agent-service:dev
@@ -41,7 +41,7 @@ curl -s -X POST http://localhost:8200/api/assist \
 
 The answer names the profile the tool read from the backend. Without a token the service answers `401`. Tokens last 15 minutes and stop working when the backend restarts, because its signing key lives only in memory.
 
-If your backend is not on port 8080, set `AGENT_BACKEND_BASE_URL` (a loopback URL under `local`).
+This service was generated for the backend at `http://localhost:8080` (the default of `AGENT_BACKEND_BASE_URL`). If your backend runs elsewhere, set `AGENT_BACKEND_BASE_URL` (a loopback URL under `local`).
 
 ## Authentication: no shared secret
 

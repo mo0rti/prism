@@ -59,13 +59,13 @@ Gradle needs JDK 21 and an Android SDK with platform 36 (`ANDROID_HOME`, or `sdk
 
 ## Reaching The Local Backend
 
-The backend serves the dev identity only under its `local` profile and only to requests from its own loopback interface. The app therefore calls `http://localhost:8080/` (`apiBaseUrl` in `gradle.properties`), and `adb reverse` forwards the device's `localhost:8080` to the host's:
+The backend serves the dev identity only under its `local` profile and only to requests from its own loopback interface. The app therefore calls `http://localhost:8080/` (`apiBaseUrl` in `gradle.properties`, the backend this app was generated for), and `adb reverse` forwards the device's `localhost:8080` to the host's:
 
 | Target | What to do |
 | --- | --- |
 | Emulator | Start the backend with `task <backend-app-id>:dev`, run `task mobile-android:reverse`, run the app |
 | USB device (or wireless debugging) | The same; `adb reverse` works over any adb connection |
-| Another backend port | `task mobile-android:reverse BACKEND_PORT=8081` and build with `-PapiBaseUrl=http://localhost:8081/` |
+| Another backend port | `task mobile-android:reverse BACKEND_PORT=<port>` and build with `-PapiBaseUrl=http://localhost:<port>/` |
 | A device that only shares your network | The dev identity is not reachable, by design. Use USB, or replace the sign-in with a real identity provider |
 
 `adb reverse` is lost when the device or the adb server restarts. `10.0.2.2` and LAN addresses reach the backend from a non-loopback address, so the backend refuses them; do not add them to the app's network security config and do not loosen the backend's guard. Debug builds allow cleartext HTTP to `localhost` (`app/src/debug/res/xml/network_security_config.xml`); release builds are HTTPS-only and refuse an `apiBaseUrl` that is not `https://`.

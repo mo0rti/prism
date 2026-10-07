@@ -149,7 +149,7 @@ class RenderedWorkflowTests(unittest.TestCase):
                 with self.subTest(stack=stack, path=path, name=name):
                     rendered = render(self.workflow_path(stack), workflow_context(stack, path=path, name=name))
                     data = yaml.safe_load(rendered)
-                    self.assertEqual(f"{name} CI", data["name"], "the name is one string")
+                    self.assertEqual(f"{name} CI (web)", data["name"], "the name is one string")
                     self.assertEqual(path, data["env"]["APP_PATH"], "the path is one string, set once, as a variable")
                     self.assertFalse({key for key in data if key not in {"name", "on", True, "env", "permissions", "jobs", "concurrency"}}, "no key was injected")
                     for job in data["jobs"].values():

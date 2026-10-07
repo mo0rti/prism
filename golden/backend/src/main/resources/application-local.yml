@@ -1,0 +1,6 @@
+# Read only under the `local` profile. That profile hands out signed tokens to whoever can call the development
+# identity, so it also binds the server to the loopback interface: a client on another machine cannot reach it,
+# whatever the machine's network configuration is. The identity checks the caller's address as well; this is the
+# second wall.
+server:
+  address: 127.0.0.1

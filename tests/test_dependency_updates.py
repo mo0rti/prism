@@ -22,7 +22,7 @@ BASELINE_PINS = {
     "spring-backend": {"java", "postgres"},
     "nextjs-web": {"node"},
     "android-compose": {"jdk", "build_tools", "min_sdk", "target_sdk", "compile_sdk"},
-    "ios-swiftui": {"xcode", "swift", "ios_deployment_target"},
+    "ios-swiftui": {"xcode", "swift", "ios_deployment_target", "fastlane"},
     "python-agent-service": {"python"},
 }
 DATASOURCES = {"maven", "gradle-version", "npm", "pypi"}

@@ -5,7 +5,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /** Connects the sign-in screen to its ViewModel. */
 @Composable
-fun SignInRoute(viewModel: SignInViewModel) {
+fun SignInRoute(viewModel: SignInViewModel, sessionEnded: Boolean = false) {
     val state = viewModel.uiState.collectAsStateWithLifecycle().value
-    SignInScreen(state = state, onSignInClick = viewModel::onSignInClick)
+    SignInScreen(state = state, onSignInClick = viewModel::onSignInClick, sessionEnded = sessionEnded)
 }

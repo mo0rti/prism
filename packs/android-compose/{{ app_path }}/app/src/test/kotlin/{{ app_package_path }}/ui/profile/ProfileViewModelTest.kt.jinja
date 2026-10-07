@@ -2,7 +2,9 @@ package {{ app_package }}.ui.profile
 
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -85,6 +87,7 @@ class ProfileViewModelTest {
         session.open("expired-token")
 
         assertNull(session.accessToken.value)
+        assertTrue("the sign-in screen says the session ended", session.sessionEnded.value)
     }
 
     @Test
@@ -94,6 +97,7 @@ class ProfileViewModelTest {
         viewModel.onSignOutClick()
 
         assertNull(session.accessToken.value)
+        assertFalse("signing out is not an ended session", session.sessionEnded.value)
         assertEquals(ProfileUiState.Loading, viewModel.uiState.value)
     }
 

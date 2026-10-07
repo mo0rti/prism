@@ -44,7 +44,7 @@ final class ProfileViewModel {
 - `RootView` is the composition root: it creates the `URLSessionAPIClient`, the `InMemoryTokenStore`, the `SessionModel` and the two view models once, in its `init`, and holds them in `@State`.
 - Screens receive their view model through their initializer. Do not recreate a long-lived view model inside `body`.
 - A view model takes its dependencies by initializer as protocols (`any APIClient`, `any TokenStore`), so a test passes a fake.
-- Use `@Bindable` in a view that needs `$viewModel.field` bindings, as `SignInView` does for its text fields.
+- Use `@Bindable` in a view that needs `$viewModel.field` bindings (a text field or a toggle bound to the view model); a view that only reads and calls its view model, as `SignInView` does, takes it as a plain `let`.
 - Avoid `@EnvironmentObject` and ad hoc environment keys for new Observation-based code. Reach for `.environment(...)` only for a truly app-wide, widely read object.
 
 ## Replacing a dependency

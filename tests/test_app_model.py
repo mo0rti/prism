@@ -82,10 +82,11 @@ class StackRegistryTests(unittest.TestCase):
                 "mobile-android": "mobile-android",
                 "mobile-ios": "mobile-ios",
                 "web": "web",
+                "agent-service": "agent-service",
             },
             GENERATED_PLATFORM_DIRS,
         )
-        self.assertEqual(["backend", "mobile-android", "mobile-ios", "web"], list(GENERATED_PLATFORM_DIRS))
+        self.assertEqual(["backend", "mobile-android", "mobile-ios", "web", "agent-service"], list(GENERATED_PLATFORM_DIRS))
         for removed in ("VALID_PLATFORM_IDS", "UI_PLATFORM_IDS"):
             self.assertFalse(hasattr(wiki_model, removed), removed)
         self.assertEqual(
@@ -94,6 +95,7 @@ class StackRegistryTests(unittest.TestCase):
                 ("web", "Web App"),
                 ("mobile-android", "Android (Kotlin/Compose)"),
                 ("mobile-ios", "iOS (Swift/SwiftUI)"),
+                ("agent-service", "AI Agent Service (Python/FastAPI)"),
             ),
             ALL_PLATFORM_CHOICES,
         )
@@ -120,7 +122,9 @@ class GeneratedPlatformTests(unittest.TestCase):
             "web": ("Web App", "nextjs-web", "web"),
             "mobile-android": ("Android (Kotlin/Compose)", "android-compose", "mobile-android"),
             "mobile-ios": ("iOS (Swift/SwiftUI)", "ios-swiftui", "mobile-ios"),
+            "agent-service": ("AI Agent Service (Python/FastAPI)", "python-agent-service", "agent-service"),
         }
+        self.assertEqual(set(GENERATED_PLATFORM_STACKS), set(expected), "every pack stack is offered")
         for platform_id, (label, stack, path) in expected.items():
             with self.subTest(platform=platform_id):
                 entries = apps_from_platforms([platform_id])

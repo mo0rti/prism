@@ -6,7 +6,7 @@ info:
 
 servers:
   - url: http://localhost:8080
-    description: Local development
+    description: "backend (local development)"
 
 # Every operation needs a bearer JWT unless it says `security: []`.
 security:

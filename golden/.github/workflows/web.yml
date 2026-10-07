@@ -1,4 +1,4 @@
-name: "Web CI"
+name: "Web CI (web)"
 
 on:
   push:
@@ -14,6 +14,14 @@ on:
       - "shared/api-contracts/**"
       - ".github/workflows/web.yml"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per app and branch: a newer push cancels the run it replaces.
+concurrency:
+  group: "web-${{ github.ref }}"
+  cancel-in-progress: true
 
 env:
   APP_PATH: "web"

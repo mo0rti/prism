@@ -73,13 +73,15 @@ tasks:
 {% endfor %}
 
   test:
-    desc: "Run tests for all platforms"
+    desc: "Run tests for all platforms (an iOS app's unit tests run on macOS only; its tasks skip elsewhere)"
     cmds:
 {% for app in apps if app.stack == "spring-backend" %}      - task: {{ app.id }}:test
 {% endfor %}
 {% for app in apps if app.stack == "nextjs-web" %}      - task: {{ app.id }}:test
 {% endfor %}
 {% for app in apps if app.stack == "android-compose" %}      - task: {{ app.id }}:test
+{% endfor %}
+{% for app in apps if app.stack == "ios-swiftui" %}      - task: {{ app.id }}:test-unit
 {% endfor %}
 {% for app in apps if app.stack == "python-agent-service" %}      - task: {{ app.id }}:test
       - task: {{ app.id }}:eval

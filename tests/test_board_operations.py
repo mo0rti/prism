@@ -222,6 +222,42 @@ class BoardOperationTests(unittest.TestCase):
             self.apply(fresh)
         self.assertEqual("stale_status_row", error.exception.code)
 
+    def test_a_fresh_apply_does_not_evaluate_the_operation_a_second_time(self):
+        # The apply that records an operation has just revalidated it against the live files, so its roll-forward skips the
+        # second full evaluation; every path that picks an operation up later still runs it.
+        preview = self.preview()
+        with patch.object(self.service, "_revalidate_recovery", wraps=self.service._revalidate_recovery) as revalidation:
+            receipt = self.apply(preview)
+        self.assertEqual("applied", receipt["state"], receipt)
+        self.assertEqual(0, revalidation.call_count)
+        self.assertIn("status: in-design", self.read(self.feature))
+
+    def test_recovery_and_a_retried_apply_of_a_pending_operation_revalidate_in_full(self):
+        preview = self.preview()
+        self.partial(preview, crash=True)
+        with patch.object(self.service, "_revalidate_recovery", wraps=self.service._revalidate_recovery) as revalidation:
+            retried = self.apply(preview)
+        self.assertEqual("applied", retried["state"], retried)
+        self.assertEqual(1, revalidation.call_count, "an apply that finds its operation pending revalidates it")
+        self.assertIn("| in-design | designer |", self.read(self.board))
+
+    def test_a_source_edited_after_the_validation_still_stops_the_roll_forward_before_any_write(self):
+        preview = self.preview()
+        original = self.service._recovery_preflight
+        settings = "knowledge/wiki/SETTINGS.md"
+
+        def edit_then_check(*arguments, **keywords):
+            self.put(settings, self.read(settings) + "\nChanged relevant policy after the validation.\n")
+            return original(*arguments, **keywords)
+
+        board, log = self.read(self.board), self.read(self.log)
+        with patch.object(self.service, "_recovery_preflight", side_effect=edit_then_check):
+            receipt = self.apply(preview)
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("recovery_source_changed", receipt["conflicts"][0]["reason"])
+        self.assertEqual((board, log), (self.read(self.board), self.read(self.log)), "no write was made")
+        self.assertIn("status: ready-for-design", self.read(self.feature))
+
     def test_process_crash_recovers_recorded_remaining_files_after_restart(self):
         preview = self.preview()
         self.partial(preview, crash=True)

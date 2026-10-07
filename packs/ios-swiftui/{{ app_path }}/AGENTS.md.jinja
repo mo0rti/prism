@@ -31,7 +31,7 @@ The pack generates one vertical slice and no example business features:
 
 ## The dev identity is not authentication, and it works in the simulator only
 
-The sign-in is a local development identity. The backend serves it only under its `local` profile and only to requests from its own machine (loopback), so a deployed backend answers 404 and the sign-in fails closed. The simulator shares the Mac's network, so `http://localhost:8080` (the Debug `API_BASE_URL`) reaches a backend on the Mac as loopback. A physical device is not on the backend's loopback and cannot use the dev identity: the backend refuses it with 403, and the app says so. Never present the sign-in as complete authentication, and do not ship it. The real identity provider, the authorization policy and the secrets are the project's own: replace the sign-in with the provider before anything ships (the `ios-contract-alignment` and `security-auth` skills describe how).
+The sign-in is a local development identity. The backend serves it only under its `local` profile and only to requests from its own machine (loopback), so a deployed backend answers 404 and the sign-in fails closed. The simulator shares the Mac's network, so `{{ backend_base_url.rstrip('/') }}` (the Debug `API_BASE_URL`, the backend this app was generated for) reaches a backend on the Mac as loopback. A physical device is not on the backend's loopback and cannot use the dev identity: the backend refuses it with 403, and the app says so. Never present the sign-in as complete authentication, and do not ship it. The real identity provider, the authorization policy and the secrets are the project's own: replace the sign-in with the provider before anything ships (the `ios-contract-alignment` and `security-auth` skills describe how).
 
 ## Build & Run
 
@@ -40,7 +40,7 @@ The sign-in is a local development identity. The backend serves it only under it
 - **Test**: `task {{ app_id }}:test` (unit and UI), `task {{ app_id }}:test-unit`, `task {{ app_id }}:test-ui`
 - **Run**: open `{{ app_module_name }}.xcodeproj` in Xcode and run on a simulator, with a backend running under its `local` profile (`task db-up`, then `task <backend-app-id>:dev`)
 - Tasks use `SIMULATOR_NAME` when it is set and the newest available iPhone simulator otherwise (`scripts/select-simulator.sh`).
-- `API_BASE_URL` is set in `project.yml`: Debug is `http://localhost:8080`, Release is empty until you set your deployed backend. The Info.plist carries it, and `APIURL.configuredBaseURL()` reads it.
+- `API_BASE_URL` is set in `project.yml`: Debug is `{{ backend_base_url.rstrip('/') }}`, Release is empty until you set your deployed backend. The Info.plist carries it, and `APIURL.configuredBaseURL()` reads it.
 
 ## Critical Rules
 

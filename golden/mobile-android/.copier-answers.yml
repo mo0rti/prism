@@ -7,11 +7,12 @@ app_package_path: com/example/prismgolden/mobileandroid
 app_package_segment: mobileandroid
 app_path: mobile-android
 audience: ''
+backend_base_url: http://localhost:8080
 ci_paths:
 - mobile-android/**
 - shared/api-contracts/**
 - .github/workflows/mobile-android.yml
-ci_workflow_name: Android App CI
+ci_workflow_name: Android App CI (mobile-android)
 package_identifier: com.example.prismgolden
 port: 0
 prism_layer: android-compose

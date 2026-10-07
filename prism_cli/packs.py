@@ -20,6 +20,8 @@ from typing import Any, Iterable, Mapping
 import yaml
 
 from prism_cli.app_model import (
+    BACKEND_CLIENT_STACKS,
+    BACKEND_STACK,
     GENERATION_REGISTERED,
     GENERATION_SCAFFOLDED,
     STACKS,
@@ -63,6 +65,22 @@ PACKAGE_IDENTIFIER_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Z
 _SEGMENT_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 _MODULE_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
+# The Swift module of an iOS app is its module name, and `@testable import <module>` must find the app, not a system
+# framework. These are the names of Apple frameworks and Swift runtime modules an app of this name would shadow. They
+# are compared without case, because the module's files sit on a file system that may ignore it.
+IOS_SYSTEM_MODULES = frozenset(
+    name.casefold()
+    for name in (
+        "Swift SwiftUI UIKit AppKit Foundation Combine Observation Dispatch Darwin Glibc XCTest Testing CoreData CoreGraphics CoreFoundation "
+        "CoreLocation CoreImage CoreText CoreMotion CoreML CoreBluetooth CoreMedia CoreVideo CoreAudio CoreHaptics CoreSpotlight CoreTelephony "
+        "CloudKit MapKit AVFoundation AVKit StoreKit WebKit Security Network OSLog os Accelerate Metal MetalKit SceneKit SpriteKit RealityKit ARKit "
+        "UserNotifications Intents AppIntents SwiftData Charts WidgetKit ActivityKit PhotosUI Photos MessageUI LocalAuthentication Contacts "
+        "ContactsUI EventKit HealthKit GameKit GameplayKit PDFKit QuickLook SafariServices AuthenticationServices BackgroundTasks CryptoKit "
+        "Synchronization Spatial TipKit Vision VisionKit NaturalLanguage Speech SoundAnalysis Translation PassKit WatchKit CarPlay ClockKit "
+        "Compression Collections RegexBuilder Cocoa UniformTypeIdentifiers SystemConfiguration ImageIO CFNetwork FileProvider Concurrency".split()
+    )
+)
+
 # App IDs the workspace layer's own files would collide with: its api-contracts workflow and its Cursor rules.
 RESERVED_APP_IDS = frozenset({"api-contracts", "advisory-review", "api-conventions"})
 # Folders at the repository root that belong to the workspace layer or to git.
@@ -81,6 +99,12 @@ def app_module_name(app_id: str) -> str:
     return "".join(part[:1].upper() + part[1:] for part in app_id.split("-"))
 
 
+def ci_workflow_name(app_name: str, app_id: str) -> str:
+    """The display name of an app's CI workflow: its name, and its ID when that adds something, so no two apps share one."""
+
+    return f"{app_name} CI" if app_name == app_id else f"{app_name} CI ({app_id})"
+
+
 def app_answers_path(app_path: str) -> str:
     """The Copier answers file of a scaffolded app, relative to the repository root."""
 
@@ -91,17 +115,65 @@ def workflow_path(app_id: str) -> str:
     return f".github/workflows/{app_id}.yml"
 
 
-def pack_answers(project: Mapping[str, Any], app: Mapping[str, Any], *, port: int | None) -> dict[str, Any]:
+# The port a generated client calls when the workspace has no backend that Prism scaffolded: the first port of the backend range.
+DEFAULT_BACKEND_PORT = 8080
+BACKEND_BASE_URL_PATTERN = re.compile(r"http://(?:localhost|127\.0\.0\.1):[0-9]{2,5}/?")
+
+
+def backend_of(app: Mapping[str, Any], apps: Iterable[Mapping[str, Any]]) -> Mapping[str, Any] | None:
+    """The backend an app calls: the one its `backend` names, else the first backend Prism scaffolds in the workspace.
+
+    ``None`` when the app calls no backend (its stack is not a client stack), or when the workspace has none to call.
+    """
+
+    if app.get("stack") not in BACKEND_CLIENT_STACKS:
+        return None
+    entries = [dict(item) for item in apps]
+    named = app.get("backend")
+    if named:
+        return next((item for item in entries if item["id"] == named and item.get("stack") == BACKEND_STACK), None)
+    return next((item for item in entries if item.get("stack") == BACKEND_STACK and item.get("generation") == GENERATION_SCAFFOLDED), None)
+
+
+def backend_port_of(app: Mapping[str, Any], apps: Iterable[Mapping[str, Any]], port_of: Mapping[str, int | None]) -> int:
+    """The port of the backend an app calls: the backend's own port, else the first port of the backend range.
+
+    A backend that Prism did not scaffold has no remembered port, so a client of it starts from the default and states its
+    own address in the answer `backend_base_url`.
+    """
+
+    backend = backend_of(app, apps)
+    port = port_of.get(str(backend["id"])) if backend is not None else None
+    return port if isinstance(port, int) and not isinstance(port, bool) and port > 0 else DEFAULT_BACKEND_PORT
+
+
+def backend_port_in_workspace(root: Path, app: Mapping[str, Any], apps: Iterable[Mapping[str, Any]]) -> int:
+    """``backend_port_of`` for an existing workspace: the ports are those the apps' answers files remember."""
+
+    entries = [dict(item) for item in apps]
+    return backend_port_of(app, entries, {str(item["id"]): _remembered_port(root, item) for item in entries if item.get("stack") == BACKEND_STACK})
+
+
+def _remembered_port(root: Path, app: Mapping[str, Any]) -> int | None:
+    answers = read_app_answers(root, str(app["path"])) if app.get("generation") == GENERATION_SCAFFOLDED and has_pack(str(app.get("stack"))) else None
+    port = answers.get("port") if answers else None
+    return port if isinstance(port, int) and not isinstance(port, bool) else None
+
+
+def pack_answers(project: Mapping[str, Any], app: Mapping[str, Any], *, port: int | None, backend_port: int | None = None) -> dict[str, Any]:
     """Every answer an app layer receives: the workspace identity, the app's identity and what derives from its ID.
 
-    ``copier.yml`` derives the same values as defaults, so a raw Copier run agrees with the CLI.
+    ``copier.yml`` derives the same values as defaults, so a raw Copier run agrees with the CLI. An app of a client stack
+    also gets ``backend_base_url``, the loopback address of the backend it calls (``backend_port``, else the default port).
     """
 
     app_id = str(app["id"])
     app_path = str(app["path"]).rstrip("/")
     package = f"{project['package_identifier']}.{app_package_segment(app_id)}"
     name = str(app.get("name") or app_id)
+    backend = {"backend_base_url": f"http://localhost:{backend_port or DEFAULT_BACKEND_PORT}"} if app.get("stack") in BACKEND_CLIENT_STACKS else {}
     return {
+        **backend,
         "prism_layer": app["stack"],
         "project_name": project["project_name"],
         "project_slug": project["project_slug"],
@@ -115,7 +187,7 @@ def pack_answers(project: Mapping[str, Any], app: Mapping[str, Any], *, port: in
         "app_package": package,
         "app_package_path": package.replace(".", "/"),
         "app_module_name": app_module_name(app_id),
-        "ci_workflow_name": f"{name} CI",
+        "ci_workflow_name": ci_workflow_name(name, app_id),
         "ci_paths": [f"{app_path}/**", "shared/api-contracts/**", workflow_path(app_id)],
     }
 
@@ -234,13 +306,16 @@ def layer_answers_problems(recorded: Mapping[str, Any], workspace: Mapping[str, 
         value = recorded.get(key)
         if not isinstance(value, str) or label_problem(value) is not None:
             problems.append(f"{label} records a `{key}` that is not safe to render.")
-    if recorded.get("ci_workflow_name") != f"{recorded.get('app_name')} CI":
-        problems.append(f"{label} records a `ci_workflow_name` that is not its app name followed by ` CI`.")
+    if recorded.get("ci_workflow_name") != ci_workflow_name(str(recorded.get("app_name")), str(app["id"])):
+        problems.append(f"{label} records a `ci_workflow_name` that is not its app name and ID as `{ci_workflow_name(str(recorded.get('app_name')), str(app['id']))}`.")
     for key in ("prism_layer", "app_id", "app_path"):
         if key not in recorded:
             problems.append(f"{label} records no `{key}`.")
+    base_url = recorded.get("backend_base_url")
+    if base_url is not None and not (isinstance(base_url, str) and BACKEND_BASE_URL_PATTERN.fullmatch(base_url)):
+        problems.append(f"{label} records a `backend_base_url` that is not a loopback address with a port.")
     for key, wanted in expected.items():
-        if key in {"app_name", "audience", "ci_workflow_name", "port"}:
+        if key in {"app_name", "audience", "ci_workflow_name", "port", "backend_base_url"}:
             continue
         if key in recorded and recorded[key] != wanted:
             problems.append(f"{label} records `{key}: {recorded[key]}`, but its manifest entry and the workspace give `{wanted}`.")
@@ -301,7 +376,7 @@ def parse_app_list(raw: Any) -> tuple[list[dict[str, Any]], list[dict[str, str]]
         return entries, repositories, errors
     if not isinstance(raw, list):
         return entries, repositories, ["`apps` must be a list of apps."]
-    allowed = {"id", "name", "stack", "path", "repository", "remote", "audience", "generation"}
+    allowed = {"id", "name", "stack", "path", "repository", "remote", "audience", "generation", "backend"}
     declared_repositories: dict[str, str] = {}
     for index, item in enumerate(raw):
         label = f"apps[{index}]"
@@ -353,6 +428,8 @@ def parse_app_list(raw: Any) -> tuple[list[dict[str, Any]], list[dict[str, str]]
         }
         if item.get("audience") is not None:
             entry["audience"] = item["audience"]
+        if item.get("backend") is not None:
+            entry["backend"] = item["backend"]
         entries.append(entry)
     if errors:
         return entries, repositories, errors
@@ -395,6 +472,11 @@ def validate_scaffold(apps: Iterable[Mapping[str, Any]], *, only: Iterable[str] 
         if app_id in RESERVED_APP_IDS:
             errors.append(f"App `{app_id}` cannot be scaffolded: its workflow or Cursor rule would replace a file of the workspace.")
         stack = entry["stack"]
+        if stack == "ios-swiftui" and app_module_name(app_id).casefold() in IOS_SYSTEM_MODULES:
+            errors.append(
+                f"App `{app_id}` cannot be scaffolded as an iOS app: its Swift module `{app_module_name(app_id)}` has the name of a system module, "
+                "so `import` and the test target would find the framework instead of the app. Choose another ID, such as `mobile-ios`."
+            )
         path = str(entry["path"])
         if has_pack(stack):
             first = path.split("/", 1)[0]

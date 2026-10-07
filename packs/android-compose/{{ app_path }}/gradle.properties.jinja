@@ -3,9 +3,10 @@ android.useAndroidX=true
 android.nonTransitiveRClass=true
 kotlin.code.style=official
 
-# The backend the app calls. The default is the host's loopback, which the emulator or a USB device
+# The backend the app calls: the one this app was generated for ({{ backend_base_url.rstrip('/') }}). The default is the
+# host's loopback, which the emulator or a USB device
 # reaches through `adb reverse` (see README.md): the backend's local development identity refuses every
 # request that does not come from loopback, so never point this at 10.0.2.2 or a LAN address.
 # Override it for one build with `-PapiBaseUrl=...` or per machine in ~/.gradle/gradle.properties.
-# It must end with a slash, and a release build refuses anything but https.
-apiBaseUrl=http://localhost:8080/
+# A trailing slash is added when it is missing, and a release build refuses anything but https.
+apiBaseUrl={{ backend_base_url.rstrip('/') }}/

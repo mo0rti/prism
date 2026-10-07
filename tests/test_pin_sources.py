@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -101,23 +102,34 @@ class ReadPinsTests(unittest.TestCase):
         for stack, key in (("spring-backend", "java"), ("android-compose", "jdk"), ("nextjs-web", "node"), ("python-agent-service", "uv"), ("ios-swiftui", "xcode")):
             self.assertIn(key, pins[stack])
 
-    def test_the_xcode_baseline_check_accepts_the_pin_and_anything_newer_and_refuses_older(self) -> None:
+    def test_the_xcode_baseline_check_is_exact_and_accepts_only_the_pin_and_its_patch_releases(self) -> None:
         output = "Xcode 26.0.1\nBuild version 17A400\n"
         self.assertEqual("26.0.1", read_pins.installed_xcode(output))
         self.assertIsNone(read_pins.installed_xcode("xcode-select: error: tool 'xcodebuild' requires Xcode"))
         for installed, pinned, expected in (
             ("26.0", "26.0", True),
             ("26.0.1", "26.0", True),
-            ("26.1", "26.0", True),
-            ("27.0", "26.2", True),
             ("26", "26.0", True),
+            ("26.1", "26.0", False),
+            ("27.0", "26.2", False),
+            ("27.0", "26.0", False),
             ("16.4", "26.0", False),
             ("26.0", "26.1", False),
             ("26.0.1", "26.1", False),
+            ("26.0", "26.0.1", False),
         ):
             with self.subTest(installed=installed, pinned=pinned):
-                self.assertEqual(expected, read_pins.xcode_satisfies(installed, pinned))
+                self.assertEqual(expected, read_pins.xcode_matches(installed, pinned))
 
+    def test_the_installed_xcode_that_matches_the_pin_is_selected_latest_patch_first(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            applications = Path(temporary)
+            for name in ("Xcode_26.0.app", "Xcode_26.0.1.app", "Xcode_26.1.app", "Xcode_16.4.app", "Xcode.app", "Xcode_26.0_beta.app", "Safari.app"):
+                (applications / name).mkdir()
+            self.assertEqual(applications / "Xcode_26.0.1.app" / "Contents" / "Developer", read_pins.find_xcode("26.0", applications))
+            self.assertEqual(applications / "Xcode_26.1.app" / "Contents" / "Developer", read_pins.find_xcode("26.1", applications))
+            self.assertIsNone(read_pins.find_xcode("27.0", applications))
+            self.assertIsNone(read_pins.find_xcode("26.0", applications / "missing"))
 
 class WorkflowPinTests(unittest.TestCase):
     def test_every_workflow_is_classified_so_a_new_one_cannot_skip_the_pin_rule(self) -> None:

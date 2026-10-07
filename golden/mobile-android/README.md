@@ -16,10 +16,10 @@ Open the app, use "Local development sign-in", and the profile screen shows what
 
 ### Why `adb reverse`
 
-The backend's development identity answers requests from its own loopback interface only. The emulator's alias for the host (`10.0.2.2`) and a LAN address arrive from another address, so the backend refuses them, and it must stay that way. `adb reverse` makes `localhost:8080` on the device or emulator reach `localhost:8080` on your machine, which the backend sees as loopback. The app's default `apiBaseUrl` (`gradle.properties`) is `http://localhost:8080/`.
+The backend's development identity answers requests from its own loopback interface only. The emulator's alias for the host (`10.0.2.2`) and a LAN address arrive from another address, so the backend refuses them, and it must stay that way. `adb reverse` makes `localhost:8080` on the device or emulator reach `localhost:8080` on your machine, which the backend sees as loopback. The app's default `apiBaseUrl` (`gradle.properties`) is `http://localhost:8080/`, the backend this app was generated for.
 
 - Run `adb reverse` again after the emulator, the device or the adb server restarts.
-- For a backend on another port, run `task mobile-android:reverse BACKEND_PORT=8081` and build with `-PapiBaseUrl=http://localhost:8081/` (the value must end with a slash).
+- For a backend on another port, run `task mobile-android:reverse BACKEND_PORT=<port>` and build with `-PapiBaseUrl=http://localhost:<port>/` (a trailing slash is added when it is missing).
 - A device that only shares your network cannot reach the dev identity. Use USB or wireless debugging with `adb reverse`.
 
 ## Check it

@@ -196,17 +196,7 @@ class ScenarioCase(BrowserCase):
         which a keyboard walk would otherwise hit at a random step.
         """
 
-        expect(board.freshness()).to_have_text("LIVE")
-        deadline = time.monotonic() + STEP_TIMEOUT_MS / 1000
-        while True:
-            served, adopted = board.page.evaluate(
-                "async () => [(await (await fetch('/data.json', { cache: 'no-store' })).json()).version, state.liveVersion]"
-            )
-            if served == adopted:
-                return
-            if time.monotonic() > deadline:
-                raise AssertionError(f"The board never adopted the served snapshot (served {served}, adopted {adopted}).")
-            board.page.wait_for_timeout(100)
+        board.wait_until_current(STEP_TIMEOUT_MS / 1000)
 
     def wait_applied(self, board: BoardPage, dialog: Any, feature: FixtureFeature, target_stage: str) -> None:
         """Wait until the dialog reports the operation as applied and the board shows the card in its new column.

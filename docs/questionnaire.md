@@ -14,12 +14,14 @@ The agent integrations are not a question: every generated workspace carries gui
 
 ## Apps
 
-An app is `{id, stack}` plus optional `name`, `path`, `audience`, `repository`, `remote` and `generation`:
+An app is `{id, stack}` plus optional `name`, `path`, `audience`, `repository`, `remote`, `generation` and `backend`:
 
-- `id` is a stable slug. `stack` comes from the registry: `spring-backend`, `nextjs-web`, `android-compose`, `ios-swiftui`, `python-agent-service` or `other`. The interactive flow offers every stack in its "another app" step, so the agent service is chosen there, listed in an answers file, or added later with `prism app add`.
+- `id` is a stable slug. `stack` comes from the registry: `spring-backend`, `nextjs-web`, `android-compose`, `ios-swiftui`, `python-agent-service` or `other`. The interactive flow's app list offers every stack that has a pack, the agent service included (`prism workflow install --app agent-service` takes it too); further apps, of any stack, follow in its "another app" step, an answers file lists them, and `prism app add` adds them later.
 - `path` defaults to the stack's default path (`backend`, `mobile-android`, `mobile-ios`, `agent-service`), else the ID (`web` for the default web app). Each segment is lowercase letters, digits, `.`, `_` and `-`, starts with a letter or a digit and does not end with a dot (`apps/partner` and `services/api-two` are fine; `apps/$(id)`, `Apps/Web` and `apps/my app` are refused).
 - `audience` is free text, for example `B2C` or `internal`. No gate reads it. For a `nextjs-web` app it is display text in the app's header and guidance, nothing more. The interactive flow asks for it, and `prism app add --audience` sets it.
 - `generation` is `scaffolded` (Prism generates the code and `prism update` keeps it current) or `registered` (the manifest records it; the code lives elsewhere). An app of a generated stack in this repository defaults to `scaffolded`; an app in an external repository, or of the `other` stack, is always registered. An external app also names its repository's `remote`.
+
+- `backend` names the backend app that a web, Android, iOS or agent-service app calls (an app of the `spring-backend` stack). Without it a generated client calls the first backend Prism scaffolded, and the CLI renders that backend's loopback address (`http://localhost:<its port>`) into every default of the client: its `.env.example`, its configuration, its Taskfile, its guidance and the `servers` of the shared contract. A client generated against the second backend points at the second backend's port. The interactive flow asks which backend each client calls when there are several, `prism app add --backend <app id>` sets it for a new app, and the app's `.copier-answers.yml` remembers the address (`backend_base_url`, a loopback URL, which you may edit when a backend moves).
 
 A preset is an app list over the first four packs (the agent service is added to a preset's apps with one more entry, below), and `prism presets` (and `prism presets --json`) show each one's apps:
 
@@ -55,6 +57,7 @@ The CLI derives, validates and records these in the app's own answers file (`<pa
 - the package, directory path and module name: `<package_identifier>.<segment>`, its path, and the ID in PascalCase.
 - the CI workflow name and `paths:` filters, scoped to the app's path.
 - `port`: the first free port of the stack's range (`spring-backend` from 8080, `nextjs-web` from 3000, `python-agent-service` from 8200), chosen when the app is added and kept in its answers. Removing another app never moves it.
+- `backend_base_url` (a client of a backend: a web, Android, iOS or agent-service app): the loopback address of the backend it calls, from that backend's port. It is a loopback URL by validation, because the development identity answers loopback requests only.
 - the web package name, `<project_slug>-<app id>`, and the session cookie name, `<app id>_session` with hyphens as underscores: each web app has its own, because apps on `localhost` share one cookie jar whatever their port.
 
 ### Values that reach generated files

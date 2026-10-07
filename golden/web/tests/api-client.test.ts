@@ -40,7 +40,7 @@ describe("generated API client", () => {
     expect(request.headers.get("authorization")).toBeNull()
   })
 
-  it("defaults to the first backend's port", async () => {
+  it("defaults to the backend this app was generated for", async () => {
     vi.stubEnv("API_BASE_URL", "")
     const backend = vi.fn<Fetcher>(async () => Response.json(profile))
 

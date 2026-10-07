@@ -88,3 +88,8 @@ expected_surfaces:
   - .github/workflows/mobile-android.yml
   - .github/workflows/mobile-ios.yml
   - .github/workflows/agent-service.yml
+workflow:
+  version: '1'
+  mode: generated
+  board_id: 00000000-0000-4000-8000-000000000000
+  asset_digest: fe92ced9f5f515e7e89827328731c1657333b76914cbabcbafef01a8f1cf490a

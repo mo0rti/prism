@@ -25,6 +25,7 @@ $CurrentClaudeCommands = @(
     "document-entity",
     "feature-status",
     "feature-reopen",
+    "feature-scope",
     "generate-clients",
     "ingest",
     "lint-wiki",
@@ -56,6 +57,7 @@ $CurrentWorkflowSkills = @(
     "document-entity",
     "feature-status",
     "feature-reopen",
+    "feature-scope",
     "generate-clients",
     "ingest",
     "lint-wiki",
@@ -86,6 +88,7 @@ $ExplicitOnlyWorkflowSkills = @(
     "dev-start",
     "document-entity",
     "feature-reopen",
+    "feature-scope",
     "ingest",
     "po-clarify",
     "po-handoff",
@@ -1194,7 +1197,10 @@ function Validate-IosSample {
 
         # CI: generate with XcodeGen, build for a simulator and run the tests on macOS.
         $workingDirectory = $iosApp.Path.Replace("\", "/")
-        Assert-FileContains -Path $workflow -Needle "runs-on: macos-latest" -Message "The $app workflow must run on macOS."
+        Assert-FileContains -Path $workflow -Needle "runs-on: macos-26" -Message "The $app workflow must run on the pinned macOS image."
+        Assert-FileNotContains -Path $workflow -Needle "macos-latest" -Message "The $app workflow must not float on macos-latest."
+        Assert-FileContains -Path $workflow -Needle 'PIN="' -Message "The $app workflow must select the Xcode of the pin."
+        Assert-FileContains -Path $workflow -Needle "DEVELOPER_DIR=" -Message "The $app workflow must select the pinned Xcode for later steps."
         Assert-FileContains -Path $workflow -Needle "run: xcodegen generate" -Message "The $app workflow must generate the Xcode project."
         Assert-FileContains -Path $workflow -Needle "xcodebuild build" -Message "The $app workflow must build for a simulator."
         Assert-FileContains -Path $workflow -Needle "xcodebuild test" -Message "The $app workflow must run the tests."

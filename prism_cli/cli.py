@@ -26,6 +26,8 @@ from prism_cli import __version__
 from prism_cli.arguments import IntermixedParser
 from prism_cli.app_model import (
     ALL_PLATFORM_CHOICES,
+    BACKEND_CLIENT_STACKS,
+    BACKEND_STACK,
     GENERATION_REGISTERED,
     GENERATION_SCAFFOLDED,
     SLUG_PATTERN,
@@ -55,6 +57,7 @@ from prism_cli.packs import (
     WORKSPACE_LAYER,
     app_answers_path,
     assign_ports,
+    backend_port_of,
     layer_answers_problems,
     has_pack,
     pack_answers,
@@ -62,6 +65,7 @@ from prism_cli.packs import (
     read_app_answers,
     scaffoldable_stacks,
     validate_scaffold,
+    workflow_path,
     workspace_data,
 )
 from prism_cli.presets import (
@@ -1428,12 +1432,11 @@ def validate_workflow_project(path: Path) -> int:
 
 
 def validate_generated_project(path: Path) -> int:
-    errors, warnings, detected_platforms = validate_generated_project_structure(path)
+    errors, warnings, detected_apps = validate_generated_project_structure(path)
 
-    if detected_platforms:
-        labels = dict(ALL_PLATFORM_CHOICES)
-        print(section("Detected platforms"))
-        print(", ".join(labels[p] for p in detected_platforms))
+    if detected_apps:
+        print(section("Scaffolded apps"))
+        print(", ".join(detected_apps))
         print()
 
     if warnings:
@@ -1461,7 +1464,7 @@ def validate_generated_project(path: Path) -> int:
         "knowledge/wiki/LIFECYCLE.md present",
         "Taskfile.yml present",
         "wiki contract checks passed",
-        "platform directories and key workflows present",
+        "scaffolded apps, their answers files and workflows present",
     ]
     print(panel("Validation passed", checks))
     if wiki_result.readiness_blockers:
@@ -1470,12 +1473,20 @@ def validate_generated_project(path: Path) -> int:
 
 
 def validate_generated_project_structure(path: Path) -> tuple[list[str], list[str], list[str]]:
+    """The structure of a generated workspace, read from its manifest.
+
+    Every active app that Prism scaffolded needs its directory, its own ``.copier-answers.yml`` and its workflow
+    ``.github/workflows/<app id>.yml``; the apps come from ``prism.workspace.yml``, never from directory names. Returns the
+    errors, the warnings and the scaffolded apps found, each as ``<id> (<stack>)``.
+    """
+
     errors: list[str] = []
     warnings: list[str] = []
 
     required_paths = [
         ("README.md", path / "README.md"),
         ("AGENTS.md", path / "AGENTS.md"),
+        (MANIFEST_FILE, path / MANIFEST_FILE),
         ("knowledge/wiki/SCHEMA.md", path / "knowledge" / "wiki" / "SCHEMA.md"),
         ("knowledge/wiki/LIFECYCLE.md", path / "knowledge" / "wiki" / "LIFECYCLE.md"),
         ("Taskfile.yml", path / "Taskfile.yml"),
@@ -1484,26 +1495,26 @@ def validate_generated_project_structure(path: Path) -> tuple[list[str], list[st
         if not required_path.exists():
             errors.append(f"Missing required generated-project file: {label}")
 
-    detected_platforms: list[str] = []
-    workflows = {
-        "backend": ".github/workflows/backend.yml",
-        "web": ".github/workflows/web.yml",
-        "mobile-android": ".github/workflows/mobile-android.yml",
-        "mobile-ios": ".github/workflows/mobile-ios.yml",
-    }
+    inspection = inspect_workspace(path)
+    errors.extend(diagnostic.message for diagnostic in inspection.contract_diagnostics if diagnostic.severity == "error")
 
-    for platform_id, _label in ALL_PLATFORM_CHOICES:
-        platform_dir = path / platform_id
-        if platform_dir.exists():
-            detected_platforms.append(platform_id)
-            workflow_path = path / workflows[platform_id]
-            if not workflow_path.exists():
-                errors.append(f"Missing workflow for detected platform `{platform_id}`: {workflows[platform_id]}")
+    detected_apps: list[str] = []
+    for app in inspection.model.workspace_apps(active_only=True):
+        if app.generation != GENERATION_SCAFFOLDED:
+            continue
+        detected_apps.append(f"{app.id} ({app.stack})")
+        if not (path / app.path).is_dir():
+            continue  # the missing directory is already an error of the workspace comparison
+        if not (path / app_answers_path(app.path)).is_file():
+            errors.append(f"Missing answers file for scaffolded app `{app.id}`: {app_answers_path(app.path)}")
+        workflow = workflow_path(app.id)
+        if has_pack(app.stack) and not (path / workflow).is_file():
+            errors.append(f"Missing workflow for scaffolded app `{app.id}`: {workflow}")
 
-    if not detected_platforms:
-        warnings.append("No recognized platform directories were detected.")
+    if not detected_apps:
+        warnings.append(f"No scaffolded apps are declared in {MANIFEST_FILE}.")
 
-    return errors, warnings, detected_platforms
+    return errors, warnings, detected_apps
 
 
 def load_answers_file(path_str: str) -> dict[str, Any] | None:
@@ -1666,6 +1677,7 @@ def prompt_advanced_answers() -> dict[str, Any]:
             if audience:
                 app["audience"] = audience
     apps.extend(prompt_more_apps({app["id"] for app in apps}))
+    prompt_backends(apps)
 
     return {
         "project_name": project_name,
@@ -1673,6 +1685,21 @@ def prompt_advanced_answers() -> dict[str, Any]:
         "package_identifier": package_identifier,
         "apps": apps,
     }
+
+
+def prompt_backends(apps: list[dict[str, Any]]) -> None:
+    """With several backends, ask which one each generated client calls; a client that calls the first one records nothing."""
+
+    backends = [app for app in apps if app["stack"] == BACKEND_STACK and app.get("generation") == GENERATION_SCAFFOLDED]
+    if len(backends) < 2:
+        return
+    choices = tuple((backend["id"], f"{backend['id']} ({backend.get('name') or backend['id']})") for backend in backends)
+    for app in apps:
+        if app["stack"] not in BACKEND_CLIENT_STACKS or app.get("generation") != GENERATION_SCAFFOLDED:
+            continue
+        selected = prompt_multiselect(f"Backend that `{app['id']}` calls (choose one)", choices, default_values=[backends[0]["id"]], allow_empty=False)[0]
+        if selected != backends[0]["id"]:
+            app["backend"] = selected
 
 
 def prompt_more_apps(taken_ids: set[str]) -> list[dict[str, Any]]:
@@ -1962,7 +1989,7 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, 
     for app in apps:
         if app.get("generation") == GENERATION_SCAFFOLDED and has_pack(app["stack"]):
             layer = Layer(name=app["id"], answers_file=app_answers_path(app["path"]), app_id=app["id"], app_path=app["path"])
-            layers.append((layer, pack_answers(project, app, port=ports.get(app["id"]))))
+            layers.append((layer, pack_answers(project, app, port=ports.get(app["id"]), backend_port=backend_port_of(app, apps, ports))))
 
     print(section("Generating"))
     print(info("Running Copier with the resolved Prism configuration..."))
@@ -1996,6 +2023,8 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, 
     manifest_answers = {key: answers[key] for key in ("project_name", "project_slug", "package_identifier", "description") if key in answers}
     if not refresh_workspace_manifest(dest_path, template_path, manifest_answers, apps=apps, repositories=repositories):
         return EXIT_VALIDATION
+    if not pin_generated_workflow(dest_path):
+        return EXIT_VALIDATION
 
     print()
     if event_count:
@@ -2010,6 +2039,31 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, 
     ]
     print(panel("Success", next_steps))
     return 0
+
+
+def pin_generated_workflow(dest_path: Path) -> bool:
+    """Record the packaged workflow in a freshly generated workspace, so its board is writable once a grant is issued.
+
+    This is the same reviewed install plan that ``prism workflow upgrade`` applies, run on files this CLI has just
+    written: it pins the workflow version, the board identity and the digest of the packaged assets in the manifest.
+    A workspace whose pin is missing or stale (an older CLI's, an edited manifest) stays read-only until an explicit
+    ``prism workflow upgrade``.
+    """
+
+    from prism_cli.workflow_install import apply_install, plan_install
+
+    try:
+        plan = plan_install(dest_path, upgrade=True)
+        if plan["conflicts"]:
+            raise ValueError("; ".join(plan["conflicts"]))
+        receipt = apply_install(dest_path, plan)
+        if receipt.get("status") == "conflict":
+            raise ValueError("; ".join(receipt.get("conflicts") or ["the workspace changed while it was pinned"]))
+    except (OSError, ValueError) as exc:
+        print(error(f"Could not pin the packaged workflow in the generated workspace: {exc}"), file=sys.stderr)
+        print(info(f"Run `prism workflow upgrade {dest_path} --apply` after fixing the cause."), file=sys.stderr)
+        return False
+    return True
 
 
 def copier_copy_command(
@@ -2168,7 +2222,8 @@ def plan_update_layers(project_path: Path) -> tuple[list[Layer], list[str]]:
         if recorded is None or "_src_path" not in recorded:
             problems.append(
                 f"App `{app.id}` is scaffolded, but `{app_answers_path(app.path)}` is missing, sits behind a link or does not record its template. "
-                f"Restore the file from git, or retire the app (`prism app retire {app.id}`) to leave it out of the update."
+                f"Restore the file from git, or leave the app out of the update: retire it (`prism app retire {app.id}`), or drop its entry from {MANIFEST_FILE} "
+                f"(or set its `generation` to `registered`) when Prism no longer keeps its code current."
             )
             continue
         entry = {"id": app.id, "name": app.name, "stack": app.stack, "path": app.path, "audience": app.audience or ""}
@@ -2565,7 +2620,7 @@ def scaffold_app(
         if commit:
             commits.append(commit)
 
-        data = pack_answers(project, app, port=port)
+        data = pack_answers(project, app, port=port, backend_port=scaffold.get("backend_port"))
         app_command = copier_copy_command(src_path, workspace, data, answers_file=app_answers_path(app["path"]), vcs_ref=str(ref))
         ok, output = run_quietly(app_command)
         if not ok:

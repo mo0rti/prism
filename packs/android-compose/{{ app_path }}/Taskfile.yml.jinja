@@ -2,8 +2,8 @@ version: "3"
 
 vars:
   GRADLEW: '{{'{{'}}if eq OS "windows"{{'}}'}}gradlew.bat{{'{{'}}else{{'}}'}}./gradlew{{'{{'}}end{{'}}'}}'
-  # The port of the backend on this machine. Override it: `task {{ app_id }}:reverse BACKEND_PORT=8081`.
-  BACKEND_PORT: "8080"
+  # The port of the backend this app was generated for, on this machine. Override it: `task {{ app_id }}:reverse BACKEND_PORT=<port>`.
+  BACKEND_PORT: "{{ backend_port }}"
 
 tasks:
   build:

@@ -57,7 +57,7 @@ pip install -e .
 
 Run the remaining steps in a separate workspace folder, not in this maintainer checkout and not in a cloud-synced folder such as OneDrive.
 
-**1. Add the workflow.** Use an empty folder or an existing repository. Choose a display name and, if you want, an app: `--app` takes one of the four generated app IDs (`backend`, `web`, `mobile-android`, `mobile-ios`) and registers it without generating an application. Without `--app` the workspace has no apps, and `prism app add` registers one later ([the workspace model](https://github.com/mo0rti/prism/blob/main/docs/workspace-model.md) covers apps, repositories and `prism app list`). The first command previews every file. The second asks you to confirm before it writes (`--apply --yes` skips the question for automation).
+**1. Add the workflow.** Use an empty folder or an existing repository. Choose a display name and, if you want, an app: `--app` takes one of the generated app IDs (`backend`, `web`, `mobile-android`, `mobile-ios`, `agent-service`) and registers it without generating an application. Without `--app` the workspace has no apps, and `prism app add` registers one later ([the workspace model](https://github.com/mo0rti/prism/blob/main/docs/workspace-model.md) covers apps, repositories and `prism app list`). The first command previews every file. The second asks you to confirm before it writes (`--apply --yes` skips the question for automation).
 
 ```bash
 cd path/to/your-workspace

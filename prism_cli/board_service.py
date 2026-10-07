@@ -96,7 +96,9 @@ _QUESTION_SKILLS = {"po-clarify": "po", "design-clarify": "designer", "dev-clari
 _INTAKE_SKILLS = {"po-intake", "design-intake", "ingest"}
 # `verify-pages` records a verification of current-state pages as one `verify` entry in log.md and changes no page.
 VERIFY_SKILL = "verify-pages"
-_WRITE_SKILLS = frozenset((*_LIFECYCLE_SKILLS, *_QUESTION_SKILLS, *_INTAKE_SKILLS, VERIFY_SKILL))
+# `feature-scope` is the explicit scope edit of one feature: its `apps`, its `## App scope` section and the requirement pages of the apps it gains.
+SCOPE_SKILL = "feature-scope"
+_WRITE_SKILLS = frozenset((*_LIFECYCLE_SKILLS, *_QUESTION_SKILLS, *_INTAKE_SKILLS, VERIFY_SKILL, SCOPE_SKILL))
 # The log operation a skill's entry carries. Every other skill's entry is `board-<skill>`; freshness reads `verify` by that exact name.
 _LOG_OPERATION_BY_SKILL = {VERIFY_SKILL: VERIFY_OPERATION}
 _WIKI_DIRS = (
@@ -127,7 +129,8 @@ _INGEST_CREATE_ONLY = ("features", "personas", "business-rules", "decisions")
 _ADR_FIELDS = {"id", "title", "date", "status", "supersedes", "superseded-by"}
 _ADR_ID = re.compile(r"^ADR-\d+$")
 _STATUS_ROW = re.compile(r"^\|\s*(F-\d+)\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$", re.IGNORECASE)
-_STATUS_HEADER = re.compile(r"^\s*\|\s*ID\s*\|\s*Feature\s*\|\s*Status\s*\|\s*Owner\s*\|\s*Board Review\s*\|\s*$", re.IGNORECASE)
+# The header is exact, as `parse_status_board_rows` reads it: a board whose header differs in case is not a canonical board for either.
+_STATUS_HEADER = re.compile(r"^\s*\|\s*ID\s*\|\s*Feature\s*\|\s*Status\s*\|\s*Owner\s*\|\s*Board Review\s*\|\s*$")
 _FRONTMATTER = re.compile(r"\A\ufeff?---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 
 
@@ -965,7 +968,11 @@ class BoardService:
                     (operation_id, actor.participant_id, preview_id, payload_hash, _json(intent), now, now),
                 )
                 db.execute("UPDATE previews SET consumed_by = ? WHERE preview_id = ?", (operation_id, preview_id))
-            return self._roll_forward(actor, operation_id, intent)
+            # This call has just revalidated the whole operation against the live files and rechecked the preview's sources, both
+            # under this lock, so the roll-forward does not evaluate the same files a second time. Every write still checks the
+            # recorded before-state first, and a recovery of this operation (after a crash, or an apply that finds it pending)
+            # revalidates in full.
+            return self._roll_forward(actor, operation_id, intent, validated_just_now=True)
 
     def changes(self, actor: Actor, cursor: str | None = None) -> dict[str, Any]:
         self._require_actor(actor)
@@ -1360,6 +1367,8 @@ class BoardService:
             return ["knowledge/wiki/features/*.md", "knowledge/wiki/app-requirements/*.md"]
         if name in {"po-specify", "po-handoff", "design-start", "dev-start"}:
             return ["knowledge/wiki/features/*.md"]
+        if name == SCOPE_SKILL:
+            return ["knowledge/wiki/features/*.md", "knowledge/wiki/app-requirements/*.md"]
         if name in {"design-handoff", "dev-done", "feature-reopen"}:
             return [
                 "knowledge/wiki/features/*.md",
@@ -1388,6 +1397,14 @@ class BoardService:
                 "Send an empty `changes` list and no `moves`, and name each verified page in `read_revisions` with the digest `read_workspace` returned for it; "
                 "this is the one skill that needs `read_revisions`. A record, the index, the log, the status board and generated files cannot be verified. "
                 "Applying is refused as stale when a verified page changed after the preview."
+            )
+        if name == SCOPE_SKILL:
+            limitations.append(
+                "Edits the scope of one existing feature that is not `done`: the `apps` list, the feature's `## App scope` section (both must change) and "
+                "new `pending` requirement pages for the apps the scope gains. It never changes status, owner or any other field, never rewrites an existing "
+                "requirement page, and never adds a retired app (`app_retired`). A feature that is `done` is reopened with feature-reopen first. "
+                "A retired app that the feature already lists may stay or be removed; removing it is how a feature in progress is unblocked "
+                "(`app_retired_in_scope`)."
             )
         if name == "po-intake":
             limitations.append(
@@ -2308,6 +2325,8 @@ class BoardService:
             allowed = {"features", "app-requirements", "api-contracts"}
         elif skill == "feature-reopen":
             allowed = {"features", "app-requirements", "api-contracts"}
+        elif skill == SCOPE_SKILL:
+            allowed = {"features", "app-requirements"}
         else:
             allowed = {"features"}
         if len(parts) < 3 or parts[1] != "wiki" or parts[2] not in allowed:
@@ -2752,7 +2771,7 @@ class BoardService:
             elif relative.startswith("knowledge/wiki/design/"):
                 self._validate_design(relative, content)
             elif relative.startswith("knowledge/wiki/app-requirements/"):
-                self._validate_requirement(relative, content)
+                self._validate_requirement(relative, content, self._listed_apps(content, relative, changed_features))
             elif relative.startswith("knowledge/wiki/api-contracts/"):
                 self._validate_api_contract(relative, content)
             elif relative.startswith("knowledge/wiki/decisions/"):
@@ -2815,6 +2834,9 @@ class BoardService:
             if requirement_pages != declared or len(requirement_page_list) != len(declared):
                 raise BoardError("requirements_incomplete", "Design handoff must propose exactly one linked requirement page for each declared app.", 409)
 
+        if skill == SCOPE_SKILL:
+            self._validate_scope_edit(changed_features, supplied, before)
+
         action = actions[0] if actions else None
         if len(actions) > 1:
             raise BoardError("multiple_lifecycle_actions", "One preview may perform only one lifecycle transition.", 409)
@@ -2852,7 +2874,7 @@ class BoardService:
                 supplied=supplied,
                 before=before,
             )
-            if expected_action == "design-handoff":
+            if expected_action in {"design-handoff", "dev-start", "dev-done"}:
                 self._require_api_serving_app(supplied, target_feature)
             self._validate_lifecycle_related_writes(expected_action, supplied, before, target_feature)
             if expected_action == "design-handoff":
@@ -3010,6 +3032,76 @@ class BoardService:
             "checks": checks,
             "blockers": [],
         }
+
+    def _validate_scope_edit(self, changed_features: list[dict[str, Any]], supplied: Mapping[str, str], before: Mapping[str, str | None]) -> None:
+        """The explicit scope edit of one feature: `apps`, `## App scope` and the new requirement pages of the apps it gains.
+
+        The feature page itself went through `_validate_feature_output` with its current scope, so a retired app the
+        feature already lists may stay or leave, and a retired app is never added.
+        """
+
+        if len(changed_features) != 1 or changed_features[0]["before"] is None:
+            raise BoardError("one_existing_feature_required", f"Skill `{SCOPE_SKILL}` edits the scope of exactly one existing feature per preview.", 409)
+        feature = changed_features[0]
+        path = feature["path"]
+        old_fm, new_fm = feature["before"], feature["after"]
+        if old_fm.get("status") == "done":
+            raise BoardError(
+                "scope_stage_unavailable",
+                f"Skill `{SCOPE_SKILL}` cannot change `{path}` because the feature is `done`. A shipped feature keeps its scope as history; reopen it with feature-reopen first.",
+                409,
+                {"path": path, "status": "done"},
+            )
+        changed = _names(key for key in set(old_fm) | set(new_fm) if old_fm.get(key) != new_fm.get(key))
+        if "apps" not in changed:
+            raise BoardError(
+                "scope_unchanged",
+                f"`{path}` lists the same apps as before; a scope edit changes the `apps` list. Add or remove the apps in the proposed front matter.",
+                409,
+                {"path": path, "apps": _names(_scope_of(old_fm) or [])},
+            )
+        if set(changed) - {"apps"}:
+            others = [name for name in changed if name != "apps"]
+            raise BoardError(
+                "scope_frontmatter_change",
+                f"Skill `{SCOPE_SKILL}` changes only `apps`, but `{path}` also changes frontmatter field(s) {_quoted(others)}. Restore them to their current values; status and owner change only through a lifecycle skill.",
+                409,
+                {"path": path, "fields": others},
+            )
+        old_body = _parse_markdown(before[path] or "", path)[1]
+        new_body = _parse_markdown(supplied[path], path)[1]
+        self._assert_only_body_sections_changed(
+            old_body, new_body, {"App scope"}, "scope_body_exceeded", "A scope edit may change only the feature's App scope section."
+        )
+        if _section(old_body, "App scope") == _section(new_body, "App scope"):
+            raise BoardError(
+                "scope_text_unchanged",
+                f"`{path}` changes `apps` but not its `## App scope` section. Rewrite the section so that it describes the new scope.",
+                409,
+                {"path": path},
+            )
+        gained = [item for item in (_scope_of(new_fm) or []) if item not in (_scope_of(old_fm) or [])]
+        for relative, content in supplied.items():
+            if not relative.startswith("knowledge/wiki/app-requirements/"):
+                continue
+            if before.get(relative) is not None:
+                raise BoardError(
+                    "requirement_exists",
+                    f"Skill `{SCOPE_SKILL}` creates requirement pages only for the apps a feature gains; `{relative}` already exists and is never rewritten. Leave it out of the proposal.",
+                    409,
+                    {"path": relative},
+                )
+            frontmatter = _parse_markdown(content, relative)[0]
+            if frontmatter.get("app") not in gained:
+                added = _quoted(_names(gained)) if gained else "no app"
+                raise BoardError(
+                    "requirement_scope_mismatch",
+                    f"Requirement `{relative}` is for app `{_clip(frontmatter.get('app'), 60)}`, which this edit does not add to the scope (it adds {added}).",
+                    409,
+                    {"path": relative, "added_apps": _names(gained)},
+                )
+            if frontmatter.get("status") != "pending":
+                raise BoardError("requirement_initial_status", "A scope edit creates new app requirements in pending status.", 409, {"path": relative})
 
     @staticmethod
     def _lifecycle_change_error(skill: str, relative: str, old: Mapping[str, Any], new: Mapping[str, Any]) -> BoardError:
@@ -3365,7 +3457,7 @@ class BoardService:
             )
 
     def _require_api_serving_app(self, supplied: Mapping[str, str], feature: Mapping[str, Any]) -> None:
-        """Design handoff for a feature with declared API work needs an active app in its scope that serves an API."""
+        """Design handoff, dev start and dev done for a feature with declared API work need an active app in its scope that serves an API."""
 
         surface = section_text(_parse_markdown(supplied[feature["path"]], feature["path"])[1], "API surface")
         apps = _scope_of(feature["after"]) or []
@@ -4046,10 +4138,26 @@ class BoardService:
         _require_headings(body, ("Summary", "Key design decisions", "States covered", "Component references", "Open design questions"), relative)
         _validate_no_placeholders(body, relative)
 
-    def _validate_requirement(self, relative: str, content: str) -> None:
+    @staticmethod
+    def _listed_apps(content: str, relative: str, changed_features: list[dict[str, Any]]) -> list[str]:
+        """The apps that the feature a requirement page belongs to lists today, in the proposal's view of the workspace.
+
+        A requirement page of an app that the feature already lists stays valid when that app has been retired, so a
+        reopened `done` feature can invalidate it.
+        """
+
+        feature_id = _parse_markdown(content, relative)[0].get("feature-id")
+        if not isinstance(feature_id, str):
+            return []
+        for feature in changed_features:
+            if str(feature["id"]).casefold() == feature_id.casefold():
+                return _scope_of(feature["before"]) or []
+        return []
+
+    def _validate_requirement(self, relative: str, content: str, listed_apps: Iterable[str] = ()) -> None:
         frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"feature-id", "app", "status"}, relative)
-        if frontmatter.get("app") not in self._app_ids or frontmatter.get("status") not in {"pending", "in-progress", "done"}:
+        if frontmatter.get("app") not in {*self._app_ids, *listed_apps} or frontmatter.get("status") not in {"pending", "in-progress", "done"}:
             raise BoardError("invalid_requirement", f"App requirement `{relative}` has an invalid app or status.", 409)
         _require_headings(body, ("What to build", "Technical constraints", "Design reference", "API contract reference", "Acceptance criteria", "Dependencies"), relative)
         _validate_no_placeholders(body, relative)
@@ -4282,11 +4390,18 @@ class BoardService:
                 raise BoardError("stale_index_entry", f"The index line for `{_clip(key, 120)}` changed after preview.", 409)
 
     def _recovery_preflight(
-        self, actor: Actor, intent: Mapping[str, Any], conflict_paths: list[str], *, reviewed: Mapping[str, str | None] | None
+        self,
+        actor: Actor,
+        intent: Mapping[str, Any],
+        conflict_paths: list[str],
+        *,
+        reviewed: Mapping[str, str | None] | None,
+        revalidate: bool = True,
     ) -> bool:
         """Run every check that precedes a recovery write and return whether the operation is already complete.
 
-        Raises the first reason the recorded writes and moves cannot be rolled forward now.
+        Raises the first reason the recorded writes and moves cannot be rolled forward now. ``revalidate=False`` skips only the
+        full re-evaluation of the operation, for a roll-forward that follows a validation of the same files by the caller.
         """
 
         states = self._operation_file_states(intent)
@@ -4298,12 +4413,19 @@ class BoardService:
         complete = all(item["state"] == "applied" for item in states) and all(state == "applied" for state in move_states)
         if not complete:
             self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
-            self._revalidate_recovery(actor, intent, reviewed=reviewed is not None)
+            if revalidate:
+                self._revalidate_recovery(actor, intent, reviewed=reviewed is not None)
             self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
         return complete
 
     def _roll_forward(
-        self, actor: Actor, operation_id: str, intent: Mapping[str, Any], *, reviewed: Mapping[str, str | None] | None = None
+        self,
+        actor: Actor,
+        operation_id: str,
+        intent: Mapping[str, Any],
+        *,
+        reviewed: Mapping[str, str | None] | None = None,
+        validated_just_now: bool = False,
     ) -> dict[str, Any]:
         store = self._require_store()
         conflicts: list[dict[str, Any]] = []
@@ -4325,7 +4447,7 @@ class BoardService:
                 return _loads(existing[1])
             self._assert_unresolved_writes_safe(operation_id, intent)
             try:
-                complete = self._recovery_preflight(actor, intent, conflict_paths, reviewed=reviewed)
+                complete = self._recovery_preflight(actor, intent, conflict_paths, reviewed=reviewed, revalidate=not validated_just_now)
                 for move in intent.get("moves", []):
                     self._require_actor(actor, write=True)
                     source = self._safe_path(move["source"], allow_missing=True)

@@ -2,8 +2,21 @@
 
 ## Base URL
 
-- **Local**: `http://localhost:8080` (the first backend; each backend app has its own port), with every path under `/api/`
+- **Local**: {% for app in apps if app.stack == "spring-backend" %}`http://localhost:{{ app.port }}` (`{{ app.id }}`){{ ", " if not loop.last }}{% else %}`http://localhost:8080` (the first backend's port){% endfor %}; every path is under `/api/`. Each backend app has its own port, and the `servers` of the shared contract list them
 - **Production**: `https://api.{{ project_slug }}.com` (adjust to your deployment)
+
+### Where each client keeps the backend address
+
+A generated client's default is the loopback address of the backend it calls: the first backend of the workspace, or the one its entry in `prism.workspace.yml` names (`backend: <app id>`). With several backends, each client states its own, and a client generated against the second backend points at the second backend's port. The setting differs by host:
+
+| Client | Setting | Override |
+|--------|---------|----------|
+| Web (`nextjs-web`) | `API_BASE_URL`, read on the server only | `.env.local` or the environment |
+| Agent service (`python-agent-service`) | `AGENT_BACKEND_BASE_URL` | the environment |
+| Android (`android-compose`) | `apiBaseUrl` in `gradle.properties` (a trailing slash is required) and `BACKEND_PORT` of the `reverse` task | `-PapiBaseUrl=...`, `~/.gradle/gradle.properties`, `task <app>:reverse BACKEND_PORT=<port>` |
+| iOS (`ios-swiftui`) | the `API_BASE_URL` build setting of `project.yml` (Debug; Release is empty until you set an https URL) | edit `project.yml`, then regenerate the project |
+
+The development identity answers loopback requests only, so these defaults are loopback addresses. Point a client at a deployed backend through the same setting, and replace the development identity with your identity provider first.
 
 ## General Rules
 

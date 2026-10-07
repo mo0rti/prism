@@ -1,4 +1,4 @@
-name: "Android App CI"
+name: "Android App CI (mobile-android)"
 
 on:
   push:
@@ -17,6 +17,11 @@ on:
 
 permissions:
   contents: read
+
+# One run per app and branch: a newer push cancels the run it replaces.
+concurrency:
+  group: "mobile-android-${{ github.ref }}"
+  cancel-in-progress: true
 
 env:
   APP_PATH: "mobile-android"

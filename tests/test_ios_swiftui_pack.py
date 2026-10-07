@@ -51,16 +51,23 @@ class PinsTests(unittest.TestCase):
     def test_the_stack_has_a_pack_and_pins(self) -> None:
         self.assertIn("ios-swiftui", PACK_STACKS)
         self.assertTrue(PACK.is_dir())
-        self.assertEqual({"xcode", "swift", "ios_deployment_target"}, set(pins()))
+        self.assertEqual({"xcode", "swift", "ios_deployment_target", "fastlane"}, set(pins()))
 
     def test_project_yml_reads_every_pin_from_versions_yml(self) -> None:
-        text = render("project.yml.jinja", app_module_name="Demo", app_package="com.example.demo.demo")
+        text = render("project.yml.jinja", app_module_name="Demo", app_package="com.example.demo.demo", backend_base_url="http://localhost:8080")
         data = yaml.safe_load(text)
         self.assertEqual(pins()["ios_deployment_target"], data["options"]["deploymentTarget"]["iOS"])
         self.assertEqual(pins()["xcode"], data["options"]["xcodeVersion"])
         self.assertEqual(pins()["swift"], data["settings"]["base"]["SWIFT_VERSION"])
-        for value in pins().values():
+        for key in ("xcode", "swift", "ios_deployment_target"):
+            value = pins()[key]
             self.assertEqual(1, len(re.findall(r"(?<![0-9.])" + re.escape(value) + r"(?![0-9.])", text)), f"{value} is rendered once, from the pin")
+        self.assertEqual("apple-generic", data["settings"]["base"]["VERSIONING_SYSTEM"], "fastlane's increment_build_number runs agvtool, which needs Apple Generic versioning")
+
+    def test_the_gemfile_requires_the_pinned_fastlane_exactly(self) -> None:
+        gemfile = (PACK_APP / "fastlane" / "Gemfile.jinja").read_text(encoding="utf-8")
+        rendered = Environment(undefined=StrictUndefined, keep_trailing_newline=True).from_string(gemfile).render(versions=pins())
+        self.assertIn(f'gem "fastlane", "{pins()["fastlane"]}"\n', rendered)
 
 
 class PackFilesTests(unittest.TestCase):
@@ -154,12 +161,13 @@ class PackFilesTests(unittest.TestCase):
             self.assertNotIn("URLSession", text, "the view model tests never reach the network")
         self.assertIn("SignInViewModel(", sign_in)
         self.assertIn("ProfileViewModel(", profile)
-        self.assertEqual(7, len(re.findall(r"func test\w+\(", sign_in)))
+        self.assertEqual(6, len(re.findall(r"func test\w+\(", sign_in)))
         self.assertEqual(6, len(re.findall(r"func test\w+\(", profile)))
 
     def test_the_workflow_generates_builds_and_tests_on_macos_without_xcpretty(self) -> None:
         text = (PACK / ".github" / "workflows" / "{{ app_id }}.yml.jinja").read_text(encoding="utf-8")
-        self.assertIn("runs-on: macos-latest", text)
+        self.assertIn("runs-on: macos-26", text)
+        self.assertNotIn("macos-latest", text, "the runner image is pinned")
         self.assertIn("xcodegen generate", text)
         self.assertIn("xcodebuild build", text)
         self.assertIn("xcodebuild test", text)
@@ -326,16 +334,18 @@ class GeneratedIosAppsTests(unittest.TestCase):
         for app, info in self.apps.items():
             with self.subTest(app=app):
                 data = yaml.safe_load(self.text(f".github/workflows/{app}.yml"))
-                self.assertEqual(f"{info['name']} CI", data["name"])
+                self.assertEqual(f"{info['name']} CI ({app})", data["name"], "the display name is unique per app")
                 triggers = data.get("on", data.get(True))
                 for event in ("push", "pull_request"):
                     self.assertEqual([f"{info['path']}/**", "shared/api-contracts/**", f".github/workflows/{app}.yml"], triggers[event]["paths"])
                 job = data["jobs"]["verify"]
-                self.assertEqual("macos-latest", job["runs-on"])
+                self.assertEqual("macos-26", job["runs-on"], "a pinned runner image, never macos-latest")
+                self.assertEqual({"contents": "read"}, data["permissions"])
+                self.assertEqual({"group": f"{app}-${{{{ github.ref }}}}", "cancel-in-progress": True}, data["concurrency"])
                 self.assertEqual(info["path"], data["env"]["APP_PATH"], "the app's path reaches the workflow once, as a variable")
                 self.assertEqual("${{ env.APP_PATH }}", job["defaults"]["run"]["working-directory"])
                 steps = [step["name"] for step in job["steps"] if "name" in step]
-                self.assertEqual(["Install XcodeGen", "Generate Xcode project", "Select iPhone simulator", "Build", "Test", "Upload test results"], steps)
+                self.assertEqual(["Select Xcode 26.0", "Cache Homebrew downloads", "Install XcodeGen", "Generate Xcode project", "Select iPhone simulator", "Build", "Test", "Upload test results"], steps)
                 text = self.text(f".github/workflows/{app}.yml")
                 module = info["module"]
                 self.assertIn("run: xcodegen generate", text)
@@ -383,12 +393,14 @@ class GeneratedIosAppsTests(unittest.TestCase):
                 self.assertIn(f"({info['path']}/docs/guide.md)", self.text("README.md"))
                 self.assertIn(f"`{app}.yml`", self.text("docs/deployment/ci-cd.md"))
                 self.assertIn(f"`{info['path']}/AGENTS.md`", self.text("AGENTS.md"))
-        # The iOS client is hand-written, so no step generates one, and iOS builds run on a Mac, outside the root `task test`.
+        # The iOS client is hand-written, so no step generates one. The root `task test` runs each iOS app's unit tests (its tasks
+        # skip off macOS); the iOS packs have no lint task, so the root `task lint` names none.
         self.assertNotIn("generate-client-mobile-ios", self.text("Taskfile.yml"))
         self.assertNotIn("swift6", self.text("Taskfile.yml"))
-        for task in ("lint", "test"):
-            for command in taskfile["tasks"][task]["cmds"]:
-                self.assertNotIn("ios", str(command))
+        for command in taskfile["tasks"]["lint"]["cmds"]:
+            self.assertNotIn("ios", str(command))
+        ios_tests = [command for command in taskfile["tasks"]["test"]["cmds"] if "ios" in str(command)]
+        self.assertEqual([{"task": f"{app}:test-unit"} for app in self.apps], ios_tests)
         self.assertNotIn("xcodeproj", self.text(".gitignore"))
         self.assertNotIn("Config/Debug.xcconfig", self.text(".gitignore"))
         for info in self.apps.values():

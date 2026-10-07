@@ -547,6 +547,32 @@ class BoardServerTests(unittest.TestCase):
             self.assertEqual(2, len(scans))
             self.assertIs(scans[0], scans[1], "The poller keeps one cache.")
 
+    def test_a_refresh_does_not_store_a_fingerprint_older_than_the_snapshot_published_meanwhile(self) -> None:
+        # The poller scans, another refresh (the write path after an apply) publishes while the poller waits
+        # for the lock, and the poller must not store its older fingerprint: the next poll would rebuild an
+        # unchanged workspace and announce a version the browser then adopts in the middle of a gesture.
+        builds: list[int] = []
+        with patch("prism_cli.wiki_graph.build_graph", lambda _root: {}), patch("prism_cli.wiki_transitions.workspace_fingerprint", lambda _root, cache=None: "F0"):
+            graph = _LiveGraph(Path("."), lambda: None)
+        graph._build_graph = lambda _root: builds.append(1) or {"built": len(builds)}  # type: ignore[assignment]
+        self.assertEqual((1, "F0"), (graph.version, graph.fingerprint))
+        scans: list[str] = []
+
+        def scan(_root: Path) -> str:
+            scans.append("scan")
+            if len(scans) == 1:
+                graph._fingerprint_fn = lambda _root: "F2"  # type: ignore[assignment]
+                graph.refresh_now()  # publishes F2 while this scan is still "reading" the older state
+                return "F1"
+            return "F2"
+
+        graph._fingerprint_fn = scan  # type: ignore[assignment]
+        graph.refresh_now()
+        self.assertEqual((2, "F2"), (graph.version, graph.fingerprint))
+        self.assertEqual(1, len(builds), "The outer refresh found the newer snapshot current and built nothing more.")
+        graph.refresh_now()
+        self.assertEqual(2, graph.version, "The next poll sees an unchanged workspace.")
+
     def test_snapshot_refresh_wrapper_covers_writes_and_leaves_reads_alone(self) -> None:
         class Graph:
             refreshes = 0

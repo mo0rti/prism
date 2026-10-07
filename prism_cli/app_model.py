@@ -38,6 +38,16 @@ UNKNOWN = "unknown"
 
 APP_STATUSES = ("active", "retired")
 
+# The keys an entry of `apps` and of `repositories` may carry. Any other key is a misspelling or a field no
+# reader uses, and it is reported instead of being ignored (for example `satus: retired` would leave the app active).
+APP_FIELDS = ("id", "name", "stack", "repository", "path", "audience", "status", "generation", "capabilities", "backend")
+REPOSITORY_FIELDS = ("id", "remote")
+
+# The stack of a backend, and the stacks of the apps that call one. An app of a client stack may name the backend it
+# calls (`backend: <app id>`); without it, a generated client calls the first scaffolded backend of the workspace.
+BACKEND_STACK = "spring-backend"
+BACKEND_CLIENT_STACKS = ("nextjs-web", "android-compose", "ios-swiftui", "python-agent-service")
+
 # How an app's code came to be: ``scaffolded`` by Prism (a pack, so ``prism update``
 # keeps it current) or ``registered`` only, with its code created and kept elsewhere.
 GENERATION_SCAFFOLDED = "scaffolded"
@@ -114,7 +124,7 @@ STACKS: Mapping[str, Stack] = MappingProxyType(
 # The platform IDs the questionnaire offers, each the ID of the app that
 # generating it registers. Iteration order is the order of the platform
 # directory table.
-GENERATED_PLATFORM_IDS = ("backend", "mobile-android", "mobile-ios", "web")
+GENERATED_PLATFORM_IDS = ("backend", "mobile-android", "mobile-ios", "web", "agent-service")
 
 GENERATED_PLATFORM_STACKS: Mapping[str, str] = MappingProxyType(
     {
@@ -122,6 +132,7 @@ GENERATED_PLATFORM_STACKS: Mapping[str, str] = MappingProxyType(
         "web": "nextjs-web",
         "mobile-android": "android-compose",
         "mobile-ios": "ios-swiftui",
+        "agent-service": "python-agent-service",
     }
 )
 
@@ -132,6 +143,7 @@ GENERATED_PLATFORM_LABELS: Mapping[str, str] = MappingProxyType(
         "web": "Web App",
         "mobile-android": "Android (Kotlin/Compose)",
         "mobile-ios": "iOS (Swift/SwiftUI)",
+        "agent-service": "AI Agent Service (Python/FastAPI)",
     }
 )
 
@@ -198,6 +210,8 @@ class App:
     capability_overrides: Mapping[str, bool | str] = field(default_factory=dict)
     status: str = "active"
     generation: str = GENERATION_REGISTERED
+    # The ID of the backend this app calls, or ``None`` for the workspace's first backend.
+    backend: str | None = None
 
     @property
     def active(self) -> bool:
@@ -408,6 +422,7 @@ def _normalize_manifest(data: Mapping[str, Any], path: Path) -> tuple[WorkspaceM
     apps, declared_ids = _read_apps(data.get("apps"), repositories, path, diagnostics)
     maturity = _read_app_maturity(data.get("app_maturity"), declared_ids, path, diagnostics)
     _check_path_conflicts(apps, path, diagnostics)
+    _check_backends(apps, path, diagnostics)
     purpose = _read_purpose(data.get("workflow"), path, diagnostics)
     return (
         WorkspaceModel(
@@ -471,6 +486,17 @@ def _read_repositories(value: Any, path: Path, diagnostics: list[WorkspaceDiagno
         if not is_slug(repository_id):
             diagnostics.append(_diag("invalid-repository", "error", path, f"Manifest `{label}` needs an `id` that is a slug: lowercase letters, digits and single hyphens."))
             continue
+        unknown = _unknown_fields(item, REPOSITORY_FIELDS)
+        if unknown:
+            diagnostics.append(
+                _diag(
+                    "unknown-repository-field",
+                    "error",
+                    path,
+                    f"Repository `{repository_id}` has unknown field(s) {unknown}; a repository has only {', '.join(f'`{name}`' for name in REPOSITORY_FIELDS)}.",
+                )
+            )
+            continue
         if repository_id in declared:
             diagnostics.append(_diag("duplicate-repository-id", "error", path, f"Repository `{repository_id}` is declared more than once."))
             continue
@@ -521,6 +547,13 @@ def _remote_problem(remote: Any) -> str | None:
     return "must be an https:// or ssh:// URL or a git@host:path address, never a local path or file: URL."
 
 
+def _unknown_fields(item: Mapping[str, Any], allowed: Iterable[str]) -> str:
+    """The keys of ``item`` outside ``allowed``, quoted and sorted for a message; empty when there are none."""
+
+    unknown = sorted((str(key) for key in item if key not in allowed), key=str.casefold)
+    return ", ".join(f"`{name}`" for name in unknown[:5]) + (" and more" if len(unknown) > 5 else "")
+
+
 def _read_apps(
     value: Any,
     repositories: list[Repository],
@@ -565,6 +598,18 @@ def _read_app(
     """One app, or ``None`` when a field of its own is invalid (the error is recorded)."""
 
     valid = True
+
+    unknown = _unknown_fields(item, APP_FIELDS)
+    if unknown:
+        diagnostics.append(
+            _diag(
+                "unknown-app-field",
+                "error",
+                path,
+                f"App `{app_id}` has unknown field(s) {unknown}; an app has only {', '.join(f'`{name}`' for name in APP_FIELDS)}.",
+            )
+        )
+        valid = False
 
     stack_id = item.get("stack")
     stack = STACKS.get(stack_id) if isinstance(stack_id, str) else None
@@ -626,6 +671,12 @@ def _read_app(
     overrides, capabilities_valid = _read_capabilities(item.get("capabilities"), app_id, stack, path, diagnostics)
     valid = valid and capabilities_valid
 
+    backend = item.get("backend")
+    if backend is not None and not is_slug(backend):
+        diagnostics.append(_diag("invalid-app-backend", "error", path, f"App `{app_id}` `backend` must be the ID of a backend app of this workspace."))
+        backend = None
+        valid = False
+
     if not valid or stack is None or app_path is None:
         return None
     return App(
@@ -638,6 +689,7 @@ def _read_app(
         capability_overrides=overrides,
         status=status,
         generation=generation,
+        backend=backend,
     )
 
 
@@ -705,7 +757,39 @@ def _normalized_app_path(value: str) -> str:
     return value[:-1] if value.endswith("/") and len(value) > 1 else value
 
 
+def _check_backends(apps: list[App], path: Path, diagnostics: list[WorkspaceDiagnostic]) -> None:
+    """An app may name the backend it calls only when its stack calls one, and the backend must be an app of the backend stack."""
+
+    by_id = {app.id: app for app in apps}
+    for app in apps:
+        if app.backend is None:
+            continue
+        if app.stack not in BACKEND_CLIENT_STACKS:
+            diagnostics.append(
+                _diag("invalid-app-backend", "error", path, f"App `{app.id}` has stack `{app.stack}`, which calls no backend, so it cannot name one in `backend`.")
+            )
+            continue
+        target = by_id.get(app.backend)
+        if target is None or target.stack != BACKEND_STACK:
+            diagnostics.append(
+                _diag(
+                    "unknown-app-backend",
+                    "error",
+                    path,
+                    f"App `{app.id}` names `{app.backend}` as its backend, but the workspace declares no app of stack `{BACKEND_STACK}` with that ID.",
+                )
+            )
+
+
 def _check_path_conflicts(apps: list[App], path: Path, diagnostics: list[WorkspaceDiagnostic]) -> None:
+    """Report two active apps of one repository that share or overlap a path.
+
+    Retiring an app keeps its ID forever but frees its path: the ID is what features and history refer to, and a path is
+    only where the code sits. A retired app's directory stays on disk untouched, and a new scaffolded app refuses a
+    directory that exists, so a new app takes the path only when its code is elsewhere or the directory was removed.
+    """
+
+    apps = [app for app in apps if app.status != "retired"]
     for index, app in enumerate(apps):
         left = _path_key(app.path)
         for other in apps[index + 1 :]:

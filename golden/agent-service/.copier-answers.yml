@@ -7,11 +7,12 @@ app_package_path: com/example/prismgolden/agentservice
 app_package_segment: agentservice
 app_path: agent-service
 audience: ''
+backend_base_url: http://localhost:8080
 ci_paths:
 - agent-service/**
 - shared/api-contracts/**
 - .github/workflows/agent-service.yml
-ci_workflow_name: Agent Service CI
+ci_workflow_name: Agent Service CI (agent-service)
 package_identifier: com.example.prismgolden
 port: 8200
 prism_layer: python-agent-service

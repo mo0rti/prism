@@ -1,0 +1,6 @@
+interface:
+  display_name: "Feature Scope"
+  short_description: "Edit the app scope of one feature"
+  default_prompt: "Use $feature-scope F-XXX to add or remove apps in one feature's scope and record the change."
+policy:
+  allow_implicit_invocation: false

@@ -118,17 +118,26 @@ class _LiveGraph:
 
         try:
             self._validate_inputs()
-            fingerprint = self._fingerprint_fn(self.root)
-            with self._lock:
-                if fingerprint == self.fingerprint and self.valid:
+            for _attempt in range(3):
+                published = self.version
+                fingerprint = self._fingerprint_fn(self.root)
+                with self._lock:
+                    if fingerprint == self.fingerprint and self.valid:
+                        return
+                    if self.version != published and self.valid and _attempt < 2:
+                        # Another refresh published a snapshot while this one scanned or waited for the
+                        # lock, so this fingerprint may be older than that snapshot. Storing it would make
+                        # the next poll rebuild an unchanged workspace and announce a spurious version.
+                        # Scan again and compare against the newer fingerprint.
+                        continue
+                    self._validate_inputs()
+                    envelope = self._build_graph(self.root)
+                    self._validate_inputs()
+                    self.envelope = envelope
+                    self.fingerprint = fingerprint
+                    self.version += 1
+                    self.valid = True
                     return
-                self._validate_inputs()
-                envelope = self._build_graph(self.root)
-                self._validate_inputs()
-                self.envelope = envelope
-                self.fingerprint = fingerprint
-                self.version += 1
-                self.valid = True
         except Exception:
             # A failed refresh leaves the last known graph intact.  The
             # next shared poll retries.  Mark it unavailable so no stale

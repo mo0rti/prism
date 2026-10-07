@@ -15,6 +15,14 @@ on:
 {%- endfor %}
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# One run per app and branch: a newer push cancels the run it replaces.
+concurrency:
+  group: "{{ app_id }}-{% raw %}${{ github.ref }}{% endraw %}"
+  cancel-in-progress: true
+
 env:
   APP_PATH: {{ app_path | tojson }}
 

@@ -48,7 +48,7 @@ The tasks run on Mac only. `SIMULATOR_NAME` picks the device; without it the new
 
 ## Sign-in And Session
 
-1. The sign-in screen sends `POST /api/dev-identity/token` with the optional email and display name.
+1. The sign-in screen sends `POST /api/dev-identity/token` with an empty body, so the backend signs in its default developer (the Android app does the same).
 2. The view model keeps the returned token in the in-memory `TokenStore` and tells `SessionModel` that a person is signed in, so `RootView` shows the profile screen.
 3. The profile screen calls `GET /api/me` with the token as a bearer header. A 401 clears the token and returns to the sign-in with a notice.
 4. "Sign out" clears the token.

@@ -1,4 +1,4 @@
-name: "Backend CI"
+name: "Backend CI (backend)"
 
 on:
   push:
@@ -17,6 +17,11 @@ on:
 
 permissions:
   contents: read
+
+# One run per app and branch: a newer push cancels the run it replaces.
+concurrency:
+  group: "backend-${{ github.ref }}"
+  cancel-in-progress: true
 
 env:
   APP_PATH: "backend"

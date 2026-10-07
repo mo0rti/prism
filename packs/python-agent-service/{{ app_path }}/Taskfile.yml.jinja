@@ -7,7 +7,7 @@ tasks:
       - uv sync --locked
 
   dev:
-    desc: "Run {{ app_id }} on port {{ port }} with the local development identity (start the backend first with `task backend:dev` or the task of your backend; set AGENT_BACKEND_BASE_URL when its port is not 8080)"
+    desc: "Run {{ app_id }} on port {{ port }} with the local development identity (start the backend first with `task backend:dev` or the task of your backend; this service calls the backend at {{ backend_base_url.rstrip('/') }}; set AGENT_BACKEND_BASE_URL when its port differs)"
     env:
       AGENT_PROFILE: local
     cmds:

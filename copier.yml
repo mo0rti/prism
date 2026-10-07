@@ -12,8 +12,12 @@ _jinja_extensions:
 _skip_if_exists:
   - .env
 
-# Every entry applies to the workspace layer only: an app layer's paths are its own.
+# Every entry applies to the workspace layer only: an app layer's paths are its own, except the first three entries,
+# which restore Copier's own default exclusions (setting `_exclude` replaces them) for both layers.
 _exclude:
+  - "__pycache__"
+  - "*.py[co]"
+  - ".DS_Store"
   - "{% if prism_layer == 'workspace' and 'spring-backend' not in stacks %}.env{% endif %}"
   - "{% if prism_layer == 'workspace' and 'spring-backend' not in stacks %}.env.example{% endif %}"
   - "{% if prism_layer == 'workspace' and 'spring-backend' not in stacks %}docker-compose.yml{% endif %}"
@@ -219,6 +223,22 @@ port:
   default: 0
   when: "{{ prism_layer != 'workspace' }}"
 
+backend_base_url:
+  type: str
+  help: "The address of the backend this app calls during local development: a loopback URL with the backend's port"
+  default: "http://localhost:8080"
+  when: "{{ prism_layer in ['nextjs-web', 'android-compose', 'ios-swiftui', 'python-agent-service'] }}"
+  validator: >-
+    {% if not (backend_base_url | regex_search('^http://(?:localhost|127\\.0\\.0\\.1):[0-9]{2,5}/?\\Z')) %}
+    The backend base URL must be a loopback address with a port, such as http://localhost:8080: the development identity answers loopback requests only.
+    {% endif %}
+
+backend_port:
+  type: int
+  help: "The port of the backend this app calls, read from its base URL"
+  default: "{{ backend_base_url.rstrip('/').split(':')[-1] if backend_base_url is defined else 8080 }}"
+  when: false
+
 app_package_segment:
   type: str
   help: "The app's package segment, derived from its ID"
@@ -256,8 +276,8 @@ app_module_name:
 
 ci_workflow_name:
   type: str
-  help: "The display name of the app's CI workflow"
-  default: "{{ app_name }} CI"
+  help: "The display name of the app's CI workflow, unique per app"
+  default: "{{ app_name ~ ' CI' ~ ('' if app_name == app_id else ' (' ~ app_id ~ ')') }}"
   when: "{{ prism_layer != 'workspace' }}"
 
 ci_paths:

@@ -5,8 +5,13 @@ info:
   description: {{ description | tojson }}
 
 servers:
+{%- for backend in apps if backend.stack == "spring-backend" %}
+  - url: http://localhost:{{ backend.port }}
+    description: {{ (backend.id ~ " (local development)") | tojson }}
+{%- else %}
   - url: http://localhost:8080
     description: Local development
+{%- endfor %}
 
 # Every operation needs a bearer JWT unless it says `security: []`.
 security:

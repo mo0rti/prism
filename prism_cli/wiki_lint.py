@@ -655,7 +655,7 @@ def _lint_feature_blockers(
             )
             if (
                 ui_apps
-                and feature_id not in designs_by_feature
+                and normalize_feature_id(feature_id) not in designs_by_feature
                 and not _has_valid_design_exemption(feature)
             ):
                 apps = ", ".join(ui_apps)
@@ -732,7 +732,8 @@ def _design_pages_by_feature(pages: list[MarkdownPage], wiki_root: Path) -> dict
         if not isinstance(feature_id, str) or not feature_id:
             feature_id = feature_id_from_path(page.path)
         if feature_id:
-            designs.setdefault(feature_id, []).append(page)
+            # `f-012` and `F-012` name one feature, as everywhere else the feature ID is compared.
+            designs.setdefault(normalize_feature_id(feature_id), []).append(page)
     return designs
 
 
@@ -918,7 +919,7 @@ def _lint_history_dates(pages: list[MarkdownPage], wiki_root: Path) -> list[Wiki
 
     diagnostics: list[WikiDiagnostic] = []
     for page in pages:
-        if _is_non_source_page(page.path, wiki_root):
+        if _is_non_source_page(page.path, wiki_root) and not _is_advisory_state_page(page.path, wiki_root):
             continue
         allowed = _record_date_field(page.path, wiki_root)
         for field_name in history_date_fields(page):
@@ -934,6 +935,16 @@ def _lint_history_dates(pages: list[MarkdownPage], wiki_root: Path) -> list[Wiki
                 )
             )
     return diagnostics
+
+
+def _is_advisory_state_page(path: Path, wiki_root: Path) -> bool:
+    """The advisory board and the project foundation: current-state pages that no other lint rule treats as sources."""
+
+    try:
+        relative = _resolve(path).relative_to(_resolve(wiki_root))
+    except ValueError:
+        return False
+    return len(relative.parts) == 2 and relative.parts[0] == "advisory" and relative.name in {"BOARD.md", "PROJECT_FOUNDATION.md"}
 
 
 def _record_date_field(path: Path, wiki_root: Path) -> str | None:

@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
+import org.springframework.core.env.Environment
 import org.springframework.http.MediaType
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.test.context.ActiveProfiles
@@ -43,6 +44,9 @@ class LocalProfileIntegrationTest {
 
     @Autowired
     private lateinit var devIdentityKey: RSAKey
+
+    @Autowired
+    private lateinit var environment: Environment
 
     private fun requestToken(body: String = "{}", vararg processors: RequestPostProcessor): String {
         val request = post("/api/dev-identity/token").contentType(MediaType.APPLICATION_JSON).content(body)
@@ -103,6 +107,11 @@ class LocalProfileIntegrationTest {
         )
         assertEquals(firstId, secondId)
         assertEquals(1, userRepository.findAll().count { it.subject == "dev:${email.lowercase()}" })
+    }
+
+    @Test
+    fun `the server is bound to the loopback interface`() {
+        assertEquals("127.0.0.1", environment.getProperty("server.address"))
     }
 
     @Test

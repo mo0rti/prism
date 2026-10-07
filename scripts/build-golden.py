@@ -10,7 +10,7 @@ generated project contains, and so that CI builds and tests the slices of that c
     python scripts/build-golden.py --check   # fail when golden/ differs from a fresh generation
 
 The output is deterministic. The project identity is fixed by the answers file; the three values
-that differ per run or per machine are replaced by constants (the generation time, and the template
+that differ per run or per machine are replaced by constants (the generation time, the board identity, and the template
 source in the manifest and in each ``.copier-answers.yml``); line endings are LF, so a checkout with
 CRLF (Windows, or ``gradlew.bat``'s ``eol=crlf`` attribute) compares equal; and the local ``.env``
 (ignored by the workspace and never committed) is not part of it. Files are compared and written in
@@ -36,6 +36,8 @@ from prism_cli.cli import DEFAULT_TEMPLATE_URL  # noqa: E402
 GOLDEN = ROOT / "golden"
 ANSWERS = ROOT / "scripts" / "golden-answers.yml"
 FIXED_TIME = "1970-01-01T00:00:00+00:00"
+# The board identity `prism new` generates for the workflow pin; a fixed, well-formed UUID keeps the output deterministic.
+FIXED_BOARD_ID = "00000000-0000-4000-8000-000000000000"
 # Never part of the golden workspace: the local environment file is ignored by the workspace itself.
 LOCAL_ONLY_FILES = {".env"}
 # Folders that building or testing a golden app leaves behind. They are skipped when comparing, so a
@@ -73,6 +75,7 @@ def normalize(relative: str, data: bytes) -> bytes:
         text = data.decode("utf-8")
         text = replace_once(text, r"^  template_source: .*$", f"  template_source: {DEFAULT_TEMPLATE_URL}", "template_source")
         text = replace_once(text, r"^  generated_at: .*$", f"  generated_at: '{FIXED_TIME}'", "generated_at")
+        text = replace_once(text, r"^  board_id: .*$", f"  board_id: {FIXED_BOARD_ID}", "board_id")
         return text.encode("utf-8")
     return data
 

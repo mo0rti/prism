@@ -8,7 +8,7 @@ You need Node {{ versions.node }} and a backend that serves `shared/api-contract
 
 ```bash
 cd {{ app_path }}
-cp .env.example .env.local    # API_BASE_URL, the backend's address
+cp .env.example .env.local    # API_BASE_URL, the backend's address ({{ backend_base_url.rstrip('/') }})
 npm ci
 npm run dev                   # http://localhost:{{ port }}
 ```

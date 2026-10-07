@@ -11,15 +11,22 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class SessionStore {
     private val token = MutableStateFlow<String?>(null)
+    private val ended = MutableStateFlow(false)
 
     /** The current access token, or `null` while signed out. */
     val accessToken: StateFlow<String?> = token.asStateFlow()
 
+    /** `true` after the backend rejected the token and so ended the session; the sign-in screen says so until the next sign-in. */
+    val sessionEnded: StateFlow<Boolean> = ended.asStateFlow()
+
     fun open(accessToken: String) {
+        ended.value = false
         token.value = accessToken
     }
 
-    fun close() {
+    /** Closes the session. A person signing out is not an ended session; a rejected token is (`sessionEnded = true`). */
+    fun close(sessionEnded: Boolean = false) {
+        ended.value = sessionEnded
         token.value = null
     }
 

@@ -103,7 +103,7 @@ Invoke a workflow operation by name:
 | PO | `po-intake [folder]`, `ingest [folder]`, `po-clarify`, `po-specify [F-XXX]`, `po-handoff [F-XXX]` |
 | Designer | `design-intake [F-XXX] [folder]`, `design-clarify`, `design-start [F-XXX]`, `design-handoff [F-XXX]` |
 | Developer | `prep-sprint`, `dev-clarify`, `dev-start [F-XXX]`, `dev-done [F-XXX]` |
-| Lifecycle | `feature-reopen [F-XXX] [specified\|in-design\|in-dev]` |
+| Lifecycle | `feature-reopen [F-XXX] [specified\|in-design\|in-dev]`, `feature-scope [F-XXX]` |
 | Board | `board-review [F-XXX]` |
 | Shared | `feature-status`, `ask [F-XXX] "question" --to po\|designer\|dev`, `audit-feature [F-XXX]`, `lint-wiki`, `wiki-show F-XXX`, `wiki-blockers`, `wiki-query "text"`, `wiki-owner po\|designer\|dev\|none`, `wiki-app <app-id>`, `verify-pages <page>...` |
 
@@ -131,7 +131,7 @@ task backend:dev
 # Start web on port 3000 (its "Local development sign-in" needs a backend running under its `local` profile)
 task web:dev
 
-# Start agent-service on port 8200 (its dev identity verifies the tokens of a backend running under its `local` profile; set AGENT_BACKEND_BASE_URL when that backend is not on port 8080)
+# Start agent-service on port 8200 (its dev identity verifies the tokens of a backend running under its `local` profile; its README names the backend address it was generated for, and AGENT_BACKEND_BASE_URL changes it)
 task agent-service:dev
 
 # Run mobile-android on an emulator or a USB device (its "Local development sign-in" needs a backend running under its `local` profile,

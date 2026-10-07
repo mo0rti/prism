@@ -40,12 +40,12 @@ describe("generated API client", () => {
     expect(request.headers.get("authorization")).toBeNull()
   })
 
-  it("defaults to the first backend's port", async () => {
+  it("defaults to the backend this app was generated for", async () => {
     vi.stubEnv("API_BASE_URL", "")
     const backend = vi.fn<Fetcher>(async () => Response.json(profile))
 
     await getCurrentUser("token-123", backend)
 
-    expect(backend.mock.calls[0][0].url).toBe("http://localhost:8080/api/me")
+    expect(backend.mock.calls[0][0].url).toBe("{{ backend_base_url.rstrip('/') }}/api/me")
   })
 })

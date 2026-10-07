@@ -11,6 +11,8 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 from prism_cli import cli as cli_module
 from prism_cli import ui as ui_module
 from prism_cli.cli import (
@@ -676,50 +678,112 @@ class ValidationTargetDetectionTests(unittest.TestCase):
 
 
 class GeneratedProjectStructureTests(unittest.TestCase):
+    """The structure of a generated project comes from its manifest: each scaffolded app needs its directory, answers file and workflow."""
+
+    @staticmethod
+    def project(root: Path, apps: list[dict] | None = None, *, workflows: bool = True, answers: bool = True) -> None:
+        """A minimal generated project whose manifest declares ``apps`` (each scaffolded), with the files each one needs."""
+
+        for name in ("README.md", "AGENTS.md", "Taskfile.yml"):
+            (root / name).write_text("", encoding="utf-8")
+        (root / "knowledge" / "wiki").mkdir(parents=True)
+        (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
+        (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
+        entries = [{"repository": "workspace", "generation": "scaffolded", **app} for app in apps or []]
+        data = {"schema_version": 2, "project": {"name": "Prism App"}, "apps": entries}
+        (root / MANIFEST_FILE).write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        (root / ".github" / "workflows").mkdir(parents=True)
+        for app in entries:
+            (root / app["path"]).mkdir(parents=True)
+            if answers:
+                (root / app["path"] / ".copier-answers.yml").write_text("", encoding="utf-8")
+            if workflows:
+                (root / ".github" / "workflows" / (app["id"] + ".yml")).write_text("", encoding="utf-8")
+
     def test_reports_missing_required_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            errors, warnings, platforms = validate_generated_project_structure(Path(temp_dir))
+            errors, warnings, apps = validate_generated_project_structure(Path(temp_dir))
         self.assertTrue(errors)
         self.assertIn("Missing required generated-project file: README.md", errors)
-        self.assertIn("No recognized platform directories were detected.", warnings)
-        self.assertEqual([], platforms)
+        self.assertIn("Missing required generated-project file: prism.workspace.yml", errors)
+        self.assertIn("No scaffolded apps are declared in prism.workspace.yml.", warnings)
+        self.assertEqual([], apps)
 
     def test_detects_backend_project_structure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "README.md").write_text("", encoding="utf-8")
-            (root / "AGENTS.md").write_text("", encoding="utf-8")
-            (root / "Taskfile.yml").write_text("", encoding="utf-8")
-            (root / "knowledge" / "wiki").mkdir(parents=True)
-            (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
-            (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
-            (root / "backend").mkdir()
-            (root / ".github" / "workflows").mkdir(parents=True)
-            (root / ".github" / "workflows" / "backend.yml").write_text("", encoding="utf-8")
+            self.project(root, [{"id": "backend", "stack": "spring-backend", "path": "backend"}])
 
-            errors, warnings, platforms = validate_generated_project_structure(root)
+            errors, warnings, apps = validate_generated_project_structure(root)
 
         self.assertEqual([], errors)
         self.assertEqual([], warnings)
-        self.assertEqual(["backend"], platforms)
+        self.assertEqual(["backend (spring-backend)"], apps)
 
     def test_web_projects_need_no_hosting_docs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "README.md").write_text("", encoding="utf-8")
-            (root / "AGENTS.md").write_text("", encoding="utf-8")
-            (root / "Taskfile.yml").write_text("", encoding="utf-8")
-            (root / "knowledge" / "wiki").mkdir(parents=True)
-            (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
-            (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
-            (root / "web").mkdir()
-            (root / ".github" / "workflows").mkdir(parents=True)
-            (root / ".github" / "workflows" / "web.yml").write_text("", encoding="utf-8")
+            self.project(root, [{"id": "web", "stack": "nextjs-web", "path": "web"}])
 
-            errors, _warnings, platforms = validate_generated_project_structure(root)
+            errors, _warnings, apps = validate_generated_project_structure(root)
 
-        self.assertIn("web", platforms)
+        self.assertIn("web (nextjs-web)", apps)
         self.assertEqual([], errors)
+
+    def test_an_app_with_another_id_and_path_is_checked_by_its_manifest_entry(self) -> None:
+        apps = [
+            {"id": "backend", "stack": "spring-backend", "path": "backend"},
+            {"id": "customer-android", "stack": "android-compose", "path": "apps/customer-android"},
+            {"id": "import-helper", "stack": "python-agent-service", "path": "services/import-helper"},
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.project(root, apps)
+            self.assertEqual(([], []), validate_generated_project_structure(root)[:2])
+            (root / ".github" / "workflows" / "customer-android.yml").unlink()
+            (root / "services" / "import-helper" / ".copier-answers.yml").unlink()
+            errors, _warnings, found = validate_generated_project_structure(root)
+
+        self.assertEqual(
+            [
+                "Missing answers file for scaffolded app `import-helper`: services/import-helper/.copier-answers.yml",
+                "Missing workflow for scaffolded app `customer-android`: .github/workflows/customer-android.yml",
+            ],
+            sorted(errors),
+        )
+        self.assertEqual(["backend (spring-backend)", "customer-android (android-compose)", "import-helper (python-agent-service)"], found)
+
+    def test_a_directory_without_a_manifest_entry_is_not_an_app_and_a_registered_or_retired_app_needs_no_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.project(root, [{"id": "backend", "stack": "spring-backend", "path": "backend"}])
+            (root / "mobile-android").mkdir()  # a folder the manifest does not declare
+            data = yaml.safe_load((root / MANIFEST_FILE).read_text(encoding="utf-8"))
+            data["apps"].append({"id": "partner", "stack": "other", "path": "partner", "capabilities": {"has-ui": False, "serves-api": False}})
+            data["apps"].append({"id": "old-web", "stack": "nextjs-web", "path": "old-web", "generation": "scaffolded", "status": "retired"})
+            (root / "partner").mkdir()
+            (root / "old-web").mkdir()
+            (root / MANIFEST_FILE).write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+            errors, _warnings, apps = validate_generated_project_structure(root)
+
+        self.assertEqual(["backend (spring-backend)"], apps)
+        self.assertEqual([], errors)
+
+    def test_a_missing_app_directory_and_a_broken_manifest_are_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.project(root, [{"id": "backend", "stack": "spring-backend", "path": "backend"}])
+            (root / "backend" / ".copier-answers.yml").unlink()
+            (root / "backend").rmdir()
+            errors, _warnings, _apps = validate_generated_project_structure(root)
+            self.assertEqual(1, len([item for item in errors if "`backend`" in item]), errors)
+
+            data = yaml.safe_load((root / MANIFEST_FILE).read_text(encoding="utf-8"))
+            data["apps"][0]["satus"] = "retired"
+            (root / MANIFEST_FILE).write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+            errors, _warnings, _apps = validate_generated_project_structure(root)
+            self.assertTrue(any("`satus`" in item for item in errors), errors)
 
 
 class WorkspaceManifestTests(unittest.TestCase):

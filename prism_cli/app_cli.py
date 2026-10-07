@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 
 from prism_cli.app_model import (
+    BACKEND_CLIENT_STACKS,
     CAPABILITIES,
     CAPABILITY_HAS_UI,
     CAPABILITY_SERVES_API,
@@ -34,6 +35,7 @@ from prism_cli.app_model import (
 )
 from prism_cli.packs import (
     allocate_port,
+    backend_port_in_workspace,
     scaffold_collisions,
     stack_maturity,
     taken_ports,
@@ -82,6 +84,11 @@ def register_commands(subparsers) -> None:
     add_parser.add_argument("--remote", help="Canonical remote URL; allowed only when --repository names a repository the manifest does not declare yet.")
     add_parser.add_argument("--path", dest="app_path", metavar="PATH", help="App directory relative to its repository. Defaults to the stack's default path, else the app ID.")
     add_parser.add_argument("--audience", help="Free-text audience, for example B2C.")
+    add_parser.add_argument(
+        "--backend",
+        metavar="APP_ID",
+        help="The backend app this app calls (a web, Android, iOS or agent-service app). Without it a generated app calls the first backend Prism scaffolded.",
+    )
     add_parser.add_argument("--has-ui", choices=CAPABILITY_CHOICES, help="Override the stack's has-ui capability; required for an `other` app.")
     add_parser.add_argument("--serves-api", choices=CAPABILITY_CHOICES, help="Override the stack's serves-api capability; required for an `other` app.")
     add_parser.add_argument(
@@ -180,6 +187,7 @@ def plan_app_add(
     audience: str | None = None,
     capabilities: dict[str, bool | str] | None = None,
     scaffold: bool = False,
+    backend: str | None = None,
 ) -> dict[str, Any]:
     """The exact manifest change that registers one app. Nothing is written.
 
@@ -222,6 +230,8 @@ def plan_app_add(
         app_entry = {"id": app_id, "name": name if name is not None else app_id, "stack": stack, "repository": repository_id, "path": app_path}
         if audience is not None:
             app_entry["audience"] = audience
+        if backend is not None:
+            app_entry["backend"] = backend
         if capabilities:
             app_entry["capabilities"] = {key: capabilities[key] for key in CAPABILITIES if key in capabilities}
         if scaffold:
@@ -321,16 +331,18 @@ def _plan_scaffold(
         conflicts.append("Scaffolding needs the workspace to be its own git repository, so the workspace layer can be updated against its last commit and the work stays on a branch.")
     elif repo_state["is_dirty"]:
         conflicts.append("Scaffolding needs a clean git working tree. Commit or stash your changes, then retry.")
-    apps = [{"id": app.id, "stack": app.stack, "path": app.path, "generation": app.generation} for app in model.apps]
+    apps = [{"id": app.id, "stack": app.stack, "path": app.path, "generation": app.generation, "backend": app.backend} for app in model.apps]
     conflicts.extend(validate_scaffold(apps, only=[app_entry["id"]]))
     conflicts.extend(scaffold_collisions(workspace, app_entry))
     existing = [app for app in apps if app["id"] != app_entry["id"]]
     port = allocate_port(app_entry["stack"], taken_ports(workspace, existing))
     package = f"{answers['package_identifier']}.{app_entry['id'].replace('-', '')}"
+    backend_port = backend_port_in_workspace(workspace, app_entry, apps) if app_entry["stack"] in BACKEND_CLIENT_STACKS else None
     plan = {
         "stack": app_entry["stack"],
         "path": app_entry["path"],
         "port": port,
+        "backend_port": backend_port,
         "package": package,
         "template": src_path,
         "ref": answers.get("_commit"),
@@ -342,6 +354,8 @@ def _plan_scaffold(
         + (f" on port {port}" if port else "")
         + f", package `{package}`, from {src_path} at {answers.get('_commit')}."
     )
+    if backend_port is not None:
+        notes.append(f"It calls the backend at `http://localhost:{backend_port}` (`backend_base_url` in its answers file).")
     notes.append(f"With --apply it works on the branch `{plan['branch']}`: one commit for the workspace layer, one for the app and the manifest.")
     return plan
 
@@ -588,6 +602,7 @@ def cmd_app_add(args: argparse.Namespace) -> int:
             audience=args.audience,
             capabilities=_capabilities_from_args(args),
             scaffold=args.scaffold,
+            backend=args.backend,
         )
     except (OSError, ValueError) as exc:
         _text(f"App registration failed: {exc}", file=sys.stderr)

@@ -351,9 +351,13 @@ jobs:
           python -m pip install --upgrade pip .
           brew install xcodegen
 
-      # The runner's Xcode must be the pinned baseline or newer (packs/versions.yml).
-      - name: Check the Xcode baseline
-        run: python scripts/read-pins.py ios-swiftui --check-xcode
+      # The runner image holds several Xcode versions: select the pinned one (packs/versions.yml) for every later step,
+      # then check that it is the one in use.
+      - name: Select and check the pinned Xcode
+        run: |
+          DEVELOPER_DIR="$(python scripts/read-pins.py ios-swiftui --select-xcode)"
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          DEVELOPER_DIR="$DEVELOPER_DIR" python scripts/read-pins.py ios-swiftui --check-xcode
 
       - name: Generate iOS Validation Sample (two iOS apps)
         shell: bash

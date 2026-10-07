@@ -4,7 +4,7 @@
 
 ## Run it
 
-You need a Mac with Xcode {{ versions.xcode }} or newer, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) and a backend that serves `shared/api-contracts/openapi.yml`. With the `spring-backend` pack, start the backend under its `local` profile (`task db-up`, then `task <backend-app-id>:dev`, which is `task backend:dev` for the default app), then:
+You need a Mac with Xcode {{ versions.xcode }} (CI builds with exactly that version; a newer one usually works locally), [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) and a backend that serves `shared/api-contracts/openapi.yml`. With the `spring-backend` pack, start the backend under its `local` profile (`task db-up`, then `task <backend-app-id>:dev`, which is `task backend:dev` for the default app), then:
 
 ```bash
 cd {{ app_path }}
@@ -39,11 +39,11 @@ CI runs the same steps on a macOS runner (`.github/workflows/{{ app_id }}.yml`):
 ## What the dev identity is, and is not
 
 - The backend offers `POST /api/dev-identity/token` only under its `local` profile and only to requests from its own machine. Elsewhere it answers 404, and the sign-in here reports that the backend has no local development sign-in.
-- **It works in the simulator only.** The simulator shares the Mac's network, so `http://localhost:8080` reaches a backend on the Mac as loopback. A physical device reaches the Mac over the network, is not loopback, and gets a 403 that the app explains. A device build needs your identity provider.
+- **It works in the simulator only.** The simulator shares the Mac's network, so `{{ backend_base_url.rstrip('/') }}` reaches a backend on the Mac as loopback. A physical device reaches the Mac over the network, is not loopback, and gets a 403 that the app explains. A device build needs your identity provider.
 - The token lives in memory only and is never logged; the Keychain is the place for a real provider's tokens.
 - It is **not complete authentication**: it proves nothing about who the person is. Replace it with your identity provider before anything ships. The real provider, the authorization policy, the secrets and the release are yours; the `ios-conventions`, `ios-contract-alignment` and `security-auth` skills describe the replacement.
 - `audience` is display text. No screen, check or permission reads it, and a label never enforces authorization. Use a separate app when audiences differ in deployment or security boundary.
 
 ## Versions and the backend address
 
-Swift, Xcode and the iOS deployment target are pinned in `packs/versions.yml` of the Prism template, and `project.yml` follows those pins. `API_BASE_URL` is a build setting in `project.yml`: Debug is `http://localhost:8080`, and Release is empty until you set your deployed backend (HTTPS).
+Swift, Xcode and the iOS deployment target are pinned in `packs/versions.yml` of the Prism template, and `project.yml` follows those pins. `API_BASE_URL` is a build setting in `project.yml`: Debug is `{{ backend_base_url.rstrip('/') }}` (the backend this app was generated for), and Release is empty until you set your deployed backend (HTTPS).
