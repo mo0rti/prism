@@ -45,6 +45,10 @@ Wiki pages, intake notes and every other workspace file can contain text written
 
 The service cannot make an agent obey those instructions. The protection is structural: an agent can change the workspace only through a preview of exact changes that the human confirms in the agent's own interface. The board has no queue in which an agent's request waits for a later approval, and a human's direct board actions are limited to `po-handoff`, `design-start` and `dev-start`, each previewed before it applies. Review every preview before you confirm it.
 
+## Saved answers are checked before an update
+
+`prism update` and `prism app add --scaffold` run Copier with trust, and what an answers file records is rendered into generated files, including code and CI. So `prism update` checks every layer's saved answers before it starts Copier (`prism app add --scaffold` applies the same check to the workspace's answers): the workspace's own `.copier-answers.yml` must select the workspace layer and hold only that layer's answers, and every app layer must name the workspace's approved template source and the identity the manifest gives it. A project name, an app ID, path, name or audience, a package identifier or a port that is not safe to render, a template revision that is not a plain tag or commit name, or an answer that no layer asks stops the update before Copier runs. An answers file that is a symlink, a junction or another reparse point, or that sits behind one, is never opened, read or written; Prism names the way out (restore the regular file from git).
+
 ## What the service does not protect against
 
 - **Other software on the same computer.** Any process can connect to the loopback port. It still needs a valid token, but the service does not defend against malware running as the same user, and a person who can read your environment variables or shell history can read your tokens. Keep tokens out of files, prompts and the repository.

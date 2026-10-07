@@ -6,7 +6,7 @@ globs: "mobile-ios/**"
 # iOS App - iOS (SwiftUI)
 
 ## Stack
-- Swift 6.0 (strict concurrency), SwiftUI, Observation, async/await, iOS 17.0+, Xcode 26.0
+- Swift 6.0 (strict concurrency), SwiftUI, Observation, async/await, iOS 17.0+, Xcode 26.6
 - `URLSession` API client of `shared/api-contracts/openapi.yml`, hand-written and kept to the contract's paths
 - XCTest unit tests and one XCUITest; XcodeGen builds the Xcode project from `project.yml` (Mac only)
 - Hosting and store releases are the project owner's choice (see the `deployment` skill, `.agents/skills/deployment/SKILL.md`)

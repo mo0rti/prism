@@ -15,7 +15,7 @@ import yaml
 from prism_cli import __version__
 from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, normalize_manifest
 from prism_cli.packs import WORKSPACE_LAYER
-from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, _VERSION_PATTERN
+from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, _VERSION_PATTERN, confined_answers_file
 
 
 _PROVENANCE_KEYS = {
@@ -67,10 +67,13 @@ def prepare_manifest_update(project_path: Path, old_revision: str) -> ManifestUp
         project_path / MANIFEST_FILE, "workspace"
     )
 
+    answers_path, refusal = confined_answers_file(project_path / COPIER_ANSWERS_FILE)
+    if answers_path is None:
+        raise ManifestUpdateError(refusal or f"{COPIER_ANSWERS_FILE} cannot be used.")
     try:
         with tempfile.TemporaryDirectory(prefix="prism-manifest-render-") as temp_dir:
             isolated_project = Path(temp_dir)
-            shutil.copyfile(project_path / COPIER_ANSWERS_FILE, isolated_project / COPIER_ANSWERS_FILE)
+            shutil.copyfile(answers_path, isolated_project / COPIER_ANSWERS_FILE)
             with Worker(
                 dst_path=isolated_project,
                 data={"_prism_cli_version": __version__},

@@ -268,7 +268,7 @@ def build_board_checks(root: Path, port: int | None = None) -> list[BoardCheck]:
     if not workflow:
         # A generated project needs the explicit upgrade; install refuses it.
         answers = workspace / COPIER_ANSWERS_FILE
-        generated = bool(manifest and isinstance(manifest.data.get("generated_by"), dict)) or answers.exists() or answers.is_symlink()
+        generated = bool(manifest and isinstance(manifest.data.get("generated_by"), dict)) or answers.is_symlink() or answers.exists()
         command = "upgrade" if generated else "install"
         return [
             BoardCheck(

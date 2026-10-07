@@ -32,6 +32,7 @@ from prism_cli.app_model import (
     resolve_local_repositories,
 )
 from prism_cli.wiki_model import request_fact
+from prism_cli.wiki_paths import REPARSE, resolve_confined
 
 
 MANIFEST_FILE = "prism.workspace.yml"
@@ -545,7 +546,31 @@ def _current_timestamp() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+def confined_answers_file(path: Path) -> tuple[Path | None, str | None]:
+    """The checked path of an answers file as ``(path, None)``, or ``(None, message)`` when it must not be opened.
+
+    The check is the one every other answers file goes through: the path must be a plain name in its own folder,
+    and a symlink, a junction or any other reparse point at its place is refused. It uses `lstat` on the path
+    itself and never follows a link, so a planted link to a file or a network share elsewhere is not touched.
+    The message names the way out.
+    """
+
+    folder = path.parent
+    resolution = resolve_confined(folder, folder, path.name, percent_encoded=False)
+    if resolution.ok and resolution.path is not None:
+        return resolution.path, None
+    reason = "is a symlink or a reparse point" if resolution.kind == REPARSE else f"is refused ({str(resolution.problem).rstrip('.')})"
+    return None, (
+        f"`{path.name}` {reason}. Prism reads and writes answers only in a regular file in the workspace folder and never follows a link. "
+        "Replace it with the regular file that Copier wrote (restore it from git), then retry."
+    )
+
+
 def _read_answers(path: Path) -> tuple[dict[str, Any], bool, list[WorkspaceDiagnostic]]:
+    checked, refusal = confined_answers_file(path)
+    if checked is None:
+        return {}, True, [_diag("unsafe-copier-answers", "error", path, refusal or f"{COPIER_ANSWERS_FILE} cannot be used.")]
+    path = checked
     if not path.exists():
         return {}, False, []
     try:

@@ -66,6 +66,8 @@ from prism_cli.packs import (
     scaffoldable_stacks,
     validate_scaffold,
     workflow_path,
+    workspace_answers_problems,
+    workspace_apps_problems,
     workspace_data,
 )
 from prism_cli.presets import (
@@ -82,6 +84,7 @@ from prism_cli.status import BoardCheck, build_board_checks, build_status
 from prism_cli.wiki_paths import resolve_confined
 from prism_cli.workspace import (
     MANIFEST_FILE,
+    confined_answers_file,
     detect_workspace_kind,
     inspect_workspace,
     write_workspace_manifest,
@@ -1215,7 +1218,11 @@ def cmd_update(args: argparse.Namespace) -> int:
         return EXIT_VALIDATION
 
     answers_path = project_path / COPIER_ANSWERS_FILE
-    answers_data = load_copier_answers(answers_path)
+    try:
+        answers_data = load_copier_answers(answers_path)
+    except UpdateSafetyError as exc:
+        print(error(str(exc)), file=sys.stderr)
+        return EXIT_VALIDATION
     if answers_data is None:
         print(error(f"Missing {COPIER_ANSWERS_FILE} in generated project: {project_path}"), file=sys.stderr)
         print(info("Generate the project with the Prism CLI first, or add a valid Copier answers file before updating."), file=sys.stderr)
@@ -1234,7 +1241,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     src_path = answers_data.get("_src_path")
     if not ensure_template_trust(str(src_path), getattr(args, "trust_template", False)):
         return EXIT_VALIDATION
-    layers, layer_problems = plan_update_layers(project_path)
+    layers, layer_problems = plan_update_layers(project_path, answers_data)
     if layer_problems:
         for message in layer_problems:
             print(error(message), file=sys.stderr)
@@ -1543,8 +1550,15 @@ def load_answers_file(path_str: str) -> dict[str, Any] | None:
 
 
 def load_copier_answers(path: Path) -> dict[str, Any] | None:
+    """The saved answers of a layer, or ``None`` when the file is missing or unreadable.
+
+    The path is confined before anything else touches it, so a link planted at its place is never opened, not even to
+    ask whether it exists: a symlink or a reparse point raises `UpdateSafetyError` with the way out.
+    """
+
+    checked = confined_answers_path(path)
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        with checked.open("r", encoding="utf-8") as handle:
             data = yaml.safe_load(handle) or {}
     except (OSError, UnicodeError):
         return None
@@ -2019,7 +2033,11 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, 
                     print(panel("Copier output", list(result["tail"])), file=sys.stderr)
                 return EXIT_COPIER
             event_count += result["event_count"]
-            ensure_copier_answers_file(dest_path, template_path, data, answers_relpath=layer.answers_file)
+            try:
+                ensure_copier_answers_file(dest_path, template_path, data, answers_relpath=layer.answers_file)
+            except UpdateSafetyError as exc:
+                print(error(str(exc)), file=sys.stderr)
+                return EXIT_VALIDATION
     manifest_answers = {key: answers[key] for key in ("project_name", "project_slug", "package_identifier", "description") if key in answers}
     if not refresh_workspace_manifest(dest_path, template_path, manifest_answers, apps=apps, repositories=repositories):
         return EXIT_VALIDATION
@@ -2200,10 +2218,14 @@ def run_copier_generation_process(command: list[str], cwd: Path, *, capture_stde
     return {"returncode": returncode, "event_count": event_count, "tail": list(output_tail)}
 
 
-def plan_update_layers(project_path: Path) -> tuple[list[Layer], list[str]]:
+def plan_update_layers(project_path: Path, workspace_answers: dict[str, Any] | None = None) -> tuple[list[Layer], list[str]]:
     """The layers `prism update` brings along: the workspace layer, then each active scaffolded app that has a pack.
 
-    A scaffolded app whose own answers file is missing cannot be updated; that is a problem, reported before anything changes.
+    Every layer's saved answers are validated here, before any Copier call: the workspace layer's file must select
+    the workspace layer and hold only safe values, and each app layer's file must come from the same approved source
+    with the identity the manifest and the workspace give it. A scaffolded app whose own answers file is missing
+    cannot be updated; that is a problem too, reported before anything changes. ``workspace_answers`` is the object the
+    update goes on to use (read once by the caller); without it, the file is read here.
     """
 
     layers = [Layer(name=WORKSPACE_LAYER, answers_file=COPIER_ANSWERS_FILE)]
@@ -2213,7 +2235,22 @@ def plan_update_layers(project_path: Path) -> tuple[list[Layer], list[str]]:
     except ManifestUpdateError as exc:
         return layers, [f"Unable to read {MANIFEST_FILE}: {exc}"]
     model, _diagnostics = normalize_manifest(manifest, path=project_path / MANIFEST_FILE)
-    workspace_answers = load_copier_answers(project_path / COPIER_ANSWERS_FILE) or {}
+    if workspace_answers is None:
+        try:
+            workspace_answers = load_copier_answers(project_path / COPIER_ANSWERS_FILE)
+        except UpdateSafetyError as exc:
+            return layers, [str(exc)]
+    if not workspace_answers:
+        return layers, [f"The workspace's {COPIER_ANSWERS_FILE} is missing or unreadable."]
+    workspace_problems = workspace_answers_problems(workspace_answers)
+    try:
+        # The update goes on to give Copier the apps of the manifest, so those are rendered into files too.
+        manifest_layer = workspace_layer_data_from_manifest(project_path)
+        workspace_problems.extend(f"The manifest's apps: {problem}" for problem in workspace_apps_problems(manifest_layer["stacks"], manifest_layer["apps"]))
+    except ManifestUpdateError as exc:
+        workspace_problems.append(f"Unable to read {MANIFEST_FILE}: {exc}")
+    if workspace_problems:
+        return layers, workspace_problems
     approved_source = workspace_answers.get("_src_path")
     for app in model.workspace_apps(active_only=True):
         if not app.scaffolded or not has_pack(app.stack):
@@ -2271,7 +2308,7 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
     src_path = str(answers_data["_src_path"])
     manifest_plan = None
     print(section("Updating"))
-    layers, problems = plan_update_layers(project_path)
+    layers, problems = plan_update_layers(project_path, answers_data)
     if problems:
         for message in problems:
             print(error(message), file=sys.stderr)
@@ -2372,6 +2409,15 @@ class UpdateSafetyError(ValueError):
     """A path or a recorded answer that an update must not follow or trust."""
 
 
+def confined_answers_path(path: Path) -> Path:
+    """The checked path of an answers file, or an `UpdateSafetyError` that names the way out when it is a link or leaves its folder."""
+
+    checked, refusal = confined_answers_file(path)
+    if checked is None:
+        raise UpdateSafetyError(refusal or f"{path.name} cannot be used.")
+    return checked
+
+
 def confined_project_path(project_path: Path, relative: str) -> Path:
     """The path of `relative` below the project, or an `UpdateSafetyError` when a component is a symlink or a reparse point.
 
@@ -2428,6 +2474,8 @@ def update_layer(
     temp_answers_path: Path | None = None
     try:
         if strategy == "update":
+            # Copier reads this file itself, so the path is confirmed to be a plain file right before it runs.
+            confined_project_path(project_path, layer.answers_file)
             command = [sys.executable, "-m", "copier", "update", "--trust", "--defaults", "--conflict", "inline"]
             command.extend(["--vcs-ref", manifest_plan.target_ref, "--answers-file", layer.answers_file])
             if layer.is_workspace:
@@ -2460,8 +2508,15 @@ def update_layer(
             print(info("If this project was generated from the local incubation template, retry with `prism update --strategy recopy`."), file=sys.stderr)
         return LayerResult(layer, "failed", detail=f"Copier exited with {completed.returncode}")
 
+    try:
+        if layer.is_workspace:
+            ensure_copier_answers_file(project_path, src_path, {})
+        elif strategy == "recopy":
+            ensure_copier_answers_file(project_path, src_path, {}, answers_relpath=layer.answers_file)
+    except UpdateSafetyError as exc:
+        print(error(str(exc)), file=sys.stderr)
+        return LayerResult(layer, "failed", detail=str(exc))
     if layer.is_workspace:
-        ensure_copier_answers_file(project_path, src_path, {})
         if not refresh_workspace_manifest(
             project_path,
             src_path,
@@ -2472,8 +2527,6 @@ def update_layer(
             repositories=recorded_repositories,
         ):
             return LayerResult(layer, "failed", detail="the manifest could not be written")
-    elif strategy == "recopy":
-        ensure_copier_answers_file(project_path, src_path, {}, answers_relpath=layer.answers_file)
 
     try:
         conflicts = scan_conflicts(project_path)
@@ -2561,9 +2614,15 @@ def scaffold_app(
     """
 
     problems: list[str] = []
-    answers = load_copier_answers(workspace / COPIER_ANSWERS_FILE)
+    try:
+        answers = load_copier_answers(workspace / COPIER_ANSWERS_FILE)
+    except UpdateSafetyError as exc:
+        return {"status": "conflict", "conflicts": [str(exc)]}
     if answers is None:
         return {"status": "conflict", "conflicts": [f"The workspace's {COPIER_ANSWERS_FILE} is missing or unreadable."]}
+    saved_problems = workspace_answers_problems(answers)
+    if saved_problems:
+        return {"status": "conflict", "conflicts": saved_problems}
     src_path = str(answers["_src_path"])
     ref = answers.get("_commit")
     if not has_trustworthy_template_baseline(src_path, answers):
@@ -2642,7 +2701,8 @@ def scaffold_app(
 
 
 def ensure_copier_answers_file(dest_path: Path, template_path: str, answers: dict[str, Any], *, answers_relpath: str = COPIER_ANSWERS_FILE) -> None:
-    answers_path = dest_path / answers_relpath
+    # Confined first: a link at the place of an answers file is neither read nor written through.
+    answers_path = confined_project_path(dest_path, answers_relpath)
     if is_remote_template(template_path) and answers_path.exists():
         # Copier recorded the template and its revision itself. Its rendering of this file is what a later
         # `copier update` compares against, so the file stays exactly as Copier wrote it.
@@ -2677,7 +2737,11 @@ def refresh_workspace_manifest(
     """Record known generation metadata after an explicit copy/update, and the chosen apps after a generation."""
 
     effective_answers = dict(answers)
-    recorded_answers = load_copier_answers(destination / COPIER_ANSWERS_FILE)
+    try:
+        recorded_answers = load_copier_answers(destination / COPIER_ANSWERS_FILE)
+    except UpdateSafetyError as exc:
+        print(error(str(exc)), file=sys.stderr)
+        return False
     if recorded_answers:
         effective_answers.update(recorded_answers)
     if is_remote_template(template_path):

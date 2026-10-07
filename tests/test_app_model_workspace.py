@@ -639,7 +639,10 @@ class ManifestUpdateAppsTests(TwoAppWorkspaceCase):
             contextlib.redirect_stdout(stdout),
             contextlib.redirect_stderr(stderr),
         ):
-            (self.root / ".copier-answers.yml").write_text("_src_path: git+https://example.invalid/t.git\n_commit: v1.0.0\nproject_name: Two apps\n", encoding="utf-8")
+            (self.root / ".copier-answers.yml").write_text(
+                "_src_path: git+https://example.invalid/t.git\n_commit: v1.0.0\nprism_layer: workspace\nproject_name: Two apps\nproject_slug: two-apps\npackage_identifier: com.example.twoapps\n",
+                encoding="utf-8",
+            )
             result = cli.cmd_update(args)
         self.assertEqual(0, result, stderr.getvalue())
         run_update.assert_called_once()

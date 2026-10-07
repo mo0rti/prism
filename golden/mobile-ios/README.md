@@ -4,7 +4,7 @@ iOS App is an iOS app of Prism Golden. Prism's `ios-swiftui` pack generated it a
 
 ## Run it
 
-You need a Mac with Xcode 26.0 (CI builds with exactly that version; a newer one usually works locally), [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) and a backend that serves `shared/api-contracts/openapi.yml`. With the `spring-backend` pack, start the backend under its `local` profile (`task db-up`, then `task <backend-app-id>:dev`, which is `task backend:dev` for the default app), then:
+You need a Mac with Xcode 26.6 (CI builds with exactly that version; a newer one usually works locally), [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) and a backend that serves `shared/api-contracts/openapi.yml`. With the `spring-backend` pack, start the backend under its `local` profile (`task db-up`, then `task <backend-app-id>:dev`, which is `task backend:dev` for the default app), then:
 
 ```bash
 cd mobile-ios

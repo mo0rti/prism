@@ -12,8 +12,9 @@ longer matches a finding is reported so that it gets removed. Nothing is hidden 
 
 The gate fails closed. An ``npm audit`` that exits with anything but 0 (clean) or 1 (findings), that returns a
 report without the expected structure, or whose exit status and report disagree (a failure with no finding, a
-clean exit with a finding) is an operational error, never "no unlisted advisory". ``uv audit`` is held to the same
-exit statuses.
+clean exit with a finding) is an operational error, never "no unlisted advisory". The report's totals must equal its
+entries (``metadata.vulnerabilities`` against ``vulnerabilities``), and each entry and advisory must carry the fields the
+gate reports. ``uv audit`` is held to the same exit statuses.
 """
 
 from __future__ import annotations
@@ -80,6 +81,43 @@ def npm_findings(report: dict, level: str = "high") -> list[dict[str, str]]:
     return sorted(found.values(), key=lambda finding: finding["advisory"])
 
 
+ADVISORY_FIELDS = ("name", "severity", "url", "title")
+
+
+def npm_entries_problem(vulnerabilities: dict, declared: dict, returncode: int, level: str) -> str | None:
+    """Why the entries of an ``npm audit`` report disagree with its own totals or lack a required field, or ``None``.
+
+    Every entry names its severity and a list of ``via`` items, and every advisory (a ``via`` object) names the package,
+    severity, link and title that the gate reports. The ``metadata.vulnerabilities`` counts are one per entry and severity,
+    so they must equal the entries present: a report that declares a high vulnerability with no entry for it, or the other
+    way round, is not a complete audit. A clean exit (0) with an entry at or above the level disagrees with npm's own rule.
+    """
+
+    actual = {severity: 0 for severity in SEVERITIES}
+    for name, entry in vulnerabilities.items():
+        severity = entry.get("severity")
+        if severity not in SEVERITIES:
+            return f"npm audit lists `{name}` without a valid severity."
+        actual[severity] += 1
+        for via in entry.get("via", []):
+            if isinstance(via, dict):
+                missing = [field for field in ADVISORY_FIELDS if not isinstance(via.get(field), str) or not via[field]]
+                if missing or via["severity"] not in SEVERITIES:
+                    return f"npm audit lists an advisory of `{name}` without {', '.join(missing) or 'a valid severity'}."
+            elif not isinstance(via, str):
+                return f"npm audit lists a `via` item of `{name}` that is neither an advisory nor a package name."
+    counts = {**actual, **({"total": len(vulnerabilities)} if "total" in declared else {})}
+    for severity, present in counts.items():
+        count = declared.get(severity, 0)
+        if not isinstance(count, int) or isinstance(count, bool):
+            return f"npm audit's metadata gives no number for {severity} vulnerabilities."
+        if count != present:
+            return f"npm audit's metadata declares {count} {severity} vulnerability(ies), but its report lists {present}."
+    if returncode == 0 and any(actual[severity] for severity in SEVERITIES[SEVERITIES.index(level):]):
+        return f"npm audit exited with status 0, but its report lists vulnerabilities of severity {level} or above."
+    return None
+
+
 def npm_report_problem(report: object, returncode: int, level: str) -> str | None:
     """Why an ``npm audit --json`` result cannot be trusted as an audit, or ``None`` when it can."""
 
@@ -99,6 +137,9 @@ def npm_report_problem(report: object, returncode: int, level: str) -> str | Non
         or not all(isinstance(entry, dict) and isinstance(entry.get("via", []), list) for entry in vulnerabilities.values())
     ):
         return "npm audit returned a report without the expected structure (auditReportVersion 2 with vulnerabilities and metadata)."
+    entry_problem = npm_entries_problem(vulnerabilities, metadata["vulnerabilities"], returncode, level)
+    if entry_problem is not None:
+        return entry_problem
     findings = npm_findings(report, level)
     if returncode == 1 and not findings:
         return f"npm audit exited with status 1, but its report lists no advisory of severity {level} or above."

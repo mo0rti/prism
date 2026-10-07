@@ -71,13 +71,28 @@ jobs:
       - name: Select iPhone simulator
         run: |
           set -euo pipefail
-          SIMULATOR_ID=$(xcrun simctl list devices available | grep -E '^ +iPhone ' | grep -Eo '[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}' | tail -n 1)
-          if [ -z "$SIMULATOR_ID" ]; then
-            echo "No available iPhone simulator found." >&2
-            xcrun simctl list devices available >&2
-            exit 1
-          fi
-          echo "Using simulator $SIMULATOR_ID"
+          # The runtime must be the simulator SDK of the selected Xcode: a runner image holds only some runtimes.
+          SDK_VERSION="$(xcrun --sdk iphonesimulator --show-sdk-version)"
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/simulators.json"
+          SIMULATOR_ID="$(python3 - "$SDK_VERSION" "$RUNNER_TEMP/simulators.json" <<'PY'
+          import json
+          import sys
+
+          sdk, path = sys.argv[1], sys.argv[2]
+          with open(path, encoding="utf-8") as handle:
+              devices = json.load(handle)["devices"]
+          runtime = "com.apple.CoreSimulator.SimRuntime.iOS-" + sdk.replace(".", "-")
+          phones = [d for d in devices.get(runtime, []) if d.get("isAvailable", True) and d["name"].startswith("iPhone")]
+          if not phones:
+              print("No available iPhone simulator runs iOS " + sdk + ", the simulator SDK of the selected Xcode. Available runtimes:", file=sys.stderr)
+              for key, items in sorted(devices.items()):
+                  names = ", ".join(d["name"] for d in items if d.get("isAvailable", True)) or "no device"
+                  print("  " + key.replace("com.apple.CoreSimulator.SimRuntime.", "") + ": " + names, file=sys.stderr)
+              sys.exit(1)
+          print(phones[-1]["udid"])
+          PY
+          )"
+          echo "Using simulator $SIMULATOR_ID (iOS $SDK_VERSION)"
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
 
       - name: Build

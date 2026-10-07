@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,7 @@ from uuid import uuid4
 
 import yaml
 
+from prism_cli import board_service
 from prism_cli.board_service import BoardError, BoardService
 from prism_cli.board_store import unresolved_board_operations
 from prism_cli.workflow_assets import asset_digest
@@ -189,6 +191,86 @@ class BoardReviewFixTests(unittest.TestCase):
         # A fresh review of the current files lets the recovery finish.
         reviewed = self.service.recover(self.human, "op-ask", self.review_revision("op-ask"), True)
         self.assertEqual("applied", reviewed["state"], reviewed)
+
+    def test_the_review_is_verified_against_the_snapshot_the_recovery_keeps(self) -> None:
+        preview = self.ask_preview()
+        self.crash_before_log(preview, "op-ask")
+        self.put(SETTINGS, self.read(SETTINGS) + "\nA policy note added while the operation was interrupted.\n")
+        revision = self.review_revision("op-ask")
+        log_before = self.read_optional("knowledge/wiki/log.md")
+        capture = self.service._recovery_snapshot
+        captures: list[dict] = []
+
+        def edited_after_the_first_capture(intent):
+            snapshot = capture(intent)
+            captures.append(dict(snapshot))
+            if len(captures) == 1:
+                # An editor changes a relevant source after the review was verified and before anything else is captured.
+                self.put(SETTINGS, self.read(SETTINGS) + "\nAn editor changed the policy between the verification and the capture.\n")
+            return snapshot
+
+        with patch.object(self.service, "_recovery_snapshot", side_effect=edited_after_the_first_capture):
+            receipt = self.service.recover(self.human, "op-ask", revision, True)
+
+        self.assertNotEqual(captures[0], captures[1], "the edit is visible to a later capture")
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("recovery_source_changed", receipt["conflicts"][0]["reason"])
+        self.assertEqual(log_before, self.read_optional("knowledge/wiki/log.md"), "no write was applied: the edit did not become the reviewed state")
+
+        # Reviewing the current files again lets the recovery finish.
+        reviewed = self.service.recover(self.human, "op-ask", self.review_revision("op-ask"), True)
+        self.assertEqual("applied", reviewed["state"], reviewed)
+
+    # -- A reader that holds a page open for a moment must not conflict an apply (Windows) ---------------
+
+    def refuse_replacing_the_feature_page(self, times: int | None, winerror: int | None = 5):
+        """A patch of `os.replace` that refuses to replace the feature page `times` times (always when ``None``), like a reader that holds it open."""
+
+        real = os.replace
+        calls: list[str] = []
+
+        def replace(source, destination, *args, **kwargs):
+            if Path(destination).name == Path(FEATURE).name and (times is None or len(calls) < times):
+                calls.append(str(destination))
+                error = PermissionError(13, "Access is denied")
+                if winerror is not None:
+                    error.winerror = winerror
+                raise error
+            return real(source, destination, *args, **kwargs)
+
+        return patch.object(board_service.os, "replace", side_effect=replace), calls
+
+    def test_a_momentary_sharing_refusal_while_replacing_a_page_is_waited_out(self) -> None:
+        # The graph poller reads the pages while an apply replaces them; on Windows the replace is refused while a read is open.
+        preview = self.ask_preview()
+        refusal, refused = self.refuse_replacing_the_feature_page(3)
+        with refusal, patch.object(board_service, "_REPLACE_WAIT_SECONDS", 0):
+            receipt = self.service.apply(self.agent, preview["preview_id"], "op-ask")
+        self.assertEqual("applied", receipt["state"], receipt)
+        self.assertEqual(3, len(refused), "the replace was refused three times and then went through")
+        self.assertIn(NEW_QUESTION, self.read(FEATURE))
+
+    def test_a_sharing_refusal_that_does_not_end_stops_after_a_bounded_number_of_attempts_and_can_be_recovered(self) -> None:
+        preview = self.ask_preview()
+        before = self.read(FEATURE)
+        refusal, refused = self.refuse_replacing_the_feature_page(None)
+        with refusal, patch.object(board_service, "_REPLACE_WAIT_SECONDS", 0):
+            receipt = self.service.apply(self.agent, preview["preview_id"], "op-ask")
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertEqual("filesystem error: PermissionError", receipt["conflicts"][0]["reason"])
+        self.assertEqual(board_service._REPLACE_ATTEMPTS, len(refused), "the attempts are bounded")
+        self.assertEqual(before, self.read(FEATURE), "nothing was written")
+        recovered = self.service.recover(self.agent, "op-ask")
+        self.assertEqual("applied", recovered["state"], recovered)
+
+    def test_a_permission_error_that_is_not_a_sharing_refusal_is_not_retried(self) -> None:
+        for winerror in (None, 1314):
+            with self.subTest(winerror=winerror):
+                refusal, refused = self.refuse_replacing_the_feature_page(None, winerror)
+                with refusal, patch.object(board_service, "_REPLACE_WAIT_SECONDS", 0):
+                    with self.assertRaises(PermissionError):
+                        board_service._replace_file(self.root / "source.tmp", self.root / FEATURE)
+                self.assertEqual(1, len(refused))
 
     def test_an_external_edit_between_two_writes_stops_the_remaining_writes(self) -> None:
         preview = self.ask_preview()

@@ -3,7 +3,7 @@
 ## Tech Stack
 
 - **Swift 6.0** with strict concurrency, **SwiftUI** and Observation, for **iOS 17.0+**
-- **Xcode 26.0** and **XcodeGen**: `project.yml` is the source of the Xcode project
+- **Xcode 26.6** and **XcodeGen**: `project.yml` is the source of the Xcode project
 - **URLSession** for the client of `shared/api-contracts/openapi.yml`
 - **XCTest** for the unit tests and the UI test
 

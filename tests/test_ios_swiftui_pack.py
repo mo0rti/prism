@@ -173,7 +173,10 @@ class PackFilesTests(unittest.TestCase):
         self.assertIn("xcodebuild test", text)
         self.assertNotIn("xcpretty", text)
         self.assertNotIn("secrets.", text)
-        self.assertIn("grep -E '^ +iPhone '", text, "the simulator selection stays")
+        self.assertIn("xcrun simctl list devices available -j", text, "the simulator is read from the JSON listing, not grepped")
+        self.assertIn("xcrun --sdk iphonesimulator --show-sdk-version", text, "its runtime is the simulator SDK of the selected Xcode")
+        self.assertIn("Available runtimes:", text, "a missing runtime is reported with the list of what the image holds")
+        self.assertNotIn("grep -E '^ +iPhone '", text)
 
     def test_no_pack_file_carries_a_retired_sample_or_an_auth_answer(self) -> None:
         for path in self.pack_files():
@@ -345,7 +348,7 @@ class GeneratedIosAppsTests(unittest.TestCase):
                 self.assertEqual(info["path"], data["env"]["APP_PATH"], "the app's path reaches the workflow once, as a variable")
                 self.assertEqual("${{ env.APP_PATH }}", job["defaults"]["run"]["working-directory"])
                 steps = [step["name"] for step in job["steps"] if "name" in step]
-                self.assertEqual(["Select Xcode 26.0", "Cache Homebrew downloads", "Install XcodeGen", "Generate Xcode project", "Select iPhone simulator", "Build", "Test", "Upload test results"], steps)
+                self.assertEqual(["Select Xcode 26.6", "Cache Homebrew downloads", "Install XcodeGen", "Generate Xcode project", "Select iPhone simulator", "Build", "Test", "Upload test results"], steps)
                 text = self.text(f".github/workflows/{app}.yml")
                 module = info["module"]
                 self.assertIn("run: xcodegen generate", text)

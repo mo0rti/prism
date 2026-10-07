@@ -344,6 +344,12 @@ A scaffolded app whose own answers file is missing stops the update before anyth
 ways out: restore the file from git, retire the app (`prism app retire <id>`), or drop its entry from
 `prism.workspace.yml` (or set its `generation` to `registered`) when Prism no longer keeps its code current.
 
+Before Copier runs, `prism update` checks the saved answers of every layer, the workspace's own `.copier-answers.yml`
+included: it must select the `workspace` layer, hold only the workspace layer's answers and carry values that are safe
+to render (the project identity and each app's ID, name, path, audience and port), and an app layer must name the
+workspace's template source and the identity the manifest gives it. A file that fails the check, or that is a symlink or
+a junction, stops the update before anything changes; restore it from git.
+
 A retired app is left out of the update, but the workspace layer keeps rendering what it rendered for it: its service in
 `docker-compose.yml` and its task include in `Taskfile.yml` stay until you remove them (with the app's code, when you
 choose to). Retiring changes only the manifest entry; it deletes nothing.

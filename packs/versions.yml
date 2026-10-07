@@ -89,7 +89,7 @@ android-compose:
   # renovate: datasource=maven depName=org.yaml:snakeyaml depType=android-compose
   snakeyaml: "2.4"
 ios-swiftui:
-  xcode: "26.0"
+  xcode: "26.6"
   swift: "6.0"
   ios_deployment_target: "17.0"
   # The gem the generated Gemfile requires, exactly. A baseline decision that moves by hand with a release.

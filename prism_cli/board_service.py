@@ -18,6 +18,7 @@ import secrets
 import stat
 import tempfile
 import threading
+import time
 from typing import Any, Iterable, Iterator, Mapping
 from uuid import UUID, uuid4
 
@@ -68,6 +69,11 @@ _MAX_READ_PATHS = 64
 _MCP_CONTRACT = 3
 # Operation states that never run again: `applied` finished its writes and `abandoned` was closed by a human.
 _TERMINAL_OPERATION_STATES = frozenset({"applied", "abandoned"})
+# Windows refuses to replace a file that another handle holds open without delete sharing, which includes a reader in this
+# process (the board's graph poller) and a scanner outside it. The refusal is momentary, so a replace waits it out for up to a second.
+_TRANSIENT_WINDOWS_ERRORS = frozenset({5, 32, 33})  # access denied, sharing violation, lock violation
+_REPLACE_ATTEMPTS = 50
+_REPLACE_WAIT_SECONDS = 0.02
 # A path segment every operating system can hold. Windows refuses these characters,
 # a trailing dot or space and the device names, so Prism refuses them on every
 # system: a workspace written on Linux can then be checked out on Windows.
@@ -132,6 +138,19 @@ _STATUS_ROW = re.compile(r"^\|\s*(F-\d+)\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|\s*
 # The header is exact, as `parse_status_board_rows` reads it: a board whose header differs in case is not a canonical board for either.
 _STATUS_HEADER = re.compile(r"^\s*\|\s*ID\s*\|\s*Feature\s*\|\s*Status\s*\|\s*Owner\s*\|\s*Board Review\s*\|\s*$")
 _FRONTMATTER = re.compile(r"\A\ufeff?---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
+
+
+def _replace_file(source: Path, destination: Path) -> None:
+    """`os.replace`, retried while Windows reports a momentary sharing refusal; any other error, and the last refusal, is raised."""
+
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError as error:
+            if getattr(error, "winerror", None) not in _TRANSIENT_WINDOWS_ERRORS or attempt == _REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(_REPLACE_WAIT_SECONDS)
 
 
 class BoardError(Exception):
@@ -784,8 +803,19 @@ class BoardService:
             actor.kind == "human" and actor.writable and intent.get("actor", {}).get("kind") == "agent"
         )
 
-    def _recovery_review_revision(self, actor: Actor, operation_id: str, intent: Mapping[str, Any], states: list[dict[str, Any]] | None = None) -> str:
-        """Bind recovery confirmation to this reviewer and the inspected inputs."""
+    def _recovery_review_revision(
+        self,
+        actor: Actor,
+        operation_id: str,
+        intent: Mapping[str, Any],
+        states: list[dict[str, Any]] | None = None,
+        snapshot: Mapping[str, str | None] | None = None,
+    ) -> str:
+        """Bind recovery confirmation to this reviewer and the inspected inputs.
+
+        ``snapshot`` is the relevant-source snapshot the caller captured; without it, one is captured here. A caller that
+        goes on to keep the snapshot passes the one it keeps, so the confirmation covers exactly that object.
+        """
         moves = []
         for move in intent.get("moves", []):
             current = {}
@@ -804,7 +834,7 @@ class BoardService:
             "intent": intent,
             "file_states": reviewed_states,
             "move_states": moves,
-            "relevant_sources": self._recovery_snapshot(intent),
+            "relevant_sources": snapshot if snapshot is not None else self._recovery_snapshot(intent),
         }).encode("utf-8"))
 
     def _recovery_dependency_paths(self, intent: Mapping[str, Any]) -> set[str]:
@@ -892,10 +922,12 @@ class BoardService:
             if cross_participant or review_revision is not None or abandon:
                 if semantic_review_acknowledged is not True or not isinstance(review_revision, str):
                     raise BoardError("recovery_review_required", "Inspect and explicitly acknowledge the remaining changes before recovering this operation.", 409)
-                if review_revision != self._recovery_review_revision(actor, operation_id, intent):
+                # The snapshot is captured once: the review is verified against this object, and the same object is what the
+                # recovery keeps checking, so a file edited between the two steps cannot become the reviewed state.
+                snapshot = self._recovery_snapshot(intent)
+                if review_revision != self._recovery_review_revision(actor, operation_id, intent, snapshot=snapshot):
                     raise BoardError("stale_recovery_review", "The operation or its relevant files changed after inspection; inspect and confirm the remaining changes again.", 409)
-                # The confirmed review is the digests of the relevant paths as they are now; recovery keeps checking them.
-                reviewed = self._recovery_snapshot(intent) if actor.kind == "human" else None
+                reviewed = snapshot if actor.kind == "human" else None
             if abandon:
                 return self._abandon_operation(actor, operation_id, intent)
             if cross_participant:
@@ -4459,7 +4491,7 @@ class BoardService:
                         self._require_actor(actor, write=True)
                         if self._move_state(move, intent) != "pending":
                             raise BoardError("recovery_conflict", "The intake tree changed immediately before its rename.", 409)
-                        os.replace(source, destination)
+                        _replace_file(source, destination)
                     moved.append({"source": move["source"], "destination": move["destination"]})
                 if not complete:
                     for write in intent.get("writes", []):
@@ -4803,7 +4835,7 @@ class BoardService:
                 self._require_actor(actor, write=True)
             if self._optional_text(path) != expected:
                 raise BoardError("write_changed", f"`{path.relative_to(self.root).as_posix()}` changed immediately before replacement.", 409)
-            os.replace(temp_path, path)
+            _replace_file(temp_path, path)
             try:
                 directory_fd = os.open(path.parent, getattr(os, "O_DIRECTORY", 0) | os.O_RDONLY)
             except OSError:

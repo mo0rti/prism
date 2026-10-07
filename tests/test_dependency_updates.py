@@ -288,10 +288,58 @@ class AuditGateFailsClosedTests(unittest.TestCase):
         only_listed = {
             **NPM_REPORT,
             "vulnerabilities": {name: entry for name, entry in NPM_REPORT["vulnerabilities"].items() if name in {"braces", "micromatch"}},
+            "metadata": {"vulnerabilities": {"high": 2, "total": 2}},
         }
         code, text = self.run_gate("npm", json.dumps(only_listed), 1)
         self.assertEqual(0, code, text)
         self.assertIn("allowed: GHSA-vfj7-8cjw-p6xm", text)
+
+    def test_a_report_whose_totals_disagree_with_its_entries_fails_whatever_the_exit_status(self) -> None:
+        # Astra's case: exit 0, no advisory, and a high vulnerability only in the metadata.
+        declared_only = {"auditReportVersion": 2, "vulnerabilities": {}, "metadata": {"vulnerabilities": {"high": 1, "total": 1}}}
+        code, text = self.run_gate("npm", json.dumps(declared_only), 0)
+        self.assertEqual(1, code, text)
+        self.assertNotIn("No unlisted advisory", text)
+        self.assertIn("declares 1 high vulnerability(ies), but its report lists 0", text)
+        entry = NPM_REPORT["vulnerabilities"]["braces"]
+        for label, report in {
+            "a critical count with no entry": {"auditReportVersion": 2, "vulnerabilities": {"braces": entry}, "metadata": {"vulnerabilities": {"high": 1, "critical": 1, "total": 1}}},
+            "an entry the metadata leaves out": {"auditReportVersion": 2, "vulnerabilities": {"braces": entry}, "metadata": {"vulnerabilities": {"high": 0, "total": 0}}},
+            "a total that differs": {"auditReportVersion": 2, "vulnerabilities": {"braces": entry}, "metadata": {"vulnerabilities": {"high": 1, "total": 3}}},
+            "a count that is not a number": {"auditReportVersion": 2, "vulnerabilities": {}, "metadata": {"vulnerabilities": {"high": "0"}}},
+        }.items():
+            for exit_status in (0, 1):
+                with self.subTest(label=label, status=exit_status):
+                    code, text = self.run_gate("npm", json.dumps(report), exit_status)
+                    self.assertEqual(1, code, text)
+                    self.assertNotIn("No unlisted advisory", text)
+
+    def test_an_entry_or_an_advisory_without_the_fields_the_gate_reports_fails(self) -> None:
+        entry = NPM_REPORT["vulnerabilities"]["braces"]
+        advisory = entry["via"][0]
+        metadata = {"vulnerabilities": {"high": 1, "total": 1}}
+        for label, vulnerabilities in {
+            "an entry without a severity": {"braces": {k: v for k, v in entry.items() if k != "severity"}},
+            "an entry with an unknown severity": {"braces": {**entry, "severity": "severe"}},
+            "an advisory without its link": {"braces": {**entry, "via": [{k: v for k, v in advisory.items() if k != "url"}]}},
+            "an advisory without its title": {"braces": {**entry, "via": [{k: v for k, v in advisory.items() if k != "title"}]}},
+            "an advisory without its package": {"braces": {**entry, "via": [{k: v for k, v in advisory.items() if k != "name"}]}},
+            "an advisory without a severity": {"braces": {**entry, "via": [{k: v for k, v in advisory.items() if k != "severity"}]}},
+            "a via item that is neither": {"braces": {**entry, "via": [7]}},
+        }.items():
+            with self.subTest(label=label):
+                report = {"auditReportVersion": 2, "vulnerabilities": vulnerabilities, "metadata": metadata}
+                code, text = self.run_gate("npm", json.dumps(report), 1)
+                self.assertEqual(1, code, text)
+                self.assertNotIn("allowed:", text)
+                self.assertNotIn("No unlisted advisory", text)
+                self.assertIn("::error::npm audit", text)
+
+    def test_a_clean_exit_with_an_entry_at_the_level_fails_even_when_the_totals_agree(self) -> None:
+        transitive = {"auditReportVersion": 2, "vulnerabilities": {"micromatch": {"name": "micromatch", "severity": "high", "via": ["braces"]}}, "metadata": {"vulnerabilities": {"high": 1, "total": 1}}}
+        code, text = self.run_gate("npm", json.dumps(transitive), 0)
+        self.assertEqual(1, code, text)
+        self.assertIn("exited with status 0", text)
 
     def test_an_unlisted_finding_still_blocks(self) -> None:
         code, text = self.run_gate("npm", json.dumps(NPM_REPORT), 1)

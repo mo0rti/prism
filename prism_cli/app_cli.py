@@ -41,6 +41,7 @@ from prism_cli.packs import (
     taken_ports,
     validate_scaffold,
     workflow_path,
+    workspace_answers_problems,
 )
 from prism_cli.workflow_install import (
     _atomic_write,
@@ -311,7 +312,11 @@ def _plan_scaffold(
 
     from prism_cli import cli
 
-    answers = cli.load_copier_answers(workspace / cli.COPIER_ANSWERS_FILE)
+    try:
+        answers = cli.load_copier_answers(workspace / cli.COPIER_ANSWERS_FILE)
+    except cli.UpdateSafetyError as exc:
+        conflicts.append(str(exc))
+        return None
     if answers is None:
         conflicts.append(f"Scaffolding needs the workspace's {cli.COPIER_ANSWERS_FILE}, which records the template and the project identity; it is missing or unreadable.")
         return None
@@ -325,6 +330,11 @@ def _plan_scaffold(
     missing = [key for key in ("project_name", "project_slug", "package_identifier") if not isinstance(answers.get(key), str) or not answers[key]]
     if missing:
         conflicts.append(f"The workspace's {cli.COPIER_ANSWERS_FILE} does not record: {', '.join(missing)}.")
+        return None
+    # Scaffolding runs Copier with trust against this file, so it is held to the rule `prism update` applies.
+    saved_problems = workspace_answers_problems(answers)
+    if saved_problems:
+        conflicts.extend(saved_problems)
         return None
     repo_state = cli.inspect_git_worktree(workspace)
     if not cli.is_direct_git_worktree(workspace, repo_state):

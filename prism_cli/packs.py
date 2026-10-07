@@ -29,7 +29,7 @@ from prism_cli.app_model import (
     is_slug,
     normalize_manifest,
 )
-from prism_cli.safe_values import label_problem
+from prism_cli.safe_values import DESCRIPTION_RULE, LABEL_RULE, description_problem, label_problem, path_segments_problem
 from prism_cli.wiki_paths import resolve_confined
 
 
@@ -319,6 +319,119 @@ def layer_answers_problems(recorded: Mapping[str, Any], workspace: Mapping[str, 
             continue
         if key in recorded and recorded[key] != wanted:
             problems.append(f"{label} records `{key}: {recorded[key]}`, but its manifest entry and the workspace give `{wanted}`.")
+    unknown = sorted(str(key) for key in recorded if key not in {*expected, "backend_base_url", "_src_path", "_commit"})
+    if unknown:
+        problems.append(f"{label} records answer(s) that no app layer asks: {', '.join(f'`{key}`' for key in unknown)}.")
+    return problems
+
+
+# --- The workspace layer's saved answers ---------------------------------------------
+
+# Every answer the workspace layer asks and Copier saves (`when: false` answers are never saved), and Copier's two private keys.
+WORKSPACE_ANSWER_KEYS = frozenset({"_src_path", "_commit", "prism_layer", "project_name", "project_slug", "package_identifier", "description", "stacks", "apps"})
+WORKSPACE_APP_KEYS = frozenset({"id", "name", "stack", "path", "audience", "port"})
+PROJECT_SLUG_PATTERN = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
+MAX_PORT = 65535
+
+
+def workspace_apps_problems(stacks: Any, apps: Any) -> list[str]:
+    """Why a workspace layer's `stacks` and `apps` cannot be rendered into its files, as sentences; empty when they can.
+
+    The workspace layer renders each app's ID, name, path, audience and port into Taskfile includes, the compose file,
+    the skills and the guidance, so every value follows the safe-value rule. The identifiers an ID derives and the stacks
+    are re-derived from the apps and compared, never taken from the file. ``apps`` is the list a saved answers file or
+    the manifest gives (`id`, `name`, `stack`, `path`, `audience`, `port`).
+    """
+
+    if not isinstance(apps, list):
+        return ["The workspace's `apps` must be a list of apps."]
+    problems: list[str] = []
+    entries: list[dict[str, Any]] = []
+    for index, item in enumerate(apps):
+        label = f"apps[{index}]"
+        if not isinstance(item, dict):
+            problems.append(f"`{label}` must be a mapping.")
+            continue
+        if is_slug(item.get("id")):
+            label = f"App `{item['id']}`"
+        keys = set(item)
+        if keys != WORKSPACE_APP_KEYS:
+            missing = sorted(WORKSPACE_APP_KEYS - keys)
+            extra = sorted(str(key) for key in keys - WORKSPACE_APP_KEYS)
+            detail = (f"; missing {', '.join(missing)}" if missing else "") + (f"; unknown {', '.join(extra)}" if extra else "")
+            problems.append(f"{label} must record exactly {', '.join(f'`{key}`' for key in sorted(WORKSPACE_APP_KEYS))}{detail}.")
+            continue
+        before = len(problems)
+        if not is_slug(item["id"]):
+            problems.append(f"{label} needs an `id` that is a slug: lowercase letters, digits and single hyphens.")
+        if item["stack"] not in PACK_STACKS:
+            problems.append(f"{label} records the stack `{item['stack']}`, which has no pack to scaffold.")
+        name = item["name"]
+        if not isinstance(name, str) or not name or label_problem(name) is not None:
+            problems.append(f"{label} records a `name` that is not safe to render.")
+        audience = item["audience"]
+        if not isinstance(audience, str) or label_problem(audience) is not None:
+            problems.append(f"{label} records an `audience` that is not safe to render.")
+        path = item["path"]
+        if not isinstance(path, str) or not path.rstrip("/"):
+            problems.append(f"{label} records a `path` that is not a path.")
+        else:
+            path_problem = path_segments_problem(path.rstrip("/").split("/"))
+            if path_problem is not None:
+                problems.append(f"{label} records a `path` that is not safe to render: {path_problem}")
+        port = item["port"]
+        if not isinstance(port, int) or isinstance(port, bool) or not 0 <= port <= MAX_PORT:
+            problems.append(f"{label} records a `port` that is not a port number.")
+        if len(problems) == before:
+            entries.append({"id": item["id"], "stack": item["stack"], "path": path.rstrip("/"), "generation": GENERATION_SCAFFOLDED})
+    if problems:
+        return problems
+    ids = [entry["id"] for entry in entries]
+    if len(set(ids)) != len(ids):
+        problems.append("The workspace's `apps` list an app ID twice.")
+    problems.extend(validate_scaffold(entries))
+    derived = sorted({entry["stack"] for entry in entries})
+    if stacks != derived:
+        problems.append(f"The workspace records `stacks: {stacks}`, but its apps give `{derived}`.")
+    return problems
+
+
+def workspace_answers_problems(recorded: Mapping[str, Any]) -> list[str]:
+    """Why the workspace layer's saved answers cannot be trusted for an update, as sentences; empty when they can.
+
+    The update runs Copier with `--trust` against this file as well, and what it records is rendered into the root files
+    (the Taskfile, the compose file, the skills) and, through the layer it selects, into code. So the file must select
+    the workspace layer, name a plain template source and revision, and hold only the workspace layer's own answers,
+    each safe to render. An answer that only an app layer asks (`app_package` and the like) has no place here: it is
+    refused, not ignored.
+    """
+
+    problems: list[str] = []
+    where = f"The workspace's {COPIER_ANSWERS_FILE}"
+    layer = recorded.get("prism_layer", WORKSPACE_LAYER)
+    if layer != WORKSPACE_LAYER:
+        problems.append(f"{where} selects the layer `{layer}`; the workspace layer must select `{WORKSPACE_LAYER}`.")
+    source = recorded.get("_src_path")
+    if not isinstance(source, str) or not source or source != source.strip() or source.startswith("-") or any(ord(character) < 32 or ord(character) == 127 for character in source):
+        problems.append(f"{where} records a template source that is not a plain path or URL.")
+    revision = recorded.get("_commit")
+    if revision is not None and not (isinstance(revision, str) and COMMIT_PATTERN.fullmatch(revision)):
+        problems.append(f"{where} records a template revision that is not a plain tag or commit name.")
+    name = recorded.get("project_name")
+    if not isinstance(name, str) or not name or label_problem(name) is not None:
+        problems.append(f"{where} records a `project_name` that is not safe to render: use {LABEL_RULE}.")
+    slug = recorded.get("project_slug")
+    if not isinstance(slug, str) or not PROJECT_SLUG_PATTERN.fullmatch(slug):
+        problems.append(f"{where} records a `project_slug` that is not lowercase letters, digits and single hyphens.")
+    package = recorded.get("package_identifier")
+    if not isinstance(package, str) or not PACKAGE_IDENTIFIER_PATTERN.fullmatch(package) or any(part in RESERVED_IDENTIFIERS for part in package.split(".")):
+        problems.append(f"{where} records a `package_identifier` that is not a reverse-domain name without Kotlin or Java keywords.")
+    if "description" in recorded and description_problem(recorded["description"]) is not None:
+        problems.append(f"{where} records a `description` that is not safe to render: use {DESCRIPTION_RULE}.")
+    unknown = sorted(str(key) for key in recorded if key not in WORKSPACE_ANSWER_KEYS)
+    if unknown:
+        problems.append(f"{where} records answer(s) that the workspace layer does not ask: {', '.join(f'`{key}`' for key in unknown)}.")
+    problems.extend(f"{where}: {problem}" for problem in workspace_apps_problems(recorded.get("stacks", []), recorded.get("apps", [])))
     return problems
 
 

@@ -116,35 +116,39 @@ def main() -> None:
             assert manifest["generated_by"]["template_version"] == "unversioned"
             assert manifest["generated_by"]["template_commit"] == "unversioned"
 
-        # A generated project has local Prism guidance but needs explicit
-        # workflow adoption before connected writes are enabled. Upgrade must
-        # preserve application files and the source-generation provenance.
+        # `prism new` pins the packaged workflow in the workspace it generates, so a fresh
+        # project is compatible before any upgrade. An upgrade of a project that is already
+        # current must change nothing, and must preserve application files and the
+        # source-generation provenance.
         project = root / "absolute-project"
         generated_before = snapshot_project(project)
         answers_path = project / ".copier-answers.yml"
         answers_before = answers_path.read_bytes()
         manifest_path = project / "prism.workspace.yml"
         manifest_before = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-        status_before = json.loads(run(root, cli + ["board", "status", str(project)], expected=3).stdout)
-        assert status_before["compatible"] is False
-        assert "workflow" in (status_before.get("reason") or "").lower()
+        status_before = json.loads(run(root, cli + ["board", "status", str(project)]).stdout)
+        assert status_before["compatible"] is True, status_before
+        assert status_before["workflow"]["mode"] == "generated", status_before
+        assert len(manifest_before["workflow"]["asset_digest"]) == 64
         assert not (project / ".prism").exists(), "board status should not create service state"
 
         upgrade = ["workflow", "upgrade", str(project)]
         preview = json.loads(run(root, cli + upgrade + ["--json"]).stdout)
         assert not preview["conflicts"], preview["conflicts"]
+        assert not preview["changes"], "a freshly generated project is already pinned, so the upgrade has nothing to change"
         assert snapshot_project(project) == generated_before, "workflow upgrade preview must be read-only"
         receipt = json.loads(run(root, cli + upgrade + ["--apply", "--yes", "--json"]).stdout)
-        assert receipt["status"] == "applied", receipt
+        assert receipt["status"] == "unchanged", receipt
+        after_apply = snapshot_project(project)
+        # The only addition is the board's runtime lock, which the git-ignored `.prism/state/` holds.
+        changed = sorted(name for name in {*generated_before, *after_apply} if generated_before.get(name) != after_apply.get(name))
+        assert changed in ([], [".prism/state/board.lock"]), f"an upgrade of a current pin must not touch a file: {changed}"
         assert answers_path.read_bytes() == answers_before, "workflow upgrade changed Copier answers"
         manifest_after = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         assert manifest_after["generated_by"] == manifest_before["generated_by"]
         assert manifest_after["workflow"]["mode"] == "generated"
         assert len(manifest_after["workflow"]["asset_digest"]) == 64
-        generated_after = snapshot_project(project)
-        for relative, content in generated_before.items():
-            if relative not in {"prism.workspace.yml", ".gitignore"}:
-                assert generated_after.get(relative) == content, f"workflow upgrade changed generated file {relative}"
+        assert yaml.safe_load(manifest_path.read_text(encoding="utf-8"))["workflow"] == manifest_before["workflow"]
         status_after = json.loads(run(root, cli + ["board", "status", str(project)]).stdout)
         assert status_after["compatible"] is True, status_after
         assert status_after["workflow"]["mode"] == "generated"
@@ -245,7 +249,7 @@ def main() -> None:
         run(root, pin_cli + pin_args + ["--dest", str(pinned)])
         assert "template version: one" in (pinned / "custom.txt").read_text(encoding="utf-8")
         assert yaml.safe_load((pinned / ".copier-answers.yml").read_text(encoding="utf-8"))["_commit"] == f"v{installed_version}"
-        print("PASS: installed wheel, preserving workflow adoption, generated-workspace upgrade gate/provenance preservation, packaged skills/transport, read-only default grants and revocation, ignored journal, real manifest update/merge/conflicts, unversioned local provenance, custom trust, explicit recopy, matching/missing release tag")
+        print("PASS: installed wheel, preserving workflow adoption, pinned generated workspace (compatible at generation, upgrade a no-op)/provenance preservation, packaged skills/transport, read-only default grants and revocation, ignored journal, real manifest update/merge/conflicts, unversioned local provenance, custom trust, explicit recopy, matching/missing release tag")
 
 
 if __name__ == "__main__":

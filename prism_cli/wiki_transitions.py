@@ -30,6 +30,7 @@ from prism_cli.app_model import (
     api_surface_without_api_app_message,
     retired_in_scope_message,
 )
+from prism_cli.fs_safety import reparse_kind
 from prism_cli.status import IGNORED_INTAKE_FILES
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, _wiki_path_references, lint_wiki
 from prism_cli.wiki_model import (
@@ -186,6 +187,7 @@ _HARD_IDENTITY_DIAGNOSTIC_CODES = {
     "readable-workspace-manifest",
     "unreadable-copier-answers",
     "unreadable-workspace-manifest",
+    "unsafe-copier-answers",
     "invalid-workspace-manifest-yaml",
     "unsupported-workspace-manifest-schema",
 }
@@ -301,7 +303,8 @@ def _workspace_fingerprint(root: Path, cache: FingerprintCache | None) -> tuple[
 
     for relative in _WATCH_FILES:
         path = workspace_root / relative
-        kind = _path_kind(path)
+        # A link at the place of a watched file is recorded as a link and never followed or hashed.
+        kind = "link" if _is_link(path) else _path_kind(path)
         entries.append((relative, content(path) if kind == "file" else kind))
 
     wiki_root = workspace_root / _WATCH_WIKI_DIR
@@ -2296,6 +2299,15 @@ def _is_hard_identity_diagnostic(diagnostic: Any) -> bool:
     if code in {"missing-copier-answers", "missing-copier-template-source", "missing-workspace-manifest"}:
         return False
     return code in _HARD_IDENTITY_DIAGNOSTIC_CODES or "drift" in code or getattr(diagnostic, "severity", "") == "error"
+
+
+def _is_link(path: Path) -> bool:
+    """Whether `path` itself is a symlink or a reparse point, from an `lstat` that never follows it."""
+
+    try:
+        return reparse_kind(path.lstat()) != "none"
+    except (OSError, RuntimeError, ValueError):
+        return False
 
 
 def _path_kind(path: Path) -> str:

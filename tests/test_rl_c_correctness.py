@@ -20,7 +20,7 @@ from prism_cli.workflow_install import apply_install, plan_install
 from tests import real_temp  # noqa: F401
 from tests import test_feature_scope_apps as scope
 from tests.core_workflow_fixture import INTAKE_ITEM, create_core_workflow_fixture
-from tests.layered_support import generate_default_apps
+from tests.layered_support import generate_default_apps, no_background_gc
 from tests.test_board_service import _journey_feature_page, _read_revisions, _replace_body_section, _set_feature_stage, _write_index_rows
 from tests.test_feature_scope_edit import NO_API, QUESTION, SOURCE, requirement, requirement_path, with_apps
 
@@ -245,12 +245,21 @@ class UpdateEdgeCaseTests(unittest.TestCase):
         identity = ("-c", "user.name=Prism test", "-c", "user.email=test@example.invalid")
         return subprocess.run(["git", *identity, *arguments], cwd=repo, check=True, capture_output=True, text=True).stdout
 
+    @classmethod
+    def init_repo(cls, repo: Path) -> None:
+        """A repository with its own identity, as `commit_layer` runs git without the helper's `-c` options, and no background gc."""
+
+        cls.git(repo, "init", "-q", "-b", "main")
+        no_background_gc(repo)
+        cls.git(repo, "config", "user.name", "Prism test")
+        cls.git(repo, "config", "user.email", "test@example.invalid")
+
     def test_commit_layer_never_commits_a_rej_file_and_leaves_it_in_the_tree(self) -> None:
         from prism_cli.layers import commit_layer, scan_conflicts
 
         with tempfile.TemporaryDirectory(prefix="prism-rej-") as temporary:
             repo = Path(temporary)
-            self.git(repo, "init", "-q", "-b", "main")
+            self.init_repo(repo)
             (repo / "kept.txt").write_text("one\n", encoding="utf-8")
             self.git(repo, "add", "-A")
             self.git(repo, "commit", "-qm", "Base")
@@ -272,7 +281,7 @@ class UpdateEdgeCaseTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(prefix="prism-rej-") as temporary:
             repo = Path(temporary)
-            self.git(repo, "init", "-q", "-b", "main")
+            self.init_repo(repo)
             (repo / "kept.txt").write_text("one\n", encoding="utf-8")
             self.git(repo, "add", "-A")
             self.git(repo, "commit", "-qm", "Base")
