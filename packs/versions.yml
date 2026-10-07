@@ -47,3 +47,7 @@ android-compose:
   junit: "4.13.2"
   robolectric: "4.16"
   snakeyaml: "2.4"
+ios-swiftui:
+  xcode: "26.0"
+  swift: "6.0"
+  ios_deployment_target: "17.0"

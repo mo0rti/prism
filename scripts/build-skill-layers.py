@@ -12,7 +12,7 @@ is written once. This script renders every layer file under ``template/`` from t
 
 A skill's ``references/`` folder is copied to both skill folders. The stack conditions of the
 sources fill the generated block of ``_exclude`` in ``copier.yml``: the workspace layer receives the
-``stacks`` of its scaffolded apps, and ``app_ids`` for a reference that belongs to one full-sample app.
+``stacks`` of its scaffolded apps.
 Everything under the four managed folders is generated; a file there that no source produces is stale.
 
 The body is written once. Two small mechanisms cover the differences between hosts:
@@ -46,9 +46,8 @@ COPIER_PATH = ROOT / "copier.yml"
 
 LAYERS = ("codex", "command", "claude-skill", "cursor")
 LAYER_GROUPS = {"claude": ("command", "claude-skill")}
-# The stacks a skill can need, and the full-sample apps a reference file can belong to.
+# The stacks a skill can need.
 STACKS = ("spring-backend", "nextjs-web", "android-compose", "ios-swiftui")
-SAMPLE_APPS = ("mobile-ios",)
 # Everything under these folders of the template is generated from the sources.
 MANAGED_ROOTS = (".agents/skills", ".claude/commands", ".claude/skills", ".cursor/rules")
 HEADER = "{# Generated from template-skills/%s/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}\n"
@@ -65,7 +64,6 @@ _SOURCE_KEYS = {
     "layers",
     "stacks",
     "reference-stacks",
-    "reference-apps",
     "codex",
     "command",
     "claude-skill",
@@ -88,9 +86,6 @@ class Skill:
         self.stacks: tuple[str, ...] = tuple(metadata.get("stacks") or ())
         self.reference_stacks: dict[str, tuple[str, ...]] = {
             key: tuple(value) for key, value in (metadata.get("reference-stacks") or {}).items()
-        }
-        self.reference_apps: dict[str, tuple[str, ...]] = {
-            key: tuple(value) for key, value in (metadata.get("reference-apps") or {}).items()
         }
         self.codex: dict[str, Any] = metadata.get("codex") or {}
         self.command: dict[str, Any] = metadata.get("command") or {}
@@ -148,10 +143,8 @@ def parse_source(directory: Path) -> Skill:
         _check_scope(name, "stacks", metadata["stacks"], STACKS)
     for key, value in (metadata.get("reference-stacks") or {}).items():
         _check_scope(name, f"reference-stacks[{key}]", value, STACKS)
-    for key, value in (metadata.get("reference-apps") or {}).items():
-        _check_scope(name, f"reference-apps[{key}]", value, SAMPLE_APPS)
-    if (metadata.get("reference-stacks") or metadata.get("reference-apps")) and not any(layer in layers for layer in ("codex", "claude-skill")):
-        raise _fail(name, "reference-stacks and reference-apps need a skill layer (codex or claude-skill).")
+    if metadata.get("reference-stacks") and not any(layer in layers for layer in ("codex", "claude-skill")):
+        raise _fail(name, "reference-stacks needs a skill layer (codex or claude-skill).")
 
     codex = metadata.get("codex") or {}
     if "codex" in layers:
@@ -394,13 +387,13 @@ def _check_jinja(path: str, text: str) -> None:
 # --------------------------------------------------------------------------- copier.yml block
 
 
-def _exclude_line(scope: tuple[str, ...], path: str, variable: str = "stacks") -> str:
-    """One ``_exclude`` entry: the path goes unless one of the stacks (or full-sample app IDs) is present.
+def _exclude_line(scope: tuple[str, ...], path: str) -> str:
+    """One ``_exclude`` entry: the path goes unless one of the stacks is present.
 
     The entry applies to the workspace layer only; an app layer's paths are its own.
     """
 
-    condition = " and ".join(f"'{item}' not in {variable}" for item in scope)
+    condition = " and ".join(f"'{item}' not in stacks" for item in scope)
     return f'  - "{{% if prism_layer == \'workspace\' and {condition} %}}{path}{{% endif %}}"'
 
 
@@ -432,16 +425,12 @@ def exclude_lines(skills: list[Skill]) -> list[str]:
                 paths.append(f".cursor/rules/{skill.cursor_file}.mdc")
             lines.extend(_exclude_line(skill.stacks, path) for path in paths)
         names = _reference_names(skill)
-        for key, scopes, variable in (
-            ("reference-stacks", skill.reference_stacks, "stacks"),
-            ("reference-apps", skill.reference_apps, "app_ids"),
-        ):
-            for relative, scope in scopes.items():
-                if relative not in names:
-                    raise _fail(skill.name, f"{key} names {relative!r}, which no reference file or folder has.")
-                for layer, folder in (("codex", ".agents/skills"), ("claude-skill", ".claude/skills")):
-                    if skill.has(layer):
-                        lines.append(_exclude_line(scope, f"{folder}/{skill.name}/{relative}", variable))
+        for relative, scope in skill.reference_stacks.items():
+            if relative not in names:
+                raise _fail(skill.name, f"reference-stacks names {relative!r}, which no reference file or folder has.")
+            for layer, folder in (("codex", ".agents/skills"), ("claude-skill", ".claude/skills")):
+                if skill.has(layer):
+                    lines.append(_exclude_line(scope, f"{folder}/{skill.name}/{relative}"))
     return lines
 
 

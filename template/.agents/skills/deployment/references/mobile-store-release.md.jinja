@@ -30,11 +30,11 @@ For each Android app ({% for app in apps if app.stack == "android-compose" %}`{{
 
 ## iOS: TestFlight
 
-Job `release` in `.github/workflows/mobile-ios.yml`, after the test job, on `macos-latest`:
+Job `release` in the app's workflow `.github/workflows/<app-id>.yml`, after the test job, on `macos-latest`, with the app's folder as its working directory:
 
-1. Check out, `brew install xcodegen`, create the local xcconfig files from the tracked `.example` files, and run `xcodegen generate` in `mobile-ios`. Set the production API URL in `Release.xcconfig.example` before tagging a release.
-2. Set up Ruby 3.2 with `bundler-cache: true` and `working-directory: mobile-ios`.
-3. Upload: `bundle exec fastlane beta` in `mobile-ios` with the secrets below as environment variables and `GITHUB_RUN_NUMBER` set to `github.run_number`.
+1. Check out, `brew install xcodegen`, and run `xcodegen generate` in the app's folder. Set the Release `API_BASE_URL` in `project.yml` to the production API URL (HTTPS) before tagging a release, and replace the local development sign-in with your identity provider.
+2. Set up Ruby 3.2 with `bundler-cache: true` and the app's folder as `working-directory`.
+3. Upload: `bundle exec fastlane beta` in the app's folder with the secrets below as environment variables and `GITHUB_RUN_NUMBER` set to `github.run_number`.
 
 | Secret | Description |
 |--------|-------------|
@@ -44,5 +44,5 @@ Job `release` in `.github/workflows/mobile-ios.yml`, after the test job, on `mac
 | `MATCH_PASSWORD` | Fastlane match encryption password |
 | `MATCH_GIT_URL` | Git URL of the Fastlane match certificate repository |
 
-The lane is defined in `mobile-ios/fastlane/Fastfile`.
+The lane is defined in the app's `fastlane/Fastfile`.
 {%- endif %}

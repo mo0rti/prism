@@ -18,11 +18,10 @@ includes:
     taskfile: ./{{ app.path }}/Taskfile.yml
     dir: ./{{ app.path }}
 {% endfor %}
-{% if "ios-swiftui" in stacks %}
-  mobile-ios:
-    taskfile: ./mobile-ios/Taskfile.yml
-    dir: ./mobile-ios
-{% endif %}
+{% for app in apps if app.stack == "ios-swiftui" %}  {{ app.id }}:
+    taskfile: ./{{ app.path }}/Taskfile.yml
+    dir: ./{{ app.path }}
+{% endfor %}
 
 tasks:
   # ===========================================================================
@@ -36,9 +35,6 @@ tasks:
 {% endfor %}
 {% for app in apps if app.stack == "nextjs-web" %}      - task: {{ app.id }}:generate-api
 {% endfor %}
-{% if "ios-swiftui" in stacks %}
-      - task: generate-client-mobile-ios
-{% endif %}
     sources:
       - "{{'{{'}} .OPENAPI_SPEC {{'}}'}}"
 
@@ -54,19 +50,6 @@ tasks:
         --additional-properties=interfaceOnly=true,useSpringBoot3=true,useTags=true
         --package-name="{{ package_identifier }}.{{ app.id | replace('-', '') }}.api"
 {% endfor %}
-
-{% if "ios-swiftui" in stacks %}
-  generate-client-mobile-ios:
-    desc: "Generate Swift URLSession client from OpenAPI"
-    internal: true
-    cmds:
-      - >
-        {{'{{'}} .OPENAPI_GENERATOR {{'}}'}} generate
-        -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
-        -g swift6
-        -o ./mobile-ios/Generated/APIClient
-        --additional-properties=library=urlsession,projectName={{ ios_module_name }}API
-{% endif %}
 
   # ===========================================================================
   # Cross-Platform Commands

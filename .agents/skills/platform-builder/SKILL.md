@@ -11,13 +11,12 @@ Use this skill for template-repo work that adds a new platform slice or material
 
 1. Read the relevant implementation status and platform context in `docs/current-status.md`, `docs/maintainer-workflow.md`, `README.md`, and the strongest existing template slices.
 2. Study the strongest reference slices before editing:
-   - `packs/spring-backend/`, `packs/nextjs-web/` and `packs/android-compose/` (the pack shape: every path under `{{ app_path }}/`, versions read from `packs/versions.yml`)
-   - `template/mobile-ios/`
-3. Edit the files of the stack: a pack under `packs/{stack}/`, or a full sample under `template/{platform}/` until its pack exists.
+   - `packs/spring-backend/`, `packs/nextjs-web/`, `packs/android-compose/` and `packs/ios-swiftui/` (the pack shape: every path under `{{ app_path }}/`, versions read from `packs/versions.yml`)
+3. Edit the files of the stack: its pack under `packs/{stack}/`.
    - Keep Jinja syntax balanced.
    - Add `.jinja` to any file with template expressions.
    - Use `{% if "stack" in stacks %}` or `{% if "app-id" in app_ids %}` guards only when the file truly needs them.
-4. Update the app's docs: `packs/{stack}/{{ app_path }}/docs/` for a pack, `template/{platform}/docs/` for a sample.
+4. Update the app's docs: `packs/{stack}/{{ app_path }}/docs/`.
 5. Update AI context when the platform contract changes:
    - `template/CLAUDE.md.jinja`
    - `template/AGENTS.md.jinja`

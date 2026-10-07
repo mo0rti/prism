@@ -13,9 +13,9 @@ Hosting, secrets and deployment belong to the user and their agent. The `deploym
 {% for app in apps if app.stack == "spring-backend" %}| `{{ app.id }}.yml` | `{{ app.path }}/**`, `shared/api-contracts/**` | `./gradlew build`: compile, every test (the integration tests start PostgreSQL with Testcontainers) and the jar; upload test reports |
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| `{{ app.id }}.yml` | `{{ app.path }}/**`, `shared/api-contracts/**` | `npm ci`, lint, typecheck, Vitest tests, `next build` |
 {% endfor %}{% for app in apps if app.stack == "android-compose" %}| `{{ app.id }}.yml` | `{{ app.path }}/**`, `shared/api-contracts/**` | `./gradlew assembleDebug testDebugUnitTest` (the debug APK and the JVM unit tests, the Compose UI test included); upload the APK and the test reports |
-{% endfor %}{% if "ios-swiftui" in stacks %}| `mobile-ios.yml` | `mobile-ios/**`, `shared/**` | xcodebuild test (macOS runner) |
-{% endif %}| `api-contracts.yml` | `shared/api-contracts/**` | Validate OpenAPI spec |
+{% endfor %}{% for app in apps if app.stack == "ios-swiftui" %}| `{{ app.id }}.yml` | `{{ app.path }}/**`, `shared/api-contracts/**` | XcodeGen, simulator build, XCTest unit and UI tests (macOS runner) |
+{% endfor %}| `api-contracts.yml` | `shared/api-contracts/**` | Validate OpenAPI spec |
 
 {% if "ios-swiftui" in stacks %}
-The iOS CI job creates `mobile-ios/Config/Debug.xcconfig` and `Release.xcconfig` from the tracked `.example` files.
+The iOS CI job generates the Xcode project from the app's `project.yml` with XcodeGen, so the `.xcodeproj` is never committed.
 {% endif %}

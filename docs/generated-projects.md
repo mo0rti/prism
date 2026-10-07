@@ -20,7 +20,7 @@ Generated projects include:
 
 - a generated `README.md` with the human overview, setup and the operation names by tool
 - a required `knowledge/` tree with raw intake and the living product wiki
-- the code of each scaffolded app under its own path, from a stack pack (`packs/<stack>/`) or, until the stack's pack exists, a full sample, each with its own `AGENTS.md`, `CLAUDE.md` and `docs/`; `docs/` holds the project-wide docs
+- the code of each scaffolded app under its own path, from a stack pack (`packs/<stack>/`), each with its own `AGENTS.md`, `CLAUDE.md` and `docs/`; `docs/` holds the project-wide docs
 - a generated `AGENTS.md`, the single source of agent rules, and a `CLAUDE.md` that only imports it with `@AGENTS.md`; each app folder repeats the pattern
 - Cursor rules under `.cursor/rules/` that scope stack facts by file path and describe the board review; Cursor reads `AGENTS.md` itself and loads the skills in `.agents/skills/` and `.claude/skills/`
 - Codex skills in `.agents/skills/`, Claude commands in `.claude/commands/` and Claude skills in `.claude/skills/`, generated from one source in this repository (`template-skills/`), so the guidance has the same text in every tool
@@ -311,15 +311,13 @@ Generated projects include these Hygen generators under `_templates/`:
 
 | Generator | Purpose |
 |-----------|---------|
-| `feature new` | Scaffold a backend + iOS feature slice and create a dated intake note in `knowledge/intake/pending/YYYY-MM-DD-feature-name/` for `po-intake` to process |
-| `screen new` | Scaffold a new iOS screen |
+| `feature new` | Scaffold a backend feature slice and create a dated intake note in `knowledge/intake/pending/YYYY-MM-DD-feature-name/` for `po-intake` to process |
 | `endpoint new` | Scaffold an OpenAPI path snippet and backend endpoint starter |
 
 Typical usage inside a generated project:
 
 ```bash
 npx hygen feature new
-npx hygen screen new
 npx hygen endpoint new
 ```
 
@@ -332,8 +330,8 @@ The generated workflow set is:
 | `api-contracts.yml` | Always | Validate the OpenAPI contract |
 | `<app-id>.yml` | One for each scaffolded `spring-backend` app (`backend.yml` for the default app) | `./gradlew build` (compile, every test with Testcontainers PostgreSQL, the jar), scoped to the app's path |
 | `<app-id>.yml` | One for each scaffolded `android-compose` app (`mobile-android.yml` for the default app) | `./gradlew assembleDebug testDebugUnitTest` on a clean runner (the debug APK and the JVM unit tests), scoped to the app's path |
-| `mobile-ios.yml` | With `mobile-ios` | iOS test |
 | `<app-id>.yml` | One for each scaffolded `nextjs-web` app (`web.yml` for the default app) | `npm ci`, lint, typecheck, Vitest tests and `next build` on a clean runner, scoped to the app's path |
+| `<app-id>.yml` | One for each scaffolded `ios-swiftui` app (`mobile-ios.yml` for the default app) | On a macOS runner: XcodeGen, a simulator build and the XCTest unit and UI tests, scoped to the app's path |
 
 No workflow deploys. The `deployment` skill describes the deploy jobs to add once you choose a host.
 

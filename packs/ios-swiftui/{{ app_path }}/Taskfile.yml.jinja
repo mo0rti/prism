@@ -1,0 +1,59 @@
+version: "3"
+
+vars:
+  # Empty selects the newest available iPhone simulator.
+  SIMULATOR_NAME: {% raw %}'{{ .SIMULATOR_NAME | default "" }}'{% endraw %}
+
+tasks:
+  generate-project:
+    desc: Generate the Xcode project of {{ app_id }} from project.yml
+    platforms: [darwin]
+    cmds:
+      - xcodegen generate
+
+  build:
+    desc: Build {{ app_id }} for a simulator
+    platforms: [darwin]
+    deps: [generate-project]
+    vars:
+      SIMULATOR_ID:
+        sh: bash scripts/select-simulator.sh {% raw %}"{{ .SIMULATOR_NAME }}"{% endraw %}
+    cmds:
+      - xcodebuild build -project {{ app_module_name }}.xcodeproj -scheme {{ app_module_name }} -destination "platform=iOS Simulator,id={% raw %}{{ .SIMULATOR_ID }}{% endraw %}" -configuration Debug
+
+  test:
+    desc: Run all {{ app_id }} tests (unit and UI)
+    platforms: [darwin]
+    deps: [generate-project]
+    vars:
+      SIMULATOR_ID:
+        sh: bash scripts/select-simulator.sh {% raw %}"{{ .SIMULATOR_NAME }}"{% endraw %}
+    cmds:
+      - xcodebuild test -project {{ app_module_name }}.xcodeproj -scheme {{ app_module_name }} -destination "platform=iOS Simulator,id={% raw %}{{ .SIMULATOR_ID }}{% endraw %}"
+
+  test-unit:
+    desc: Run the {{ app_id }} unit tests only
+    platforms: [darwin]
+    deps: [generate-project]
+    vars:
+      SIMULATOR_ID:
+        sh: bash scripts/select-simulator.sh {% raw %}"{{ .SIMULATOR_NAME }}"{% endraw %}
+    cmds:
+      - xcodebuild test -project {{ app_module_name }}.xcodeproj -scheme {{ app_module_name }} -destination "platform=iOS Simulator,id={% raw %}{{ .SIMULATOR_ID }}{% endraw %}" -only-testing:{{ app_module_name }}Tests
+
+  test-ui:
+    desc: Run the {{ app_id }} UI tests only
+    platforms: [darwin]
+    deps: [generate-project]
+    vars:
+      SIMULATOR_ID:
+        sh: bash scripts/select-simulator.sh {% raw %}"{{ .SIMULATOR_NAME }}"{% endraw %}
+    cmds:
+      - xcodebuild test -project {{ app_module_name }}.xcodeproj -scheme {{ app_module_name }} -destination "platform=iOS Simulator,id={% raw %}{{ .SIMULATOR_ID }}{% endraw %}" -only-testing:{{ app_module_name }}UITests
+
+  clean:
+    desc: Remove the {{ app_id }} build output
+    platforms: [darwin]
+    cmds:
+      - rm -rf build/
+      - xcodebuild clean -project {{ app_module_name }}.xcodeproj -scheme {{ app_module_name }} 2>/dev/null || true

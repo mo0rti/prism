@@ -1,53 +1,42 @@
 {# Generated from template-skills/swiftui-design-system/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: swiftui-design-system
-description: SwiftUI design system rules for this generated project. Use when building, refactoring, or reviewing screens, shared components, theme primitives, spacing, color roles, or reusable view patterns in the iOS app.
+description: SwiftUI UI rules for the generated iOS apps. Use when building, refactoring or reviewing screens, shared views, spacing, color roles, accessibility or reusable view patterns in an iOS app.
 user-invocable: false
 ---
 
 # SwiftUI Design System
 
-Use this skill when SwiftUI work should stay aligned with the generated app's shared UI language.
+Use this skill when SwiftUI work should stay consistent and accessible. The slice has two screens (`Sources/SignIn/SignInView.swift`, `Sources/Profile/ProfileView.swift`) built from system styles, and no custom theme: they are the starting point.
 
 ## Role boundary
 
-- Own shared UI language, reusable SwiftUI components, and cross-feature visual patterns.
-- Defer DTO, repository, auth, router ownership, and build-task decisions to the companion iOS skills.
-- Defer navigation architecture and route ownership to `ios-conventions`.
-- Treat iOS 17 as the baseline for generated projects. Mark iOS 18-only APIs as optional upgrades, not default patterns.
+- Own screen composition, shared views, accessibility and visual patterns.
+- Defer models, networking, session and build-task decisions to the companion iOS skills.
+- Defer architecture and view model ownership to `ios-conventions`.
+- Treat the deployment target in `project.yml` as the baseline. Mark APIs newer than it as optional upgrades, not default patterns.
 
-## Shared UI rules
+## Rules
 
-- Use `Color.app...` theme colors from `UI/Theme/AppTheme.swift` instead of hardcoded colors where a shared token already exists.
-- Custom `Color.app...` tokens must stay safe across light and dark appearance. If a token is not authored semantically for both, prefer system roles like `.primary`, `.secondary`, and `.background`.
-- Use `Spacing` and `CornerRadius` constants instead of repeating raw values.
-- Put reusable components in `UI/Common/`; keep feature files focused on screen composition.
-- Keep screen backgrounds, badges, buttons, and shared loading or error states visually consistent across features.
+- Use system colors (`.primary`, `.secondary`, `.background`) and semantic text styles by default. A custom color must work in light and dark appearance; map the tokens of `shared/design-tokens/` once, in one file, if the project adopts a palette.
+- Keep screens in their own folder under `Sources/` with a view and a view model. The view renders state and sends intents; it holds no networking.
+- Extract a shared view into its own file once two screens repeat the same fragment, and keep it stateless and parameter-driven.
 - Icon-only or otherwise non-obvious actions must expose a clear `accessibilityLabel`.
-- Custom tappable surfaces must expose button semantics such as `.accessibilityAddTraits(.isButton)` when SwiftUI does not infer them automatically.
-- Grouped cards or composite rows should use `accessibilityElement(children: .combine)` when VoiceOver should read them as one coherent item.
-- Use semantic text styles by default. If custom fonts are introduced, scale them with `relativeTo:` so Dynamic Type remains correct.
-- Shared components must not rely on color alone to communicate important state.
-
-## Existing patterns to reuse
-
-- `PrimaryButton`
-- `LoadingView`
-- `ErrorView`
-- `Spacing`
-- `CornerRadius`
+- Custom tappable surfaces must expose button semantics (`.accessibilityAddTraits(.isButton)`) when SwiftUI does not infer them.
+- Grouped cards or composite rows use `accessibilityElement(children: .combine)` when VoiceOver should read them as one item.
+- If custom fonts are introduced, scale them with `relativeTo:` so Dynamic Type stays correct.
+- Never convey important state by color alone.
+- Put an accessibility identifier on each screen title and critical control, and keep it stable: the UI test depends on it.
+- Design the whole state model of a screen: loading, error, success and retry, as `ProfileView` does.
+- The sign-in screen says "Local development sign-in" and that it is not complete authentication. Keep that wording until the dev identity is replaced.
 
 ## Reference files
 
 Load only the reference file the task needs:
 
-- `references/hig-patterns.md` for Apple-native layout, accessibility, adaptive layout, and state-pattern guidance
-- `references/swiftui-components.md` for reusable screen sections, forms, buttons, sheets, loading, and empty or error states
-
-For route ownership, `AppRouter`, or navigation architecture questions, read `ios-conventions` and its navigation reference instead.
+- `references/hig-patterns.md` for Apple-native layout, accessibility, adaptive layout and state-pattern guidance
 
 ## Preview and composition rules
 
-- Shared components in `UI/Common/` must include at least one `#Preview` that applies the shared theme tokens where applicable.
-- Keep shared components stateless and parameter-driven where possible.
-- Promote repeated view fragments out of feature screens into `UI/Common/`.
+- Give a shared view at least one `#Preview`.
+- Keep shared views stateless and parameter-driven where possible.

@@ -1,7 +1,0 @@
-// Tracked starting point for the git-ignored Config/Release.xcconfig.
-// CI and fresh clones create the local file with: cp Config/Release.xcconfig.example Config/Release.xcconfig
-// Replace the placeholder host before production or TestFlight builds.
-//
-// xcconfig treats `//` as a comment start, so the `$()` below keeps the scheme separator from being cut off.
-
-API_BASE_URL = https:/$()/api.example.com/api/v1

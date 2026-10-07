@@ -1,4 +1,4 @@
-"""Stack packs: the app layers of generation, their answers and the full samples that remain.
+"""Stack packs: the app layers of generation and their answers.
 
 Generation has two layers that one ``copier.yml`` and one template tag cover. The workspace layer
 (``template/``) holds the knowledge base, the guidance, ``shared/`` and ``docker-compose.yml``. An app
@@ -7,8 +7,7 @@ repository root, with every path under the app's own path. The CLI chooses the l
 question ``prism_layer`` and passes each layer its answers.
 
 This module holds what the CLI decides for those answers: which stacks have a pack, the identifiers an
-app derives from its ID, the validation that keeps two apps apart, the port each app listens on, and the
-two switches below for the stacks whose pack has not landed yet.
+app derives from its ID, the validation that keeps two apps apart and the port each app listens on.
 """
 
 from __future__ import annotations
@@ -36,21 +35,7 @@ WORKSPACE_LAYER = "workspace"
 COPIER_ANSWERS_FILE = ".copier-answers.yml"
 
 # Stacks with a pack under packs/<stack>/. Each pack work package adds its stack here.
-PACK_STACKS = ("spring-backend", "nextjs-web", "android-compose")
-
-# One switch per stack that has no pack yet. While it is true, the workspace layer still generates that
-# stack's full sample (mobile-ios) from template/. The work package that lands the stack's pack deletes
-# its sample, its switch and its row in full_sample_apps().
-IOS_SWIFTUI_FULL_SAMPLE = True
-
-
-def full_sample_apps() -> dict[str, str]:
-    """The default app ID and the stack of every full sample the workspace layer still generates."""
-
-    samples: dict[str, str] = {}
-    if IOS_SWIFTUI_FULL_SAMPLE:
-        samples["mobile-ios"] = "ios-swiftui"
-    return samples
+PACK_STACKS = ("spring-backend", "nextjs-web", "android-compose", "ios-swiftui")
 
 
 def has_pack(stack: str) -> bool:
@@ -58,9 +43,9 @@ def has_pack(stack: str) -> bool:
 
 
 def scaffoldable_stacks() -> tuple[str, ...]:
-    """The stacks Prism can scaffold now: those with a pack and those with a full sample."""
+    """The stacks Prism can scaffold now: those with a pack."""
 
-    return tuple(stack_id for stack_id in STACKS if has_pack(stack_id) or stack_id in set(full_sample_apps().values()))
+    return tuple(stack_id for stack_id in STACKS if has_pack(stack_id))
 
 
 # --- Identifiers ----------------------------------------------------------------
@@ -327,7 +312,6 @@ def validate_scaffold(apps: Iterable[Mapping[str, Any]], *, only: Iterable[str] 
     scaffolding = set(only) if only is not None else {entry["id"] for entry in entries if entry.get("generation") == GENERATION_SCAFFOLDED}
     errors: list[str] = []
     segments: dict[str, str] = {}
-    samples = full_sample_apps()
     for entry in entries:
         app_id = entry["id"]
         segment = app_package_segment(app_id)
@@ -352,22 +336,8 @@ def validate_scaffold(apps: Iterable[Mapping[str, Any]], *, only: Iterable[str] 
             first = path.split("/", 1)[0]
             if first in RESERVED_PATH_ROOTS:
                 errors.append(f"App `{app_id}` cannot be scaffolded at `{path}`: `{first}/` belongs to the workspace.")
-        elif samples.get(app_id) == stack:
-            default_path = STACKS[stack].default_path or app_id
-            if path != default_path:
-                errors.append(
-                    f"App `{app_id}` of stack `{stack}` has no pack yet; its full sample is generated only at `{default_path}/`, not at `{path}`."
-                )
-        elif stack in set(samples.values()):
-            errors.append(
-                f"Stack `{stack}` has no pack yet. Its full sample is generated only for the default apps "
-                f"({', '.join(sorted(app for app, sample_stack in samples.items() if sample_stack == stack))}); "
-                f"register `{app_id}` instead of scaffolding it."
-            )
         else:
-            errors.append(f"Stack `{stack}` cannot be scaffolded: Prism has no pack or sample for it. Register `{app_id}` instead.")
-        if app_id in samples and samples[app_id] != stack:
-            errors.append(f"App ID `{app_id}` is the ID of the `{samples[app_id]}` full sample; use another ID for a `{stack}` app.")
+            errors.append(f"Stack `{stack}` cannot be scaffolded: Prism has no pack for it. Register `{app_id}` instead.")
     return errors
 
 

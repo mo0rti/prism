@@ -212,7 +212,7 @@ jobs:
           python -m pip install --upgrade pip .
           brew install xcodegen
 
-      - name: Generate iOS Validation Sample
+      - name: Generate iOS Validation Sample (two iOS apps)
         shell: bash
         run: |
           set -euo pipefail
@@ -225,10 +225,10 @@ jobs:
             apps:
               - {id: backend, stack: spring-backend, name: Spring Boot Backend}
               - {id: mobile-ios, stack: ios-swiftui, name: iOS (Swift/SwiftUI)}
+              - {id: partner-ios, stack: ios-swiftui, name: Partner App, path: apps/partner-ios}
           YAML
           python -m prism_cli new --answers "$RUNNER_TEMP/ios-answers.yml" --dest "$TARGET" --yes
-          # Commit the sample and clone it, so git-ignored files such as the local xcconfigs are absent,
-          # as they are on a fresh checkout in CI.
+          # Commit the sample and clone it, so only the generated, tracked state is built, as on a fresh checkout in CI.
           git -C "$TARGET" init -q
           git -C "$TARGET" add -A
           git -C "$TARGET" -c user.name=prism-validation -c user.email=prism-validation@example.invalid commit -q -m "Generated sample"
@@ -240,22 +240,13 @@ jobs:
           git clone -q --no-local "$TARGET" "$CLONE"
           echo "PRISM_IOS_TARGET=$CLONE" >> "$GITHUB_ENV"
 
-      - name: Create local xcconfig files
+      - name: Generate Xcode projects
         shell: bash
         run: |
           set -euo pipefail
-          cd "$PRISM_IOS_TARGET/mobile-ios"
-          test ! -e Config/Debug.xcconfig
-          test ! -e Config/Release.xcconfig
-          cp Config/Debug.xcconfig.example Config/Debug.xcconfig
-          cp Config/Release.xcconfig.example Config/Release.xcconfig
-
-      - name: Generate Xcode project
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$PRISM_IOS_TARGET/mobile-ios"
-          xcodegen generate
+          for app in mobile-ios apps/partner-ios; do
+            (cd "$PRISM_IOS_TARGET/$app" && xcodegen generate)
+          done
 
       - name: Select iPhone simulator
         shell: bash
@@ -270,45 +261,58 @@ jobs:
           echo "Using simulator $SIMULATOR_ID"
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
 
-      - name: Build iOS app
+      - name: Build iOS apps
         shell: bash
         run: |
           set -euo pipefail
-          cd "$PRISM_IOS_TARGET/mobile-ios"
-          xcodebuild build \
-            -project "Review App.xcodeproj" \
-            -scheme "ReviewApp" \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            -configuration Debug \
-            -derivedDataPath build/DerivedData
+          for pair in "mobile-ios:MobileIos" "apps/partner-ios:PartnerIos"; do
+            app="${pair%%:*}"
+            module="${pair##*:}"
+            echo "Building $app"
+            (cd "$PRISM_IOS_TARGET/$app" && xcodebuild build \
+              -project "$module.xcodeproj" \
+              -scheme "$module" \
+              -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+              -configuration Debug \
+              -derivedDataPath build/DerivedData)
+          done
 
       - name: Check built API base URL
         shell: bash
         run: |
           set -euo pipefail
-          cd "$PRISM_IOS_TARGET/mobile-ios"
-          PLIST=$(find build/DerivedData/Build/Products -path '*/ReviewApp.app/Info.plist' | head -n 1)
-          test -n "$PLIST"
-          BASE_URL=$(/usr/libexec/PlistBuddy -c "Print :API_BASE_URL" "$PLIST")
-          echo "API_BASE_URL in the built app: $BASE_URL"
-          test "$BASE_URL" = "http://localhost:8080/api/v1"
+          for pair in "mobile-ios:MobileIos" "apps/partner-ios:PartnerIos"; do
+            app="${pair%%:*}"
+            module="${pair##*:}"
+            PLIST=$(find "$PRISM_IOS_TARGET/$app/build/DerivedData/Build/Products" -path "*/$module.app/Info.plist" | head -n 1)
+            test -n "$PLIST"
+            BASE_URL=$(/usr/libexec/PlistBuddy -c "Print :API_BASE_URL" "$PLIST")
+            echo "API_BASE_URL in the built $app: $BASE_URL"
+            test "$BASE_URL" = "http://localhost:8080"
+          done
 
-      - name: Test iOS app
+      - name: Test iOS apps
         shell: bash
         run: |
           set -euo pipefail
-          cd "$PRISM_IOS_TARGET/mobile-ios"
-          xcodebuild test \
-            -project "Review App.xcodeproj" \
-            -scheme "ReviewApp" \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            -derivedDataPath build/DerivedData \
-            -resultBundlePath build/TestResults.xcresult
+          for pair in "mobile-ios:MobileIos" "apps/partner-ios:PartnerIos"; do
+            app="${pair%%:*}"
+            module="${pair##*:}"
+            echo "Testing $app"
+            (cd "$PRISM_IOS_TARGET/$app" && xcodebuild test \
+              -project "$module.xcodeproj" \
+              -scheme "$module" \
+              -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+              -derivedDataPath build/DerivedData \
+              -resultBundlePath build/TestResults.xcresult)
+          done
 
       - name: Upload iOS test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ios-validation-test-results
-          path: ${{ env.PRISM_IOS_TARGET }}/mobile-ios/build/TestResults.xcresult
+          path: |
+            ${{ env.PRISM_IOS_TARGET }}/mobile-ios/build/TestResults.xcresult
+            ${{ env.PRISM_IOS_TARGET }}/apps/partner-ios/build/TestResults.xcresult
           if-no-files-found: ignore

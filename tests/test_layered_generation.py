@@ -195,41 +195,41 @@ class TwoBackendsTests(LayeredTestCase):
         self.assertEqual([".github/workflows/backend.yml", ".github/workflows/api-two.yml"], manifest["expected_surfaces"]["workflows"])
 
 
-class SampleStacksTests(LayeredTestCase):
-    """A stack without a pack keeps its full sample through the workspace layer, one switch per stack."""
+class PackStacksTests(LayeredTestCase):
+    """Every stack with a pack is generated as an app layer of its own; a stack without a pack is only registered."""
 
-    def test_the_default_ios_app_is_still_generated_as_a_sample_and_the_web_and_android_apps_are_packs(self) -> None:
+    def test_the_four_stacks_are_packs_with_layers_of_their_own(self) -> None:
         apps = [
             BACKEND,
             {"id": "web", "stack": "nextjs-web", "name": "Web App"},
             {"id": "mobile-android", "stack": "android-compose", "name": "Android (Kotlin/Compose)"},
             {"id": "mobile-ios", "stack": "ios-swiftui", "name": "iOS (Swift/SwiftUI)"},
         ]
-        ws = self.generate("samples", apps)
-        for name in ("mobile-ios",):
-            self.assertTrue((ws / name / "AGENTS.md").is_file(), name)
-            self.assertTrue((ws / ".github" / "workflows" / f"{name}.yml").is_file(), name)
-            self.assertFalse((ws / name / ".copier-answers.yml").exists(), "a sample has no layer of its own; the workspace layer renders it")
-        for name in ("backend", "web", "mobile-android"):
+        ws = self.generate("packs", apps)
+        for name in ("backend", "web", "mobile-android", "mobile-ios"):
             self.assertTrue((ws / name / ".copier-answers.yml").is_file(), f"{name} is a pack with a layer of its own")
+        self.assertTrue((ws / "mobile-android" / "app" / "build.gradle.kts").is_file())
+        self.assertTrue((ws / "mobile-ios" / "project.yml").is_file())
+        self.assertTrue((ws / ".github" / "workflows" / "mobile-ios.yml").is_file())
+        self.assertTrue((ws / ".cursor" / "rules" / "mobile-ios.mdc").is_file())
+        self.assertEqual("ios-swiftui", read_yaml(ws / "mobile-ios" / ".copier-answers.yml")["prism_layer"])
         self.assertTrue((ws / "web" / "package-lock.json").is_file())
         self.assertTrue((ws / ".github" / "workflows" / "web.yml").is_file())
         self.assertTrue((ws / ".cursor" / "rules" / "web.mdc").is_file())
         workspace = read_yaml(ws / ".copier-answers.yml")
         self.assertEqual(["android-compose", "ios-swiftui", "nextjs-web", "spring-backend"], workspace["stacks"])
-        self.assertTrue((ws / "mobile-android" / ".copier-answers.yml").is_file(), "the Android app is a pack with a layer of its own")
         self.assertEqual(["backend", "web", "mobile-android", "mobile-ios"], [entry["id"] for entry in workspace["apps"]])
         manifest = read_yaml(ws / "prism.workspace.yml")
         self.assertEqual({"backend", "web", "mobile-android", "mobile-ios"}, set(manifest["app_maturity"]))
         self.assertEqual("experimental", manifest["app_maturity"]["mobile-ios"]["level"])
         self.assertEqual("provisional", manifest["app_maturity"]["web"]["level"])
 
-    def test_a_custom_ios_app_cannot_be_scaffolded_before_its_pack_exists(self) -> None:
-        answers = write_answers(self.root / "custom.yml", {"project_name": "Custom", "apps": [{"id": "customer-ios", "stack": "ios-swiftui"}]})
+    def test_an_app_of_a_stack_without_a_pack_cannot_be_scaffolded(self) -> None:
+        answers = write_answers(self.root / "custom.yml", {"project_name": "Custom", "apps": [{"id": "customer-tool", "stack": "other", "generation": "scaffolded"}]})
         code, _out, err = run_cli("new", "--template", template_url(self.repo), "--trust-template", "--answers", str(answers), "--dest", str(self.root / "custom"), "--yes")
         self.assertEqual(3, code)
-        self.assertIn("has no pack yet", err)
-        self.assertIn("register `customer-ios`", err)
+        self.assertIn("App `customer-tool` cannot be `scaffolded`", err)
+        self.assertIn("registers the others", err)
         self.assertFalse((self.root / "custom").exists())
 
     def test_two_android_apps_are_two_app_layers_with_their_own_identifiers(self) -> None:
@@ -475,9 +475,6 @@ class ScaffoldTests(LayeredTestCase):
 
     def test_a_stack_without_a_pack_is_registered_not_scaffolded(self) -> None:
         ws = self.copy("nopack")
-        code, _out, err = run_cli("app", "add", "customer-ios", "--stack", "ios-swiftui", "--scaffold", str(ws))
-        self.assertEqual(3, code)
-        self.assertIn("has no pack yet", err)
         code, _out, err = run_cli("app", "add", "tool", "--stack", "other", "--has-ui", "false", "--serves-api", "false", "--scaffold", str(ws))
         self.assertEqual(3, code)
         self.assertIn("cannot be scaffolded", err)

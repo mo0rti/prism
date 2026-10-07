@@ -1,0 +1,138 @@
+import XCTest
+@testable import {{ app_module_name }}
+
+/// The API client's request building and response reading, with no network: they are static functions.
+final class APIClientTests: XCTestCase {
+    private let baseURL = "http://localhost:8080"
+
+    // MARK: - URLs
+
+    func testJoinsBaseURLAndPathWithOneSlash() {
+        for base in ["http://localhost:8080", "http://localhost:8080/"] {
+            for path in ["/api/me", "api/me"] {
+                XCTAssertEqual(APIURL.make(baseURL: base, path: path)?.absoluteString, "http://localhost:8080/api/me")
+            }
+        }
+    }
+
+    func testRejectsBaseURLWithoutSchemeOrHost() {
+        XCTAssertNil(APIURL.make(baseURL: "", path: "/api/me"))
+        XCTAssertNil(APIURL.make(baseURL: "http:", path: "/api/me"))
+        XCTAssertNil(APIURL.make(baseURL: "localhost:8080", path: "/api/me"))
+    }
+
+    func testBundledBaseURLKeepsSchemeAndHost() {
+        let configured = APIURL.configuredBaseURL()
+        // A test bundle without a host app has no API_BASE_URL; with the app as host, Debug sets the local backend.
+        if !configured.isEmpty {
+            XCTAssertNotNil(APIURL.make(baseURL: configured, path: "/api/me"), "API_BASE_URL has no scheme or host: \(configured)")
+        }
+    }
+
+    // MARK: - Endpoints follow the contract
+
+    func testEndpointsAreTheContractOperations() {
+        XCTAssertEqual(APIEndpoint.createDevToken.path, "/api/dev-identity/token")
+        XCTAssertEqual(APIEndpoint.createDevToken.method, .post)
+        XCTAssertFalse(APIEndpoint.createDevToken.requiresAuth)
+        XCTAssertEqual(APIEndpoint.getMe.path, "/api/me")
+        XCTAssertEqual(APIEndpoint.getMe.method, .get)
+        XCTAssertTrue(APIEndpoint.getMe.requiresAuth)
+    }
+
+    // MARK: - Requests
+
+    func testDevTokenRequestIsAJSONPostWithoutAToken() throws {
+        let request = try URLSessionAPIClient.makeRequest(
+            baseURL: baseURL,
+            endpoint: .createDevToken,
+            token: nil,
+            body: DevTokenRequest(email: "ada@example.test", displayName: nil)
+        )
+
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.absoluteString, "http://localhost:8080/api/dev-identity/token")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let body = try XCTUnwrap(request.httpBody)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: String])
+        XCTAssertEqual(json, ["email": "ada@example.test"], "a nil field is left out of the body")
+    }
+
+    func testProfileRequestCarriesTheBearerToken() throws {
+        let request = try URLSessionAPIClient.makeRequest(baseURL: baseURL, endpoint: .getMe, token: "the-token")
+
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.absoluteString, "http://localhost:8080/api/me")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer the-token")
+        XCTAssertNil(request.httpBody)
+    }
+
+    func testProfileRequestWithoutATokenIsUnauthorized() {
+        for token in [nil, ""] as [String?] {
+            XCTAssertThrowsError(try URLSessionAPIClient.makeRequest(baseURL: baseURL, endpoint: .getMe, token: token)) { error in
+                XCTAssertEqual(error as? APIError, .unauthorized)
+            }
+        }
+    }
+
+    func testAnUnsetBaseURLIsReportedAsNotConfigured() {
+        XCTAssertThrowsError(try URLSessionAPIClient.makeRequest(baseURL: "", endpoint: .getMe, token: "the-token")) { error in
+            XCTAssertEqual(error as? APIError, .notConfigured)
+        }
+    }
+
+    // MARK: - Responses
+
+    func testReadsTheDevTokenResponse() throws {
+        let data = Data(#"{"accessToken":"abc","tokenType":"Bearer","expiresIn":900}"#.utf8)
+
+        let response = try URLSessionAPIClient.decode(DevTokenResponse.self, from: data, status: 200, endpoint: .createDevToken)
+
+        XCTAssertEqual(response, DevTokenResponse(accessToken: "abc", tokenType: "Bearer", expiresIn: 900))
+    }
+
+    func testReadsTheProfileWithAndWithoutAnEmail() throws {
+        let withEmail = Data(#"{"id":"1","displayName":"Ada","email":"ada@example.test","createdAt":"2026-10-07T10:15:30.123456Z"}"#.utf8)
+        let withoutEmail = Data(#"{"id":"2","displayName":"Grace","createdAt":"2026-10-07T10:15:30Z"}"#.utf8)
+
+        let first = try URLSessionAPIClient.decode(UserProfile.self, from: withEmail, status: 200, endpoint: .getMe)
+        let second = try URLSessionAPIClient.decode(UserProfile.self, from: withoutEmail, status: 200, endpoint: .getMe)
+
+        XCTAssertEqual(first.email, "ada@example.test")
+        XCTAssertEqual(first.createdAt, "2026-10-07T10:15:30.123456Z")
+        XCTAssertNil(second.email)
+    }
+
+    func testStatusesMapToErrors() {
+        let message = Data(#"{"code":"VALIDATION_ERROR","message":"email must be a well-formed email address"}"#.utf8)
+        let cases: [(status: Int, endpoint: APIEndpoint, body: Data, expected: APIError)] = [
+            (400, .createDevToken, message, .badRequest("email must be a well-formed email address")),
+            (400, .createDevToken, Data(), .badRequest("The backend rejected the request.")),
+            (401, .getMe, Data(), .unauthorized),
+            (403, .createDevToken, Data(), .devIdentityRefused),
+            (403, .getMe, Data(), .forbidden),
+            (404, .createDevToken, Data(), .devIdentityUnavailable),
+            (404, .getMe, Data(), .server(404)),
+            (500, .getMe, Data(), .server(500)),
+        ]
+        for item in cases {
+            XCTAssertThrowsError(try URLSessionAPIClient.decode(UserProfile.self, from: item.body, status: item.status, endpoint: item.endpoint)) { error in
+                XCTAssertEqual(error as? APIError, item.expected, "status \(item.status) of \(item.endpoint.path)")
+            }
+        }
+    }
+
+    func testAnUnreadableSuccessBodyIsADecodingError() {
+        XCTAssertThrowsError(try URLSessionAPIClient.decode(UserProfile.self, from: Data("{}".utf8), status: 200, endpoint: .getMe)) { error in
+            XCTAssertEqual(error as? APIError, .decoding)
+        }
+    }
+
+    func testErrorMessagesNeverCarryAToken() {
+        let errors: [APIError] = [.notConfigured, .invalidResponse, .unauthorized, .forbidden, .devIdentityUnavailable, .devIdentityRefused, .server(500), .decoding]
+        for error in errors {
+            XCTAssertFalse((error.errorDescription ?? "").contains("Bearer"), "\(error)")
+        }
+    }
+}

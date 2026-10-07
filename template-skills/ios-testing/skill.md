@@ -1,6 +1,6 @@
 ---
 name: ios-testing
-description: "iOS testing patterns for XCTest, Swift Testing adoption, ViewModel coverage, repository tests, and UI smoke tests. Use when adding or updating tests under `{{ project_slug }}Tests/` or `{{ project_slug }}UITests/`, or when deciding the right iOS test shape for a change."
+description: "iOS testing patterns for XCTest, Swift Testing adoption, view model and client tests with a fake client, and UI smoke tests. Use when adding or updating tests under an iOS app's `Tests/` or `UITests/`, or when deciding the right iOS test shape for a change."
 layers: [codex, claude-skill]
 stacks: [ios-swiftui]
 codex:
@@ -14,7 +14,7 @@ claude-skill:
 
 # iOS Testing
 
-Use this skill when iOS work needs test coverage, test refactors, or test-shape decisions.
+Use this skill when iOS work needs test coverage, test refactors, or test-shape decisions. Paths are relative to the iOS app's folder.
 
 ## Role boundary
 
@@ -26,28 +26,30 @@ Use this skill when iOS work needs test coverage, test refactors, or test-shape 
 
 ## Unit-test rules
 
-- Prefer unit tests for ViewModel state, repository mapping, auth-state transitions, and helper logic.
-- Keep `@MainActor` on tests that exercise `@MainActor @Observable` ViewModels so state mutations stay concurrency-correct.
-- Mirror the generated pattern of file-local mock repositories unless a broader shared fake clearly improves the suite.
-- Use `task mobile-ios:test-unit` as the default verification step after logic-only test changes.
+- Prefer unit tests for view model state, client request building and response reading, session transitions and helper logic.
+- Test a view model with `Tests/Support/FakeAPIClient.swift` (set its `tokenResult` or `profileResult`, read what it recorded) and a real `InMemoryTokenStore`. Do not reach the network.
+- Mark each test that touches a `@MainActor @Observable` view model `@MainActor`, and read an actor's value into a local (`let stored = await tokenStore.token()`) before asserting: an `XCTAssert` autoclosure cannot `await`.
+- `Tests/APIClientTests.swift` shows how to test the static request and response functions of the client directly.
+- Use `task <app-id>:test-unit` as the default verification step after logic-only test changes.
 
 ## Swift Testing guidance
 
 - XCTest remains the scaffolded baseline and is always acceptable.
 - Swift Testing can be added incrementally for new logic-focused suites; it can coexist with XCTest in the same generated project.
-- Prefer consistency within a given feature's tests instead of rewriting existing XCTest files just to adopt Swift Testing.
+- Prefer consistency within a feature's tests instead of rewriting existing XCTest files just to adopt Swift Testing.
 
 ## UI-test rules
 
-- Use UI tests for auth gating, app launch mode, critical navigation, accessibility identifiers, and other user-visible flow transitions.
-- Preserve stable accessibility identifiers on screen roots and critical controls that generated UI tests depend on.
-- Treat the generated UI suite as a smoke baseline, not exhaustive flow coverage. Extend it when new screens or critical flows are added.
-- Use `task mobile-ios:test-ui` when screen structure, app-launch behavior, auth gating, or identifier wiring changes.
+- Use UI tests for launch, the sign-in controls, critical navigation and accessibility identifiers.
+- `UITests/SignInUITests.swift` is a smoke test of the sign-in screen: it does not sign in, because no backend runs in CI. A flow that needs a backend belongs in a UI test with a launch-argument switch to a fake client, which you add together with the code that reads it.
+- Wait until an element is hittable and allow 30 seconds per screen, as the generated test does: simulators on CI runners are slow. Never assert on an element straight after launch.
+- Preserve stable accessibility identifiers on screen titles and critical controls.
+- Use `task <app-id>:test-ui` when screen structure, launch behavior or identifier wiring changes.
 
 ## Picking the right test
 
-- If the change is ViewModel or repository logic: add or update a unit test first.
-- If the change is app flow, auth gating, screen structure, or identifiers: add or update a UI test when the behavior is not already covered.
+- If the change is view model or client logic: add or update a unit test first.
+- If the change is a screen's structure or identifiers: add or update a UI test when the behavior is not already covered.
 - If both logic and UI are touched, prefer a unit test for the logic plus the smallest UI smoke test that protects the user flow.
 
 ## Validation

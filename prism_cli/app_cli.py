@@ -232,8 +232,7 @@ def plan_app_add(
                 conflicts.append(f"Stack `{stack}` cannot be scaffolded; register the app instead.")
             elif not has_pack(stack):
                 conflicts.append(
-                    f"Stack `{stack}` has no pack yet, so `--scaffold` cannot generate it. "
-                    "Its full sample is generated only by `prism new`; register the app instead."
+                    f"Stack `{stack}` has no pack, so `--scaffold` cannot generate it; register the app instead."
                 )
             else:
                 app_entry["generation"] = GENERATION_SCAFFOLDED

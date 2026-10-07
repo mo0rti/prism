@@ -1,0 +1,54 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Run tests"
+  lane :test do
+    # SIMULATOR_NAME picks the device. Without it the newest available iPhone simulator runs.
+    simulator = ENV["SIMULATOR_NAME"].to_s.strip
+    if simulator.empty?
+      iphone = `xcrun simctl list devices available`.lines.map(&:strip).select { |line| line.start_with?("iPhone ") }.last
+      UI.user_error!("No available iPhone simulator found. Install a simulator runtime in Xcode or set SIMULATOR_NAME.") if iphone.nil?
+      simulator = iphone.sub(/\s*\([0-9A-Fa-f-]{36}\).*\z/, "")
+    end
+
+    run_tests(
+      project: "{{ app_module_name }}.xcodeproj",
+      scheme: "{{ app_module_name }}",
+      device: simulator,
+      clean: true,
+    )
+  end
+
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    setup_ci if ENV["CI"]
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      is_key_content_base64: true,
+    )
+
+    match(
+      type: "appstore",
+      readonly: is_ci,
+      api_key: api_key,
+    )
+
+    increment_build_number(
+      build_number: ENV["GITHUB_RUN_NUMBER"] || (latest_testflight_build_number + 1).to_s,
+    )
+
+    build_app(
+      project: "{{ app_module_name }}.xcodeproj",
+      scheme: "{{ app_module_name }}",
+      export_method: "app-store",
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+    )
+  end
+end

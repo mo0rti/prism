@@ -1,0 +1,58 @@
+name: {{ app_module_name }}
+options:
+  deploymentTarget:
+    iOS: {{ versions.ios_deployment_target | tojson }}
+  xcodeVersion: {{ versions.xcode | tojson }}
+
+settings:
+  base:
+    SWIFT_VERSION: {{ versions.swift | tojson }}
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: 1
+
+targets:
+  {{ app_module_name }}:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        INFOPLIST_FILE: Sources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: {{ app_package | replace('_', '-') }}
+      configs:
+        # The backend the app calls. The local development sign-in works only against a backend on this Mac,
+        # which the simulator reaches as localhost. Set the Release value to your deployed backend.
+        Debug:
+          API_BASE_URL: "http://localhost:8080"
+        Release:
+          API_BASE_URL: ""
+    scheme:
+      testTargets:
+        - {{ app_module_name }}Tests
+        - {{ app_module_name }}UITests
+
+  {{ app_module_name }}Tests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: {{ app_package | replace('_', '-') }}.tests
+    dependencies:
+      - target: {{ app_module_name }}
+
+  {{ app_module_name }}UITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: {{ app_package | replace('_', '-') }}.uitests
+        TEST_TARGET_NAME: {{ app_module_name }}
+    dependencies:
+      - target: {{ app_module_name }}

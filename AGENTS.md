@@ -33,21 +33,21 @@ and must not be referenced. They are replaced by the wiki lifecycle system
 
 ## Repository Focus
 
-- This template scaffolds an app list. Generation has two layers under one `copier.yml` and one tag: the workspace layer (`template/`) and one app layer per scaffolded app (`packs/<stack>/`, chosen by the hidden question `prism_layer`). The backend, web and Android apps are stack packs with one tested slice each (the local development identity and `GET /api/me`, and the sign-in and profile screens that consume them); the iOS app is still a full sample rendered by the workspace layer, one switch in `prism_cli/packs.py`.
-- The backend, web and Android packs are verified locally. The iOS sample is verified only by the macOS CI job. The generated `deployment` skill's Azure and Cloudflare examples are not verified against live accounts. Apple Sign-In is experimental. Keep maturity language explicit and honest, and keep `docs/current-status.md` equal to the verification that exists.
+- This template scaffolds an app list. Generation has two layers under one `copier.yml` and one tag: the workspace layer (`template/`) and one app layer per scaffolded app (`packs/<stack>/`, chosen by the hidden question `prism_layer`). The backend, web, Android and iOS apps are stack packs with one tested slice each (the local development identity and `GET /api/me`, and the sign-in and profile screens that consume them); the workspace layer renders no app code.
+- The backend, web and Android packs are verified locally. The iOS pack is verified only by the macOS CI job. The generated `deployment` skill's Azure and Cloudflare examples are not verified against live accounts. Apple Sign-In is experimental. Keep maturity language explicit and honest, and keep `docs/current-status.md` equal to the verification that exists.
 - Never leave questionnaire-visible options silently generating broken output.
 
 ## Working Rules
 
 - Keep template-repo docs in root `docs/`.
 - Keep project-wide docs in `template/docs/`.
-- Keep technical docs of a sample in `template/{platform}/docs/` and those of a pack app in `packs/<stack>/{{ app_path }}/docs/`.
+- Keep the technical docs of an app in `packs/<stack>/{{ app_path }}/docs/`.
 - Keep the pinned versions in `packs/versions.yml` only; a pack reads them as `versions`.
 - Generate with `prism new` (a preset or an answers file that lists the apps) after template changes; raw `copier copy --trust --defaults --data "project_name=Test App" . <tempdir>` renders the workspace layer alone.
 - When editing files under `template/`, keep Jinja syntax valid:
   - all `{{` have matching `}}`
   - all `{% if %}` and `{% for %}` blocks are balanced
-  - stack conditionals use `{% if "spring-backend" in stacks %}` and full-sample conditionals `{% if "mobile-ios" in app_ids %}`; per-app output loops over `apps`
+  - stack conditionals use `{% if "spring-backend" in stacks %}`; per-app output loops over `apps`
   - every `_exclude` entry of `copier.yml` applies to the workspace layer only (`prism_layer == 'workspace'`), because an app layer's paths are its own
   - Kotlin and Java directory paths of a pack use `{{ app_package_path }}`
   - any file containing Jinja expressions keeps a `.jinja` suffix

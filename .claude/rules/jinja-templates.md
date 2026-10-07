@@ -18,7 +18,7 @@ When creating or editing `.jinja` files, validate for these common issues:
 - The template assumes PostgreSQL for a backend's local database and generates `docker-compose.yml` whenever a backend app exists; deployment is the generated `deployment` skill, not a question
 
 ## Stack And App Conditionals
-- Use `{% if "spring-backend" in stacks %}` for a stack and `{% if "mobile-ios" in app_ids %}` for a full-sample app (not `{% if backend %}`); loop `apps` for per-app output
+- Use `{% if "spring-backend" in stacks %}` for a stack (not `{% if backend %}`); loop `apps` for per-app output
 - Directory-level exclusion uses `_exclude` in `copier.yml`, not per-file guards, and every entry is guarded with `prism_layer == 'workspace'`
 
 ## EJS Escaping (Hygen templates in `_templates/`)

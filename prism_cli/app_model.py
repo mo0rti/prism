@@ -37,7 +37,7 @@ UNKNOWN = "unknown"
 
 APP_STATUSES = ("active", "retired")
 
-# How an app's code came to be: ``scaffolded`` by Prism (a pack or a full sample, so ``prism update``
+# How an app's code came to be: ``scaffolded`` by Prism (a pack, so ``prism update``
 # keeps it current) or ``registered`` only, with its code created and kept elsewhere.
 GENERATION_SCAFFOLDED = "scaffolded"
 GENERATION_REGISTERED = "registered"

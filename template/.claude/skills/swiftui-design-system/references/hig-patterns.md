@@ -1,16 +1,16 @@
 # HIG-Aligned SwiftUI Patterns
 
-Use this reference when a task needs Apple-native UI guidance beyond the repo's local theme primitives.
+Use this reference when a task needs Apple-native UI guidance for the generated iOS app.
 
 ## Prism-first rules
 
-- Start with `UI/Theme/AppTheme.swift`, `Spacing`, and `CornerRadius` before introducing new colors or sizing rules.
-- Prefer `UI/Common/` for shared UI, and keep feature views focused on composition and feature behavior.
-- Treat these patterns as guidance for the generated iOS app, not as permission to bypass `mobile-ios/docs/`.
+- The slice uses system styles, system colors and one screen per feature folder under `Sources/`. Start from those before introducing custom colors or sizing rules.
+- Extract a shared view into its own file under `Sources/` once two screens repeat the same fragment, and keep feature views focused on composition and feature behavior.
+- Treat these patterns as guidance for the generated iOS app, not as permission to bypass the app's `AGENTS.md` and `docs/guide.md`.
 
 ## Layout and spacing
 
-- Prefer semantic spacing constants over raw values.
+- Prefer a small set of named spacing values over scattered raw numbers once a second screen needs them.
 - Use safe-area-aware layouts for sticky actions, bottom call-to-action bars, and overlays.
 - Use flexible layouts before fixed frames. Reach for `frame(maxWidth: .infinity, alignment: ...)` and adaptive stacks before hardcoded widths.
 - Design for Dynamic Type from the start. Large accessibility sizes should still preserve hierarchy and affordances.
@@ -18,7 +18,7 @@ Use this reference when a task needs Apple-native UI guidance beyond the repo's 
 Example:
 
 ```swift
-VStack(alignment: .leading, spacing: Spacing.md) {
+VStack(alignment: .leading, spacing: 16) {
     Text(title)
         .font(.headline)
 
@@ -26,7 +26,7 @@ VStack(alignment: .leading, spacing: Spacing.md) {
         .font(.subheadline)
         .foregroundStyle(.secondary)
 }
-.padding(Spacing.md)
+.padding(16)
 ```
 
 ## Adaptive layout
@@ -37,10 +37,9 @@ VStack(alignment: .leading, spacing: Spacing.md) {
 
 ## Color and materials
 
-- Prefer semantic app colors from `Color.app...` over raw `Color.blue`, `Color.red`, or hex literals when a token already exists.
-- Custom `Color.app...` tokens are safe only if the theme authors provide light- and dark-appropriate semantics. If that is unclear, prefer system roles like `.primary`, `.secondary`, and `.background`.
-- Keep `UI/Theme/AppTheme.swift` honest: if a token claims to be shared semantic color, it should not silently break in dark mode.
-- Use system semantic roles like `.primary` and `.secondary` when the app theme does not need a custom role.
+- Prefer system semantic roles like `.primary`, `.secondary` and `.background` over raw `Color.blue`, `Color.red` or hex literals.
+- A custom color must be authored for both light and dark appearance (an asset catalog color with both variants); one that is not breaks silently in dark mode.
+- The shared design tokens of `shared/design-tokens/` are the source when the project adopts a custom palette; map them to named colors once, in one file.
 - Use materials and blur sparingly. They should clarify hierarchy, not create visual noise.
 
 ## Typography
@@ -59,7 +58,7 @@ Design the full state model, not just the happy path:
 - success
 - partial-content or retry states when the feature needs them
 
-If a state repeats across features, promote the visual treatment into `UI/Common/`.
+If a state repeats across features, promote the visual treatment into one shared view.
 
 ## Accessibility
 
@@ -75,14 +74,14 @@ Example:
 Button {
     openDetails()
 } label: {
-    VStack(alignment: .leading, spacing: Spacing.sm) {
+    VStack(alignment: .leading, spacing: 8) {
         Text(title)
             .font(.headline)
         Text(subtitle)
             .font(.subheadline)
             .foregroundStyle(.secondary)
     }
-    .padding(Spacing.md)
+    .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)
 }
 .buttonStyle(.plain)
@@ -112,9 +111,9 @@ withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
 - Use Accessibility Inspector for labels, traits, contrast, and hit targets.
 - Check both standard and accessibility Dynamic Type sizes.
 
-## Optional iOS 18 enhancements
+## Optional enhancements newer than the deployment target
 
-These can improve polish when the project adopts them intentionally, but they are not the iOS 17 baseline:
+These can improve polish when the project adopts them intentionally, but they are not the baseline of the app's deployment target (set in `project.yml`):
 
 - richer `Tab` APIs
 - zoom navigation transitions

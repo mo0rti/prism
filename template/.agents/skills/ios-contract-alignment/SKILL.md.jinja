@@ -1,48 +1,44 @@
 {# Generated from template-skills/ios-contract-alignment/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: ios-contract-alignment
-description: Backend contract alignment rules for DTOs, endpoints, APIClient usage, and token-backed auth. Use when adding or reviewing request or response shapes, API endpoints, repository mappings, or auth-boundary code in the generated iOS app.
+description: "Contract alignment rules for the iOS API client: models, endpoints, the token header and the dev identity. Use when adding or reviewing request or response shapes, API endpoints or auth-boundary code in the generated iOS apps."
 ---
 
 # iOS Contract Alignment
 
-Use this skill when backend-facing iOS code changes.
+Use this skill when backend-facing iOS code changes. Paths are relative to the iOS app's folder.
 
 ## Role boundary
 
-- Own request and response shapes, endpoint mapping, repository-to-model translation, and auth-boundary wiring.
+- Own request and response shapes, endpoint paths, the API client and the auth-boundary wiring.
 - Defer screen structure and general workflow to companion iOS skills.
 
 ## Rules
 
-- Keep API-aligned models in `Domain/Model/`.
-- Keep endpoint definitions in `Data/Network/APIEndpoint.swift`.
-- Keep transport logic in `APIClient`.
-- Keep repository mapping logic in `Data/Repository/`, not in views.
-- The runtime base URL already includes `/api/v1`, so endpoint paths append feature-relative routes such as `/auth/...` or `/transactions/...`.
-- Auth headers come from `TokenStorage` through `APIClient`; do not add ad hoc token plumbing in features.
-- The default baseline for `APIError.unauthorized` is: clear `TokenStorage` and route the app back to login.
-- `AuthRepository.refreshToken()` exists as a named extension point, but automatic refresh-and-retry is not scaffolded into `APIClient` by default.
-- If a project adds refresh-and-retry later, centralize that behavior in `APIClient` or another transport-boundary abstraction rather than scattering retry logic across features.
-- Coordinate refresh-and-retry so concurrent 401 responses await one in-flight refresh operation instead of triggering parallel refresh attempts.
-- If the project starts using covered required-reason APIs or adds third-party SDKs that declare privacy usage, update `PrivacyInfo.xcprivacy` rather than hiding that work inside feature code.
-- Keep client error flow consistent: `APIClient` maps transport failures, repositories translate only when needed, ViewModels map errors into view state, and views render shared loading or error patterns.
+- `shared/api-contracts/openapi.yml` is the source of truth. The slice calls two operations, `createDevToken` (`POST /api/dev-identity/token`) and `getMe` (`GET /api/me`).
+- The iOS client is hand-written and kept to the contract. Add an operation to the contract first, then its path to `Sources/Networking/APIEndpoint.swift`, its method to the `APIClient` protocol and `URLSessionAPIClient` in `Sources/Networking/APIClient.swift`, and its models to `Sources/Models/Models.swift`. Every path in `APIEndpoint.swift` must be one the contract defines.
+- Request building and response reading are static functions of `URLSessionAPIClient` (`makeRequest`, `decode`), so `Tests/APIClientTests.swift` covers them without a network. Extend those tests with every operation you add.
+- The base URL is `API_BASE_URL` from `Sources/Info.plist`, set per build configuration in `project.yml`; endpoint paths are the contract's full paths (`/api/me`), so the base URL has no path of its own.
+- The bearer token goes into the `Authorization` header in `makeRequest` and nowhere else. Never log it, print it, put it in a URL or an error message.
+- `getMe` uses the contract's global bearer security. A 401 ends the session: `ProfileViewModel` clears the token and returns to the sign-in. Add refresh-and-retry only with a real identity provider, in the transport boundary (`URLSessionAPIClient`), with one in-flight refresh that concurrent 401 responses await.
+- The dev identity is `x-prism-dev-only` in the contract. Its 404 means the backend does not run its `local` profile, and its 403 means the request was not loopback. The app maps them to `APIError.devIdentityUnavailable` and `APIError.devIdentityRefused`, which tell the person what to do. Do not weaken the backend's loopback policy to make a device work.
+- Keep client error flow consistent: `URLSessionAPIClient` maps transport and status failures to `APIError`, view models map errors into screen state, and views render that state.
+- If the project starts using covered required-reason APIs or adds third-party SDKs that declare privacy usage, add `PrivacyInfo.xcprivacy` and keep it current rather than hiding that work inside feature code.
 
 ## Reference files
 
 Load only the reference file the task needs:
 
-- `references/token-refresh-patterns.md` for actor-safe refresh coordination, retry boundaries, and the simultaneous-401 race
 - `references/privacy-manifest.md` for required-reason API categories, third-party SDK checks, and `PrivacyInfo.xcprivacy` update guidance
 
 ## Cross-check sources
 
 - Use `shared/api-contracts/openapi.yml` as the primary source for endpoint shapes.
-{% if "spring-backend" in stacks %}- Use `backend/` to confirm behavior when the spec is ambiguous.
+{% if "spring-backend" in stacks %}- Use the backend app's `modules/devidentity` and `modules/users` code to confirm behavior when the spec is ambiguous.
 {% endif %}{% for app in apps if app.stack == "android-compose" %}- Use `{{ app.path }}/` to confirm parity expectations when iOS should mirror Android behavior.
 {% endfor %}
 
 ## Validation
 
-- Run `task mobile-ios:build` on Mac after contract changes.
-- Read `mobile-ios/docs/networking-and-auth.md` and `mobile-ios/docs/session-and-token-storage.md` when auth, token, or session behavior changes.
+- Run `task <app-id>:test-unit` and `task <app-id>:build` on Mac after contract changes.
+- Read the app's `AGENTS.md` when auth, token or session behavior changes.

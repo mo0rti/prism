@@ -176,7 +176,7 @@ class GeneratorTests(unittest.TestCase):
         self.assertFalse([line for line in lines if ".cursor/rules/backend.mdc" in line])
         self.assertFalse([line for line in lines if ".cursor/rules/web.mdc" in line], "the web Cursor rule belongs to the nextjs-web pack")
         self.assertFalse([line for line in lines if ".cursor/rules/mobile-android.mdc" in line], "the Android Cursor rule belongs to the android-compose pack")
-        self.assertIn(condition(".cursor/rules/mobile-ios.mdc", "ios-swiftui"), lines)
+        self.assertFalse([line for line in lines if ".cursor/rules/mobile-ios.mdc" in line], "the iOS Cursor rule belongs to the ios-swiftui pack")
         for layer in (".agents/skills", ".claude/skills"):
             base = f"{layer}/deployment/references"
             self.assertIn(condition(f"{base}/azure", "spring-backend"), lines)
@@ -286,7 +286,7 @@ class GeneratorTests(unittest.TestCase):
             "missing codex fields": (good.replace("short_description: Demo, ", ""), "# Demo\n\nBody.", "codex needs"),
             "unknown key": (good + "\nflavour: x", "# Demo\n\nBody.", "unknown front matter keys"),
             "bad stack": (good + "\nstacks: [watchos]", "# Demo\n\nBody.", "stacks must be"),
-            "bad reference app": (good + "\nreference-apps: {references/extra: [watchos]}", "# Demo\n\nBody.", "reference-apps[references/extra] must be"),
+            "the retired reference-apps key": (good + "\nreference-apps: {references/extra: [mobile-ios]}", "# Demo\n\nBody.", "unknown front matter keys"),
             "the retired platforms key": (good + "\nplatforms: [backend]", "# Demo\n\nBody.", "unknown front matter keys"),
             "unclosed block": (good, "# Demo\n\n::: only codex\nText.\n", "not closed"),
             "stray close": (good, "# Demo\n\n:::\n", "without an open block"),
@@ -321,7 +321,6 @@ class GeneratorTests(unittest.TestCase):
                 layers: [codex, claude-skill]
                 stacks: [spring-backend]
                 reference-stacks: {references/extra: [ios-swiftui]}
-                reference-apps: {references/extra: [mobile-ios]}
                 codex: {display_name: Demo, short_description: Demo, default_prompt: Use it., implicit: true}
                 """,
                 "# Demo\n\nBody.",
@@ -335,7 +334,6 @@ class GeneratorTests(unittest.TestCase):
             lines = GENERATOR.exclude_lines(skills)
             self.assertIn("  - \"{% if prism_layer == 'workspace' and 'spring-backend' not in stacks %}.agents/skills/demo{% endif %}\"", lines)
             self.assertIn("  - \"{% if prism_layer == 'workspace' and 'ios-swiftui' not in stacks %}.claude/skills/demo/references/extra{% endif %}\"", lines)
-            self.assertIn("  - \"{% if prism_layer == 'workspace' and 'mobile-ios' not in app_ids %}.claude/skills/demo/references/extra{% endif %}\"", lines)
         with tempfile.TemporaryDirectory(prefix="prism-skill-sources-") as temporary:
             root = Path(temporary)
             write_source(
@@ -372,7 +370,7 @@ def owner(skills, rendered: str):
 
 STACK_OF_APP = {"backend": "spring-backend", "web": "nextjs-web", "mobile-android": "android-compose", "mobile-ios": "ios-swiftui"}
 # The Cursor rule of a pack's app is the pack's own file, so no skill source names it.
-PACK_APP_RULES = {".cursor/rules/backend.mdc", ".cursor/rules/web.mdc", ".cursor/rules/mobile-android.mdc"}
+PACK_APP_RULES = {".cursor/rules/backend.mdc", ".cursor/rules/web.mdc", ".cursor/rules/mobile-android.mdc", ".cursor/rules/mobile-ios.mdc"}
 
 
 def rendered_names(skills, app_ids) -> set[str]:
@@ -386,12 +384,11 @@ def rendered_names(skills, app_ids) -> set[str]:
         if skill.stacks and not set(skill.stacks) & stacks:
             continue
         skipped = False
-        for scopes, present in ((skill.reference_stacks, stacks), (skill.reference_apps, set(app_ids))):
-            for relative, only in scopes.items():
-                for folder in (".agents/skills", ".claude/skills"):
-                    base = f"{folder}/{skill.name}/{relative}"
-                    if (rendered == base or rendered.startswith(base + "/")) and not set(only) & present:
-                        skipped = True
+        for relative, only in skill.reference_stacks.items():
+            for folder in (".agents/skills", ".claude/skills"):
+                base = f"{folder}/{skill.name}/{relative}"
+                if (rendered == base or rendered.startswith(base + "/")) and not set(only) & stacks:
+                    skipped = True
         if not skipped:
             names.add(rendered)
     return names

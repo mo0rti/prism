@@ -212,7 +212,7 @@ Platform-specific caution:
   sign-in"; that sign-in is a development identity, not complete authentication, and hosting is yours
   to choose (see the `deployment` skill)
 - for each Android app, run `./gradlew assembleDebug testDebugUnitTest` in its folder (JDK 21 and an Android SDK with the platform its `README.md` names), then start a backend under its `local` profile, run `adb reverse tcp:8080 tcp:8080` (`task <app-id>:reverse`) and try the "Local development sign-in" on an emulator or a USB device; that sign-in is a development identity, not complete authentication
-- for `mobile-ios`, validate locally on macOS before treating the slice as build-proven
+- for each iOS app, on macOS run `task <app-id>:build` and `task <app-id>:test` (they generate the Xcode project with XcodeGen first), then start a backend under its `local` profile and try the "Local development sign-in" in the simulator; the dev identity works in the simulator only, because the backend serves it to loopback requests, and it is not complete authentication. The macOS CI job is the build proof, and validating locally on macOS comes before you treat the slice as build-proven
 
 Do not assume every command, workflow, or platform combination has been fully hardened just
 because the repository generated successfully.

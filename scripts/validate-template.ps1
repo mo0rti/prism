@@ -220,14 +220,16 @@ function Assert-NoCopierPlaceholders {
 }
 
 # The apps the validation generates: the ID, the stack and the display name `prism new` gives each. `admin` is a second
-# nextjs-web app, `web` and `admin` carry an audience, and `partner-android` is a second android-compose app at its own path.
+# nextjs-web app, `partner-android` and `partner-ios` are second apps of their stacks at their own paths, and the web and
+# iOS apps carry an audience.
 $DefaultApps = @{
     "backend"          = @{ Stack = "spring-backend";  Name = "Spring Boot Backend" }
     "web"              = @{ Stack = "nextjs-web";      Name = "Web App";             Audience = "B2C" }
     "admin"            = @{ Stack = "nextjs-web";      Name = "Admin App";           Audience = "internal" }
     "mobile-android"   = @{ Stack = "android-compose"; Name = "Android (Kotlin/Compose)" }
     "partner-android"  = @{ Stack = "android-compose"; Name = "Partner App";         Path = "apps/partner" }
-    "mobile-ios"       = @{ Stack = "ios-swiftui";     Name = "iOS (Swift/SwiftUI)" }
+    "mobile-ios"       = @{ Stack = "ios-swiftui";     Name = "iOS (Swift/SwiftUI)"; Audience = "customers" }
+    "partner-ios"      = @{ Stack = "ios-swiftui";     Name = "Partner App";         Audience = "internal"; Path = "apps/partner-ios" }
 }
 
 function New-GeneratedProject {
@@ -824,6 +826,14 @@ function Find-ClientPathsMissingFromSpec {
     return @($missing)
 }
 
+function Get-IosAppRoots {
+    # The folders of the ios-swiftui apps of a generated workspace: each holds an answers file that names the layer.
+    param([string]$Root)
+
+    $answers = @(Get-ChildItem -LiteralPath $Root -Recurse -Depth 3 -Force -Filter ".copier-answers.yml" -File -ErrorAction SilentlyContinue)
+    return @($answers | Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -match 'prism_layer:\s*ios-swiftui' } | ForEach-Object { $_.DirectoryName })
+}
+
 function Get-ClientApiPaths {
     param([string]$Root)
 
@@ -836,7 +846,7 @@ function Get-ClientApiPaths {
         $sources += [pscustomobject]@{ Client = "android"; File = $file.FullName; Paths = (Get-AndroidApiPaths -Content (Get-Content -Raw -LiteralPath $file.FullName)) }
     }
 
-    $iosEndpoint = @(Get-ChildItem -LiteralPath (Join-Path $Root "mobile-ios") -Recurse -Filter "APIEndpoint.swift" -File -ErrorAction SilentlyContinue)
+    $iosEndpoint = @(Get-IosAppRoots -Root $Root | ForEach-Object { Get-ChildItem -LiteralPath $_ -Recurse -Filter "APIEndpoint.swift" -File -ErrorAction SilentlyContinue })
     foreach ($file in $iosEndpoint) {
         $sources += [pscustomobject]@{ Client = "ios"; File = $file.FullName; Paths = (Get-IosApiPaths -Content (Get-Content -Raw -LiteralPath $file.FullName)) }
     }
@@ -849,13 +859,10 @@ function Get-ClientApiPaths {
     return @($clientPaths)
 }
 
-# The contract defines the slice's operations (the dev-identity token and GET /api/me). The full sample that the
-# workspace layer still generates (iOS) was written against the retired backend sample's operations, so its client
-# paths are not checked against the contract until its stack's pack replaces the sample. That pack's package
-# (ios-swiftui) removes its client from this list and writes it against the contract. The nextjs-web pack's client is
-# generated from the contract and type-checked against it by the app's own generate:api and typecheck, so it is not
-# path-matched here. The android-compose pack's Retrofit client is hand-written, so its ApiService.kt is path-matched.
-$ClientsWithoutPack = @("ios")
+# The contract defines the slice's operations (the dev-identity token and GET /api/me). The android-compose and
+# ios-swiftui packs hand-write their clients, so every path of an ApiService.kt or an APIEndpoint.swift must be one the
+# contract defines. The nextjs-web pack's client is generated from the contract and type-checked against it by the
+# app's own generate:api and typecheck, so it is not path-matched here.
 
 function Assert-ClientPathsInOpenApi {
     param([string]$Root)
@@ -867,13 +874,12 @@ function Assert-ClientPathsInOpenApi {
         throw "Could not read any paths from $specFile."
     }
 
-    $clientPaths = @(Get-ClientApiPaths -Root $Root | Where-Object { $ClientsWithoutPack -notcontains $_.Client })
+    $clientPaths = @(Get-ClientApiPaths -Root $Root)
 
     # Each rendered client must yield paths. An empty result would mean the extraction no longer matches the code.
     $expectedClients = @()
     if (Test-Path -LiteralPath (Join-Path $Root "mobile-android")) { $expectedClients += "android" }
-    if (Test-Path -LiteralPath (Join-Path $Root "mobile-ios")) { $expectedClients += "ios" }
-    $expectedClients = @($expectedClients | Where-Object { $ClientsWithoutPack -notcontains $_ })
+    if (@(Get-IosAppRoots -Root $Root).Count -gt 0) { $expectedClients += "ios" }
     foreach ($client in $expectedClients) {
         if (@($clientPaths | Where-Object { $_.Client -eq $client }).Count -eq 0) {
             throw "Found no API paths in the generated $client client, so the contract guard cannot check it."
@@ -890,7 +896,7 @@ function Assert-ClientPathsInOpenApi {
 
 function Assert-ClientPathGuardRejectsUnknownPaths {
     # Negative control: the guard must flag a client path that the spec does not define.
-    $specPaths = @("/auth/login", "/transactions", "/transactions/{}")
+    $specPaths = @("/auth/login", "/transactions", "/transactions/{}", "/api/me", "/api/dev-identity/token")
 
     $plantedAndroid = '@GET("examples/{id}") suspend fun getExample(@Path("id") id: String): ExampleResponse'
     $plantedIos = 'static func listExamples() -> APIEndpoint { APIEndpoint(path: "/examples?page=\(page)", method: .get, requiresAuth: true) }'
@@ -1076,42 +1082,89 @@ function Validate-IosSample {
     Validate-WikiStructure -Root $Root
     Assert-ClientPathsInOpenApi -Root $Root
 
-    # mobile-ios AGENTS.md must have the wiki section and CLAUDE.md must import it with app-specific path
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\CLAUDE.md") -Needle "@AGENTS.md" -Message "mobile-ios/CLAUDE.md must import AGENTS.md."
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\AGENTS.md") -Needle "app-requirements/[feature-id]-mobile-ios" -Message "mobile-ios/AGENTS.md missing mobile-ios app-requirements reference."
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\AGENTS.md") -Needle "advisory-review" -Message "mobile-ios/AGENTS.md missing advisory-review check."
-
     # AGENTS.md must not contain absent platform directories
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-android/" -Message "iOS-only AGENTS.md should not reference mobile-android/."
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "-> Next.js" -Message "iOS-only AGENTS.md should not describe a web app."
 
     Assert-NoDeploymentArtifacts -Root $Root
     Assert-DeploymentSkill -Root $Root -Backend $true -Web $false
-    Assert-PathExists -Path (Join-Path $Root "mobile-ios\review-app") -Message "iOS sample should keep filesystem-safe project_slug directories."
-    Assert-PathExists -Path (Join-Path $Root "mobile-ios\review-appTests") -Message "iOS sample should generate a test directory."
 
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\project.yml") -Needle "  ReviewApp:" -Message "iOS project.yml should use ios_module_name for the app target."
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\project.yml") -Needle "  ReviewAppTests:" -Message "iOS project.yml should use ios_module_name for the test target."
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\review-app\App.swift") -Needle "struct ReviewAppApp: App" -Message "App.swift should use an iOS-safe app type name."
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\review-appTests\LoginViewModelTests.swift") -Needle "@testable import ReviewApp" -Message "iOS tests should import the iOS-safe module name."
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\Taskfile.yml") -Needle 'default "ReviewApp"' -Message "iOS Taskfile should default to the iOS-safe scheme name."
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\fastlane\Fastfile") -Needle 'project: "Review App.xcodeproj"' -Message "Fastlane should use the generated Xcode project name."
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\fastlane\Fastfile") -Needle 'scheme: "ReviewApp"' -Message "Fastlane should use the iOS-safe scheme name."
+    # The iOS apps are the ios-swiftui pack: two apps of one stack, each an app layer with its own answers, workflow, Cursor
+    # rule, module, target, scheme, Xcode project name and bundle identifier.
+    $iosApps = @(
+        @{ Id = "mobile-ios"; Path = "mobile-ios"; Module = "MobileIos"; Audience = "customers"; BundleId = "com.example.reviewapp.mobileios" },
+        @{ Id = "partner-ios"; Path = "apps/partner-ios"; Module = "PartnerIos"; Audience = "internal"; BundleId = "com.example.reviewapp.partnerios" }
+    )
+    foreach ($iosApp in $iosApps) {
+        $app = $iosApp.Id
+        $folder = Join-Path $Root $iosApp.Path
+        $module = $iosApp.Module
+        $workflow = Join-Path $Root ".github\workflows\$app.yml"
+        $project = Join-Path $folder "project.yml"
+        Assert-PathExists -Path $folder -Message "iOS sample should generate the $app app."
+        Assert-FileContains -Path (Join-Path $folder "CLAUDE.md") -Needle "@AGENTS.md" -Message "$app/CLAUDE.md must import AGENTS.md."
+        Assert-FileContains -Path (Join-Path $folder "AGENTS.md") -Needle "app-requirements/[feature-id]-$app" -Message "$app/AGENTS.md missing the app-requirements reference."
+        Assert-FileContains -Path (Join-Path $folder "AGENTS.md") -Needle "advisory-review" -Message "$app/AGENTS.md missing advisory-review check."
+        Assert-FileContains -Path (Join-Path $folder "AGENTS.md") -Needle "works in the simulator only" -Message "$app/AGENTS.md must state that the dev identity works in the simulator only."
+        Assert-FileContains -Path (Join-Path $folder ".copier-answers.yml") -Needle "prism_layer: ios-swiftui" -Message "$app must record its own pack answers."
+        Assert-PathExists -Path $workflow -Message "The ios-swiftui pack must generate the $app workflow."
+        Assert-PathExists -Path (Join-Path $Root ".cursor\rules\$app.mdc") -Message "The ios-swiftui pack must generate the $app Cursor rule."
 
-    # xcconfig treats // as a comment start, so URL values must use the $() escape, and CI must be able to create the git-ignored local files.
-    foreach ($configName in @("Debug", "Release")) {
-        $configPath = Join-Path $Root "mobile-ios\Config\$configName.xcconfig"
-        Assert-FileContains -Path $configPath -Needle ':/$()/' -Message "iOS $configName.xcconfig should escape // in API_BASE_URL with the `$() form."
-        Assert-FileNotContains -Path $configPath -Needle '= http://' -Message "iOS $configName.xcconfig must not contain an unescaped http:// URL value."
-        Assert-FileNotContains -Path $configPath -Needle '= https://' -Message "iOS $configName.xcconfig must not contain an unescaped https:// URL value."
-        Assert-PathExists -Path (Join-Path $Root "mobile-ios\Config\$configName.xcconfig.example") -Message "iOS sample should track Config/$configName.xcconfig.example for fresh checkouts."
-        Assert-FileContains -Path (Join-Path $Root ".github\workflows\mobile-ios.yml") -Needle "cp Config/$configName.xcconfig.example Config/$configName.xcconfig" -Message "iOS workflow should create Config/$configName.xcconfig before generating the project."
+        Assert-FileContains -Path $project -Needle "name: $module" -Message "$app project.yml should name the Xcode project after its module."
+        Assert-FileContains -Path $project -Needle "  ${module}:" -Message "$app project.yml should use the module name for the app target."
+        Assert-FileContains -Path $project -Needle "  ${module}Tests:" -Message "$app project.yml should use the module name for the test target."
+        Assert-FileContains -Path $project -Needle "  ${module}UITests:" -Message "$app project.yml should use the module name for the UI test target."
+        Assert-FileContains -Path $project -Needle "PRODUCT_BUNDLE_IDENTIFIER: $($iosApp.BundleId)" -Message "$app must have its own bundle identifier."
+        Assert-FileContains -Path $project -Needle 'API_BASE_URL: "http://localhost:8080"' -Message "$app Debug must call the local backend."
+        Assert-FileContains -Path $project -Needle 'SWIFT_VERSION: "6.0"' -Message "$app must build in the Swift 6 language mode."
+        Assert-FileContains -Path (Join-Path $folder "Sources\Info.plist") -Needle "<string>$($iosApp.Audience)</string>" -Message "$app must carry its audience as display text."
+        Assert-FileContains -Path (Join-Path $folder "Sources\App.swift") -Needle "struct ${module}App: App" -Message "App.swift should use an iOS-safe app type name."
+        Assert-FileContains -Path (Join-Path $folder "Tests\SignInViewModelTests.swift") -Needle "@testable import $module" -Message "iOS tests should import the module of the app."
+        Assert-FileContains -Path (Join-Path $folder "Tests\ProfileViewModelTests.swift") -Needle "@testable import $module" -Message "iOS tests should import the module of the app."
+        Assert-FileContains -Path (Join-Path $folder "Taskfile.yml") -Needle "-scheme $module " -Message "iOS Taskfile should use the scheme of its app."
+        Assert-FileContains -Path (Join-Path $folder "fastlane\Fastfile") -Needle "project: `"$module.xcodeproj`"" -Message "Fastlane should use the generated Xcode project name."
+        Assert-FileContains -Path (Join-Path $folder "fastlane\Fastfile") -Needle "scheme: `"$module`"" -Message "Fastlane should use the scheme of its app."
+
+        # The slice: the sign-in is the local development sign-in, the client calls the two contract operations, the token is never logged.
+        Assert-FileContains -Path (Join-Path $folder "Sources\SignIn\SignInView.swift") -Needle "Local development sign-in" -Message "$app must label its sign-in as the local development sign-in."
+        Assert-FileContains -Path (Join-Path $folder "Sources\Networking\APIEndpoint.swift") -Needle '"/api/dev-identity/token"' -Message "$app must sign in through the dev identity."
+        Assert-FileContains -Path (Join-Path $folder "Sources\Networking\APIEndpoint.swift") -Needle '"/api/me"' -Message "$app must read GET /api/me."
+        Assert-PathExists -Path (Join-Path $folder "Tests\SignInViewModelTests.swift") -Message "$app must generate the sign-in view model tests."
+        Assert-PathExists -Path (Join-Path $folder "Tests\ProfileViewModelTests.swift") -Message "$app must generate the profile view model tests."
+        Assert-PathExists -Path (Join-Path $folder "UITests\SignInUITests.swift") -Message "$app must generate the sign-in UI test."
+        Assert-FileContains -Path (Join-Path $folder "UITests\SignInUITests.swift") -Needle "TimeInterval = 30" -Message "$app UI tests must allow 30 seconds per screen."
+        Assert-FileContains -Path (Join-Path $folder "UITests\SignInUITests.swift") -Needle "hittable == true" -Message "$app UI tests must wait until an element is hittable."
+        foreach ($swift in @(Get-ChildItem -LiteralPath (Join-Path $folder "Sources") -Recurse -Filter "*.swift" -File)) {
+            $swiftText = Get-Content -Raw -LiteralPath $swift.FullName
+            if ($swiftText -match '\b(print|NSLog|os_log|debugPrint)\(') {
+                throw "$app must not log: $($swift.FullName)."
+            }
+        }
+        Assert-PathMissing -Path (Join-Path $folder "Config") -Message "$app must not carry the retired xcconfig files."
+        Assert-PathMissing -Path (Join-Path $folder "Sources\DI") -Message "$app must not carry the retired dependency container."
+        Assert-PathMissing -Path (Join-Path $folder "Sources\Data") -Message "$app must not carry the retired data layer."
+
+        # CI: generate with XcodeGen, build for a simulator and run the tests on macOS.
+        $workingDirectory = $iosApp.Path.Replace("\", "/")
+        Assert-FileContains -Path $workflow -Needle "runs-on: macos-latest" -Message "The $app workflow must run on macOS."
+        Assert-FileContains -Path $workflow -Needle "run: xcodegen generate" -Message "The $app workflow must generate the Xcode project."
+        Assert-FileContains -Path $workflow -Needle "xcodebuild build" -Message "The $app workflow must build for a simulator."
+        Assert-FileContains -Path $workflow -Needle "xcodebuild test" -Message "The $app workflow must run the tests."
+        Assert-FileContains -Path $workflow -Needle "-project `"$module.xcodeproj`"" -Message "The $app workflow should name the Xcode project of its app."
+        Assert-FileContains -Path $workflow -Needle "-scheme `"$module`"" -Message "The $app workflow should use the scheme of its app."
+        Assert-FileContains -Path $workflow -Needle "working-directory: $workingDirectory" -Message "The $app workflow should work in its app folder."
+        Assert-FileNotContains -Path $workflow -Needle "xcpretty" -Message "The $app workflow must not pipe through xcpretty, which the runner lacks."
+
+        Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: ./$workingDirectory/Taskfile.yml" -Message "The workspace Taskfile must include the $app Taskfile."
+        Assert-FileContains -Path (Join-Path $Root "AGENTS.md") -Needle "task ${app}:build" -Message "The workspace AGENTS.md must list the $app build command."
+        Assert-FileContains -Path (Join-Path $Root "docs\deployment\ci-cd.md") -Needle "``$app.yml``" -Message "The CI/CD guide must list the $app workflow."
     }
-    Assert-FileContains -Path (Join-Path $Root ".github\workflows\mobile-ios.yml") -Needle '-project "Review App.xcodeproj"' -Message "iOS workflow should quote the Xcode project name."
-    Assert-FileContains -Path (Join-Path $Root "mobile-ios\project.yml") -Needle 'name: "Review App"' -Message "iOS project.yml should quote the project name."
 
-    Assert-FileNotContains -Path (Join-Path $Root "mobile-ios\review-app\App.swift") -Needle "Review-appApp" -Message "App.swift should not contain slug-based invalid Swift identifiers."
-    Assert-FileNotContains -Path (Join-Path $Root "mobile-ios\review-appTests\LoginViewModelTests.swift") -Needle "@testable import review-app" -Message "iOS tests should not import slug-based invalid module names."
+    # No retired sample files, and no iOS rules in the workspace .gitignore (each app ignores its own output).
+    Assert-PathMissing -Path (Join-Path $Root "mobile-ios\review-app") -Message "The retired full iOS sample must not be generated."
+    Assert-FileNotContains -Path (Join-Path $Root ".gitignore") -Needle "xcodeproj" -Message "The workspace .gitignore must not carry the iOS rules of the retired sample."
+    Assert-FileContains -Path (Join-Path $Root "mobile-ios\.gitignore") -Needle "*.xcodeproj/" -Message "An iOS app must ignore its generated Xcode project."
+    Assert-FileNotContains -Path (Join-Path $Root "Taskfile.yml") -Needle "generate-client-mobile-ios" -Message "The workspace Taskfile must not generate an unused Swift client."
 }
 
 Remove-TreeIfExists -Path $OutputRoot
@@ -1146,7 +1199,7 @@ switch ($Mode) {
         $androidRoot = New-GeneratedProject -Name "android" -ProjectName "Review Android" -Apps @("backend", "mobile-android", "partner-android")
         Validate-AndroidSample -Root $androidRoot
 
-        $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios")
+        $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios", "partner-ios")
         Validate-IosSample -Root $iosRoot
 
         $standaloneRoot = New-GeneratedProject -Name "standalone-web" -ProjectName "Standalone Web" -Apps @("web", "admin") -AuthMethods @("password")
@@ -1172,7 +1225,7 @@ switch ($Mode) {
         $androidRoot = New-GeneratedProject -Name "android" -ProjectName "Review Android" -Apps @("backend", "mobile-android", "partner-android")
         Validate-AndroidSample -Root $androidRoot
 
-        $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios")
+        $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios", "partner-ios")
         Validate-IosSample -Root $iosRoot
     }
 }

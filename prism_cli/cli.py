@@ -2207,7 +2207,7 @@ def workspace_layer_data_from_manifest(project_path: Path) -> dict[str, Any]:
     """The answers the manifest decides for the workspace layer: the stacks and the app list of its scaffolded apps.
 
     A retired app stays on the list: retiring changes only its manifest entry, so the workspace layer keeps
-    rendering its files (a full sample's directory, its compose service and task include) until its code is removed.
+    rendering its files (its compose service and task include) until its code is removed.
     """
 
     manifest = load_workspace_manifest(project_path / MANIFEST_FILE)
