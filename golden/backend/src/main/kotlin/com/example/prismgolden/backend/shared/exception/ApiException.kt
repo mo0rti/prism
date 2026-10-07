@@ -1,0 +1,19 @@
+package com.example.prismgolden.backend.shared.exception
+
+import com.example.prismgolden.backend.shared.error.ErrorCode
+import org.springframework.http.HttpStatus
+
+/**
+ * Base exception for API-facing failures.
+ *
+ * The global exception handler serializes this exception's status, code,
+ * message, and optional details directly into the error response.
+ */
+open class ApiException(
+    val errorCode: ErrorCode,
+    override val message: String = errorCode.defaultMessage,
+    val details: Map<String, Any>? = null
+) : RuntimeException(message) {
+    val status: HttpStatus get() = errorCode.httpStatus
+    val code: String get() = errorCode.code
+}

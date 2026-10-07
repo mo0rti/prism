@@ -1,0 +1,19 @@
+package com.example.prismgolden.mobileandroid.data.api
+
+import retrofit2.Response
+import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.POST
+
+/** The operations of `shared/api-contracts/openapi.yml` that the slice calls. */
+interface ApiService {
+
+    /** `createDevToken`: the backend's local development identity. */
+    @POST("api/dev-identity/token")
+    suspend fun createDevToken(@Body request: DevTokenRequest): Response<DevTokenResponse>
+
+    /** `getMe`: the signed-in user's profile, with the bearer token the contract's global security asks for. */
+    @GET("api/me")
+    suspend fun getMe(@Header("Authorization") authorization: String): Response<UserProfile>
+}

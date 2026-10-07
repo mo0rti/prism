@@ -1,0 +1,6 @@
+interface:
+  display_name: "Android Conventions"
+  short_description: "Apply the Android slice conventions and MVVM guardrails"
+  default_prompt: "Use $android-conventions when updating an Android app of this project."
+policy:
+  allow_implicit_invocation: true

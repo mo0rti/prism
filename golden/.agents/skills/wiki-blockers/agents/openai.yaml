@@ -1,0 +1,6 @@
+interface:
+  display_name: "Wiki Blockers"
+  short_description: "Read-only blockers view across the wiki"
+  default_prompt: "Use $wiki-blockers to compute the current project blockers using the canonical blocker categories."
+policy:
+  allow_implicit_invocation: true

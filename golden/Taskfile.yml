@@ -1,0 +1,104 @@
+version: '3'
+
+vars:
+  PROJECT_NAME: Prism Golden
+  OPENAPI_SPEC: ./shared/api-contracts/openapi.yml
+  OPENAPI_GENERATOR: openapi-generator-cli
+
+includes:
+  backend:
+    taskfile: ./backend/Taskfile.yml
+    dir: ./backend
+
+  web:
+    taskfile: ./web/Taskfile.yml
+    dir: ./web
+
+  mobile-android:
+    taskfile: ./mobile-android/Taskfile.yml
+    dir: ./mobile-android
+
+  mobile-ios:
+    taskfile: ./mobile-ios/Taskfile.yml
+    dir: ./mobile-ios
+
+  agent-service:
+    taskfile: ./agent-service/Taskfile.yml
+    dir: ./agent-service
+
+
+tasks:
+  # ===========================================================================
+  # API Client Generation
+  # ===========================================================================
+  generate-clients:
+    desc: "Generate typed API clients from OpenAPI spec for all platforms"
+    cmds:
+      - cmd: "{{ .OPENAPI_GENERATOR }} validate -i {{ .OPENAPI_SPEC }}"
+      - task: generate-client-backend
+
+      - task: web:generate-api
+
+    sources:
+      - "{{ .OPENAPI_SPEC }}"
+
+  generate-client-backend:
+    desc: "Generate Spring Boot server interfaces of backend from OpenAPI"
+    internal: true
+    cmds:
+      - >
+        {{ .OPENAPI_GENERATOR }} generate
+        -i {{ .OPENAPI_SPEC }}
+        -g kotlin-spring
+        -o ./backend/src/generated
+        --additional-properties=interfaceOnly=true,useSpringBoot3=true,useTags=true
+        --package-name="com.example.prismgolden.backend.api"
+
+
+  # ===========================================================================
+  # Cross-Platform Commands
+  # ===========================================================================
+  lint:
+    desc: "Lint all platforms"
+    cmds:
+      - task: backend:lint
+
+      - task: web:lint
+      - task: web:typecheck
+
+      - task: mobile-android:lint
+
+      - task: agent-service:lint
+      - task: agent-service:typecheck
+
+
+  test:
+    desc: "Run tests for all platforms"
+    cmds:
+      - task: backend:test
+
+      - task: web:test
+
+      - task: mobile-android:test
+
+      - task: agent-service:test
+      - task: agent-service:eval
+
+
+  # ===========================================================================
+  # Utilities
+  # ===========================================================================
+  db-up:
+    desc: "Start the local PostgreSQL database that the backend apps use"
+    cmds:
+      - docker compose up -d db
+
+  db-down:
+    desc: "Stop the local PostgreSQL database (its data stays in the Docker volume)"
+    cmds:
+      - docker compose stop db
+
+  validate-api:
+    desc: "Validate OpenAPI spec"
+    cmds:
+      - "{{ .OPENAPI_GENERATOR }} validate -i {{ .OPENAPI_SPEC }}"

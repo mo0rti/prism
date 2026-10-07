@@ -1,0 +1,44 @@
+# Prism Golden - Documentation
+
+## Two documentation layers
+
+**`docs/`** - Human-readable reference documentation.
+For humans who need to understand, deploy, or onboard to the project.
+Contents: architecture diagrams, CI setup, API conventions, onboarding. Deployment guides live in the `deployment` skill.
+
+**`knowledge/`** - AI-facing product context. The living wiki.
+For AI coding agents (and humans) who need to know *what to build next*.
+Contents: feature specs, app requirements, API contracts, design decisions,
+advisory board reviews. Maintained by the AI on every lifecycle operation.
+
+`docs/` stays separate from the wiki; the wiki index links its pages so an agent finds them from one place.
+
+Do not put feature specs or app requirements in `docs/`. They belong in `knowledge/wiki/`.
+Do not put architecture guides in `knowledge/`. They belong in `docs/`.
+
+## What is in docs/
+
+| File | Purpose |
+|------|---------|
+| `docs/architecture.md` | System design, platform map, tech decisions |
+| `docs/ai-agents.md` | How the agent system, commands, skills, and platform guidance fit together |
+| `docs/api/conventions.md` | API naming, pagination, error format |
+| `docs/deployment/ci-cd.md` | CI setup (build and test) |
+| `backend/docs/` | The guide of the backend backend |
+
+
+## What is in knowledge/
+
+See `knowledge/wiki/SCHEMA.md` for the complete wiki structure and operational rules, and `knowledge/wiki/LIFECYCLE.md` for the feature, board and advisory protocol.
+
+The quick summary:
+- `knowledge/wiki/features/` - one page per feature with spec, acceptance criteria, open questions
+- `knowledge/wiki/app-requirements/` - per-app implementation specs
+- `knowledge/wiki/api-contracts/` - API endpoint and data model contracts
+- `knowledge/wiki/design/` - UI design decisions and component specs
+- `knowledge/wiki/business-rules/` - invariants and constraints
+- `knowledge/wiki/decisions/` - Architecture Decision Records
+- `knowledge/wiki/advisory/` - advisory board configuration and review outputs
+- `knowledge/wiki/index.md` - one line per wiki page, grouped by kind, and a Project docs group with one line per page of `docs/`
+- `knowledge/wiki/status-board.md` - feature status board
+- `knowledge/intake/`  -  raw inputs before AI processes them

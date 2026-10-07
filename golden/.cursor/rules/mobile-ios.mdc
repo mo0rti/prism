@@ -1,0 +1,36 @@
+---
+description: "iOS App (SwiftUI app): stack, structure, sign-in slice and commands."
+globs: "mobile-ios/**"
+---
+
+# iOS App - iOS (SwiftUI)
+
+## Stack
+- Swift 6.0 (strict concurrency), SwiftUI, Observation, async/await, iOS 17.0+, Xcode 26.0
+- `URLSession` API client of `shared/api-contracts/openapi.yml`, hand-written and kept to the contract's paths
+- XCTest unit tests and one XCUITest; XcodeGen builds the Xcode project from `project.yml` (Mac only)
+- Hosting and store releases are the project owner's choice (see the `deployment` skill, `.agents/skills/deployment/SKILL.md`)
+
+## Structure
+```
+mobile-ios/project.yml                    -> XcodeGen: targets, scheme, build settings, API_BASE_URL
+mobile-ios/Sources/RootView.swift         -> composition root: client, token store, view models
+mobile-ios/Sources/SignIn/                -> "Local development sign-in" view and view model
+mobile-ios/Sources/Profile/               -> GET /api/me view and view model
+mobile-ios/Sources/Networking/            -> APIClient, APIEndpoint, APIURL, APIError
+mobile-ios/Sources/Session/               -> SessionModel, TokenStore (in memory)
+mobile-ios/Tests/                         -> view model and client tests with a fake client
+mobile-ios/UITests/                       -> the sign-in screen UI test
+```
+
+## Patterns
+- View models are `@MainActor @Observable`; types that cross actors are `Sendable`; no `@unchecked Sendable` workaround without a stated reason
+- Every backend call goes through `APIClient`; add an operation to the OpenAPI contract and to `APIEndpoint.swift` together
+- The token lives in memory (`TokenStore`) and is never logged, printed or persisted
+- The sign-in is the backend's local development identity. It is not complete authentication, and it works only in the simulator: the backend accepts it from its own machine only, so a physical device gets a refusal. Replace it with your identity provider (see the `security-auth` skill)
+- `audience` is display text only: no screen or check reads it
+- UI tests wait until an element is hittable and allow 30 seconds per screen, because CI simulators are slow
+
+## Commands
+- `task mobile-ios:generate-project`, `task mobile-ios:build`, `task mobile-ios:test`, `task mobile-ios:test-unit`, `task mobile-ios:test-ui` (Mac only)
+- `xcodegen generate` in `mobile-ios` after any change to `project.yml`

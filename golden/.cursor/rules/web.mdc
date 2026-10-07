@@ -1,0 +1,35 @@
+---
+description: "Web (Next.js web app): stack, structure, sign-in slice and commands."
+globs: "web/**"
+---
+
+# Web - Next.js (TypeScript)
+
+## Stack
+- Next.js 16.4.0 (App Router), React 19.3.0, TypeScript 5.9.3, Node 22
+- Tests: Vitest 5.0.3 with Testing Library
+- The API client is generated from `shared/api-contracts/openapi.yml` with `openapi-typescript` and `openapi-fetch`
+- Hosting is the project owner's choice (see the `deployment` skill, `.agents/skills/deployment/SKILL.md`)
+
+## Structure
+```
+web/app/sign-in/page.tsx      -> "Local development sign-in"
+web/app/api/session/route.ts  -> POST signs in (httpOnly cookie), DELETE signs out
+web/app/page.tsx              -> shows GET /api/me
+web/lib/api/client.ts         -> typed client of the contract
+web/lib/auth/session.ts       -> session cookie helpers
+web/tests/                    -> Vitest unit and component tests
+```
+
+## Patterns
+- Server Components by default, `"use client"` only for the forms and buttons that need it
+- The browser never calls the backend: the session route and the pages call it from the server with the generated client
+- The sign-in is the backend's local development identity. It is not complete authentication; replace it with your identity provider (see the `security-auth` skill)
+- `audience` is display text only: no route or check reads it
+- Keep secrets out of the repository; `API_BASE_URL` is the only runtime variable
+
+## Commands
+- `npm run dev` or `task web:dev` (port 3000)
+- `npm test` or `task web:test`
+- `npm run lint`, `npm run typecheck`, `npm run build`
+- `npm run generate:api` regenerates the client types after a contract change

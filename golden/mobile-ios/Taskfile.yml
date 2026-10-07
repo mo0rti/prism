@@ -1,0 +1,59 @@
+version: "3"
+
+vars:
+  # Empty selects the newest available iPhone simulator.
+  SIMULATOR_NAME: '{{ .SIMULATOR_NAME | default "" }}'
+
+tasks:
+  generate-project:
+    desc: Generate the Xcode project of mobile-ios from project.yml
+    platforms: [darwin]
+    cmds:
+      - xcodegen generate
+
+  build:
+    desc: Build mobile-ios for a simulator
+    platforms: [darwin]
+    deps: [generate-project]
+    vars:
+      SIMULATOR_ID:
+        sh: bash scripts/select-simulator.sh "{{ .SIMULATOR_NAME }}"
+    cmds:
+      - xcodebuild build -project MobileIos.xcodeproj -scheme MobileIos -destination "platform=iOS Simulator,id={{ .SIMULATOR_ID }}" -configuration Debug
+
+  test:
+    desc: Run all mobile-ios tests (unit and UI)
+    platforms: [darwin]
+    deps: [generate-project]
+    vars:
+      SIMULATOR_ID:
+        sh: bash scripts/select-simulator.sh "{{ .SIMULATOR_NAME }}"
+    cmds:
+      - xcodebuild test -project MobileIos.xcodeproj -scheme MobileIos -destination "platform=iOS Simulator,id={{ .SIMULATOR_ID }}"
+
+  test-unit:
+    desc: Run the mobile-ios unit tests only
+    platforms: [darwin]
+    deps: [generate-project]
+    vars:
+      SIMULATOR_ID:
+        sh: bash scripts/select-simulator.sh "{{ .SIMULATOR_NAME }}"
+    cmds:
+      - xcodebuild test -project MobileIos.xcodeproj -scheme MobileIos -destination "platform=iOS Simulator,id={{ .SIMULATOR_ID }}" -only-testing:MobileIosTests
+
+  test-ui:
+    desc: Run the mobile-ios UI tests only
+    platforms: [darwin]
+    deps: [generate-project]
+    vars:
+      SIMULATOR_ID:
+        sh: bash scripts/select-simulator.sh "{{ .SIMULATOR_NAME }}"
+    cmds:
+      - xcodebuild test -project MobileIos.xcodeproj -scheme MobileIos -destination "platform=iOS Simulator,id={{ .SIMULATOR_ID }}" -only-testing:MobileIosUITests
+
+  clean:
+    desc: Remove the mobile-ios build output
+    platforms: [darwin]
+    cmds:
+      - rm -rf build/
+      - xcodebuild clean -project MobileIos.xcodeproj -scheme MobileIos 2>/dev/null || true

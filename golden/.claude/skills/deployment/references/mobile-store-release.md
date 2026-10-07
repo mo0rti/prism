@@ -1,0 +1,42 @@
+# Mobile Store Releases - Prism Golden
+
+The generated mobile CI builds and tests only. Store releases are the project owner's decision: which stores, which signing material, which secrets. The notes below describe how a tag-triggered release job can build and upload each mobile app.
+
+Add a `tags: ['v*']` trigger to the app's workflow, then a release job that runs only on a `v*` tag, uses `environment: production` and does nothing while a secret is missing (report a **Deploy skipped** warning naming the secrets, as the Azure and Cloudflare examples do). Never commit secret values; the project owner creates them.
+
+## Android: Play Store
+
+The `android-compose` pack ships no signing configuration, no Fastlane lane and no release job: its release build type is unsigned and unshrunk, and a release build refuses an `apiBaseUrl` that is not `https://`. Replace the app's local development sign-in with the project's identity provider before a release (see `security-auth`): the dev identity does not exist on a deployed backend.
+
+For each Android app (`mobile-android` in `mobile-android/`), add job `release` to `.github/workflows/<app-id>.yml`, after the build job, on `ubuntu-latest`:
+
+1. Check out, make `<app folder>/gradlew` executable, and set up JDK 21 and the Android SDK as the build job does.
+2. Decode the keystore outside the checkout: `echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"`.
+3. Build the bundle in `<app folder>`: `./gradlew bundleRelease -PapiBaseUrl=https://<production backend>/` with `-Pandroid.injected.signing.store.file=$RUNNER_TEMP/release.jks`, `...store.password`, `...key.alias` and `...key.password` from the secrets below.
+4. Upload `app/build/outputs/bundle/release/app-release.aab` to the Play Console with a publishing action or a Fastlane `supply` lane that you add, using the service account JSON.
+
+| Secret | Description |
+|--------|-------------|
+| `ANDROID_KEYSTORE_BASE64` | Signing keystore (base64) |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | Key alias |
+| `ANDROID_KEY_PASSWORD` | Key password |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Play Console service account |
+
+## iOS: TestFlight
+
+Job `release` in the app's workflow `.github/workflows/<app-id>.yml`, after the test job, on `macos-latest`, with the app's folder as its working directory:
+
+1. Check out, `brew install xcodegen`, and run `xcodegen generate` in the app's folder. Set the Release `API_BASE_URL` in `project.yml` to the production API URL (HTTPS) before tagging a release, and replace the local development sign-in with your identity provider.
+2. Set up Ruby 3.2 with `bundler-cache: true` and the app's folder as `working-directory`.
+3. Upload: `bundle exec fastlane beta` in the app's folder with the secrets below as environment variables and `GITHUB_RUN_NUMBER` set to `github.run_number`.
+
+| Secret | Description |
+|--------|-------------|
+| `ASC_KEY_ID` | App Store Connect API key ID |
+| `ASC_ISSUER_ID` | App Store Connect issuer ID |
+| `ASC_KEY_CONTENT` | App Store Connect API key content (base64) |
+| `MATCH_PASSWORD` | Fastlane match encryption password |
+| `MATCH_GIT_URL` | Git URL of the Fastlane match certificate repository |
+
+The lane is defined in the app's `fastlane/Fastfile`.

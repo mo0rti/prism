@@ -1,0 +1,6 @@
+interface:
+  display_name: "iOS Testing"
+  short_description: "Choose and write the right iOS tests"
+  default_prompt: "Use $ios-testing when adding or refining iOS unit or UI tests."
+policy:
+  allow_implicit_invocation: false

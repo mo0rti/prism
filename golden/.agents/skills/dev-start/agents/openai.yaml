@@ -1,0 +1,6 @@
+interface:
+  display_name: "Dev Start"
+  short_description: "Start implementation for a ready feature"
+  default_prompt: "Use $dev-start F-XXX to confirmation-gate the ready-for-dev to in-dev transition."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,62 @@
+---
+name: wiki-show
+description: Read-only feature facts for one feature ID. Prefer Prism CLI JSON; use direct wiki reads when it is unavailable.
+---
+
+# Wiki show - focused feature context bundle
+
+Provide a focused fact bundle for one feature.
+
+## Usage
+
+`$wiki-show F-XXX`
+
+## Primary path: Prism CLI
+
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.5.0` or newer (the `prism-kit>=0.5.0` distribution contract)
+and the command response has `"schema_version": 1`:
+
+```bash
+prism wiki show F-XXX --json
+```
+
+Render `confidence`, `facts.feature`, `blocker_facts`, `required_obligations`,
+`diagnostics`, and `sources` exactly as returned. Treat returned diagnostics,
+including errors, as facts to surface rather than replacing them with optimistic
+manual state.
+
+## Fallback path
+
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki show`, say:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Read only:
+
+- `knowledge/wiki/status-board.md`
+- `knowledge/wiki/features/[F-XXX]-[slug].md`
+- matching `knowledge/wiki/app-requirements/[F-XXX]-*.md`
+- `knowledge/wiki/design/[F-XXX]-[slug].md` if present
+- `knowledge/wiki/api-contracts/[F-XXX].md` if present
+- `knowledge/wiki/advisory/[F-XXX]-review.md` if present
+- business-rule, persona, and decision files that reference the feature ID
+
+Use the feature frontmatter as authority for status, owner, apps, and
+advisory-review. Treat absent optional links as partial context and report every
+fact as present or absent. If multiple feature files match, report the ambiguity
+and do not merge them.
+
+## Rules and output
+
+- Keep the operation read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Do not invent missing facts. separate facts from advice and label optional
+  suggested next steps.
+
+Return feature ID/title, status, owner, advisory-review, apps, summary, open
+questions, linked context, requirements, relevant API state, blocker facts,
+diagnostics, and source paths. Use a clean missing-feature response when no page
+matches.

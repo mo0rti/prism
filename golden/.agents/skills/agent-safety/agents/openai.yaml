@@ -1,0 +1,6 @@
+interface:
+  display_name: "Agent Safety"
+  short_description: "Keep the agent service safety rules and adapt the notice"
+  default_prompt: "Use $agent-safety when changing the prompt, tools, authentication or limits of the agent service."
+policy:
+  allow_implicit_invocation: true

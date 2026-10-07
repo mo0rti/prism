@@ -1,0 +1,66 @@
+---
+name: error-handling
+description: Backend exception and API error conventions. Use when adding or reviewing ApiException subclasses, error codes, validation handling, or service/controller error flows of a backend app.
+---
+
+# Error Handling
+
+Use this skill for backend exception taxonomy and API error-shape decisions.
+
+## Role Boundary
+
+- Use this skill for exception types, error codes, validation responses, and API error payloads.
+- Use `spring-boot-conventions` for general service and controller structure.
+- Use `security-auth` for auth-related route and JWT behavior.
+
+## Current Error Model
+
+- `ErrorCode` is the shared typed contract for machine-readable API error codes.
+- `CommonErrorCode` holds shared HTTP-level error codes.
+- Domain modules can define `*ErrorCode` enums and pass them through built-in exceptions.
+- `ApiException(errorCode, message, details)` is the shared base type.
+- `GlobalExceptionHandler` maps `ApiException`, `MethodArgumentNotValidException`, and unhandled `Exception`.
+- `ApiErrorResponse` exposes `code`, `message`, and optional `details`.
+
+## Built-In Exceptions
+
+| Exception | Status | Default Code | Use For |
+|-----------|--------|-------------|---------|
+| `NotFoundException` | 404 | `NOT_FOUND` | Entity not found by ID |
+| `ConflictException` | 409 | `CONFLICT` | Duplicate or already exists |
+| `UnauthorizedException` | 401 | `UNAUTHORIZED` | Missing or invalid auth |
+| `ForbiddenException` | 403 | `FORBIDDEN` | Insufficient permissions |
+| `BadRequestException` | 400 | `BAD_REQUEST` | Invalid input or business rule violation |
+
+## Rules
+
+- Use a built-in exception plus a domain-specific code for one-off cases.
+- Use optional `details` for structured client context when it adds value.
+- Create a named domain exception only when the case is reused or deserves a clearer type.
+- Prefer typed `ErrorCode` enums over raw string literals inside backend code.
+- Prefer module-local `error/` packages for domain-specific error-code enums such as `DevIdentityErrorCode` in `modules/devidentity/error/`.
+- Ensure the wrapped error code's HTTP status matches the exception wrapper; a mismatch throws a runtime guard error and surfaces as a 500 through the generic handler.
+- Keep `ApiException` as the shared base class and keep each reusable built-in exception in its own Kotlin file under `shared/exception/`.
+- Let exceptions propagate to `GlobalExceptionHandler`; do not catch them in controllers just to map HTTP.
+- Do not throw raw `RuntimeException` or `ResponseStatusException` for expected API failures.
+- Keep `code` stable and machine-readable; keep `message` human-readable.
+- Prefer throwing from services or auth collaborators rather than repositories.
+- Align documented error behavior with `shared/api-contracts/openapi.yml` when relevant.
+
+## Slice files
+
+Paths are inside the backend app's folder (`backend/`). `<package path>` is the app's package, `<package_identifier>.<app id without hyphens>`, written with slashes. The error contract is also in `shared/api-contracts/openapi.yml` at the workspace root.
+
+- `src/main/kotlin/<package path>/shared/error/ErrorCode.kt` - the code interface
+- `src/main/kotlin/<package path>/shared/error/CommonErrorCode.kt` - the shared codes
+- `src/main/kotlin/<package path>/shared/exception/ApiException.kt` - the base exception; the typed exceptions sit beside it in `src/main/kotlin/<package path>/shared/exception/`
+- `src/main/kotlin/<package path>/shared/exception/GlobalExceptionHandler.kt` - turns exceptions into the error response
+- `src/main/kotlin/<package path>/shared/model/ApiErrorResponse.kt` - the response body
+- `src/main/kotlin/<package path>/modules/devidentity/error/DevIdentityErrorCode.kt` - a module-owned code, thrown as `ForbiddenException(DevIdentityErrorCode.LOOPBACK_ONLY)` by `DevIdentityController`
+- `src/test/kotlin/<package path>/shared/exception/ErrorModelTest.kt` - the tests of the model
+
+## Minimum Verification
+
+- Add or update tests for important exception paths.
+- Re-check validation responses when request DTO constraints change.
+- Re-check any documented error codes that changed.

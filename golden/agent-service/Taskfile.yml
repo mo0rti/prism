@@ -1,0 +1,55 @@
+version: "3"
+
+tasks:
+  install:
+    desc: Install the locked dependencies of agent-service with uv
+    cmds:
+      - uv sync --locked
+
+  dev:
+    desc: "Run agent-service on port 8200 with the local development identity (start the backend first with `task backend:dev` or the task of your backend; set AGENT_BACKEND_BASE_URL when its port is not 8080)"
+    env:
+      AGENT_PROFILE: local
+    cmds:
+      - uv run --locked uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8200
+
+  run:
+    desc: "Run agent-service on port 8200 with the identity configured in the environment (AGENT_OIDC_ISSUER and AGENT_OIDC_AUDIENCE); it refuses to start with none"
+    cmds:
+      - uv run --locked uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8200
+
+  test:
+    desc: Run the agent-service tests (no network, no key)
+    cmds:
+      - uv run --locked pytest
+
+  lint:
+    desc: Lint and check the formatting of agent-service with ruff
+    cmds:
+      - uv run --locked ruff check .
+      - uv run --locked ruff format --check .
+
+  typecheck:
+    desc: Typecheck agent-service with mypy
+    cmds:
+      - uv run --locked mypy
+
+  eval:
+    desc: Run the evaluation cases of agent-service with the fake provider (the live model run is on demand)
+    cmds:
+      - uv run --locked python -m evals.run --provider fake
+
+  eval-live:
+    desc: "On demand: run the evaluation cases against the Claude API (needs ANTHROPIC_API_KEY; costs money)"
+    cmds:
+      - uv run --locked python -m evals.run --provider claude
+
+  format:
+    desc: Format agent-service with ruff
+    cmds:
+      - uv run --locked ruff format .
+
+  lock:
+    desc: Re-resolve uv.lock after changing dependencies in pyproject.toml
+    cmds:
+      - uv lock

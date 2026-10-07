@@ -1,0 +1,19 @@
+_src_path: https://github.com/mo0rti/prism.git
+app_id: mobile-ios
+app_module_name: MobileIos
+app_name: iOS App
+app_package: com.example.prismgolden.mobileios
+app_package_path: com/example/prismgolden/mobileios
+app_package_segment: mobileios
+app_path: mobile-ios
+audience: ''
+ci_paths:
+- mobile-ios/**
+- shared/api-contracts/**
+- .github/workflows/mobile-ios.yml
+ci_workflow_name: iOS App CI
+package_identifier: com.example.prismgolden
+port: 0
+prism_layer: ios-swiftui
+project_name: Prism Golden
+project_slug: prism-golden

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only: cleartext HTTP is allowed for localhost, which `adb reverse` points at the host's
+     backend. Every other host stays HTTPS-only. The backend's local development identity answers
+     loopback requests only, so 10.0.2.2 and LAN addresses are deliberately not listed here. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

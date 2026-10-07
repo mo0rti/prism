@@ -1,0 +1,8 @@
+package com.example.prismgolden.backend.modules.devidentity.dto
+
+data class DevTokenResponse(
+    val accessToken: String,
+    val tokenType: String = "Bearer",
+    /** Lifetime of the access token in seconds. */
+    val expiresIn: Long
+)

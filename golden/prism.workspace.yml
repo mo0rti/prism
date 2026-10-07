@@ -1,0 +1,90 @@
+schema_version: 2
+min_prism_cli_version: 0.5.0
+generated_by:
+  tool: prism-cli
+  prism_cli_version: 0.5.0
+  template_source: https://github.com/mo0rti/prism.git
+  template_version: unversioned
+  template_commit: unversioned
+  generated_at: '1970-01-01T00:00:00+00:00'
+project:
+  name: Prism Golden
+  slug: prism-golden
+  package_identifier: com.example.prismgolden
+  description: The reference workspace that Prism's CI regenerates and builds, one
+    app of each stack
+apps:
+- id: backend
+  name: Backend
+  stack: spring-backend
+  repository: workspace
+  path: backend
+  generation: scaffolded
+- id: web
+  name: Web
+  stack: nextjs-web
+  repository: workspace
+  path: web
+  generation: scaffolded
+  audience: B2C
+- id: mobile-android
+  name: Android App
+  stack: android-compose
+  repository: workspace
+  path: mobile-android
+  generation: scaffolded
+- id: mobile-ios
+  name: iOS App
+  stack: ios-swiftui
+  repository: workspace
+  path: mobile-ios
+  generation: scaffolded
+- id: agent-service
+  name: Agent Service
+  stack: python-agent-service
+  repository: workspace
+  path: agent-service
+  generation: scaffolded
+app_maturity:
+  backend:
+    level: baseline
+    caveat: ''
+  web:
+    level: provisional
+    caveat: Generated web apps are verified by lint, typecheck, unit and component
+      tests and the build, with a mocked backend; sign-in against a running backend
+      is checked by hand, and hosting is the project owner's choice (see the deployment
+      skill).
+  mobile-android:
+    level: baseline
+    caveat: ''
+  mobile-ios:
+    level: experimental
+    caveat: Generated iOS structure requires local macOS/Xcode validation before treating
+      it as build-proven.
+  agent-service:
+    level: provisional
+    caveat: The generated agent service is verified by lint, typecheck, tests and
+      an evaluation set that run the fake provider, and by a local run against the
+      backend's dev identity; the Claude adapter is tested against a stub only and
+      needs a live check with your own API key.
+paths:
+  wiki_root: knowledge/wiki
+  intake_root: knowledge/intake
+  advisory_board: knowledge/wiki/advisory/BOARD.md
+expected_surfaces:
+  ai:
+  - AGENTS.md
+  - CLAUDE.md
+  - .agents/skills
+  - .claude/commands
+  - .cursor/rules
+  docs:
+  - README.md
+  - docs/
+  workflows:
+  - .github/workflows/backend.yml
+  - .github/workflows/web.yml
+  - .github/workflows/mobile-android.yml
+  - .github/workflows/mobile-ios.yml
+  - .github/workflows/agent-service.yml

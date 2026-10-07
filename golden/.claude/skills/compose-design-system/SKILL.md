@@ -1,0 +1,73 @@
+---
+name: compose-design-system
+description: Compose UI and design-system rules for this repo. Use when building, refactoring, or reviewing screens, shared components, theme architecture, color roles, day/night theming, previews, or reusable modifiers.
+user-invocable: false
+---
+
+# Compose Design System
+
+Use this skill when Compose work should stay aligned with the app's shared UI language. The Android apps are `mobile-android/`; the shared UI lives under `app/src/main/kotlin/<package path>/designsystem/` (the application ID written with slashes).
+
+## Slice files
+
+Paths are inside the Android app's folder (`mobile-android/`). `<package path>` is the app's application ID, `<package_identifier>.<app id without hyphens>`, written with slashes.
+
+- `app/src/main/kotlin/<package path>/designsystem/theme/Theme.kt` - `AppTheme`
+- `app/src/main/kotlin/<package path>/designsystem/theme/Spacing.kt` - the spacing tokens
+- `app/src/main/kotlin/<package path>/designsystem/components/ErrorView.kt` - a shared error component
+- `app/src/main/kotlin/<package path>/designsystem/components/LoadingIndicator.kt` - a shared loading component
+- `app/src/main/kotlin/<package path>/ui/AppRoot.kt` - chooses the screen from the session
+- `app/src/main/kotlin/<package path>/MainActivity.kt` - hosts the content and enables edge-to-edge
+- `app/src/main/res/values/strings.xml` - the user-facing strings
+
+## Role boundary
+
+- Own shared UI language, reusable Compose primitives, previews, and cross-feature visual patterns.
+- Defer Route/Screen architecture, `UiState` and the state rules to `android-conventions`.
+- Defer DTO, client, and auth-boundary decisions to `android-contract-alignment`.
+- Defer Gradle task selection to `android-build-verify`.
+- The slice has two screens chosen by session state in `ui/AppRoot.kt` and no navigation library. When a feature needs a back stack or deep links, add Navigation Compose in `AppRoot.kt` and revisit the navigation-related examples of this skill.
+
+## Shared UI rules
+
+- Use `AppTheme`, `MaterialTheme`, and shared components from `designsystem/` instead of feature-local one-offs.
+- Prefer shared tokens like `Spacing` plus `MaterialTheme.colorScheme`, `typography`, and `shapes` before introducing raw `dp`, hardcoded colors, or one-off text styles.
+- Put reusable components, modifiers, and drawing helpers in `designsystem/`; keep feature files focused on composition.
+- Keep user-facing text in `strings.xml` and resolve it with `stringResource(...)`. A ViewModel exposes an error enum and the Screen maps it to a string resource, so a ViewModel holds no `Context`.
+- Every owning activity for full-screen Compose content must call `enableEdgeToEdge()` before `setContent` (`MainActivity.kt` does). Preserve existing calls and add one when creating a new activity unless a platform-specific migration explicitly replaces that baseline.
+- Keep `android:windowSoftInputMode="adjustResize"` on form activities unless the IME behavior is intentionally redesigned and revalidated.
+- When using `Scaffold`, treat its `PaddingValues` as the first source of content insets. Do not stack competing inset strategies on the same container without a clear ownership reason.
+- Interactive custom surfaces must expose meaningful accessibility semantics, adequate touch targets, and must not rely on color alone to convey important state.
+
+## Existing patterns to reuse
+
+- `LoadingIndicator`
+- `ErrorView`
+- `Spacing`
+- `AppTheme`
+
+## Theme structure
+
+- `designsystem/theme/Theme.kt` holds `AppTheme`: Material 3 light and dark color schemes that follow the system setting. Add `Color.kt`, `Type.kt` or `Shape.kt` beside it when the project defines its own tokens, and pass them to `MaterialTheme` in `AppTheme`.
+- `designsystem/theme/Spacing.kt` holds the spacing tokens (`Spacing.xs` to `Spacing.xl`).
+- `designsystem/components/` contains shared composables: `LoadingIndicator`, `ErrorView`, and feature-agnostic primitives.
+- `ui/signin/SignInScreen.kt` and `ui/profile/ProfileScreen.kt` show the patterns: a stateless Screen on a `Surface`, `safeDrawingPadding()` for insets, `Spacing` tokens, string resources and a `@Preview` wrapped in `AppTheme`.
+
+## Reference files
+
+Load only the reference file the task needs:
+
+- `references/material3-patterns.md` for theme, Material 3 component choice, surfaces, and adaptive navigation callouts
+- `references/compose-components.md` for reusable state surfaces, forms, dialogs, lists, buttons, previews, and shared-component patterns
+- `references/edge-to-edge-and-insets.md` for scaffold insets, IME behavior, `WindowInsetsRulers`, `fitInside(...)`, and RIGHT/WRONG inset patterns
+- `references/accessibility-and-adaptive-layout.md` for semantics, touch targets, text scaling, and layout response to size changes
+
+For Route/Screen split, `UiState`, or `collectAsStateWithLifecycle()` questions, read `android-conventions` instead.
+
+## Preview and composition rules
+
+- Wrap previews in `AppTheme`.
+- Keep shared components stateless and parameter-driven where possible.
+- Prefer extending existing design-system primitives before creating a new shared abstraction.
+- When a UI element is reusable across features, move it out of the feature package.
+- Use `@PreviewParameter` or multipreview annotations such as `@PreviewScreenSizes` and `@PreviewFontScales` when a shared component has multiple meaningful UI states or layout risks.

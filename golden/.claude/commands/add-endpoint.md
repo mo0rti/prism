@@ -1,0 +1,33 @@
+Add a new API endpoint to Prism Golden.
+
+Ask me for the endpoint details if I haven't provided them: HTTP method, path, description, request/response shape.
+
+## Steps
+
+1. **Update OpenAPI Spec** - Add the new path, parameters, request body, and response schemas to `shared/api-contracts/openapi.yml`. Follow conventions in `docs/api/conventions.md`:
+   - Use camelCase for JSON fields
+   - Use plural nouns for resource paths
+   - Include pagination for list endpoints (page, size, totalElements, totalPages); the slice has no list endpoint yet, so add the `PagedResponse` DTO under `shared/model/` for the first one
+   - Use standard error format: `{ code: string, message: string, details?: object }`
+
+2. **Regenerate Clients** - Run `task generate-clients`.
+
+3. **Implement Backend** - Add the endpoint in the backend app (`backend/`), following its `modules/users/` slice:
+   - Controller method with proper annotations
+   - Service method with business logic
+   - Repository method if data access is needed
+   - DTOs for request/response
+   - Add Flyway migration if schema changes are needed and follow `@.claude/skills/migration-conventions/SKILL.md`
+   - Re-check route exposure in `SecurityConfig` against `@.claude/skills/security-auth/SKILL.md`
+   - Re-check ownership, visibility, and role or policy behavior against `@.claude/skills/authorization-rules/SKILL.md` when the endpoint affects who may access or mutate a resource
+
+4. **Verify** - Run `task backend:test` to ensure nothing is broken (the integration tests need Docker).
+
+## Conventions
+
+- GET for reads, POST for creates, PUT for full updates, PATCH for partial, DELETE for removal
+- Return 201 for creates, 200 for updates/reads, 204 for deletes
+- All list endpoints support pagination
+- Keep public versus authenticated route exposure explicit in `SecurityConfig`;
+  do not assume only auth endpoints are public
+- Keep the flow OpenAPI-first, then generated clients, then backend implementation

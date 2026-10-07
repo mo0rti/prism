@@ -14,6 +14,12 @@ on:
       - "packs/**"
       - "template-skills/**"
       - "scripts/build-skill-layers.py"
+      - "golden/**"
+      - "scripts/build-golden.py"
+      - "scripts/golden-answers.yml"
+      - "scripts/run-golden-workflow.py"
+      - "scripts/read-pins.py"
+      - "scripts/audit-gate.py"
   workflow_dispatch:
   pull_request:
     paths:
@@ -26,6 +32,12 @@ on:
       - "packs/**"
       - "template-skills/**"
       - "scripts/build-skill-layers.py"
+      - "golden/**"
+      - "scripts/build-golden.py"
+      - "scripts/golden-answers.yml"
+      - "scripts/run-golden-workflow.py"
+      - "scripts/read-pins.py"
+      - "scripts/audit-gate.py"
 
 jobs:
   contract-validation:
@@ -54,6 +66,27 @@ jobs:
         shell: pwsh
         run: ./scripts/validate-template.ps1 -Mode contract
 
+  golden-current:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Prism
+        run: python -m pip install --upgrade pip .
+
+      # golden/ is what `prism new` generates from scripts/golden-answers.yml. A change of a pack, of the
+      # workspace layer or of packs/versions.yml that does not refresh it fails here.
+      - name: Check that golden/ is current
+        run: python scripts/build-golden.py --check
+
   backend-smoke:
     runs-on: ubuntu-latest
 
@@ -66,18 +99,27 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Prism
+        run: python -m pip install --upgrade pip .
+
+      # The toolchain versions come from packs/versions.yml; no workflow repeats one.
+      - name: Read the pinned versions
+        id: pins
+        run: python scripts/read-pins.py spring-backend >> "$GITHUB_OUTPUT"
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
-
-      - name: Install Prism
-        run: python -m pip install --upgrade pip .
+          java-version: ${{ steps.pins.outputs.java }}
 
       - name: Run Backend Smoke Validation
         shell: pwsh
         run: ./scripts/validate-template.ps1 -Mode backend-smoke
+
+      # The committed golden backend runs its own generated workflow: the Gradle build and every test.
+      - name: Golden backend CI
+        run: python scripts/run-golden-workflow.py backend
 
   web-smoke:
     runs-on: ubuntu-latest
@@ -91,13 +133,17 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Prism
+        run: python -m pip install --upgrade pip .
+
+      - name: Read the pinned versions
+        id: pins
+        run: python scripts/read-pins.py nextjs-web >> "$GITHUB_OUTPUT"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
-
-      - name: Install Prism
-        run: python -m pip install --upgrade pip .
+          node-version: ${{ steps.pins.outputs.node }}
 
       - name: Generate Web Validation Sample
         shell: bash
@@ -132,9 +178,18 @@ jobs:
             popd >/dev/null
           done
 
+      # The committed golden web app runs its own generated workflow.
+      - name: Golden web CI
+        run: python scripts/run-golden-workflow.py web
+
+      # A new advisory of high or critical severity in the locked tree fails here. packs/audit-allowlist.yml
+      # lists the ones that have no fixed version, each with its advisory link and reason.
+      - name: Audit the web dependencies
+        run: python scripts/audit-gate.py npm golden/web --stack nextjs-web
+
   agent-service:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -145,26 +200,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Prism
+        run: python -m pip install --upgrade pip .
+
       # The uv and Python versions of the generated service are the ones packs/versions.yml pins.
       - name: Read the pinned versions
         id: pins
-        shell: bash
-        run: |
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import yaml
-          pins = yaml.safe_load(open("packs/versions.yml", encoding="utf-8"))["python-agent-service"]
-          print(f"uv={pins['uv']}")
-          print(f"python={pins['python']}")
-          PY
+        run: python scripts/read-pins.py python-agent-service >> "$GITHUB_OUTPUT"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
           version: ${{ steps.pins.outputs.uv }}
           python-version: ${{ steps.pins.outputs.python }}
-
-      - name: Install Prism
-        run: python -m pip install --upgrade pip .
 
       - name: Generate a backend and an agent service
         shell: bash
@@ -207,9 +255,17 @@ jobs:
         working-directory: ${{ env.PRISM_AGENT_TARGET }}/agent-service
         run: uv run --locked python -m evals.run --provider fake
 
+      # The committed golden agent service runs its own generated workflow.
+      - name: Golden agent service CI
+        run: python scripts/run-golden-workflow.py agent-service
+
+      # A new advisory in the locked tree fails here (packs/audit-allowlist.yml lists the accepted ones).
+      - name: Audit the agent service dependencies
+        run: python scripts/audit-gate.py uv golden/agent-service --stack python-agent-service
+
   android-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -220,22 +276,26 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Prism
+        run: python -m pip install --upgrade pip .
+
+      # The JDK, the SDK platform and the build tools are the ones packs/versions.yml pins for the stack.
+      - name: Read the pinned versions
+        id: pins
+        run: python scripts/read-pins.py android-compose >> "$GITHUB_OUTPUT"
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: ${{ steps.pins.outputs.jdk }}
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # The action's default list names the retired `tools` package. These are what the
-          # generated project compiles against: the platform of its compileSdk and the build
-          # tools of its Android Gradle Plugin.
-          packages: platform-tools platforms;android-36 build-tools;35.0.0
-
-      - name: Install Prism
-        run: python -m pip install --upgrade pip .
+          # The action's default list names the retired `tools` package. These are what the generated
+          # project compiles against: the platform of its compileSdk and the build tools of its Android Gradle Plugin.
+          packages: ${{ steps.pins.outputs.android_packages }}
 
       - name: Generate Android Validation Sample
         shell: bash
@@ -269,9 +329,13 @@ jobs:
             popd >/dev/null
           done
 
+      # The committed golden Android app runs its own generated workflow.
+      - name: Golden Android CI
+        run: python scripts/run-golden-workflow.py mobile-android
+
   ios-build:
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -286,6 +350,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip .
           brew install xcodegen
+
+      # The runner's Xcode must be the pinned baseline or newer (packs/versions.yml).
+      - name: Check the Xcode baseline
+        run: python scripts/read-pins.py ios-swiftui --check-xcode
 
       - name: Generate iOS Validation Sample (two iOS apps)
         shell: bash
@@ -381,6 +449,10 @@ jobs:
               -derivedDataPath build/DerivedData \
               -resultBundlePath build/TestResults.xcresult)
           done
+
+      # The committed golden iOS app runs its own generated workflow.
+      - name: Golden iOS CI
+        run: python scripts/run-golden-workflow.py mobile-ios
 
       - name: Upload iOS test results
         if: always()

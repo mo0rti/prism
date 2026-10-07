@@ -1,0 +1,49 @@
+# Wiki app - app-specific feature queue
+
+Report facts for one exact app ID that `prism.workspace.yml` declares.
+
+## Usage
+
+`/wiki-app <app-id>`
+
+## Primary path: Prism CLI
+
+Probe the optional CLI before selecting the JSON path:
+
+```bash
+prism --version
+```
+
+Use this path only when the probe reports `prism 0.5.0` or newer (the `prism-kit>=0.5.0` distribution contract)
+and the command response has `"schema_version": 1`:
+
+```bash
+prism wiki app <app-id> --json
+```
+
+Render `facts.app`, `facts.features`, `facts.app_requirements`,
+`diagnostics`, and `sources` exactly as returned. Treat returned diagnostics,
+including errors, as facts to surface rather than replacing them with optimistic
+manual state.
+
+## Fallback path
+
+If the version probe or schema check fails, or `prism` is missing, too old,
+fails, or lacks `wiki app`, say:
+`Prism CLI read surface unavailable; falling back to direct wiki reads.` Then read
+all files in `knowledge/wiki/features/`, `app-requirements/`, `design/`,
+`api-contracts/`, and `advisory/` except `BOARD.md` and `PROJECT_FOUNDATION.md`. Filter the exact app ID
+and active statuses (`ready-for-design`, `in-design`, `ready-for-dev`, `in-dev`),
+attach matching requirements, and compute only blockers proved by the files.
+Sort active work `in-dev`, `ready-for-dev`, `in-design`, `ready-for-design`;
+keep `done` out unless closed work is requested.
+
+## Rules and output
+
+- Keep the operation read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
+- Accept only an app ID that `prism.workspace.yml` declares; do not infer aliases.
+- separate facts from advice and label optional suggested next steps.
+
+Return active features, status, advisory-review and requirement state, relevant
+blockers, diagnostics, and source paths. Use a clean empty state for no matches
+and a clean invalid-app response for unsupported IDs.

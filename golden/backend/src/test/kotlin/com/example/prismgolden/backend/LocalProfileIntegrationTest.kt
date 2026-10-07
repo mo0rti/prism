@@ -1,0 +1,229 @@
+package com.example.prismgolden.backend
+
+import com.example.prismgolden.backend.modules.devidentity.model.DevIdentity
+import com.example.prismgolden.backend.modules.users.repository.UserRepository
+import com.example.prismgolden.backend.support.PostgresTestConfiguration
+import com.example.prismgolden.backend.support.TokenFixtures
+import com.jayway.jsonpath.JsonPath
+import com.nimbusds.jose.jwk.JWKSet
+import com.nimbusds.jose.jwk.RSAKey
+import com.nimbusds.jwt.SignedJWT
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.context.annotation.Import
+import org.springframework.http.MediaType
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
+import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.RequestPostProcessor
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.Instant
+import java.util.UUID
+
+/** The app under the `local` profile: the dev identity signs a token and `GET /api/me` accepts it. */
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("local")
+@Import(PostgresTestConfiguration::class)
+class LocalProfileIntegrationTest {
+
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+
+    @Autowired
+    private lateinit var userRepository: UserRepository
+
+    @Autowired
+    private lateinit var devIdentityKey: RSAKey
+
+    private fun requestToken(body: String = "{}", vararg processors: RequestPostProcessor): String {
+        val request = post("/api/dev-identity/token").contentType(MediaType.APPLICATION_JSON).content(body)
+        processors.forEach { request.with(it) }
+        val response = mockMvc.perform(request).andExpect(status().isOk).andReturn().response.contentAsString
+        return JsonPath.read(response, "$.accessToken")
+    }
+
+    private fun uniqueEmail() = "user-${UUID.randomUUID()}@example.test"
+
+    @Test
+    fun `sign in with the dev identity and read the profile`() {
+        val email = uniqueEmail()
+        val token = requestToken("""{"email": "$email", "displayName": "Ada Developer"}""")
+
+        mockMvc.perform(get("/api/me").header("Authorization", "Bearer $token"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id").exists())
+            .andExpect(jsonPath("$.email").value(email))
+            .andExpect(jsonPath("$.displayName").value("Ada Developer"))
+            .andExpect(jsonPath("$.createdAt").exists())
+    }
+
+    @Test
+    fun `the token response states its short lifetime`() {
+        val response = mockMvc.perform(post("/api/dev-identity/token").contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.tokenType").value("Bearer"))
+            .andExpect(jsonPath("$.expiresIn").value(900))
+            .andReturn().response.contentAsString
+        assertEquals(3, JsonPath.read<String>(response, "$.accessToken").split(".").size, "a compact JWS")
+    }
+
+    @Test
+    fun `a request without a body signs in as the default developer`() {
+        val response = mockMvc.perform(post("/api/dev-identity/token"))
+            .andExpect(status().isOk)
+            .andReturn().response.contentAsString
+        val token = JsonPath.read<String>(response, "$.accessToken")
+
+        mockMvc.perform(get("/api/me").header("Authorization", "Bearer $token"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.email").value(DevIdentity.DEFAULT_EMAIL))
+            .andExpect(jsonPath("$.displayName").value(DevIdentity.DEFAULT_DISPLAY_NAME))
+    }
+
+    @Test
+    fun `the same email is the same user and a new token does not create a second profile`() {
+        val email = uniqueEmail()
+        val first = requestToken("""{"email": "$email"}""")
+        val second = requestToken("""{"email": "${email.uppercase()}"}""")
+
+        val firstId = JsonPath.read<String>(
+            mockMvc.perform(get("/api/me").header("Authorization", "Bearer $first")).andReturn().response.contentAsString, "$.id"
+        )
+        val secondId = JsonPath.read<String>(
+            mockMvc.perform(get("/api/me").header("Authorization", "Bearer $second")).andReturn().response.contentAsString, "$.id"
+        )
+        assertEquals(firstId, secondId)
+        assertEquals(1, userRepository.findAll().count { it.subject == "dev:${email.lowercase()}" })
+    }
+
+    @Test
+    fun `me without a token is 401 in the shared error format`() {
+        mockMvc.perform(get("/api/me"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+    }
+
+    @Test
+    fun `a request that did not come from the loopback interface is refused`() {
+        val remote = RequestPostProcessor { it.remoteAddr = "203.0.113.7"; it }
+        mockMvc.perform(post("/api/dev-identity/token").with(remote).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("LOOPBACK_ONLY"))
+    }
+
+    @Test
+    fun `a request through a proxy is refused`() {
+        mockMvc.perform(post("/api/dev-identity/token").header("X-Forwarded-For", "203.0.113.7").contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("LOOPBACK_ONLY"))
+    }
+
+    @Test
+    fun `a request addressed to another host name is refused`() {
+        val rebound = RequestPostProcessor { it.serverName = "attacker.example"; it }
+        mockMvc.perform(post("/api/dev-identity/token").with(rebound).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("LOOPBACK_ONLY"))
+    }
+
+    @Test
+    fun `the jwks route publishes the public key and no private member`() {
+        val body = mockMvc.perform(get("/api/dev-identity/jwks"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.keys.length()").value(1))
+            .andExpect(jsonPath("$.keys[0].kty").value("RSA"))
+            .andExpect(jsonPath("$.keys[0].kid").value(devIdentityKey.keyID))
+            .andExpect(jsonPath("$.keys[0].n").exists())
+            .andExpect(jsonPath("$.keys[0].e").exists())
+            .andReturn().response.contentAsString
+
+        for (privateMember in listOf("d", "p", "q", "dp", "dq", "qi", "oth")) {
+            assertFalse(JsonPath.read<Map<String, Any>>(body, "$.keys[0]").containsKey(privateMember), "the JWKS carries the private member `$privateMember`")
+        }
+        assertTrue(JWKSet.parse(body).keys.none { it.isPrivate }, "no key of the published set is private")
+    }
+
+    @Test
+    fun `the published key verifies a token the dev identity signs`() {
+        val token = requestToken()
+        val body = mockMvc.perform(get("/api/dev-identity/jwks")).andExpect(status().isOk).andReturn().response.contentAsString
+        val published = JWKSet.parse(body).keys.single() as RSAKey
+
+        assertEquals(published.keyID, SignedJWT.parse(token).header.keyID, "the token names the published key by kid")
+        val jwt = NimbusJwtDecoder.withPublicKey(published.toRSAPublicKey()).build().decode(token)
+        assertEquals(DevIdentity.ISSUER, jwt.getClaimAsString("iss"))
+    }
+
+    @Test
+    fun `the jwks route refuses a request that did not come from the loopback interface`() {
+        val remote = RequestPostProcessor { it.remoteAddr = "203.0.113.7"; it }
+        mockMvc.perform(get("/api/dev-identity/jwks").with(remote))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("LOOPBACK_ONLY"))
+    }
+
+    @Test
+    fun `the jwks route refuses a request through a proxy`() {
+        mockMvc.perform(get("/api/dev-identity/jwks").header("X-Forwarded-For", "203.0.113.7"))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("LOOPBACK_ONLY"))
+    }
+
+    @Test
+    fun `the jwks route refuses a request addressed to another host name`() {
+        val rebound = RequestPostProcessor { it.serverName = "attacker.example"; it }
+        mockMvc.perform(get("/api/dev-identity/jwks").with(rebound))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("LOOPBACK_ONLY"))
+    }
+
+    @Test
+    fun `an invalid email is a validation error`() {
+        mockMvc.perform(post("/api/dev-identity/token").contentType(MediaType.APPLICATION_JSON).content("""{"email": "not-an-email"}"""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+    }
+
+    @Test
+    fun `a token signed by another key is rejected`() {
+        val now = Instant.now()
+        val token = TokenFixtures.sign(TokenFixtures.newRsaKey(), DevIdentity.ISSUER, "dev:forged", now, now.plusSeconds(600))
+
+        mockMvc.perform(get("/api/me").header("Authorization", "Bearer $token"))
+            .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `a token from another issuer is rejected even with the right key`() {
+        val now = Instant.now()
+        val token = TokenFixtures.sign(devIdentityKey, "https://idp.example.test", "dev:other-issuer", now, now.plusSeconds(600))
+
+        mockMvc.perform(get("/api/me").header("Authorization", "Bearer $token"))
+            .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `an expired token is rejected`() {
+        val now = Instant.now()
+        val token = TokenFixtures.sign(devIdentityKey, DevIdentity.ISSUER, "dev:expired", now.minusSeconds(7200), now.minusSeconds(3600))
+
+        mockMvc.perform(get("/api/me").header("Authorization", "Bearer $token"))
+            .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `a malformed token is rejected`() {
+        mockMvc.perform(get("/api/me").header("Authorization", "Bearer not-a-jwt"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+    }
+}

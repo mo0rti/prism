@@ -18,6 +18,7 @@ packs/                  # App layers: one pack per stack, rendered once per scaf
   android-compose/      # Android pack: the local development sign-in and profile slice (Compose, MVVM, Retrofit), JVM unit tests with a Robolectric Compose test, the Gradle wrapper
   python-agent-service/ # Python agent service pack: FastAPI, uv with a committed uv.lock (scripts/refresh-python-agent-service-lock.py rewrites it from the pins), a provider interface with a fake and a Claude adapter, read-only tools that use the user's token, the safety rules, pytest tests and an evaluation harness
   ios-swiftui/          # SwiftUI pack: the local development sign-in and profile slice, its XCTest tests, an XcodeGen project.yml and its macOS CI workflow (only the macOS CI job builds it)
+golden/                 # The generated reference workspace, one app of each stack (scripts/build-golden.py); built and tested by CI, never packaged
 template-skills/        # The one source of every skill, command and Cursor rule (generated into template/)
 template/               # The workspace layer - Jinja2 files (.jinja suffix stripped on generation)
   shared/               # OpenAPI 3.1 spec + design tokens
@@ -45,6 +46,7 @@ wiki commands from a generated project against this repository.
 - **Two layers of AI context**: `template/.claude/` is for generated projects; `.claude/` (root) is for this template repo
 - **Documentation organization**: Template-repo docs live in root `docs/`. Generated-project docs stay in `template/docs/`. Technical docs of an app live in `packs/<stack>/{{ app_path }}/docs/`. Every `_exclude` entry applies to the workspace layer only (`prism_layer == 'workspace'`).
 - **Layers and packs**: the workspace layer holds no app code; a pack's paths are all under `{{ app_path }}/` except its workflow and Cursor rule; pinned versions live only in `packs/versions.yml`, and a test fails when a pack file repeats one; per-app files of a pack are the pack's own source, not the skill generator's. A pack's Gradle wrapper is copied from another pack, and the Android pack's Kotlin directories use `{{ app_package_path }}`. The `nextjs-web` pack's `package-lock.json.jinja` records the pins' resolved tree; after a pin changes, run `python scripts/refresh-nextjs-web-lock.py`, because a test fails while the lockfile and the pins disagree. The `python-agent-service` pack's `uv.lock.jinja` works the same way with `python scripts/refresh-python-agent-service-lock.py`, and its tests, evaluation and CI never call a live model API or hold a key.
+- **Golden workspace and pins**: `golden/` is the workspace that `python scripts/build-golden.py` generates with `prism new` from `scripts/golden-answers.yml`, one app of each stack. Regenerate it after any change of `template/`, `packs/`, `template-skills/` or `packs/versions.yml`, and never hand-edit it: `--check`, the `golden-current` CI job and a test fail while it is stale. It is not part of the package or of any Copier render. After a pin moves, run `python scripts/sync-golden.py` (the pack lockfiles, then `golden/`); the dependency bot (`renovate.json`) proposes pin updates and `.github/workflows/dependency-sync.yml` pushes that regeneration to its pull request. Repository workflows read every pack toolchain version from `packs/versions.yml` through `scripts/read-pins.py` and never repeat one, and a test fails when one does. `packs/audit-allowlist.yml` lists the security advisories that have no fixed version, each with its advisory link and reason, and `docs/current-status.md` records them; never list one without both
 - **Test with the CLI** after changes: `prism new --preset backend-only --project-name "Test App" --dest C:\temp\template-test --yes` (a checkout generates from its working tree). Raw `copier copy --trust --defaults --data "project_name=Test App" . C:\temp\layer-test` renders the workspace layer alone
 - **Maturity matters**: selectable options should be described as implemented, partial, or planned; they should never silently degrade into broken output
 - **User docs match behaviour**: keep the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md` equal to the CLI and service. After changing a documented command, message or security check, run it in a disposable workspace and fix the docs to match the real output
@@ -66,6 +68,11 @@ prism new --answers C:\temp\answers.yml --dest C:\temp\template-test-mobile --ye
 
 # Scaffold a second app into a committed generated workspace (needs a versioned template; a git+file:// URL of a tagged copy works)
 prism app add api-two --stack spring-backend --path services/api-two --scaffold --apply --yes --trust-template C:\temp\template-test
+
+# Regenerate the golden workspace after a change of template/, packs/ or a pin, and check it; sync-golden.py also refreshes the pack lockfiles
+python scripts/build-golden.py
+python scripts/build-golden.py --check
+python scripts/sync-golden.py
 
 # Rebuild the generated skill layers after editing template-skills/, then the packaged asset
 python scripts/build-skill-layers.py
@@ -96,6 +103,7 @@ prism board serve . --port 8765
 - `docs/maintainer-workflow.md` - template maintenance workflow and validation variants
 - `docs/questionnaire.md` - questionnaire inputs, the app list and what each stack generates
 - `packs/` - the stack packs and `packs/versions.yml`, the pinned versions
+- `golden/` and `scripts/golden-answers.yml` - the generated reference workspace and its answers; `renovate.json` - the dependency bot's configuration
 - `copier.yml` - template configuration and questionnaire
 - `template-skills/` - the source of every generated skill, command and Cursor rule
 - `scripts/build-skill-layers.py` - renders the skill layers of `template/` from `template-skills/`

@@ -1,0 +1,42 @@
+version: "3"
+
+vars:
+  GRADLEW: '{{if eq OS "windows"}}gradlew.bat{{else}}./gradlew{{end}}'
+  # The port of the backend on this machine. Override it: `task mobile-android:reverse BACKEND_PORT=8081`.
+  BACKEND_PORT: "8080"
+
+tasks:
+  build:
+    desc: Build the mobile-android debug APK
+    cmds:
+      - "{{.GRADLEW}} assembleDebug"
+
+  test:
+    desc: Run the mobile-android unit tests (JVM, the Compose UI test included)
+    cmds:
+      - "{{.GRADLEW}} testDebugUnitTest"
+
+  lint:
+    desc: Run Android lint on mobile-android
+    cmds:
+      - "{{.GRADLEW}} lintDebug"
+
+  devices:
+    desc: List connected Android devices and emulators
+    cmds:
+      - adb devices
+
+  reverse:
+    desc: "Let a device or emulator reach the local backend at localhost:{{.BACKEND_PORT}} (needed for the local development sign-in; run it again after a restart)"
+    cmds:
+      - "adb reverse tcp:{{.BACKEND_PORT}} tcp:{{.BACKEND_PORT}}"
+
+  install:
+    desc: Install the mobile-android debug APK on the connected device or emulator
+    cmds:
+      - "{{.GRADLEW}} installDebug"
+
+  clean:
+    desc: Clean mobile-android build artifacts
+    cmds:
+      - "{{.GRADLEW}} clean"

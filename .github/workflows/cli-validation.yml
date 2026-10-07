@@ -16,7 +16,11 @@ on:
       - "packs/**"
       - "template-skills/**"
       - "scripts/**"
+      - "golden/**"
+      - "renovate.json"
       - "docs/wiki-visualization-demo.mmd"
+  # A manual run lets the dependency-sync workflow start this workflow on a branch it pushed to.
+  workflow_dispatch:
   pull_request:
     paths:
       - ".github/workflows/cli-validation.yml"
@@ -30,6 +34,8 @@ on:
       - "packs/**"
       - "template-skills/**"
       - "scripts/**"
+      - "golden/**"
+      - "renovate.json"
       - "docs/wiki-visualization-demo.mmd"
 
 permissions:

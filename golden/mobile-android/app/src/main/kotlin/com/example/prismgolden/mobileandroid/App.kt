@@ -1,0 +1,8 @@
+package com.example.prismgolden.mobileandroid
+
+import android.app.Application
+
+class App : Application() {
+    /** The app's object graph. It is built once, on first use, and lives as long as the process. */
+    val container: AppContainer by lazy { AppContainer(apiBaseUrl = BuildConfig.API_BASE_URL) }
+}

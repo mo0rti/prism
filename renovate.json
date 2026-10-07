@@ -1,0 +1,107 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "enabledManagers": [
+    "custom.regex"
+  ],
+  "ignorePaths": [
+    "golden/**"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 4,
+  "rebaseWhen": "conflicted",
+  "gitIgnoredAuthors": [
+    "41898282+github-actions[bot]@users.noreply.github.com"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The pins of packs/versions.yml, each named by the `# renovate:` line above it",
+      "managerFilePatterns": [
+        "/^packs/versions\\.yml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))? depType=(?<depType>\\S+)\n\\s+[a-z_]+: \"(?<currentValue>[^\"]+)\""
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "One pull request per update kind for the spring-backend pack",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepTypes": [
+        "spring-backend"
+      ],
+      "groupName": "spring-backend pack",
+      "groupSlug": "spring-backend-pack",
+      "addLabels": [
+        "pack:spring-backend"
+      ]
+    },
+    {
+      "description": "One pull request per update kind for the nextjs-web pack",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepTypes": [
+        "nextjs-web"
+      ],
+      "groupName": "nextjs-web pack",
+      "groupSlug": "nextjs-web-pack",
+      "addLabels": [
+        "pack:nextjs-web"
+      ]
+    },
+    {
+      "description": "One pull request per update kind for the android-compose pack",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepTypes": [
+        "android-compose"
+      ],
+      "groupName": "android-compose pack",
+      "groupSlug": "android-compose-pack",
+      "addLabels": [
+        "pack:android-compose"
+      ]
+    },
+    {
+      "description": "One pull request per update kind for the python-agent-service pack",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepTypes": [
+        "python-agent-service"
+      ],
+      "groupName": "python-agent-service pack",
+      "groupSlug": "python-agent-service-pack",
+      "addLabels": [
+        "pack:python-agent-service"
+      ]
+    },
+    {
+      "description": "@types/node follows the Node major that packs/versions.yml pins",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepTypes": [
+        "nextjs-web"
+      ],
+      "matchPackageNames": [
+        "@types/node"
+      ],
+      "allowedVersions": "/^22\\./"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+<resources>
+    <string name="app_name">Android App</string>
+
+    <!-- Sign-in. The screen says what it is: the local development identity, not complete authentication. -->
+    <string name="sign_in_title">Local development sign-in</string>
+    <string name="sign_in_description">Signs in as a developer through the identity of a backend running on your machine. It is not complete authentication.</string>
+    <string name="sign_in_action">Sign in as local developer</string>
+    <string name="sign_in_error_unavailable">The backend has no local development sign-in. Start it with its local profile.</string>
+    <string name="sign_in_error_loopback_only">The backend refused the request because it did not arrive from its own loopback address. Run adb reverse so the app reaches it at localhost.</string>
+    <string name="sign_in_error_network">The backend is not reachable. Start it and run adb reverse, then try again.</string>
+    <string name="sign_in_error_unexpected">Sign-in failed with an unexpected response.</string>
+
+    <!-- Profile: the signed-in user from GET /api/me. -->
+    <string name="profile_title">Profile</string>
+    <string name="profile_name_label">Name</string>
+    <string name="profile_email_label">Email</string>
+    <string name="profile_email_missing">No email</string>
+    <string name="profile_id_label">User ID</string>
+    <string name="profile_created_label">Created</string>
+    <string name="profile_sign_out">Sign out</string>
+    <string name="profile_error_network">The backend is not reachable.</string>
+    <string name="profile_error_server">The backend answered with an error.</string>
+    <string name="profile_error_unexpected">The profile response was not understood.</string>
+
+    <string name="action_retry">Retry</string>
+</resources>

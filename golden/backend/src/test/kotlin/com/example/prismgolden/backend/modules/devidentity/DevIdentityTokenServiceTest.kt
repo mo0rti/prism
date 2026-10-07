@@ -1,0 +1,61 @@
+package com.example.prismgolden.backend.modules.devidentity
+
+import com.example.prismgolden.backend.bootstrap.properties.DevIdentityProperties
+import com.example.prismgolden.backend.modules.devidentity.model.DevIdentity
+import com.example.prismgolden.backend.modules.devidentity.service.DevIdentityTokenService
+import com.example.prismgolden.backend.support.TokenFixtures
+import com.nimbusds.jose.jwk.JWKSet
+import com.nimbusds.jose.jwk.source.ImmutableJWKSet
+import com.nimbusds.jose.proc.SecurityContext
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder
+import java.time.Duration
+
+class DevIdentityTokenServiceTest {
+
+    private val key = TokenFixtures.newRsaKey()
+    private val encoder = NimbusJwtEncoder(ImmutableJWKSet<SecurityContext>(JWKSet(key)))
+    private val decoder = NimbusJwtDecoder.withPublicKey(key.toRSAPublicKey()).build()
+
+    @Test
+    fun `the token is issued by the dev identity for the dev subject with a short lifetime`() {
+        val service = DevIdentityTokenService(encoder, DevIdentityProperties(Duration.ofMinutes(5)))
+
+        val issued = service.issue("Ada@Example.test", "Ada")
+        val jwt = decoder.decode(issued.value)
+
+        assertEquals("prism-dev-identity", jwt.getClaimAsString("iss"))
+        assertEquals(DevIdentity.ISSUER, jwt.getClaimAsString("iss"))
+        assertEquals("dev:ada@example.test", jwt.subject)
+        assertEquals("Ada@Example.test", jwt.getClaimAsString("email"))
+        assertEquals("Ada", jwt.getClaimAsString("name"))
+        assertEquals(Duration.ofMinutes(5), Duration.between(jwt.issuedAt, jwt.expiresAt))
+        assertEquals(Duration.ofMinutes(5), issued.expiresIn)
+    }
+
+    @Test
+    fun `without a body the token is the default developer's`() {
+        val service = DevIdentityTokenService(encoder, DevIdentityProperties())
+
+        val jwt = decoder.decode(service.issue(null, " ").value)
+
+        assertEquals("dev:${DevIdentity.DEFAULT_EMAIL}", jwt.subject)
+        assertEquals(DevIdentity.DEFAULT_DISPLAY_NAME, jwt.getClaimAsString("name"))
+    }
+
+    @Test
+    fun `the default lifetime is fifteen minutes`() {
+        assertEquals(Duration.ofMinutes(15), DevIdentityProperties().tokenTtl)
+    }
+
+    @Test
+    fun `a lifetime of zero or longer than one hour is refused`() {
+        assertThrows<IllegalArgumentException> { DevIdentityProperties(Duration.ZERO) }
+        assertThrows<IllegalArgumentException> { DevIdentityProperties(Duration.ofSeconds(-1)) }
+        assertThrows<IllegalArgumentException> { DevIdentityProperties(Duration.ofHours(1).plusSeconds(1)) }
+        assertEquals(Duration.ofHours(1), DevIdentityProperties(Duration.ofHours(1)).tokenTtl)
+    }
+}

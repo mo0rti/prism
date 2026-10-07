@@ -1,0 +1,6 @@
+interface:
+  display_name: "Generate API Clients"
+  short_description: "Regenerate typed clients from OpenAPI"
+  default_prompt: "Use $generate-clients to regenerate typed API clients after OpenAPI changes."
+policy:
+  allow_implicit_invocation: true

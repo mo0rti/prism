@@ -12,6 +12,7 @@ scripts/              # Validation, measurement and demo scripts, and the genera
 template-skills/      # The one source of every skill, command and Cursor rule; generated into the layers of template/
 copier.yml            # Questionnaire and generation contract
 packs/                # App layers, one pack per stack with a pack (spring-backend, nextjs-web, android-compose, ios-swiftui, python-agent-service), and versions.yml with the pinned versions
+golden/               # The generated reference workspace, one app of each stack; built and tested by CI, never packaged (scripts/build-golden.py)
 template/             # Files copied into generated projects (the workspace layer)
   .claude/            # Claude commands and skills (generated from template-skills/)
   .agents/            # Codex skills (generated from template-skills/)
@@ -35,6 +36,7 @@ CLAUDE.md             # Claude maintainer guidance for this repo
 
 1. Update `copier.yml` and/or files under `template/`. Change a skill, command or Cursor rule only in `template-skills/` (see [Skill Sources](#skill-sources)); never edit a file under `template/.agents/skills/`, `template/.claude/commands/`, `template/.claude/skills/` or `template/.cursor/rules/`.
 2. After editing `template-skills/`, run `python scripts/build-skill-layers.py`, then `python scripts/build-workflow-assets.py` when a packaged workflow skill changed.
+   After a change of `template/`, `packs/`, `template-skills/` or `packs/versions.yml`, also run `python scripts/build-golden.py` and commit `golden/` with it ([Golden Workspace](#golden-workspace)); after a pin moves, run `python scripts/sync-golden.py`, which also refreshes the pack lockfiles.
 3. Run `./scripts/validate-template.ps1` after template changes, and `python -B -m unittest discover -s tests` after changes to `prism_cli/`, the packaged assets or the template. When the board UI changes, also run the browser tests that [current-status.md](current-status.md#validation) describes.
 4. Generate any extra explicit variants you need instead of relying on assumptions.
 5. Compare generated output against the root docs, generated README/docs, task wiring, and the selected platform combinations.
@@ -79,6 +81,49 @@ python scripts/build-skill-layers.py --check  # fails when a generated file diff
 
 A skill that teaches a stack's slice cites the files it teaches from in a `## Slice files` section, one bullet each, with the path inside the app's folder (`<package path>` stands for the app's package written with slashes). `tests/test_stack_skill_slice_paths.py` generates a workspace with all four stacks and checks that every cited path exists in every app of the skill's stack, in both skill layers; a skill source that names one stack and has no such section fails it, except the build and deploy task skills. Change a slice file and its skill in the same commit.
 
+## Golden Workspace
+
+`golden/` is a generated workspace in the repository: the CLI generates it from the committed answers file `scripts/golden-answers.yml`, with one app of each generated stack (`backend`, `web`, `mobile-android`, `mobile-ios` and `agent-service`). It shows what a generated project contains, so a template change appears as a diff of the generated files, and CI builds and tests that committed copy.
+
+```bash
+python scripts/build-golden.py           # regenerate golden/ (about half a minute)
+python scripts/build-golden.py --check   # fail when golden/ differs from a fresh generation; writes nothing
+python scripts/sync-golden.py            # after a pin moves: the pack lockfiles, then golden/
+```
+
+- **Deterministic.** The project identity is fixed by the answers file. The generation time and the template source in `prism.workspace.yml` and in every `.copier-answers.yml` are replaced by constants, line endings are LF (so a CRLF checkout compares equal), the local `.env` is not part of the workspace, and the files are compared and written in sorted order. A file that is already current is left untouched, and the folders that building leaves behind (`node_modules`, `build`, `.venv`, ...) are skipped. The one value that follows the release is the CLI version in the manifest: after a version bump, regenerate.
+- **Kept current.** The `golden-current` job of `template-validation.yml` runs `--check`, and so does a test of the Python suite, so a change of a pack, of the workspace layer or of `packs/versions.yml` that does not refresh `golden/` fails CI.
+- **Built and tested by CI.** Each pack's job in `template-validation.yml` also runs the golden app's own workflow, `golden/.github/workflows/<app>.yml`. GitHub runs only the workflows of the repository's own `.github/workflows`, so the job sets up the toolchain from the pins and calls `scripts/run-golden-workflow.py <app>`, which runs the `run:` steps of that generated workflow in order, in their working directory. It refuses an action it does not know, an expression and a condition other than `always()`, `success()` and `failure()`, so a pack workflow cannot change in a way the repository job does not notice (a test dry-runs every golden workflow).
+- **Not part of the template or the package.** `copier.yml` renders only `template/` and `packs/<stack>/`; a local template is staged without `golden/`; `MANIFEST.in` prunes it from the source archive and the wheel packages only `prism_cli`.
+- **Two files need the executable bit in git.** `golden/backend/gradlew` and `golden/mobile-android/gradlew` are committed as `100755` (`git update-index --chmod=+x`), as the packs' own wrappers are; the workflows also run `chmod +x`.
+- Never edit `golden/` by hand: the next regeneration removes the edit.
+
+## Pins in CI
+
+`packs/versions.yml` is the one source of every version a pack uses, and the repository's workflows read it too. `scripts/read-pins.py <stack>` prints the stack's pins as `key=value` lines, and a job writes them to its step outputs:
+
+```yaml
+- name: Read the pinned versions
+  id: pins
+  run: python scripts/read-pins.py android-compose >> "$GITHUB_OUTPUT"
+- uses: actions/setup-java@v4
+  with:
+    distribution: temurin
+    java-version: ${{ steps.pins.outputs.jdk }}
+```
+
+The Java and JDK of the backend and Android jobs, the Node of the web jobs, the uv and Python of the agent service, and the Android SDK platform and build tools (`android_packages`, composed from `compile_sdk` and `build_tools`) all come from there. The macOS job checks that the runner's Xcode is the `xcode` pin or newer (`--check-xcode`). The pins are read after Prism is installed, because the script needs PyYAML, which a fresh runner's Python lacks. `tests/test_pin_sources.py` fails when a pack workflow hard-codes a pinned toolchain input (`java-version`, `node-version`, uv's `version` and `python-version`, the SDK packages), spells out an Android SDK package, a build-tools version, an Xcode path or a Gradle version in a step, or reads the pins of one stack for another. Prism's own toolchain (the CLI tests, the npm launcher and the release workflow) is not a pack pin and stays in `cli-validation.yml`, `release.yml` and `npm-release.yml`.
+
+## Dependency Updates
+
+Renovate (`renovate.json`) proposes updates to `packs/versions.yml`, one pull request per pack (`<stack> pack`), on Mondays. A `# renovate: datasource=... depName=... depType=<stack>` line above a pin names what to look up; a pin without one is a baseline decision that moves by hand with a release (the JDK, Node and Python majors, the SDK levels, Xcode, Swift, the iOS target and the database image), and `tests/test_dependency_updates.py` requires every pin to be one or the other. `@types/node` stays on the Node major that the baseline pins. `golden/` is never updated directly, because it is regenerated.
+
+The hosted Renovate app cannot run commands after an update, so `.github/workflows/dependency-sync.yml` does it: on a pull request from `renovate/*` in this repository, it refreshes the lockfile of each stack whose pins differ from the base branch (`scripts/refresh-nextjs-web-lock.py` for the web pack, `scripts/refresh-python-agent-service-lock.py` for the agent service; the Gradle wrapper version comes from the pins when the files are generated), regenerates `golden/`, and pushes one commit to the pull request branch. The pull request then carries `packs/versions.yml`, the lockfiles and `golden/` together, and the validation workflows judge all of it. A push with the default token starts no workflows, so the sync workflow starts `template-validation.yml` and `cli-validation.yml` on the branch with `gh workflow run`; set the repository secret `PRISM_BOT_TOKEN` (a token that may push to the repository) to make the push itself start them. Renovate treats the commit of `github-actions[bot]` as its own through `gitIgnoredAuthors`, so it keeps rebasing the branch.
+
+## Security Advisories
+
+The golden web app and the golden agent service are audited in CI: `scripts/audit-gate.py npm golden/web --stack nextjs-web` runs `npm audit --audit-level=high` over the committed lockfile, and `scripts/audit-gate.py uv golden/agent-service --stack python-agent-service` runs `uv audit --locked`. A new advisory fails the job. The fix is a move of the pin in `packs/versions.yml` and `python scripts/sync-golden.py`. Only when no fixed version exists is the advisory listed in `packs/audit-allowlist.yml`, with its advisory link and the reason accepting it is safe, and recorded in [current-status.md](current-status.md#known-dependency-advisories); a test fails for an entry without the link or the reason or one the status page does not record, and the gate warns when an entry no longer matches a finding. The audit runs in the repository's CI, not in the generated project's workflow, so an advisory that has no fix never breaks a user's CI.
+
 ## Recommended Validation Variants
 
 - `backend` alone, and `backend` with a second backend at another path (`prism app add api-two --stack spring-backend --path services/api-two --scaffold`)
@@ -94,7 +139,7 @@ A skill that teaches a stack's slice cites the files it teaches from in a `## Sl
 
 Generate each through the CLI, with a preset or an answers file that lists the apps, because Copier does not ask about apps. Generation renders the working tree (tracked or not), so a test that needs committed state, such as an update across a tag, builds a snapshot repository under a temporary folder (`tests/layered_support.py`).
 
-`./scripts/validate-template.ps1 -Mode contract` generates through `prism new` and checks rendered files and workflows. The default `full` mode also runs backend smoke checks (the pack's tests and boot jar, which need a JDK); both modes disable the script's web smoke helper. Generated web `npm ci`, lint, typecheck, tests and Next.js builds run for two web apps in the separate `web-smoke` CI job in `.github/workflows/template-validation.yml`, and the Gradle `assembleDebug` and unit tests of two Android apps run in its `android-build` job, and XcodeGen, a simulator build and the tests of two iOS apps run in its macOS `ios-build` job. A configured job is not evidence of a passing run on the current changes.
+`./scripts/validate-template.ps1 -Mode contract` generates through `prism new` and checks rendered files and workflows. The default `full` mode also runs backend smoke checks (the pack's tests and boot jar, which need a JDK); both modes disable the script's web smoke helper. Generated web `npm ci`, lint, typecheck, tests and Next.js builds run for two web apps in the separate `web-smoke` CI job in `.github/workflows/template-validation.yml`, and the Gradle `assembleDebug` and unit tests of two Android apps run in its `android-build` job, and XcodeGen, a simulator build and the tests of two iOS apps run in its macOS `ios-build` job. The `backend-smoke`, `web-smoke`, `agent-service`, `android-build` and `ios-build` jobs also run the golden app of their pack, and `golden-current` checks `golden/`. A configured job is not evidence of a passing run on the current changes.
 
 ## Reference Commands
 
@@ -107,6 +152,7 @@ prism new --preset backend-only --project-name "Test App" --dest ../template-tes
 prism new --preset backend-web --project-name "Test Web App" --dest ../template-test-web --yes
 prism new --preset full --project-name "Test Full App" --dest ../template-test-full --yes
 copier copy --trust --defaults --data "project_name=Test App" . ../template-test-workspace-layer   # one layer only
+python scripts/build-golden.py --check
 ```
 
 ## Related Documentation

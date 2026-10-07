@@ -1,0 +1,99 @@
+name: Dependency Sync
+
+# Renovate (renovate.json) proposes updates by changing packs/versions.yml, one pull request per pack. The
+# hosted Renovate app cannot run commands after an update, so this workflow does: on a Renovate pull request it
+# refreshes the lockfiles of the stacks whose pins moved and regenerates golden/ (scripts/sync-golden.py), and
+# pushes that to the pull request branch. The pull request then carries the pins, the lockfiles and golden/ together.
+#
+# A push made with the default token starts no workflows, so the validation workflows are started by hand on the
+# branch. When the repository secret PRISM_BOT_TOKEN (a token that may push to the repository) is set, the push
+# uses it and starts them as for any other push, and no manual start is made.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "packs/versions.yml"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: dependency-sync-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Regenerate the lockfiles and golden/
+    # Only the bot's pull requests from this repository: the job runs code of the branch with a write token.
+    if: ${{ github.actor == 'renovate[bot]' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'renovate/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HAS_BOT_TOKEN: ${{ secrets.PRISM_BOT_TOKEN != '' }}
+      HEAD_REF: ${{ github.head_ref }}
+      BASE_REF: ${{ github.base_ref }}
+
+    steps:
+      - name: Checkout the pull request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.PRISM_BOT_TOKEN || github.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Prism
+        run: python -m pip install --upgrade pip .
+
+      - name: Read the pinned versions
+        id: web
+        run: python scripts/read-pins.py nextjs-web >> "$GITHUB_OUTPUT"
+
+      - name: Read the pinned agent service versions
+        id: agent
+        run: python scripts/read-pins.py python-agent-service >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.web.outputs.node }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ steps.agent.outputs.uv }}
+          python-version: ${{ steps.agent.outputs.python }}
+
+      - name: Refresh the lockfiles and regenerate golden/
+        run: python scripts/sync-golden.py --base "origin/$BASE_REF"
+
+      - name: Commit and push what changed
+        id: push
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A packs golden
+          if git diff --cached --quiet; then
+            echo "The lockfiles and golden/ already match the pins."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "Regenerate the lockfiles and golden/ after the pin update"
+          git push origin "HEAD:$HEAD_REF"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Start the validation workflows on the branch
+        if: ${{ steps.push.outputs.pushed == 'true' && env.HAS_BOT_TOKEN != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run template-validation.yml --ref "$HEAD_REF"
+          gh workflow run cli-validation.yml --ref "$HEAD_REF"

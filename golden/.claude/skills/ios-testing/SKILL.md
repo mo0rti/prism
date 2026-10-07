@@ -1,0 +1,58 @@
+---
+name: ios-testing
+description: iOS testing patterns for XCTest, Swift Testing adoption, view model and client tests with a fake client, and UI smoke tests. Use when adding or updating tests under an iOS app's `Tests/` or `UITests/`, or when deciding the right iOS test shape for a change.
+disable-model-invocation: true
+---
+
+# iOS Testing
+
+Use this skill when iOS work needs test coverage, test refactors, or test-shape decisions. Paths are relative to the iOS app's folder.
+
+## Slice files
+
+The tests of the slice. Paths are inside the iOS app's folder (`mobile-ios/`).
+
+- `Tests/Support/FakeAPIClient.swift` - the fake client the view model tests use
+- `Tests/SignInViewModelTests.swift` and `Tests/ProfileViewModelTests.swift` - the view model tests
+- `Tests/APIClientTests.swift` - the request building and response reading of the real client
+- `UITests/SignInUITests.swift` - the one UI test of the sign-in screen
+
+## Role boundary
+
+- Own test authoring patterns for unit tests and UI tests.
+- Defer production architecture rules to `ios-conventions`.
+- Defer transport and auth-boundary rules to `ios-contract-alignment`.
+- Defer shared UI behavior and accessibility rules to `swiftui-design-system`.
+- Defer task selection and Mac-only verification decisions to `ios-build-verify`.
+
+## Unit-test rules
+
+- Prefer unit tests for view model state, client request building and response reading, session transitions and helper logic.
+- Test a view model with `Tests/Support/FakeAPIClient.swift` (set its `tokenResult` or `profileResult`, read what it recorded) and a real `InMemoryTokenStore`. Do not reach the network.
+- Mark each test that touches a `@MainActor @Observable` view model `@MainActor`, and read an actor's value into a local (`let stored = await tokenStore.token()`) before asserting: an `XCTAssert` autoclosure cannot `await`.
+- `Tests/APIClientTests.swift` shows how to test the static request and response functions of the client directly.
+- Use `task <app-id>:test-unit` as the default verification step after logic-only test changes.
+
+## Swift Testing guidance
+
+- XCTest remains the scaffolded baseline and is always acceptable.
+- Swift Testing can be added incrementally for new logic-focused suites; it can coexist with XCTest in the same generated project.
+- Prefer consistency within a feature's tests instead of rewriting existing XCTest files just to adopt Swift Testing.
+
+## UI-test rules
+
+- Use UI tests for launch, the sign-in controls, critical navigation and accessibility identifiers.
+- `UITests/SignInUITests.swift` is a smoke test of the sign-in screen: it does not sign in, because no backend runs in CI. A flow that needs a backend belongs in a UI test with a launch-argument switch to a fake client, which you add together with the code that reads it.
+- Wait until an element is hittable and allow 30 seconds per screen, as the generated test does: simulators on CI runners are slow. Never assert on an element straight after launch.
+- Preserve stable accessibility identifiers on screen titles and critical controls.
+- Use `task <app-id>:test-ui` when screen structure, launch behavior or identifier wiring changes.
+
+## Picking the right test
+
+- If the change is view model or client logic: add or update a unit test first.
+- If the change is a screen's structure or identifiers: add or update a UI test when the behavior is not already covered.
+- If both logic and UI are touched, prefer a unit test for the logic plus the smallest UI smoke test that protects the user flow.
+
+## Validation
+
+- Use `ios-build-verify` to choose the smallest trustworthy validation after editing tests.

@@ -1,0 +1,61 @@
+package com.example.prismgolden.mobileandroid.data.api
+
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import retrofit2.Response
+import retrofit2.Retrofit
+import retrofit2.converter.kotlinx.serialization.asConverterFactory
+
+private val json = Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+}
+
+/**
+ * Builds the Retrofit service for a base URL that ends with a slash. The client adds no logging
+ * interceptor: a request carries the access token, and the token never reaches a log.
+ */
+fun createApiService(baseUrl: String): ApiService =
+    Retrofit.Builder()
+        .baseUrl(baseUrl)
+        .client(OkHttpClient.Builder().build())
+        .addConverterFactory(json.asConverterFactory("application/json; charset=UTF-8".toMediaType()))
+        .build()
+        .create(ApiService::class.java)
+
+class RetrofitApiClient(private val service: ApiService) : ApiClient {
+
+    override suspend fun createDevToken(request: DevTokenRequest): ApiResult<DevTokenResponse> =
+        call(notFound = ApiError.NotServed, forbidden = ApiError.LoopbackOnly) { service.createDevToken(request) }
+
+    override suspend fun getMe(accessToken: String): ApiResult<UserProfile> =
+        call { service.getMe("Bearer $accessToken") }
+
+    private suspend fun <T : Any> call(
+        notFound: ApiError = ApiError.Server,
+        forbidden: ApiError = ApiError.Server,
+        request: suspend () -> Response<T>,
+    ): ApiResult<T> =
+        try {
+            val response = request()
+            val body = response.body()
+            when {
+                response.isSuccessful && body != null -> ApiResult.Success(body)
+                response.isSuccessful -> ApiResult.Failure(ApiError.Unexpected)
+                response.code() == 401 -> ApiResult.Failure(ApiError.Unauthorized)
+                response.code() == 403 -> ApiResult.Failure(forbidden)
+                response.code() == 404 -> ApiResult.Failure(notFound)
+                else -> ApiResult.Failure(ApiError.Server)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: IOException) {
+            ApiResult.Failure(ApiError.Network)
+        } catch (error: SerializationException) {
+            ApiResult.Failure(ApiError.Unexpected)
+        }
+}

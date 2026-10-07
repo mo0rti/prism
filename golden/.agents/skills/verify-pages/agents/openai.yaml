@@ -1,0 +1,6 @@
+interface:
+  display_name: "Verify Pages"
+  short_description: "Record that wiki pages were checked against their sources"
+  default_prompt: "Use $verify-pages <page>... to check current-state wiki pages against their sources and record one verify entry in log.md."
+policy:
+  allow_implicit_invocation: false

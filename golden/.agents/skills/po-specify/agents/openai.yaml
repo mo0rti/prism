@@ -1,0 +1,6 @@
+interface:
+  display_name: "PO Specify"
+  short_description: "Promote one raw feature page to a specified draft"
+  default_prompt: "Use $po-specify F-XXX to validate and confirmation-gate the raw-to-specified feature transition."
+policy:
+  allow_implicit_invocation: false

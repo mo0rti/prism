@@ -2657,24 +2657,29 @@ def staged_template_path(template_path: str):
     if should_stage_template_path(template_path):
         with tempfile.TemporaryDirectory(prefix="prism-template-") as temp_dir:
             staged_root = Path(temp_dir) / path.name
-            shutil.copytree(
-                path,
-                staged_root,
-                ignore=shutil.ignore_patterns(
-                    ".git",
-                    ".venv",
-                    "__pycache__",
-                    ".pytest_cache",
-                    "node_modules",
-                    ".gradle",
-                    ".idea",
-                    "tmp",
-                    "build",
-                    "dist",
-                    "*.egg-info",
-                    "workspaces",
-                ),
+            ignored_names = shutil.ignore_patterns(
+                ".git",
+                ".venv",
+                "__pycache__",
+                ".pytest_cache",
+                "node_modules",
+                ".gradle",
+                ".idea",
+                "tmp",
+                "build",
+                "dist",
+                "*.egg-info",
+                "workspaces",
             )
+
+            def ignore(directory: str, names: list[str]) -> set[str]:
+                skipped = set(ignored_names(directory, names))
+                if Path(directory) == path:
+                    # The repository's golden workspace is generated output, never part of the template.
+                    skipped.update(name for name in names if name == "golden")
+                return skipped
+
+            shutil.copytree(path, staged_root, ignore=ignore)
             yield staged_root
         return
     yield path

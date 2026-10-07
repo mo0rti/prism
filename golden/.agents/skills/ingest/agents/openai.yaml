@@ -1,0 +1,6 @@
+interface:
+  display_name: "Ingest"
+  short_description: "Process a pending intake folder into wiki pages of any kind"
+  default_prompt: "Use $ingest [folder-name] to turn a pending intake folder into topics, research, plans, direction, roadmap, personas, business rules, decisions or features, with index lines and an intake manifest."
+policy:
+  allow_implicit_invocation: false

@@ -102,7 +102,7 @@ answer keys are omitted from human and JSON status output.
 
 `.github/workflows/release.yml` runs when a tag matching `v*` is pushed. Its jobs run in this order, and each needs the one before it:
 
-1. **verify-tag** fails unless the tag equals `v` plus the version in `pyproject.toml`, `prism_cli/__init__.py` and `npm/package.json`, and `CHANGELOG.md` has a section for that version.
+1. **verify-tag** fails unless the tag equals `v` plus the version in `pyproject.toml`, `prism_cli/__init__.py` and `npm/package.json`, and `CHANGELOG.md` has a section for that version. It then requires green CI for the tagged commit: `scripts/check-ci-green.py` reads the newest run of **Template Validation** and of **CLI Validation** for that commit, waits (up to two hours) for one that is still running, and fails when either is missing, failed, was cancelled or timed out. See [A broken slice blocks the release](#a-broken-slice-blocks-the-release).
 2. **build** builds the source archive and the wheel from the tagged commit, runs `twine check --strict` with `readme-renderer[md]`, requires exactly the two expected file names, and uploads them as one artifact. Every later job publishes those same files.
 3. **publish-testpypi** uploads them to TestPyPI with `pypa/gh-action-pypi-publish` and trusted publishing, in the GitHub environment `testpypi`. A file that is already on TestPyPI is skipped, so a rerun does not fail.
 4. **smoke-test** installs `prism-kit==<version>` from TestPyPI (`--index-url https://test.pypi.org/simple/` with `--extra-index-url https://pypi.org/simple/` for the dependencies) into a fresh environment, retrying up to 12 times, 20 seconds apart, while the index catches up. It then runs `prism --version`, `prism workflow install . --app backend --apply --yes` and `prism doctor --workspace .` in a temporary folder.
@@ -129,17 +129,33 @@ Do these once, before the first tag.
 
 A pending publisher creates the project on its first upload and then becomes the project's trusted publisher. The npm trusted publisher is added after the first npm publish, as described under [Publishing the launcher](#publishing-the-launcher).
 
+### A broken slice blocks the release
+
+Every job of the release workflow needs **verify-tag**, directly or through another job, so nothing is built or published while that job fails. The gate is a check in that first job, not a separate required workflow, because a tag push starts only the release workflow. It judges the commit the tag points at (for a manual run, the commit of the named tag):
+
+- **Template Validation** builds and tests the golden app of every pack: the backend, web, Android, iOS and agent-service apps of `golden/` run their own generated workflows (`scripts/run-golden-workflow.py`), next to the generated two-app workspaces, and `golden-current` checks that `golden/` is current. A pack whose slice no longer builds fails its job, and that stops the release.
+- **CLI Validation** runs the Python suite on Ubuntu, Windows and macOS (it includes the golden check), the wheel, the browser and the npm launcher jobs.
+
+A workflow that never ran for the commit, because its path filters skipped it, counts as missing. Start it on the tag and release again once it passes:
+
+```bash
+gh workflow run template-validation.yml --ref v<version>
+gh workflow run cli-validation.yml --ref v<version>
+```
+
+Pushing the tag while CI is still running is safe: the gate waits for the run. After a failure, fix it on `main` and move to a new version; a tag whose CI failed is not reused once anything was published, and before anything was published a re-run of the failed job judges the newest run again.
+
 ### Releasing a version
 
-1. Set the version in `pyproject.toml`, `prism_cli/__init__.py` and `npm/package.json`, set the release date in the changelog section, and make sure CI is green on the commit to tag.
+1. Set the version in `pyproject.toml`, `prism_cli/__init__.py` and `npm/package.json`, set the release date in the changelog section, run `python scripts/build-golden.py` (the generated manifest of `golden/` records the CLI version) and commit the result, and make sure CI is green on the commit to tag: Template Validation and CLI Validation, every job of both.
 2. Create and push the tag: `git tag -a v<version> -m "Prism <version>"`, then `git push origin v<version>`.
 3. Watch the Release workflow and approve the `pypi` environment when it asks. After it succeeds, the npm release workflow runs.
 
-A tag that does not equal the versions fails in the first job, before anything is published. Do not move or reuse a tag after PyPI has accepted the files; PyPI never accepts the same version twice, so a fix needs a new version.
+A tag that does not equal the versions, or whose commit has no green CI, fails in the first job, before anything is published. Do not move or reuse a tag after PyPI has accepted the files; PyPI never accepts the same version twice, so a fix needs a new version.
 
 ### Releasing without TestPyPI
 
-When TestPyPI is unavailable, release an existing tag by hand. Every job checks out the tag, so the files are built from the tagged commit, and with `skip_testpypi` the TestPyPI upload and its smoke test are skipped. After the PyPI upload, **pypi-smoke-test** installs the version from PyPI and runs the same commands, and the GitHub release is created only when that passes.
+When TestPyPI is unavailable, release an existing tag by hand. Every job checks out the tag, so the files are built from the tagged commit, and with `skip_testpypi` the TestPyPI upload and its smoke test are skipped. After the PyPI upload, **pypi-smoke-test** installs the version from PyPI and runs the same commands, and the GitHub release is created only when that passes. The CI gate of **verify-tag** applies to a manual run as well, for the commit of the named tag.
 
 ```bash
 gh workflow run release.yml --ref main -f tag=v<version> -f skip_testpypi=true

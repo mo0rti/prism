@@ -5,6 +5,10 @@ name: Release
 # release. Publishing uses trusted publishing (OIDC); no token is stored.
 # The one-time owner setup is in docs/cli-release.md.
 #
+# Nothing is built or published unless Template Validation (which builds and tests the golden app of
+# every pack) and CLI Validation (the Python tests, which include the golden check) have a green run
+# for the tagged commit: a broken slice blocks the release of its pack.
+#
 # A manual run releases an existing tag. With skip_testpypi it publishes to PyPI
 # without the TestPyPI stage, for when TestPyPI is unavailable, then installs the
 # published version from PyPI and runs the same smoke test.
@@ -34,8 +38,13 @@ concurrency:
 
 jobs:
   verify-tag:
-    name: Check the tag against the package version
+    name: Check the tag against the package version and CI
     runs-on: ubuntu-latest
+    # Waits for CI runs that are still going; the iOS job alone can take an hour.
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      actions: read
     outputs:
       version: ${{ steps.check.outputs.version }}
 
@@ -88,6 +97,17 @@ jobs:
               output.write(f"version={pyproject}\n")
           print(f"Tag {tag} matches version {pyproject}.")
           PY
+
+      # The golden app of every pack builds and tests in Template Validation, so a broken slice stops here.
+      - name: Require green CI for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/check-ci-green.py \
+            --commit "$(git rev-parse HEAD)" \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow template-validation.yml \
+            --workflow cli-validation.yml
 
   build:
     name: Build and check the distributions

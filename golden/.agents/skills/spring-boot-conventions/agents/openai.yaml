@@ -1,0 +1,6 @@
+interface:
+  display_name: "Spring Boot Conventions"
+  short_description: "Apply backend controller and service conventions"
+  default_prompt: "Use $spring-boot-conventions when updating backend controllers, services, or DTOs."
+policy:
+  allow_implicit_invocation: true

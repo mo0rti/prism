@@ -1,0 +1,68 @@
+---
+name: android-conventions
+description: "Conventions for the generated Android apps: the sign-in and profile slice, MVVM, the contract client, the in-memory session, strings, tests and commands. Use when writing, extending or reviewing code under an Android app folder, or when replacing the local development sign-in."
+user-invocable: false
+---
+
+# Android Conventions
+
+Apply these rules whenever you change an Android app of this workspace. Each Android app is one `android-compose` app generated from the same pack, so the paths below are relative to the app's folder: `mobile-android/` (application ID `com.example.prismgolden.mobileandroid`). Kotlin sources live under `app/src/main/kotlin/<package path>/`, where `<package path>` is the app's application ID written with slashes.
+
+## Role boundary
+
+- Use this skill for the guardrails that apply across the app: structure, state, the client, the session, strings and the dev identity.
+- Keep feature sequencing in `android-feature-delivery`, contract details in `android-contract-alignment`, shared Compose guidance in `compose-design-system`, test patterns in `android-testing` and task selection in `android-build-verify`.
+
+## Slice files
+
+The pack generates one vertical slice and no example business features. Paths are inside the Android app's folder (`mobile-android/`). `<package path>` is the app's application ID, `<package_identifier>.<app id without hyphens>`, written with slashes.
+
+- `app/src/main/kotlin/<package path>/ui/signin/SignInScreen.kt` is the screen labelled "Local development sign-in"; `app/src/main/kotlin/<package path>/ui/signin/SignInRoute.kt` and `app/src/main/kotlin/<package path>/ui/signin/SignInViewModel.kt` wire it. Signing in calls `createDevToken` and opens the session.
+- `app/src/main/kotlin/<package path>/ui/profile/ProfileScreen.kt`, `app/src/main/kotlin/<package path>/ui/profile/ProfileRoute.kt` and `app/src/main/kotlin/<package path>/ui/profile/ProfileViewModel.kt` show the signed-in user from `GET /api/me` (`getMe`). A rejected token closes the session.
+- `app/src/main/kotlin/<package path>/ui/AppRoot.kt` shows the profile while a session is open and the sign-in otherwise.
+- `app/src/main/kotlin/<package path>/data/api/ApiService.kt` (Retrofit), `app/src/main/kotlin/<package path>/data/api/ApiModels.kt` (the DTOs), `app/src/main/kotlin/<package path>/data/api/ApiClient.kt` (the interface and `ApiResult`) and `app/src/main/kotlin/<package path>/data/api/RetrofitApiClient.kt` are the client of the shared OpenAPI contract.
+- `app/src/main/kotlin/<package path>/session/SessionStore.kt` keeps the access token in memory only.
+- `app/src/main/kotlin/<package path>/AppContainer.kt` wires the app by hand; `app/src/main/kotlin/<package path>/App.kt` owns it and `app/src/main/kotlin/<package path>/MainActivity.kt` hosts the content.
+- `app/src/main/kotlin/<package path>/designsystem/` holds `AppTheme`, `Spacing`, `LoadingIndicator` and `ErrorView`.
+- `app/src/test/kotlin/<package path>/` holds the JVM tests of all of the above.
+
+## Core rules
+
+- Keep the app inside the single `:app` module unless a module split is explicitly requested.
+- Follow MVVM per screen: a ViewModel exposes `uiState: StateFlow<...>` and explicit intent methods such as `onSignInClick()` or `onRetryClick()`. Co-locate the screen's `UiState` type with its ViewModel file.
+- Each destination follows the Route/Screen split: the Route (`SignInRoute`) collects state with `collectAsStateWithLifecycle()` and passes it to a stateless Screen (`SignInScreen`) together with callbacks.
+- ViewModels depend on the `ApiClient` interface and `SessionStore`, never on Retrofit. They are built in `AppContainer.viewModelFactory`. When the app outgrows hand wiring, introduce a DI framework in `AppContainer` only.
+- Fallible calls return `ApiResult`; a ViewModel maps `ApiError` into its own error enum and the Screen maps that to a string resource. ViewModels hold no `Context` and no resource ids.
+- Put user-facing strings in `app/src/main/res/values/strings.xml`. The sign-in label stays "Local development sign-in".
+- Put reusable Compose components in `designsystem/` instead of duplicating them in features.
+- Every owning activity calls `enableEdgeToEdge()` before `setContent` (see `MainActivity.kt`), and screens apply `safeDrawingPadding()` or a `Scaffold`'s `PaddingValues`.
+- Treat AGP, Kotlin, Compose BOM and Gradle changes as toolchain work: the pins live in `packs/versions.yml` of the Prism template and `gradle/libs.versions.toml` follows them. Re-run `./gradlew assembleDebug testDebugUnitTest` after any of them changes.
+
+## The session and the token
+
+- The access token lives in `SessionStore` only, in memory. Never log it, print it, put it in `toString()`, an `Intent`, a navigation argument or a string template, and never write it to `SharedPreferences` or a file unless you choose encrypted storage on purpose.
+- The client adds no HTTP logging interceptor, because every request after sign-in carries the token. `DevTokenResponse.toString()` redacts it and `RetrofitApiClientTest` checks that.
+- A new process starts signed out. A 401 from `getMe` closes the session through `ProfileViewModel`; features do not handle 401s themselves.
+
+## The local development sign-in
+
+The sign-in is the contract's `POST /api/dev-identity/token`, which the backend serves only under its `local` profile and only to requests from its own loopback interface. It is not complete authentication and the app must never present it as such. Its limits (the project's own identity provider, authorization and secrets stay with the project) are stated in `README.md` and `AGENTS.md` of the app.
+
+The app reaches the backend at `localhost` (`apiBaseUrl` in `gradle.properties`) and `adb reverse tcp:8080 tcp:8080` (`task <app-id>:reverse`) carries that to the host, from an emulator and from a USB device. Never switch to `10.0.2.2` or a LAN address, never add them to the debug network security config, and never weaken the backend's loopback check. Cleartext HTTP is allowed in `app/src/debug/` for `localhost` only; release builds are HTTPS-only and the release tasks refuse an `apiBaseUrl` that is not `https://`.
+
+To replace the dev identity with the project's identity provider, follow `security-auth` for the backend side, then in each Android app:
+
+1. Replace `ApiClient.createDevToken` and the body of `SignInViewModel` with the provider's flow, and keep the token in `SessionStore` (or in encrypted storage you choose and document).
+2. Change `SignInScreen.kt` and the strings to the provider's sign-in, and remove the "Local development sign-in" label with the dev-identity call.
+3. Update `SignInViewModelTest`, `RetrofitApiClientTest`, `ApiContractTest` and `SignInScreenTest` to the new flow. They are the executable description of what the session must do.
+
+## Read these only when needed
+
+- `README.md` of the app for how to run it and reach the backend; `docs/guide.md` for the structure and the tests
+- `android-testing` before adding or changing tests
+
+## Minimum verification
+
+- Run `./gradlew assembleDebug testDebugUnitTest` (or `gradlew.bat` on Windows) in the app's folder before closing a change.
+- Add `./gradlew lintDebug` when resources, manifests or accessibility-sensitive UI change.
+- Update the app's `docs/guide.md` and `AGENTS.md` when the structure or the documented behaviour changes.

@@ -1,0 +1,14 @@
+# The answers of the golden workspace (golden/), which scripts/build-golden.py generates with `prism new`.
+# One app of each generated stack, at the stack's default path. Changing this file changes golden/.
+schema_version: 1
+answers:
+  project_name: Prism Golden
+  project_slug: prism-golden
+  package_identifier: com.example.prismgolden
+  description: The reference workspace that Prism's CI regenerates and builds, one app of each stack
+  apps:
+    - {id: backend, stack: spring-backend, name: Backend}
+    - {id: web, stack: nextjs-web, name: Web, audience: B2C}
+    - {id: mobile-android, stack: android-compose, name: Android App}
+    - {id: mobile-ios, stack: ios-swiftui, name: iOS App}
+    - {id: agent-service, stack: python-agent-service, name: Agent Service}

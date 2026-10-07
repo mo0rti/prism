@@ -1,0 +1,67 @@
+---
+name: android-feature-delivery
+description: Cross-layer feature orchestration for Android. Use when a task spans multiple layers and needs scoped planning, companion-skill selection, validation, and documentation updates across the contract client, ViewModels, Compose UI, resources and docs.
+---
+
+# Android Feature Delivery
+
+Use this skill to coordinate non-trivial feature work that crosses layers.
+
+## Role boundary
+
+- Use this skill as the delivery checklist and orchestration layer for multi-step work.
+- Pull in companion skills for detailed rules instead of restating repository, contract, UI, or verification conventions here.
+- The Android apps are `mobile-android/`. Their sources are under `app/src/main/kotlin/<package path>/` (the application ID written with slashes).
+
+## Slice files
+
+The slice is the pattern to extend. Paths are inside the Android app's folder (`mobile-android/`). `<package path>` is the app's application ID, `<package_identifier>.<app id without hyphens>`, written with slashes.
+
+- `app/src/main/kotlin/<package path>/ui/signin/SignInRoute.kt`, `app/src/main/kotlin/<package path>/ui/signin/SignInScreen.kt` and `app/src/main/kotlin/<package path>/ui/signin/SignInViewModel.kt` show the Route, Screen and ViewModel pattern.
+- `app/src/main/kotlin/<package path>/ui/profile/ProfileViewModel.kt` shows a state holder that reads through the client and handles a rejected token.
+- `app/src/main/kotlin/<package path>/data/api/ApiClient.kt` is the client interface a new operation extends.
+- `app/src/main/kotlin/<package path>/designsystem/components/ErrorView.kt` is a shared component.
+- `app/src/main/kotlin/<package path>/AppContainer.kt` is where a new ViewModel is wired.
+
+## Request
+
+$ARGUMENTS
+
+## 1. Research the current shape
+
+- Read the wiki feature page and this app's requirements page (`knowledge/wiki/app-requirements/[feature-id]-<app-id>.md`) first.
+- Inspect the slice files you extend (listed above) and reuse their pattern.
+- Read only the app docs the task needs, starting with `docs/guide.md`, and reuse nearby patterns before inventing a new one.
+
+## 2. Verify external contracts
+
+- Cross-check the OpenAPI spec in `shared/api-contracts/openapi.yml` when endpoints, DTOs, or enums are involved. The Android client is hand-written, so a new operation means a new method in `ApiService.kt`, a DTO in `ApiModels.kt`, a method on `ApiClient` and `RetrofitApiClient`, and a check in `ApiContractTest`.
+- Cross-check the backend app `backend/` when behavior or response shapes need confirmation.
+
+## 3. Map affected layers
+
+Cover only the layers the feature truly needs:
+
+- Contract operation, DTOs and `ApiService`
+- `ApiClient` and its Retrofit implementation
+- ViewModel state (`UiState`), intent methods and error enum
+- Compose Route and Screen, and shared components in `designsystem/`
+- `AppContainer` wiring and `AppRoot` routing
+- Resources such as strings, icons, or drawables
+- Documentation updates in the app's `docs/guide.md` and `AGENTS.md`
+
+## 4. Use the right companion skills
+
+- Use `$android-conventions` for the slice, MVVM, session, string and doc-sync rules.
+- Use `$android-contract-alignment` for DTO, Retrofit and bearer-token decisions.
+- Use `$compose-design-system` for shared UI language, reusable Compose primitives, and screen-level pattern reuse.
+- Use `$android-testing` for ViewModel, client and Compose UI test patterns.
+- Use `$android-build-verify` to choose the smallest trustworthy Gradle validation.
+
+## 5. Execute and close out
+
+- Implement only the layers the feature actually touches.
+- If ViewModel or client logic is added or changed, add at least one targeted unit test and confirm it passes with `./gradlew testDebugUnitTest` (or `gradlew.bat testDebugUnitTest` on Windows) before close-out.
+- If UI or a new Activity is added or changed, confirm `enableEdgeToEdge()` is called in the owning activity, insets are handled through `safeDrawingPadding()` or a `Scaffold`'s `PaddingValues`, and accessibility semantics, touch targets, and text-scale resilience are still correct before close-out.
+- If resources, manifests, or accessibility-sensitive UI change, include `lintDebug` or a stronger validation task from `$android-build-verify`.
+- Run `./gradlew assembleDebug testDebugUnitTest` before you finish, and update any affected docs in the same session.

@@ -1,0 +1,19 @@
+_src_path: https://github.com/mo0rti/prism.git
+app_id: web
+app_module_name: Web
+app_name: Web
+app_package: com.example.prismgolden.web
+app_package_path: com/example/prismgolden/web
+app_package_segment: web
+app_path: web
+audience: B2C
+ci_paths:
+- web/**
+- shared/api-contracts/**
+- .github/workflows/web.yml
+ci_workflow_name: Web CI
+package_identifier: com.example.prismgolden
+port: 3000
+prism_layer: nextjs-web
+project_name: Prism Golden
+project_slug: prism-golden

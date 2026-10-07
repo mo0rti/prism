@@ -4,3 +4,5 @@ prune tests
 # The npm launcher is published separately from its own folder.
 prune npm
 include LICENSE THIRD_PARTY_NOTICES.md
+# golden/ is the repository's reference workspace, regenerated and built by CI; it is never packaged.
+prune golden

@@ -1,0 +1,22 @@
+# Security advisories that scripts/audit-gate.py accepts in a pack's dependency tree, because no fixed
+# version exists to move to. The audit job of the repository's CI fails on any other advisory of
+# severity high or critical.
+#
+# An entry names the advisory, links to it and says why accepting it is safe for now. A test fails
+# for an entry without a `https://github.com/advisories/<id>` link or a reason, and for one that
+# docs/current-status.md ("Known dependency advisories") does not record. The gate warns when an
+# entry no longer matches a finding, and that entry is then removed. Never list an advisory that a
+# version bump in packs/versions.yml fixes.
+nextjs-web:
+  - advisory: GHSA-vfj7-8cjw-p6xm
+    package: braces
+    severity: high
+    url: https://github.com/advisories/GHSA-vfj7-8cjw-p6xm
+    reason: >-
+      braces 3.0.3 is the latest release and the advisory lists no patched version. It reaches the app
+      only through eslint-config-next (latest 16.4.0), whose @next/eslint-plugin-next pins fast-glob
+      3.3.1, which uses micromatch and braces. All of it is a devDependency run by `npm run lint`:
+      `npm audit --omit=dev` reports nothing, and no code of the app loads it. The flaw needs a
+      deeply nested brace pattern from an attacker, and lint expands only the project's own glob
+      patterns.
+python-agent-service: []

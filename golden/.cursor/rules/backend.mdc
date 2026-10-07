@@ -1,0 +1,37 @@
+---
+description: "Backend (Spring Boot, Kotlin): stack, structure, the dev identity and commands."
+globs: "backend/**"
+---
+
+# Backend - Spring Boot (Kotlin)
+
+## Stack
+- Spring Boot 4.0.1, Kotlin 2.2.0, Java 21, Gradle 8.14.3
+- Spring Security resource server (bearer JWT), Spring Data JPA, Flyway, PostgreSQL
+- Jackson 3.x, JUnit Jupiter 6, MockK, Testcontainers
+- Hosting is the project owner's choice (see the `deployment` skill, `.agents/skills/deployment/SKILL.md`)
+
+## Structure
+```
+backend/src/main/kotlin/com/example/prismgolden/backend/
+  bootstrap/         -> SecurityConfig, dev identity wiring (local profile)
+  modules/users/     -> GET /api/me: controller/, dto/, model/, repository/, service/
+  modules/devidentity/ -> POST /api/dev-identity/token (local profile only)
+  shared/            -> audit/, error/, exception/, model/
+```
+
+## Patterns
+- Controller -> Service -> Repository -> Entity
+- DTOs in `dto/` package, entities in `model/` - never expose entities
+- Unit tests use MockK; integration tests boot the app against a Testcontainers PostgreSQL
+
+## The dev identity
+- `POST /api/dev-identity/token` and `GET /api/dev-identity/jwks` (the public key) exist only under the `local` profile, answer loopback requests only, and the token route signs 15-minute JWTs with an in-memory key
+- It is local development sign-in, not authentication; replace it with your identity provider (see the `security-auth` skill)
+- Never weaken its guards: the profile gate, the loopback check, the in-memory key and the startup failure next to a configured issuer
+
+## Commands
+- `task db-up` at the repository root, then `task backend:dev` (profile `local`, port 8080)
+- `./gradlew bootRun` runs with no profile: no dev identity
+- `./gradlew test` or `task backend:test` (needs Docker)
+- `./gradlew build -x test` or `task backend:build`

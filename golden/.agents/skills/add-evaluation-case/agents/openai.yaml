@@ -1,0 +1,6 @@
+interface:
+  display_name: "Add Evaluation Case"
+  short_description: "Add and run an evaluation case"
+  default_prompt: "Use $add-evaluation-case to add an evaluation case to the agent service of this project."
+policy:
+  allow_implicit_invocation: false

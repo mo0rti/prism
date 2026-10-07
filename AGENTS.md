@@ -43,6 +43,7 @@ and must not be referenced. They are replaced by the wiki lifecycle system
 - Keep project-wide docs in `template/docs/`.
 - Keep the technical docs of an app in `packs/<stack>/{{ app_path }}/docs/`.
 - Keep the pinned versions in `packs/versions.yml` only; a pack reads them as `versions`.
+- `golden/` is the workspace that `python scripts/build-golden.py` generates with `prism new` from `scripts/golden-answers.yml`, one app of each stack. Regenerate it after any change of `template/`, `packs/`, `template-skills/` or `packs/versions.yml`, and never hand-edit it: `--check`, the `golden-current` CI job and a test fail while it is stale. It is not part of the package or of any Copier render. After a pin moves, run `python scripts/sync-golden.py` (the pack lockfiles, then `golden/`); the dependency bot (`renovate.json`) proposes pin updates and `.github/workflows/dependency-sync.yml` pushes that regeneration to its pull request. Repository workflows read every pack toolchain version from `packs/versions.yml` through `scripts/read-pins.py` and never repeat one, and a test fails when one does. `packs/audit-allowlist.yml` lists the security advisories that have no fixed version, each with its advisory link and reason, and `docs/current-status.md` records them; never list one without both.
 - Generate with `prism new` (a preset or an answers file that lists the apps) after template changes; raw `copier copy --trust --defaults --data "project_name=Test App" . <tempdir>` renders the workspace layer alone.
 - When editing files under `template/`, keep Jinja syntax valid:
   - all `{{` have matching `}}`
@@ -79,6 +80,7 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 - `docs/current-status.md` for maturity and validation context
 - `copier.yml` for the layer question, the questionnaire inputs and the exclusions
 - `packs/` for the stack packs and `packs/versions.yml`, the one place that pins versions
+- `golden/` and `scripts/golden-answers.yml` for the generated reference workspace and its answers, and `renovate.json` for the dependency bot
 - `template-skills/` for the source of every generated skill, command and Cursor rule
 - `template/AGENTS.md.jinja` for the generated-project agent rules, the single source for every tool
 - `template/CLAUDE.md.jinja` for the generated-project Claude Code import of `AGENTS.md`
@@ -89,6 +91,9 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 prism new --preset backend-only --project-name "Test App" --dest C:\temp\template-test --yes
 python scripts/build-skill-layers.py          # after editing template-skills/
 python scripts/build-skill-layers.py --check
+python scripts/build-golden.py                # regenerate golden/ after a change of template/, packs/ or a pin
+python scripts/build-golden.py --check
+python scripts/sync-golden.py                 # after a pin moves: the pack lockfiles, then golden/
 prism new --answers C:\temp\answers.yml --dest C:\temp\template-test-mobile --yes   # an app list of your choice
 rg -n --hidden --glob '!**/.git/**' "\.agents/skills|AGENTS\.md|CLAUDE\.md" .
 

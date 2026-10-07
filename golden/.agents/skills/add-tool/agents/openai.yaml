@@ -1,0 +1,6 @@
+interface:
+  display_name: "Add Agent Tool"
+  short_description: "Add a read-only tool with its tests"
+  default_prompt: "Use $add-tool to add a tool to the agent service of this project."
+policy:
+  allow_implicit_invocation: false

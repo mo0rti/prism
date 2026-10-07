@@ -1,0 +1,34 @@
+package com.example.prismgolden.backend.bootstrap.security
+
+import com.example.prismgolden.backend.shared.error.CommonErrorCode
+import jakarta.servlet.http.HttpServletRequest
+import jakarta.servlet.http.HttpServletResponse
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
+import org.springframework.security.core.AuthenticationException
+import org.springframework.security.web.AuthenticationEntryPoint
+import org.springframework.stereotype.Component
+
+/**
+ * Answers 401 in the shared error format when a protected route is reached without a valid access token.
+ *
+ * Without an entry point Spring Security replies 403, which clients treat as a
+ * permission failure instead of a missing or expired sign-in. Authenticated
+ * users who lack permission keep the 403 reply.
+ */
+@Component
+class ApiAuthenticationEntryPoint : AuthenticationEntryPoint {
+
+    override fun commence(
+        request: HttpServletRequest,
+        response: HttpServletResponse,
+        authException: AuthenticationException
+    ) {
+        val error = CommonErrorCode.UNAUTHORIZED
+        response.status = error.httpStatus.value()
+        response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
+        response.contentType = MediaType.APPLICATION_JSON_VALUE
+        response.characterEncoding = Charsets.UTF_8.name()
+        response.writer.write("""{"code":"${error.code}","message":"${error.defaultMessage}"}""")
+    }
+}

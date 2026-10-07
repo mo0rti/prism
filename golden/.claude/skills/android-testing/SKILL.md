@@ -1,0 +1,52 @@
+---
+name: android-testing
+description: Android testing patterns for ViewModels, the contract client and Compose UI under Robolectric. Use when adding or updating tests under an Android app's `app/src/test/`, or when deciding the right Android test shape for a change.
+disable-model-invocation: true
+---
+
+# Android Testing
+
+Use this skill when Android work needs test coverage, test refactors, or test-shape decisions. Tests live in `app/src/test/kotlin/<package path>/` of the app (`mobile-android/`), where `<package path>` is the application ID written with slashes. They all run on the JVM with `./gradlew testDebugUnitTest`, so CI proves them without an emulator.
+
+## Role boundary
+
+- Own test authoring patterns for unit and Compose UI tests.
+- Defer production architecture rules to `android-conventions`.
+- Defer Gradle task selection to `android-build-verify`.
+- Defer shared UI behavior rules to `compose-design-system`.
+
+## Slice files
+
+The tests of the slice. Paths are inside the Android app's folder (`mobile-android/`). `<package path>` is the app's application ID, `<package_identifier>.<app id without hyphens>`, written with slashes.
+
+- `app/src/test/kotlin/<package path>/ui/signin/SignInViewModelTest.kt` and `app/src/test/kotlin/<package path>/ui/profile/ProfileViewModelTest.kt` test the state holders against `app/src/test/kotlin/<package path>/support/FakeApiClient.kt`: loading, success, each failure, retry, sign-out and session expiry.
+- `app/src/test/kotlin/<package path>/support/MainDispatcherRule.kt` sets the main dispatcher for them.
+- `app/src/test/kotlin/<package path>/data/api/RetrofitApiClientTest.kt` tests the real client against a MockWebServer: the route and method of each call, the bearer header, the status mapping and that the token never reaches `toString()`.
+- `app/src/test/kotlin/<package path>/data/api/ApiContractTest.kt` reads the shared OpenAPI contract (the build passes its path in a system property) and fails when `ApiService`, the DTOs or `getMe`'s bearer security drift from it.
+- `app/src/test/kotlin/<package path>/ui/signin/SignInScreenTest.kt` is a Compose UI test under Robolectric. It asserts the literal text "Local development sign-in", so a change of the label or of its meaning fails a test.
+- `app/src/test/resources/robolectric.properties` sets Robolectric's SDK level.
+
+## ViewModel test rules
+
+- Use `MainDispatcherRule` (an `UnconfinedTestDispatcher` as the main dispatcher) and create the ViewModel in `@Before`: a ViewModel takes its `viewModelScope` when it is created, so a ViewModel built in a field initializer runs before the rule and never sees the test dispatcher.
+- Substitute `FakeApiClient`: set `tokenResult` or `meResult`, and set `gate` to a `CompletableDeferred` to hold a call and assert the loading state.
+- Assert `StateFlow.value` after each action; with the unconfined dispatcher a launched coroutine has run when the call returns. Reach for `StandardTestDispatcher` and `advanceUntilIdle()` only when ordering matters.
+- Keep a fake as small as the tests need; add the interface method to `FakeApiClient` in the same change as to `ApiClient`.
+
+## Compose UI test rules
+
+- Use `createComposeRule()` with `@RunWith(RobolectricTestRunner::class)` and test a stateless Screen by passing it a `UiState` and a callback; this needs no ViewModel and no activity.
+- Find nodes by visible text or semantics, not by position. Assert the strings that carry meaning (the sign-in label, error explanations), and preserve stable semantics that tests depend on.
+- Robolectric reads `app/src/test/resources/robolectric.properties` for its SDK level; resources are merged because the build sets `isIncludeAndroidResources`.
+- A test that needs a real device or emulator belongs in `app/src/androidTest/` with `./gradlew connectedDebugAndroidTest`; the pack ships none, and CI does not run an emulator.
+
+## Picking the right test
+
+- ViewModel, mapping or session logic: add or update a ViewModel test first.
+- A new operation or status: add a `RetrofitApiClientTest` case and extend `ApiContractTest`.
+- Screen content or semantics: add a Compose UI test of the Screen.
+- If both logic and UI are touched, prefer a ViewModel test for the logic plus the smallest Compose test that protects what the person sees.
+
+## Validation
+
+- Use `android-build-verify` to choose the smallest trustworthy Gradle task after editing tests.

@@ -1,0 +1,42 @@
+version: "3"
+
+tasks:
+  install:
+    desc: Install web dependencies from the lockfile
+    cmds:
+      - npm ci
+
+  dev:
+    desc: Start web on port 3000
+    cmds:
+      - npm run dev
+
+  build:
+    desc: Build web
+    cmds:
+      - npm run build
+
+  generate-api:
+    desc: Regenerate the web API client types from the shared OpenAPI contract
+    cmds:
+      - npm run generate:api
+
+  lint:
+    desc: Lint web
+    cmds:
+      - npm run lint
+
+  typecheck:
+    desc: Type-check web
+    cmds:
+      - npm run typecheck
+
+  test:
+    desc: Run the web unit and component tests
+    cmds:
+      - npm test
+
+  clean:
+    desc: Remove the Next.js build output
+    cmds:
+      - npm run clean

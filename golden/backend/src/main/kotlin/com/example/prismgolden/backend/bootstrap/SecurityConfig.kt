@@ -1,0 +1,64 @@
+package com.example.prismgolden.backend.bootstrap
+
+import com.example.prismgolden.backend.bootstrap.security.ApiAuthenticationEntryPoint
+import com.example.prismgolden.backend.bootstrap.security.RejectingJwtDecoder
+import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpMethod
+import org.springframework.security.config.annotation.web.builders.HttpSecurity
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
+import org.springframework.security.config.http.SessionCreationPolicy
+import org.springframework.security.oauth2.jwt.JwtDecoder
+import org.springframework.security.web.SecurityFilterChain
+
+/**
+ * Every route needs a valid bearer JWT except the health check and the two dev-identity routes (the token and
+ * the JWKS).
+ *
+ * The JWT decoder comes from the environment: the `local` profile provides one for its dev identity
+ * ([DevIdentityConfig]), and Spring Boot builds one when `spring.security.oauth2.resourceserver.jwt.*` names
+ * your identity provider. With neither, [RejectingJwtDecoder] rejects every token, so the app fails closed.
+ *
+ * The dev-identity routes are open to the filter chain in every profile so that the default profile
+ * answers them with 404 (the routes do not exist there). Under `local`, the controller itself refuses
+ * requests that do not come from the loopback interface.
+ */
+@Configuration
+@EnableWebSecurity
+class SecurityConfig(
+    private val authenticationEntryPoint: ApiAuthenticationEntryPoint,
+    private val jwtDecoders: ObjectProvider<JwtDecoder>
+) {
+
+    private val log = LoggerFactory.getLogger(javaClass)
+
+    @Bean
+    fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
+        val jwtDecoder = jwtDecoders.getIfAvailable {
+            log.warn(
+                "No identity provider is configured: every bearer token is rejected. " +
+                    "Set spring.security.oauth2.resourceserver.jwt.issuer-uri, or run with the `local` profile."
+            )
+            RejectingJwtDecoder()
+        }
+
+        http
+            .csrf { it.disable() }
+            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            .exceptionHandling { it.authenticationEntryPoint(authenticationEntryPoint) }
+            .authorizeHttpRequests { auth ->
+                auth.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                auth.requestMatchers(HttpMethod.POST, "/api/dev-identity/token").permitAll()
+                auth.requestMatchers(HttpMethod.GET, "/api/dev-identity/jwks").permitAll()
+                auth.anyRequest().authenticated()
+            }
+            .oauth2ResourceServer { resourceServer ->
+                resourceServer.authenticationEntryPoint(authenticationEntryPoint)
+                resourceServer.jwt { it.decoder(jwtDecoder) }
+            }
+
+        return http.build()
+    }
+}

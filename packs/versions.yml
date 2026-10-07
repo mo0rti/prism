@@ -1,51 +1,92 @@
 # The one place that pins versions. Every pack reads its stack's baseline through Copier as `versions`,
 # so a release moves a baseline here and nowhere else. A test fails when a pack file repeats a version
-# pinned here instead of reading it.
+# pinned here instead of reading it. The repository's workflows read the toolchain pins from here too
+# (scripts/read-pins.py), so they never hard-code one.
+#
+# A `# renovate:` line above a pin lets the dependency bot propose its update (renovate.json); the pull
+# request then carries the regenerated lockfiles and golden/ (scripts/sync-golden.py). A pin without
+# one is a baseline decision that moves by hand with a release: a toolchain version, a platform level
+# or the database image.
 spring-backend:
   java: "21"
+  # renovate: datasource=maven depName=org.jetbrains.kotlin:kotlin-gradle-plugin depType=spring-backend
   kotlin: "2.2.0"
+  # renovate: datasource=maven depName=org.springframework.boot:spring-boot-gradle-plugin depType=spring-backend
   spring_boot: "4.0.1"
+  # renovate: datasource=maven depName=io.spring.gradle:dependency-management-plugin depType=spring-backend
   spring_dependency_management: "1.1.7"
+  # renovate: datasource=gradle-version depName=gradle depType=spring-backend
   gradle: "8.14.3"
+  # renovate: datasource=maven depName=io.mockk:mockk depType=spring-backend
   mockk: "1.14.5"
   postgres: "16-alpine"
 nextjs-web:
   node: "22"
+  # renovate: datasource=npm depName=next depType=nextjs-web
   next: "16.4.0"
+  # renovate: datasource=npm depName=react depType=nextjs-web
   react: "19.3.0"
+  # renovate: datasource=npm depName=typescript depType=nextjs-web
   typescript: "5.9.3"
+  # renovate: datasource=npm depName=eslint depType=nextjs-web
   eslint: "9.39.5"
+  # renovate: datasource=npm depName=eslint-config-next depType=nextjs-web
   eslint_config_next: "16.4.0"
+  # renovate: datasource=npm depName=openapi-typescript depType=nextjs-web
   openapi_typescript: "7.13.0"
+  # renovate: datasource=npm depName=openapi-fetch depType=nextjs-web
   openapi_fetch: "0.17.0"
+  # renovate: datasource=npm depName=vitest depType=nextjs-web
   vitest: "5.0.3"
+  # renovate: datasource=npm depName=vite depType=nextjs-web
   vite: "8.3.3"
+  # renovate: datasource=npm depName=@vitejs/plugin-react depType=nextjs-web
   vitejs_plugin_react: "6.1.2"
+  # renovate: datasource=npm depName=jsdom depType=nextjs-web
   jsdom: "28.1.0"
+  # renovate: datasource=npm depName=@testing-library/react depType=nextjs-web
   testing_library_react: "16.3.3"
+  # renovate: datasource=npm depName=@testing-library/dom depType=nextjs-web
   testing_library_dom: "10.4.2"
+  # renovate: datasource=npm depName=@testing-library/jest-dom depType=nextjs-web
   testing_library_jest_dom: "7.0.1"
+  # renovate: datasource=npm depName=@types/node depType=nextjs-web
   types_node: "22.20.5"
+  # renovate: datasource=npm depName=@types/react depType=nextjs-web
   types_react: "19.3.0"
+  # renovate: datasource=npm depName=@types/react-dom depType=nextjs-web
   types_react_dom: "19.3.0"
 android-compose:
   jdk: "21"
+  # renovate: datasource=maven depName=com.android.tools.build:gradle registryUrl=https://dl.google.com/dl/android/maven2/ depType=android-compose
   agp: "8.13.2"
+  # renovate: datasource=maven depName=org.jetbrains.kotlin:kotlin-gradle-plugin depType=android-compose
   kotlin: "2.3.10"
+  # renovate: datasource=gradle-version depName=gradle depType=android-compose
   gradle: "8.14.3"
   build_tools: "35.0.0"
   min_sdk: "29"
   target_sdk: "36"
   compile_sdk: "36"
+  # renovate: datasource=maven depName=androidx.compose:compose-bom registryUrl=https://dl.google.com/dl/android/maven2/ depType=android-compose
   compose_bom: "2026.01.01"
+  # renovate: datasource=maven depName=androidx.activity:activity-compose registryUrl=https://dl.google.com/dl/android/maven2/ depType=android-compose
   activity_compose: "1.10.1"
+  # renovate: datasource=maven depName=androidx.lifecycle:lifecycle-runtime-compose registryUrl=https://dl.google.com/dl/android/maven2/ depType=android-compose
   lifecycle: "2.9.1"
+  # renovate: datasource=maven depName=org.jetbrains.kotlinx:kotlinx-coroutines-core depType=android-compose
   coroutines: "1.10.2"
+  # renovate: datasource=maven depName=org.jetbrains.kotlinx:kotlinx-serialization-json depType=android-compose
   kotlinx_serialization: "1.10.0"
+  # renovate: datasource=maven depName=com.squareup.retrofit2:retrofit depType=android-compose
   retrofit: "3.0.0"
+  # renovate: datasource=maven depName=com.squareup.okhttp3:okhttp depType=android-compose
   okhttp: "4.12.0"
+  # renovate: datasource=maven depName=junit:junit depType=android-compose
   junit: "4.13.2"
+  # renovate: datasource=maven depName=org.robolectric:robolectric depType=android-compose
   robolectric: "4.16"
+  # renovate: datasource=maven depName=org.yaml:snakeyaml depType=android-compose
   snakeyaml: "2.4"
 ios-swiftui:
   xcode: "26.0"
@@ -53,16 +94,29 @@ ios-swiftui:
   ios_deployment_target: "17.0"
 python-agent-service:
   python: "3.12"
+  # renovate: datasource=pypi depName=uv depType=python-agent-service
   uv: "0.11.26"
+  # renovate: datasource=pypi depName=fastapi depType=python-agent-service
   fastapi: "0.142.2"
+  # renovate: datasource=pypi depName=uvicorn depType=python-agent-service
   uvicorn: "0.54.0"
+  # renovate: datasource=pypi depName=pydantic depType=python-agent-service
   pydantic: "2.13.5"
+  # renovate: datasource=pypi depName=pydantic-settings depType=python-agent-service
   pydantic_settings: "2.15.0"
+  # renovate: datasource=pypi depName=httpx depType=python-agent-service
   httpx: "0.28.1"
+  # renovate: datasource=pypi depName=PyJWT depType=python-agent-service
   pyjwt: "2.15.1"
+  # renovate: datasource=pypi depName=anthropic depType=python-agent-service
   anthropic: "1.11.0"
+  # renovate: datasource=pypi depName=pytest depType=python-agent-service
   pytest: "9.1.1"
+  # renovate: datasource=pypi depName=ruff depType=python-agent-service
   ruff: "0.16.10"
+  # renovate: datasource=pypi depName=mypy depType=python-agent-service
   mypy: "2.4.0"
+  # renovate: datasource=pypi depName=PyYAML depType=python-agent-service
   pyyaml: "6.0.3"
+  # renovate: datasource=pypi depName=types-PyYAML depType=python-agent-service
   types_pyyaml: "6.0.12.20260906"

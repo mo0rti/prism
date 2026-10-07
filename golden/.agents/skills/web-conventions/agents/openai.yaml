@@ -1,0 +1,6 @@
+interface:
+  display_name: "Web Conventions"
+  short_description: "Apply the Next.js slice conventions and its test setup"
+  default_prompt: "Use $web-conventions when changing a web app of this project."
+policy:
+  allow_implicit_invocation: true

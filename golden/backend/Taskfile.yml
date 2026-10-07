@@ -1,0 +1,42 @@
+version: "3"
+
+vars:
+  GRADLEW: '{{if eq OS "windows"}}gradlew.bat{{else}}./gradlew{{end}}'
+
+tasks:
+  dev:
+    desc: "Run backend on port 8080 with the local development identity (start the database first with `task db-up` at the repository root)"
+    env:
+      SPRING_PROFILES_ACTIVE: local
+    cmds:
+      - "{{.GRADLEW}} bootRun"
+
+  run:
+    desc: "Run backend on port 8080 with no profile: no dev identity, and every token is rejected until the identity provider's issuer is set"
+    cmds:
+      - "{{.GRADLEW}} bootRun"
+
+  build:
+    desc: Build backend
+    cmds:
+      - "{{.GRADLEW}} build -x test"
+
+  test:
+    desc: "Run the backend tests (needs Docker: the integration tests start PostgreSQL with Testcontainers)"
+    cmds:
+      - "{{.GRADLEW}} test"
+
+  lint:
+    desc: Run backend static verification
+    cmds:
+      - "{{.GRADLEW}} check -x test"
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - "{{.GRADLEW}} clean"
+
+  docker-build:
+    desc: Build the backend Docker image
+    cmds:
+      - docker build -t prism-golden-backend .

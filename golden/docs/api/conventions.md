@@ -1,0 +1,83 @@
+# API Conventions - Prism Golden
+
+## Base URL
+
+- **Local**: `http://localhost:8080` (the first backend; each backend app has its own port), with every path under `/api/`
+- **Production**: `https://api.prism-golden.com` (adjust to your deployment)
+
+## General Rules
+
+1. **REST** with JSON request/response bodies
+2. **camelCase** for JSON field names
+3. **kebab-case** for URL paths when a resource name contains multiple words (for example, `/user-profiles`)
+4. **Plural nouns** for resource names (for example, `/user-profiles`, not `/user-profile`); a singular path names the signed-in user's own resource (`/api/me`)
+5. **UUID** for all entity IDs
+6. **ISO 8601** for dates (`2024-01-15T10:30:00Z`)
+
+## Authentication
+
+All endpoints require a JWT Bearer token except `/actuator/health` and `POST /api/dev-identity/token`. The token route exists only when the backend runs with the `local` Spring profile (local development sign-in, tagged `x-prism-dev-only`; every other profile answers 404). Send the token as:
+
+```
+Authorization: Bearer <access-token>
+```
+
+## Pagination
+
+List endpoints return paginated responses:
+
+```json
+{
+  "content": [...],
+  "page": 0,
+  "size": 20,
+  "totalElements": 150,
+  "totalPages": 8
+}
+```
+
+Query parameters:
+- `page` (int, default: 0) - zero-based page number
+- `size` (int, default: 20, max: 100) - items per page
+- `sort` (string) - sort field and direction, e.g., `createdAt,desc`
+
+## Error Responses
+
+All errors follow this format:
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Human-readable error message",
+  "details": {
+    "field": "email",
+    "reason": "must be a valid email address"
+  }
+}
+```
+
+### Error Codes
+
+| HTTP Status | Code | When |
+|-------------|------|------|
+| 400 | `VALIDATION_ERROR` | Request body or field validation fails |
+| 400 | `BAD_REQUEST`, `INVALID_REQUEST`, or domain-specific 400 code | Malformed JSON or business-rule request failures |
+| 401 | `UNAUTHORIZED` | Missing, malformed, expired or foreign token |
+| 403 | `FORBIDDEN` or domain-specific 403 code | Valid token but insufficient permissions |
+| 404 | `NOT_FOUND` or domain-specific 404 code | Resource does not exist or is not visible |
+| 405 | `METHOD_NOT_ALLOWED` | HTTP method is not supported for the route |
+| 409 | `CONFLICT` or domain-specific 409 code | Duplicate resource |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | Request content type is not supported |
+| 500 | `INTERNAL_ERROR` | Unexpected server error |
+
+## Versioning
+
+The generated slice serves unversioned paths under `/api/`, exactly as the OpenAPI contract defines them (`/api/me`). When you need to support breaking changes, put the version in the URL path (`/api/v1/...`), change the contract and the controllers together, and keep the old version until its clients have moved.
+
+New breaking changes increment the version. Non-breaking additions do not.
+
+## Related Docs
+
+- [Architecture Overview](../architecture.md) for platform boundaries and auth flow
+- [Backend Guide](../../backend/docs/guide.md) for exception, module, and migration conventions
+- [OpenAPI Contract](../../shared/api-contracts/openapi.yml) for the source-of-truth endpoint definitions

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Setup Project"
+  short_description: "Initialize the wiki and generate the advisory board"
+  default_prompt: "Use $setup-project to initialize the wiki, interview for domain risks, and generate the first advisory board."
+policy:
+  allow_implicit_invocation: false

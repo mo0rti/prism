@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Show Database Credentials
+# =============================================================================
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/load-env-config.sh" "${1:-prod}"
+
+CRED_FILE="$SCRIPT_DIR/database-credentials${ENV_SUFFIX}.env"
+if [[ ! -f "$CRED_FILE" ]]; then
+    echo "ERROR: Credentials file not found: $CRED_FILE"
+    echo "Run 02-setup-database.sh first."
+    exit 1
+fi
+source "$CRED_FILE"
+
+echo "============================================"
+echo "  Database Credentials ($ENVIRONMENT)"
+echo "============================================"
+
+echo ""
+echo "--- PostgreSQL ---"
+echo "  Host:     $POSTGRES_HOST"
+echo "  Port:     $POSTGRES_PORT"
+echo "  Database: $POSTGRES_DATABASE"
+echo "  User:     $POSTGRES_USER"
+echo "  Password: $POSTGRES_PASSWORD"
+echo "  JDBC URL: $POSTGRES_JDBC_URL"
+echo ""
+echo "  Connect:  psql \"host=$POSTGRES_HOST port=$POSTGRES_PORT dbname=$POSTGRES_DATABASE user=$POSTGRES_USER sslmode=require\""
+

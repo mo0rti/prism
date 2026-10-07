@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# Local environment files hold secrets such as ANTHROPIC_API_KEY. Never commit one.
+.env
+.env.*
+!.env.example

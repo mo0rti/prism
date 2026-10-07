@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: backend
+
+  # The local development database of the workspace's docker-compose.yml. Real deployments set DATABASE_*.
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/prism_golden}
+    username: ${DATABASE_USERNAME:prism_golden}
+    password: ${DATABASE_PASSWORD:localdev}
+
+  # Every app of the workspace can share one database: each keeps its tables in its own schema.
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: ${DATABASE_SCHEMA:backend}
+
+  flyway:
+    locations: classpath:db/migration
+    schemas: ${DATABASE_SCHEMA:backend}
+    default-schema: ${DATABASE_SCHEMA:backend}
+
+  jackson:
+    default-property-inclusion: non_null
+
+  # No identity provider is configured here. Set spring.security.oauth2.resourceserver.jwt.issuer-uri
+  # (SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI) to the issuer of your provider. Without it the
+  # app starts and rejects every token. The `local` profile validates the tokens of its own dev identity
+  # and refuses to start when an issuer is configured.
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+# The local development identity (profile `local` only).
+prism:
+  dev-identity:
+    token-ttl: PT15M

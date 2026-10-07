@@ -1,0 +1,37 @@
+---
+description: "Agent Service (Python agent service): stack, structure, safety rules and commands."
+globs: "agent-service/**"
+---
+
+# Agent Service - Python agent service
+
+## Stack
+- Python 3.12, FastAPI 0.142.2, uv (0.11.26) with a committed `uv.lock`
+- pytest, ruff, mypy (strict). The tests and the evaluation run use the fake provider: no network, no key
+- One provider interface with two implementations: a deterministic fake and the Claude API adapter (`AGENT_CLAUDE_MODEL`, key from `ANTHROPIC_API_KEY`)
+- Hosting is the project owner's choice (see the `deployment` skill, `.agents/skills/deployment/SKILL.md`)
+
+## Structure
+```
+agent-service/app/main.py            -> create_app(): fail-closed startup, wiring
+agent-service/app/auth/              -> bearer JWT verification against a JWKS (no shared secret)
+agent-service/app/agent/turn.py      -> one agent turn: provider, tools, data envelopes
+agent-service/app/providers/         -> provider interface, fake, Claude adapter
+agent-service/app/tools/             -> read-only tools; get_my_profile calls GET /api/me with the user's token
+agent-service/app/safety/            -> untrusted-data envelopes, budget, audit log, notice
+agent-service/openapi.yml            -> this service's own contract
+agent-service/evals/                 -> evaluation cases and the runner
+```
+
+## Rules
+- The service assists and does not advise. Every response carries the notice (`app/safety/notice.py`)
+- The question and every tool result are untrusted data: they travel in `<untrusted-data>` envelopes and never reach the system prompt
+- Tools only read, and use the caller's own token for every backend call; the model never picks a URL or a user
+- Every tool call is logged with the user and request IDs, never with a token or a value
+- A per-user budget is enforced in memory; there is no cross-user state
+- Startup fails with no identity configured, or with the `local` profile next to a real issuer. The service has no dev-identity endpoint and no switch that turns authentication off
+- No API key in any file
+
+## Commands
+- `task agent-service:dev` (profile `local`, port 8200; the backend runs under its `local` profile)
+- `task agent-service:test`, `task agent-service:lint`, `task agent-service:typecheck`, `task agent-service:eval`

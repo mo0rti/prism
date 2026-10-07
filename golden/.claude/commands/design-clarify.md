@@ -1,0 +1,51 @@
+# Design Clarify
+
+Use this skill to work through open designer-owned questions one feature at a time.
+
+## Usage
+
+`/design-clarify`
+
+## Workflow
+
+Identical in structure to `/po-clarify` but filters for open questions where owner = `designer`.
+
+1. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
+2. Read all files in `knowledge/wiki/features/`
+3. Collect all open questions where owner = `designer` and status = `open`
+4. Present questions grouped by feature, one feature at a time
+5. For each answer:
+   - Update the open questions table in the feature file
+   - If the answer reveals a missing design artifact, note it in the design page; when the
+     feature has no design page, record the answer in the question table only and tell the
+     user that design intake can attach a page later
+   - If the answer resolves a design state gap, update the design page's "States covered" section
+6. Update the feature's row in `status-board.md` if any feature status changes
+7. Append a `log.md` entry in the log format that the wiki schema defines, with a summary of questions resolved
+
+## Rules
+
+- write-capable skill
+- present questions one feature at a time
+- after each answer, confirm what you updated before moving to the next question
+- questions tagged "[Board: ...]" came from a board review: flag them clearly and treat them as high priority, because they represent domain expert concerns the designer must address
+- update the design page when answers resolve previously missing UI states
+- on the feature page change only the Open questions table; leave every other section,
+  including Acceptance criteria and App scope, exactly as it is; design detail belongs on the design page
+- if one feature hits a contradiction, stop updates for that feature only
+- do not stop the whole clarify session unless the user asks to stop
+- write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
+
+## Output behavior
+
+Return:
+
+- current feature being clarified
+- open designer questions for that feature
+- design-page and feature-file updates made from each answer
+- final summary of questions resolved
+
+## Error and stop conditions
+
+- if there are no open designer questions, return a clean empty-state response
+- if the feature has no design page, still record each answer in the feature's Open questions table, report that the design-page update is skipped because no design page exists (design intake attaches one), and continue with the next feature unless the user wants to stop

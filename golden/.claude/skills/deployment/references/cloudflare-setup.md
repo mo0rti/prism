@@ -1,0 +1,132 @@
+# Cloudflare Workers via OpenNext - Prism Golden
+
+A worked example for one choice: the Next.js web apps on **Cloudflare Workers** through **OpenNext**. This is not Cloudflare Pages. The generated web apps carry none of these files; they build and test without them. The project owner and their agent own the hosting choice, the secrets and the deployment; adapt or replace any step.
+
+- `npm run dev` uses the normal Next.js development server.
+- `npm run preview` (added below) is the closest local production check because it runs the built app through Wrangler and `workerd`.
+- OpenNext's official guidance still recommends Linux, macOS, or WSL for the most reliable Cloudflare build and deploy experience.
+- The generated web apps need no Next.js configuration for OpenNext: no `webpack` hook and no extra build setting. A generated web app holds no secret of its own. Its only runtime variable is `API_BASE_URL`, and it calls the backend from its server, so the backend needs no CORS entry for it.
+- The local development sign-in is not complete authentication and the backend offers it only under its `local` profile. A deployed web app needs the identity provider that replaces it (see the `security-auth` skill).
+
+## Applications
+
+| Application | Folder | Worker Name | Hosting |
+|-------------|--------|-------------|---------|
+| Web | `web` | `prism-golden-web` | Cloudflare Workers via OpenNext |
+
+## 1. Add The OpenNext Adapter To Each App
+
+The files live in `references/cloudflare/` next to this file. For each web app listed above:
+
+1. Copy `open-next.config.ts` into the app folder.
+2. Copy `wrangler.jsonc` and `dev.vars.example` into the app folder, and rename `dev.vars.example` to `.dev.vars.example`. Replace `<app-id>` in `wrangler.jsonc` with the app's ID.
+3. Add the dependencies and scripts to the app's `package.json`:
+
+```json
+{
+  "scripts": {
+    "build:cloudflare": "npm run clean && opennextjs-cloudflare build",
+    "preview": "npm run build:cloudflare && opennextjs-cloudflare preview",
+    "deploy": "npm run build:cloudflare && opennextjs-cloudflare deploy"
+  },
+  "devDependencies": {
+    "@opennextjs/cloudflare": "1.20.9",
+    "esbuild": "0.28.1",
+    "wrangler": "4.148.0"
+  }
+}
+```
+
+The `clean` script must also remove `.open-next`: `"clean": "node -e \"const fs=require('fs');['.next','.open-next'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\""`.
+
+4. Add the build output and the local variables file to the app's `.gitignore`:
+
+```gitignore
+.open-next/
+.wrangler/
+.dev.vars*
+!.dev.vars.example
+```
+
+## 2. Configure Non-Secret Worker Variables
+
+Edit each app's `wrangler.jsonc` before the first deploy. Set `API_BASE_URL` to your deployed backend URL; the session cookie, the contract client and the sign-in route read nothing else.
+
+## 3. Prepare Local Preview Variables
+
+For `npm run preview`, copy `.dev.vars.example` to `.dev.vars` inside each web app you want to preview:
+
+```bash
+cp .dev.vars.example .dev.vars
+```
+
+## 4. Preview and Deploy
+
+From each web app folder:
+
+```bash
+npm ci
+npm run preview
+npm run deploy
+```
+
+Add a secret only when you add something that needs one: `npx wrangler secret put NAME`. The project owner creates it; never commit its value.
+
+## 5. Backend Interop
+
+The web apps call the backend from their servers, so a deployed backend (see `azure-setup.md` for the Azure Container Apps example) needs no `CORS_ALLOWED_ORIGINS` entry for them. Set it only if a browser calls the API directly. The backend's local development identity is off outside the `local` profile, so a deployed web app cannot sign in with it.
+
+## Optional: GitHub Actions Deploy
+
+The generated CI installs, lints, type-checks, tests and builds only. To deploy on every push to `main`, add a deploy job to the app's workflow such as the one below (shown for the app at `web`; change the folder for another app). It reports **Deploy skipped** and does nothing while a secret is missing. Before deploying, the validation job can also run `npm run build:cloudflare` and `npx wrangler deploy --dry-run` to check the Worker bundle.
+
+```yaml
+  deploy:
+    name: Deploy to Cloudflare
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      PRISM_RELEASE_CONFIGURED: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+    steps:
+      - name: Report skipped deploy
+        if: env.PRISM_RELEASE_CONFIGURED != 'true'
+        run: |
+          echo "::warning title=Deploy skipped::Set the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets to deploy the web app. No deploy ran."
+
+      - uses: actions/checkout@v4
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
+
+      - name: Set up Node.js
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
+        working-directory: web
+        run: npm ci
+
+      - name: Deploy worker
+        if: env.PRISM_RELEASE_CONFIGURED == 'true'
+        working-directory: web
+        run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+```
+
+### Required GitHub Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
+| `CLOUDFLARE_API_TOKEN` | API token with Workers edit permissions |
+
+## References
+
+- Cloudflare Next.js on Workers guide: https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/
+- Cloudflare Wrangler configuration reference: https://developers.cloudflare.com/workers/wrangler/configuration/
+- OpenNext Cloudflare docs: https://opennext.js.org/cloudflare

@@ -1,0 +1,149 @@
+---
+name: design-handoff
+description: Move a feature from design to development readiness. Use when validating design completeness, advisory review state, and generating app requirements for a confirmed feature.
+---
+
+# Design handoff — move a feature to ready-for-development
+
+<!-- prism:design-handoff-contract:v1 -->
+
+Use this skill to move one feature into `ready-for-dev` and generate app requirements.
+
+## Usage
+
+`$design-handoff [F-XXX]`
+
+## Read-only preflight
+
+When available, use:
+
+```text
+prism wiki transition-preflight F-XXX [path] --action design-handoff --json
+```
+
+Accept it only with common envelope schema 1, command facts, capability version
+2 and an action-specific `design-handoff` surface, transition version 1, target
+owner `dev`, and a consistent snapshot. The Prism version alone does not prove
+support. If any required fact, schema, action, capability, or snapshot is
+missing or fails, fall back to direct-file checks. The preflight is copy-only
+and never authorizes a write.
+
+## Workflow
+
+1. Resolve exactly one `knowledge/wiki/features/[F-XXX]-[slug].md` source file
+   and require `status: in-design` with `owner: designer`.
+2. Read SCHEMA, LIFECYCLE, `status-board.md`, the complete feature, linked design/context, workspace
+   identity, current requirements/API/advisory evidence, and active revalidation.
+3. Determine whether the feature's scope includes an app with a UI. Read each scoped app's
+   `has-ui` capability from `prism.workspace.yml` or `prism app list`; `unknown` counts as true:
+   - With a UI: apps whose `has-ui` is true (Android, iOS and web apps by default)
+   - Without a UI: apps whose `has-ui` is false (a backend by default), API-only features, infra changes, internal tooling
+4. Run completeness check:
+   - **If an app with a UI is in scope:**
+     - A design page linked in the `## Design` section, unless the feature
+       frontmatter has `design: not-applicable` and a non-empty
+       `design-exemption-reason`. That UI exemption must be explicitly confirmed
+       by the user during this handoff.
+     - Design coverage for all UI states implied by acceptance criteria
+   - **If no app with a UI is in scope (backend/API/infra):**
+     - Design page is not required — skip design coverage check
+     - A design page is not required and no exemption field is needed.
+   - For all features: no open questions with owner = `po` or `designer`. An open question
+     with owner = `dev` does not block this handoff; it stays open for `$dev-clarify`
+   - Status of `in-design` and owner `designer`
+5. Check `advisory-review` field:
+   - If `pending`: board review has not been run. Inform the user. Ask:
+     "Do you want to run board-review F-XXX before handing to development?"
+     - If yes: run board review, then re-check completeness (step 4) before continuing.
+     - If no: set `advisory-review: skipped` and require a reason. Record the reason in
+       the feature file frontmatter: `advisory-skip-reason: [reason]`. Do not allow
+       handoff without a reason — this is the last gate before development starts.
+   - If `done`: check that the board review's "Actions required before dev starts"
+     checklist has been addressed. If items remain open, list them and ask how to proceed.
+6. Check active `revalidation` domains. An active `specification` domain blocks
+   this handoff. If `design` is active, prepare a fresh design verification and
+   propose clearing only that domain; evaluate the proposal while the source is
+   unchanged. Do not clear other domains or shared contracts here.
+7. If the completeness check fails, list what is missing and stop
+8. If the check passes:
+   - Show the user: status → `ready-for-dev`, owner → `dev`
+   - Wait for confirmation
+   - Update feature file frontmatter only: change `status` and `owner`
+     (and clear the verified `design` revalidation domain). Leave every body section,
+     including `## Design`, exactly as it is; the service rejects any other change
+   - Generate app-requirements pages for all apps in scope, incorporating
+     design decisions and any board review findings relevant to implementation
+   - If the feature's `## API surface` declares API work (anything other than an empty
+     section or a plain statement that there is none, such as `None.`) and no API
+     contract exists for the feature, create `knowledge/wiki/api-contracts/F-XXX.md` as
+     a new page (see "API contract" below)
+   - Update the feature's row in `status-board.md`, add the `index.md` line of each requirement and API contract page created, and append a `log.md` entry in the log format that the wiki schema defines
+
+Before confirmation show every feature, generated requirement, status board, index, and log
+write. Reread the source and context immediately before confirmation and once
+again after it. The preflight and any copied request are copy-only and never
+authorize a write. Decline or cancel means no write. If a multi-file write is partial,
+report the exact observed state and require fresh recovery; no transaction is
+implied.
+
+## API contract
+
+The API contract page is created here, never later and never by hand, so `$dev-start`
+finds it. The user who confirms this handoff is the one who agrees it.
+
+- Create it only when `## API surface` declares API work and no contract for the feature
+  exists yet. When the API surface says there is none, write no contract page.
+- Frontmatter `feature-id: F-XXX`, `version: 1`, `status: agreed`; sections `## Endpoints`,
+  `## Data models`, `## Authentication requirements` and `## Notes` (format in
+  `knowledge/wiki/api-contracts/_FORMAT.md`).
+- Write it only from the API surface text: list each endpoint as `METHOD /path`, use the
+  paths the API surface names, and define only data models that the API surface or a
+  listed endpoint names. Add no endpoint, model or behavior the API surface does not state;
+  an API surface that is too vague to write from needs `ask` and `po-clarify` or
+  `dev-clarify` first.
+- Link the page from each generated requirement's `## API contract reference`.
+- Never rewrite an existing contract page: leave it out of the write set.
+- API work needs an app that serves an API: at least one active app in the feature's
+  `apps` must have the `serves-api` capability (`unknown` counts as serving one).
+  Otherwise the handoff is blocked with `api-surface-without-api-app` (`api_surface_without_api_app`
+  on the connected board); route the question to `$po-clarify` or `$dev-clarify` instead of
+  writing a contract.
+
+## Rules
+
+- write-capable skill
+- do not hand off an incomplete feature
+- do not write status changes or app requirements until the user confirms the handoff
+- In each generated requirement page, `## Dependencies` lists only real dependencies
+  (other feature IDs or app-requirement files that must complete first) or says
+  `None.`. Never write an open question, note or caveat there; `$dev-clarify` may not
+  change that section, so the text would stay after the question is answered.
+- Open questions owned by `po` or `designer` block this handoff: resolve them first with
+  `$po-clarify` or `$design-clarify`. An open question owned by `dev` does not block it: it
+  stays open in the feature's Open questions table, which this handoff cannot change, and
+  `$dev-clarify` resolves it before `$dev-start`.
+
+- App-requirements pages are generated at handoff time (not at intake time) because
+  the spec is now complete and can be derived accurately.
+- The developer-facing requirements must be in technical language. Translate design
+  language: "modal that blocks interaction" → implementation pattern that fits the app's stack.
+- If a board review found concerns, include relevant concerns in the app-requirements
+  pages for the affected apps. Developers should not have to cross-reference the
+  review file themselves.
+- write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
+
+## Output behavior
+
+Return:
+
+- completeness result
+- advisory-review result
+- any blocking missing items
+- proposed status and owner change
+- generated app-requirements targets and the API contract page, if one is required, after confirmation
+
+## Error and stop conditions
+
+- if the feature file does not exist, return a clean missing-feature response
+- if required design or advisory prerequisites are not met, stop without writing
+- if the user does not confirm the handoff, stop without writing

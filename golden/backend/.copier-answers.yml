@@ -1,0 +1,19 @@
+_src_path: https://github.com/mo0rti/prism.git
+app_id: backend
+app_module_name: Backend
+app_name: Backend
+app_package: com.example.prismgolden.backend
+app_package_path: com/example/prismgolden/backend
+app_package_segment: backend
+app_path: backend
+audience: ''
+ci_paths:
+- backend/**
+- shared/api-contracts/**
+- .github/workflows/backend.yml
+ci_workflow_name: Backend CI
+package_identifier: com.example.prismgolden
+port: 8080
+prism_layer: spring-backend
+project_name: Prism Golden
+project_slug: prism-golden

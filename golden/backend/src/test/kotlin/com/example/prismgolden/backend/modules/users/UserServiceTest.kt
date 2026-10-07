@@ -1,0 +1,87 @@
+package com.example.prismgolden.backend.modules.users
+
+import com.example.prismgolden.backend.modules.users.model.IdentityClaims
+import com.example.prismgolden.backend.modules.users.model.User
+import com.example.prismgolden.backend.modules.users.repository.UserRepository
+import com.example.prismgolden.backend.modules.users.service.UserService
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import org.springframework.dao.DataIntegrityViolationException
+
+class UserServiceTest {
+
+    private val repository = mockk<UserRepository>()
+    private val service = UserService(repository)
+
+    private fun savedUser() = slot<User>().also { slot -> every { repository.saveAndFlush(capture(slot)) } answers { slot.captured } }
+
+    @Test
+    fun `an existing profile is returned without a write`() {
+        val existing = User(subject = "dev:ada@example.test", email = "ada@example.test", displayName = "Ada")
+        every { repository.findBySubject("dev:ada@example.test") } returns existing
+
+        val profile = service.profileFor(IdentityClaims("dev:ada@example.test", "ada@example.test", "Ada"))
+
+        assertSame(existing, profile)
+        verify(exactly = 0) { repository.saveAndFlush(any<User>()) }
+    }
+
+    @Test
+    fun `the first call creates the profile from the token's claims`() {
+        every { repository.findBySubject("sub-1") } returns null
+        val saved = savedUser()
+
+        val profile = service.profileFor(IdentityClaims("sub-1", " ada@example.test ", " Ada Lovelace "))
+
+        assertEquals("sub-1", saved.captured.subject)
+        assertEquals("ada@example.test", profile.email)
+        assertEquals("Ada Lovelace", profile.displayName)
+    }
+
+    @Test
+    fun `the display name falls back to the email and then to the subject`() {
+        every { repository.findBySubject(any()) } returns null
+        val saved = savedUser()
+
+        service.profileFor(IdentityClaims("sub-2", "ada@example.test", null))
+        assertEquals("ada@example.test", saved.captured.displayName)
+
+        service.profileFor(IdentityClaims("sub-3", null, " "))
+        assertEquals("sub-3", saved.captured.displayName)
+        assertNull(saved.captured.email)
+    }
+
+    @Test
+    fun `a long display name is cut to the column size`() {
+        every { repository.findBySubject(any()) } returns null
+        val saved = savedUser()
+
+        service.profileFor(IdentityClaims("sub-4", null, "n".repeat(300)))
+
+        assertEquals(UserService.MAX_DISPLAY_NAME_LENGTH, saved.captured.displayName.length)
+    }
+
+    @Test
+    fun `when another request creates the profile first the winner's row is returned`() {
+        val winner = User(subject = "sub-5", displayName = "Winner")
+        every { repository.findBySubject("sub-5") } returnsMany listOf(null, winner)
+        every { repository.saveAndFlush(any<User>()) } throws DataIntegrityViolationException("unique subject")
+
+        assertSame(winner, service.profileFor(IdentityClaims("sub-5", null, "Loser")))
+    }
+
+    @Test
+    fun `an insert failure that is not a race is not swallowed`() {
+        every { repository.findBySubject("sub-6") } returns null
+        every { repository.saveAndFlush(any<User>()) } throws DataIntegrityViolationException("not null")
+
+        assertThrows<DataIntegrityViolationException> { service.profileFor(IdentityClaims("sub-6", null, "Name")) }
+    }
+}

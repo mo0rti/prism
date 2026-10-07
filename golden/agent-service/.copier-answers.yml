@@ -1,0 +1,19 @@
+_src_path: https://github.com/mo0rti/prism.git
+app_id: agent-service
+app_module_name: AgentService
+app_name: Agent Service
+app_package: com.example.prismgolden.agentservice
+app_package_path: com/example/prismgolden/agentservice
+app_package_segment: agentservice
+app_path: agent-service
+audience: ''
+ci_paths:
+- agent-service/**
+- shared/api-contracts/**
+- .github/workflows/agent-service.yml
+ci_workflow_name: Agent Service CI
+package_identifier: com.example.prismgolden
+port: 8200
+prism_layer: python-agent-service
+project_name: Prism Golden
+project_slug: prism-golden

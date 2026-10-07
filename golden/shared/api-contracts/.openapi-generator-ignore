@@ -1,0 +1,6 @@
+# Files that should not be overwritten during regeneration
+README.md
+.gitignore
+build.gradle
+pom.xml
+settings.gradle

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Design Start"
+  short_description: "Start design work for a ready feature"
+  default_prompt: "Use $design-start F-XXX to confirmation-gate the ready-for-design to in-design transition."
+policy:
+  allow_implicit_invocation: false

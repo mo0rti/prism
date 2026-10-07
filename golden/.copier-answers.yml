@@ -1,0 +1,44 @@
+_src_path: https://github.com/mo0rti/prism.git
+apps:
+- id: backend
+  name: Backend
+  stack: spring-backend
+  path: backend
+  audience: ''
+  port: 8080
+- id: web
+  name: Web
+  stack: nextjs-web
+  path: web
+  audience: B2C
+  port: 3000
+- id: mobile-android
+  name: Android App
+  stack: android-compose
+  path: mobile-android
+  audience: ''
+  port: 0
+- id: mobile-ios
+  name: iOS App
+  stack: ios-swiftui
+  path: mobile-ios
+  audience: ''
+  port: 0
+- id: agent-service
+  name: Agent Service
+  stack: python-agent-service
+  path: agent-service
+  audience: ''
+  port: 8200
+description: The reference workspace that Prism's CI regenerates and builds, one app
+  of each stack
+package_identifier: com.example.prismgolden
+prism_layer: workspace
+project_name: Prism Golden
+project_slug: prism-golden
+stacks:
+- android-compose
+- ios-swiftui
+- nextjs-web
+- python-agent-service
+- spring-backend

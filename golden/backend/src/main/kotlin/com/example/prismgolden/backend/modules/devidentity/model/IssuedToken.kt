@@ -1,0 +1,9 @@
+package com.example.prismgolden.backend.modules.devidentity.model
+
+import java.time.Duration
+
+/** A signed dev-identity token with its lifetime. */
+data class IssuedToken(
+    val value: String,
+    val expiresIn: Duration
+)
