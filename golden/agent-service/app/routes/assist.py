@@ -20,6 +20,7 @@ router = APIRouter()
 PROTECTED_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"description": "The request is not valid"},
     401: {"description": "Authentication required or invalid token"},
+    403: {"description": "The local development identity answers callers on this machine only"},
     429: {"description": "The caller's budget is used up"},
     502: {"description": "The model provider failed"},
     503: {"description": "The identity keys are unavailable"},

@@ -1,4 +1,4 @@
-"""The assistant of one request: the budget, then the turn, then the accounting.
+"""The assistant of one request: the budget, then the turn, which accounts for each model call as it completes.
 
 Everything per request lives here and in the objects it builds for the request. Nothing a user said or a
 tool returned is kept on the service, so one user's data can never enter another user's request.
@@ -34,6 +34,7 @@ class AssistantService:
         budget: UserBudget,
         audit: AuditLog,
         max_tool_calls: int,
+        output_token_cap: int,
     ) -> None:
         self._provider = provider
         self._tools = tools
@@ -41,23 +42,30 @@ class AssistantService:
         self._budget = budget
         self._audit = audit
         self._max_tool_calls = max_tool_calls
+        self._output_token_cap = output_token_cap
 
     async def answer(self, *, caller: Caller, question: str, request_id: str) -> AssistResult:
-        """Run one turn for the caller. Raises `BudgetExceededError` before any model call when the budget is used up."""
+        """Run one turn for the caller. Raises `BudgetExceededError` before a model call when the budget cannot hold it."""
 
         try:
-            self._budget.reserve(caller.user_id)
+            turn_budget = self._budget.begin_turn(caller.user_id)
         except BudgetExceededError as error:
             self._audit.budget_refused(user_id=caller.user_id, request_id=request_id, reason=error.reason)
             raise
         context = ToolContext(caller=caller, request_id=request_id, backend=self._backend)
-        result = await run_turn(
-            question=question,
-            provider=self._provider,
-            tools=self._tools,
-            context=context,
-            audit=self._audit,
-            max_tool_calls=self._max_tool_calls,
-        )
-        self._budget.record_tokens(caller.user_id, result.usage.total)
+        with turn_budget:
+            try:
+                result = await run_turn(
+                    question=question,
+                    provider=self._provider,
+                    tools=self._tools,
+                    context=context,
+                    audit=self._audit,
+                    max_tool_calls=self._max_tool_calls,
+                    budget=turn_budget,
+                    output_token_cap=self._output_token_cap,
+                )
+            except BudgetExceededError as error:
+                self._audit.budget_refused(user_id=caller.user_id, request_id=request_id, reason=error.reason)
+                raise
         return AssistResult(result.answer, result.tool_calls, result.usage)

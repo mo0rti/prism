@@ -18,6 +18,9 @@ on:
 permissions:
   contents: read
 
+env:
+  APP_PATH: "agent-service"
+
 jobs:
   verify:
     name: Lint, typecheck, test, evaluate
@@ -25,7 +28,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: agent-service
+        working-directory: ${{ env.APP_PATH }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +38,7 @@ jobs:
           version: "0.11.26"
           python-version: "3.12"
           enable-cache: true
-          cache-dependency-glob: "agent-service/uv.lock"
+          cache-dependency-glob: ${{ env.APP_PATH }}/uv.lock
 
       # The lockfile is the source of truth: the install fails when it disagrees with pyproject.toml.
       - name: Install the locked dependencies

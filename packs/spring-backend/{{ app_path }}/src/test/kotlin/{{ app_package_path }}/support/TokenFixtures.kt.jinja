@@ -28,16 +28,24 @@ object TokenFixtures {
             .build()
     }
 
-    fun sign(key: RSAKey, issuer: String, subject: String, issuedAt: Instant, expiresAt: Instant): String {
+    fun sign(
+        key: RSAKey,
+        issuer: String,
+        subject: String,
+        issuedAt: Instant,
+        expiresAt: Instant,
+        audience: List<String>? = null
+    ): String {
         val encoder = NimbusJwtEncoder(ImmutableJWKSet<SecurityContext>(JWKSet(key)))
-        val claims = JwtClaimsSet.builder()
+        val builder = JwtClaimsSet.builder()
             .issuer(issuer)
             .subject(subject)
             .issuedAt(issuedAt)
             .expiresAt(expiresAt)
             .claim("email", "token-fixture@example.test")
             .claim("name", "Token Fixture")
-            .build()
+        if (audience != null) builder.audience(audience)
+        val claims = builder.build()
         val header = JwsHeader.with(SignatureAlgorithm.RS256).build()
         return encoder.encode(JwtEncoderParameters.from(header, claims)).tokenValue
     }

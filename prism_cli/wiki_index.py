@@ -17,6 +17,7 @@ from typing import Any, Iterable, Mapping
 from urllib.parse import unquote, urlsplit
 
 from prism_cli.wiki_model import parse_markdown_text
+from prism_cli.wiki_paths import decoded_link_path
 
 
 INDEX_FILE = "index.md"
@@ -207,7 +208,10 @@ def index_target(raw_target: str) -> str | None:
         return None
     if parsed.scheme or parsed.netloc or not parsed.path or "\x00" in parsed.path:
         return None
-    normalized = posixpath.normpath(parsed.path.replace("\\", "/"))
+    safe, _problem = decoded_link_path(parsed.path, percent_encoded=False)
+    if safe is None:
+        return None
+    normalized = posixpath.normpath(safe)
     if is_project_doc_target(normalized):
         return normalized
     if normalized.startswith(("/", "..")) or normalized == ".":

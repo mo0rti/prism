@@ -359,11 +359,12 @@ class GeneratedAgentServicesTests(unittest.TestCase):
                 for event in ("push", "pull_request"):
                     self.assertEqual([f"{info['path']}/**", "shared/api-contracts/**", f".github/workflows/{app}.yml"], triggers[event]["paths"])
                 job = data["jobs"]["verify"]
-                self.assertEqual(info["path"], job["defaults"]["run"]["working-directory"])
+                self.assertEqual(info["path"], data["env"]["APP_PATH"], "the app's path reaches the workflow once, as a variable")
+                self.assertEqual("${{ env.APP_PATH }}", job["defaults"]["run"]["working-directory"])
                 setup = next(step for step in job["steps"] if str(step.get("uses", "")).startswith("astral-sh/setup-uv"))
                 self.assertEqual(pins()["uv"], str(setup["with"]["version"]))
                 self.assertEqual(pins()["python"], str(setup["with"]["python-version"]))
-                self.assertEqual(f"{info['path']}/uv.lock", setup["with"]["cache-dependency-glob"])
+                self.assertEqual("${{ env.APP_PATH }}/uv.lock", setup["with"]["cache-dependency-glob"])
                 runs = [step["run"] for step in job["steps"] if "run" in step]
                 self.assertEqual("uv sync --locked", runs[0])
                 self.assertIn("uv run --locked python -m evals.run --provider fake", runs[-1])

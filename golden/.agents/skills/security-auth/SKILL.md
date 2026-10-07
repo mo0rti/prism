@@ -25,6 +25,8 @@ Paths are inside the backend app's folder (`backend/`). `<package path>` is the 
 - `src/main/kotlin/<package path>/bootstrap/SecurityConfig.kt` - filter chain, route exposure, which decoder validates tokens
 - `src/main/kotlin/<package path>/bootstrap/security/ApiAuthenticationEntryPoint.kt` - 401 reply in the shared error format
 - `src/main/kotlin/<package path>/bootstrap/security/RejectingJwtDecoder.kt` - the decoder of an app with no identity provider
+- `src/main/kotlin/<package path>/bootstrap/security/AudienceValidator.kt` - requires this API's audience in every token of a real provider
+- `src/main/kotlin/<package path>/bootstrap/AudienceGuard.kt` - the startup guard that refuses a provider configured without an audience
 - `src/main/kotlin/<package path>/bootstrap/DevIdentityConfig.kt` - the dev identity beans (profile `local`)
 - `src/main/kotlin/<package path>/bootstrap/DevIdentityGuard.kt` - the startup guard that refuses `local` together with an issuer
 - `src/main/kotlin/<package path>/bootstrap/properties/DevIdentityProperties.kt` - the dev identity's properties
@@ -67,20 +69,7 @@ Never enable `local` on a shared or deployed environment. Never weaken a guard t
 The provider is the user's choice. Record it as a decision page (`knowledge/wiki/decisions/`) before changing code, then:
 
 1. **Configure the resource server.** Set the provider's issuer through the environment, never in a file with the `local` profile: `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI` (or `spring.security.oauth2.resourceserver.jwt.issuer-uri`; `jwk-set-uri` also works). Spring Boot then builds the decoder, and `SecurityConfig` picks it up with no change. The provider's client secrets stay with the provider and in the deployment's secret store, not in this repository.
-2. **Validate the audience.** Boot checks the issuer and the expiry, not who the token is for. Register a decoder that also requires your API's audience, for example:
-
-   ```kotlin
-   @Bean
-   fun jwtDecoder(@Value("\${spring.security.oauth2.resourceserver.jwt.issuer-uri}") issuer: String): JwtDecoder {
-       val decoder = JwtDecoders.fromIssuerLocation(issuer) as NimbusJwtDecoder
-       val audience = OAuth2TokenValidator<Jwt> { jwt ->
-           if (jwt.audience.contains("your-api-audience")) OAuth2TokenValidatorResult.success()
-           else OAuth2TokenValidatorResult.failure(OAuth2Error("invalid_token", "Wrong audience", null))
-       }
-       decoder.setJwtValidator(DelegatingOAuth2TokenValidator(JwtValidators.createDefaultWithIssuer(issuer), audience))
-       return decoder
-   }
-   ```
+2. **Set the audience.** Boot checks the issuer and the expiry, not who the token is for, so the app requires this API's audience too: set `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES` (or `spring.security.oauth2.resourceserver.jwt.audiences`, comma-separated) to the audience your provider puts in the access tokens of this API. `bootstrap/AudienceGuard.kt` stops startup when a provider is configured without one, and `bootstrap/security/AudienceValidator.kt` makes `SecurityConfig` reject a token whose `aud` is missing or names another API. The agent service of the workspace takes the same value from `AGENT_OIDC_AUDIENCE` (and its issuer from `AGENT_OIDC_ISSUER`), so one provider setup serves both.
 
 3. **Map the claims.** `MeController` builds `IdentityClaims` from `sub`, `email` and `name`; change the names to what the provider's access token carries. If it carries no email, call the provider's userinfo endpoint from a service, outside any database transaction. Map roles or scopes with a `JwtAuthenticationConverter` and model authorization with `authorization-rules`.
 4. **Remove the dev identity.** Delete `bootstrap/DevIdentityConfig.kt`, `bootstrap/DevIdentityGuard.kt`, `bootstrap/properties/DevIdentityProperties.kt`, `modules/devidentity/`, the `POST /api/dev-identity/token` and `GET /api/dev-identity/jwks` permit rules in `SecurityConfig`, `prism.dev-identity` in `application.yml` and the `dev` task's `local` profile. Remove `/api/dev-identity/token` and `/api/dev-identity/jwks` from `shared/api-contracts/openapi.yml` and update `OpenApiContractTest`. Any other local service that verifies the dev identity's tokens, such as an agent service, switches to the provider's issuer in the same change. Replace `LocalProfileIntegrationTest` with tests that send tokens built by a test-only key and decoder (add `spring-security-test` and use its `jwt()` request post-processor with `MockMvc`). Keep `DefaultProfileIntegrationTest`'s check that a token from an unknown issuer is rejected.

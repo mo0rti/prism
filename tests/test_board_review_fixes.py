@@ -165,6 +165,74 @@ class BoardReviewFixTests(unittest.TestCase):
         self.assertIn("recovery_conflict", receipt["conflicts"][0]["reason"])
         self.assertEqual(edited, self.read(FEATURE))
 
+    def test_an_external_edit_after_the_review_stops_the_recovery_before_it_writes(self) -> None:
+        preview = self.ask_preview()
+        self.crash_before_log(preview, "op-ask")
+        self.put(SETTINGS, self.read(SETTINGS) + "\nA policy note added while the operation was interrupted.\n")
+        revision = self.review_revision("op-ask")
+        log_before = self.read_optional("knowledge/wiki/log.md")
+        revalidate = self.service._revalidate_recovery
+
+        def edited_after_reconstruction(*args, **kwargs):
+            result = revalidate(*args, **kwargs)
+            # An ordinary editor changes a relevant source after the review and after the before-state was rebuilt.
+            self.put(SETTINGS, self.read(SETTINGS) + "\nAn editor changed the policy after the review.\n")
+            return result
+
+        with patch.object(self.service, "_revalidate_recovery", side_effect=edited_after_reconstruction):
+            receipt = self.service.recover(self.human, "op-ask", revision, True)
+
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("recovery_source_changed", receipt["conflicts"][0]["reason"])
+        self.assertEqual(log_before, self.read_optional("knowledge/wiki/log.md"), "no write was applied against the changed source")
+
+        # A fresh review of the current files lets the recovery finish.
+        reviewed = self.service.recover(self.human, "op-ask", self.review_revision("op-ask"), True)
+        self.assertEqual("applied", reviewed["state"], reviewed)
+
+    def test_an_external_edit_between_two_writes_stops_the_remaining_writes(self) -> None:
+        preview = self.ask_preview()
+        original = self.service._apply_write
+
+        def interrupted_at_the_first_write(write, **kwargs):
+            if write["role"] == "canonical":
+                raise _Crash()
+            return original(write, **kwargs)
+
+        with patch.object(self.service, "_apply_write", side_effect=interrupted_at_the_first_write), self.assertRaises(_Crash):
+            self.service.apply(self.agent, preview["preview_id"], "op-ask")
+        self.put(SETTINGS, self.read(SETTINGS) + "\nA policy note added while the operation was interrupted.\n")
+        revision = self.review_revision("op-ask")
+        feature_before = self.read(FEATURE)
+        log_before = self.read_optional("knowledge/wiki/log.md")
+
+        def edit_then_write(write, **kwargs):
+            # The check before this write passed; an editor now changes a relevant source, so the check before the next one must refuse.
+            self.put(SETTINGS, self.read(SETTINGS) + "\nAn editor changed the policy between two writes.\n")
+            return original(write, **kwargs)
+
+        with patch.object(self.service, "_apply_write", side_effect=edit_then_write):
+            receipt = self.service.recover(self.human, "op-ask", revision, True)
+
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("recovery_source_changed", receipt["conflicts"][0]["reason"])
+        self.assertNotEqual(feature_before, self.read(FEATURE), "the first write was applied before the edit")
+        self.assertEqual(log_before, self.read_optional("knowledge/wiki/log.md"), "the second write was not applied against the changed source")
+
+    def test_a_dependency_that_appears_after_the_inspection_makes_the_review_stale(self) -> None:
+        preview = self.ask_preview()
+        self.crash_before_log(preview, "op-ask")
+        self.put(SETTINGS, self.read(SETTINGS) + "\nA policy note added while the operation was interrupted.\n")
+        revision = self.review_revision("op-ask")
+        # A design page of the feature appears: the feature's context now has a path the review never saw.
+        self.put("knowledge/wiki/design/F-001-extra.md", _design_page())
+
+        with self.assertRaises(BoardError) as stale:
+            self.service.recover(self.human, "op-ask", revision, True)
+
+        self.assertEqual("stale_recovery_review", stale.exception.code)
+        self.assertNotEqual(revision, self.review_revision("op-ask"), "the new review covers the new path")
+
     def test_stuck_operation_is_abandoned_by_an_acknowledged_human_and_stops_blocking_writes(self) -> None:
         self.insert_stuck_operation()
         preview = self.ask_preview()

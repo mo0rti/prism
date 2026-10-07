@@ -1,6 +1,6 @@
 ---
 description: {{ (app_name ~ " (Python agent service): stack, structure, safety rules and commands.") | tojson }}
-globs: "{{ app_path }}/**"
+globs: {{ (app_path ~ "/**") | tojson }}
 ---
 
 # {{ app_name }} - Python agent service

@@ -112,7 +112,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertEqual("read", job["permissions"]["actions"])
         # The gate reads the checkout of the tag, so it judges the commit that is released.
         checkout = next(step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/checkout@"))
-        self.assertEqual("${{ inputs.tag || github.ref }}", checkout["with"]["ref"])
+        # A manual run names a tag: the full ref makes the checkout fail for a branch of that name.
+        self.assertEqual("${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}", checkout["with"]["ref"])
 
     def test_every_other_job_needs_the_first_one_directly_or_through_another(self) -> None:
         jobs = self.workflow()["jobs"]
@@ -144,6 +145,220 @@ class ReleaseWorkflowTests(unittest.TestCase):
             paths = template[event]["paths"]
             for needed in ("golden/**", "packs/**", "scripts/build-golden.py", "scripts/golden-answers.yml", "scripts/read-pins.py", "scripts/run-golden-workflow.py", "scripts/audit-gate.py"):
                 self.assertIn(needed, paths, f"{event} of template-validation.yml")
+
+
+
+def checkouts(job: dict) -> list[dict]:
+    return [step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/checkout@")]
+
+
+class ReleaseIsBoundToOneCommitTests(unittest.TestCase):
+    """The tag is a tag, its commit is resolved once, and every later job uses that commit."""
+
+    def workflow(self) -> dict:
+        return yaml.safe_load((WORKFLOWS / "release.yml").read_text(encoding="utf-8"))
+
+    def test_a_manual_run_checks_out_the_full_tag_ref_so_a_branch_of_that_name_fails(self) -> None:
+        job = self.workflow()["jobs"]["verify-tag"]
+        ref = checkouts(job)[0]["with"]["ref"]
+        self.assertIn("format('refs/tags/{0}', inputs.tag)", ref)
+        check = next(step for step in job["steps"] if step.get("id") == "check")
+        self.assertIn('git rev-parse --verify --quiet "refs/tags/${TAG}^{commit}"', check["run"])
+        self.assertIn("refs/tags/$TAG does not exist", check["run"])
+        self.assertIn('echo "sha=${sha}" >> "$GITHUB_OUTPUT"', check["run"])
+        self.assertEqual("${{ steps.check.outputs.sha }}", job["outputs"]["sha"])
+
+    def test_every_later_checkout_uses_the_verified_sha_and_never_the_tag_again(self) -> None:
+        jobs = self.workflow()["jobs"]
+        later = [(name, step) for name, job in jobs.items() if name != "verify-tag" for step in checkouts(job)]
+        self.assertTrue(later, "the build and the release check out the repository")
+        for name, step in later:
+            with self.subTest(job=name):
+                self.assertEqual("${{ needs.verify-tag.outputs.sha }}", step["with"]["ref"])
+                self.assertIn("verify-tag", jobs[name]["needs"])
+
+    def test_the_release_is_refused_when_the_tag_moved_after_the_verification(self) -> None:
+        job = self.workflow()["jobs"]["github-release"]
+        step = next(step for step in job["steps"] if "no longer names the verified commit" in str(step.get("run", "")))
+        self.assertEqual("${{ needs.verify-tag.outputs.sha }}", step["env"]["SHA"])
+        self.assertIn('git ls-remote origin "refs/tags/${TAG}" "refs/tags/${TAG}^{}"', step["run"])
+        names = [str(item.get("name", "")) for item in job["steps"]]
+        self.assertLess(names.index(step["name"]), names.index("Create the release"))
+
+    def test_the_npm_release_requires_the_tag_ref_too(self) -> None:
+        job = yaml.safe_load((WORKFLOWS / "npm-release.yml").read_text(encoding="utf-8"))["jobs"]["publish-npm"]
+        ref = checkouts(job)[0]["with"]["ref"]
+        self.assertIn("github.event.workflow_run.head_sha", ref)
+        self.assertIn("format('refs/tags/{0}', inputs.tag)", ref)
+        self.assertNotIn("|| inputs.tag }}", ref)
+        check = next(step for step in job["steps"] if step.get("id") == "check")
+        self.assertIn('git rev-parse --verify --quiet "refs/tags/${TAG}^{commit}"', check["run"])
+        self.assertIn('"$(git rev-parse "refs/tags/${TAG}^{commit}")" != "$(git rev-parse HEAD)"', check["run"])
+
+
+class ReleasePublishesWhatWasBuiltTests(unittest.TestCase):
+    """The smoke test runs the wheel this run built, and the registry copy must be byte-identical to it."""
+
+    def workflow(self) -> dict:
+        return yaml.safe_load((WORKFLOWS / "release.yml").read_text(encoding="utf-8"))
+
+    def needs(self, name: str, jobs: dict) -> set[str]:
+        direct = jobs[name].get("needs", [])
+        direct = [direct] if isinstance(direct, str) else direct
+        closure = set(direct)
+        for parent in direct:
+            closure |= self.needs(parent, jobs)
+        return closure
+
+    def test_the_built_wheel_is_smoke_tested_before_any_publication_in_both_paths(self) -> None:
+        jobs = self.workflow()["jobs"]
+        install = next(step for step in jobs["smoke-wheel"]["steps"] if step.get("name") == "Install the built wheel")
+        self.assertIn('"dist/prism_kit-${VERSION}-py3-none-any.whl"', install["run"])
+        self.assertNotIn("index", install["run"], "the built file is installed, not a version from an index")
+        for publisher in ("publish-testpypi", "publish-pypi"):
+            with self.subTest(job=publisher):
+                self.assertIn("smoke-wheel", self.needs(publisher, jobs))
+
+    def test_the_registry_check_downloads_the_package_from_one_index_and_compares_its_hash(self) -> None:
+        jobs = self.workflow()["jobs"]
+        for job_name, index in (("smoke-test", "https://test.pypi.org/simple/"), ("pypi-smoke-test", "https://pypi.org/simple/")):
+            with self.subTest(job=job_name):
+                steps = {step["name"]: str(step.get("run", "")) for step in jobs[job_name]["steps"] if "name" in step}
+                download = next(text for name, text in steps.items() if name.startswith("Download the published wheel"))
+                self.assertIn(f"--index-url {index}", download)
+                self.assertIn("--no-deps", download)
+                self.assertIn("--only-binary=:all:", download)
+                compare = steps["Require the published wheel to equal the built wheel"]
+                self.assertIn('sha256sum "dist/${wheel}"', compare)
+                self.assertIn('test "$built" = "$published"', compare)
+                install = steps["Install the published wheel and its dependencies"]
+                self.assertIn("registry/prism_kit-${VERSION}-py3-none-any.whl", install)
+                self.assertNotIn('"prism-kit==', install, "the package is the verified file, never a version looked up in an index")
+        self.assertNotIn("--extra-index-url", (WORKFLOWS / "release.yml").read_text(encoding="utf-8"))
+
+    def test_pypi_publication_waits_for_the_registry_check_unless_testpypi_is_skipped(self) -> None:
+        condition = self.workflow()["jobs"]["publish-pypi"]["if"]
+        self.assertIn("needs.smoke-wheel.result == 'success'", condition)
+        self.assertIn("needs.smoke-test.result == 'success'", condition)
+        self.assertIn("inputs.skip_testpypi && needs.smoke-test.result == 'skipped'", condition)
+
+
+def inline_python(step: dict) -> str:
+    """The Python program a workflow step feeds to `python - <<'PY'`."""
+
+    lines = str(step["run"]).splitlines()
+    start = next(index for index, line in enumerate(lines) if line.strip().startswith("python - <<'PY'")) + 1
+    end = next(index for index in range(start, len(lines)) if lines[index].strip() == "PY")
+    return "\n".join(lines[start:end]) + "\n"
+
+
+class DependencySyncSplitTests(unittest.TestCase):
+    """The tooling that nobody reviewed runs without a write token; the job with the token runs none of it."""
+
+    def workflow(self) -> dict:
+        return yaml.safe_load((WORKFLOWS / "dependency-sync.yml").read_text(encoding="utf-8"))
+
+    def test_the_regenerating_job_has_a_read_only_token_that_is_not_persisted_and_no_secret(self) -> None:
+        workflow = self.workflow()
+        self.assertEqual({"contents": "read"}, workflow["permissions"])
+        job = workflow["jobs"]["regenerate"]
+        self.assertEqual({"contents": "read"}, job["permissions"])
+        checkout = checkouts(job)[0]
+        self.assertIs(False, checkout["with"]["persist-credentials"])
+        self.assertEqual("${{ github.event.pull_request.head.sha }}", checkout["with"]["ref"], "the input is pinned to a SHA")
+        self.assertNotIn("token", checkout["with"])
+        self.assertNotIn("secrets.", yaml.safe_dump(job), "no secret reaches the job that runs the tools")
+
+    def test_only_the_pushing_job_has_write_permissions_and_it_needs_the_regenerating_one(self) -> None:
+        workflow = self.workflow()
+        job = workflow["jobs"]["push"]
+        self.assertEqual("regenerate", job["needs"])
+        self.assertEqual({"contents": "write", "actions": "write"}, job["permissions"])
+        runs = "\n".join(str(step.get("run", "")) for step in job["steps"])
+        for tool in ("sync-golden", "scripts/", "uv ", "npm ", "pip ", "npx "):
+            self.assertNotIn(tool, runs.replace("python - <<'PY'", ""), f"the job with the write token does not run `{tool}`")
+        uses = [str(step.get("uses", "")) for step in job["steps"]]
+        self.assertFalse(any(item.startswith(("astral-sh/setup-uv", "actions/setup-node")) for item in uses))
+
+    def test_the_patch_is_validated_before_it_is_applied(self) -> None:
+        job = self.workflow()["jobs"]["push"]
+        names = [step.get("name", "") for step in job["steps"]]
+        validate = names.index("Check that the patch touches only the lockfiles, the pins and golden/")
+        self.assertLess(validate, names.index("Commit and push what changed"))
+        push = next(step for step in job["steps"] if step.get("name") == "Commit and push what changed")
+        self.assertIn("steps.validate.outputs.apply == 'true'", push["if"])
+
+    def validate(self, patch_text: str, *, recorded: str = "a" * 40, input_sha: str = "a" * 40) -> subprocess.CompletedProcess:
+        job = self.workflow()["jobs"]["push"]
+        program = inline_python(next(step for step in job["steps"] if step.get("id") == "validate"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "regenerated").mkdir()
+            (root / "regenerated" / "regenerated.patch").write_bytes(patch_text.encode("utf-8"))
+            (root / "regenerated" / "input-sha.txt").write_text(recorded, encoding="utf-8")
+            output = root / "github-output"
+            output.write_text("", encoding="utf-8")
+            env = {**os.environ, "RUNNER_TEMP": str(root), "INPUT_SHA": input_sha, "GITHUB_OUTPUT": str(output)}
+            result = subprocess.run([sys.executable, "-B", "-c", program], capture_output=True, text=True, env=env, cwd=root, timeout=60)
+            result.applied = "apply=true" in output.read_text(encoding="utf-8")  # type: ignore[attr-defined]
+            return result
+
+    def make_patch(self, files: dict[str, str | None]) -> str:
+        """A `git diff --cached --binary` of new files, the way the regenerating job writes it."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+            subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "base"], cwd=repo, check=True)
+            for relative, content in files.items():
+                target = repo / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content or "", encoding="utf-8", newline="\n")
+                subprocess.run(["git", "-c", "core.autocrlf=false", "add", "-f", relative], cwd=repo, check=True)
+            return subprocess.run(["git", "-c", "core.autocrlf=false", "diff", "--cached", "--binary"], cwd=repo, check=True, capture_output=True, text=True, encoding="utf-8").stdout
+
+    @unittest.skipUnless(shutil.which("git"), "git is needed to build patches")
+    def test_a_patch_of_lockfiles_pins_and_golden_is_accepted(self) -> None:
+        patch = self.make_patch(
+            {
+                "packs/versions.yml": "x: 1\n",
+                "packs/nextjs-web/{{ app_path }}/package-lock.json.jinja": "{}\n",
+                "packs/python-agent-service/{{ app_path }}/uv.lock.jinja": "x\n",
+                "golden/web/package.json": "{}\n",
+                "golden/backend/gradlew": "#!/bin/sh\n",
+            }
+        )
+        result = self.validate(patch)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertTrue(result.applied)  # type: ignore[attr-defined]
+
+    @unittest.skipUnless(shutil.which("git"), "git is needed to build patches")
+    def test_a_patch_that_touches_anything_else_is_refused(self) -> None:
+        for label, files in {
+            "a workflow": {".github/workflows/release.yml": "name: x\n"},
+            "a script": {"scripts/sync-golden.py": "print()\n"},
+            "the CLI": {"prism_cli/cli.py": "x = 1\n"},
+            "another pack file": {"packs/spring-backend/{{ app_path }}/build.gradle.kts.jinja": "x\n"},
+            "a lockfile of another stack": {"packs/android-compose/{{ app_path }}/uv.lock.jinja": "x\n"},
+            "a path that only starts like golden": {"golden-extra/x": "x\n"},
+            "a good file next to a bad one": {"golden/web/package.json": "{}\n", ".github/workflows/x.yml": "x\n"},
+        }.items():
+            with self.subTest(label):
+                result = self.validate(self.make_patch(files))
+                self.assertNotEqual(0, result.returncode, result.stdout)
+                self.assertFalse(result.applied)  # type: ignore[attr-defined]
+
+    @unittest.skipUnless(shutil.which("git"), "git is needed to build patches")
+    def test_a_symlink_or_a_patch_made_against_another_commit_is_refused(self) -> None:
+        patch = self.make_patch({"golden/web/link": "../../outside"})
+        symlink = patch.replace("new file mode 100644", "new file mode 120000", 1)
+        self.assertNotEqual(0, self.validate(symlink).returncode)
+        self.assertNotEqual(0, self.validate(self.make_patch({"golden/web/a": "x\n"}), recorded="b" * 40).returncode)
+
+    def test_an_empty_patch_applies_nothing(self) -> None:
+        result = self.validate("")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertFalse(result.applied)  # type: ignore[attr-defined]
 
 
 def bash_available() -> bool:

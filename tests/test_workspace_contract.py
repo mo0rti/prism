@@ -111,32 +111,45 @@ class WorkspaceSchemaContractTests(unittest.TestCase):
             unreadable = load_workspace(root)
             self.assertEqual("unreadable-workspace-manifest", unreadable.diagnostics[0].code)
 
-    def test_template_renders_quoted_project_identity_as_valid_yaml(self) -> None:
-        name = 'Quote "Project" \\ Sample'
+    def copy_workspace_layer(self, name: str, output: Path) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [
+                "copier",
+                "copy",
+                "--trust",
+                "--vcs-ref",
+                "HEAD",
+                "--defaults",
+                "--data",
+                f"project_name={name}",
+                "--data",
+                "project_slug=quote-project",
+                ".",
+                str(output),
+            ],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_template_renders_a_project_name_that_is_special_in_yaml_as_valid_yaml(self) -> None:
+        # Characters that are special to a YAML scalar but allowed in a name: a leading `&` (an anchor) and `-` (a sequence entry).
+        for name in ("& Quote (Project) - Sample / Co.", "- Quote, Project + Sample"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory(prefix="prism-template-quoted-contract-") as temp_dir:
+                output = Path(temp_dir) / "output"
+                result = self.copy_workspace_layer(name, output)
+                self.assertEqual(0, result.returncode, result.stderr[-2000:])
+                manifest = yaml.safe_load((output / MANIFEST_FILE).read_text(encoding="utf-8"))
+                self.assertEqual(name, manifest["project"]["name"])
+
+    def test_template_refuses_a_project_name_with_quotes_or_a_backslash(self) -> None:
+        # The name reaches code and configuration, so the validator of copier.yml refuses what the safe-value rule refuses.
         with tempfile.TemporaryDirectory(prefix="prism-template-quoted-contract-") as temp_dir:
             output = Path(temp_dir) / "output"
-            result = subprocess.run(
-                [
-                    "copier",
-                    "copy",
-                    "--trust",
-                    "--vcs-ref",
-                    "HEAD",
-                    "--defaults",
-                    "--data",
-                    f"project_name={name}",
-                    "--data",
-                    "project_slug=quote-project",
-                    ".",
-                    str(output),
-                ],
-                cwd=Path(__file__).resolve().parents[1],
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(0, result.returncode, result.stderr[-2000:])
-            manifest = yaml.safe_load((output / MANIFEST_FILE).read_text(encoding="utf-8"))
-            self.assertEqual(name, manifest["project"]["name"])
+            result = self.copy_workspace_layer('Quote "Project" \\ Sample', output)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("Project name must be one line", result.stderr)
+            self.assertFalse((output / MANIFEST_FILE).exists())
 
 
 class WorkspaceInspectionTests(unittest.TestCase):

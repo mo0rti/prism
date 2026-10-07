@@ -341,6 +341,37 @@ class PageRuleTests(IngestCase):
                 error = self.rejected("ingest", [{"path": path, "content": TOPIC}, manifest_change], moves)
                 self.assertEqual((code, status), (error.code, error.status))
 
+    def test_a_format_template_or_any_underscore_file_cannot_be_written(self) -> None:
+        folder = self.drop_pending("2026-10-08-format")
+        destination = folder.replace("pending", "processed", 1)
+        moves = [{"source": folder, "destination": destination}]
+        manifest_change = {"path": f"{destination}/MANIFEST.md", "content": "# Processed intake\n\n- knowledge/wiki/topics/x.md\n"}
+        for path in (
+            "knowledge/wiki/topics/_FORMAT.md",
+            "knowledge/wiki/research/_FORMAT.md",
+            "knowledge/wiki/plans/_FORMAT.md",
+            "knowledge/wiki/topics/_notes.md",
+            "knowledge/wiki/decisions/_FORMAT.md",
+            "knowledge/wiki/personas/_FORMAT.md",
+        ):
+            with self.subTest(path=path):
+                error = self.rejected("ingest", [{"path": path, "content": TOPIC}, manifest_change], moves)
+                self.assertEqual(("write_path_unavailable", 403), (error.code, error.status))
+                self.assertIn("format template", error.message)
+
+    def test_an_output_that_resolves_to_no_validated_page_kind_is_refused_even_past_the_path_check(self) -> None:
+        # Defense in depth: were an underscore path to get through the write-path check, the semantic check would still refuse it.
+        folder = self.drop_pending("2026-10-08-format")
+        destination = folder.replace("pending", "processed", 1)
+        moves = [{"source": folder, "destination": destination}]
+        manifest_change = {"path": f"{destination}/MANIFEST.md", "content": "# Processed intake\n\n- knowledge/wiki/topics/_FORMAT.md\n"}
+        changes = [{"path": "knowledge/wiki/topics/_FORMAT.md", "content": TOPIC.replace(NAME_TOKEN, "2026-10-08-format")}, manifest_change]
+        with patch.object(self.service, "_assert_skill_write_path"):
+            error = self.rejected("ingest", changes, moves)
+        self.assertEqual(("unsupported_page_kind", 409), (error.code, error.status))
+        original = (self.root / "knowledge/wiki/topics/_FORMAT.md").read_text(encoding="utf-8")
+        self.assertNotIn("Payment flows", original, "the format template was not overwritten")
+
     def test_a_persona_or_business_rule_is_created_and_never_rewritten(self) -> None:
         persona = _journey_persona_page().replace("2026-10-06-document-review-brief/brief.md", "NAME/note.md")
         rule = _journey_business_rule_page().replace("2026-10-06-document-review-brief/brief.md", "NAME/note.md")

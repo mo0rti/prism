@@ -65,6 +65,7 @@ from prism_cli.wiki_index import (
     parse_index_entries,
 )
 from prism_cli.wiki_links import heading_anchors, iter_markdown_links, parse_external_link
+from prism_cli.wiki_paths import REPARSE, UNSAFE, decoded_link_path, resolve_confined, resolve_to_path
 from prism_cli.wiki_log import (
     LOG_FIELD_PATTERN,
     LOG_FIELDS,
@@ -1178,7 +1179,7 @@ def _lint_superseded_decision_citations(pages: list[MarkdownPage], wiki_root: Pa
             continue
         cited: set[Path] = set()
         for raw_target in extract_markdown_links(page.body):
-            candidate = _candidate_relative_link(page.path, raw_target)
+            candidate = _candidate_relative_link(page.path, raw_target, _resolve(wiki_root))
             if candidate is not None and candidate in superseded and candidate not in cited:
                 cited.add(candidate)
                 key, successor = superseded[candidate]
@@ -1448,25 +1449,31 @@ class _LinkChecker:
         except ValueError:
             return None
         if not target or parsed.scheme or parsed.netloc or parsed.path.startswith("/"):
-            return None  # a URL, a mail link or an absolute path is not a relative link
+            return None  # a URL, a mail link or a web path as written is not a relative link
         subject = f"Relative link `{raw_target}`"
         fragment = unquote(parsed.fragment)
         if not parsed.path:
             return self._anchor_finding(page_path, fragment, subject, "this page") if fragment else None
+        # The path is decoded, checked and confined as text first (UNC, rooted, drive-qualified, backslash and `..`
+        # forms are refused before any filesystem call); only then are its components looked at.
         try:
-            candidate = (page_path.parent / unquote(parsed.path)).resolve()
+            base = _resolve(page_path.parent)
         except (OSError, RuntimeError, ValueError):
             return _LinkFinding("broken-link", "error", subject, "does not resolve to an existing file or folder.")
-        try:
-            candidate.relative_to(self.root)
-        except ValueError:
+        resolution = resolve_confined(self.root, base, parsed.path)
+        if resolution.kind == UNSAFE:
+            return _LinkFinding("broken-link", "error", subject, f"is not a safe relative path: it {resolution.problem}")
+        if resolution.kind == REPARSE:
+            return _LinkFinding("broken-link", "error", subject, resolution.problem or "passes through a symlink or reparse point.")
+        if not resolution.ok or resolution.path is None:
             return _LinkFinding(
                 "broken-link",
                 "error",
                 subject,
                 "leaves the workspace. Link a file of an external repository as `repo:<repository-id>/<path>`.",
             )
-        if not _path_exists(candidate):
+        candidate = resolution.path
+        if not resolution.exists:
             return _LinkFinding("broken-link", "error", subject, "does not resolve to an existing file or folder.", gates=self._in_wiki(candidate))
         if fragment and candidate.suffix.lower() == ".md" and candidate.is_file():
             return self._anchor_finding(candidate, fragment, subject, f"`{candidate.name}`")
@@ -1482,7 +1489,14 @@ class _LinkChecker:
         if external is not None:
             return self._check_external(*external, subject=subject)
         parts = source_link_parts(entry, path_only=path_only)
-        if parts is None or _path_exists(self.root.joinpath(*parts)):
+        if parts is None:
+            return None
+        resolution = resolve_confined(self.root, self.root, "/".join(parts), percent_encoded=False)
+        if resolution.kind == UNSAFE:
+            return _LinkFinding("broken-link", "error", subject, f"is not a safe workspace path: it {resolution.problem}")
+        if resolution.kind == REPARSE:
+            return _LinkFinding("broken-link", "error", subject, resolution.problem or "passes through a symlink or reparse point.")
+        if resolution.ok and resolution.exists:
             return None
         hint = (
             f" It is in the pending intake queue, which moves when intake applies; list `{processed_source_path(parts)}` instead."
@@ -1575,16 +1589,10 @@ def _exists_in_checkout(checkout: Path, relative: str) -> bool | None:
     The walk only looks at directory entries: it never reads a file and never leaves the checkout.
     """
 
-    current = checkout
-    for part in relative.split("/"):
-        current = current / part
-        try:
-            info = current.lstat()
-        except OSError:
-            return False
-        if reparse_kind(info) != "none":
-            return None
-    return True
+    resolution = resolve_confined(checkout, checkout, relative, percent_encoded=False)
+    if resolution.kind == REPARSE:
+        return None
+    return resolution.ok and resolution.exists
 
 
 def _source_fields(page: MarkdownPage, wiki_root: Path) -> list[tuple[str, bool, list[Any]]]:
@@ -1687,21 +1695,26 @@ def _wiki_path_references(body: str, directory: str) -> list[str]:
 
 
 def _reference_path(source_path: Path, raw_target: str, wiki_root: Path, directory: str) -> Path | None:
-    normalized = unquote(raw_target).replace("\\", "/")
+    """The page a link or a plain path reference names, or ``None``. Every form goes through the shared resolver."""
+
+    normalized, _problem = decoded_link_path(raw_target)
+    if normalized is None:
+        return None
+    root = _resolve(wiki_root)
     marker = "knowledge/wiki/"
     if marker in normalized:
         target = normalized.split(marker, 1)[1]
         if not target.startswith(f"{directory}/"):
             return None
-        return _resolve(wiki_root / target)
+        return resolve_to_path(root, root, target)
     if normalized.startswith("wiki/"):
         target = normalized.split("wiki/", 1)[1]
         if not target.startswith(f"{directory}/"):
             return None
-        return _resolve(wiki_root / target)
+        return resolve_to_path(root, root, target)
     if normalized.startswith(f"{directory}/"):
-        return _resolve(wiki_root / normalized)
-    return _candidate_relative_link(source_path, normalized)
+        return resolve_to_path(root, root, normalized)
+    return _candidate_relative_link(source_path, normalized, root)
 
 
 def _is_non_source_page(path: Path, wiki_root: Path) -> bool:

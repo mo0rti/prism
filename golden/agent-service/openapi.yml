@@ -60,6 +60,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/LocalOnly'
         '429':
           $ref: '#/components/responses/BudgetExceeded'
         '502':
@@ -156,8 +158,15 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
 
+    LocalOnly:
+      description: The service runs with the local development identity and answers callers on its own machine only
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
     BudgetExceeded:
-      description: The caller's request or token budget is used up
+      description: The caller's request, token or concurrent-request budget is used up
       headers:
         Retry-After:
           schema:

@@ -47,9 +47,9 @@ Copy `.env.example` to `.env.local` first. `API_BASE_URL` is the backend's addre
 ## Sign-in And Session
 
 1. The sign-in page posts the form to `POST /api/session`.
-2. The route handler calls the backend's `POST /api/dev-identity/token` with the generated client and stores the token in the `web_session` cookie: httpOnly, `SameSite=Lax`, `Secure` on HTTPS.
+2. The route handler calls the backend's `POST /api/dev-identity/token` with the generated client and stores the token in the `web_session` cookie: httpOnly, `SameSite=Lax`, `Secure` on HTTPS. The route relays a caller into an identity that exists for this machine only, so it answers only when `LOCAL_DEV_SIGNIN=1` (`.env.development`, which `next dev` loads and `next build` and `next start` do not), only to a request that carries this app's own `Origin`, and only to a request from this machine; the dev server and `npm start` listen on 127.0.0.1 only.
 3. `app/page.tsx` reads the cookie on the server and calls `GET /api/me` with the token. A missing cookie or a 401 sends the visitor to the sign-in.
-4. `DELETE /api/session` expires the cookie.
+4. `DELETE /api/session` expires the cookie; it needs the same `Origin` header.
 
 The backend serves the dev identity only under its `local` profile and to loopback requests. It is not complete authentication: replace it with your identity provider before anything ships (see the `web-conventions` and `security-auth` skills).
 

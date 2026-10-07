@@ -3,10 +3,10 @@ name: prism-golden
 services:
   backend:
     build:
-      context: ./backend
+      context: "./backend"
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     # No Spring profile is set here: a container never runs the `local` development identity.
     environment:
       PORT: "8080"
@@ -23,8 +23,9 @@ services:
       POSTGRES_DB: ${DATABASE_NAME:-prism_golden}
       POSTGRES_USER: ${DATABASE_USERNAME:-prism_golden}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-localdev}
+    # The password is a known development default: every published port stays on this machine (127.0.0.1).
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

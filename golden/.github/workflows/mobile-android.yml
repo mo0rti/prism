@@ -18,6 +18,9 @@ on:
 permissions:
   contents: read
 
+env:
+  APP_PATH: "mobile-android"
+
 jobs:
   build:
     name: Build the debug APK and run the unit tests
@@ -27,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Make Gradle wrapper executable
-        run: chmod +x mobile-android/gradlew
+        run: chmod +x "$APP_PATH/gradlew"
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -47,23 +50,23 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('mobile-android/**/*.gradle*', 'mobile-android/gradle/libs.versions.toml', 'mobile-android/gradle/wrapper/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles(format('{0}/**/*.gradle*', env.APP_PATH), format('{0}/gradle/libs.versions.toml', env.APP_PATH), format('{0}/gradle/wrapper/gradle-wrapper.properties', env.APP_PATH)) }}
 
       # The build needs no secret and no production credential, and no emulator: the Compose UI test
       # runs on the JVM with Robolectric.
       - name: Build the debug APK and run the unit tests
-        working-directory: mobile-android
+        working-directory: ${{ env.APP_PATH }}
         run: ./gradlew assembleDebug testDebugUnitTest
 
       - name: Upload the debug APK
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
-          path: mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.APP_PATH }}/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
-          path: mobile-android/app/build/reports/tests/
+          path: ${{ env.APP_PATH }}/app/build/reports/tests/

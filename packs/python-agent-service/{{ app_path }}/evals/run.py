@@ -29,6 +29,7 @@ from app.config import ConfigurationError, Settings
 from app.providers.base import Provider, Usage
 from app.providers.factory import build_provider
 from app.safety.audit import AuditLog
+from app.safety.budget import unlimited_turn
 from app.tools.backend_profile import GetMyProfile
 from app.tools.base import ToolContext
 from app.tools.registry import ToolRegistry
@@ -146,6 +147,8 @@ async def run_case(case: EvalCase, provider: Provider) -> CaseResult:
             context=ToolContext(caller=caller, request_id=f"eval-{case.id}", backend=backend),
             audit=AuditLog(lambda _record: None),
             max_tool_calls=4,
+            budget=unlimited_turn(),
+            output_token_cap=1024,
         )
     called = [call.name for call in result.tool_calls]
     answer = result.answer.lower()

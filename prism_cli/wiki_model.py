@@ -17,6 +17,8 @@ from urllib.parse import unquote, urlsplit
 
 import yaml
 
+from prism_cli.wiki_paths import resolve_to_path
+
 
 VALID_FEATURE_STATUSES = {"raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done"}
 VALID_FEATURE_OWNERS = {"po", "designer", "dev", "none"}
@@ -481,34 +483,30 @@ def normalize_feature_id(value: str) -> str:
     return value.strip().lower()
 
 
-def candidate_relative_markdown_link(source_path: Path, raw_target: str) -> Path | None:
-    """Resolve a relative Markdown path, without assigning it to a wiki root."""
+def candidate_relative_markdown_link(source_path: Path, raw_target: str, boundary: Path) -> Path | None:
+    """Resolve a relative Markdown path of a page to a file path below `boundary`, or ``None``.
+
+    `raw_target` is a link target as `extract_markdown_links` returns it (already percent-decoded). The shared
+    resolver (`prism_cli/wiki_paths.py`) refuses a UNC, rooted, drive-qualified or backslash path, a double-encoded
+    one, a `..` escape and a path through a link before any filesystem call.
+    """
 
     try:
         parsed = urlsplit(raw_target)
     except ValueError:
         return None
-    if parsed.scheme or parsed.netloc or "\x00" in parsed.path or not parsed.path.lower().endswith(".md"):
-        return None
-    target = Path(parsed.path)
-    if target.is_absolute():
+    if parsed.scheme or parsed.netloc or not parsed.path.lower().endswith(".md"):
         return None
     try:
-        return (source_path.parent / target).resolve()
+        base = source_path.parent.resolve()
+        return resolve_to_path(boundary.resolve(), base, parsed.path, percent_encoded=False)
     except (OSError, RuntimeError, ValueError):
         return None
 
 
 def resolve_relative_markdown_link(source_path: Path, raw_target: str, wiki_root: Path) -> Path | None:
     """Resolve a relative markdown target when it stays inside the wiki root."""
-    resolved = candidate_relative_markdown_link(source_path, raw_target)
-    if resolved is None:
-        return None
-    try:
-        resolved.relative_to(wiki_root.resolve())
-    except ValueError:
-        return None
-    return resolved
+    return candidate_relative_markdown_link(source_path, raw_target, wiki_root)
 
 
 _NO_API_SURFACE = frozenset(

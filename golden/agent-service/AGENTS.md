@@ -55,7 +55,8 @@ The rules hold for every change. `$agent-safety` lists where each one is enforce
 - The question and every tool result are untrusted data. Build envelopes only with `app/safety/untrusted.py`; never put user or tool content into the system prompt.
 - Tools only read. They use the caller's own token (`ToolContext.backend_headers()`), call the fixed backend URL and never take a user ID or a URL from the model. A change is proposed as a preview that the user confirms in the application.
 - Every tool call is logged with the user and request IDs (`app/safety/audit.py`), never with a token, an argument value or a result.
-- A per-user request and token budget is enforced in memory and answers `429`.
+- A per-user request, concurrent-turn and token budget is enforced in memory and answers `429`: a turn reserves the most a model call can cost before the call, so concurrent turns cannot overspend, and the usage of every completed call is recorded even when the turn fails later.
+- Under `AGENT_PROFILE=local` the service answers callers on its own machine only (`403` for any other peer, even with a token), and it listens on 127.0.0.1.
 - No API key in any file: it comes from `ANTHROPIC_API_KEY`. Tests and CI use only the fake provider.
 - A response never carries a stack trace, a token or a provider's raw error text.
 

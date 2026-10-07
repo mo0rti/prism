@@ -27,6 +27,8 @@ from prism_cli.app_model import (
     is_slug,
     normalize_manifest,
 )
+from prism_cli.safe_values import label_problem
+from prism_cli.wiki_paths import resolve_confined
 
 
 PACKS_DIR = "packs"
@@ -178,14 +180,71 @@ def assign_ports(apps: Iterable[Mapping[str, Any]], taken: Iterable[int] = ()) -
 
 
 def read_app_answers(root: Path, app_path: str) -> dict[str, Any] | None:
-    """The remembered answers of a scaffolded app, or ``None`` when its answers file is missing or unreadable."""
+    """The remembered answers of a scaffolded app, or ``None`` when its answers file is missing, unreadable or behind a link.
 
-    path = root / app_answers_path(app_path)
+    The path is confined to the workspace first: an answers file that is a symlink or a reparse point, or that sits
+    below one, is not read.
+    """
+
+    resolution = resolve_confined(root, root, app_answers_path(app_path), percent_encoded=False)
+    if not resolution.ok or resolution.path is None:
+        return None
+    path = resolution.path
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except (OSError, UnicodeError, yaml.YAMLError, ValueError, OverflowError):
         return None
     return data if isinstance(data, dict) else None
+
+
+COMMIT_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/+-]{0,199}")
+
+
+def layer_answers_problems(recorded: Mapping[str, Any], workspace: Mapping[str, Any], app: Mapping[str, Any], *, approved_source: str) -> list[str]:
+    """Why an app layer's saved answers cannot be trusted for an update, as sentences; empty when they can.
+
+    The update runs Copier with `--trust` against each layer's answers file, so a saved answer is as good as code:
+    the layer must come from the same approved template source as the workspace, name a plain revision, and carry
+    the identity and the derived values that the manifest and the workspace give it. ``app`` is the manifest entry
+    (`id`, `name`, `stack`, `path`, `audience`); ``workspace`` holds the workspace layer's saved answers.
+    """
+
+    problems: list[str] = []
+    label = f"App `{app['id']}`"
+    source = recorded.get("_src_path")
+    if source != approved_source:
+        problems.append(
+            f"{label} records the template source `{source}`, which is not the workspace's approved source `{approved_source}`. "
+            "An update runs the template of each layer with trust, so every layer must come from the workspace's own source."
+        )
+    revision = recorded.get("_commit")
+    if revision is not None and not (isinstance(revision, str) and COMMIT_PATTERN.fullmatch(revision)):
+        problems.append(f"{label} records a template revision that is not a plain tag or commit name.")
+    project = {key: workspace.get(key) for key in ("project_name", "project_slug", "package_identifier")}
+    if not all(isinstance(value, str) and value for value in project.values()):
+        problems.append("The workspace's saved answers do not record its project name, slug and package identifier.")
+        return problems
+    port = recorded.get("port")
+    if not isinstance(port, int) or isinstance(port, bool) or port < 0:
+        problems.append(f"{label} records a port that is not a number.")
+        return problems
+    expected = pack_answers(project, app, port=port)
+    # The name and the audience may have changed in the manifest since; they only have to be safe to render.
+    for key in ("app_name", "audience"):
+        value = recorded.get(key)
+        if not isinstance(value, str) or label_problem(value) is not None:
+            problems.append(f"{label} records a `{key}` that is not safe to render.")
+    if recorded.get("ci_workflow_name") != f"{recorded.get('app_name')} CI":
+        problems.append(f"{label} records a `ci_workflow_name` that is not its app name followed by ` CI`.")
+    for key in ("prism_layer", "app_id", "app_path"):
+        if key not in recorded:
+            problems.append(f"{label} records no `{key}`.")
+    for key, wanted in expected.items():
+        if key in {"app_name", "audience", "ci_workflow_name", "port"}:
+            continue
+        if key in recorded and recorded[key] != wanted:
+            problems.append(f"{label} records `{key}: {recorded[key]}`, but its manifest entry and the workspace give `{wanted}`.")
+    return problems
 
 
 def taken_ports(root: Path, apps: Iterable[Mapping[str, Any]]) -> set[int]:

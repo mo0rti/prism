@@ -1,0 +1,48 @@
+package com.example.prismgolden.backend.bootstrap.security
+
+import org.springframework.security.oauth2.core.OAuth2Error
+import org.springframework.security.oauth2.core.OAuth2TokenValidator
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult
+import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.security.oauth2.jwt.JwtDecoder
+import org.springframework.security.oauth2.jwt.JwtValidationException
+
+/**
+ * Accepts a token only when its `aud` claim names one of this API's audiences. A token without `aud`, or meant for
+ * another API of the same identity provider, fails.
+ */
+class AudienceValidator(private val audiences: Set<String>) : OAuth2TokenValidator<Jwt> {
+
+    init {
+        require(audiences.isNotEmpty()) { "At least one audience is required." }
+    }
+
+    override fun validate(token: Jwt): OAuth2TokenValidatorResult {
+        val claimed = token.audience.orEmpty()
+        return if (claimed.any { it in audiences }) {
+            OAuth2TokenValidatorResult.success()
+        } else {
+            OAuth2TokenValidatorResult.failure(
+                OAuth2Error("invalid_token", "The token is not meant for this API.", null)
+            )
+        }
+    }
+}
+
+/** A decoder that runs [AudienceValidator] on every token the decoder it wraps accepts, whatever kind that decoder is. */
+class AudienceCheckingJwtDecoder(
+    private val delegate: JwtDecoder,
+    audiences: Set<String>
+) : JwtDecoder {
+
+    private val validator = AudienceValidator(audiences)
+
+    override fun decode(token: String): Jwt {
+        val jwt = delegate.decode(token)
+        val result = validator.validate(jwt)
+        if (result.hasErrors()) {
+            throw JwtValidationException("The token is not meant for this API.", result.errors)
+        }
+        return jwt
+    }
+}

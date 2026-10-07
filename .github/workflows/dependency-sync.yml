@@ -5,6 +5,12 @@ name: Dependency Sync
 # refreshes the lockfiles of the stacks whose pins moved and regenerates golden/ (scripts/sync-golden.py), and
 # pushes that to the pull request branch. The pull request then carries the pins, the lockfiles and golden/ together.
 #
+# The work is split so that tooling nobody reviewed never holds a write token:
+# - `regenerate` runs the branch's scripts and the newly selected toolchains (uv, npm) with a read-only token that
+#   is not persisted, and uploads what changed as one patch, pinned to the SHA of the pull request head it read;
+# - `push` holds the write token and runs none of that code: it checks that the branch is still at that SHA, that
+#   the patch touches only the pack lockfiles, packs/versions.yml and golden/, then applies it and pushes.
+#
 # A push made with the default token starts no workflows, so the validation workflows are started by hand on the
 # branch. When the repository secret PRISM_BOT_TOKEN (a token that may push to the repository) is set, the push
 # uses it and starts them as for any other push, and no manual start is made.
@@ -16,32 +22,33 @@ on:
       - "packs/versions.yml"
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 concurrency:
   group: dependency-sync-${{ github.head_ref }}
   cancel-in-progress: true
 
 jobs:
-  sync:
+  regenerate:
     name: Regenerate the lockfiles and golden/
-    # Only the bot's pull requests from this repository: the job runs code of the branch with a write token.
+    # Only the bot's pull requests from this repository: the job runs code of the branch.
     if: ${{ github.actor == 'renovate[bot]' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'renovate/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
     env:
-      HAS_BOT_TOKEN: ${{ secrets.PRISM_BOT_TOKEN != '' }}
-      HEAD_REF: ${{ github.head_ref }}
       BASE_REF: ${{ github.base_ref }}
+      INPUT_SHA: ${{ github.event.pull_request.head.sha }}
 
     steps:
-      - name: Checkout the pull request branch
+      # The commit the patch is made against is fixed here, and no credential stays in the checkout.
+      - name: Checkout the pull request head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          token: ${{ secrets.PRISM_BOT_TOKEN || github.token }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -73,18 +80,125 @@ jobs:
       - name: Refresh the lockfiles and regenerate golden/
         run: python scripts/sync-golden.py --base "origin/$BASE_REF"
 
+      - name: Collect what changed as one patch
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/regenerated"
+          git add -A packs golden
+          git diff --cached --binary > "$RUNNER_TEMP/regenerated/regenerated.patch"
+          printf '%s' "$INPUT_SHA" > "$RUNNER_TEMP/regenerated/input-sha.txt"
+          wc -c "$RUNNER_TEMP/regenerated/regenerated.patch"
+
+      - name: Upload the patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: regenerated
+          path: ${{ runner.temp }}/regenerated/
+          if-no-files-found: error
+          retention-days: 3
+
+  push:
+    name: Validate the patch and push it
+    needs: regenerate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Holds the write token and runs nothing of the branch or of the regenerating tools.
+    permissions:
+      contents: write
+      actions: write
+    env:
+      HAS_BOT_TOKEN: ${{ secrets.PRISM_BOT_TOKEN != '' }}
+      HEAD_REF: ${{ github.head_ref }}
+      INPUT_SHA: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - name: Checkout the pull request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.PRISM_BOT_TOKEN || github.token }}
+
+      - name: Require the branch to be where the patch was made
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$INPUT_SHA" ]; then
+            echo "::notice::The branch moved after the patch was made; the run for its newest commit regenerates again."
+            echo "stale=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Download the patch
+        if: ${{ env.stale != 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: regenerated
+          path: ${{ runner.temp }}/regenerated/
+
+      - name: Check that the patch touches only the lockfiles, the pins and golden/
+        id: validate
+        if: ${{ env.stale != 'true' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          directory = os.environ["RUNNER_TEMP"] + "/regenerated"
+          with open(directory + "/input-sha.txt", encoding="utf-8") as handle:
+              recorded = handle.read().strip()
+          if recorded != os.environ["INPUT_SHA"]:
+              sys.exit(f"The patch was made against {recorded}, not against {os.environ['INPUT_SHA']}.")
+
+          patch = directory + "/regenerated.patch"
+          if os.path.getsize(patch) == 0:
+              print("The lockfiles and golden/ already match the pins.")
+              sys.exit(0)
+          allowed = (
+              re.compile(r"packs/versions\.yml"),
+              re.compile(r"packs/(?:nextjs-web|python-agent-service)/[^/]+/(?:package-lock\.json|uv\.lock)\.jinja"),
+              re.compile(r"golden/[^\x00]+"),
+          )
+          counted = subprocess.run(["git", "apply", "--numstat", "-z", patch], check=True, capture_output=True).stdout
+          paths = []
+          for record in counted.split(b"\0"):
+              if not record:
+                  continue
+              fields = record.split(b"\t", 2)
+              if len(fields) != 3:
+                  sys.exit("Unexpected `git apply --numstat` output; refusing the patch.")
+              paths.append(fields[2].decode("utf-8"))
+          if not paths:
+              print("The lockfiles and golden/ already match the pins.")
+              sys.exit(0)
+          problems = []
+          for path in paths:
+              parts = path.split("/")
+              if path.startswith("/") or ".." in parts or not any(pattern.fullmatch(path) for pattern in allowed):
+                  problems.append(path)
+          with open(patch, encoding="utf-8", errors="replace") as handle:
+              for line in handle:
+                  if re.match(r"(old mode|new mode|rename |copy |similarity |deleted file mode 120000|new file mode (?!100644|100755))", line):
+                      problems.append(line.strip())
+          if problems:
+              print("::error::The patch changes more than the lockfiles, packs/versions.yml and golden/: " + ", ".join(problems[:20]))
+              sys.exit(1)
+          print(f"The patch touches {len(paths)} file(s), all of them lockfiles, pins or golden/.")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("apply=true\n")
+          PY
+
       - name: Commit and push what changed
         id: push
+        if: ${{ steps.validate.outputs.apply == 'true' }}
+        env:
+          PATCH: ${{ runner.temp }}/regenerated/regenerated.patch
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A packs golden
-          if git diff --cached --quiet; then
-            echo "The lockfiles and golden/ already match the pins."
-            echo "pushed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          git apply --index --whitespace=nowarn "$PATCH"
           git commit -m "Regenerate the lockfiles and golden/ after the pin update"
           git push origin "HEAD:$HEAD_REF"
           echo "pushed=true" >> "$GITHUB_OUTPUT"

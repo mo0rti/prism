@@ -52,7 +52,7 @@ Reference: `references/azure-setup.md` (the guide) and `references/azure/` (the 
 
 1. Confirm the subscription, region and environment (`prod`, `acc`, `dev`) with the user.
 2. Copy `references/azure/` into the repository as `infra/azure/` and add the credential files to `.gitignore` (the guide lists them). The scripts find the repository root two folders above themselves, and they build the backend from `backend/`: adapt the path when the app lives elsewhere.
-3. Copy `azure-config.env.example` to `azure-config.env` and `app-secrets.env.example` to `app-secrets.env`; the user fills in the values, including the identity provider's issuer.
+3. Copy `azure-config.env.example` to `azure-config.env` and `app-secrets.env.example` to `app-secrets.env`; the user fills in the values, including the identity provider's issuer and the audience of the API (the backend refuses to start with an issuer and no audience).
 4. Run the numbered scripts in order, from `00-setup-resource-group.sh` to `07-show-deployment-info.sh`: resource group, container registry and log analytics, PostgreSQL Flexible Server, Container Apps environment, blob storage, image build and push, container app deploy, deployment info.
 5. Verify with `curl https://<backend-url>/actuator/health`.
 6. Redeploy with `update-backend.sh`: it rebuilds the image, pushes it and creates a new revision.

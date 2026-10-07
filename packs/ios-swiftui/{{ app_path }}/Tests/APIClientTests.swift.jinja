@@ -21,6 +21,20 @@ final class APIClientTests: XCTestCase {
         XCTAssertNil(APIURL.make(baseURL: "localhost:8080", path: "/api/me"))
     }
 
+    func testARequestToAnHTTPBackendIsRefusedWhereCleartextIsNotAllowed() {
+        // What a Release build does: the bearer token is only ever sent over https.
+        XCTAssertNil(APIURL.make(baseURL: "http://localhost:8080", path: "/api/me", allowsCleartext: false))
+        XCTAssertNil(APIURL.make(baseURL: "http://api.example.com", path: "/api/me", allowsCleartext: false))
+        XCTAssertNil(APIURL.make(baseURL: "ftp://api.example.com", path: "/api/me", allowsCleartext: false))
+        XCTAssertEqual(APIURL.make(baseURL: "https://api.example.com/", path: "api/me", allowsCleartext: false)?.absoluteString, "https://api.example.com/api/me")
+        XCTAssertNotNil(APIURL.make(baseURL: "HTTPS://api.example.com", path: "/api/me", allowsCleartext: false))
+    }
+
+    func testOnlyHTTPAndHTTPSAreAcceptedWhereCleartextIsAllowed() {
+        XCTAssertNotNil(APIURL.make(baseURL: "http://localhost:8080", path: "/api/me", allowsCleartext: true))
+        XCTAssertNil(APIURL.make(baseURL: "ftp://localhost", path: "/api/me", allowsCleartext: true))
+    }
+
     func testBundledBaseURLKeepsSchemeAndHost() {
         let configured = APIURL.configuredBaseURL()
         // A test bundle without a host app has no API_BASE_URL; with the app as host, Debug sets the local backend.

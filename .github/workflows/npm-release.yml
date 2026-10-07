@@ -42,10 +42,12 @@ jobs:
       id-token: write
 
     steps:
+      # A run after the Release workflow checks out the commit it built. A manual run names a tag, and the full ref
+      # makes the checkout fail for a branch of that name.
       - name: Checkout the tagged commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || inputs.tag }}
+          ref: ${{ github.event.workflow_run.head_sha || format('refs/tags/{0}', inputs.tag) }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -55,6 +57,15 @@ jobs:
           TAG: ${{ github.event.workflow_run.head_branch || inputs.tag }}
         run: |
           set -eu
+          # The release is a tag, never a branch: refs/tags/<tag> must exist and name the checked-out commit.
+          if ! git rev-parse --verify --quiet "refs/tags/${TAG}^{commit}" > /dev/null; then
+            echo "::error::refs/tags/$TAG does not exist. A release is a tag; a branch named like one is not accepted."
+            exit 1
+          fi
+          if [ "$(git rev-parse "refs/tags/${TAG}^{commit}")" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::The tag $TAG does not point at the commit that the Release workflow built."
+            exit 1
+          fi
           if ! git tag --points-at HEAD | grep -Fxq "$TAG"; then
             echo "::error::The tag $TAG does not point at the commit that the Release workflow built."
             exit 1

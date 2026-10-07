@@ -9,6 +9,11 @@
 ``packs/audit-allowlist.yml`` lists its advisory for the stack, with the advisory link and the reason
 (a test enforces both). An allowed finding is printed with its link; an allow-list entry that no
 longer matches a finding is reported so that it gets removed. Nothing is hidden silently.
+
+The gate fails closed. An ``npm audit`` that exits with anything but 0 (clean) or 1 (findings), that returns a
+report without the expected structure, or whose exit status and report disagree (a failure with no finding, a
+clean exit with a finding) is an operational error, never "no unlisted advisory". ``uv audit`` is held to the same
+exit statuses.
 """
 
 from __future__ import annotations
@@ -75,6 +80,33 @@ def npm_findings(report: dict, level: str = "high") -> list[dict[str, str]]:
     return sorted(found.values(), key=lambda finding: finding["advisory"])
 
 
+def npm_report_problem(report: object, returncode: int, level: str) -> str | None:
+    """Why an ``npm audit --json`` result cannot be trusted as an audit, or ``None`` when it can."""
+
+    if returncode not in (0, 1):
+        return f"npm audit exited with status {returncode}, which is neither a clean audit (0) nor findings (1)."
+    if not isinstance(report, dict):
+        return "npm audit did not return a JSON object."
+    if "error" in report and "vulnerabilities" not in report:
+        return f"npm audit failed: {json.dumps(report['error'])[:1500]}"
+    vulnerabilities = report.get("vulnerabilities")
+    metadata = report.get("metadata")
+    if (
+        report.get("auditReportVersion") != 2
+        or not isinstance(vulnerabilities, dict)
+        or not isinstance(metadata, dict)
+        or not isinstance(metadata.get("vulnerabilities"), dict)
+        or not all(isinstance(entry, dict) and isinstance(entry.get("via", []), list) for entry in vulnerabilities.values())
+    ):
+        return "npm audit returned a report without the expected structure (auditReportVersion 2 with vulnerabilities and metadata)."
+    findings = npm_findings(report, level)
+    if returncode == 1 and not findings:
+        return f"npm audit exited with status 1, but its report lists no advisory of severity {level} or above."
+    if returncode == 0 and findings:
+        return f"npm audit exited with status 0, but its report lists {len(findings)} advisory(ies) of severity {level} or above."
+    return None
+
+
 def classify(findings: list[dict[str, str]], allowed: list[dict[str, str]]) -> tuple[list[dict], list[dict], list[dict]]:
     """Blocked findings, allowed findings and allow-list entries that matched nothing."""
 
@@ -106,8 +138,9 @@ def run_npm(directory: Path, stack: str, allowlist: Path, level: str) -> int:
     except json.JSONDecodeError:
         print(f"npm audit returned no report (exit {result.returncode}): {(result.stdout + result.stderr)[-1500:]}", file=sys.stderr)
         return 1
-    if "error" in report and "vulnerabilities" not in report:
-        print(f"npm audit failed: {json.dumps(report['error'])[:1500]}", file=sys.stderr)
+    problem = npm_report_problem(report, result.returncode, level)
+    if problem is not None:
+        print(f"::error::{problem} The audit did not run, so nothing is reported as clean. {(result.stderr or '')[-500:]}", file=sys.stderr)
         return 1
     findings = npm_findings(report, level)
     allowed = load_allowlist(allowlist, stack)
@@ -142,9 +175,13 @@ def run_uv(directory: Path, stack: str, allowlist: Path) -> int:
     for entry in allowed:
         print(f"allowed: {entry['advisory']} {entry['package']} {entry['url']}")
     result = subprocess.run(command, cwd=directory, text=True, errors="replace")
-    if result.returncode != 0:
-        print(f"uv audit reported a finding (exit {result.returncode}). Move the pin in packs/versions.yml to a fixed version and run scripts/sync-golden.py.", file=sys.stderr)
-    return result.returncode
+    if result.returncode == 0:
+        return 0
+    if result.returncode == 1:
+        print("uv audit reported a finding (exit 1). Move the pin in packs/versions.yml to a fixed version and run scripts/sync-golden.py.", file=sys.stderr)
+        return 1
+    print(f"::error::uv audit exited with status {result.returncode}, which is neither a clean audit (0) nor findings (1). The audit did not run, so nothing is reported as clean.", file=sys.stderr)
+    return result.returncode if result.returncode > 0 else 1
 
 
 def main(argv: list[str] | None = None) -> int:

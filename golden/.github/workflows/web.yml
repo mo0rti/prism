@@ -15,13 +15,16 @@ on:
       - ".github/workflows/web.yml"
   workflow_dispatch:
 
+env:
+  APP_PATH: "web"
+
 jobs:
   verify:
     name: Install, lint, typecheck, test, build
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: web
+        working-directory: ${{ env.APP_PATH }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,7 +33,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: ${{ env.APP_PATH }}/package-lock.json
 
       - name: Install dependencies
         run: npm ci

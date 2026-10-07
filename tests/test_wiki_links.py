@@ -349,5 +349,134 @@ class ExternalRepositoryTests(LinkCase):
         self.assertIn("symlink or reparse point", broken[0].message)
 
 
+
+MARKER = "attacker.invalid"
+
+
+class FilesystemSpy:
+    """Fails the test when a filesystem call names a path that carries the marker of a hostile link.
+
+    A rejected link must be refused as text: no `stat`, `lstat`, `realpath` (what `Path.resolve` calls),
+    `exists` or directory scan may be made for it, because on Windows such a call on a UNC or a
+    drive-qualified path reaches a network share or another volume.
+    """
+
+    NAMES = ("os.stat", "os.lstat", "os.scandir", "os.listdir", "os.path.realpath", "os.path.exists", "os.path.isfile", "os.path.isdir", "os.path.islink")
+
+    def __init__(self, case: unittest.TestCase) -> None:
+        self.case = case
+        self.calls: list[str] = []
+
+    def __enter__(self) -> "FilesystemSpy":
+        from unittest.mock import patch
+
+        self.patches = []
+        for name in self.NAMES:
+            module_name, attribute = name.rsplit(".", 1)
+            module = os if module_name == "os" else os.path
+            original = getattr(module, attribute)
+            patcher = patch.object(module, attribute, side_effect=self._wrap(name, original))
+            patcher.start()
+            self.patches.append(patcher)
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        for patcher in self.patches:
+            patcher.stop()
+
+    def _wrap(self, name: str, original):
+        def spy(*args, **kwargs):
+            if any(MARKER in os.fsdecode(argument) for argument in args if isinstance(argument, (str, bytes, os.PathLike))):
+                self.calls.append(f"{name}{args!r}")
+                raise AssertionError(f"filesystem call for a hostile path: {name}{args!r}")
+            return original(*args, **kwargs)
+
+        return spy
+
+
+HOSTILE_LINKS = {
+    "encoded UNC with slashes": f"%2F%2F{MARKER}%2Fshare%2Fprobe.md",
+    "encoded UNC with backslashes": f"%5C%5C{MARKER}%5Cshare%5Cprobe.md",
+    "literal UNC with backslashes": f"\\\\{MARKER}\\share\\probe.md",
+    "drive letter": f"C%3A%2F{MARKER}%2Fprobe.md",
+    "drive letter without a slash": f"C%3A{MARKER}.md",
+    "backslash": f"..%5C{MARKER}%5Cprobe.md",
+    "double encoding": f"%252F%252F{MARKER}%252Fshare%252Fprobe.md",
+    "parent escape": f"../../../../../../{MARKER}/probe.md",
+    "encoded parent escape": f"..%2F..%2F..%2F..%2F..%2F..%2F{MARKER}%2Fprobe.md",
+}
+
+
+class HostileLinkTests(LinkCase):
+    """A link on a proposed page is untrusted text: it is refused before it can reach the filesystem."""
+
+    def lint_without_touching(self):
+        write_index(self.root)
+        with FilesystemSpy(self) as spy:
+            result = lint_wiki(self.root)
+        self.assertEqual([], spy.calls)
+        return result
+
+    def test_a_hostile_markdown_link_is_a_broken_link_and_causes_no_filesystem_call(self) -> None:
+        for label, target in HOSTILE_LINKS.items():
+            with self.subTest(label):
+                self.write("topics/hostile.md", topic("Hostile", points=f"- **Assumed:** See [reference]({target})."))
+                result = self.lint_without_touching()
+                broken = [item for item in result.diagnostics if item.code == "broken-link"]
+                self.assertEqual(1, len(broken), [item.message for item in result.diagnostics])
+                self.assertEqual("error", broken[0].severity)
+                self.assertTrue("safe relative path" in broken[0].message or "leaves the workspace" in broken[0].message, broken[0].message)
+
+    def test_a_hostile_sources_entry_is_a_broken_link_and_causes_no_filesystem_call(self) -> None:
+        from tests.test_board_service import _journey_feature_page
+        from tests.wiki_files import write_status_board
+
+        entries = {
+            "UNC with backslashes": f"\\\\{MARKER}\\share\\probe.md",
+            "backslash path": f"knowledge\\{MARKER}\\probe.md",
+            "colon in a segment": f"knowledge/{MARKER}:probe.md",
+            "drive-qualified segment": f"knowledge/C:{MARKER}/probe.md",
+        }
+        for label, entry in entries.items():
+            with self.subTest(label):
+                page = _journey_feature_page("F-001", "Payments", "raw", "po", [entry], ["| 1 | Which details? | po | open |"])
+                self.write("features/F-001-payments.md", page)
+                write_status_board(self.root, "| F-001 | Payments | raw | po | not-needed |\n")
+                result = self.lint_without_touching()
+                broken = [item for item in result.diagnostics if item.code == "broken-link"]
+                self.assertEqual(1, len(broken), [item.message for item in result.diagnostics])
+                self.assertIn("safe workspace path", broken[0].message)
+
+    def test_a_hostile_repository_link_is_refused_and_causes_no_filesystem_call(self) -> None:
+        for label, target in {
+            "drive letter": f"repo:workspace/C%3A{MARKER}",
+            "backslash": f"repo:workspace/..%5C{MARKER}",
+            "encoded UNC": f"repo:workspace/%2F%2F{MARKER}%2Fshare",
+        }.items():
+            with self.subTest(label):
+                self.write("topics/hostile.md", topic("Hostile", points=f"- **Assumed:** See [reference]({target})."))
+                result = self.lint_without_touching()
+                broken = [item for item in result.diagnostics if item.code == "broken-link"]
+                self.assertEqual(1, len(broken), [item.message for item in result.diagnostics])
+                self.assertIn("not a repository link", broken[0].message)
+
+    def test_an_api_contract_reference_with_a_hostile_path_is_ignored_without_a_filesystem_call(self) -> None:
+        from prism_cli.wiki_transitions import api_contract_link_targets
+
+        body = "\n".join(f"[contract]({target})" for target in HOSTILE_LINKS.values()) + f"\nSee ../api-contracts/..%5C{MARKER}.md and wiki/api-contracts/%2F%2F{MARKER}/x.md.\n"
+        source = self.write("features/F-001-x.md", "---\nid: F-001\n---\n" + body)
+        with FilesystemSpy(self) as spy:
+            targets = api_contract_link_targets(body, source, self.wiki)
+        self.assertEqual([], targets)
+        self.assertEqual([], spy.calls)
+
+    def test_a_valid_relative_link_still_resolves(self) -> None:
+        self.write("research/a.md", "---\nkind: research\ntitle: A\nstatus: current\nsources: []\n---\n\n## Question\nq\n\n## Findings\nf\n")
+        self.write("topics/a.md", topic("A", points="- **Assumed:** See [the research](../research/a.md) and [more](../research/My%20page.md)."))
+        broken = self.found("broken-link")
+        self.assertEqual(1, len(broken))
+        self.assertIn("My%20page.md", broken[0].message, "an encoded space is decoded, and the missing page is reported")
+
+
 if __name__ == "__main__":
     unittest.main()

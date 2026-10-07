@@ -49,11 +49,13 @@ from prism_cli.layers import (
 )
 from prism_cli.manifest_update import ManifestUpdateError, load_workspace_manifest, prepare_manifest_update
 from prism_cli.packs import (
+    COMMIT_PATTERN,
     PACKAGE_IDENTIFIER_PATTERN,
     RESERVED_IDENTIFIERS,
     WORKSPACE_LAYER,
     app_answers_path,
     assign_ports,
+    layer_answers_problems,
     has_pack,
     pack_answers,
     parse_app_list,
@@ -71,7 +73,9 @@ from prism_cli.presets import (
     merge_answers,
 )
 from prism_cli.render import render_or_print_wiki_query, render_status_result, render_wiki_lint_result
+from prism_cli.safe_values import description_problem, label_problem
 from prism_cli.status import BoardCheck, build_board_checks, build_status
+from prism_cli.wiki_paths import resolve_confined
 from prism_cli.workspace import (
     MANIFEST_FILE,
     detect_workspace_kind,
@@ -1561,7 +1565,7 @@ def has_trustworthy_template_baseline(src_path: Any, answers_data: dict[str, Any
         isinstance(src_path, str)
         and is_remote_template(src_path)
         and isinstance(revision, str)
-        and bool(revision.strip())
+        and COMMIT_PATTERN.fullmatch(revision) is not None
     )
 
 
@@ -1852,6 +1856,12 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
     ):
         if field_name in answers and not isinstance(answers[field_name], str):
             errors.append(f"{field_name} must be a string.")
+    # The project's name and description reach generated code, configuration and CI: the shared safe-value rule applies.
+    for field_name, check in (("project_name", label_problem), ("description", description_problem)):
+        if isinstance(answers.get(field_name), str):
+            problem = check(answers[field_name])
+            if problem is not None:
+                errors.append(f"{field_name} {problem}")
 
     unknown_answers = sorted(key for key in answers if not key.startswith("_") and key not in ANSWER_KEYS)
     if unknown_answers:
@@ -2149,12 +2159,22 @@ def plan_update_layers(project_path: Path) -> tuple[list[Layer], list[str]]:
     except ManifestUpdateError as exc:
         return layers, [f"Unable to read {MANIFEST_FILE}: {exc}"]
     model, _diagnostics = normalize_manifest(manifest, path=project_path / MANIFEST_FILE)
+    workspace_answers = load_copier_answers(project_path / COPIER_ANSWERS_FILE) or {}
+    approved_source = workspace_answers.get("_src_path")
     for app in model.workspace_apps(active_only=True):
         if not app.scaffolded or not has_pack(app.stack):
             continue
         recorded = read_app_answers(project_path, app.path)
         if recorded is None or "_src_path" not in recorded:
-            problems.append(f"App `{app.id}` is scaffolded, but `{app_answers_path(app.path)}` is missing or does not record its template.")
+            problems.append(
+                f"App `{app.id}` is scaffolded, but `{app_answers_path(app.path)}` is missing, sits behind a link or does not record its template. "
+                f"Restore the file from git, or retire the app (`prism app retire {app.id}`) to leave it out of the update."
+            )
+            continue
+        entry = {"id": app.id, "name": app.name, "stack": app.stack, "path": app.path, "audience": app.audience or ""}
+        layer_problems = layer_answers_problems(recorded, workspace_answers, entry, approved_source=str(approved_source))
+        if layer_problems:
+            problems.extend(layer_problems)
             continue
         layers.append(Layer(name=app.id, answers_file=app_answers_path(app.path), app_id=app.id, app_path=app.path))
     return layers, problems
@@ -2293,6 +2313,41 @@ def branch_safe(label: str) -> str:
     return cleaned or "update"
 
 
+class UpdateSafetyError(ValueError):
+    """A path or a recorded answer that an update must not follow or trust."""
+
+
+def confined_project_path(project_path: Path, relative: str) -> Path:
+    """The path of `relative` below the project, or an `UpdateSafetyError` when a component is a symlink or a reparse point.
+
+    Every answers file the update reads or writes goes through this check, so a planted link cannot point a write
+    outside the workspace. The final component is checked too: a link at the place of an answers file is refused.
+    """
+
+    resolution = resolve_confined(project_path, project_path, relative, percent_encoded=False)
+    if not resolution.ok:
+        raise UpdateSafetyError(f"`{relative}` cannot be used by the update: it {resolution.problem}")
+    return resolution.path
+
+
+def create_recopy_answers(project_path: Path, answers_file: str, answers: dict[str, Any]) -> Path:
+    """Write a layer's answers for a recopy to a new file beside its answers file and return its path.
+
+    The file is created exclusively (`tempfile.mkstemp` opens it with `O_CREAT | O_EXCL`) in a directory that is
+    checked first, so a file or a link that someone planted under a predictable name is never opened.
+    """
+
+    directory_relative = answers_file[: -len(COPIER_ANSWERS_FILE)].rstrip("/")
+    directory = confined_project_path(project_path, directory_relative) if directory_relative else project_path
+    if directory.exists() and not directory.is_dir():
+        raise UpdateSafetyError(f"`{directory_relative}` is not a directory.")
+    confined_project_path(project_path, answers_file)
+    descriptor, name = tempfile.mkstemp(prefix=".copier-answers.prism-recopy.", suffix=".yml", dir=directory)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        yaml.safe_dump(answers, handle, sort_keys=False)
+    return Path(name)
+
+
 def update_layer(
     project_path: Path,
     layer: Layer,
@@ -2325,19 +2380,21 @@ def update_layer(
                 for key, value in workspace_answers.items():
                     command.extend(["--data", f"{key}={format_data_value(value)}"])
         else:
-            temp_relative = f"{layer.answers_file[: -len(COPIER_ANSWERS_FILE)]}.copier-answers.prism-recopy.yml"
-            temp_answers_path = project_path / temp_relative
             recorded = dict(layer_answers)
             recorded["_src_path"] = str(effective_template)
-            with temp_answers_path.open("w", encoding="utf-8") as handle:
-                yaml.safe_dump(recorded, handle, sort_keys=False)
+            temp_answers_path = create_recopy_answers(project_path, layer.answers_file, recorded)
+            temp_relative = temp_answers_path.relative_to(project_path).as_posix()
             command = [sys.executable, "-m", "copier", "recopy", "--trust", "--defaults", "--overwrite", "--answers-file", temp_relative]
             if layer.is_workspace:
                 command.extend(["--data", f"_prism_cli_version={__version__}"])
         command.append(str(project_path))
         completed = subprocess.run(command, cwd=str(project_path))
         if completed.returncode == 0 and temp_answers_path is not None and temp_answers_path.exists():
-            shutil.copyfile(temp_answers_path, project_path / layer.answers_file)
+            # Replace, never write through: the target is confined and a link at its place is replaced, not followed.
+            os.replace(temp_answers_path, confined_project_path(project_path, layer.answers_file))
+    except UpdateSafetyError as exc:
+        print(error(str(exc)), file=sys.stderr)
+        return LayerResult(layer, "failed", detail=str(exc))
     finally:
         if temp_answers_path is not None and temp_answers_path.exists():
             temp_answers_path.unlink()

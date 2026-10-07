@@ -2,7 +2,7 @@ openapi: "3.1.0"
 info:
   title: "Prism Golden API"
   version: "0.1.0"
-  description: "The reference workspace that Prism's CI regenerates and builds, one app of each stack"
+  description: "The reference workspace that Prism\u0027s CI regenerates and builds, one app of each stack"
 
 servers:
   - url: http://localhost:8080

@@ -18,6 +18,9 @@ on:
 permissions:
   contents: read
 
+env:
+  APP_PATH: {{ app_path | tojson }}
+
 jobs:
   verify:
     name: Lint, typecheck, test, evaluate
@@ -25,7 +28,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: {{ app_path }}
+        working-directory: {% raw %}${{ env.APP_PATH }}{% endraw %}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +38,7 @@ jobs:
           version: {{ versions.uv | tojson }}
           python-version: {{ versions.python | tojson }}
           enable-cache: true
-          cache-dependency-glob: {{ (app_path ~ "/uv.lock") | tojson }}
+          cache-dependency-glob: {% raw %}${{ env.APP_PATH }}{% endraw %}/uv.lock
 
       # The lockfile is the source of truth: the install fails when it disagrees with pyproject.toml.
       - name: Install the locked dependencies

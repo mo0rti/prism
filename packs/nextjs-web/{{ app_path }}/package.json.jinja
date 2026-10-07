@@ -9,10 +9,10 @@
   "scripts": {
     "generate:api": "openapi-typescript {{ contract }} -o lib/api/generated/schema.d.ts",
     "predev": "npm run generate:api",
-    "dev": "next dev --port {{ port }}",
+    "dev": "next dev --hostname 127.0.0.1 --port {{ port }}",
     "prebuild": "npm run generate:api",
     "build": "next build",
-    "start": "next start --port {{ port }}",
+    "start": "next start --hostname 127.0.0.1 --port {{ port }}",
     "prelint": "npm run generate:api",
     "lint": "eslint . --max-warnings 0",
     "pretypecheck": "npm run generate:api",

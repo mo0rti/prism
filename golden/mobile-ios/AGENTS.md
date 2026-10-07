@@ -55,7 +55,7 @@ The sign-in is a local development identity. The backend serves it only under it
 
 - The UI tests wait until an element is hittable and allow 30 seconds per screen, because simulators on CI runners are slow. Keep that when you add a UI test.
 - Info.plist values come from build settings (`$(API_BASE_URL)`); change them in `project.yml` and regenerate, not in the generated project.
-- App Transport Security allows plain HTTP to local networking only (`NSAllowsLocalNetworking`); a deployed backend must use HTTPS.
+- App Transport Security allows plain HTTP to local networking in the Debug build only (`NSAllowsLocalNetworking` is in `Plists/Info.Debug.plist`, not in `Sources/Info.plist`), and `APIURL.make` accepts an `http` URL only in Debug; a Release build and a deployed backend use HTTPS. Keep the two plists identical apart from that exception.
 - Do not move a version off the pins of `packs/versions.yml` by hand: Swift, Xcode and the deployment target come from there.
 
 ## Architecture

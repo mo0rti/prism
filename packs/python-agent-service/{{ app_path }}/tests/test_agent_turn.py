@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.service import AssistantService
-from app.agent.turn import OUT_OF_STEPS, run_turn
+from app.agent.turn import OUT_OF_STEPS, call_cost_bound, run_turn
 from app.auth.caller import Caller
 from app.providers.base import (
     AssistantMessage,
@@ -32,7 +32,7 @@ from app.providers.base import (
     UserMessage,
 )
 from app.providers.fake import FakeProvider
-from app.safety.budget import BudgetExceededError, UserBudget
+from app.safety.budget import BudgetExceededError, UserBudget, unlimited_turn
 from app.safety.notice import NOTICE
 from app.safety.untrusted import as_data, unwrap
 from app.tools.backend_profile import GetMyProfile
@@ -84,6 +84,8 @@ async def test_a_profile_question_calls_the_tool_and_answers_from_its_result(bac
         context=context_for(ADA, backend),
         audit=audit.log(),
         max_tool_calls=4,
+        budget=unlimited_turn(),
+        output_token_cap=1024,
     )
 
     assert [(call.name, call.ok) for call in result.tool_calls] == [("get_my_profile", True)]
@@ -107,6 +109,8 @@ async def test_a_question_that_needs_no_tool_calls_none(backend: FakeBackend) ->
         context=context_for(ADA, backend),
         audit=AuditRecords().log(),
         max_tool_calls=4,
+        budget=unlimited_turn(),
+        output_token_cap=1024,
     )
 
     assert result.tool_calls == []
@@ -124,6 +128,8 @@ async def test_a_backend_failure_is_a_result_the_model_reads_not_a_crash(backend
         context=context_for(ADA, backend),
         audit=audit.log(),
         max_tool_calls=4,
+        budget=unlimited_turn(),
+        output_token_cap=1024,
     )
 
     assert [(call.name, call.ok) for call in result.tool_calls] == [("get_my_profile", False)]
@@ -160,6 +166,8 @@ async def test_the_system_prompt_is_a_constant_and_the_question_and_results_trav
         context=context_for(ADA, backend),
         audit=AuditRecords().log(),
         max_tool_calls=4,
+        budget=unlimited_turn(),
+        output_token_cap=1024,
     )
 
     assert len(provider.requests) == 2
@@ -206,6 +214,8 @@ async def test_a_model_that_asks_for_an_unregistered_tool_gets_a_refusal_and_not
         context=context_for(ADA, backend),
         audit=audit.log(),
         max_tool_calls=4,
+        budget=unlimited_turn(),
+        output_token_cap=1024,
     )
 
     assert backend.requests == []
@@ -230,6 +240,8 @@ async def test_tool_arguments_are_validated_before_the_tool_runs(backend: FakeBa
         context=context_for(ADA, backend),
         audit=audit.log(),
         max_tool_calls=4,
+        budget=unlimited_turn(),
+        output_token_cap=1024,
     )
 
     assert backend.requests == [], "a tool that takes no user ID cannot be pointed at another user"
@@ -248,6 +260,8 @@ async def test_a_turn_makes_at_most_the_allowed_number_of_tool_calls(backend: Fa
         context=context_for(ADA, backend),
         audit=AuditRecords().log(),
         max_tool_calls=2,
+        budget=unlimited_turn(),
+        output_token_cap=1024,
     )
 
     assert len(backend.me_calls()) == 2
@@ -277,12 +291,39 @@ async def test_an_unexpected_tool_failure_reaches_the_model_without_its_details(
         context=context_for(ADA, backend),
         audit=AuditRecords().log(),
         max_tool_calls=4,
+        budget=unlimited_turn(),
+        output_token_cap=1024,
     )
 
     seen = provider.seen[1][1][-1]
     assert isinstance(seen, ToolResultMessage)
     assert unwrap(seen.content)[1]["error"] == "The tool failed"
+
     assert "ada-token" not in seen.content
+
+
+@pytest.mark.anyio
+async def test_a_tool_failure_logs_only_the_exception_type(
+    backend: FakeBackend, caplog: pytest.LogCaptureFixture
+) -> None:
+    provider = ScriptedProvider(
+        ProviderReply(tool_calls=(ToolCall(id="c1", name="fails", arguments={}),)), ProviderReply(text="ok")
+    )
+    with caplog.at_level("DEBUG"):
+        await run_turn(
+            question="hello",
+            provider=provider,
+            tools=ToolRegistry([FailingTool()]),
+            context=context_for(ADA, backend),
+            audit=AuditRecords().log(),
+            max_tool_calls=4,
+            budget=unlimited_turn(),
+            output_token_cap=1024,
+        )
+
+    assert "RuntimeError" in caplog.text, "the type is logged"
+    assert "ada-token" not in caplog.text and "secret detail" not in caplog.text, "the message never reaches a log"
+    assert all(record.exc_info is None for record in caplog.records), "no traceback, which would carry the message"
 
 
 def test_the_registry_refuses_a_tool_that_changes_data() -> None:
@@ -309,6 +350,8 @@ async def test_every_tool_call_is_logged_with_user_and_request_ids_and_without_s
         context=context_for(ADA, backend, request_id="request-abc-123"),
         audit=audit.log(),
         max_tool_calls=4,
+        budget=unlimited_turn(),
+        output_token_cap=1024,
     )
 
     (record,) = audit.records
@@ -361,6 +404,7 @@ def service(
         budget=budget,
         audit=(audit or AuditRecords()).log(),
         max_tool_calls=4,
+        output_token_cap=1024,
     )
 
 
@@ -395,13 +439,161 @@ async def test_the_request_budget_is_enforced_per_user_before_any_model_call(bac
 
 @pytest.mark.anyio
 async def test_the_token_budget_stops_a_user_once_their_turns_have_used_it(backend: FakeBackend) -> None:
-    assistant = service(backend, UserBudget(max_requests=100, max_tokens=50, window_seconds=60))
+    bound = one_call_bound(1024)
+    provider = GatedProvider(Usage(input_tokens=bound, output_tokens=0))
+    provider.gate.set()
+    assistant = gated_service(
+        backend, UserBudget(max_requests=100, max_tokens=2 * bound, window_seconds=60), provider, 1024
+    )
 
     await assistant.answer(caller=ADA, question="Who am I?", request_id="req-0000001")
+    await assistant.answer(caller=ADA, question="Who am I?", request_id="req-0000002")
     with pytest.raises(BudgetExceededError) as refused:
-        await assistant.answer(caller=ADA, question="Who am I?", request_id="req-0000002")
+        await assistant.answer(caller=ADA, question="Who am I?", request_id="req-0000003")
 
     assert refused.value.reason == "token"
+    assert provider.calls == 2
+
+
+# --- Concurrent spending ----------------------------------------------------------------------------------------------
+
+
+class GatedProvider:
+    """Every call waits at a gate, so a test can hold many turns in flight at once, each reporting a fixed usage."""
+
+    name = "gated"
+
+    def __init__(self, usage: Usage) -> None:
+        self.gate = asyncio.Event()
+        self.usage = usage
+        self.calls = 0
+
+    async def complete(self, *, system: str, messages: Sequence[Message], tools: Sequence[ToolSpec]) -> ProviderReply:
+        self.calls += 1
+        await self.gate.wait()
+        return ProviderReply(text="done", usage=self.usage)
+
+
+def one_call_bound(output_token_cap: int) -> int:
+    question = [UserMessage(as_data("user_question", "Who am I?"))]
+    return call_cost_bound(SYSTEM_PROMPT, question, ToolRegistry([GetMyProfile()]).specs(), output_token_cap)
+
+
+def gated_service(
+    backend: FakeBackend, budget: UserBudget, provider: GatedProvider, output_token_cap: int
+) -> AssistantService:
+    return AssistantService(
+        provider=provider,
+        tools=ToolRegistry([GetMyProfile()]),
+        backend=backend_client(backend),
+        budget=budget,
+        audit=AuditRecords().log(),
+        max_tool_calls=4,
+        output_token_cap=output_token_cap,
+    )
+
+
+@pytest.mark.anyio
+async def test_concurrent_turns_cannot_spend_more_tokens_than_the_budget_holds(backend: FakeBackend) -> None:
+    bound = one_call_bound(1024)
+    limit = 5 * bound
+    provider = GatedProvider(Usage(input_tokens=bound // 2, output_tokens=bound // 4))
+    budget = UserBudget(max_requests=1000, max_tokens=limit, window_seconds=3600, max_concurrent_turns=1000)
+    assistant = gated_service(backend, budget, provider, 1024)
+
+    turns = [
+        asyncio.create_task(assistant.answer(caller=ADA, question="Who am I?", request_id=f"req-{index:07d}"))
+        for index in range(20)
+    ]
+    for _ in range(50):
+        await asyncio.sleep(0)  # let every turn reach its model call or its refusal
+    provider.gate.set()
+    outcomes = await asyncio.gather(*turns, return_exceptions=True)
+
+    admitted = [outcome for outcome in outcomes if not isinstance(outcome, BaseException)]
+    refused = [outcome for outcome in outcomes if isinstance(outcome, BudgetExceededError)]
+    assert len(admitted) == 5 and len(refused) == 15, "only the turns whose reservation fits are admitted"
+    assert provider.calls == 5, "a refused turn makes no model call"
+    assert budget.tokens_used(ADA.user_id) == 5 * provider.usage.total
+    assert budget.tokens_used(ADA.user_id) <= limit
+
+
+@pytest.mark.anyio
+async def test_a_user_has_a_bounded_number_of_turns_in_flight(backend: FakeBackend) -> None:
+    provider = GatedProvider(Usage(input_tokens=10, output_tokens=10))
+    budget = UserBudget(max_requests=1000, max_tokens=10**9, window_seconds=3600, max_concurrent_turns=2)
+    assistant = gated_service(backend, budget, provider, 1024)
+
+    turns = [
+        asyncio.create_task(assistant.answer(caller=ADA, question="Who am I?", request_id=f"req-{index:07d}"))
+        for index in range(3)
+    ]
+    other = asyncio.create_task(assistant.answer(caller=BOB, question="Who am I?", request_id="req-0000009"))
+    for _ in range(50):
+        await asyncio.sleep(0)
+    provider.gate.set()
+    outcomes = await asyncio.gather(*turns, other, return_exceptions=True)
+
+    refused = [outcome for outcome in outcomes if isinstance(outcome, BudgetExceededError)]
+    assert [item.reason for item in refused] == ["concurrent request"], "the third turn of one user waits for a slot"
+    assert not isinstance(outcomes[-1], BaseException), "another user has slots of their own"
+
+
+@pytest.mark.anyio
+async def test_the_usage_of_completed_calls_is_recorded_when_the_turn_fails_later(backend: FakeBackend) -> None:
+    from app.providers.base import ProviderError
+
+    class FailsOnTheSecondCall:
+        name = "fails-second"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def complete(
+            self, *, system: str, messages: Sequence[Message], tools: Sequence[ToolSpec]
+        ) -> ProviderReply:
+            self.calls += 1
+            if self.calls == 1:
+                return ProviderReply(
+                    tool_calls=(ToolCall(id="c1", name="get_my_profile", arguments={}),),
+                    usage=Usage(input_tokens=300, output_tokens=100),
+                )
+            raise ProviderError("the provider is down")
+
+    budget = UserBudget(max_requests=100, max_tokens=10**9, window_seconds=3600)
+    assistant = AssistantService(
+        provider=FailsOnTheSecondCall(),
+        tools=ToolRegistry([GetMyProfile()]),
+        backend=backend_client(backend),
+        budget=budget,
+        audit=AuditRecords().log(),
+        max_tool_calls=4,
+        output_token_cap=1024,
+    )
+
+    with pytest.raises(ProviderError):
+        await assistant.answer(caller=ADA, question="Who am I?", request_id="req-0000001")
+
+    assert budget.tokens_used(ADA.user_id) == 400, "the completed call is paid for; the failed call is not charged"
+    # The failed turn gave its slot back and released its reservation: the same user can start another turn.
+    with pytest.raises(ProviderError):
+        await assistant.answer(caller=ADA, question="Who am I?", request_id="req-0000002")
+    assert budget.tokens_used(ADA.user_id) == 400, "a call that failed before it returned is charged nothing"
+
+
+@pytest.mark.anyio
+async def test_a_call_whose_reservation_does_not_fit_is_refused_before_the_model_is_called(
+    backend: FakeBackend,
+) -> None:
+    provider = GatedProvider(Usage(input_tokens=1, output_tokens=1))
+    provider.gate.set()
+    budget = UserBudget(max_requests=100, max_tokens=one_call_bound(1024) - 1, window_seconds=3600)
+    assistant = gated_service(backend, budget, provider, 1024)
+
+    with pytest.raises(BudgetExceededError) as refused:
+        await assistant.answer(caller=ADA, question="Who am I?", request_id="req-0000001")
+
+    assert refused.value.reason == "token" and provider.calls == 0
 
 
 # --- No cross-user data ------------------------------------------------------------------------------------------------
@@ -441,7 +633,9 @@ def test_the_response_says_the_service_assists_and_does_not_advise_and_carries_t
 ) -> None:
     audit = AuditRecords()
     backend = FakeBackend(signing_key)
-    with TestClient(build_app(backend, audit=audit), base_url="http://localhost") as client:
+    with TestClient(
+        build_app(backend, audit=audit), base_url="http://localhost", client=("127.0.0.1", 50000)
+    ) as client:
         response = client.post(
             "/api/assist",
             json={"question": "Who am I?"},
@@ -461,7 +655,9 @@ def test_the_response_says_the_service_assists_and_does_not_advise_and_carries_t
 
 
 def test_a_request_id_that_could_forge_a_log_line_is_replaced(signing_key: SigningKey) -> None:
-    with TestClient(build_app(FakeBackend(signing_key)), base_url="http://localhost") as client:
+    with TestClient(
+        build_app(FakeBackend(signing_key)), base_url="http://localhost", client=("127.0.0.1", 50000)
+    ) as client:
         response = client.get("/api/health", headers={"X-Request-ID": 'x"} {"event":"forged"'})
 
     assert response.headers["X-Request-ID"].isalnum() and len(response.headers["X-Request-ID"]) == 32
@@ -470,7 +666,7 @@ def test_a_request_id_that_could_forge_a_log_line_is_replaced(signing_key: Signi
 def test_the_budget_answers_429_with_retry_after(signing_key: SigningKey) -> None:
     app = build_app(FakeBackend(signing_key), settings=local_settings(budget_requests=1))
     headers = {"Authorization": f"Bearer {make_token(signing_key)}"}
-    with TestClient(app, base_url="http://localhost") as client:
+    with TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000)) as client:
         first = client.post("/api/assist", json={"question": "Who am I?"}, headers=headers)
         second = client.post("/api/assist", json={"question": "Who am I?"}, headers=headers)
 
@@ -482,7 +678,9 @@ def test_the_budget_answers_429_with_retry_after(signing_key: SigningKey) -> Non
 
 def test_an_invalid_question_is_a_validation_error_that_does_not_echo_it(signing_key: SigningKey) -> None:
     headers = {"Authorization": f"Bearer {make_token(signing_key)}"}
-    with TestClient(build_app(FakeBackend(signing_key)), base_url="http://localhost") as client:
+    with TestClient(
+        build_app(FakeBackend(signing_key)), base_url="http://localhost", client=("127.0.0.1", 50000)
+    ) as client:
         for body in (
             {},
             {"question": ""},
@@ -507,7 +705,9 @@ def test_a_provider_failure_is_a_generic_502(signing_key: SigningKey) -> None:
 
             raise ProviderError("upstream said: sk-ant-secret")
 
-    with TestClient(build_app(FakeBackend(signing_key), provider=Broken()), base_url="http://localhost") as client:
+    with TestClient(
+        build_app(FakeBackend(signing_key), provider=Broken()), base_url="http://localhost", client=("127.0.0.1", 50000)
+    ) as client:
         response = client.post(
             "/api/assist", json={"question": "hi"}, headers={"Authorization": f"Bearer {make_token(signing_key)}"}
         )
@@ -527,7 +727,9 @@ def test_an_unexpected_error_is_a_generic_500(signing_key: SigningKey) -> None:
             raise RuntimeError("stack detail")
 
     app = build_app(FakeBackend(signing_key), provider=Crashing())
-    with TestClient(app, base_url="http://localhost", raise_server_exceptions=False) as client:
+    with TestClient(
+        app, base_url="http://localhost", client=("127.0.0.1", 50000), raise_server_exceptions=False
+    ) as client:
         response = client.post(
             "/api/assist", json={"question": "hi"}, headers={"Authorization": f"Bearer {make_token(signing_key)}"}
         )
@@ -548,7 +750,7 @@ def test_the_backend_client_never_follows_a_redirect_with_the_users_token(signin
     from app.main import create_app
 
     app = create_app(local_settings(), transport=httpx.MockTransport(handler), audit=AuditRecords().log())
-    with TestClient(app, base_url="http://localhost") as client:
+    with TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000)) as client:
         response = client.post(
             "/api/assist",
             json={"question": "Who am I?"},

@@ -307,13 +307,14 @@ class GeneratedWebAppsTests(unittest.TestCase):
                     self.assertEqual([f"{info['path']}/**", "shared/api-contracts/**", f".github/workflows/{app}.yml"], triggers[event]["paths"])
                 job = data["jobs"]["verify"]
                 self.assertEqual("ubuntu-latest", job["runs-on"])
-                self.assertEqual(info["path"], job["defaults"]["run"]["working-directory"])
+                self.assertEqual(info["path"], data["env"]["APP_PATH"], "the app's path reaches the workflow once, as a variable")
+                self.assertEqual("${{ env.APP_PATH }}", job["defaults"]["run"]["working-directory"])
                 runs = [step["run"] for step in job["steps"] if "run" in step]
                 self.assertEqual(["npm ci", "npm run lint", "npm run typecheck", "npm test", "npm run build"], runs)
                 setup = next(step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/setup-node"))
                 self.assertEqual(pins()["node"], str(setup["with"]["node-version"]))
                 self.assertEqual("npm", setup["with"]["cache"])
-                self.assertEqual(f"{info['path']}/package-lock.json", setup["with"]["cache-dependency-path"])
+                self.assertEqual("${{ env.APP_PATH }}/package-lock.json", setup["with"]["cache-dependency-path"])
                 text = self.text(f".github/workflows/{app}.yml")
                 for deploy in ("secrets.", "wrangler", "environment:"):
                     self.assertNotIn(deploy, text)

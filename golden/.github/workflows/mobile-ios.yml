@@ -15,6 +15,9 @@ on:
       - ".github/workflows/mobile-ios.yml"
   workflow_dispatch:
 
+env:
+  APP_PATH: "mobile-ios"
+
 jobs:
   verify:
     name: Generate, build, test
@@ -23,7 +26,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: mobile-ios
+        working-directory: ${{ env.APP_PATH }}
     steps:
       - uses: actions/checkout@v4
 
@@ -70,5 +73,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mobile-ios-test-results
-          path: mobile-ios/build/TestResults.xcresult
+          path: ${{ env.APP_PATH }}/build/TestResults.xcresult
           if-no-files-found: ignore

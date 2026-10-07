@@ -32,7 +32,7 @@ AUDIENCE = "https://agent.example.test"
 
 
 def client_for(app: Any) -> TestClient:
-    return TestClient(app, base_url="http://localhost")
+    return TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
 
 
 def bearer(token: str) -> dict[str, str]:
@@ -52,6 +52,26 @@ def test_a_dev_identity_token_is_accepted_when_the_backends_published_key_verifi
     assert len(jwks_requests) == 1, "the key is fetched once and cached"
     assert str(jwks_requests[0].url) == f"{BACKEND}/api/dev-identity/jwks"
     assert "Authorization" not in jwks_requests[0].headers, "the JWKS request carries no credential"
+
+
+def test_the_local_profile_answers_only_callers_on_this_machine_even_with_a_valid_token(
+    signing_key: SigningKey,
+) -> None:
+    backend = FakeBackend(signing_key)
+    headers = {**bearer(make_token(signing_key)), "X-Forwarded-For": "127.0.0.1"}
+    for peer in ("203.0.113.9", "192.168.1.20", "testclient"):
+        with TestClient(build_app(backend), base_url="http://localhost", client=(peer, 50000)) as client:
+            response = client.post("/api/assist", json={"question": "Who am I?"}, headers=headers)
+        assert response.status_code == 403, peer
+        assert response.json()["code"] == "LOCAL_ONLY"
+    assert backend.requests == [], "a refused caller causes no backend request and no key fetch"
+
+    for peer in ("127.0.0.1", "127.0.0.2", "::1"):
+        with TestClient(build_app(backend), base_url="http://localhost", client=(peer, 50000)) as client:
+            response = client.post(
+                "/api/assist", json={"question": "Who am I?"}, headers=bearer(make_token(signing_key))
+            )
+        assert response.status_code == 200, peer
 
 
 def test_a_token_signed_by_another_key_is_rejected_even_with_the_right_key_id(

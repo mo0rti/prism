@@ -33,7 +33,7 @@ FastAPI is the framework because the service is async I/O between a caller, a mo
 ## The request flow
 
 1. `require_caller` (`app/auth/dependencies.py`) reads the bearer token and `TokenVerifier` checks the signature (RS256 only), issuer, audience and expiry against public keys. A bad token is `401`; an unreadable key source is `503`.
-2. `AssistantService.answer` (`app/agent/service.py`) counts the request against the caller's budget (`429` when used up) and builds a `ToolContext` for this request only.
+2. `AssistantService.answer` (`app/agent/service.py`) takes the caller's budget (`429` when the requests, concurrent turns or tokens are used up; the turn reserves the tokens of each model call first) and builds a `ToolContext` for this request only.
 3. `run_turn` (`app/agent/turn.py`) sends the constant system prompt and the question, wrapped as untrusted data, to the provider. When the model calls a tool, the registry runs it with validated arguments and the result goes back wrapped as untrusted data. Each call is logged with the user and request IDs.
 4. The turn ends with the model's text. The service records the tokens used, and the route adds the notice and the request ID.
 

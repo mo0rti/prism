@@ -305,7 +305,6 @@ class VersionTwoModelTests(unittest.TestCase):
     def test_app_path_conflicts_within_one_repository(self) -> None:
         cases = {
             "duplicate": ("apps/partner", "apps/partner"),
-            "duplicate differing in case": ("apps/Partner", "apps/partner"),
             "nested": ("apps", "apps/partner"),
             "nested the other way": ("apps/partner", "apps"),
             "root with another app": (".", "apps/partner"),
@@ -320,6 +319,17 @@ class VersionTwoModelTests(unittest.TestCase):
                     app_maturity={},
                 )
                 self.assert_error("app-path-conflict", manifest)
+
+    def test_a_path_that_differs_only_in_case_is_not_a_safe_path(self) -> None:
+        # App paths are lowercase (safe segments), so two paths can no longer differ only by case.
+        manifest = v2_manifest(
+            apps=[
+                {"id": "one", "stack": "android-compose", "repository": "mobile-apps", "path": "apps/Partner"},
+                {"id": "two", "stack": "ios-swiftui", "repository": "mobile-apps", "path": "apps/partner"},
+            ],
+            app_maturity={},
+        )
+        self.assert_error("invalid-app-path", manifest)
 
     def test_the_same_path_in_different_repositories_is_not_a_conflict(self) -> None:
         manifest = v2_manifest(

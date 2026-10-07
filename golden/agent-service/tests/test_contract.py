@@ -122,7 +122,9 @@ def test_the_security_the_contract_states_is_the_security_the_service_enforces(s
         "bearerFormat": "JWT",
     }
 
-    with TestClient(build_app(FakeBackend(signing_key)), base_url="http://localhost") as client:
+    with TestClient(
+        build_app(FakeBackend(signing_key)), base_url="http://localhost", client=("127.0.0.1", 50000)
+    ) as client:
         for (method, path), operation in operations(contract).items():
             response = client.request(method, path, json={"question": "hi"} if method == "post" else None)
             if operation.get("security") == []:

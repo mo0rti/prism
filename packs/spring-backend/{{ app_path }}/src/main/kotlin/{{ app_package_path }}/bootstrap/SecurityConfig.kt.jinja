@@ -1,11 +1,14 @@
 package {{ app_package }}.bootstrap
 
 import {{ app_package }}.bootstrap.security.ApiAuthenticationEntryPoint
+import {{ app_package }}.bootstrap.security.AudienceCheckingJwtDecoder
 import {{ app_package }}.bootstrap.security.RejectingJwtDecoder
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.env.Environment
+import org.springframework.core.env.Profiles
 import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
@@ -20,6 +23,9 @@ import org.springframework.security.web.SecurityFilterChain
  * The JWT decoder comes from the environment: the `local` profile provides one for its dev identity
  * ([DevIdentityConfig]), and Spring Boot builds one when `spring.security.oauth2.resourceserver.jwt.*` names
  * your identity provider. With neither, [RejectingJwtDecoder] rejects every token, so the app fails closed.
+ * Outside `local`, a decoder for a real provider also requires this API's audience
+ * (`spring.security.oauth2.resourceserver.jwt.audiences`): [AudienceGuard] stops startup when a provider is
+ * configured without one, and [AudienceCheckingJwtDecoder] rejects a token whose `aud` is missing or names another API.
  *
  * The dev-identity routes are open to the filter chain in every profile so that the default profile
  * answers them with 404 (the routes do not exist there). Under `local`, the controller itself refuses
@@ -29,7 +35,8 @@ import org.springframework.security.web.SecurityFilterChain
 @EnableWebSecurity
 class SecurityConfig(
     private val authenticationEntryPoint: ApiAuthenticationEntryPoint,
-    private val jwtDecoders: ObjectProvider<JwtDecoder>
+    private val jwtDecoders: ObjectProvider<JwtDecoder>,
+    private val environment: Environment
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -56,9 +63,19 @@ class SecurityConfig(
             }
             .oauth2ResourceServer { resourceServer ->
                 resourceServer.authenticationEntryPoint(authenticationEntryPoint)
-                resourceServer.jwt { it.decoder(jwtDecoder) }
+                resourceServer.jwt { it.decoder(requireAudience(jwtDecoder)) }
             }
 
         return http.build()
+    }
+
+    /** A decoder for a real identity provider only accepts tokens meant for this API; the `local` identity and the rejecting decoder need no audience. */
+    private fun requireAudience(decoder: JwtDecoder): JwtDecoder {
+        if (environment.acceptsProfiles(Profiles.of("local")) || decoder is RejectingJwtDecoder) return decoder
+        val audiences = AudienceGuard.configuredAudiences(environment)
+        check(audiences.isNotEmpty()) {
+            "A JWT decoder is configured without an audience: set ${AudienceGuard.AUDIENCES_PROPERTY}."
+        }
+        return AudienceCheckingJwtDecoder(decoder, audiences)
     }
 }

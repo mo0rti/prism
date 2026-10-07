@@ -130,7 +130,12 @@ There are no example business features.
   publishes the public half of that key as a JWKS document (never a private member), under the same profile and
   loopback rules, so another local service such as an agent service can verify the tokens with no shared secret.
   The default profile answers both routes with 404, and startup fails when `local` is active together with a configured identity provider.
-  No JWT secret exists in the template, and the generated `docker-compose.yml` sets no profile.
+  No JWT secret exists in the template, and the generated `docker-compose.yml` sets no profile and publishes its ports
+  (the backends' and the database's) on `127.0.0.1` only.
+- A real identity provider needs the audience of the API: outside `local`, `spring.security.oauth2.resourceserver.jwt.audiences`
+  (`SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES`) must be set whenever an issuer, a JWK set URI or a public key is
+  configured, startup fails without it, and a token whose `aud` is missing or names another API gets 401. An agent service of
+  the workspace takes the same audience from `AGENT_OIDC_AUDIENCE` and its issuer from `AGENT_OIDC_ISSUER`.
 - The OpenAPI contract (`shared/api-contracts/openapi.yml`) defines the token route, the JWKS route and
   `GET /api/me`, with `x-prism-dev-only` on the two dev-identity operations. Prism owns that contract; you own the real identity
   provider, and the generated `security-auth` skill explains how to replace the dev identity with it.
@@ -142,10 +147,13 @@ If the generated project includes a web app (`nextjs-web`), each one is a Next.j
 (`web/` for the default app) with one working slice and its tests:
 
 - copy `<app>/.env.example` to `<app>/.env.local`, run `npm ci` and `task <app-id>:dev`, on the port
-  recorded in the app's answers file (`3000` for the first web app, `3001` for the next)
+  recorded in the app's answers file (`3000` for the first web app, `3001` for the next); the dev server and `npm start`
+  listen on `127.0.0.1` only
 - the "Local development sign-in" page signs in through the backend's dev identity
   (`POST /api/dev-identity/token`, served only when the backend runs under its `local` profile) and keeps the
-  token in an httpOnly cookie; the home page shows `GET /api/me` through the API client that
+  token in an httpOnly cookie, but only in explicit local mode (`.env.development` sets `LOCAL_DEV_SIGNIN=1`, which `next dev` loads
+  and a production build does not), only for a request that carries the app's own `Origin` header and only from this machine;
+  the home page shows `GET /api/me` through the API client that
   `openapi-typescript` generates from `shared/api-contracts/openapi.yml`
 - the dev identity is not complete authentication: replace it with your identity provider before anything
   ships (the generated `web-conventions` and `security-auth` skills describe how)
@@ -191,10 +199,13 @@ user's own data through read-only tools.
   backend serves it under its `local` profile, to loopback requests only, and never with a private member); with a real
   identity provider it uses `AGENT_OIDC_ISSUER` and `AGENT_OIDC_AUDIENCE`. It refuses to start with no identity
   configured, with `local` next to a real issuer and with `local` pointed at a non-loopback backend, and it has no
-  dev-identity endpoint and no setting that turns authentication off.
+  dev-identity endpoint and no setting that turns authentication off. Under `local` it also answers callers on its own machine
+  only (`403` for any other peer, even with a token) and listens on `127.0.0.1`.
 - The safety rules are built in and tested: the question and every tool result are untrusted data in envelopes
   (the system prompt is a constant), tools only read and use the caller's own token, every tool call is logged with the
-  user and request IDs, a per-user request and token budget answers `429`, no user's data enters another user's request,
+  user and request IDs, a per-user request, concurrent-turn and token budget answers `429` (a turn reserves what each model call can cost
+  before the call, and the usage of every completed call is recorded even when the turn fails), a tool failure logs its exception type
+  and never its message, no user's data enters another user's request,
   and every response carries a notice that the service assists and does not advise. The generated `agent-safety` skill
   lists where each rule is enforced and tests and how to adapt the generic notice to a domain.
 - `task <app-id>:dev` runs it on its port (`8200` for the first agent service) against a backend under its `local`

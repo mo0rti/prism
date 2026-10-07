@@ -87,10 +87,12 @@ def create_app(
             max_requests=settings.budget_requests,
             max_tokens=settings.budget_tokens,
             window_seconds=settings.budget_window_seconds,
+            max_concurrent_turns=settings.budget_concurrent_turns,
             clock=clock,
         ),
         audit=audit,
         max_tool_calls=settings.max_tool_calls,
+        output_token_cap=settings.claude_max_tokens,
     )
     install_error_handlers(app)
 

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The Debug build's Info.plist. It is Sources/Info.plist plus the App Transport Security exception for local
+     networking, which the local development sign-in needs (a backend on this Mac, over http). The Release build
+     uses Sources/Info.plist, which has no exception: a Release app reaches its backend over https only. -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>iOS App</string>
+    <key>CFBundleDisplayName</key>
+    <string>iOS App</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <key>PrismAppAudience</key>
+    <string></string>
+    <key>API_BASE_URL</key>
+    <string>$(API_BASE_URL)</string>
+</dict>
+</plist>

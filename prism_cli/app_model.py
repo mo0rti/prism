@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 import yaml
 
 from prism_cli.fs_safety import reparse_kind
+from prism_cli.safe_values import label_problem, path_segments_problem
 
 
 # The one manifest version this CLI reads and writes.
@@ -592,6 +593,13 @@ def _read_app(
     if not isinstance(name, str) or not name.strip() or (audience is not None and not isinstance(audience, str)):
         diagnostics.append(_diag("invalid-app-declaration", "error", path, f"App `{app_id}` needs a non-empty string `name`, and `audience` must be a string."))
         valid = False
+    else:
+        # A name and an audience reach generated code, configuration and CI, so they follow the shared safe-value rule.
+        for field_name, value in (("name", name), ("audience", audience)):
+            problem = label_problem(value) if value is not None else None
+            if problem is not None:
+                diagnostics.append(_diag("invalid-app-declaration", "error", path, f"App `{app_id}` {field_name} {problem}"))
+                valid = False
 
     status = item.get("status", "active")
     if status not in APP_STATUSES:
@@ -687,6 +695,9 @@ def _app_path_problem(value: Any, repository_id: str) -> str | None:
         return None
     if "." in parts:
         return "must not contain `.` segments."
+    problem = path_segments_problem(parts)
+    if problem is not None:
+        return f"{problem}"
     return None
 
 

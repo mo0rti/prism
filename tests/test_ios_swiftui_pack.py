@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PACK = REPO_ROOT / "packs" / "ios-swiftui"
 PACK_APP = PACK / "{{ app_path }}"
 PARTNER_APP = {"id": "partner-ios", "name": "Partner App", "stack": "ios-swiftui", "repository": "workspace", "path": "apps/partner-ios", "audience": "internal", "generation": "scaffolded"}
-RND_APP = {"id": "rnd-ios", "name": "R&D <Lab> App", "stack": "ios-swiftui", "repository": "workspace", "path": "apps/rnd", "audience": "A&B <staff>", "generation": "scaffolded"}
+RND_APP = {"id": "rnd-ios", "name": "R&D Lab App", "stack": "ios-swiftui", "repository": "workspace", "path": "apps/rnd", "audience": "A&B staff", "generation": "scaffolded"}
 
 
 def pins() -> dict[str, str]:
@@ -82,6 +82,7 @@ class PackFilesTests(unittest.TestCase):
             "project.yml.jinja",
             "Sources/App.swift.jinja",
             "Sources/Info.plist.jinja",
+            "Plists/Info.Debug.plist.jinja",
             "Sources/AppInfo.swift",
             "Sources/RootView.swift",
             "Sources/SignIn/SignInView.swift",
@@ -246,7 +247,7 @@ class GeneratedIosAppsTests(unittest.TestCase):
         cls.apps = {
             "mobile-ios": {"path": "mobile-ios", "module": "MobileIos", "name": "iOS (Swift/SwiftUI)", "audience": ""},
             "partner-ios": {"path": "apps/partner-ios", "module": "PartnerIos", "name": "Partner App", "audience": "internal"},
-            "rnd-ios": {"path": "apps/rnd", "module": "RndIos", "name": "R&D <Lab> App", "audience": "A&B <staff>"},
+            "rnd-ios": {"path": "apps/rnd", "module": "RndIos", "name": "R&D Lab App", "audience": "A&B staff"},
         }
 
     def text(self, relative: str) -> str:
@@ -289,6 +290,8 @@ class GeneratedIosAppsTests(unittest.TestCase):
                 self.assertEqual("http://localhost:8080", configs["Debug"]["API_BASE_URL"])
                 self.assertEqual("", configs["Release"]["API_BASE_URL"], "a release build names its own backend")
                 self.assertEqual("Sources/Info.plist", project["targets"][info["module"]]["settings"]["base"]["INFOPLIST_FILE"])
+                self.assertEqual("Plists/Info.Debug.plist", configs["Debug"]["INFOPLIST_FILE"], "only the Debug configuration takes the plist with the local-networking exception")
+                self.assertNotIn("INFOPLIST_FILE", configs["Release"])
 
     def test_the_display_name_and_audience_are_plist_text_with_their_characters_escaped(self) -> None:
         for app, info in self.apps.items():
@@ -298,7 +301,10 @@ class GeneratedIosAppsTests(unittest.TestCase):
                 self.assertEqual(info["name"], plist["CFBundleName"])
                 self.assertEqual(info["audience"], plist["PrismAppAudience"])
                 self.assertEqual("$(API_BASE_URL)", plist["API_BASE_URL"])
-                self.assertEqual({"NSAllowsLocalNetworking": True}, plist["NSAppTransportSecurity"], "plain HTTP to local networking only")
+                self.assertNotIn("NSAppTransportSecurity", plist, "a Release build has no App Transport Security exception")
+                debug = plistlib.loads((self.root / info["path"] / "Plists" / "Info.Debug.plist").read_bytes())
+                self.assertEqual({"NSAllowsLocalNetworking": True}, debug["NSAppTransportSecurity"], "plain HTTP to local networking, in Debug only")
+                self.assertEqual(plist, {key: value for key, value in debug.items() if key != "NSAppTransportSecurity"}, "the two plists differ only by that exception")
         # The names reach no Swift source: the app reads them from its Info.plist.
         for path in (self.root / "apps" / "rnd" / "Sources").rglob("*.swift"):
             self.assertNotIn("R&D", path.read_text(encoding="utf-8"), path.name)
@@ -326,7 +332,8 @@ class GeneratedIosAppsTests(unittest.TestCase):
                     self.assertEqual([f"{info['path']}/**", "shared/api-contracts/**", f".github/workflows/{app}.yml"], triggers[event]["paths"])
                 job = data["jobs"]["verify"]
                 self.assertEqual("macos-latest", job["runs-on"])
-                self.assertEqual(info["path"], job["defaults"]["run"]["working-directory"])
+                self.assertEqual(info["path"], data["env"]["APP_PATH"], "the app's path reaches the workflow once, as a variable")
+                self.assertEqual("${{ env.APP_PATH }}", job["defaults"]["run"]["working-directory"])
                 steps = [step["name"] for step in job["steps"] if "name" in step]
                 self.assertEqual(["Install XcodeGen", "Generate Xcode project", "Select iPhone simulator", "Build", "Test", "Upload test results"], steps)
                 text = self.text(f".github/workflows/{app}.yml")

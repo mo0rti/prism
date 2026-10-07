@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
 from prism_cli.wiki_model import FRONTMATTER_PATTERN, MARKDOWN_LINK_PATTERN
+from prism_cli.wiki_paths import decoded_link_path
 
 
 LINKED_CONTEXT_DIRECTORIES = {
@@ -106,8 +107,11 @@ def parse_external_link(target: str) -> tuple[str, str, str | None] | None:
     if not repository:
         return "", path, f"it needs a repository id; the form is {form}."
     parts = PurePosixPath(path).parts
-    if not path or "\\" in path or PurePosixPath(path).is_absolute() or any(part in {"", ".", ".."} for part in parts):
+    if not path or PurePosixPath(path).is_absolute() or any(part in {"", ".", ".."} for part in parts):
         return repository, path, f"it needs a path inside the repository, without `..`; the form is {form}."
+    safe, problem = decoded_link_path(path, percent_encoded=False)
+    if safe is None:
+        return repository, path, f"its path {problem} The form is {form}."
     return repository, path, None
 
 

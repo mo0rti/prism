@@ -3,10 +3,10 @@ name: {{ project_slug }}
 services:
 {% if "spring-backend" in stacks %}{% for app in apps if app.stack == "spring-backend" %}  {{ app.id }}:
     build:
-      context: ./{{ app.path }}
+      context: {{ ('./' ~ app.path) | tojson }}
       dockerfile: Dockerfile
     ports:
-      - "{{ app.port }}:{{ app.port }}"
+      - "127.0.0.1:{{ app.port }}:{{ app.port }}"
     # No Spring profile is set here: a container never runs the `local` development identity.
     environment:
       PORT: "{{ app.port }}"
@@ -23,8 +23,9 @@ services:
       POSTGRES_DB: ${DATABASE_NAME:-{{ project_slug | replace('-', '_') }}}
       POSTGRES_USER: ${DATABASE_USERNAME:-{{ project_slug | replace('-', '_') }}}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-localdev}
+    # The password is a known development default: every published port stays on this machine (127.0.0.1).
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

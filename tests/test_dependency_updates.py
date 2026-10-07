@@ -123,7 +123,7 @@ class DependencySyncWorkflowTests(unittest.TestCase):
         workflow = self.workflow()
         trigger = workflow[True]  # PyYAML reads the key `on` as True
         self.assertEqual(["packs/versions.yml"], trigger["pull_request"]["paths"])
-        condition = workflow["jobs"]["sync"]["if"]
+        condition = workflow["jobs"]["regenerate"]["if"]
         for part in ("github.actor == 'renovate[bot]'", "head.repo.full_name == github.repository", "startsWith(github.head_ref, 'renovate/')"):
             self.assertIn(part, condition)
 
@@ -133,11 +133,11 @@ class DependencySyncWorkflowTests(unittest.TestCase):
         self.assertIn('git add -A packs golden', text)
         self.assertIn('git push origin "HEAD:$HEAD_REF"', text)
         # The branch name reaches the shell through the environment, never through the script text.
-        run_text = "\n".join(str(step.get("run", "")) for step in self.workflow()["jobs"]["sync"]["steps"])
+        run_text = "\n".join(str(step.get("run", "")) for job in self.workflow()["jobs"].values() for step in job["steps"])
         self.assertNotIn("github.head_ref", run_text)
 
     def test_the_toolchains_of_the_two_lockfile_scripts_come_from_the_pins(self) -> None:
-        steps = self.workflow()["jobs"]["sync"]["steps"]
+        steps = self.workflow()["jobs"]["regenerate"]["steps"]
         node = next(step for step in steps if str(step.get("uses", "")).startswith("actions/setup-node@"))
         uv = next(step for step in steps if str(step.get("uses", "")).startswith("astral-sh/setup-uv@"))
         self.assertEqual("${{ steps.web.outputs.node }}", node["with"]["node-version"])
@@ -225,6 +225,88 @@ class AuditGateTests(unittest.TestCase):
     def test_advisory_identifiers_compare_regardless_of_case(self) -> None:
         self.assertEqual("GHSA-vfj7-8cjw-p6xm", audit_gate.normalize_id("ghsa-VFJ7-8CJW-P6XM"))
         self.assertEqual("CVE-2026-1", audit_gate.normalize_id("cve-2026-1"))
+
+
+
+class AuditGateFailsClosedTests(unittest.TestCase):
+    """An audit that did not run, or whose answer is inconsistent, never passes as "no unlisted advisory"."""
+
+    def run_gate(self, tool: str, stdout: str, returncode: int, *, stack: str = "nextjs-web") -> tuple[int, str]:
+        import contextlib
+        import io
+        import subprocess
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory)
+            (app / ("package-lock.json" if tool == "npm" else "uv.lock")).write_text("{}", encoding="utf-8")
+            completed = subprocess.CompletedProcess(args=[tool], returncode=returncode, stdout=stdout, stderr="")
+            output, errors = io.StringIO(), io.StringIO()
+            with patch.object(audit_gate.shutil, "which", return_value=tool), patch.object(audit_gate.subprocess, "run", return_value=completed):
+                with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                    code = audit_gate.main([tool, str(app), "--stack", stack])
+            return code, output.getvalue() + errors.getvalue()
+
+    def clean_report(self) -> dict:
+        return {"auditReportVersion": 2, "vulnerabilities": {}, "metadata": {"vulnerabilities": {"total": 0}}}
+
+    def test_an_empty_object_with_an_operational_exit_status_is_not_a_clean_audit(self) -> None:
+        # The case that passed before: npm failed with status 2 and a report of `{}`.
+        code, text = self.run_gate("npm", "{}", 2)
+        self.assertEqual(1, code)
+        self.assertNotIn("No unlisted advisory", text)
+        self.assertIn("exited with status 2", text)
+
+    def test_a_report_without_the_expected_structure_fails_whatever_the_exit_status(self) -> None:
+        for label, report in {
+            "an empty object": {},
+            "no metadata": {"auditReportVersion": 2, "vulnerabilities": {}},
+            "an old report version": {"auditReportVersion": 1, "vulnerabilities": {}, "metadata": {"vulnerabilities": {}}},
+            "vulnerabilities as a list": {"auditReportVersion": 2, "vulnerabilities": [], "metadata": {"vulnerabilities": {}}},
+            "an entry that is not a mapping": {"auditReportVersion": 2, "vulnerabilities": {"x": "high"}, "metadata": {"vulnerabilities": {}}},
+            "a list": [],
+        }.items():
+            for status in (0, 1):
+                with self.subTest(label=label, status=status):
+                    code, text = self.run_gate("npm", json.dumps(report), status)
+                    self.assertEqual(1, code)
+                    self.assertNotIn("No unlisted advisory", text)
+
+    def test_an_exit_status_that_disagrees_with_the_report_fails(self) -> None:
+        code, text = self.run_gate("npm", json.dumps(self.clean_report()), 1)
+        self.assertEqual(1, code)
+        self.assertIn("lists no advisory", text)
+        code, text = self.run_gate("npm", json.dumps(NPM_REPORT), 0)
+        self.assertEqual(1, code)
+        self.assertIn("exited with status 0", text)
+
+    def test_a_clean_report_with_a_clean_exit_passes_and_a_listed_finding_passes_with_status_one(self) -> None:
+        code, text = self.run_gate("npm", json.dumps(self.clean_report()), 0)
+        self.assertEqual(0, code, text)
+        self.assertIn("No unlisted advisory", text)
+        only_listed = {
+            **NPM_REPORT,
+            "vulnerabilities": {name: entry for name, entry in NPM_REPORT["vulnerabilities"].items() if name in {"braces", "micromatch"}},
+        }
+        code, text = self.run_gate("npm", json.dumps(only_listed), 1)
+        self.assertEqual(0, code, text)
+        self.assertIn("allowed: GHSA-vfj7-8cjw-p6xm", text)
+
+    def test_an_unlisted_finding_still_blocks(self) -> None:
+        code, text = self.run_gate("npm", json.dumps(NPM_REPORT), 1)
+        self.assertEqual(1, code)
+        self.assertIn("GHSA-1111-2222-3333", text)
+
+    def test_uv_passes_only_on_status_zero_and_an_operational_status_is_an_error_not_a_finding(self) -> None:
+        self.assertEqual(0, self.run_gate("uv", "", 0, stack="python-agent-service")[0])
+        code, text = self.run_gate("uv", "", 1, stack="python-agent-service")
+        self.assertEqual(1, code)
+        self.assertIn("reported a finding", text)
+        code, text = self.run_gate("uv", "", 2, stack="python-agent-service")
+        self.assertEqual(2, code)
+        self.assertIn("neither a clean audit (0) nor findings (1)", text)
+        self.assertEqual(1, self.run_gate("uv", "", -9, stack="python-agent-service")[0])
 
 
 class AllowListTests(unittest.TestCase):

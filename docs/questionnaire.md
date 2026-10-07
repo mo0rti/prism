@@ -17,7 +17,7 @@ The agent integrations are not a question: every generated workspace carries gui
 An app is `{id, stack}` plus optional `name`, `path`, `audience`, `repository`, `remote` and `generation`:
 
 - `id` is a stable slug. `stack` comes from the registry: `spring-backend`, `nextjs-web`, `android-compose`, `ios-swiftui`, `python-agent-service` or `other`. The interactive flow offers every stack in its "another app" step, so the agent service is chosen there, listed in an answers file, or added later with `prism app add`.
-- `path` defaults to the stack's default path (`backend`, `mobile-android`, `mobile-ios`, `agent-service`), else the ID (`web` for the default web app).
+- `path` defaults to the stack's default path (`backend`, `mobile-android`, `mobile-ios`, `agent-service`), else the ID (`web` for the default web app). Each segment is lowercase letters, digits, `.`, `_` and `-`, starts with a letter or a digit and does not end with a dot (`apps/partner` and `services/api-two` are fine; `apps/$(id)`, `Apps/Web` and `apps/my app` are refused).
 - `audience` is free text, for example `B2C` or `internal`. No gate reads it. For a `nextjs-web` app it is display text in the app's header and guidance, nothing more. The interactive flow asks for it, and `prism app add --audience` sets it.
 - `generation` is `scaffolded` (Prism generates the code and `prism update` keeps it current) or `registered` (the manifest records it; the code lives elsewhere). An app of a generated stack in this repository defaults to `scaffolded`; an app in an external repository, or of the `other` stack, is always registered. An external app also names its repository's `remote`.
 
@@ -56,6 +56,16 @@ The CLI derives, validates and records these in the app's own answers file (`<pa
 - the CI workflow name and `paths:` filters, scoped to the app's path.
 - `port`: the first free port of the stack's range (`spring-backend` from 8080, `nextjs-web` from 3000, `python-agent-service` from 8200), chosen when the app is added and kept in its answers. Removing another app never moves it.
 - the web package name, `<project_slug>-<app id>`, and the session cookie name, `<app id>_session` with hyphens as underscores: each web app has its own, because apps on `localhost` share one cookie jar whatever their port.
+
+### Values that reach generated files
+
+An app's ID, path, name and audience and the project's name and description end up in shell steps, YAML, Gradle, Xcode, npm and pyproject files, `.env` files and Markdown that agents read, so they are checked at every entry point (the manifest, `prism new`, `prism app add` and the validators of `copier.yml`, which cover a raw `copier copy`):
+
+- an app **name**, an **audience** and the **project name** are one line of at most 80 letters, digits, spaces and the characters `. , - _ ( ) + / &`;
+- the **description** is one line of at most 200 characters of the same set plus `' : ; ! ?`;
+- a **path** follows the segment rule above, at most 200 characters, with no Windows device name (`con`, `nul`, `com1`, ...) as a segment.
+
+The templates also serialize a value wherever it enters YAML (`| tojson`), and a pack workflow passes the app's path to its shell steps through one quoted environment variable (`APP_PATH`), never inline. A value that breaks a rule is refused with the rule in the message.
 
 An app ID and path must not replace a file of the workspace layer: an ID such as `api-contracts` (a workspace workflow) or a path inside `docs/`, `knowledge/`, `shared/` or `.github/` is refused, and an app's own path must be empty or absent.
 

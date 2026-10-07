@@ -22,9 +22,12 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: {{ app_package | replace('_', '-') }}
       configs:
         # The backend the app calls. The local development sign-in works only against a backend on this Mac,
-        # which the simulator reaches as localhost. Set the Release value to your deployed backend.
+        # which the simulator reaches as localhost. Set the Release value to your deployed backend, which must be
+        # an https URL: a Release build neither allows cleartext (its Info.plist has no App Transport Security
+        # exception) nor accepts an http URL (APIURL.swift).
         Debug:
           API_BASE_URL: "http://localhost:8080"
+          INFOPLIST_FILE: Plists/Info.Debug.plist
         Release:
           API_BASE_URL: ""
     scheme:

@@ -111,7 +111,7 @@ class WorkspaceAndBackendTests(LayeredTestCase):
         ws = self.workspace
         compose = yaml.safe_load((ws / "docker-compose.yml").read_text(encoding="utf-8"))
         self.assertEqual({"backend", "db"}, set(compose["services"]))
-        self.assertEqual(["8080:8080"], compose["services"]["backend"]["ports"])
+        self.assertEqual(["127.0.0.1:8080:8080"], compose["services"]["backend"]["ports"], "a published port stays on this machine")
         self.assertNotIn("SPRING_PROFILES_ACTIVE", (ws / "docker-compose.yml").read_text(encoding="utf-8"), "no default profile")
         taskfile = yaml.safe_load((ws / "Taskfile.yml").read_text(encoding="utf-8"))
         self.assertEqual("./backend/Taskfile.yml", taskfile["includes"]["backend"]["taskfile"])
@@ -127,7 +127,8 @@ class WorkspaceAndBackendTests(LayeredTestCase):
         self.assertEqual(["backend/**", "shared/api-contracts/**", ".github/workflows/backend.yml"], triggers["push"]["paths"])
         self.assertEqual("Spring Boot Backend CI", workflow["name"])
         text = (self.workspace / ".github" / "workflows" / "backend.yml").read_text(encoding="utf-8")
-        self.assertIn("working-directory: backend", text)
+        self.assertIn('APP_PATH: "backend"', text)
+        self.assertIn("working-directory: ${{ env.APP_PATH }}", text)
 
     def test_no_generated_file_keeps_a_template_placeholder(self) -> None:
         for path in text_files(self.workspace):
@@ -170,13 +171,14 @@ class TwoBackendsTests(LayeredTestCase):
         self.assertEqual(["api-contracts.yml", "api-two.yml", "backend.yml"], workflows)
         text = (self.workspace / ".github" / "workflows" / "api-two.yml").read_text(encoding="utf-8")
         self.assertIn('"services/api-two/**"', text)
-        self.assertIn("working-directory: services/api-two", text)
+        self.assertIn('APP_PATH: "services/api-two"', text)
+        self.assertIn("working-directory: ${{ env.APP_PATH }}", text)
         self.assertIn('globs: "services/api-two/**"', (self.workspace / ".cursor" / "rules" / "api-two.mdc").read_text(encoding="utf-8"))
 
     def test_the_workspace_layer_lists_both_apps(self) -> None:
         compose = yaml.safe_load((self.workspace / "docker-compose.yml").read_text(encoding="utf-8"))
         self.assertEqual({"backend", "api-two", "db"}, set(compose["services"]))
-        self.assertEqual(["8081:8081"], compose["services"]["api-two"]["ports"])
+        self.assertEqual(["127.0.0.1:8081:8081"], compose["services"]["api-two"]["ports"])
         self.assertEqual("./services/api-two", compose["services"]["api-two"]["build"]["context"])
         taskfile = yaml.safe_load((self.workspace / "Taskfile.yml").read_text(encoding="utf-8"))
         self.assertEqual({"backend", "api-two"}, set(taskfile["includes"]))
@@ -251,7 +253,8 @@ class PackStacksTests(LayeredTestCase):
             self.assertIn(f'applicationId = "com.example.layeredapp.{segment}"', gradle)
             self.assertIn(f'rootProject.name = "{app_id}"', (ws / path / "settings.gradle.kts").read_text(encoding="utf-8"))
             workflow = (ws / ".github" / "workflows" / f"{app_id}.yml").read_text(encoding="utf-8")
-            self.assertIn(f"working-directory: {path}", workflow)
+            self.assertIn(f'APP_PATH: "{path}"', workflow)
+            self.assertIn("working-directory: ${{ env.APP_PATH }}", workflow)
             self.assertIn("./gradlew assembleDebug testDebugUnitTest", workflow)
             self.assertIn(f"{path}/**", workflow)
             rule = (ws / ".cursor" / "rules" / f"{app_id}.mdc").read_text(encoding="utf-8")
@@ -262,8 +265,8 @@ class PackStacksTests(LayeredTestCase):
         workspace = read_yaml(ws / ".copier-answers.yml")
         self.assertEqual(["android-compose", "spring-backend"], workspace["stacks"])
         taskfile = (ws / "Taskfile.yml").read_text(encoding="utf-8")
-        self.assertIn("taskfile: ./mobile-android/Taskfile.yml", taskfile)
-        self.assertIn("taskfile: ./apps/partner/Taskfile.yml", taskfile)
+        self.assertIn('taskfile: "./mobile-android/Taskfile.yml"', taskfile)
+        self.assertIn('taskfile: "./apps/partner/Taskfile.yml"', taskfile)
         self.assertFalse((ws / "mobile-android" / "local.config.properties").exists(), "the retired sample's local config is gone")
         self.assertFalse((ws / "mobile-android" / "fastlane").exists())
         manifest = read_yaml(ws / "prism.workspace.yml")

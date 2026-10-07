@@ -1,0 +1,61 @@
+package com.example.prismgolden.backend.bootstrap
+
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory
+import org.springframework.boot.context.properties.bind.Bindable
+import org.springframework.boot.context.properties.bind.Binder
+import org.springframework.context.EnvironmentAware
+import org.springframework.context.annotation.Profile
+import org.springframework.core.env.Environment
+import org.springframework.stereotype.Component
+
+/**
+ * Stops the app from starting when a real identity provider is configured without the audience of this API.
+ *
+ * Spring Boot checks a token's issuer and expiry, not who the token is for, so a correctly signed token that the
+ * same provider issued for another application would otherwise authenticate here. [SecurityConfig] enforces the
+ * audience; this guard makes sure one is configured. The `local` profile has its own identity and needs none.
+ */
+@Component
+@Profile("!local")
+class AudienceGuard : BeanFactoryPostProcessor, EnvironmentAware {
+
+    private lateinit var environment: Environment
+
+    override fun setEnvironment(environment: Environment) {
+        this.environment = environment
+    }
+
+    override fun postProcessBeanFactory(beanFactory: ConfigurableListableBeanFactory) {
+        requireAudienceWithIdentityProvider(environment)
+    }
+
+    companion object {
+        /** The properties that name the provider of the JWTs this API accepts. */
+        val JWT_PROVIDER_PROPERTIES = listOf(
+            "spring.security.oauth2.resourceserver.jwt.issuer-uri",
+            "spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
+            "spring.security.oauth2.resourceserver.jwt.public-key-location"
+        )
+
+        /** The audience of this API: `spring.security.oauth2.resourceserver.jwt.audiences`, or `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES`. */
+        const val AUDIENCES_PROPERTY = "spring.security.oauth2.resourceserver.jwt.audiences"
+
+        fun configuredAudiences(environment: Environment): Set<String> {
+            val bound: List<String>? = Binder.get(environment)
+                .bind(AUDIENCES_PROPERTY, Bindable.listOf(String::class.java))
+                .orElse(null)
+            return (bound ?: emptyList()).map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        }
+
+        fun requireAudienceWithIdentityProvider(environment: Environment) {
+            val configured = JWT_PROVIDER_PROPERTIES.filter { !environment.getProperty(it).isNullOrBlank() }
+            if (configured.isEmpty()) return
+            check(configuredAudiences(environment).isNotEmpty()) {
+                "An identity provider is configured (${configured.joinToString(", ")}) but no audience is. " +
+                    "Set $AUDIENCES_PROPERTY (SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES) to the audience " +
+                    "your provider issues tokens for this API, so a token meant for another API is not accepted."
+            }
+        }
+    }
+}

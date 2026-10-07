@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { createDevIdentityToken } from "@/lib/api/client"
-import { isSameOrigin, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session"
+import { isLoopbackRequest, isSameOrigin, localDevSignInEnabled, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session"
 
 const DEFAULT_MAX_AGE_SECONDS = 15 * 60
 const MAX_FIELD_LENGTH = 200
@@ -10,9 +10,15 @@ function failure(message: string, status: number) {
   return NextResponse.json({ message }, { status })
 }
 
-/** Local development sign-in: asks the backend's dev identity for a token and keeps it in an httpOnly cookie. */
+/**
+ * Local development sign-in: asks the backend's dev identity for a token and keeps it in an httpOnly cookie.
+ * The route relays a caller into an identity that exists for this machine only, so it answers only in explicit local
+ * mode, only to a request that names this app's own origin, and only to a caller on this machine.
+ */
 export async function POST(request: Request) {
+  if (!localDevSignInEnabled()) return failure("Local development sign-in is off. It runs with `npm run dev`; a production build has none.", 404)
   if (!isSameOrigin(request)) return failure("Sign-in only accepts requests from this app.", 403)
+  if (!isLoopbackRequest(request)) return failure("Local development sign-in only answers requests from this machine.", 403)
 
   let body: unknown
   try {

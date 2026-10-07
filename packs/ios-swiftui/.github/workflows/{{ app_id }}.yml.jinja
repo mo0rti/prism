@@ -15,6 +15,9 @@ on:
 {%- endfor %}
   workflow_dispatch:
 
+env:
+  APP_PATH: {{ app_path | tojson }}
+
 jobs:
   verify:
     name: Generate, build, test
@@ -23,7 +26,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: {{ app_path }}
+        working-directory: {% raw %}${{ env.APP_PATH }}{% endraw %}
     steps:
       - uses: actions/checkout@v4
 
@@ -70,5 +73,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: {{ app_id }}-test-results
-          path: {{ app_path }}/build/TestResults.xcresult
+          path: {% raw %}${{ env.APP_PATH }}{% endraw %}/build/TestResults.xcresult
           if-no-files-found: ignore

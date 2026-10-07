@@ -88,14 +88,19 @@ prism_layer:
 project_name:
   type: str
   help: "Human-readable project name (e.g., My Awesome App)"
-  validator: "{% if not project_name %}Project name is required{% endif %}"
+  validator: >-
+    {% if not project_name %}
+    Project name is required.
+    {% elif not (project_name | regex_search('^(?! )[\\w .,()+/&-]{1,80}(?<! )\\Z')) %}
+    Project name must be one line of at most 80 letters, digits, spaces and the characters . , - _ ( ) + / &
+    {% endif %}
 
 project_slug:
   type: str
   help: "Lowercase slug for directories and packages (e.g., my-awesome-app)"
   default: "{{ project_name | lower | replace(' ', '-') | replace('_', '-') }}"
   validator: >-
-    {% if not (project_slug | regex_search('^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$')) %}
+    {% if not (project_slug | regex_search('^[a-z][a-z0-9]*(?:-[a-z0-9]+)*\\Z')) %}
     Project slug must start with a lowercase letter and contain lowercase letters, digits, and single hyphens.
     {% endif %}
 
@@ -110,7 +115,7 @@ package_identifier:
   help: "Reverse-domain package identifier (e.g., com.example.myapp)"
   default: "com.example.{{ project_slug | replace('-', '') }}"
   validator: >-
-    {% if not (package_identifier | regex_search('^[A-Za-z][A-Za-z0-9_]*(?:[.][A-Za-z][A-Za-z0-9_]*)+$')) %}
+    {% if not (package_identifier | regex_search('^[A-Za-z][A-Za-z0-9_]*(?:[.][A-Za-z][A-Za-z0-9_]*)+\\Z')) %}
     Package identifier must have at least two dot-separated identifiers, each starting with a letter.
     {% endif %}
     {% for segment in package_identifier.split('.') %}
@@ -127,6 +132,10 @@ description:
   help: "One-line project description"
   default: "A multi-platform application"
   when: "{{ prism_layer == 'workspace' }}"
+  validator: >-
+    {% if description and not (description | regex_search("^(?! )[\\w .,()+':;!?/&-]{1,200}(?<! )\\Z")) %}
+    Description must be one line of at most 200 letters, digits, spaces and the characters . , - _ ( ) + ' : ; ! ? / &
+    {% endif %}
 
 stacks:
   type: yaml
@@ -166,7 +175,7 @@ app_id:
   default: ""
   when: "{{ prism_layer != 'workspace' }}"
   validator: >-
-    {% if not (app_id | regex_search('^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$')) %}
+    {% if not (app_id | regex_search('^[a-z][a-z0-9]*(?:-[a-z0-9]+)*\\Z')) %}
     App ID must start with a lowercase letter and contain lowercase letters, digits, and single hyphens.
     {% endif %}
 
@@ -175,7 +184,12 @@ app_name:
   help: "Display name of the app"
   default: "{{ app_id }}"
   when: "{{ prism_layer != 'workspace' }}"
-  validator: "{% if not app_name %}App name is required{% endif %}"
+  validator: >-
+    {% if not app_name %}
+    App name is required.
+    {% elif not (app_name | regex_search('^(?! )[\\w .,()+/&-]{1,80}(?<! )\\Z')) %}
+    App name must be one line of at most 80 letters, digits, spaces and the characters . , - _ ( ) + / &
+    {% endif %}
 
 app_path:
   type: str
@@ -185,13 +199,19 @@ app_path:
   validator: >-
     {% if not app_path or app_path.startswith('/') or '\\' in app_path or '..' in app_path.split('/') or '' in app_path.split('/') or '.' in app_path.split('/') %}
     App path must be a relative path with no empty, `.` or `..` segments.
-    {% endif %}
+    {% else %}{% for segment in app_path.split('/') %}{% if not (segment | regex_search('^[a-z0-9](?:[a-z0-9._-]*[a-z0-9_-])?\\Z')) %}
+    App path segment `{{ segment }}` is not safe: use lowercase letters, digits, `.`, `_` and `-`, starting with a letter or a digit and not ending with a dot.
+    {% endif %}{% endfor %}{% endif %}
 
 audience:
   type: str
   help: "Free-text audience of the app (no gate reads it)"
   default: ""
   when: "{{ prism_layer != 'workspace' }}"
+  validator: >-
+    {% if audience and not (audience | regex_search('^(?! )[\\w .,()+/&-]{1,80}(?<! )\\Z')) %}
+    Audience must be one line of at most 80 letters, digits, spaces and the characters . , - _ ( ) + / &
+    {% endif %}
 
 port:
   type: int

@@ -24,11 +24,6 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsLocalNetworking</key>
-        <true/>
-    </dict>
     <key>PrismAppAudience</key>
     <string></string>
     <key>API_BASE_URL</key>

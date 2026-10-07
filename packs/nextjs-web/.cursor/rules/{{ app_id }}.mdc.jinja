@@ -1,6 +1,6 @@
 ---
 description: {{ (app_name ~ " (Next.js web app): stack, structure, sign-in slice and commands.") | tojson }}
-globs: "{{ app_path }}/**"
+globs: {{ (app_path ~ "/**") | tojson }}
 ---
 
 # {{ app_name }} - Next.js (TypeScript)

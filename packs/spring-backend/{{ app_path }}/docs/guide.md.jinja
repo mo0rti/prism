@@ -46,7 +46,7 @@ The package is `{{ app_package }}`. Configuration lives in `src/main/resources/a
 The slice signs in through a **local development identity** under the `local` profile, and validates JWTs as a resource server in every profile.
 
 - `local`: `DevIdentityConfig` generates an RSA key in memory; `POST /api/dev-identity/token` signs a 15-minute token (`iss=prism-dev-identity`) for loopback requests. `GET /api/dev-identity/jwks` publishes the public key (no private member) so another local service, such as an agent service, verifies the tokens with no shared secret. `GET /api/me` accepts only those tokens. `DevIdentityGuard` stops startup when an identity provider is also configured.
-- no profile: the token and JWKS routes do not exist (404). With `spring.security.oauth2.resourceserver.jwt.issuer-uri` set, Spring Boot validates your provider's tokens; with nothing set, `RejectingJwtDecoder` rejects every token.
+- no profile: the token and JWKS routes do not exist (404). With `spring.security.oauth2.resourceserver.jwt.issuer-uri` and `spring.security.oauth2.resourceserver.jwt.audiences` (the audience of this API) set, Spring Boot validates your provider's tokens and the app also requires the audience (startup fails with an issuer and no audience; a token with a missing or foreign `aud` gets 401); with nothing set, `RejectingJwtDecoder` rejects every token.
 - `GET /api/me` reads the token's `sub`, `email` and `name` claims. `UserService` creates the `users` row on the first call, so it keeps working unchanged with a real provider.
 
 The dev identity is not authentication. The `security-auth` skill describes how to replace it.

@@ -1,30 +1,30 @@
 version: '3'
 
 vars:
-  PROJECT_NAME: {{ project_name }}
+  PROJECT_NAME: {{ project_name | tojson }}
   OPENAPI_SPEC: ./shared/api-contracts/openapi.yml
   OPENAPI_GENERATOR: openapi-generator-cli
 
 includes:
 {% for app in apps if app.stack == "spring-backend" %}  {{ app.id }}:
-    taskfile: ./{{ app.path }}/Taskfile.yml
-    dir: ./{{ app.path }}
+    taskfile: {{ ('./' ~ app.path ~ '/Taskfile.yml') | tojson }}
+    dir: {{ ('./' ~ app.path) | tojson }}
 {% endfor %}
 {% for app in apps if app.stack == "nextjs-web" %}  {{ app.id }}:
-    taskfile: ./{{ app.path }}/Taskfile.yml
-    dir: ./{{ app.path }}
+    taskfile: {{ ('./' ~ app.path ~ '/Taskfile.yml') | tojson }}
+    dir: {{ ('./' ~ app.path) | tojson }}
 {% endfor %}
 {% for app in apps if app.stack == "android-compose" %}  {{ app.id }}:
-    taskfile: ./{{ app.path }}/Taskfile.yml
-    dir: ./{{ app.path }}
+    taskfile: {{ ('./' ~ app.path ~ '/Taskfile.yml') | tojson }}
+    dir: {{ ('./' ~ app.path) | tojson }}
 {% endfor %}
 {% for app in apps if app.stack == "ios-swiftui" %}  {{ app.id }}:
-    taskfile: ./{{ app.path }}/Taskfile.yml
-    dir: ./{{ app.path }}
+    taskfile: {{ ('./' ~ app.path ~ '/Taskfile.yml') | tojson }}
+    dir: {{ ('./' ~ app.path) | tojson }}
 {% endfor %}
 {% for app in apps if app.stack == "python-agent-service" %}  {{ app.id }}:
-    taskfile: ./{{ app.path }}/Taskfile.yml
-    dir: ./{{ app.path }}
+    taskfile: {{ ('./' ~ app.path ~ '/Taskfile.yml') | tojson }}
+    dir: {{ ('./' ~ app.path) | tojson }}
 {% endfor %}
 
 tasks:
@@ -50,7 +50,7 @@ tasks:
         {{'{{'}} .OPENAPI_GENERATOR {{'}}'}} generate
         -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
         -g kotlin-spring
-        -o ./{{ app.path }}/src/generated
+        -o "./{{ app.path }}/src/generated"
         --additional-properties=interfaceOnly=true,useSpringBoot3=true,useTags=true
         --package-name="{{ package_identifier }}.{{ app.id | replace('-', '') }}.api"
 {% endfor %}

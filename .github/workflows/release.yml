@@ -1,17 +1,21 @@
 name: Release
 
-# Pushing a tag such as v0.5.0 builds the package once, publishes it to TestPyPI,
-# installs it from there, publishes the same files to PyPI and creates the GitHub
-# release. Publishing uses trusted publishing (OIDC); no token is stored.
+# Pushing a tag such as v0.5.0 builds the package once, smoke-tests the built wheel, publishes it to
+# TestPyPI, downloads it from there and compares it with the build, publishes the same files to PyPI and
+# creates the GitHub release. Publishing uses trusted publishing (OIDC); no token is stored.
 # The one-time owner setup is in docs/cli-release.md.
 #
 # Nothing is built or published unless Template Validation (which builds and tests the golden app of
 # every pack) and CLI Validation (the Python tests, which include the golden check) have a green run
 # for the tagged commit: a broken slice blocks the release of its pack.
 #
+# The release is bound to one commit. The first job requires that the tag exists as `refs/tags/<tag>`
+# (a branch of the same name is refused), resolves its commit once and outputs the SHA; every later
+# job checks out that SHA, never the tag again, so a tag that moves later cannot change what is released.
+#
 # A manual run releases an existing tag. With skip_testpypi it publishes to PyPI
-# without the TestPyPI stage, for when TestPyPI is unavailable, then installs the
-# published version from PyPI and runs the same smoke test.
+# without the TestPyPI stage, for when TestPyPI is unavailable, then downloads the published
+# version from PyPI alone, compares it with the build and runs the same smoke test.
 
 on:
   push:
@@ -24,7 +28,7 @@ on:
         required: true
         type: string
       skip_testpypi:
-        description: "Skip TestPyPI and smoke-test the PyPI release instead"
+        description: "Skip TestPyPI and verify the PyPI release instead"
         required: false
         type: boolean
         default: false
@@ -47,12 +51,14 @@ jobs:
       actions: read
     outputs:
       version: ${{ steps.check.outputs.version }}
+      sha: ${{ steps.check.outputs.sha }}
 
     steps:
+      # A manual run names a tag: the full ref makes the checkout fail for a branch of that name.
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -65,6 +71,17 @@ jobs:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           case "$TAG" in v*) ;; *) echo "::error::$TAG is not a release tag."; exit 1;; esac
+          # The release is a tag, never a branch: refs/tags/<tag> must exist, and its commit is the one released.
+          if ! git rev-parse --verify --quiet "refs/tags/${TAG}^{commit}" > /dev/null; then
+            echo "::error::refs/tags/$TAG does not exist. A release is a tag; a branch named like one is not accepted."
+            exit 1
+          fi
+          sha="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+          if [ "$sha" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::The checkout is not the commit of refs/tags/$TAG."
+            exit 1
+          fi
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
           python - <<'PY'
           import json
           import os
@@ -115,10 +132,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout the verified commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ needs.verify-tag.outputs.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -149,9 +166,47 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The wheel that this run built is installed and run before anything is published, in both paths.
+  smoke-wheel:
+    name: Install the built wheel and run the CLI
+    needs: [verify-tag, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download the distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Install the built wheel
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -eu
+          python -m venv "$RUNNER_TEMP/prism-smoke"
+          "$RUNNER_TEMP/prism-smoke/bin/python" -m pip install --no-cache-dir "dist/prism_kit-${VERSION}-py3-none-any.whl"
+
+      - name: Run the installed CLI in a temporary workspace
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -eu
+          PRISM="$RUNNER_TEMP/prism-smoke/bin/prism"
+          test "$("$PRISM" --version)" = "prism ${VERSION}" || { echo "::error::Unexpected version output: $("$PRISM" --version)"; exit 1; }
+          workspace="$(mktemp -d)"
+          cd "$workspace"
+          "$PRISM" workflow install . --name "Release smoke" --app backend --apply --yes
+          "$PRISM" doctor --workspace .
+
   publish-testpypi:
     name: Publish to TestPyPI
-    needs: build
+    needs: [build, smoke-wheel]
     if: ${{ !inputs.skip_testpypi }}
     runs-on: ubuntu-latest
     environment:
@@ -173,8 +228,10 @@ jobs:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true
 
+  # `skip-existing` leaves an older upload of the same version in place, so the version alone proves nothing: the
+  # wheel is downloaded from TestPyPI alone and must be byte-identical to the one this run built.
   smoke-test:
-    name: Install from TestPyPI and run the CLI
+    name: Compare the TestPyPI wheel with the build and run the CLI
     needs: [verify-tag, publish-testpypi]
     if: ${{ !inputs.skip_testpypi }}
     runs-on: ubuntu-latest
@@ -185,7 +242,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install the published version, retrying while the index catches up
+      - name: Download the distributions built by this run
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Download the published wheel from TestPyPI alone, retrying while the index catches up
         env:
           VERSION: ${{ needs.verify-tag.outputs.version }}
         run: |
@@ -193,17 +256,39 @@ jobs:
           python -m venv "$RUNNER_TEMP/prism-smoke"
           attempts=12
           for attempt in $(seq 1 "$attempts"); do
-            if "$RUNNER_TEMP/prism-smoke/bin/python" -m pip install --no-cache-dir \
+            rm -rf "$RUNNER_TEMP/registry"
+            # The package itself comes from TestPyPI only, and its dependencies are not downloaded.
+            if "$RUNNER_TEMP/prism-smoke/bin/python" -m pip download --no-cache-dir --no-deps --only-binary=:all: \
                 --index-url https://test.pypi.org/simple/ \
-                --extra-index-url https://pypi.org/simple/ \
+                --dest "$RUNNER_TEMP/registry" \
                 "prism-kit==${VERSION}"; then
               exit 0
             fi
             echo "Attempt ${attempt} of ${attempts} did not find prism-kit==${VERSION}; waiting 20 seconds."
             sleep 20
           done
-          echo "::error::prism-kit==${VERSION} could not be installed from TestPyPI."
+          echo "::error::prism-kit==${VERSION} could not be downloaded from TestPyPI."
           exit 1
+
+      - name: Require the published wheel to equal the built wheel
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -eu
+          wheel="prism_kit-${VERSION}-py3-none-any.whl"
+          built="$(sha256sum "dist/${wheel}" | cut -d' ' -f1)"
+          published="$(sha256sum "$RUNNER_TEMP/registry/${wheel}" | cut -d' ' -f1)"
+          echo "built:     ${built}"
+          echo "published: ${published}"
+          test "$built" = "$published" || { echo "::error::The wheel on TestPyPI is not the wheel this run built; an earlier upload of ${VERSION} is still there."; exit 1; }
+
+      - name: Install the published wheel and its dependencies
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -eu
+          # The wheel is the verified file; its dependencies come from PyPI.
+          "$RUNNER_TEMP/prism-smoke/bin/python" -m pip install --no-cache-dir "$RUNNER_TEMP/registry/prism_kit-${VERSION}-py3-none-any.whl"
 
       - name: Run the installed CLI in a temporary workspace
         env:
@@ -219,9 +304,9 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    needs: [build, smoke-test]
+    needs: [build, smoke-wheel, smoke-test]
     if: >-
-      ${{ always() && needs.build.result == 'success' &&
+      ${{ always() && needs.build.result == 'success' && needs.smoke-wheel.result == 'success' &&
       (needs.smoke-test.result == 'success' || (inputs.skip_testpypi && needs.smoke-test.result == 'skipped')) }}
     runs-on: ubuntu-latest
     environment:
@@ -241,7 +326,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
 
   pypi-smoke-test:
-    name: Install from PyPI and run the CLI
+    name: Compare the PyPI wheel with the build and run the CLI
     needs: [verify-tag, publish-pypi]
     if: ${{ always() && inputs.skip_testpypi && needs.publish-pypi.result == 'success' }}
     runs-on: ubuntu-latest
@@ -252,7 +337,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install the published version, retrying while the index catches up
+      - name: Download the distributions built by this run
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Download the published wheel from PyPI alone, retrying while the index catches up
         env:
           VERSION: ${{ needs.verify-tag.outputs.version }}
         run: |
@@ -260,14 +351,37 @@ jobs:
           python -m venv "$RUNNER_TEMP/prism-smoke"
           attempts=12
           for attempt in $(seq 1 "$attempts"); do
-            if "$RUNNER_TEMP/prism-smoke/bin/python" -m pip install --no-cache-dir "prism-kit==${VERSION}"; then
+            rm -rf "$RUNNER_TEMP/registry"
+            if "$RUNNER_TEMP/prism-smoke/bin/python" -m pip download --no-cache-dir --no-deps --only-binary=:all: \
+                --index-url https://pypi.org/simple/ \
+                --dest "$RUNNER_TEMP/registry" \
+                "prism-kit==${VERSION}"; then
               exit 0
             fi
             echo "Attempt ${attempt} of ${attempts} did not find prism-kit==${VERSION}; waiting 20 seconds."
             sleep 20
           done
-          echo "::error::prism-kit==${VERSION} could not be installed from PyPI."
+          echo "::error::prism-kit==${VERSION} could not be downloaded from PyPI."
           exit 1
+
+      - name: Require the published wheel to equal the built wheel
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -eu
+          wheel="prism_kit-${VERSION}-py3-none-any.whl"
+          built="$(sha256sum "dist/${wheel}" | cut -d' ' -f1)"
+          published="$(sha256sum "$RUNNER_TEMP/registry/${wheel}" | cut -d' ' -f1)"
+          echo "built:     ${built}"
+          echo "published: ${published}"
+          test "$built" = "$published" || { echo "::error::The wheel on PyPI is not the wheel this run built."; exit 1; }
+
+      - name: Install the published wheel and its dependencies
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -eu
+          "$RUNNER_TEMP/prism-smoke/bin/python" -m pip install --no-cache-dir "$RUNNER_TEMP/registry/prism_kit-${VERSION}-py3-none-any.whl"
 
       - name: Run the installed CLI in a temporary workspace
         env:
@@ -292,10 +406,22 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout
+      - name: Checkout the verified commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ needs.verify-tag.outputs.sha }}
+
+      - name: Require the tag to still name the verified commit
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          SHA: ${{ needs.verify-tag.outputs.sha }}
+        run: |
+          set -eu
+          remote="$(git ls-remote origin "refs/tags/${TAG}" "refs/tags/${TAG}^{}")"
+          peeled="$(printf '%s\n' "$remote" | awk '/\^\{\}$/ {print $1}')"
+          direct="$(printf '%s\n' "$remote" | awk '!/\^\{\}$/ {print $1}')"
+          current="${peeled:-$direct}"
+          test "$current" = "$SHA" || { echo "::error::The tag $TAG no longer names the verified commit $SHA (it names ${current:-nothing})."; exit 1; }
 
       - name: Download the distributions
         uses: actions/download-artifact@v4

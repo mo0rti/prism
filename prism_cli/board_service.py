@@ -790,7 +790,6 @@ class BoardService:
                 path = self._safe_path(move[endpoint], allow_missing=True)
                 current[endpoint] = self._tree_digest(path) if path.is_dir() else ("not-directory" if path.exists() else None)
             moves.append(current)
-        relevant_paths = set(intent.get("source_map", {})) - _MANAGED_PATHS
         states = states if states is not None else self._operation_file_states(intent)
         managed = {write["path"] for write in intent.get("writes", []) if write.get("role") in {*_ROW_ROLES, "log"}}
         # Their target-row/entry states are relevant, while unrelated rows and
@@ -802,8 +801,49 @@ class BoardService:
             "intent": intent,
             "file_states": reviewed_states,
             "move_states": moves,
-            "relevant_sources": self._fingerprint_paths(relevant_paths),
+            "relevant_sources": self._recovery_snapshot(intent),
         }).encode("utf-8"))
+
+    def _recovery_dependency_paths(self, intent: Mapping[str, Any]) -> set[str]:
+        """The paths the operation depends on now: the sources recorded at preview plus the context its rules read today.
+
+        The context is derived as the proposal's rules derive it, from the proposal's own before-state (its recorded
+        `before` texts), so applying a write does not change which paths are relevant. A dependency that appeared
+        after the preview (a new design page of the feature, a new source it links) is part of the set.
+        """
+
+        paths = set(intent.get("source_map", {}))
+        try:
+            if intent.get("kind") == "transition":
+                feature = self._resolve_feature(intent["feature_id"])
+                paths |= self._feature_context_paths(feature["path"], feature["frontmatter"])
+            elif intent.get("skill") == VERIFY_SKILL:
+                paths |= set(intent.get("read_revisions", {}))
+            else:
+                supplied = {item["path"]: item["content"] for item in intent.get("proposed_changes", [])}
+                before: dict[str, str | None] = {path: None for path in supplied}
+                before.update({write["path"]: write.get("before") for write in intent.get("writes", []) if write["path"] in supplied})
+                paths |= self._required_skill_revision_paths(intent["skill"], supplied, before, intent.get("moves", []))
+        except (BoardError, OSError, KeyError, ValueError):
+            # The recorded sources still bind the review; the revalidation reports the real problem.
+            pass
+        return paths
+
+    def _recovery_snapshot(self, intent: Mapping[str, Any]) -> dict[str, str | None]:
+        """The digests of every relevant path of a recovery, by path.
+
+        The recorded writes and the recorded folder moves are left out: their states are compared on their own, and
+        they change while the recovery applies them. Managed rows and history are merged, not compared.
+        """
+
+        writes = {write["path"] for write in intent.get("writes", [])}
+        prefixes = [path for move in intent.get("moves", []) for path in (move["source"], move["destination"])]
+        relevant = {
+            path
+            for path in self._recovery_dependency_paths(intent)
+            if path not in _MANAGED_PATHS and path not in writes and not any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes)
+        }
+        return self._fingerprint_paths(relevant)
 
     @within_wiki_read_scope
     def recover(
@@ -845,13 +885,14 @@ class BoardService:
             if row[1] in _TERMINAL_OPERATION_STATES:
                 return _loads(row[3])
             cross_participant = row[0] != actor.participant_id
-            reviewed = False
+            reviewed: dict[str, str | None] | None = None
             if cross_participant or review_revision is not None or abandon:
                 if semantic_review_acknowledged is not True or not isinstance(review_revision, str):
                     raise BoardError("recovery_review_required", "Inspect and explicitly acknowledge the remaining changes before recovering this operation.", 409)
                 if review_revision != self._recovery_review_revision(actor, operation_id, intent):
                     raise BoardError("stale_recovery_review", "The operation or its relevant files changed after inspection; inspect and confirm the remaining changes again.", 409)
-                reviewed = actor.kind == "human"
+                # The confirmed review is the digests of the relevant paths as they are now; recovery keeps checking them.
+                reviewed = self._recovery_snapshot(intent) if actor.kind == "human" else None
             if abandon:
                 return self._abandon_operation(actor, operation_id, intent)
             if cross_participant:
@@ -2271,6 +2312,14 @@ class BoardService:
             allowed = {"features"}
         if len(parts) < 3 or parts[1] != "wiki" or parts[2] not in allowed:
             raise BoardError("write_path_unavailable", f"Skill `{skill}` cannot write `{relative}`.", 403)
+        if parts[-1].startswith("_"):
+            # `_FORMAT.md` and the other underscore files are the folder's own templates, not pages: no kind validates
+            # them, the wiki index skips them, and a write would replace the template.
+            raise BoardError(
+                "write_path_unavailable",
+                f"Skill `{skill}` cannot write `{_clip(relative, 120)}`: a file whose name starts with `_` is a format template of its folder, not a page.",
+                403,
+            )
         if len(parts) != 4:
             # The wiki reads one folder level (`knowledge/wiki/<dir>/<page>.md`); a page in a sub-folder would be
             # written but never linted, graphed, queried or checked for duplicate IDs.
@@ -2710,6 +2759,15 @@ class BoardService:
                 self._validate_decision(relative, content, before.get(relative), supplied, before)
             elif general_page_kind(relative.removeprefix("knowledge/wiki/")) is not None:
                 self._validate_general_page(relative, content)
+            elif not relative.startswith("knowledge/wiki/features/") and not relative.startswith("knowledge/intake/"):
+                # Every output of a skill resolves to a page kind that is validated; a path that none claims is refused
+                # rather than accepted unchecked.
+                raise BoardError(
+                    "unsupported_page_kind",
+                    f"`{_clip(relative, 120)}` is not a page of a kind the board validates (a topic, research, plan, direction, roadmap, decision, persona, business rule, design, requirement or contract page).",
+                    409,
+                    {"path": relative},
+                )
 
         seen_named_ids: set[tuple[str, str]] = set()
         for relative, content in supplied.items():
@@ -4223,7 +4281,9 @@ class BoardService:
                     raise BoardError("stale_status_row", f"The status board row for `{key}` changed after preview.", 409)
                 raise BoardError("stale_index_entry", f"The index line for `{_clip(key, 120)}` changed after preview.", 409)
 
-    def _recovery_preflight(self, actor: Actor, intent: Mapping[str, Any], conflict_paths: list[str], *, reviewed: bool) -> bool:
+    def _recovery_preflight(
+        self, actor: Actor, intent: Mapping[str, Any], conflict_paths: list[str], *, reviewed: Mapping[str, str | None] | None
+    ) -> bool:
         """Run every check that precedes a recovery write and return whether the operation is already complete.
 
         Raises the first reason the recorded writes and moves cannot be rolled forward now.
@@ -4238,11 +4298,13 @@ class BoardService:
         complete = all(item["state"] == "applied" for item in states) and all(state == "applied" for state in move_states)
         if not complete:
             self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
-            self._revalidate_recovery(actor, intent, reviewed=reviewed)
+            self._revalidate_recovery(actor, intent, reviewed=reviewed is not None)
             self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
         return complete
 
-    def _roll_forward(self, actor: Actor, operation_id: str, intent: Mapping[str, Any], *, reviewed: bool = False) -> dict[str, Any]:
+    def _roll_forward(
+        self, actor: Actor, operation_id: str, intent: Mapping[str, Any], *, reviewed: Mapping[str, str | None] | None = None
+    ) -> dict[str, Any]:
         store = self._require_store()
         conflicts: list[dict[str, Any]] = []
         conflict_paths: list[str] = []
@@ -4375,7 +4437,7 @@ class BoardService:
                 raise BoardError("operation_already_applied", "This operation was applied; it cannot be abandoned.", 409)
             try:
                 self._assert_unresolved_writes_safe(operation_id, intent)
-                self._recovery_preflight(actor, intent, [], reviewed=True)
+                self._recovery_preflight(actor, intent, [], reviewed=self._recovery_snapshot(intent))
             except BoardError as exc:
                 reason = f"{exc.code}: {exc.message}"
             except OSError as exc:
@@ -4479,13 +4541,16 @@ class BoardService:
             raise BoardError("recovery_move_conflict", "The moved intake tree contains changed directory structure.", 409)
         return "applied"
 
-    def _assert_recovery_sources(self, intent: Mapping[str, Any], conflict_paths: list[str] | None = None, *, reviewed: bool = False) -> None:
-        """Refuse a recovery whose recorded sources changed, unless a human reviewed the current ones.
+    def _assert_recovery_sources(
+        self, intent: Mapping[str, Any], conflict_paths: list[str] | None = None, *, reviewed: Mapping[str, str | None] | None = None
+    ) -> None:
+        """Refuse a recovery whose relevant sources changed.
 
-        `reviewed` skips only the comparison with the sources recorded at
-        preview: the reviewer's confirmation is bound to the current relevant
-        sources. Recorded folder moves and the state of every recorded write are
-        still checked.
+        Without a review, the sources recorded at preview must be unchanged. After a human's review, `reviewed` is the
+        snapshot the review confirmed (every relevant path and its digest): the current snapshot must equal it, so a
+        source that an editor changed after the review, and a dependency that appeared after it, stop the recovery
+        at the next check. The check runs after the before-state is reconstructed and before every move and write.
+        Recorded folder moves and the state of every recorded write are checked too.
         """
 
         self.validate_graph_inputs()
@@ -4494,14 +4559,28 @@ class BoardService:
         for move in intent.get("moves", []):
             self._move_state(move, intent)
             moved_prefixes.extend((move["source"], move["destination"]))
-        for relative, expected in ({} if reviewed else intent.get("source_map", {})).items():
-            if relative in writes or any(relative == prefix or relative.startswith(prefix + "/") for prefix in moved_prefixes):
-                continue
-            actual = self._fingerprint_paths([relative])[relative]
-            if actual != expected:
+        if reviewed is not None:
+            current = self._recovery_snapshot(intent)
+            missing = object()
+            changed = sorted(path for path in {*current, *reviewed} if current.get(path, missing) != reviewed.get(path, missing))
+            if changed:
                 if conflict_paths is not None:
-                    conflict_paths.append(relative)
-                raise BoardError("recovery_source_changed", f"Relevant source `{relative}` changed; recorded writes cannot be recovered automatically.", 409)
+                    conflict_paths.extend(changed)
+                raise BoardError(
+                    "recovery_source_changed",
+                    f"Relevant source `{changed[0]}` changed after the review; recorded writes cannot be recovered until it is reviewed again.",
+                    409,
+                    {"paths": changed[:20]},
+                )
+        else:
+            for relative, expected in intent.get("source_map", {}).items():
+                if relative in writes or any(relative == prefix or relative.startswith(prefix + "/") for prefix in moved_prefixes):
+                    continue
+                actual = self._fingerprint_paths([relative])[relative]
+                if actual != expected:
+                    if conflict_paths is not None:
+                        conflict_paths.append(relative)
+                    raise BoardError("recovery_source_changed", f"Relevant source `{relative}` changed; recorded writes cannot be recovered automatically.", 409)
         for state in self._operation_file_states(intent):
             if state["state"] == "conflict":
                 if conflict_paths is not None:

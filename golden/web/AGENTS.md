@@ -29,7 +29,7 @@ The sign-in is a local development identity. The backend serves it only under it
 ## Build & Run
 
 - **Install**: `npm ci` (the lockfile is committed; `package.json` and the lockfile read their versions from `packs/versions.yml` of the Prism template)
-- **Run**: `npm run dev` (port 3000); copy `.env.example` to `.env.local` first. `API_BASE_URL` is the only variable and defaults to `http://localhost:8080`
+- **Run**: `npm run dev` (port 3000, listening on 127.0.0.1 only; `.env.development` turns on the local development sign-in, which a production build never offers); copy `.env.example` to `.env.local` first. `API_BASE_URL` is the only variable and defaults to `http://localhost:8080`
 - **Test**: `npm test` (Vitest with Testing Library; unit and component tests with a mocked backend)
 - **Lint / typecheck / build**: `npm run lint`, `npm run typecheck`, `npm run build`
 - **API client**: `npm run generate:api` regenerates `lib/api/generated/schema.d.ts` from `shared/api-contracts/openapi.yml`; every other script runs it first, and git ignores the output

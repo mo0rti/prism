@@ -54,6 +54,7 @@ from prism_cli.wiki_model import (
     section_text,
     within_wiki_read_scope,
 )
+from prism_cli.wiki_paths import decoded_link_path, resolve_to_path
 from prism_cli.wiki_query import build_envelope
 from prism_cli.workspace import (
     COPIER_ANSWERS_FILE,
@@ -1688,24 +1689,30 @@ def api_contract_link_targets(body: str, source_path: Path, wiki_root: Path) -> 
 
 
 def _resolve_api_link(source_path: Path, raw_target: str, wiki_root: Path) -> Path | None:
-    normalized = unquote(raw_target).replace("\\", "/")
+    """The API contract page a link or a plain path reference names, or ``None``. The shared resolver refuses an unsafe path."""
+
+    decoded, _problem = decoded_link_path(raw_target)
+    if decoded is None:
+        return None
     try:
-        parsed = urlsplit(normalized)
+        parsed = urlsplit(decoded)
     except ValueError:
         return None
     if parsed.scheme or parsed.netloc:
         return None
+    normalized = parsed.path
     lowered = normalized.lower()
     marker = "knowledge/wiki/"
+    root = wiki_root.resolve()
     if marker in lowered:
         suffix = normalized[lowered.index(marker) + len(marker) :]
         if not suffix.lower().startswith("api-contracts/"):
             return None
-        target = (wiki_root / suffix).resolve()
+        target = resolve_to_path(root, root, suffix)
     elif lowered.startswith("wiki/api-contracts/"):
-        target = (wiki_root / normalized[len("wiki/") :]).resolve()
+        target = resolve_to_path(root, root, normalized[len("wiki/") :])
     elif lowered.startswith("api-contracts/"):
-        target = (wiki_root / normalized).resolve()
+        target = resolve_to_path(root, root, normalized)
     else:
         target = resolve_relative_markdown_link(source_path, normalized, wiki_root)
     if target is None:

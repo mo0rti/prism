@@ -16,8 +16,55 @@ export function sessionCookieOptions(request: Request, maxAgeSeconds: number) {
   return { httpOnly: true, sameSite: "lax" as const, secure, path: "/", maxAge: maxAgeSeconds }
 }
 
-/** Sign-in and sign-out change the session, so they only accept requests that come from this app's own origin. */
+/**
+ * The host the caller used: the `Host` header, which the dev server sets from the connection, else the host of the URL.
+ * (`request.url` carries the address the server is bound to, not the name the caller typed.)
+ */
+function requestHost(request: Request): string {
+  return (request.headers.get("host") ?? new URL(request.url).host).trim().toLowerCase()
+}
+
+/** Sign-in and sign-out change the session, so they only accept requests that name this app's own origin: a request without an `Origin` header is refused. */
 export function isSameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin")
-  return origin === null || origin === new URL(request.url).origin
+  if (origin === null) return false
+  const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim()
+  const protocol = forwarded ?? new URL(request.url).protocol.replace(":", "")
+  return origin.toLowerCase() === `${protocol}://${requestHost(request)}`
+}
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1", "::ffff:127.0.0.1"])
+
+function isLoopbackHost(host: string): boolean {
+  const value = host.trim().toLowerCase()
+  // A bracketed IPv6 address keeps its colons inside the brackets; any other host loses its `:port`.
+  const name = value.startsWith("[") ? value.slice(0, value.indexOf("]") + 1) : value.split(":")[0]
+  return LOOPBACK_HOSTS.has(name) || LOOPBACK_HOSTS.has(value)
+}
+
+/**
+ * Local development sign-in asks the backend's dev identity for a token for whoever calls it, so it exists only on this
+ * machine. It is on only in explicit local mode: `.env.development` sets `LOCAL_DEV_SIGNIN=1`, and `next dev` loads it.
+ * `next build` and `next start` do not, so a production build never offers it.
+ */
+export function localDevSignInEnabled(): boolean {
+  return process.env.LOCAL_DEV_SIGNIN === "1"
+}
+
+/**
+ * Whether the request came from this machine: the host the caller used is a loopback name, the address the server is
+ * bound to is loopback too (`request.url` carries it: a server bound to `0.0.0.0` shows `0.0.0.0` and is refused whole),
+ * and every hop that Next.js recorded in `x-forwarded-for` or `x-forwarded-host` is a loopback address. The dev server
+ * listens on 127.0.0.1 only, so this is a second wall behind the bind: a server started on another address, and a tunnel
+ * or a reverse proxy on this machine that forwards a remote caller, are refused. A route handler cannot see the peer's
+ * socket, so a caller that sets those headers itself is stopped by the bind and by nothing else.
+ */
+export function isLoopbackRequest(request: Request): boolean {
+  if (!isLoopbackHost(new URL(request.url).host)) return false
+  if (!isLoopbackHost(requestHost(request))) return false
+  const forwardedHost = request.headers.get("x-forwarded-host")
+  if (forwardedHost !== null && !forwardedHost.split(",").every(isLoopbackHost)) return false
+  const forwardedFor = request.headers.get("x-forwarded-for")
+  if (forwardedFor !== null && !forwardedFor.split(",").every((hop) => LOOPBACK_HOSTS.has(hop.trim().toLowerCase()) || hop.trim().startsWith("127."))) return false
+  return request.headers.get("forwarded") === null
 }

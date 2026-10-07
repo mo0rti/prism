@@ -1038,7 +1038,8 @@ function Validate-AndroidSample {
         Assert-PathExists -Path (Join-Path $Root ".github\workflows\$app.yml") -Message "The android-compose pack must generate the $app workflow."
         Assert-PathExists -Path (Join-Path $Root ".cursor\rules\$app.mdc") -Message "The android-compose pack must generate the $app Cursor rule."
         Assert-FileContains -Path (Join-Path $Root ".github\workflows\$app.yml") -Needle "run: ./gradlew assembleDebug testDebugUnitTest" -Message "The $app workflow should build the debug APK and run the unit tests."
-        Assert-FileContains -Path (Join-Path $Root ".github\workflows\$app.yml") -Needle "working-directory: $($androidApp.Path)" -Message "The $app workflow should run in the app's folder."
+        Assert-FileContains -Path (Join-Path $Root ".github\workflows\$app.yml") -Needle "APP_PATH: `"$($androidApp.Path)`"" -Message "The $app workflow should name the app's folder once, as a variable."
+        Assert-FileContains -Path (Join-Path $Root ".github\workflows\$app.yml") -Needle 'working-directory: ${{ env.APP_PATH }}' -Message "The $app workflow should run in the app's folder."
         Assert-FileContains -Path (Join-Path $Root "$dir\app\build.gradle.kts") -Needle "namespace = `"$package`"" -Message "$app must have its own namespace."
         Assert-FileContains -Path (Join-Path $Root "$dir\app\build.gradle.kts") -Needle "applicationId = `"$package`"" -Message "$app must have its own application ID."
         Assert-FileContains -Path (Join-Path $Root "$dir\settings.gradle.kts") -Needle "rootProject.name = `"$app`"" -Message "$app must have its own Gradle project name."
@@ -1064,8 +1065,8 @@ function Validate-AndroidSample {
     }
 
     # Two apps of one stack differ in their identifiers and nothing else.
-    Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: ./apps/partner/Taskfile.yml" -Message "The root Taskfile must include the second Android app."
-    Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: ./mobile-android/Taskfile.yml" -Message "The root Taskfile must include the first Android app."
+    Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: `"./apps/partner/Taskfile.yml`"" -Message "The root Taskfile must include the second Android app."
+    Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: `"./mobile-android/Taskfile.yml`"" -Message "The root Taskfile must include the first Android app."
 
     # AGENTS.md must not contain absent platform directories
     Assert-FileNotContains -Path (Join-Path $Root "AGENTS.md") -Needle "mobile-ios/" -Message "Android-only AGENTS.md should not reference mobile-ios/."
@@ -1096,7 +1097,8 @@ function Validate-AgentSample {
     $workflow = Join-Path $Root ".github\workflows\$app.yml"
     Assert-PathExists -Path $workflow -Message "The python-agent-service pack must generate the $app workflow."
     Assert-PathExists -Path (Join-Path $Root ".cursor\rules\$app.mdc") -Message "The python-agent-service pack must generate the $app Cursor rule."
-    Assert-FileContains -Path $workflow -Needle "working-directory: $app" -Message "The $app workflow should run in the app's folder."
+    Assert-FileContains -Path $workflow -Needle "APP_PATH: `"$app`"" -Message "The $app workflow should name the app's folder once, as a variable."
+    Assert-FileContains -Path $workflow -Needle 'working-directory: ${{ env.APP_PATH }}' -Message "The $app workflow should run in the app's folder."
     Assert-FileContains -Path $workflow -Needle "python -m evals.run --provider fake" -Message "The $app workflow must run the evaluation set with the fake provider."
     Assert-FileNotContains -Path $workflow -Needle "secrets." -Message "The $app workflow must use no secret."
     Assert-FileContains -Path (Join-Path $dir "pyproject.toml") -Needle "name = `"review-agent-$app`"" -Message "$app must have its own project name."
@@ -1116,7 +1118,7 @@ function Validate-AgentSample {
     Assert-FileContains -Path (Join-Path $dir ".env.example") -Needle "# ANTHROPIC_API_KEY=" -Message "$app's .env.example must name the key variable without a value."
     Assert-FileContains -Path (Join-Path $dir "openapi.yml") -Needle "/api/assist:" -Message "$app must own a contract that defines POST /api/assist."
     Assert-FileNotContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/api/assist" -Message "The shared contract describes the backend; the agent service owns its contract."
-    Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: ./$app/Taskfile.yml" -Message "The root Taskfile must include the agent service."
+    Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: `"./$app/Taskfile.yml`"" -Message "The root Taskfile must include the agent service."
     Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "task: $app`:eval" -Message "The root test task must run the agent service's evaluation."
     Validate-AuthContract -Root $Root
 }
@@ -1198,10 +1200,11 @@ function Validate-IosSample {
         Assert-FileContains -Path $workflow -Needle "xcodebuild test" -Message "The $app workflow must run the tests."
         Assert-FileContains -Path $workflow -Needle "-project `"$module.xcodeproj`"" -Message "The $app workflow should name the Xcode project of its app."
         Assert-FileContains -Path $workflow -Needle "-scheme `"$module`"" -Message "The $app workflow should use the scheme of its app."
-        Assert-FileContains -Path $workflow -Needle "working-directory: $workingDirectory" -Message "The $app workflow should work in its app folder."
+        Assert-FileContains -Path $workflow -Needle "APP_PATH: `"$workingDirectory`"" -Message "The $app workflow should name its app folder once, as a variable."
+        Assert-FileContains -Path $workflow -Needle 'working-directory: ${{ env.APP_PATH }}' -Message "The $app workflow should work in its app folder."
         Assert-FileNotContains -Path $workflow -Needle "xcpretty" -Message "The $app workflow must not pipe through xcpretty, which the runner lacks."
 
-        Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: ./$workingDirectory/Taskfile.yml" -Message "The workspace Taskfile must include the $app Taskfile."
+        Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: `"./$workingDirectory/Taskfile.yml`"" -Message "The workspace Taskfile must include the $app Taskfile."
         Assert-FileContains -Path (Join-Path $Root "AGENTS.md") -Needle "task ${app}:build" -Message "The workspace AGENTS.md must list the $app build command."
         Assert-FileContains -Path (Join-Path $Root "docs\deployment\ci-cd.md") -Needle "``$app.yml``" -Message "The CI/CD guide must list the $app workflow."
     }

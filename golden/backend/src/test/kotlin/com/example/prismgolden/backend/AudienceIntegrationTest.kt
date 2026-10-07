@@ -1,0 +1,71 @@
+package com.example.prismgolden.backend
+
+import com.example.prismgolden.backend.support.PostgresTestConfiguration
+import com.example.prismgolden.backend.support.TokenFixtures
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.context.annotation.Import
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.nio.file.Files
+import java.time.Instant
+import java.util.Base64
+
+/**
+ * The app as it runs against a real identity provider: the provider's key is configured together with the audience
+ * of this API. A token for this API reads `/api/me`; a token without an audience, or for another API, gets 401.
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@Import(PostgresTestConfiguration::class)
+class AudienceIntegrationTest {
+
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+
+    private fun token(audience: List<String>?): String {
+        val now = Instant.now()
+        return TokenFixtures.sign(key, "https://idp.example.test", "user-1", now, now.plusSeconds(600), audience)
+    }
+
+    @Test
+    fun `a token for this API reads me`() {
+        mockMvc.perform(get("/api/me").header("Authorization", "Bearer ${token(listOf(AUDIENCE))}"))
+            .andExpect(status().isOk)
+    }
+
+    @Test
+    fun `a token without an audience is rejected`() {
+        mockMvc.perform(get("/api/me").header("Authorization", "Bearer ${token(null)}"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+    }
+
+    @Test
+    fun `a token for another API is rejected`() {
+        mockMvc.perform(get("/api/me").header("Authorization", "Bearer ${token(listOf("https://other.example.test"))}"))
+            .andExpect(status().isUnauthorized)
+    }
+
+    companion object {
+        private const val AUDIENCE = "https://api.example.test"
+        private val key = TokenFixtures.newRsaKey()
+
+        @JvmStatic
+        @DynamicPropertySource
+        fun identityProvider(registry: DynamicPropertyRegistry) {
+            val encoded = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(key.toRSAPublicKey().encoded)
+            val pem = Files.createTempFile("audience-test-key", ".pem")
+            Files.writeString(pem, "-----BEGIN PUBLIC KEY-----\n$encoded\n-----END PUBLIC KEY-----\n")
+            pem.toFile().deleteOnExit()
+            registry.add("spring.security.oauth2.resourceserver.jwt.public-key-location") { pem.toUri().toString() }
+            registry.add("spring.security.oauth2.resourceserver.jwt.audiences") { AUDIENCE }
+        }
+    }
+}

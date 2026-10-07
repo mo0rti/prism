@@ -1,8 +1,8 @@
 openapi: "3.1.0"
 info:
-  title: "{{ project_name }} API"
+  title: {{ (project_name ~ " API") | tojson }}
   version: "0.1.0"
-  description: "{{ description }}"
+  description: {{ description | tojson }}
 
 servers:
   - url: http://localhost:8080

@@ -34,6 +34,7 @@ check_var() {
 echo ""
 echo "--- Identity Provider ---"
 check_var "IDENTITY_PROVIDER_ISSUER_URI"
+check_var "IDENTITY_PROVIDER_AUDIENCE"
 
 echo ""
 if [[ $ERRORS -gt 0 ]]; then

@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     budget_requests: int = Field(default=20, ge=1)
     budget_tokens: int = Field(default=50_000, ge=1)
     budget_window_seconds: int = Field(default=3600, ge=1)
+    # The most turns one user may have running at once: each reserves model tokens before it calls the model.
+    budget_concurrent_turns: int = Field(default=2, ge=1)
     # The most tool calls one turn may make.
     max_tool_calls: int = Field(default=4, ge=0, le=20)
 

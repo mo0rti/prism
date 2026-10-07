@@ -322,6 +322,33 @@ class GeneratedWorkspaceTests(unittest.TestCase):
         service = yaml.safe_load(compose)["services"]["backend"]
         self.assertEqual("jdbc:postgresql://db:5432/${DATABASE_NAME:-slice_app}", service["environment"]["DATABASE_URL"])
 
+    def test_every_published_port_of_the_compose_file_stays_on_this_machine(self) -> None:
+        services = yaml.safe_load(read(self.single / "docker-compose.yml"))["services"]
+        ports = [port for service in services.values() for port in service.get("ports", [])]
+        self.assertEqual(["127.0.0.1:8080:8080", "127.0.0.1:5432:5432"], ports)
+        for port in ports:
+            self.assertTrue(port.startswith("127.0.0.1:"), f"{port} would publish the development database or a backend on every interface")
+
+    def test_a_real_identity_provider_needs_the_audience_of_the_api(self) -> None:
+        guard = read(SOURCES / "bootstrap" / "AudienceGuard.kt.jinja")
+        self.assertIn('@Profile("!local")', guard)
+        self.assertIn("spring.security.oauth2.resourceserver.jwt.audiences", guard)
+        for provider_property in ("issuer-uri", "jwk-set-uri", "public-key-location"):
+            self.assertIn(f"spring.security.oauth2.resourceserver.jwt.{provider_property}", guard)
+        security = read(SOURCES / "bootstrap" / "SecurityConfig.kt.jinja")
+        self.assertIn("AudienceCheckingJwtDecoder(decoder, audiences)", security)
+        self.assertIn("RejectingJwtDecoder", security)
+        validator = read(SOURCES / "bootstrap" / "security" / "AudienceValidator.kt.jinja")
+        self.assertIn("token.audience.orEmpty()", validator, "a token without `aud` fails")
+        for name in ("AudienceEnforcementTest", "AudienceIntegrationTest"):
+            self.assertTrue((TESTS / f"{name}.kt.jinja").is_file(), name)
+        # The generated project carries the guard, the validator and their tests.
+        for relative in (
+            "bootstrap/AudienceGuard.kt",
+            "bootstrap/security/AudienceValidator.kt",
+        ):
+            self.assertTrue((self.single / "backend" / "src" / "main" / "kotlin" / "com" / "example" / "sliceapp" / "backend" / relative).is_file(), relative)
+
     def test_the_whole_generated_tree_holds_no_jwt_secret_or_unresolved_placeholder(self) -> None:
         for path, text in text_files(self.single):
             relative = path.relative_to(self.single).as_posix()

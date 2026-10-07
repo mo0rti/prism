@@ -1,6 +1,6 @@
 ---
 description: {{ (app_name ~ " (Spring Boot, Kotlin): stack, structure, the dev identity and commands.") | tojson }}
-globs: "{{ app_path }}/**"
+globs: {{ (app_path ~ "/**") | tojson }}
 ---
 
 # {{ app_name }} - Spring Boot (Kotlin)

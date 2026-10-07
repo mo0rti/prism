@@ -16,7 +16,7 @@ must have a wiki page. For this app, read:
 - **Test**: `./gradlew test`. The integration tests start PostgreSQL with Testcontainers, so they need Docker and nothing else
 - **Database**: `task db-up` at the repository root starts the workspace's PostgreSQL (`docker compose up -d db`)
 - **Run with the dev identity**: `task backend:dev`, which sets `SPRING_PROFILES_ACTIVE=local` and runs `./gradlew bootRun`
-- **Run without a profile**: `./gradlew bootRun`. No dev identity exists then, and every token is rejected until `spring.security.oauth2.resourceserver.jwt.issuer-uri` names your identity provider
+- **Run without a profile**: `./gradlew bootRun`. No dev identity exists then, and every token is rejected until `spring.security.oauth2.resourceserver.jwt.issuer-uri` names your identity provider and `spring.security.oauth2.resourceserver.jwt.audiences` names this API (the app refuses to start with a provider and no audience, and rejects a token whose `aud` is missing or another API's)
 - **Port**: 8080 (configurable with the `PORT` environment variable)
 - **Health**: `GET /actuator/health` is open and reports the database
 
@@ -45,6 +45,7 @@ Files, each under `src/main/kotlin/com/example/prismgolden/backend/`:
 - It accepts loopback requests only, for the token route and the JWKS route: the peer address and the server name must be loopback, and a request with a forwarding header is refused.
 - The JWKS route publishes the public key only. Never add a private member to it.
 - Startup fails when `local` is active and a real identity provider is configured (`spring.security.oauth2.resourceserver.jwt.issuer-uri` or its siblings).
+- Startup fails outside `local` when a provider is configured without `spring.security.oauth2.resourceserver.jwt.audiences` (`AudienceGuard`), and `AudienceCheckingJwtDecoder` rejects a token with no or a foreign `aud`.
 - The generated `docker-compose.yml` sets no profile. Docs and the `dev` task set `local` explicitly. Never add `local` to a shared or deployed environment.
 
 Replace it with your identity provider before the app is exposed: the `security-auth` skill has the steps. Do not weaken a guard above to make a test pass.
@@ -52,7 +53,7 @@ Replace it with your identity provider before the app is exposed: the `security-
 ## Tests
 
 - `*IntegrationTest` classes boot the app against a Testcontainers PostgreSQL (`support/PostgresTestConfiguration.kt`): `DefaultProfileIntegrationTest` (no profile) and `LocalProfileIntegrationTest` (`local`).
-- `DevIdentityStartupGuardTest` proves that `local` plus a configured issuer fails startup.
+- `DevIdentityStartupGuardTest` proves that `local` plus a configured issuer fails startup; `AudienceEnforcementTest` and `AudienceIntegrationTest` prove the audience rules.
 - `OpenApiContractTest` checks that `shared/api-contracts/openapi.yml` defines the slice's operations.
 - Service and policy unit tests use MockK and plain JUnit; they need no Docker.
 - The integration tests use Testcontainers, not the compose database, so a test run never touches your development data and CI needs no service container.

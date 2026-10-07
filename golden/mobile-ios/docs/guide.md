@@ -22,7 +22,7 @@ mobile-ios/
 │   ├── App.swift                 # @main
 │   ├── RootView.swift            # composition root; sign-in or profile
 │   ├── AppInfo.swift             # display name and audience from Info.plist
-│   ├── Info.plist
+│   ├── Info.plist                # the Release build's; Plists/Info.Debug.plist adds the local-networking exception
 │   ├── SignIn/                   # "Local development sign-in"
 │   ├── Profile/                  # GET /api/me
 │   ├── Networking/               # APIClient, APIEndpoint, APIURL, APIError

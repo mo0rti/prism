@@ -4,13 +4,16 @@ This is where the safety rules of a turn are enforced:
 - the question and every tool result are passed as data, in envelopes, never into the system prompt;
 - only registered tools run, with validated arguments, and a turn makes at most `max_tool_calls` calls;
 - every tool call is logged with the user and request IDs, and never with a token or a value;
-- a tool's failure is a result the model reads as data, not an exception that ends the turn.
+- a tool's failure is a result the model reads as data, not an exception that ends the turn;
+- before each model call the turn reserves the most that call can cost from the user's token budget, and the
+  usage of each completed call is recorded at once, so a turn that fails later still pays for what it used.
 """
 
 from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,10 +27,12 @@ from app.providers.base import (
     ProviderReply,
     ToolCall,
     ToolResultMessage,
+    ToolSpec,
     Usage,
     UserMessage,
 )
 from app.safety.audit import AuditLog
+from app.safety.budget import TurnBudget
 from app.safety.untrusted import as_data
 from app.tools.base import ToolContext, ToolError
 from app.tools.registry import ToolRegistry
@@ -51,6 +56,18 @@ class TurnResult:
     usage: Usage = Usage()
 
 
+def call_cost_bound(system: str, messages: Sequence[Message], tools: Sequence[ToolSpec], output_token_cap: int) -> int:
+    """The most one model call can cost in tokens: its output cap plus an upper bound of its input.
+
+    A token is at least one byte of text, so the bytes of everything sent bound the input tokens from above. The
+    bound is generous on purpose: a reservation is replaced by the real usage when the call completes.
+    """
+
+    size = len(system.encode("utf-8")) + sum(len(repr(tool).encode("utf-8")) for tool in tools)
+    size += sum(len(repr(message).encode("utf-8")) for message in messages)
+    return size + output_token_cap
+
+
 async def run_turn(
     *,
     question: str,
@@ -59,11 +76,21 @@ async def run_turn(
     context: ToolContext,
     audit: AuditLog,
     max_tool_calls: int,
+    budget: TurnBudget,
+    output_token_cap: int,
 ) -> TurnResult:
     messages: list[Message] = [UserMessage(as_data("user_question", question))]
     result = TurnResult(answer="")
     while True:
-        reply: ProviderReply = await provider.complete(system=SYSTEM_PROMPT, messages=messages, tools=tools.specs())
+        specs = list(tools.specs())
+        reservation = budget.reserve_call(call_cost_bound(SYSTEM_PROMPT, messages, specs, output_token_cap))
+        try:
+            reply: ProviderReply = await provider.complete(system=SYSTEM_PROMPT, messages=messages, tools=specs)
+        except BaseException:
+            # The call returned no usage: release what it held and charge nothing.
+            reservation.cancel()
+            raise
+        reservation.settle(reply.usage.total)
         result.usage = result.usage + reply.usage
         if not reply.tool_calls:
             result.answer = reply.text.strip()
@@ -101,7 +128,7 @@ async def _run_tool(
             payload = {"tool": call.name, "ok": False, "error": str(error)}
         except Exception as error:
             # A tool's bug is not the model's concern, and its message may hold data. Log the type only.
-            logger.error("Tool %s failed with %s", call.name, type(error).__name__, exc_info=error)
+            logger.error("Tool %s failed with %s", call.name, type(error).__name__)
             outcome = "error"
             payload = {"tool": call.name, "ok": False, "error": "The tool failed"}
     envelope = as_data("tool_result", payload)

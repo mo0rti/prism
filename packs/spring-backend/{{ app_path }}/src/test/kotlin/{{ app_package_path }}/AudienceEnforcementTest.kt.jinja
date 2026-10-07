@@ -1,0 +1,108 @@
+package {{ app_package }}
+
+import {{ app_package }}.bootstrap.AudienceGuard
+import {{ app_package }}.bootstrap.security.AudienceCheckingJwtDecoder
+import {{ app_package }}.bootstrap.security.AudienceValidator
+import {{ app_package }}.support.TokenFixtures
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import org.springframework.boot.WebApplicationType
+import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.mock.env.MockEnvironment
+import org.springframework.security.oauth2.jwt.JwtValidationException
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
+import java.time.Instant
+
+/**
+ * A token meant for another API of the same identity provider must not authenticate here: outside `local`, an
+ * identity provider needs this API's audience (startup fails without one), and a token whose `aud` is missing
+ * or names another API is rejected.
+ */
+class AudienceEnforcementTest {
+
+    private val api = "https://api.example.test"
+    private val key = TokenFixtures.newRsaKey()
+    private val now = Instant.now()
+
+    private fun token(audience: List<String>?): String =
+        TokenFixtures.sign(key, "https://idp.example.test", "user-1", now, now.plusSeconds(600), audience)
+
+    private fun decoder() = AudienceCheckingJwtDecoder(NimbusJwtDecoder.withPublicKey(key.toRSAPublicKey()).build(), setOf(api))
+
+    private fun messages(failure: Throwable): String =
+        generateSequence(failure) { it.cause }.joinToString(" | ") { it.message.orEmpty() }
+
+    // --- The decoder -----------------------------------------------------------------------------------------
+
+    @Test
+    fun `a token for this API is accepted`() {
+        assertEquals("user-1", decoder().decode(token(listOf(api))).subject)
+        assertEquals("user-1", decoder().decode(token(listOf("https://other.example.test", api))).subject)
+    }
+
+    @Test
+    fun `a token without an audience is rejected`() {
+        assertThrows<JwtValidationException> { decoder().decode(token(null)) }
+    }
+
+    @Test
+    fun `a token for another API is rejected`() {
+        assertThrows<JwtValidationException> { decoder().decode(token(listOf("https://other.example.test"))) }
+    }
+
+    @Test
+    fun `the validator needs at least one audience`() {
+        assertThrows<IllegalArgumentException> { AudienceValidator(emptySet()) }
+    }
+
+    // --- The startup guard -----------------------------------------------------------------------------------
+
+    @Test
+    fun `startup fails when a provider is configured without an audience`() {
+        for (property in AudienceGuard.JWT_PROVIDER_PROPERTIES) {
+            val environment = MockEnvironment().withProperty(property, "https://idp.example.test/value")
+
+            val failure = assertThrows<IllegalStateException>(property) {
+                AudienceGuard.requireAudienceWithIdentityProvider(environment)
+            }
+
+            assertTrue(failure.message.orEmpty().contains(AudienceGuard.AUDIENCES_PROPERTY), failure.message)
+        }
+    }
+
+    @Test
+    fun `a blank audience does not count`() {
+        val environment = MockEnvironment()
+            .withProperty("spring.security.oauth2.resourceserver.jwt.issuer-uri", "https://idp.example.test")
+            .withProperty(AudienceGuard.AUDIENCES_PROPERTY, "  ")
+
+        assertThrows<IllegalStateException> { AudienceGuard.requireAudienceWithIdentityProvider(environment) }
+        assertFalse(AudienceGuard.configuredAudiences(environment).isNotEmpty())
+    }
+
+    @Test
+    fun `a provider with an audience, and no provider at all, start`() {
+        val configured = MockEnvironment()
+            .withProperty("spring.security.oauth2.resourceserver.jwt.issuer-uri", "https://idp.example.test")
+            .withProperty(AudienceGuard.AUDIENCES_PROPERTY, "$api, https://other.example.test")
+
+        assertDoesNotThrow { AudienceGuard.requireAudienceWithIdentityProvider(configured) }
+        assertEquals(setOf(api, "https://other.example.test"), AudienceGuard.configuredAudiences(configured))
+        assertDoesNotThrow { AudienceGuard.requireAudienceWithIdentityProvider(MockEnvironment()) }
+    }
+
+    @Test
+    fun `the app refuses to start with an issuer and no audience`() {
+        val application = SpringApplicationBuilder({{ app_module_name }}Application::class.java)
+            .web(WebApplicationType.NONE)
+            .properties("spring.security.oauth2.resourceserver.jwt.issuer-uri=https://idp.example.test")
+
+        val failure = assertThrows<Exception> { application.run().close() }
+
+        assertTrue(messages(failure).contains(AudienceGuard.AUDIENCES_PROPERTY), messages(failure))
+    }
+}

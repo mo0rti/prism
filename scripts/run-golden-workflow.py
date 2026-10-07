@@ -14,7 +14,9 @@ workflows under the repository's own ``.github/workflows``, so a repository job 
 * a ``uses:`` step is not executed: checkout, the setup actions, the cache and the artifact upload belong to the
   repository job. A ``uses:`` of any other action is an error, so a pack workflow that gains an action cannot
   slip past the repository job unnoticed;
-* an expression (``${{ ... }}``) in a ``run:`` step or ``env`` is an error, because this script evaluates none;
+* an expression (``${{ ... }}``) in a ``run:`` step or ``env`` is an error, because this script evaluates none; the one
+  form it resolves is ``${{ env.NAME }}`` as a whole ``working-directory``, from the workflow's and the job's ``env``
+  (a pack workflow passes the app's path that way and never writes it into a script);
 * a step's ``if`` may be ``always()``, ``success()`` or ``failure()``; any other condition is an error.
 
 The script stops at the first failing step and exits non-zero, after the steps that must always run.
@@ -25,6 +27,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -79,6 +82,21 @@ def load_job(workflow_path: Path, job_name: str | None) -> tuple[str, dict, dict
 def reject_expression(text: str, where: str) -> None:
     if "${{" in str(text):
         raise SystemExit(f"{where} uses an expression (${{{{ }}}}), which this script does not evaluate.")
+
+
+ENV_EXPRESSION = re.compile(r"\$\{\{\s*env\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+
+
+def resolve_working_directory(value: str, environment: dict[str, str], where: str) -> str:
+    """A working directory as written, or the value of the `env` variable that it names as a whole (`${{ env.NAME }}`)."""
+
+    match = ENV_EXPRESSION.fullmatch(str(value).strip())
+    if match is None:
+        reject_expression(value, where)
+        return str(value)
+    if match.group(1) not in environment:
+        raise SystemExit(f"{where} names the env `{match.group(1)}`, which the workflow does not define.")
+    return environment[match.group(1)]
 
 
 def check_uses(step: dict, index: int) -> None:
@@ -147,7 +165,8 @@ def run_workflow(app: str, workspace: Path, job_name: str | None, dry_run: bool)
             step_env = {key: str(value) for key, value in (step.get("env") or {}).items()}
             for key, value in step_env.items():
                 reject_expression(value, f"The env `{key}` of step {index}")
-            directory = workspace / (step.get("working-directory") or defaults.get("working-directory") or ".")
+            written = step.get("working-directory") or defaults.get("working-directory") or "."
+            directory = workspace / resolve_working_directory(written, {**environment, **step_env}, f"The working directory of step {index} ({name})")
             shell = step.get("shell") or defaults.get("shell") or "bash"
             if shell != "bash":
                 raise SystemExit(f"Step {index} ({name}) uses shell `{shell}`; only bash is supported.")
