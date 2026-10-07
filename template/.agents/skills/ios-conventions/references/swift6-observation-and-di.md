@@ -1,108 +1,52 @@
-# Swift 6 Observation And DI
+# Swift 6 Observation And Dependency Injection
 
-Use this reference when a task touches ViewModel structure, dependency injection, actor isolation, or Observation behavior.
+Use this reference when a task touches view model structure, dependency injection, actor isolation, or Observation behavior.
 
 ## Swift 6 baseline
 
-- Treat strict concurrency as the default mindset for generated iOS projects.
-- ViewModels that drive SwiftUI state should be `@MainActor @Observable` unless there is a strong, explicit reason not to.
-- If a helper type, model, or closure crosses actor boundaries, prefer making the value type `Sendable` when practical.
-- If a repository protocol or implementation is injected into a `@MainActor` ViewModel, make that dependency `Sendable` too.
-- Actor-backed dependencies already satisfy sendability, so repository types that store actors such as `APIClient` or `TokenStorage` can usually adopt `Sendable` directly.
+- Treat strict concurrency as the default mindset: `project.yml` builds in the Swift 6 language mode.
+- View models that drive SwiftUI state are `@MainActor @Observable` unless there is a strong, explicit reason not to.
+- A model, error or request type that crosses actor boundaries is a `Sendable` value type (`struct` or `enum`).
+- A dependency injected into a `@MainActor` view model is `Sendable` too: `APIClient` and `TokenStore` are `Sendable` protocols. `URLSessionAPIClient` is a struct of value types, and `InMemoryTokenStore` is an actor, so both conform without a workaround.
 - Do not rely on Swift 5-era "it usually works" UI mutation patterns.
 
-Example:
+The slice's profile view model shows the shape:
 
 ```swift
-enum ProfileViewState: Equatable {
-    case idle
-    case loading
-    case success
-    case error(String)
-}
-
-protocol ProfileRepository: Sendable {
-    func fetchProfile() async throws -> Profile
-}
-
 @MainActor
 @Observable
 final class ProfileViewModel {
-    var viewState: ProfileViewState = .idle
-    var profile: Profile?
+    private(set) var state: ProfileState = .idle
 
-    private let repository: ProfileRepository
+    private let client: any APIClient
+    private let tokenStore: any TokenStore
+    private let session: SessionModel
 
-    init(repository: ProfileRepository) {
-        self.repository = repository
-    }
+    init(client: any APIClient, tokenStore: any TokenStore, session: SessionModel) { ... }
 
-    func load() async {
-        viewState = .loading
-        do {
-            profile = try await repository.fetchProfile()
-            viewState = .success
-        } catch {
-            viewState = .error(error.localizedDescription)
-        }
-    }
+    func load() async { ... }
 }
 ```
 
 ## Main-actor rules
 
 - UI-driving state belongs on the main actor.
-- Because the whole ViewModel is `@MainActor`, its methods already execute on the main actor by default.
-- Use `MainActor.run` only when non-isolated code needs to publish back into main-actor-owned UI state. Avoid wrapping normal `@MainActor` ViewModel mutations in extra `MainActor.run` calls.
-- Prefer isolating the whole ViewModel to `@MainActor` over scattering `MainActor.run` calls.
+- Because the whole view model is `@MainActor`, its methods already execute on the main actor, and an `await` on a dependency hops off and back on its own.
+- Use `MainActor.run` only when non-isolated code needs to publish back into main-actor-owned state. Avoid wrapping normal view model mutations in `MainActor.run`.
 
 ## Observation mental model
 
-- `@Observable` invalidates only the views that actually read the changed property.
-- This is more precise than the old `ObservableObject` mental model.
-- If a view does not re-render, first check whether it reads the property you mutated.
+- `@Observable` invalidates only the views that actually read the changed property. If a view does not re-render, first check whether it reads the property you mutated.
+- `private let` dependencies are not observed; only stored `var`s are.
 
-## Dependency injection pattern in this repo
+## Dependency injection in the slice
 
-- The app creates one `DependencyContainer` near the root and injects it with `.environment(container)`.
-- `@Environment(DependencyContainer.self)` depends on `DependencyContainer` being an `@Observable` type.
-- `AppRouter` and other app-level coordinators read the container from SwiftUI environment.
-- Feature screens usually receive a feature-specific ViewModel through their initializer.
-- Do not recreate long-lived ViewModels in frequently recomputed `body` paths.
+- `RootView` is the composition root: it creates the `URLSessionAPIClient`, the `InMemoryTokenStore`, the `SessionModel` and the two view models once, in its `init`, and holds them in `@State`.
+- Screens receive their view model through their initializer. Do not recreate a long-lived view model inside `body`.
+- A view model takes its dependencies by initializer as protocols (`any APIClient`, `any TokenStore`), so a test passes a fake.
+- Use `@Bindable` in a view that needs `$viewModel.field` bindings, as `SignInView` does for its text fields.
+- Avoid `@EnvironmentObject` and ad hoc environment keys for new Observation-based code. Reach for `.environment(...)` only for a truly app-wide, widely read object.
 
-Environment access at the app or router boundary:
+## Replacing a dependency
 
-```swift
-@Environment(DependencyContainer.self) private var container
-```
-
-Stable local ownership when a view creates its own long-lived ViewModel:
-
-```swift
-struct FeatureScreen: View {
-    @State private var viewModel: FeatureViewModel
-
-    init(repository: FeatureRepository) {
-        _viewModel = State(wrappedValue: FeatureViewModel(repository: repository))
-    }
-
-    var body: some View {
-        FeatureView(viewModel: viewModel)
-    }
-}
-```
-
-Caller-side wiring from the app or router boundary:
-
-```swift
-@Environment(DependencyContainer.self) private var container
-
-FeatureScreen(repository: container.featureRepository)
-```
-
-## Ownership rules
-
-- Use `@State` or another stable owner for long-lived local `@Observable` instances created by a view.
-- Pass ViewModels downward through initializers.
-- Avoid ad hoc `EnvironmentKey` ViewModel injection unless the ViewModel is truly app-scoped and reused broadly.
-- Avoid reviving `@EnvironmentObject` patterns for new Observation-based code in this repo.
+To use a different token store (for example a Keychain-backed one for a real identity provider), add a type that conforms to `TokenStore`, create it in `RootView.init`, and pass it where `InMemoryTokenStore` is passed now. The view models and their tests do not change.

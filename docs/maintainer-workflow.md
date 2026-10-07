@@ -11,7 +11,7 @@ tests/                # Python regression tests; tests/browser holds the opt-in 
 scripts/              # Validation, measurement and demo scripts, and the generators of the workflow asset and the skill layers
 template-skills/      # The one source of every skill, command and Cursor rule; generated into the layers of template/
 copier.yml            # Questionnaire and generation contract
-packs/                # App layers, one pack per stack with a pack (spring-backend, nextjs-web), and versions.yml with the pinned versions
+packs/                # App layers, one pack per stack with a pack (spring-backend, nextjs-web, ios-swiftui), and versions.yml with the pinned versions
 template/             # Files copied into generated projects (the workspace layer)
   .claude/            # Claude commands and skills (generated from template-skills/)
   .agents/            # Codex skills (generated from template-skills/)
@@ -20,7 +20,6 @@ template/             # Files copied into generated projects (the workspace laye
   _templates/         # Hygen generators
   backend/            # Backend scaffold
   mobile-android/     # Android scaffold
-  mobile-ios/         # iOS scaffold
   shared/             # OpenAPI and design tokens
   docs/               # Generated-project documentation
   knowledge/          # Generated-project product wiki skeleton
@@ -85,7 +84,7 @@ python scripts/build-skill-layers.py --check  # fails when a generated file diff
 
 - `backend` alone, and `backend` with a second backend at another path (`prism app add api-two --stack spring-backend --path services/api-two --scaffold`)
 - `backend` and `mobile-android`
-- `backend` and `mobile-ios`
+- `backend`, `mobile-ios` and `partner-ios` (two apps of the `ios-swiftui` stack, the second at `apps/partner-ios`)
 - `backend` and `web`
 - `backend`, `web` and `admin` (two apps of the `nextjs-web` stack, with different audiences)
 - the preset defaults as a contract-sanity check, not as the main proof of usability

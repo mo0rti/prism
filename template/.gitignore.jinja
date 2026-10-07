@@ -32,20 +32,6 @@ mobile-android/local.properties
 mobile-android/local.config.properties
 mobile-android/app/src/main/java/generated/
 {% endif %}
-{% if "ios-swiftui" in stacks %}
-# =============================================================================
-# iOS
-# =============================================================================
-mobile-ios/*.xcodeproj/
-mobile-ios/*.xcworkspace/
-mobile-ios/Pods/
-mobile-ios/build/
-mobile-ios/DerivedData/
-mobile-ios/Generated/
-# Local xcconfig files; the tracked `*.xcconfig.example` files are their starting point
-mobile-ios/Config/Debug.xcconfig
-mobile-ios/Config/Release.xcconfig
-{% endif %}
 
 # =============================================================================
 # Generated API clients

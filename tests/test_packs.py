@@ -139,8 +139,14 @@ class ValidationTests(unittest.TestCase):
         self.assertTrue(any("share the package segment" in message for message in errors), errors)
 
     def test_a_sample_app_id_cannot_name_an_app_of_another_stack(self) -> None:
-        errors = validate_scaffold([scaffolded("mobile-ios", "spring-backend")])
-        self.assertTrue(any("ID of the `ios-swiftui` full sample" in message for message in errors), errors)
+        errors = validate_scaffold([scaffolded("mobile-android", "spring-backend")])
+        self.assertTrue(any("ID of the `android-compose` full sample" in message for message in errors), errors)
+
+    def test_any_number_of_ios_swiftui_apps_scaffold_at_any_path(self) -> None:
+        apps = [scaffolded("mobile-ios", "ios-swiftui"), scaffolded("partner-ios", "ios-swiftui", "apps/partner-ios"), scaffolded("kiosk", "ios-swiftui", "apps/kiosk")]
+        self.assertEqual([], validate_scaffold(apps))
+        errors = validate_scaffold([scaffolded("my-ios", "ios-swiftui"), scaffolded("myios", "ios-swiftui")])
+        self.assertTrue(any("share the package segment" in message for message in errors), errors)
 
     def test_only_limits_the_scaffold_checks_to_the_new_app(self) -> None:
         apps = [scaffolded("mobile-android", "android-compose"), scaffolded("partner-android", "android-compose")]
@@ -258,9 +264,8 @@ class PortTests(unittest.TestCase):
 class SampleSwitchTests(unittest.TestCase):
     def test_each_stack_without_a_pack_has_one_named_switch(self) -> None:
         self.assertTrue(packs.ANDROID_COMPOSE_FULL_SAMPLE)
-        self.assertTrue(packs.IOS_SWIFTUI_FULL_SAMPLE)
-        self.assertEqual({"mobile-android": "android-compose", "mobile-ios": "ios-swiftui"}, full_sample_apps())
-        self.assertEqual(("spring-backend", "nextjs-web"), PACK_STACKS)
+        self.assertEqual({"mobile-android": "android-compose"}, full_sample_apps())
+        self.assertEqual(("spring-backend", "nextjs-web", "ios-swiftui"), PACK_STACKS)
         self.assertEqual(("spring-backend", "nextjs-web", "android-compose", "ios-swiftui"), scaffoldable_stacks())
 
     def test_a_stack_whose_pack_landed_has_no_switch_and_no_sample(self) -> None:
@@ -269,13 +274,17 @@ class SampleSwitchTests(unittest.TestCase):
         self.assertFalse((REPO_ROOT / "template" / "web-user-app").exists())
         self.assertFalse((REPO_ROOT / "template" / "web-admin-portal").exists())
 
+    def test_a_stack_whose_ios_pack_landed_has_no_switch_and_no_sample(self) -> None:
+        self.assertFalse(hasattr(packs, "IOS_SWIFTUI_FULL_SAMPLE"))
+        self.assertNotIn("ios-swiftui", set(full_sample_apps().values()))
+        self.assertIn("ios-swiftui", PACK_STACKS)
+        self.assertFalse((REPO_ROOT / "template" / "mobile-ios").exists())
+
     def test_turning_a_switch_off_removes_that_sample_only(self) -> None:
         with patch.object(packs, "ANDROID_COMPOSE_FULL_SAMPLE", False):
-            self.assertEqual({"mobile-ios": "ios-swiftui"}, full_sample_apps())
-            self.assertNotIn("android-compose", scaffoldable_stacks())
-        with patch.object(packs, "IOS_SWIFTUI_FULL_SAMPLE", False), patch.object(packs, "ANDROID_COMPOSE_FULL_SAMPLE", False):
             self.assertEqual({}, full_sample_apps())
-            self.assertEqual(("spring-backend", "nextjs-web"), scaffoldable_stacks())
+            self.assertNotIn("android-compose", scaffoldable_stacks())
+            self.assertEqual(("spring-backend", "nextjs-web", "ios-swiftui"), scaffoldable_stacks())
 
 
 def hard_coded_versions(pack_root: Path, pins: dict[str, str]) -> list[str]:

@@ -1,6 +1,0 @@
-// Tracked starting point for the git-ignored Config/Debug.xcconfig.
-// CI and fresh clones create the local file with: cp Config/Debug.xcconfig.example Config/Debug.xcconfig
-//
-// xcconfig treats `//` as a comment start, so the `$()` below keeps the scheme separator from being cut off.
-
-API_BASE_URL = http:/$()/localhost:8080/api/v1

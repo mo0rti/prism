@@ -198,7 +198,7 @@ class TwoBackendsTests(LayeredTestCase):
 class SampleStacksTests(LayeredTestCase):
     """A stack without a pack keeps its full sample through the workspace layer, one switch per stack."""
 
-    def test_the_default_android_and_ios_apps_are_still_generated_as_samples_and_the_web_app_is_a_pack(self) -> None:
+    def test_the_default_android_app_is_still_generated_as_a_sample_and_the_web_and_ios_apps_are_packs(self) -> None:
         apps = [
             BACKEND,
             {"id": "web", "stack": "nextjs-web", "name": "Web App"},
@@ -206,12 +206,16 @@ class SampleStacksTests(LayeredTestCase):
             {"id": "mobile-ios", "stack": "ios-swiftui", "name": "iOS (Swift/SwiftUI)"},
         ]
         ws = self.generate("samples", apps)
-        for name in ("mobile-android", "mobile-ios"):
+        for name in ("mobile-android",):
             self.assertTrue((ws / name / "AGENTS.md").is_file(), name)
             self.assertTrue((ws / ".github" / "workflows" / f"{name}.yml").is_file(), name)
             self.assertFalse((ws / name / ".copier-answers.yml").exists(), "a sample has no layer of its own; the workspace layer renders it")
-        for name in ("backend", "web"):
+        for name in ("backend", "web", "mobile-ios"):
             self.assertTrue((ws / name / ".copier-answers.yml").is_file(), f"{name} is a pack with a layer of its own")
+        self.assertTrue((ws / "mobile-ios" / "project.yml").is_file())
+        self.assertTrue((ws / ".github" / "workflows" / "mobile-ios.yml").is_file())
+        self.assertTrue((ws / ".cursor" / "rules" / "mobile-ios.mdc").is_file())
+        self.assertEqual("ios-swiftui", read_yaml(ws / "mobile-ios" / ".copier-answers.yml")["prism_layer"])
         self.assertTrue((ws / "web" / "package-lock.json").is_file())
         self.assertTrue((ws / ".github" / "workflows" / "web.yml").is_file())
         self.assertTrue((ws / ".cursor" / "rules" / "web.mdc").is_file())

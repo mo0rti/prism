@@ -1,0 +1,91 @@
+import XCTest
+@testable import {{ app_module_name }}
+
+final class ProfileViewModelTests: XCTestCase {
+    @MainActor
+    private func makeSUT(token: String? = "stored-token") -> (viewModel: ProfileViewModel, client: FakeAPIClient, tokenStore: InMemoryTokenStore, session: SessionModel) {
+        let client = FakeAPIClient()
+        let tokenStore = InMemoryTokenStore(token: token)
+        let session = SessionModel()
+        session.markSignedIn()
+        let viewModel = ProfileViewModel(client: client, tokenStore: tokenStore, session: session)
+        return (viewModel, client, tokenStore, session)
+    }
+
+    @MainActor
+    func testStartsIdle() {
+        let (viewModel, _, _, _) = makeSUT()
+
+        XCTAssertEqual(viewModel.state, .idle)
+    }
+
+    @MainActor
+    func testLoadReadsTheProfileWithTheStoredToken() async {
+        let (viewModel, client, _, session) = makeSUT()
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.state, .loaded(Fixtures.profile))
+        XCTAssertEqual(client.profileTokens, ["stored-token"])
+        XCTAssertTrue(session.isSignedIn)
+    }
+
+    @MainActor
+    func testLoadWithoutATokenSignsOut() async {
+        let (viewModel, client, _, session) = makeSUT(token: nil)
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.state, .idle)
+        XCTAssertTrue(client.profileTokens.isEmpty)
+        XCTAssertFalse(session.isSignedIn)
+    }
+
+    @MainActor
+    func testARejectedTokenEndsTheSessionWithANotice() async {
+        let (viewModel, client, tokenStore, session) = makeSUT()
+        client.profileResult = .failure(.unauthorized)
+
+        await viewModel.load()
+
+        let stored = await tokenStore.token()
+        XCTAssertNil(stored)
+        XCTAssertFalse(session.isSignedIn)
+        XCTAssertEqual(session.notice, "Your session ended. Sign in again.")
+        XCTAssertEqual(viewModel.state, .idle)
+    }
+
+    @MainActor
+    func testAServerErrorKeepsTheSessionAndOffersARetry() async {
+        let (viewModel, client, tokenStore, session) = makeSUT()
+        client.profileResult = .failure(.server(500))
+
+        await viewModel.load()
+
+        guard case .failed(let message) = viewModel.state else {
+            return XCTFail("Expected a failed state, got \(viewModel.state)")
+        }
+        XCTAssertTrue(message.contains("500"))
+        let stored = await tokenStore.token()
+        XCTAssertEqual(stored, "stored-token")
+        XCTAssertTrue(session.isSignedIn)
+
+        client.profileResult = .success(Fixtures.profile)
+        await viewModel.load()
+        XCTAssertEqual(viewModel.state, .loaded(Fixtures.profile))
+    }
+
+    @MainActor
+    func testSignOutClearsTheTokenAndTheSession() async {
+        let (viewModel, _, tokenStore, session) = makeSUT()
+        await viewModel.load()
+
+        await viewModel.signOut()
+
+        let stored = await tokenStore.token()
+        XCTAssertNil(stored)
+        XCTAssertFalse(session.isSignedIn)
+        XCTAssertNil(session.notice)
+        XCTAssertEqual(viewModel.state, .idle)
+    }
+}

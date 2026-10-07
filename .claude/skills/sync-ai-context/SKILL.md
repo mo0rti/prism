@@ -19,7 +19,8 @@ Two things have no automatic check and need a manual one.
 
 1. Run the four checks. Fix what they report in `template-skills/` or in the `AGENTS.md.jinja` that owns the rule, never in a generated layer file, then run the generators again.
 2. Check the Cursor stack facts in `template-skills/cursor-*/skill.md`:
-   - `cursor-mobile-android` and `cursor-mobile-ios` still match `template/<platform>/AGENTS.md.jinja` and the platform docs.
+   - `cursor-mobile-android` still matches `template/<platform>/AGENTS.md.jinja` and the platform docs.
+   - The Cursor rule of each pack, `packs/<stack>/.cursor/rules/{{ app_id }}.mdc.jinja`, still matches the pack's `AGENTS.md.jinja` and docs.
    - `cursor-api-conventions` matches `template/docs/api/conventions.md.jinja`.
 3. Check the root layer of this repository:
    - `.claude/skills/` against `.agents/skills/` (three skills, kept by hand).

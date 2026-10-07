@@ -26,8 +26,8 @@ The agent system in this workspace does four jobs:
 {% for app in apps if app.stack == "spring-backend" %}| {{ app.name }} guidance | [`{{ app.path }}/AGENTS.md`](../{{ app.path }}/AGENTS.md), [`{{ app.path }}/CLAUDE.md`](../{{ app.path }}/CLAUDE.md), [`{{ app.path }}/docs/guide.md`](../{{ app.path }}/docs/guide.md) | Backend-specific architecture, conventions, and delivery rules |
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| {{ app.name }} guidance | [`{{ app.path }}/AGENTS.md`](../{{ app.path }}/AGENTS.md), [`{{ app.path }}/CLAUDE.md`](../{{ app.path }}/CLAUDE.md), [`{{ app.path }}/docs/guide.md`](../{{ app.path }}/docs/guide.md) | Web implementation rules, the sign-in slice and workflow expectations |
 {% endfor %}{% if "android-compose" in stacks %}| Android guidance | [`mobile-android/AGENTS.md`](../mobile-android/AGENTS.md), [`mobile-android/CLAUDE.md`](../mobile-android/CLAUDE.md), [`mobile-android/docs/guide.md`](../mobile-android/docs/guide.md) | Android-specific architecture, testing, and delivery rules |
-{% endif %}{% if "ios-swiftui" in stacks %}| iOS guidance | [`mobile-ios/AGENTS.md`](../mobile-ios/AGENTS.md), [`mobile-ios/CLAUDE.md`](../mobile-ios/CLAUDE.md), [`mobile-ios/docs/guide.md`](../mobile-ios/docs/guide.md) | iOS-specific architecture, testing, and delivery rules |
-{% endif %}
+{% endif %}{% for app in apps if app.stack == "ios-swiftui" %}| {{ app.name }} guidance | [`{{ app.path }}/AGENTS.md`](../{{ app.path }}/AGENTS.md), [`{{ app.path }}/CLAUDE.md`](../{{ app.path }}/CLAUDE.md), [`{{ app.path }}/docs/guide.md`](../{{ app.path }}/docs/guide.md) | iOS implementation rules and workflow expectations |
+{% endfor %}
 
 ## Agent File Map
 
@@ -61,11 +61,11 @@ The agent system in this workspace does four jobs:
 │   ├── AGENTS.md
 │   ├── CLAUDE.md
 │   └── docs/guide.md
-{% endif %}{% if "ios-swiftui" in stacks %}├── mobile-ios/
+{% endif %}{% for app in apps if app.stack == "ios-swiftui" %}├── {{ app.path }}/
 │   ├── AGENTS.md
 │   ├── CLAUDE.md
 │   └── docs/guide.md
-{% endif %}└── docs/
+{% endfor %}└── docs/
     ├── ai-agents.md
     ├── architecture.md
     └── ... selective examples; see docs/README.md for the full docs map
@@ -288,12 +288,12 @@ Start with:
 
 | Skill | Surface | Purpose |
 |------|---------|---------|
-| `ios-conventions` | Claude, Codex | iOS architecture, naming, file placement, and state-management rules |
+| `ios-conventions` | Claude, Codex | The sign-in and profile slice, MVVM with Swift 6 concurrency, the API client, and replacing the local development sign-in |
 | `ios-feature-delivery` | Claude, Codex | End-to-end iOS feature implementation workflow |
-| `ios-testing` | Claude, Codex | Unit, UI, and verification testing guidance |
+| `ios-testing` | Claude, Codex | Unit tests with the fake client, UI tests and the hittable wait |
 | `ios-build-verify` | Claude, Codex | Local build and verification checklist before handoff |
-| `ios-contract-alignment` | Claude, Codex | Keep iOS models and networking aligned with the OpenAPI contract |
-| `swiftui-design-system` | Claude, Codex | SwiftUI design-system and view-composition guidance |
+| `ios-contract-alignment` | Claude, Codex | Keep iOS models, endpoints and the API client aligned with the OpenAPI contract |
+| `swiftui-design-system` | Claude, Codex | SwiftUI screen, accessibility and Dynamic Type guidance |
 {% endif %}
 
 ## How To Work With The Agents

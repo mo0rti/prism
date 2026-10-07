@@ -176,7 +176,7 @@ class GeneratorTests(unittest.TestCase):
         self.assertFalse([line for line in lines if ".cursor/rules/backend.mdc" in line])
         self.assertFalse([line for line in lines if ".cursor/rules/web.mdc" in line], "the web Cursor rule belongs to the nextjs-web pack")
         self.assertIn(condition(".cursor/rules/mobile-android.mdc", "android-compose"), lines)
-        self.assertIn(condition(".cursor/rules/mobile-ios.mdc", "ios-swiftui"), lines)
+        self.assertFalse([line for line in lines if ".cursor/rules/mobile-ios.mdc" in line], "the iOS Cursor rule belongs to the ios-swiftui pack")
         for layer in (".agents/skills", ".claude/skills"):
             base = f"{layer}/deployment/references"
             self.assertIn(condition(f"{base}/azure", "spring-backend"), lines)
@@ -372,7 +372,7 @@ def owner(skills, rendered: str):
 
 STACK_OF_APP = {"backend": "spring-backend", "web": "nextjs-web", "mobile-android": "android-compose", "mobile-ios": "ios-swiftui"}
 # The Cursor rule of a pack's app is the pack's own file, so no skill source names it.
-PACK_APP_RULES = {".cursor/rules/backend.mdc", ".cursor/rules/web.mdc"}
+PACK_APP_RULES = {".cursor/rules/backend.mdc", ".cursor/rules/web.mdc", ".cursor/rules/mobile-ios.mdc"}
 
 
 def rendered_names(skills, app_ids) -> set[str]:

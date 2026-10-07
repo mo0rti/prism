@@ -19,11 +19,10 @@ includes:
     taskfile: ./mobile-android/Taskfile.yml
     dir: ./mobile-android
 {% endif %}
-{% if "ios-swiftui" in stacks %}
-  mobile-ios:
-    taskfile: ./mobile-ios/Taskfile.yml
-    dir: ./mobile-ios
-{% endif %}
+{% for app in apps if app.stack == "ios-swiftui" %}  {{ app.id }}:
+    taskfile: ./{{ app.path }}/Taskfile.yml
+    dir: ./{{ app.path }}
+{% endfor %}
 
 tasks:
   # ===========================================================================
@@ -39,9 +38,6 @@ tasks:
 {% endfor %}
 {% if "android-compose" in stacks %}
       - task: generate-client-mobile-android
-{% endif %}
-{% if "ios-swiftui" in stacks %}
-      - task: generate-client-mobile-ios
 {% endif %}
     sources:
       - "{{'{{'}} .OPENAPI_SPEC {{'}}'}}"
@@ -71,19 +67,6 @@ tasks:
         -o ./mobile-android/app/src/main/java/generated
         --additional-properties=library=jvm-retrofit2,serializationLibrary=kotlinx_serialization
         --package-name="{{ package_identifier }}.api"
-{% endif %}
-
-{% if "ios-swiftui" in stacks %}
-  generate-client-mobile-ios:
-    desc: "Generate Swift URLSession client from OpenAPI"
-    internal: true
-    cmds:
-      - >
-        {{'{{'}} .OPENAPI_GENERATOR {{'}}'}} generate
-        -i {{'{{'}} .OPENAPI_SPEC {{'}}'}}
-        -g swift6
-        -o ./mobile-ios/Generated/APIClient
-        --additional-properties=library=urlsession,projectName={{ ios_module_name }}API
 {% endif %}
 
   # ===========================================================================

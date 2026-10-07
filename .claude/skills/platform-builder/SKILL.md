@@ -20,9 +20,8 @@ $ARGUMENTS
 2. **Read the spec** - Infer the current platform contract from `copier.yml`, `template/`, `README.md`, and the maintainer docs.
 
 3. **Study reference platforms** - Read completed platform templates and packs to understand patterns:
-   - `packs/spring-backend/` and `packs/nextjs-web/` - the pack shape: every path under `{{ app_path }}/`, its own workflow and Cursor rule, pinned versions read from `packs/versions.yml`, one tested slice; `spring-backend` adds the dev identity and its guards, Spring Boot patterns, Jinja usage, CLAUDE.md structure; `nextjs-web` also commits a lockfile that a script rewrites from the pins
+   - `packs/spring-backend/`, `packs/nextjs-web/` and `packs/ios-swiftui/` - the pack shape: every path under `{{ app_path }}/`, its own workflow and Cursor rule, pinned versions read from `packs/versions.yml`, one tested slice; `spring-backend` adds the dev identity and its guards, Spring Boot patterns, Jinja usage, CLAUDE.md structure; `nextjs-web` also commits a lockfile that a script rewrites from the pins; `ios-swiftui` defines its Xcode project in `project.yml` for XcodeGen and is built only by its macOS CI job
    - `template/mobile-android/` - MVVM patterns, feature structure, Hilt DI, `mobile-android/docs/` for technical docs with 7 doc files
-   - `template/mobile-ios/` - MVVM patterns mirroring Android, SwiftUI conventions
 
 4. **Create the platform directory** - A new stack is a pack: build `packs/{stack}/` with every path under `{{ app_path }}/` (plus `.github/workflows/{{ app_id }}.yml` and `.cursor/rules/{{ app_id }}.mdc`), add the stack to `PACK_STACKS` in `prism_cli/packs.py` and the layer choices of `copier.yml`, and pin its versions in `packs/versions.yml`. Until the pack exists a stack keeps a full sample under `template/{platform}/`, with the files required by the current platform contract:
    - Add `.jinja` suffix if it contains any Jinja2 expressions

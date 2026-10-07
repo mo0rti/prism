@@ -292,8 +292,8 @@ Generated projects include these Hygen generators under `_templates/`:
 
 | Generator | Purpose |
 |-----------|---------|
-| `feature new` | Scaffold a backend + Android + iOS feature slice and create a dated intake note in `knowledge/intake/pending/YYYY-MM-DD-feature-name/` for `po-intake` to process |
-| `screen new` | Scaffold a new Android or iOS screen |
+| `feature new` | Scaffold a backend + Android feature slice and create a dated intake note in `knowledge/intake/pending/YYYY-MM-DD-feature-name/` for `po-intake` to process |
+| `screen new` | Scaffold a new Android screen |
 | `endpoint new` | Scaffold an OpenAPI path snippet and backend endpoint starter |
 
 Typical usage inside a generated project:
@@ -313,8 +313,8 @@ The generated workflow set is:
 | `api-contracts.yml` | Always | Validate the OpenAPI contract |
 | `<app-id>.yml` | One for each scaffolded `spring-backend` app (`backend.yml` for the default app) | `./gradlew build` (compile, every test with Testcontainers PostgreSQL, the jar), scoped to the app's path |
 | `mobile-android.yml` | With `mobile-android` | Android test, lint, instrumented tests and debug build |
-| `mobile-ios.yml` | With `mobile-ios` | iOS test |
 | `<app-id>.yml` | One for each scaffolded `nextjs-web` app (`web.yml` for the default app) | `npm ci`, lint, typecheck, Vitest tests and `next build` on a clean runner, scoped to the app's path |
+| `<app-id>.yml` | One for each scaffolded `ios-swiftui` app (`mobile-ios.yml` for the default app) | On a macOS runner: XcodeGen, a simulator build and the XCTest unit and UI tests, scoped to the app's path |
 
 No workflow deploys. The `deployment` skill describes the deploy jobs to add once you choose a host.
 

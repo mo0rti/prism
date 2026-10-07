@@ -35,8 +35,8 @@ This generated workspace currently includes:
 {% for app in apps if app.stack == "spring-backend" %}- **{{ app.path }}/** - {{ app.name }}: Spring Boot (Kotlin) REST API
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}- **{{ app.path }}/** - {{ app.name }}: Next.js web app (TypeScript){% if app.audience %}, for {{ app.audience }}{% endif %}
 {% endfor %}{% if "android-compose" in stacks %}- **mobile-android/** - Android app (Kotlin/Jetpack Compose, MVVM)
-{% endif %}{% if "ios-swiftui" in stacks %}- **mobile-ios/** - iOS app (Swift/SwiftUI, MVVM)
-{% endif %}- **shared/** - OpenAPI contract and shared design tokens
+{% endif %}{% for app in apps if app.stack == "ios-swiftui" %}- **{{ app.path }}/** - {{ app.name }}: iOS app (Swift/SwiftUI){% if app.audience %}, for {{ app.audience }}{% endif %}
+{% endfor %}- **shared/** - OpenAPI contract and shared design tokens
 - **knowledge/** - Product wiki and delivery workflow metadata
 - **docs/** - Human-readable architecture and operations docs
 
@@ -116,10 +116,9 @@ and `$generate-clients`.
 # Review local configuration
 {% if "spring-backend" in stacks %}# The local database defaults are already generated in `.env`
 {% endif %}{% if "android-compose" in stacks %}# Android API config is already generated in `mobile-android/local.config.properties`
-{% endif %}{% if "ios-swiftui" in stacks %}# iOS API config is already generated in the git-ignored `mobile-ios/Config/Debug.xcconfig`
-# On a fresh clone, `task mobile-ios:generate-project` creates it from `Config/Debug.xcconfig.example`
-# Update `mobile-ios/Config/Release.xcconfig` and its `.example` copy, which CI builds from, before production or TestFlight builds
-{% endif %}{% for app in apps if app.stack == "nextjs-web" %}cp {{ app.path }}/.env.example {{ app.path }}/.env.local
+{% endif %}{% for app in apps if app.stack == "ios-swiftui" %}# {{ app.id }}: `task {{ app.id }}:generate-project` creates its Xcode project from `{{ app.path }}/project.yml` (Mac only)
+# The Debug API_BASE_URL in that file is the local backend; set the Release one before production or TestFlight builds
+{% endfor %}{% for app in apps if app.stack == "nextjs-web" %}cp {{ app.path }}/.env.example {{ app.path }}/.env.local
 {% endfor %}# Edit the local config files as needed for your machine and credentials
 
 {% if "spring-backend" in stacks %}# Start the local database first
@@ -147,8 +146,8 @@ task generate-clients
 {% for app in apps if app.stack == "spring-backend" %}- [{{ app.name }} Guide]({{ app.path }}/docs/guide.md) for the structure, conventions and commands of `{{ app.id }}`
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}- [{{ app.name }} Guide]({{ app.path }}/docs/guide.md) for the structure, sign-in slice and commands of `{{ app.id }}`
 {% endfor %}{% if "android-compose" in stacks %}- [Android Guide](mobile-android/docs/guide.md) for Android architecture, setup, and verification workflow
-{% endif %}{% if "ios-swiftui" in stacks %}- [iOS Guide](mobile-ios/docs/guide.md) for iOS structure, build setup, and verification workflow
-{% endif %}- [CI/CD](docs/deployment/ci-cd.md) for the generated GitHub Actions workflow layout (build and test)
+{% endif %}{% for app in apps if app.stack == "ios-swiftui" %}- [{{ app.name }} Guide]({{ app.path }}/docs/guide.md) for the structure, sign-in slice and commands of `{{ app.id }}`
+{% endfor %}- [CI/CD](docs/deployment/ci-cd.md) for the generated GitHub Actions workflow layout (build and test)
 - Deployment: the `deployment` skill (`.claude/skills/deployment/`, `.agents/skills/deployment/`) holds worked examples for the backend on Azure Container Apps and the web apps on Cloudflare; hosting, secrets and deployment are yours to choose
 
 ## Common Tasks
