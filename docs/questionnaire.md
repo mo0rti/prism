@@ -16,12 +16,12 @@ The agent integrations are not a question: every generated workspace carries gui
 
 An app is `{id, stack}` plus optional `name`, `path`, `audience`, `repository`, `remote` and `generation`:
 
-- `id` is a stable slug. `stack` comes from the registry: `spring-backend`, `nextjs-web`, `android-compose`, `ios-swiftui` or `other`.
-- `path` defaults to the stack's default path (`backend`, `mobile-android`, `mobile-ios`), else the ID (`web` for the default web app).
+- `id` is a stable slug. `stack` comes from the registry: `spring-backend`, `nextjs-web`, `android-compose`, `ios-swiftui`, `python-agent-service` or `other`. The interactive flow offers every stack in its "another app" step, so the agent service is chosen there, listed in an answers file, or added later with `prism app add`.
+- `path` defaults to the stack's default path (`backend`, `mobile-android`, `mobile-ios`, `agent-service`), else the ID (`web` for the default web app).
 - `audience` is free text, for example `B2C` or `internal`. No gate reads it. For a `nextjs-web` app it is display text in the app's header and guidance, nothing more. The interactive flow asks for it, and `prism app add --audience` sets it.
 - `generation` is `scaffolded` (Prism generates the code and `prism update` keeps it current) or `registered` (the manifest records it; the code lives elsewhere). An app of a generated stack in this repository defaults to `scaffolded`; an app in an external repository, or of the `other` stack, is always registered. An external app also names its repository's `remote`.
 
-A preset is an app list over the four packs, and `prism presets` (and `prism presets --json`) show each one's apps:
+A preset is an app list over the first four packs (the agent service is added to a preset's apps with one more entry, below), and `prism presets` (and `prism presets --json`) show each one's apps:
 
 | Preset | Apps |
 |--------|------|
@@ -42,6 +42,7 @@ answers:
     - {id: web, stack: nextjs-web, audience: B2C}
     - {id: admin, stack: nextjs-web, audience: internal}
     - {id: customer-android, stack: android-compose, repository: mobile, remote: "https://example.com/acme/mobile.git", path: apps/customer}
+    - {id: agent-service, stack: python-agent-service}
 ```
 
 `apps: []` generates the workspace layer alone, and `prism app add --scaffold` adds an app later. Leaving `apps` out is an error.
@@ -53,7 +54,7 @@ The CLI derives, validates and records these in the app's own answers file (`<pa
 - `app_package_segment`: the ID without hyphens. It must pass the package-identifier rules (a letter first, no Kotlin or Java keyword) and be unique across every app of the workspace, so `my-app` and `myapp` collide.
 - the package, directory path and module name: `<package_identifier>.<segment>`, its path, and the ID in PascalCase.
 - the CI workflow name and `paths:` filters, scoped to the app's path.
-- `port`: the first free port of the stack's range (`spring-backend` from 8080, `nextjs-web` from 3000), chosen when the app is added and kept in its answers. Removing another app never moves it.
+- `port`: the first free port of the stack's range (`spring-backend` from 8080, `nextjs-web` from 3000, `python-agent-service` from 8200), chosen when the app is added and kept in its answers. Removing another app never moves it.
 - the web package name, `<project_slug>-<app id>`, and the session cookie name, `<app id>_session` with hyphens as underscores: each web app has its own, because apps on `localhost` share one cookie jar whatever their port.
 
 An app ID and path must not replace a file of the workspace layer: an ID such as `api-contracts` (a workspace workflow) or a path inside `docs/`, `knowledge/`, `shared/` or `.github/` is refused, and an app's own path must be empty or absent.
@@ -66,14 +67,15 @@ An app ID and path must not replace a file of the workspace layer: an ID such as
 | `nextjs-web` | The `nextjs-web` pack, once per web app: a Next.js app with a "Local development sign-in" route that keeps the dev-identity token in an httpOnly cookie, one page that shows `GET /api/me` through a client generated from the shared OpenAPI contract, Vitest and Testing Library tests, a committed `package-lock.json`, a CI workflow that runs `npm ci`, lint, typecheck, test and build, and a Cursor rule, under the app's path. Any number of web apps, each with its own port, package name and workflow |
 | `android-compose` | The `android-compose` pack, once per Android app: a Kotlin and Jetpack Compose app with a "Local development sign-in" screen, a profile screen that shows `GET /api/me` through a hand-written Retrofit client checked against the shared OpenAPI contract, an in-memory session, JVM unit tests (state holders, client, contract and a Robolectric Compose test), the Gradle wrapper, a CI workflow that runs `assembleDebug` and `testDebugUnitTest`, and a Cursor rule, under the app's path. Any number of Android apps, each with its own application ID, namespace, package directories, Gradle project name and workflow |
 | `ios-swiftui` | The `ios-swiftui` pack, once per scaffolded app at its own path: an XcodeGen project, a "Local development sign-in" and a profile screen, XCTest unit tests and one UI test, and the app's workflow and Cursor rule. Each app has its own module, target, scheme, Xcode project name and bundle identifier, derived from its ID |
+| `python-agent-service` | The `python-agent-service` pack, once per agent service: a FastAPI app with `GET /api/health` and `POST /api/assist`, one agent turn through a provider interface (a deterministic fake and a Claude API adapter) with one read-only example tool that calls the backend's `GET /api/me` with the caller's token, bearer-token verification against the backend's JWKS with no shared secret (fail-closed at startup), the safety rules (untrusted data, an audit log with user and request IDs, a per-user budget, no cross-user data, a notice that it assists and does not advise), its own `openapi.yml`, a committed `uv.lock`, pytest tests, an evaluation harness with one example case, a CI workflow that runs lint, typecheck, tests and the fake-provider evaluation, and a Cursor rule, under the app's path |
 | `other` | Registered only |
 
-The backend and Android packs are verified locally, and a generated Android app builds its debug APK and passes its JVM tests locally and in CI; its sign-in against a running backend through `adb reverse` was checked by hand on an emulator. The iOS pack is verified only by the macOS CI job (XcodeGen, a simulator build and the tests), which passes against it; its sign-in works in the simulator only, because the backend serves the dev identity to loopback requests. A generated web app passes `npm ci`, lint, typecheck, its tests and the Next.js build locally and in CI, with a mocked backend; its sign-in against a running backend is checked by hand, and no hosting configuration is generated. [current-status.md](current-status.md) records the verification per platform.
+The backend and Android packs are verified locally, and a generated Android app builds its debug APK and passes its JVM tests locally and in CI; its sign-in against a running backend through `adb reverse` was checked by hand on an emulator. The iOS pack is verified only by the macOS CI job (XcodeGen, a simulator build and the tests), which passes against it; its sign-in works in the simulator only, because the backend serves the dev identity to loopback requests. A generated web app passes `npm ci`, lint, typecheck, its tests and the Next.js build locally and in CI, with a mocked backend; its sign-in against a running backend is checked by hand, and no hosting configuration is generated. A generated agent service passes `uv sync --locked`, ruff, mypy, its pytest tests and its fake-provider evaluation locally and in CI, and a real local run against a backend under its `local` profile answered `POST /api/assist` with the tool's `GET /api/me` result; its Claude adapter is tested against a stub only, so run the evaluation live with your own key before relying on it. [current-status.md](current-status.md) records the verification per platform.
 
 ## Current Notes Per Input
 
 - `Package identifier`: every scaffolded app gets its own package under it, so two apps of one stack never share a package.
-- Sign-in: the sign-in of a `spring-backend`, a `nextjs-web`, an `android-compose` or an `ios-swiftui` app is the local development identity, which Prism's auth contract defines, so no question asks for an authentication method. The real identity provider is yours to choose, and the generated `security-auth` skill explains the replacement.
+- Sign-in: the sign-in of a `spring-backend`, a `nextjs-web`, an `android-compose` or an `ios-swiftui` app is the local development identity, which Prism's auth contract defines, so no question asks for an authentication method. A `python-agent-service` accepts the backend's tokens and verifies them against the key the dev identity publishes (`GET /api/dev-identity/jwks`), or against a configured issuer. The real identity provider is yours to choose, and the generated `security-auth` skill explains the replacement.
 
 ## What The Questionnaire Does Not Ask
 
@@ -94,4 +96,5 @@ An answers file or `--data` value for a question that no longer exists (`databas
 - **Backend only** for contract inspection and repository-shape validation
 - **Backend + Mobile** for the Android and iOS client path; the iOS pack is built and tested by the macOS CI job
 - **Backend + Web** to evaluate the web slice against the backend; add a second web app for another audience with `prism app add admin --stack nextjs-web --audience internal --scaffold`
-- **Full** for one app of each of the four stacks
+- **Full** for one app of each of the four client and backend stacks
+- **Backend + agent service** to evaluate the agent slice: list `agent-service` with the `python-agent-service` stack in an answers file next to `backend`

@@ -14,10 +14,10 @@ Test the Copier template by generating a project and verifying the output.
    ```bash
    prism new --answers /tmp/all-apps.yml --dest /tmp/template-test-output --yes
    ```
-   where `all-apps.yml` is `schema_version: 1`, `answers: {project_name: Test App, apps: [{id: backend, stack: spring-backend}, {id: web, stack: nextjs-web}, {id: admin, stack: nextjs-web, audience: internal}, {id: mobile-android, stack: android-compose}, {id: partner-android, stack: android-compose, path: apps/partner}, {id: mobile-ios, stack: ios-swiftui}, {id: partner-ios, stack: ios-swiftui, path: apps/partner-ios}]}`.
+   where `all-apps.yml` is `schema_version: 1`, `answers: {project_name: Test App, apps: [{id: backend, stack: spring-backend}, {id: web, stack: nextjs-web}, {id: admin, stack: nextjs-web, audience: internal}, {id: mobile-android, stack: android-compose}, {id: partner-android, stack: android-compose, path: apps/partner}, {id: mobile-ios, stack: ios-swiftui}, {id: agent-service, stack: python-agent-service}, {id: partner-ios, stack: ios-swiftui, path: apps/partner-ios}]}`.
 
 2. Verify the output structure:
-   - Check all app directories exist: `backend/` (from the pack, with its own `.copier-answers.yml`), `web/` and `admin/` (from the `nextjs-web` pack, each with its own `.copier-answers.yml`), `mobile-android/` and `apps/partner/` (from the `android-compose` pack, each with its own `.copier-answers.yml`, application ID and workflow), `mobile-ios/` and `apps/partner-ios/` (from the `ios-swiftui` pack, each with its own `.copier-answers.yml`, bundle identifier, Xcode project and workflow)
+   - Check all app directories exist: `backend/` (from the pack, with its own `.copier-answers.yml`), `web/` and `admin/` (from the `nextjs-web` pack, each with its own `.copier-answers.yml`), `mobile-android/` and `apps/partner/` (from the `android-compose` pack, each with its own `.copier-answers.yml`, application ID and workflow), `mobile-ios/` and `apps/partner-ios/` (from the `ios-swiftui` pack, each with its own `.copier-answers.yml`, bundle identifier, Xcode project and workflow), `agent-service/` (from the `python-agent-service` pack, with its own `.copier-answers.yml`, port, `uv.lock`, contract and workflow)
    - Check `CLAUDE.md`, `AGENTS.md`, `Taskfile.yml` were generated without Jinja artifacts
    - Check `.claude/`, `.agents/skills/`, and `.cursor/` are present
    - Check `docs/`, `shared/`, `.github/workflows/` are present

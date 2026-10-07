@@ -49,6 +49,33 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/dev-identity/jwks:
+    get:
+      operationId: getDevJwks
+      tags: [dev-identity]
+      x-prism-dev-only: true
+      security: []
+      summary: Publish the public key of the local development identity
+      description: |
+        Local development only. The JSON Web Key Set (RFC 7517) with the public key that verifies the
+        tokens of `POST /api/dev-identity/token`, so another local service, such as an agent service, can
+        validate those tokens without a shared secret. The set never carries a private member. The backend
+        serves this route only under the `local` Spring profile and only to requests from the loopback
+        interface; every other profile answers `404`. The key lives in the memory of the running process, so
+        a restart publishes a new key. A real identity provider publishes its own JWKS and replaces this
+        route (see the `security-auth` skill).
+      responses:
+        '200':
+          description: The public key set of the development identity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DevJwks'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   # ===========================================================================
   # Users
   # ===========================================================================
@@ -102,6 +129,34 @@ components:
           type: integer
           format: int64
           description: Lifetime of the token in seconds.
+
+    DevJwks:
+      type: object
+      description: A JSON Web Key Set with the public key of the development identity.
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/DevJwk'
+
+    DevJwk:
+      type: object
+      description: A public RSA key (RFC 7517). It carries no private member.
+      required: [kty, kid, n, e]
+      properties:
+        kty:
+          type: string
+          enum: [RSA]
+        kid:
+          type: string
+          description: The key ID the tokens name in their header.
+        n:
+          type: string
+          description: The modulus, base64url encoded.
+        e:
+          type: string
+          description: The public exponent, base64url encoded.
 
     # --- Users ---
     UserProfile:

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Agent Conventions"
+  short_description: "Apply the agent service structure, flow and typing conventions"
+  default_prompt: "Use $agent-conventions when changing an agent service of this project."
+policy:
+  allow_implicit_invocation: true

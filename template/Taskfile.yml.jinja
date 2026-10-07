@@ -22,6 +22,10 @@ includes:
     taskfile: ./{{ app.path }}/Taskfile.yml
     dir: ./{{ app.path }}
 {% endfor %}
+{% for app in apps if app.stack == "python-agent-service" %}  {{ app.id }}:
+    taskfile: ./{{ app.path }}/Taskfile.yml
+    dir: ./{{ app.path }}
+{% endfor %}
 
 tasks:
   # ===========================================================================
@@ -64,6 +68,9 @@ tasks:
 {% endfor %}
 {% for app in apps if app.stack == "android-compose" %}      - task: {{ app.id }}:lint
 {% endfor %}
+{% for app in apps if app.stack == "python-agent-service" %}      - task: {{ app.id }}:lint
+      - task: {{ app.id }}:typecheck
+{% endfor %}
 
   test:
     desc: "Run tests for all platforms"
@@ -73,6 +80,9 @@ tasks:
 {% for app in apps if app.stack == "nextjs-web" %}      - task: {{ app.id }}:test
 {% endfor %}
 {% for app in apps if app.stack == "android-compose" %}      - task: {{ app.id }}:test
+{% endfor %}
+{% for app in apps if app.stack == "python-agent-service" %}      - task: {{ app.id }}:test
+      - task: {{ app.id }}:eval
 {% endfor %}
 
   # ===========================================================================

@@ -40,6 +40,12 @@ class DefaultProfileIntegrationTest {
     }
 
     @Test
+    fun `the dev identity jwks route does not exist`() {
+        mockMvc.perform(get("/api/dev-identity/jwks"))
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
     fun `no dev identity bean exists`() {
         val names = context.beanDefinitionNames.filter { it.contains("devIdentity", ignoreCase = true) }
         assertTrue(names.isEmpty(), "beans of the dev identity exist without the local profile: $names")

@@ -30,6 +30,9 @@ This project does not choose a cloud, hold credentials or deploy anything. The g
 {%- if "android-compose" in stacks or "ios-swiftui" in stacks %}
 - Mobile apps that CI builds and tests; they carry no release job and no signing material.
 {%- endif %}
+{%- if "python-agent-service" in stacks %}
+- Agent services that CI installs from `uv.lock`, lints, typechecks, tests and evaluates with the fake provider, with no Dockerfile and no hosting files. Their runtime settings are environment variables: `AGENT_OIDC_ISSUER` and `AGENT_OIDC_AUDIENCE` for the identity provider, `AGENT_BACKEND_BASE_URL` (https) for the backend, and, for the Claude provider, `AGENT_PROVIDER=claude` with `ANTHROPIC_API_KEY` taken from the host's secret store. A deployed service never runs with `AGENT_PROFILE=local`, and the service refuses to start when it has no identity configured.
+{%- endif %}
 {%- if "spring-backend" in stacks %}
 
 ## Backend: Azure Container Apps

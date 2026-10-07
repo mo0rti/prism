@@ -64,6 +64,7 @@ class StackRegistryTests(unittest.TestCase):
             "nextjs-web": (True, {"has-ui": True, "serves-api": False}, None),
             "android-compose": (True, {"has-ui": True, "serves-api": False}, "mobile-android"),
             "ios-swiftui": (True, {"has-ui": True, "serves-api": False}, "mobile-ios"),
+            "python-agent-service": (True, {"has-ui": False, "serves-api": True}, "agent-service"),
             "other": (False, {}, None),
         }
         self.assertEqual(list(expected), list(STACKS))
@@ -503,13 +504,14 @@ class GenerationFieldTests(unittest.TestCase):
     def test_every_stack_with_a_server_has_a_port_range(self) -> None:
         self.assertEqual((8080, 8179), STACKS["spring-backend"].port_range)
         self.assertEqual((3000, 3099), STACKS["nextjs-web"].port_range)
+        self.assertEqual((8200, 8299), STACKS["python-agent-service"].port_range)
         self.assertIsNone(STACKS["android-compose"].port_range)
         self.assertIsNone(STACKS["other"].port_range)
 
 
 class CapabilityResolutionTests(unittest.TestCase):
     def test_stack_defaults(self) -> None:
-        for stack_id, ui, api in (("spring-backend", False, True), ("nextjs-web", True, False), ("android-compose", True, False), ("ios-swiftui", True, False)):
+        for stack_id, ui, api in (("spring-backend", False, True), ("nextjs-web", True, False), ("android-compose", True, False), ("ios-swiftui", True, False), ("python-agent-service", False, True)):
             with self.subTest(stack=stack_id):
                 app = App(id="x", name="X", stack=stack_id, path="x")
                 self.assertEqual({"has-ui": ui, "serves-api": api}, app.capabilities)

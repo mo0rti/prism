@@ -5,14 +5,19 @@ import {{ app_package }}.modules.users.repository.UserRepository
 import {{ app_package }}.support.PostgresTestConfiguration
 import {{ app_package }}.support.TokenFixtures
 import com.jayway.jsonpath.JsonPath
+import com.nimbusds.jose.jwk.JWKSet
 import com.nimbusds.jose.jwk.RSAKey
+import com.nimbusds.jwt.SignedJWT
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -126,6 +131,57 @@ class LocalProfileIntegrationTest {
     fun `a request addressed to another host name is refused`() {
         val rebound = RequestPostProcessor { it.serverName = "attacker.example"; it }
         mockMvc.perform(post("/api/dev-identity/token").with(rebound).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("LOOPBACK_ONLY"))
+    }
+
+    @Test
+    fun `the jwks route publishes the public key and no private member`() {
+        val body = mockMvc.perform(get("/api/dev-identity/jwks"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.keys.length()").value(1))
+            .andExpect(jsonPath("$.keys[0].kty").value("RSA"))
+            .andExpect(jsonPath("$.keys[0].kid").value(devIdentityKey.keyID))
+            .andExpect(jsonPath("$.keys[0].n").exists())
+            .andExpect(jsonPath("$.keys[0].e").exists())
+            .andReturn().response.contentAsString
+
+        for (privateMember in listOf("d", "p", "q", "dp", "dq", "qi", "oth")) {
+            assertFalse(JsonPath.read<Map<String, Any>>(body, "$.keys[0]").containsKey(privateMember), "the JWKS carries the private member `$privateMember`")
+        }
+        assertTrue(JWKSet.parse(body).keys.none { it.isPrivate }, "no key of the published set is private")
+    }
+
+    @Test
+    fun `the published key verifies a token the dev identity signs`() {
+        val token = requestToken()
+        val body = mockMvc.perform(get("/api/dev-identity/jwks")).andExpect(status().isOk).andReturn().response.contentAsString
+        val published = JWKSet.parse(body).keys.single() as RSAKey
+
+        assertEquals(published.keyID, SignedJWT.parse(token).header.keyID, "the token names the published key by kid")
+        val jwt = NimbusJwtDecoder.withPublicKey(published.toRSAPublicKey()).build().decode(token)
+        assertEquals(DevIdentity.ISSUER, jwt.getClaimAsString("iss"))
+    }
+
+    @Test
+    fun `the jwks route refuses a request that did not come from the loopback interface`() {
+        val remote = RequestPostProcessor { it.remoteAddr = "203.0.113.7"; it }
+        mockMvc.perform(get("/api/dev-identity/jwks").with(remote))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("LOOPBACK_ONLY"))
+    }
+
+    @Test
+    fun `the jwks route refuses a request through a proxy`() {
+        mockMvc.perform(get("/api/dev-identity/jwks").header("X-Forwarded-For", "203.0.113.7"))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("LOOPBACK_ONLY"))
+    }
+
+    @Test
+    fun `the jwks route refuses a request addressed to another host name`() {
+        val rebound = RequestPostProcessor { it.serverName = "attacker.example"; it }
+        mockMvc.perform(get("/api/dev-identity/jwks").with(rebound))
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.code").value("LOOPBACK_ONLY"))
     }

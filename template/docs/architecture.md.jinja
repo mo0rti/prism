@@ -12,6 +12,7 @@
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| {{ app.name }} | Next.js {{ pack_versions["nextjs-web"].next }}, React {{ pack_versions["nextjs-web"].react }}, TypeScript {{ pack_versions["nextjs-web"].typescript }} | Project owner's choice (see the `deployment` skill) | Web app{% if app.audience %} for {{ app.audience }}{% endif %} ({{ app.path }}/) |
 {% endfor %}{% for app in apps if app.stack == "android-compose" %}| {{ app.name }} | Kotlin {{ pack_versions["android-compose"].kotlin }}, Jetpack Compose, Retrofit {{ pack_versions["android-compose"].retrofit }} | Project owner's choice (see the `deployment` skill) | Android app{% if app.audience %} for {{ app.audience }}{% endif %} ({{ app.path }}/) |
 {% endfor %}{% for app in apps if app.stack == "ios-swiftui" %}| {{ app.name }} | Swift {{ pack_versions["ios-swiftui"].swift }}, SwiftUI, iOS {{ pack_versions["ios-swiftui"].ios_deployment_target }}+, XcodeGen | App Store | Native iOS app{% if app.audience %} for {{ app.audience }}{% endif %} ({{ app.path }}/) |
+{% endfor %}{% for app in apps if app.stack == "python-agent-service" %}| {{ app.name }} | Python {{ pack_versions["python-agent-service"].python }}, FastAPI {{ pack_versions["python-agent-service"].fastapi }}, uv | Project owner's choice (see the `deployment` skill) | AI agent service{% if app.audience %} for {{ app.audience }}{% endif %}: assists with the signed-in user's own data through read-only tools and never advises ({{ app.path }}/) |
 {% endfor %}| Database | PostgreSQL 16 | Local development in Docker Compose; hosting is the project owner's choice | Data persistence |
 
 ## Architecture Pattern
@@ -74,4 +75,5 @@ Colors, spacing, typography, and border-radius values that each platform's theme
 
 - [API Conventions](api/conventions.md) for path versioning, auth headers, and error payloads
 {% for app in apps if app.stack == "spring-backend" %}- [{{ app.name }} Guide](../{{ app.path }}/docs/guide.md) for package layout and coding conventions
+{% endfor %}{% for app in apps if app.stack == "python-agent-service" %}- [{{ app.name }} Guide](../{{ app.path }}/docs/guide.md) for the agent turn, providers, identity and safety rules
 {% endfor %}- [Agent Instructions](../AGENTS.md) for the rules every AI agent follows, command surfaces and workflow expectations

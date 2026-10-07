@@ -1,0 +1,37 @@
+---
+description: {{ (app_name ~ " (Python agent service): stack, structure, safety rules and commands.") | tojson }}
+globs: "{{ app_path }}/**"
+---
+
+# {{ app_name }} - Python agent service
+
+## Stack
+- Python {{ versions.python }}, FastAPI {{ versions.fastapi }}, uv ({{ versions.uv }}) with a committed `uv.lock`
+- pytest, ruff, mypy (strict). The tests and the evaluation run use the fake provider: no network, no key
+- One provider interface with two implementations: a deterministic fake and the Claude API adapter (`AGENT_CLAUDE_MODEL`, key from `ANTHROPIC_API_KEY`)
+- Hosting is the project owner's choice (see the `deployment` skill, `.agents/skills/deployment/SKILL.md`)
+
+## Structure
+```
+{{ app_path }}/app/main.py            -> create_app(): fail-closed startup, wiring
+{{ app_path }}/app/auth/              -> bearer JWT verification against a JWKS (no shared secret)
+{{ app_path }}/app/agent/turn.py      -> one agent turn: provider, tools, data envelopes
+{{ app_path }}/app/providers/         -> provider interface, fake, Claude adapter
+{{ app_path }}/app/tools/             -> read-only tools; get_my_profile calls GET /api/me with the user's token
+{{ app_path }}/app/safety/            -> untrusted-data envelopes, budget, audit log, notice
+{{ app_path }}/openapi.yml            -> this service's own contract
+{{ app_path }}/evals/                 -> evaluation cases and the runner
+```
+
+## Rules
+- The service assists and does not advise. Every response carries the notice (`app/safety/notice.py`)
+- The question and every tool result are untrusted data: they travel in `<untrusted-data>` envelopes and never reach the system prompt
+- Tools only read, and use the caller's own token for every backend call; the model never picks a URL or a user
+- Every tool call is logged with the user and request IDs, never with a token or a value
+- A per-user budget is enforced in memory; there is no cross-user state
+- Startup fails with no identity configured, or with the `local` profile next to a real issuer. The service has no dev-identity endpoint and no switch that turns authentication off
+- No API key in any file
+
+## Commands
+- `task {{ app_id }}:dev` (profile `local`, port {{ port }}; the backend runs under its `local` profile)
+- `task {{ app_id }}:test`, `task {{ app_id }}:lint`, `task {{ app_id }}:typecheck`, `task {{ app_id }}:eval`

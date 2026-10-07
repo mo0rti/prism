@@ -1,0 +1,55 @@
+version: "3"
+
+tasks:
+  install:
+    desc: Install the locked dependencies of {{ app_id }} with uv
+    cmds:
+      - uv sync --locked
+
+  dev:
+    desc: "Run {{ app_id }} on port {{ port }} with the local development identity (start the backend first with `task backend:dev` or the task of your backend; set AGENT_BACKEND_BASE_URL when its port is not 8080)"
+    env:
+      AGENT_PROFILE: local
+    cmds:
+      - uv run --locked uvicorn app.main:create_app --factory --host 127.0.0.1 --port {{ port }}
+
+  run:
+    desc: "Run {{ app_id }} on port {{ port }} with the identity configured in the environment (AGENT_OIDC_ISSUER and AGENT_OIDC_AUDIENCE); it refuses to start with none"
+    cmds:
+      - uv run --locked uvicorn app.main:create_app --factory --host 127.0.0.1 --port {{ port }}
+
+  test:
+    desc: Run the {{ app_id }} tests (no network, no key)
+    cmds:
+      - uv run --locked pytest
+
+  lint:
+    desc: Lint and check the formatting of {{ app_id }} with ruff
+    cmds:
+      - uv run --locked ruff check .
+      - uv run --locked ruff format --check .
+
+  typecheck:
+    desc: Typecheck {{ app_id }} with mypy
+    cmds:
+      - uv run --locked mypy
+
+  eval:
+    desc: Run the evaluation cases of {{ app_id }} with the fake provider (the live model run is on demand)
+    cmds:
+      - uv run --locked python -m evals.run --provider fake
+
+  eval-live:
+    desc: "On demand: run the evaluation cases against the Claude API (needs ANTHROPIC_API_KEY; costs money)"
+    cmds:
+      - uv run --locked python -m evals.run --provider claude
+
+  format:
+    desc: Format {{ app_id }} with ruff
+    cmds:
+      - uv run --locked ruff format .
+
+  lock:
+    desc: Re-resolve uv.lock after changing dependencies in pyproject.toml
+    cmds:
+      - uv lock

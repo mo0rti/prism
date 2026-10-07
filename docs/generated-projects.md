@@ -126,11 +126,13 @@ There are no example business features.
 
 - The dev identity is **local development sign-in, not authentication**. `POST /api/dev-identity/token`
   exists only under the `local` Spring profile, answers loopback requests only, and signs a short-lived
-  JWT (`iss=prism-dev-identity`) with a key generated in memory at startup. The default profile answers
-  it with 404, and startup fails when `local` is active together with a configured identity provider.
+  JWT (`iss=prism-dev-identity`) with a key generated in memory at startup. `GET /api/dev-identity/jwks`
+  publishes the public half of that key as a JWKS document (never a private member), under the same profile and
+  loopback rules, so another local service such as an agent service can verify the tokens with no shared secret.
+  The default profile answers both routes with 404, and startup fails when `local` is active together with a configured identity provider.
   No JWT secret exists in the template, and the generated `docker-compose.yml` sets no profile.
-- The OpenAPI contract (`shared/api-contracts/openapi.yml`) defines both operations, with
-  `x-prism-dev-only` on the token operation. Prism owns that contract; you own the real identity
+- The OpenAPI contract (`shared/api-contracts/openapi.yml`) defines the token route, the JWKS route and
+  `GET /api/me`, with `x-prism-dev-only` on the two dev-identity operations. Prism owns that contract; you own the real identity
   provider, and the generated `security-auth` skill explains how to replace the dev identity with it.
 - The integration tests start PostgreSQL with Testcontainers, so `./gradlew test` needs Docker and no
   credentials. The app's workflow runs `./gradlew build` on a clean runner.
@@ -170,6 +172,38 @@ example business features:
   store upload are yours, and the `deployment` skill's mobile note describes them
 - two Android apps in one workspace differ in application ID, namespace, package directories, Gradle project
   name and workflow, all derived from the app ID
+
+If the generated project includes an agent service (`python-agent-service`), each one is a Python (FastAPI, uv) app
+under its own path (`agent-service/` for the default ID) with one working slice, its tests and an evaluation
+harness, and no example business tools. It **assists and never advises**: it answers questions about the signed-in
+user's own data through read-only tools.
+
+- `GET /api/health` is the only open route. `POST /api/assist` takes a question and runs one agent turn through a
+  provider interface with one example tool, `get_my_profile`, which reads the backend's `GET /api/me` with the
+  caller's own token, so the slice proves user-scoped data access. The service has its own contract,
+  `<app>/openapi.yml`: the shared contract describes the backend, and an optional service should not change what the
+  backend's clients are generated from. A test keeps the two contracts and the code equal.
+- The provider interface has a deterministic **fake** (tests, CI and local runs with no key; the default) and a
+  **Claude API** adapter (`AGENT_PROVIDER=claude`, the model ID in `AGENT_CLAUDE_MODEL`, default `claude-sonnet-5-5`,
+  the key only from `ANTHROPIC_API_KEY`). Tests and CI never reach the live API.
+- No shared secret: the service verifies the backend's bearer tokens against public keys. Under
+  `AGENT_PROFILE=local` it fetches the key the backend's dev identity publishes at `GET /api/dev-identity/jwks` (the
+  backend serves it under its `local` profile, to loopback requests only, and never with a private member); with a real
+  identity provider it uses `AGENT_OIDC_ISSUER` and `AGENT_OIDC_AUDIENCE`. It refuses to start with no identity
+  configured, with `local` next to a real issuer and with `local` pointed at a non-loopback backend, and it has no
+  dev-identity endpoint and no setting that turns authentication off.
+- The safety rules are built in and tested: the question and every tool result are untrusted data in envelopes
+  (the system prompt is a constant), tools only read and use the caller's own token, every tool call is logged with the
+  user and request IDs, a per-user request and token budget answers `429`, no user's data enters another user's request,
+  and every response carries a notice that the service assists and does not advise. The generated `agent-safety` skill
+  lists where each rule is enforced and tests and how to adapt the generic notice to a domain.
+- `task <app-id>:dev` runs it on its port (`8200` for the first agent service) against a backend under its `local`
+  profile; `task <app-id>:test`, `:lint`, `:typecheck` and `:eval` run pytest, ruff, mypy and the evaluation cases with
+  the fake provider, and `task <app-id>:eval-live` runs the cases against the live model on demand, at your cost.
+- The app's workflow runs `uv sync --locked`, lint, typecheck, the tests and the fake-provider evaluation on a clean
+  runner with no secret. The committed `uv.lock` is rewritten from the pins by
+  `scripts/refresh-python-agent-service-lock.py`. The generated `agent-conventions`, `add-tool`, `add-evaluation-case`
+  and `agent-safety` skills teach the slice.
 
 ## AI Agent Surfaces
 
@@ -315,6 +349,7 @@ The generated workflow set is:
 | `<app-id>.yml` | One for each scaffolded `android-compose` app (`mobile-android.yml` for the default app) | `./gradlew assembleDebug testDebugUnitTest` on a clean runner (the debug APK and the JVM unit tests), scoped to the app's path |
 | `<app-id>.yml` | One for each scaffolded `nextjs-web` app (`web.yml` for the default app) | `npm ci`, lint, typecheck, Vitest tests and `next build` on a clean runner, scoped to the app's path |
 | `<app-id>.yml` | One for each scaffolded `ios-swiftui` app (`mobile-ios.yml` for the default app) | On a macOS runner: XcodeGen, a simulator build and the XCTest unit and UI tests, scoped to the app's path |
+| `<app-id>.yml` | One for each scaffolded `python-agent-service` app (`agent-service.yml` for the default ID) | `uv sync --locked`, ruff lint and format check, mypy, pytest and the evaluation set with the fake provider, with no network and no API key, scoped to the app's path |
 
 No workflow deploys. The `deployment` skill describes the deploy jobs to add once you choose a host.
 

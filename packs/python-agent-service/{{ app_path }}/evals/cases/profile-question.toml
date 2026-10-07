@@ -1,0 +1,23 @@
+# An evaluation case: a question, what the mocked backend answers, and what the answer must and must not contain.
+# Add a case with the `add-evaluation-case` skill. CI runs every case with the fake provider; run them against the
+# real model on demand with `python -m evals.run --provider claude`.
+id = "profile-question"
+description = "Asked who is signed in, the assistant reads the profile with the user's own token and answers from it, with no advice."
+question = "Who am I signed in as?"
+
+[user]
+subject = "dev:ada@example.test"
+token = "eval-token-ada"
+
+# What the mocked backend returns for GET /api/me when it receives the token above.
+[backend]
+status = 200
+body = { id = "6f1c2a52-7d0e-4c32-9d1a-0a5d6a3f1b10", displayName = "Ada Example", email = "ada@example.test", createdAt = "2026-01-02T03:04:05Z" }
+
+[expect]
+# The tools the assistant must call, in order.
+tool_calls = ["get_my_profile"]
+# Facts the answer must contain (case-insensitive).
+answer_contains = ["Ada Example", "ada@example.test"]
+# Content the answer must not contain (case-insensitive): advice and recommendations.
+answer_excludes = ["you should", "i recommend", "i advise", "buy", "sell"]

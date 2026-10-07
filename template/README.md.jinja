@@ -10,6 +10,7 @@
 {% endif %}{% if "nextjs-web" in stacks %}![Web](https://img.shields.io/badge/web-Next.js-000000?logo=nextdotjs&logoColor=white)
 {% endif %}{% if "android-compose" in stacks %}![Android](https://img.shields.io/badge/android-Compose-3DDC84?logo=android&logoColor=white)
 {% endif %}{% if "ios-swiftui" in stacks %}![iOS](https://img.shields.io/badge/iOS-SwiftUI-F05138?logo=swift&logoColor=white)
+{% endif %}{% if "python-agent-service" in stacks %}![Agent service](https://img.shields.io/badge/agent%20service-FastAPI-009688?logo=fastapi&logoColor=white)
 {% endif %}
 
 ## Built With Prism
@@ -36,6 +37,7 @@ This generated workspace currently includes:
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}- **{{ app.path }}/** - {{ app.name }}: Next.js web app (TypeScript){% if app.audience %}, for {{ app.audience }}{% endif %}
 {% endfor %}{% for app in apps if app.stack == "android-compose" %}- **{{ app.path }}/** - {{ app.name }}: Android app (Kotlin/Jetpack Compose, MVVM){% if app.audience %}, for {{ app.audience }}{% endif %}
 {% endfor %}{% for app in apps if app.stack == "ios-swiftui" %}- **{{ app.path }}/** - {{ app.name }}: iOS app (Swift/SwiftUI){% if app.audience %}, for {{ app.audience }}{% endif %}
+{% endfor %}{% for app in apps if app.stack == "python-agent-service" %}- **{{ app.path }}/** - {{ app.name }}: AI agent service (Python, FastAPI): assists and never advises{% if app.audience %}, for {{ app.audience }}{% endif %}
 {% endfor %}- **shared/** - OpenAPI contract and shared design tokens
 - **knowledge/** - Product wiki and delivery workflow metadata
 - **docs/** - Human-readable architecture and operations docs
@@ -129,6 +131,9 @@ task {{ app.id }}:dev
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}# Start {{ app.id }} on port {{ app.port }} (its "Local development sign-in" needs a backend running under its `local` profile)
 task {{ app.id }}:dev
 
+{% endfor %}{% for app in apps if app.stack == "python-agent-service" %}# Start {{ app.id }} on port {{ app.port }} (its dev identity verifies the tokens of a backend running under its `local` profile; set AGENT_BACKEND_BASE_URL when that backend is not on port 8080)
+task {{ app.id }}:dev
+
 {% endfor %}{% for app in apps if app.stack == "android-compose" %}# Run {{ app.id }} on an emulator or a USB device (its "Local development sign-in" needs a backend running under its `local` profile,
 # reached through `adb reverse` because the dev identity accepts loopback requests only)
 task {{ app.id }}:reverse
@@ -151,6 +156,7 @@ task generate-clients
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}- [{{ app.name }} Guide]({{ app.path }}/docs/guide.md) for the structure, sign-in slice and commands of `{{ app.id }}`
 {% endfor %}{% for app in apps if app.stack == "android-compose" %}- [{{ app.name }} Guide]({{ app.path }}/docs/guide.md) for the structure, sign-in slice, local backend access and commands of `{{ app.id }}`
 {% endfor %}{% for app in apps if app.stack == "ios-swiftui" %}- [{{ app.name }} Guide]({{ app.path }}/docs/guide.md) for the structure, sign-in slice and commands of `{{ app.id }}`
+{% endfor %}{% for app in apps if app.stack == "python-agent-service" %}- [{{ app.name }} Guide]({{ app.path }}/docs/guide.md) for the structure, request flow, providers and commands of `{{ app.id }}`
 {% endfor %}- [CI/CD](docs/deployment/ci-cd.md) for the generated GitHub Actions workflow layout (build and test)
 - Deployment: the `deployment` skill (`.claude/skills/deployment/`, `.agents/skills/deployment/`) holds worked examples for the backend on Azure Container Apps and the web apps on Cloudflare; hosting, secrets and deployment are yours to choose
 
@@ -162,5 +168,7 @@ task generate-clients
 {% for app in apps if app.stack == "nextjs-web" %}| Install {{ app.id }} dependencies | `task {{ app.id }}:install` |
 {% endfor %}{% for app in apps if app.stack == "spring-backend" %}| Start {{ app.id }} with the local development identity | `task {{ app.id }}:dev` |
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| Start {{ app.id }} | `task {{ app.id }}:dev` |
+{% endfor %}{% for app in apps if app.stack == "python-agent-service" %}| Start {{ app.id }} with the local development identity | `task {{ app.id }}:dev` |
+| Evaluate {{ app.id }} with the fake provider | `task {{ app.id }}:eval` |
 {% endfor %}| Run all tests | `task test` |
 | Lint all platforms | `task lint` |

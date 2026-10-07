@@ -27,6 +27,7 @@ The agent system in this workspace does four jobs:
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}| {{ app.name }} guidance | [`{{ app.path }}/AGENTS.md`](../{{ app.path }}/AGENTS.md), [`{{ app.path }}/CLAUDE.md`](../{{ app.path }}/CLAUDE.md), [`{{ app.path }}/docs/guide.md`](../{{ app.path }}/docs/guide.md) | Web implementation rules, the sign-in slice and workflow expectations |
 {% endfor %}{% for app in apps if app.stack == "android-compose" %}| {{ app.name }} guidance | [`{{ app.path }}/AGENTS.md`](../{{ app.path }}/AGENTS.md), [`{{ app.path }}/CLAUDE.md`](../{{ app.path }}/CLAUDE.md), [`{{ app.path }}/docs/guide.md`](../{{ app.path }}/docs/guide.md) | Android implementation rules, the sign-in slice and workflow expectations |
 {% endfor %}{% for app in apps if app.stack == "ios-swiftui" %}| {{ app.name }} guidance | [`{{ app.path }}/AGENTS.md`](../{{ app.path }}/AGENTS.md), [`{{ app.path }}/CLAUDE.md`](../{{ app.path }}/CLAUDE.md), [`{{ app.path }}/docs/guide.md`](../{{ app.path }}/docs/guide.md) | iOS implementation rules and workflow expectations |
+{% endfor %}{% for app in apps if app.stack == "python-agent-service" %}| {{ app.name }} guidance | [`{{ app.path }}/AGENTS.md`](../{{ app.path }}/AGENTS.md), [`{{ app.path }}/CLAUDE.md`](../{{ app.path }}/CLAUDE.md), [`{{ app.path }}/docs/guide.md`](../{{ app.path }}/docs/guide.md) | Agent service rules: the agent turn, providers, identity, safety and evaluation |
 {% endfor %}
 
 ## Agent File Map
@@ -62,6 +63,10 @@ The agent system in this workspace does four jobs:
 │   ├── CLAUDE.md
 │   └── docs/guide.md
 {% endfor %}{% for app in apps if app.stack == "ios-swiftui" %}├── {{ app.path }}/
+│   ├── AGENTS.md
+│   ├── CLAUDE.md
+│   └── docs/guide.md
+{% endfor %}{% for app in apps if app.stack == "python-agent-service" %}├── {{ app.path }}/
 │   ├── AGENTS.md
 │   ├── CLAUDE.md
 │   └── docs/guide.md
@@ -294,6 +299,17 @@ Start with:
 | `ios-build-verify` | Claude, Codex | Local build and verification checklist before handoff |
 | `ios-contract-alignment` | Claude, Codex | Keep iOS models, endpoints and the API client aligned with the OpenAPI contract |
 | `swiftui-design-system` | Claude, Codex | SwiftUI screen, accessibility and Dynamic Type guidance |
+{% endif %}
+
+{% if "python-agent-service" in stacks %}
+### Agent Service Skills
+
+| Skill | Surface | Purpose |
+|------|---------|---------|
+| `agent-conventions` | Claude, Codex | Structure, request flow, the provider interface, configuration and typing rules of the agent service |
+| `add-tool` | Claude, Codex | Add a read-only tool that calls the backend with the user's own token, with its tests |
+| `add-evaluation-case` | Claude, Codex | Add a case to the evaluation set and run it with the fake or the live provider |
+| `agent-safety` | Claude, Codex | The safety rules, where each is enforced and tested, and how to adapt the notice to your domain |
 {% endif %}
 
 ## How To Work With The Agents

@@ -175,7 +175,7 @@ function Get-TemplateTextFiles {
     $extensions = @(
         ".bat", ".cmd", ".css", ".env", ".example", ".java", ".jinja", ".js", ".json",
         ".jsonc", ".kt", ".kts", ".md", ".mjs", ".plist", ".properties",
-        ".ps1", ".rb", ".sh", ".sql", ".swift", ".ts", ".tsx", ".txt",
+        ".ps1", ".py", ".rb", ".sh", ".sql", ".swift", ".toml", ".ts", ".tsx", ".txt",
         ".xml", ".yml", ".yaml"
     )
 
@@ -228,6 +228,7 @@ $DefaultApps = @{
     "partner-android"  = @{ Stack = "android-compose"; Name = "Partner App";         Path = "apps/partner" }
     "mobile-ios"       = @{ Stack = "ios-swiftui";     Name = "iOS (Swift/SwiftUI)"; Audience = "customers" }
     "partner-ios"      = @{ Stack = "ios-swiftui";     Name = "Partner App";         Audience = "internal"; Path = "apps/partner-ios" }
+    "agent-service"    = @{ Stack = "python-agent-service"; Name = "Portfolio Assistant" }
 }
 
 function New-GeneratedProject {
@@ -729,6 +730,7 @@ function Validate-AuthContract {
     $spec = Join-Path $Root "shared\api-contracts\openapi.yml"
     Assert-FileContains -Path $spec -Needle "/api/dev-identity/token:" -Message "The contract must define the dev-identity token route."
     Assert-FileContains -Path $spec -Needle "x-prism-dev-only: true" -Message "The token operation must carry x-prism-dev-only."
+    Assert-FileContains -Path $spec -Needle "/api/dev-identity/jwks:" -Message "The contract must define the dev-identity JWKS route."
     Assert-FileContains -Path $spec -Needle "/api/me:" -Message "The contract must define GET /api/me."
     Assert-FileContains -Path $spec -Needle "bearerAuth" -Message "The contract must define bearer JWT security."
     foreach ($retired in @("/auth/register:", "/auth/login:", "/auth/refresh:", "/auth/oauth/callback:", "/auth/oauth/token:", "/transactions:", "OAuthTokenRequest", "RefreshTokenRequest")) {
@@ -1078,6 +1080,47 @@ function Validate-AndroidSample {
     Assert-PathExists -Path (Join-Path $Root "backend\gradlew") -Message "Android sample should still include backend Gradle wrapper files."
 }
 
+function Validate-AgentSample {
+    # The agent service is the python-agent-service pack: an app layer with its own answers, workflow, Cursor rule,
+    # contract and lockfile, next to a backend whose dev identity publishes the key the service verifies tokens with.
+    param([string]$Root)
+
+    Assert-NoCopierPlaceholders -Root $Root
+    $app = "agent-service"
+    $dir = Join-Path $Root $app
+    Assert-PathExists -Path $dir -Message "The agent sample should generate the $app app."
+    Assert-FileContains -Path (Join-Path $dir "CLAUDE.md") -Needle "@AGENTS.md" -Message "$app/CLAUDE.md must import AGENTS.md."
+    Assert-FileContains -Path (Join-Path $dir "AGENTS.md") -Needle "knowledge/wiki/app-requirements/[feature-id]-$app" -Message "$app/AGENTS.md missing the wiki app-requirements reference."
+    Assert-FileContains -Path (Join-Path $dir ".copier-answers.yml") -Needle "prism_layer: python-agent-service" -Message "$app must record its own pack answers."
+    Assert-FileContains -Path (Join-Path $dir ".copier-answers.yml") -Needle "port: 8200" -Message "$app must hold port 8200."
+    $workflow = Join-Path $Root ".github\workflows\$app.yml"
+    Assert-PathExists -Path $workflow -Message "The python-agent-service pack must generate the $app workflow."
+    Assert-PathExists -Path (Join-Path $Root ".cursor\rules\$app.mdc") -Message "The python-agent-service pack must generate the $app Cursor rule."
+    Assert-FileContains -Path $workflow -Needle "working-directory: $app" -Message "The $app workflow should run in the app's folder."
+    Assert-FileContains -Path $workflow -Needle "python -m evals.run --provider fake" -Message "The $app workflow must run the evaluation set with the fake provider."
+    Assert-FileNotContains -Path $workflow -Needle "secrets." -Message "The $app workflow must use no secret."
+    Assert-FileContains -Path (Join-Path $dir "pyproject.toml") -Needle "name = `"review-agent-$app`"" -Message "$app must have its own project name."
+    Assert-FileContains -Path (Join-Path $dir "uv.lock") -Needle "name = `"review-agent-$app`"" -Message "$app must commit a lockfile of its own project."
+    $files = @(
+        "app\main.py", "app\auth\startup.py", "app\auth\verifier.py", "app\auth\keys.py", "app\agent\turn.py",
+        "app\providers\fake.py", "app\providers\claude.py", "app\tools\backend_profile.py", "app\safety\untrusted.py",
+        "app\safety\budget.py", "app\safety\audit.py", "openapi.yml", "evals\run.py", "evals\cases\profile-question.toml",
+        "tests\test_auth.py", "tests\test_agent_turn.py", "tests\test_contract.py", "tests\test_evals.py",
+        "docs\guide.md", "README.md", "Taskfile.yml"
+    )
+    foreach ($file in $files) {
+        Assert-PathExists -Path (Join-Path $dir $file) -Message "$app must generate $file."
+    }
+    Assert-FileContains -Path (Join-Path $dir "app\auth\startup.py") -Needle "/api/dev-identity/jwks" -Message "$app must verify the dev identity's tokens against the backend's JWKS."
+    Assert-FileNotContains -Path (Join-Path $dir "app\main.py") -Needle "/api/dev-identity/token" -Message "$app must have no dev-identity endpoint of its own."
+    Assert-FileContains -Path (Join-Path $dir ".env.example") -Needle "# ANTHROPIC_API_KEY=" -Message "$app's .env.example must name the key variable without a value."
+    Assert-FileContains -Path (Join-Path $dir "openapi.yml") -Needle "/api/assist:" -Message "$app must own a contract that defines POST /api/assist."
+    Assert-FileNotContains -Path (Join-Path $Root "shared\api-contracts\openapi.yml") -Needle "/api/assist" -Message "The shared contract describes the backend; the agent service owns its contract."
+    Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "taskfile: ./$app/Taskfile.yml" -Message "The root Taskfile must include the agent service."
+    Assert-FileContains -Path (Join-Path $Root "Taskfile.yml") -Needle "task: $app`:eval" -Message "The root test task must run the agent service's evaluation."
+    Validate-AuthContract -Root $Root
+}
+
 function Validate-IosSample {
     param([string]$Root)
 
@@ -1197,6 +1240,9 @@ switch ($Mode) {
         $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios", "partner-ios")
         Validate-IosSample -Root $iosRoot
 
+        $agentRoot = New-GeneratedProject -Name "agent" -ProjectName "Review Agent" -Apps @("backend", "agent-service")
+        Validate-AgentSample -Root $agentRoot
+
         $standaloneRoot = New-GeneratedProject -Name "standalone-web" -ProjectName "Standalone Web" -Apps @("web", "admin")
         Validate-WikiStructure -Root $standaloneRoot
         Assert-NoDeploymentArtifacts -Root $standaloneRoot
@@ -1219,6 +1265,9 @@ switch ($Mode) {
 
         $iosRoot = New-GeneratedProject -Name "ios" -ProjectName "Review App" -Apps @("backend", "mobile-ios", "partner-ios")
         Validate-IosSample -Root $iosRoot
+
+        $agentRoot = New-GeneratedProject -Name "agent" -ProjectName "Review Agent" -Apps @("backend", "agent-service")
+        Validate-AgentSample -Root $agentRoot
     }
 }
 

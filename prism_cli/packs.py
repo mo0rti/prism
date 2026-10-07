@@ -35,7 +35,7 @@ WORKSPACE_LAYER = "workspace"
 COPIER_ANSWERS_FILE = ".copier-answers.yml"
 
 # Stacks with a pack under packs/<stack>/. Each pack work package adds its stack here.
-PACK_STACKS = ("spring-backend", "nextjs-web", "android-compose", "ios-swiftui")
+PACK_STACKS = ("spring-backend", "nextjs-web", "android-compose", "ios-swiftui", "python-agent-service")
 
 
 def has_pack(stack: str) -> bool:
@@ -214,6 +214,11 @@ def stack_maturity(stack: str) -> dict[str, str]:
         return {
             "level": "provisional",
             "caveat": "Generated web apps are verified by lint, typecheck, unit and component tests and the build, with a mocked backend; sign-in against a running backend is checked by hand, and hosting is the project owner's choice (see the deployment skill).",
+        }
+    if stack == "python-agent-service":
+        return {
+            "level": "provisional",
+            "caveat": "The generated agent service is verified by lint, typecheck, tests and an evaluation set that run the fake provider, and by a local run against the backend's dev identity; the Claude adapter is tested against a stub only and needs a live check with your own API key.",
         }
     return {"level": "baseline", "caveat": ""}
 

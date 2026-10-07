@@ -1,0 +1,58 @@
+name: {{ ci_workflow_name | tojson }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+{%- for path in ci_paths %}
+      - {{ path | tojson }}
+{%- endfor %}
+  pull_request:
+    branches: [main]
+    paths:
+{%- for path in ci_paths %}
+      - {{ path | tojson }}
+{%- endfor %}
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, evaluate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: {{ app_path }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: {{ versions.uv | tojson }}
+          python-version: {{ versions.python | tojson }}
+          enable-cache: true
+          cache-dependency-glob: {{ (app_path ~ "/uv.lock") | tojson }}
+
+      # The lockfile is the source of truth: the install fails when it disagrees with pyproject.toml.
+      - name: Install the locked dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: |
+          uv run --locked ruff check .
+          uv run --locked ruff format --check .
+
+      - name: Typecheck
+        run: uv run --locked mypy
+
+      # No network, no API key and no production credential: the tests use the fake provider and mocked HTTP.
+      - name: Test
+        run: uv run --locked pytest
+
+      # The evaluation cases run the fake provider. A live-model run is on demand (`task {{ app_id }}:eval-live`).
+      - name: Evaluate
+        run: uv run --locked python -m evals.run --provider fake

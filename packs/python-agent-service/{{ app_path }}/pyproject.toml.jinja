@@ -1,0 +1,47 @@
+[project]
+name = "{{ project_slug }}-{{ app_id }}"
+version = "0.1.0"
+description = {{ (app_name ~ " - the AI agent service of " ~ project_name) | tojson }}
+requires-python = ">={{ versions.python }}"
+dependencies = [
+    "anthropic=={{ versions.anthropic }}",
+    "fastapi=={{ versions.fastapi }}",
+    "httpx=={{ versions.httpx }}",
+    "pydantic=={{ versions.pydantic }}",
+    "pydantic-settings=={{ versions.pydantic_settings }}",
+    "pyjwt[crypto]=={{ versions.pyjwt }}",
+    "uvicorn=={{ versions.uvicorn }}",
+]
+
+[dependency-groups]
+dev = [
+    "mypy=={{ versions.mypy }}",
+    "pytest=={{ versions.pytest }}",
+    "pyyaml=={{ versions.pyyaml }}",
+    "ruff=={{ versions.ruff }}",
+    "types-pyyaml=={{ versions.types_pyyaml }}",
+]
+
+[tool.uv]
+# An application, not a library: uv installs the dependencies and does not build or install this project.
+package = false
+required-version = ">={{ versions.uv }}"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py{{ versions.python | replace('.', '') }}"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC"]
+# `ruff format` owns line length; a long prompt or message string is allowed to exceed it.
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "{{ versions.python }}"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["app", "evals", "tests"]

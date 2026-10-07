@@ -102,6 +102,7 @@ STACKS: Mapping[str, Stack] = MappingProxyType(
         "nextjs-web": _stack("nextjs-web", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, None, (3000, 3099)),
         "android-compose": _stack("android-compose", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, "mobile-android"),
         "ios-swiftui": _stack("ios-swiftui", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, "mobile-ios"),
+        "python-agent-service": _stack("python-agent-service", True, {CAPABILITY_HAS_UI: False, CAPABILITY_SERVES_API: True}, "agent-service", (8200, 8299)),
         # An app of an unlisted kind declares both capabilities itself.
         "other": _stack("other", False, {}),
     }

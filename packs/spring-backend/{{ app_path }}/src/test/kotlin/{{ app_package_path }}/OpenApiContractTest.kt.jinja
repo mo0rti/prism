@@ -17,7 +17,7 @@ import java.nio.file.Path
 
 /**
  * The slice and `shared/api-contracts/openapi.yml` describe the same operations: the contract defines the
- * routes this app serves under the `local` profile, with the dev-only marker and the bearer security the
+ * routes this app serves under the `local` profile, with the dev-only markers and the bearer security the
  * slice enforces. Change the contract and the code together.
  */
 @SpringBootTest
@@ -61,6 +61,14 @@ class OpenApiContractTest {
     }
 
     @Test
+    fun `the contract defines the dev identity jwks route as dev only and open`() {
+        val jwks = operation("/api/dev-identity/jwks", "get")
+
+        assertEquals(true, jwks["x-prism-dev-only"], "the jwks operation must carry x-prism-dev-only: true")
+        assertEquals(emptyList<Any>(), jwks["security"], "the jwks operation is open: it carries `security: []`")
+    }
+
+    @Test
     fun `the contract defines me with bearer security`() {
         val me = operation("/api/me", "get")
 
@@ -75,6 +83,7 @@ class OpenApiContractTest {
         val served = servedRoutes()
 
         assertTrue("post /api/dev-identity/token" in served, "served: $served")
+        assertTrue("get /api/dev-identity/jwks" in served, "served: $served")
         assertTrue("get /api/me" in served, "served: $served")
     }
 }

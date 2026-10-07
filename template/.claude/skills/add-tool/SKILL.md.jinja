@@ -1,0 +1,51 @@
+{# Generated from template-skills/add-tool/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
+---
+name: add-tool
+description: "Add a tool to a generated Python agent service: a read-only call to the backend with the signed-in user's own token, with validated arguments, an allow-list entry and tests. Use when the agent needs a new capability, or a tool that proposes a change as a preview."
+disable-model-invocation: true
+---
+
+# Add A Tool
+
+A tool is the only way the model reaches data. Every tool reads, uses the caller's own token, and is registered in an allow-list. Read `agent-conventions` for the structure and `agent-safety` for the rules this skill keeps.
+
+Paths are inside the agent service's folder{% for app in apps if app.stack == "python-agent-service" %}{{ " (" if loop.first else ", " }}`{{ app.path }}/`{{ ")" if loop.last }}{% endfor %}.
+
+## Slice files
+
+- `app/tools/backend_profile.py` - the worked example: an argument model, a response model that keeps only the contract's fields, and `run` calling the backend with the caller's token.
+- `app/tools/base.py` - `Tool`, `ToolContext` (`backend_headers()`, the fixed backend client) and `ToolError`.
+- `app/tools/registry.py` - the allow-list; it refuses a tool that sets `mutates = True`.
+- `app/main.py` - where tools are registered: `ToolRegistry([GetMyProfile()])`.
+- `app/agent/turn.py` - validates arguments, runs the tool, wraps its result as untrusted data and logs the call.
+- `tests/test_agent_turn.py` - how a tool is tested through the turn: a scripted provider, the fake backend, the audit records.
+- `tests/support.py` - `FakeBackend`, the backend double for tests.
+- The backend operations a tool may read are the ones in the shared API contract, at the workspace root and outside this folder.
+
+## Steps
+
+1. **Find the backend operation.** A tool wraps one operation of `shared/api-contracts/openapi.yml` (or a new one added through the backend's own workflow first). The backend decides what the caller's token may read; the tool never filters by user itself.
+2. **Write the tool** in `app/tools/<name>.py`, modelled on `app/tools/backend_profile.py`:
+   - `name`: a short snake_case verb phrase. `description`: what it returns and when to use it, in words the model can act on.
+   - `Arguments`: a pydantic model with `extra="forbid"` and only what the model must choose (a date range, a category). **Never an argument that names a user, an account of another user, a URL or a header.** The caller is always `context.caller`.
+   - `run`: call `context.backend.get(path, headers=context.backend_headers(), params=...)`. Map `401` and `403` to `ToolError("The backend did not accept the user's token")`, other non-200 and network errors to a plain `ToolError`, and parse the body with a pydantic model of the contract's response so only contract fields come back. Return a JSON-serializable `dict`.
+   - Keep the result small. A result over 8000 characters is replaced by an error; summarize or paginate in the tool.
+3. **Register it** in `app/main.py`: add it to the `ToolRegistry([...])` list. The registry is the allow-list; a name that is not there never runs.
+4. **Test it**, in `tests/test_<name>.py`:
+   - the tool through `run_turn` with a `ScriptedProvider` that asks for it (see `tests/test_agent_turn.py`), asserting the backend request carries the caller's token and the request ID, the result has only the contract's fields, and the audit record names the user and request IDs;
+   - a backend failure (`401`, `500`, unreachable) becomes a `ToolError` result, not an exception;
+   - arguments the model should not set (a user ID) are rejected by validation, and the backend is never called.
+5. **Add an evaluation case** with `add-evaluation-case` for the question the tool serves. The fake provider only knows the profile question; extend `app/providers/fake.py` with one more deterministic rule for the new tool, or run the case against the live model.
+6. **Run** `task <app id>:lint`, `task <app id>:typecheck`, `task <app id>:test` and `task <app id>:eval`.
+
+## A tool that proposes a change
+
+A tool never writes. When a feature needs a change (a CSV import, a note), the tool returns a **preview**: what would change, in a structure the application shows to the user, who confirms it in the application with their own token. The registry refuses a tool with `mutates = True` for this reason. Do not add a second approval queue and do not let the agent confirm its own preview.
+
+## Forbidden
+
+- A tool that writes, deletes or sends anything
+- A tool that takes a user ID, a URL, a header or a token from the model
+- A tool that calls the backend with any token but the caller's, or with a service credential
+- A tool that returns fields the contract does not define
+- Logging arguments' values or results

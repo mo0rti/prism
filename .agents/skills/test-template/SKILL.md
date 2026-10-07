@@ -13,6 +13,7 @@ Use this skill to validate that template changes still render a coherent generat
 2. Run a broad generation check through the CLI, for example:
    - `prism new --preset backend-web --project-name "Test App" --dest <tempdir> --yes`
    - an answers file that lists every stack, for the full set of apps
+   - an answers file with a `backend` and an `agent-service` (stack `python-agent-service`), then `uv sync --locked`, ruff, mypy, pytest and `python -m evals.run --provider fake` in the generated agent app
 3. Verify the rendered output contains the expected root artifacts:
    - `AGENTS.md`
    - `CLAUDE.md`

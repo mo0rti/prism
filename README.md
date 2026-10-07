@@ -18,7 +18,7 @@ It helps product and engineering teams:
 - carry work through PO, design, and development using shared evidence and explicit handoffs
 - connect coding agents through standard MCP and the same versioned Prism skills
 - review and confirm supported human actions directly in the board
-- optionally generate backend, web, Android, and iOS foundations
+- optionally generate backend, web, Android, iOS, and AI agent service foundations
 
 This repository contains Prism's CLI, workflow service, board, and application template.
 It is the maintainer repository, not a workspace for running product lifecycle actions.
@@ -121,6 +121,7 @@ A Prism-generated repository can include:
 - **Web app** (one or more, one per audience): Next.js + TypeScript with a local development sign-in and one authenticated read
 - **Android app** (one or more): Kotlin + Jetpack Compose with a local development sign-in and one authenticated read
 - **iOS app** (one or more): Swift + SwiftUI with a local development sign-in and one authenticated read
+- **Agent service** (one or more): Python + FastAPI that assists and never advises, with a provider interface (a deterministic fake and a Claude adapter), one read-only tool that reads the backend with the user's own token, bearer-token verification against the backend's dev-identity key, and an evaluation harness
 
 Every generated repository also includes:
 
@@ -199,7 +200,7 @@ Start with:
 
 - The workflow, the shared board, the MCP tool contract and the human board actions are implemented and tested; the [plan](https://github.com/mo0rti/prism/blob/main/docs/prism-core-workflow-plan.md) states their scope and contracts.
 - Prism 0.5.0 is released: `prism-kit` on [PyPI](https://pypi.org/project/prism-kit/) and the [GitHub release](https://github.com/mo0rti/prism/releases/tag/v0.5.0) with checksums.
-- Application packs: the backend, Android and web packs are verified locally and in CI, and the iOS pack is built and tested only by the macOS CI job. Generated workspaces ship no deployment: the `deployment` skill holds unverified worked examples for Azure Container Apps and Cloudflare.
+- Application packs: the backend, Android, web and agent-service packs are verified locally and in CI, and the iOS pack is built and tested only by the macOS CI job. Generated workspaces ship no deployment: the `deployment` skill holds unverified worked examples for Azure Container Apps and Cloudflare.
 - Core acceptance uses disposable neutral workspaces. Sample behavior does not define the core workflow.
 - Prism is released under the MIT license and published to PyPI as `prism-kit`, with the `@mortitech/prism` launcher on npm. The [changelog](https://github.com/mo0rti/prism/blob/main/CHANGELOG.md) lists what each version contains.
 

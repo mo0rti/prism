@@ -12,6 +12,7 @@ Every app has a **stack** from a registry that ships with the CLI. A stack says 
 | `nextjs-web` | yes | true | false | none (the app ID) |
 | `android-compose` | yes | true | false | `mobile-android` |
 | `ios-swiftui` | yes | true | false | `mobile-ios` |
+| `python-agent-service` | yes | false | true | `agent-service` |
 | `other` | no | must be declared | must be declared | none (the app ID) |
 
 The two **capabilities** are `has-ui` (the app has screens that need design) and `serves-api` (the app provides an API). Each is `true`, `false` or `"unknown"`. A stack supplies defaults, and an app may override them with a `capabilities` mapping. An `other` app has no defaults, so it must declare both. Status, the board and `prism app list` report the resolved values.
@@ -118,7 +119,7 @@ Generation has two layers, and one `copier.yml` and one template tag cover both:
 - **The workspace layer** (`template/`) holds the knowledge base, the guidance, `shared/` and `docker-compose.yml`. It receives the `stacks` and the app list of the scaffolded apps, so its compose file has one service for each backend app, the root `Taskfile.yml` includes each app's tasks, and its guidance lists them.
 - **An app layer** (`packs/<stack>/`) holds one app. Copier applies it to the repository root, once for each scaffolded app, with every path under the app's path, plus the app's workflow `.github/workflows/<id>.yml` and Cursor rule `.cursor/rules/<id>.mdc`. Each app keeps its own answers at `<path>/.copier-answers.yml`, which is Copier's documented way to apply one template several times to one project. The workspace's own answers stay in `.copier-answers.yml`.
 
-The versions a pack pins are in `packs/versions.yml`, the one place a release moves them. Packs exist for `spring-backend`, whose slice is the dev identity and `GET /api/me` with their tests, and for `nextjs-web`, `android-compose` and `ios-swiftui`, whose slices are the local development sign-in and the profile read with their tests.
+The versions a pack pins are in `packs/versions.yml`, the one place a release moves them. Packs exist for `spring-backend`, whose slice is the dev identity and `GET /api/me` with their tests, for `nextjs-web`, `android-compose` and `ios-swiftui`, whose slices are the local development sign-in and the profile read with their tests, and for `python-agent-service`, whose slice is an agent turn with one read-only tool that calls the backend with the caller's token, its safety rules, an evaluation harness and the verification of the backend's bearer tokens.
 
 `prism app add --scaffold` generates a new app into an existing generated workspace:
 

@@ -1,0 +1,188 @@
+openapi: "3.1.0"
+info:
+  title: {{ (app_name ~ " API") | tojson }}
+  version: "0.1.0"
+  description: |
+    The agent service of {{ project_name }}. It assists with questions about the signed-in user's own data and
+    does not give advice. This contract belongs to the service: the shared contract
+    (`shared/api-contracts/openapi.yml`) describes the backend, and this service calls the backend's
+    `GET /api/me` from the tool `get_my_profile` with the caller's own token.
+
+servers:
+  - url: http://localhost:{{ port }}
+    description: Local development
+
+# Every operation needs a bearer JWT unless it says `security: []`. The service accepts the bearer tokens of
+# the backend's identity: the local development identity under the `local` profile (verified against the
+# backend's /api/dev-identity/jwks), otherwise a configured issuer. It has no dev-identity endpoint of its own.
+security:
+  - bearerAuth: []
+
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      tags: [health]
+      security: []
+      summary: Report that the service is up
+      responses:
+        '200':
+          description: The service is up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /api/assist:
+    post:
+      operationId: createAssist
+      tags: [assistant]
+      summary: Ask the assistant one question
+      description: |
+        Runs one agent turn for the signed-in user: the model may call read-only tools, which use the user's own
+        token, and answers from what they return. The question and every tool result are data for the model,
+        never instructions. Each user has an in-memory budget of requests and model tokens; a user over it gets
+        `429`. The response always carries a notice that the service assists and does not give advice.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistRequest'
+      responses:
+        '200':
+          description: The assistant's answer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/BudgetExceeded'
+        '502':
+          $ref: '#/components/responses/ProviderError'
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+
+    AssistRequest:
+      type: object
+      required: [question]
+      additionalProperties: false
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: The user's question. It is passed to the model as data.
+
+    AssistResponse:
+      type: object
+      required: [answer, toolCalls, usage, notice, requestId]
+      properties:
+        answer:
+          type: string
+        toolCalls:
+          type: array
+          description: The tools the assistant called for this answer, in order.
+          items:
+            $ref: '#/components/schemas/ToolCallInfo'
+        usage:
+          $ref: '#/components/schemas/Usage'
+        notice:
+          type: string
+          description: States that the service assists and does not give advice.
+        requestId:
+          type: string
+          description: The ID of the request, also sent as the `X-Request-ID` header. Tool calls are logged with it.
+
+    ToolCallInfo:
+      type: object
+      required: [name, ok]
+      properties:
+        name:
+          type: string
+        ok:
+          type: boolean
+
+    Usage:
+      type: object
+      required: [inputTokens, outputTokens]
+      properties:
+        inputTokens:
+          type: integer
+        outputTokens:
+          type: integer
+
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: The request is malformed or fails validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+    Unauthorized:
+      description: Authentication required, or the token is invalid, expired or from another issuer
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+    BudgetExceeded:
+      description: The caller's request or token budget is used up
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+    ProviderError:
+      description: The model provider failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+    IdentityUnavailable:
+      description: The identity keys could not be read, so no token can be judged
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -26,7 +26,7 @@ globs: "{{ app_path }}/**"
 - Unit tests use MockK; integration tests boot the app against a Testcontainers PostgreSQL
 
 ## The dev identity
-- `POST /api/dev-identity/token` exists only under the `local` profile, answers loopback requests only, and signs 15-minute JWTs with an in-memory key
+- `POST /api/dev-identity/token` and `GET /api/dev-identity/jwks` (the public key) exist only under the `local` profile, answer loopback requests only, and the token route signs 15-minute JWTs with an in-memory key
 - It is local development sign-in, not authentication; replace it with your identity provider (see the `security-auth` skill)
 - Never weaken its guards: the profile gate, the loopback check, the in-memory key and the startup failure next to a configured issuer
 

@@ -85,10 +85,22 @@ class ContractTests(unittest.TestCase):
         text = Environment(keep_trailing_newline=True).from_string(read(CONTRACT)).render(project_name="Contract Check", description="A contract check")
         cls.contract = yaml.safe_load(text)
 
-    def test_the_contract_defines_exactly_the_two_slice_operations(self) -> None:
-        self.assertEqual(["/api/dev-identity/token", "/api/me"], sorted(self.contract["paths"]))
+    def test_the_contract_defines_exactly_the_slice_operations(self) -> None:
+        self.assertEqual(["/api/dev-identity/jwks", "/api/dev-identity/token", "/api/me"], sorted(self.contract["paths"]))
+        self.assertEqual(["get"], list(self.contract["paths"]["/api/dev-identity/jwks"]))
         self.assertEqual(["post"], list(self.contract["paths"]["/api/dev-identity/token"]))
         self.assertEqual(["get"], list(self.contract["paths"]["/api/me"]))
+
+    def test_the_jwks_operation_is_dev_only_open_and_publishes_a_public_key_set(self) -> None:
+        operation = self.contract["paths"]["/api/dev-identity/jwks"]["get"]
+        self.assertIs(True, operation["x-prism-dev-only"])
+        self.assertEqual([], operation["security"])
+        self.assertIn("404", operation["responses"], "every other profile answers 404")
+        self.assertIn("403", operation["responses"], "a request from outside the loopback interface is refused")
+        schemas = self.contract["components"]["schemas"]
+        self.assertEqual(["keys"], schemas["DevJwks"]["required"])
+        for private in ("d", "p", "q", "dp", "dq", "qi"):
+            self.assertNotIn(private, schemas["DevJwk"]["properties"], "the published key has no private member")
 
     def test_the_token_operation_is_marked_dev_only_and_needs_no_token(self) -> None:
         operation = self.contract["paths"]["/api/dev-identity/token"]["post"]
@@ -137,6 +149,7 @@ class GuardSourceTests(unittest.TestCase):
             "bootstrap/DevIdentityGuard.kt.jinja",
             "modules/devidentity/controller/DevIdentityController.kt.jinja",
             "modules/devidentity/service/DevIdentityTokenService.kt.jinja",
+            "modules/devidentity/service/DevIdentityJwksService.kt.jinja",
         ):
             with self.subTest(file=relative):
                 self.assertIn('@Profile("local")', read(SOURCES / relative))
@@ -179,15 +192,38 @@ class GuardSourceTests(unittest.TestCase):
         self.assertIn("isLoopbackAddress", policy)
         self.assertIn("X-Forwarded-For", policy)
 
+    def test_the_jwks_route_is_loopback_only_and_publishes_the_public_key_only(self) -> None:
+        controller = read(SOURCES / "modules" / "devidentity" / "controller" / "DevIdentityController.kt.jinja")
+        self.assertIn('@GetMapping("/jwks")', controller)
+        self.assertEqual(2, controller.count("requireLoopback(servletRequest)"), "the token route and the JWKS route both check the loopback policy")
+        service = read(SOURCES / "modules" / "devidentity" / "service" / "DevIdentityJwksService.kt.jinja")
+        self.assertIn("toPublicJWK()", service)
+        self.assertIn("toJSONObject(true)", service)
+        for forbidden in ("toJSONObject()", "toJSONString()", "privateKey", "toRSAPrivateKey"):
+            self.assertNotIn(forbidden, service, "only the public half of the key leaves the service")
+        security = read(SOURCES / "bootstrap" / "SecurityConfig.kt.jinja")
+        self.assertIn('requestMatchers(HttpMethod.GET, "/api/dev-identity/jwks").permitAll()', security)
+        self.assertIn("anyRequest().authenticated()", security)
+
     def test_each_guard_has_its_test(self) -> None:
         expectations = {
-            "DefaultProfileIntegrationTest.kt.jinja": ('post("/api/dev-identity/token")', "isNotFound"),
-            "LocalProfileIntegrationTest.kt.jinja": ('get("/api/me")', "LOOPBACK_ONLY", "a token signed by another key is rejected", "an expired token is rejected"),
+            "DefaultProfileIntegrationTest.kt.jinja": ('post("/api/dev-identity/token")', "isNotFound", 'get("/api/dev-identity/jwks")', "the dev identity jwks route does not exist"),
+            "LocalProfileIntegrationTest.kt.jinja": (
+                'get("/api/me")',
+                "LOOPBACK_ONLY",
+                "a token signed by another key is rejected",
+                "an expired token is rejected",
+                "the jwks route publishes the public key and no private member",
+                "the published key verifies a token the dev identity signs",
+                "the jwks route refuses a request that did not come from the loopback interface",
+                "the jwks route refuses a request through a proxy",
+                "the jwks route refuses a request addressed to another host name",
+            ),
             "DevIdentityStartupGuardTest.kt.jinja": ("startup fails when the local profile meets a configured issuer", "issuer-uri"),
             "modules/devidentity/LoopbackRequestPolicyTest.kt.jinja": ("a forwarding header means the request went through a proxy",),
             "modules/devidentity/DevIdentityTokenServiceTest.kt.jinja": ("prism-dev-identity",),
             "modules/users/UserServiceTest.kt.jinja": ("when another request creates the profile first",),
-            "OpenApiContractTest.kt.jinja": ("x-prism-dev-only",),
+            "OpenApiContractTest.kt.jinja": ("x-prism-dev-only", "/api/dev-identity/jwks"),
         }
         for relative, needles in expectations.items():
             text = read(TESTS / relative)
@@ -270,8 +306,9 @@ class GeneratedWorkspaceTests(unittest.TestCase):
 
     def test_the_generated_contract_defines_the_slice_for_every_auth_answer(self) -> None:
         contract = read_yaml(self.single / "shared" / "api-contracts" / "openapi.yml")
-        self.assertEqual(["/api/dev-identity/token", "/api/me"], sorted(contract["paths"]))
+        self.assertEqual(["/api/dev-identity/jwks", "/api/dev-identity/token", "/api/me"], sorted(contract["paths"]))
         self.assertIs(True, contract["paths"]["/api/dev-identity/token"]["post"]["x-prism-dev-only"])
+        self.assertIs(True, contract["paths"]["/api/dev-identity/jwks"]["get"]["x-prism-dev-only"])
 
     def test_the_env_files_and_compose_carry_no_secret_and_no_profile(self) -> None:
         for name in (".env", ".env.example"):

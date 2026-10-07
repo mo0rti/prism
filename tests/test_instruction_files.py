@@ -73,7 +73,7 @@ class TemplateSourceTests(unittest.TestCase):
         agents_files = sorted(TEMPLATE.glob("AGENTS.md.jinja")) + sorted(TEMPLATE.glob("*/AGENTS.md.jinja")) + sorted(PACKS.glob("*/*/AGENTS.md.jinja"))
         self.assertEqual(len(agents_files), len(claude_files), "every AGENTS.md has its CLAUDE.md")
         self.assertTrue(list(PACKS.glob("*/*/CLAUDE.md.jinja")), "a pack carries its own CLAUDE.md")
-        for stack in ("spring-backend", "nextjs-web", "android-compose", "ios-swiftui"):
+        for stack in ("spring-backend", "nextjs-web", "android-compose", "ios-swiftui", "python-agent-service"):
             self.assertEqual(1, len(list((PACKS / stack).glob("*/CLAUDE.md.jinja"))), stack)
         for path in claude_files:
             with self.subTest(path=path.relative_to(REPO_ROOT).as_posix()):

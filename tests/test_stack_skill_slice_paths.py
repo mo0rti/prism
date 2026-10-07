@@ -3,7 +3,7 @@
 A stack skill has one section titled `Slice files`. Each backticked item in a bullet of it that names a file
 (its last segment has an extension) or a folder (it ends with `/`) is a path inside the app's folder, and
 `<package path>` stands for the app's package written with slashes. The test generates a workspace with all
-four stacks and a second Android app at another path, then checks every cited path in every app of the
+five stacks and a second Android app at another path, then checks every cited path in every app of the
 skill's stack, in the Claude and in the Codex layer.
 """
 
@@ -39,6 +39,7 @@ REQUIRED = {
         "compose-design-system",
     ),
     "ios-swiftui": ("ios-conventions", "ios-testing", "ios-contract-alignment", "ios-feature-delivery", "swiftui-design-system"),
+    "python-agent-service": ("agent-conventions", "add-tool", "add-evaluation-case", "agent-safety"),
 }
 TASK_SKILLS = {"android-build-verify", "ios-build-verify", "deploy-device"}
 SECOND_ANDROID = {
@@ -48,6 +49,15 @@ SECOND_ANDROID = {
     "repository": "workspace",
     "path": "apps/partner",
     "audience": "B2B",
+    "generation": GENERATION_SCAFFOLDED,
+}
+# The agent service has no default platform ID, so it joins as an extra app.
+AGENT_APP = {
+    "id": "agent-service",
+    "name": "Portfolio Assistant",
+    "stack": "python-agent-service",
+    "repository": "workspace",
+    "path": "agent-service",
     "generation": GENERATION_SCAFFOLDED,
 }
 
@@ -98,7 +108,7 @@ class SliceFilePathTests(unittest.TestCase):
             ["backend", "web", "mobile-android", "mobile-ios"],
             Path(cls.temporary.name),
             project_name="Slice Paths",
-            extra_apps=[SECOND_ANDROID],
+            extra_apps=[SECOND_ANDROID, AGENT_APP],
         )
         manifest = yaml.safe_load((cls.root / "prism.workspace.yml").read_text(encoding="utf-8"))
         cls.package_identifier: str = manifest["project"]["package_identifier"]
@@ -112,7 +122,7 @@ class SliceFilePathTests(unittest.TestCase):
 
     def test_the_workspace_has_the_apps_the_test_needs(self) -> None:
         self.assertEqual(
-            {"spring-backend": 1, "nextjs-web": 1, "android-compose": 2, "ios-swiftui": 1},
+            {"spring-backend": 1, "nextjs-web": 1, "android-compose": 2, "ios-swiftui": 1, "python-agent-service": 1},
             {stack: len(self.apps_of(stack)) for stack in REQUIRED},
         )
 

@@ -258,7 +258,7 @@ class PortTests(unittest.TestCase):
 
 class NoFullSampleTests(unittest.TestCase):
     def test_every_generated_stack_has_a_pack_and_no_full_sample_remains(self) -> None:
-        self.assertEqual(("spring-backend", "nextjs-web", "android-compose", "ios-swiftui"), PACK_STACKS)
+        self.assertEqual(("spring-backend", "nextjs-web", "android-compose", "ios-swiftui", "python-agent-service"), PACK_STACKS)
         self.assertEqual(PACK_STACKS, scaffoldable_stacks())
         self.assertFalse(hasattr(packs, "full_sample_apps"))
         self.assertEqual([], [name for name in vars(packs) if name.endswith("_FULL_SAMPLE")])
@@ -273,7 +273,7 @@ def hard_coded_versions(pack_root: Path, pins: dict[str, str]) -> list[str]:
 
     found: list[str] = []
     for path in sorted(pack_root.rglob("*")):
-        if not path.is_file() or path.name.startswith("package-lock.json"):
+        if not path.is_file() or path.name.startswith(("package-lock.json", "uv.lock")):
             continue  # a lockfile records every resolved version; its agreement with the pins has its own test
         data = path.read_bytes()
         if b"\0" in data:
@@ -313,6 +313,8 @@ class VersionPinTests(unittest.TestCase):
             self.assertEqual([], hard_coded_versions(pack, pins), "a version inside a longer number is not the pin")
             (pack / "package-lock.json.jinja").write_text('{"version": "4.0.1", "node": ">=21"}\n', encoding="utf-8")
             self.assertEqual([], hard_coded_versions(pack, pins), "a lockfile repeats the pins by design")
+            (pack / "uv.lock.jinja").write_text('requires-python = ">=21"\nversion = "4.0.1"\n', encoding="utf-8")
+            self.assertEqual([], hard_coded_versions(pack, pins), "a uv lockfile repeats the pins by design")
 
     def test_the_packs_read_versions_through_the_versions_question(self) -> None:
         text = (REPO_ROOT / "copier.yml").read_text(encoding="utf-8")

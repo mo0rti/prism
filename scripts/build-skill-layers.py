@@ -47,7 +47,7 @@ COPIER_PATH = ROOT / "copier.yml"
 LAYERS = ("codex", "command", "claude-skill", "cursor")
 LAYER_GROUPS = {"claude": ("command", "claude-skill")}
 # The stacks a skill can need.
-STACKS = ("spring-backend", "nextjs-web", "android-compose", "ios-swiftui")
+STACKS = ("spring-backend", "nextjs-web", "android-compose", "ios-swiftui", "python-agent-service")
 # Everything under these folders of the template is generated from the sources.
 MANAGED_ROOTS = (".agents/skills", ".claude/commands", ".claude/skills", ".cursor/rules")
 HEADER = "{# Generated from template-skills/%s/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}\n"

@@ -14,14 +14,15 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.web.SecurityFilterChain
 
 /**
- * Every route needs a valid bearer JWT except the health check and the dev-identity token route.
+ * Every route needs a valid bearer JWT except the health check and the two dev-identity routes (the token and
+ * the JWKS).
  *
  * The JWT decoder comes from the environment: the `local` profile provides one for its dev identity
  * ([DevIdentityConfig]), and Spring Boot builds one when `spring.security.oauth2.resourceserver.jwt.*` names
  * your identity provider. With neither, [RejectingJwtDecoder] rejects every token, so the app fails closed.
  *
- * The dev-identity token route is open to the filter chain in every profile so that the default profile
- * answers it with 404 (the route does not exist there). Under `local`, the controller itself refuses
+ * The dev-identity routes are open to the filter chain in every profile so that the default profile
+ * answers them with 404 (the routes do not exist there). Under `local`, the controller itself refuses
  * requests that do not come from the loopback interface.
  */
 @Configuration
@@ -50,6 +51,7 @@ class SecurityConfig(
             .authorizeHttpRequests { auth ->
                 auth.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 auth.requestMatchers(HttpMethod.POST, "/api/dev-identity/token").permitAll()
+                auth.requestMatchers(HttpMethod.GET, "/api/dev-identity/jwks").permitAll()
                 auth.anyRequest().authenticated()
             }
             .oauth2ResourceServer { resourceServer ->
