@@ -1,6 +1,6 @@
 ---
 name: setup-project
-description: "Interactive two-phase project initialization. Run once immediately after `prism new` or `prism workflow install` to initialize the wiki state and generate the advisory board through a structured domain risk interview. Required before any other wiki operation."
+description: "Interactive two-phase project initialization. Run once after `prism new` or `prism workflow install` to initialize the wiki state and generate the advisory board through a structured domain risk interview. Runs on the files in the agent host, never through a connected board; lifecycle work does not wait for it."
 layers: [codex, command]
 codex:
   display_name: "Setup Project"
@@ -11,18 +11,22 @@ codex:
 
 # Setup project — interactive project initialization
 
-Run this once, immediately after `prism new` creates the project or `prism workflow install` adopts it.
+Run this once, after `prism new` creates the project or `prism workflow install` adopts it.
 This operation initializes the wiki state and generates the advisory board configuration
 through a structured conversation with the team.
+
+Setup runs in the agent host on the files (the direct-file workflow), not through a connected board,
+so a connected board reports no write support for it. Lifecycle work does not wait for setup: until it
+runs, the advisory board is not set up, so `board-review` is unavailable, and a feature that needs a
+review keeps `advisory-review: pending`.
 
 ## Usage
 
 `@@invoke:setup-project@@`
 
 ## When to run
-Immediately after `prism new` creates the project or `prism workflow install` adopts it. Run before any other
-wiki command. If the wiki already has feature entries, this operation will warn and ask
-for confirmation before proceeding.
+After `prism new` creates the project or `prism workflow install` adopts it. If the wiki already has
+feature entries, this operation will warn and ask for confirmation before proceeding.
 
 ## Workflow
 

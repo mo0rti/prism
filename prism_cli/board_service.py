@@ -288,6 +288,12 @@ class BoardService:
         # source whose revision the proposal leaves out. Memory only: a service
         # restart clears it and the agent reads again.
         self._participant_reads: dict[str, dict[str, tuple[str, str]]] = {}
+        # The files a participant has received only in part, by path: how much, and the request and cursor that continue
+        # the read. Cleared when the file's last chunk is returned. Memory only, like the reads above.
+        self._participant_partial_reads: dict[str, dict[str, dict[str, Any]]] = {}
+        # The path list of each read request that still has a continuation cursor, by participant and request ID, so a
+        # cursor sent with the wrong paths can be answered with the paths it belongs to.
+        self._read_requests: dict[tuple[str, str], list[str]] = {}
         self._closed = False
         self._board_id: str | None = None
         self._workflow_version: str | None = None
@@ -471,10 +477,20 @@ class BoardService:
                 }
             )
         self._remember_served_digests(records)
-        from prism_cli.board_reads import read_files_page
+        from prism_cli.board_reads import read_files_page, read_request_id
 
-        page = read_files_page(records, [record["path"] for record in records], cursor)
-        self._remember_participant_reads(actor, page.get("files", ()))
+        request_paths = [record["path"] for record in records]
+        page = read_files_page(
+            records, request_paths, cursor, known_requests=lambda request: self._read_requests.get((actor.participant_id, request))
+        )
+        self._remember_participant_reads(actor, page.get("files", ()), request_paths, page.get("next_cursor"))
+        if page.get("next_cursor") is not None:
+            key = (actor.participant_id, read_request_id(request_paths))
+            with self._served_lock:
+                self._read_requests.pop(key, None)
+                self._read_requests[key] = request_paths
+                while len(self._read_requests) > 1024:
+                    self._read_requests.pop(next(iter(self._read_requests)))
         return page
 
     def list_workspace(self, actor: Actor, prefix: str = "knowledge", cursor: str | None = None) -> dict[str, Any]:
@@ -849,7 +865,8 @@ class BoardService:
 
         The context is derived as the proposal's rules derive it, from the proposal's own before-state (its recorded
         `before` texts), so applying a write does not change which paths are relevant. A dependency that appeared
-        after the preview (a new design page of the feature, a new source it links) is part of the set.
+        after the preview (a new design page of the feature, a new source it links) is part of the set. When the context cannot
+        be derived (for example a second page with the same feature ID), this raises a `recovery_dependencies_unavailable` conflict.
         """
 
         paths = set(intent.get("source_map", {}))
@@ -864,9 +881,22 @@ class BoardService:
                 before: dict[str, str | None] = {path: None for path in supplied}
                 before.update({write["path"]: write.get("before") for write in intent.get("writes", []) if write["path"] in supplied})
                 paths |= self._required_skill_revision_paths(intent["skill"], supplied, before, intent.get("moves", []))
-        except (BoardError, OSError, KeyError, ValueError):
-            # The recorded sources still bind the review; the revalidation reports the real problem.
-            pass
+        except BoardError as exc:
+            # A partial set would bind a snapshot that misses a dependency, so the failure is a conflict, never a fallback.
+            raise BoardError(
+                "recovery_dependencies_unavailable",
+                f"The files this operation depends on cannot be determined now ({exc.code}: {exc.message}); resolve it and try again. "
+                "`prism wiki lint` reports duplicate feature pages.",
+                409,
+                {"cause": exc.code},
+            ) from None
+        except (OSError, KeyError, ValueError) as exc:
+            raise BoardError(
+                "recovery_dependencies_unavailable",
+                f"The files this operation depends on cannot be determined now ({type(exc).__name__}); resolve it and try again.",
+                409,
+                {"cause": type(exc).__name__},
+            ) from None
         return paths
 
     def _recovery_snapshot(self, intent: Mapping[str, Any]) -> dict[str, str | None]:
@@ -1283,29 +1313,63 @@ class BoardService:
             while len(self._served_digests) > 4096:
                 self._served_digests.pop(next(iter(self._served_digests)))
 
-    def _remember_participant_reads(self, actor: Actor, files: Iterable[Mapping[str, Any]]) -> None:
+    def _remember_participant_reads(
+        self,
+        actor: Actor,
+        files: Iterable[Mapping[str, Any]],
+        request_paths: list[str] | None = None,
+        next_cursor: str | None = None,
+    ) -> None:
         """Record the digest of every file this participant has now received in full.
 
         A file returned in chunks counts only once its last chunk has been
-        returned. The record is per participant and is never read for another one.
+        returned. A file returned only in part is recorded with the request and
+        cursor that continue it. The record is per participant and is never
+        read for another one.
         """
 
+        files = list(files)
         complete = [
             item for item in files
             if int(item.get("offset", 0)) + len(item["content"]) >= int(item.get("total_chars", len(item["content"])))
         ]
-        if not complete:
+        partial = [item for item in files if item not in complete]
+        if not complete and not partial:
             return
         with self._served_lock:
+            partials = self._participant_partial_reads.setdefault(actor.participant_id, {})
+            for item in partial:
+                key = item["path"].casefold()
+                partials.pop(key, None)
+                partials[key] = {
+                    "path": item["path"],
+                    "read": int(item.get("offset", 0)) + len(item["content"]),
+                    "total": int(item["total_chars"]),
+                    "paths": list(request_paths or [item["path"]]),
+                    "cursor": next_cursor,
+                }
+            while len(partials) > 64:
+                partials.pop(next(iter(partials)))
+            while len(self._participant_partial_reads) > 256:
+                self._participant_partial_reads.pop(next(iter(self._participant_partial_reads)))
+            if not complete:
+                return
             reads = self._participant_reads.setdefault(actor.participant_id, {})
             for item in complete:
                 key = item["path"].casefold()
+                partials.pop(key, None)
                 reads.pop(key, None)
                 reads[key] = (item["path"], item["digest"])
             while len(reads) > 4096:
                 reads.pop(next(iter(reads)))
             while len(self._participant_reads) > 256:
                 self._participant_reads.pop(next(iter(self._participant_reads)))
+
+    def _participant_partial_read_state(self, actor: Actor) -> dict[str, dict[str, Any]]:
+        """The files this participant has received only in part, by casefolded path."""
+
+        with self._served_lock:
+            return {key: dict(value) for key, value in self._participant_partial_reads.get(actor.participant_id, {}).items()}
 
     def _participant_read_digests(self, actor: Actor) -> dict[str, str]:
         """The digests this participant last read, by casefolded path."""
@@ -1504,7 +1568,12 @@ class BoardService:
                 "are service-managed outputs; do not include them in proposal changes."
             )
             return limitations
-        if name in {"board-review", "setup-project"}:
+        if name == "setup-project":
+            return [
+                "Setup initializes the wiki and the advisory board by editing files in the agent host (the direct-file workflow), so the connected board "
+                "has no write for it. Lifecycle work does not wait for setup."
+            ]
+        if name == "board-review":
             return ["Guidance is available; connected writes are unavailable until an operation-specific validator is implemented."]
         if name.startswith(("android-", "ios-", "spring-", "swiftui-", "web-")):
             return ["Application-specific writes are outside the provider-neutral workflow service."]
@@ -2250,7 +2319,8 @@ class BoardService:
 
         normalized_revisions.update(
             self._assert_required_skill_revisions(
-                skill, supplied, before, normalized_moves, normalized_revisions, defaults=self._participant_read_digests(actor)
+                skill, supplied, before, normalized_moves, normalized_revisions, defaults=self._participant_read_digests(actor),
+                partial_reads=self._participant_partial_read_state(actor),
             )
         )
 
@@ -2483,6 +2553,7 @@ class BoardService:
         moves: list[dict[str, Any]],
         read_revisions: Mapping[str, str | None],
         defaults: Mapping[str, str] | None = None,
+        partial_reads: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> dict[str, str]:
         """Check the digests of the reviewed sources and return the ones filled from `defaults`.
 
@@ -2490,7 +2561,8 @@ class BoardService:
         read. It fills a required path whose revision was omitted; the filled
         digest is checked exactly like a supplied one, so a file that changed
         after that read is rejected as stale. A required path with neither a
-        supplied nor a recorded digest is rejected.
+        supplied nor a recorded digest is rejected; one the participant read
+        only in part is reported with the call that continues the read.
         """
 
         required = self._required_skill_revision_paths(skill, supplied, before, moves)
@@ -2508,7 +2580,9 @@ class BoardService:
                 filled[relative] = recorded
                 revisions_by_path[key] = recorded
         if missing:
-            raise self._missing_read_revisions_error(missing)
+            raise self._missing_read_revisions_error(
+                missing, [partial_reads[path.casefold()] for path in missing if path.casefold() in (partial_reads or {})]
+            )
         for relative in required:
             path = self._safe_path(relative)
             actual = _sha256(path.read_bytes())
@@ -2517,11 +2591,14 @@ class BoardService:
         return filled
 
     @staticmethod
-    def _missing_read_revisions_error(missing: list[str]) -> BoardError:
+    def _missing_read_revisions_error(missing: list[str], partial: list[Mapping[str, Any]] | None = None) -> BoardError:
+        partial = partial or []
         listed: list[str] = []
         size = 0
+        # A path read only in part is explained below with its continuing call, so the list stays short.
+        limit = 450 if partial else 900
         for relative in missing:
-            if listed and size + len(relative) > 900:
+            if listed and size + len(relative) > limit:
                 break
             listed.append(relative)
             size += len(relative) + 2
@@ -2530,16 +2607,31 @@ class BoardService:
             listed = listed[:-1]
             details["paths"] = listed
         rest = len(missing) - len(listed)
-        return BoardError(
-            "missing_read_revisions",
+        message = (
             "Preview requires you to have read these reviewed sources first: "
             + ", ".join(listed)
             + (f" and {rest} more" if rest else "")
             + ". Read them with read_workspace (up to 64 paths per call, following next_cursor), then preview again; "
-            "the board uses the digests of the files you read, or pass them in read_revisions.",
-            409,
-            details,
+            "the board uses the digests of the files you read, or pass them in read_revisions."
         )
+        if partial:
+            first = partial[0]
+            call_paths = json.dumps(first["paths"], ensure_ascii=True, separators=(",", ":"))
+            if len(call_paths) > 450:
+                call_paths = f"the same {len(first['paths'])} paths as that read, in the same order"
+            else:
+                call_paths = "paths " + call_paths
+            others = [item["path"] for item in partial[1:3]]
+            message += (
+                f" `{first['path']}` was read only in part ({first['read']:,} of {first['total']:,} characters), and a file counts as read "
+                f"only when all of it was read. Continue that read with read_workspace, {call_paths} and cursor \"{first['cursor']}\", "
+                "and follow next_cursor until it is null."
+                + (f" Also read only in part: {', '.join(others)}." if others else "")
+            )
+            details["partial"] = [item["path"] for item in partial[:3]]
+            if len(json.dumps(details, ensure_ascii=True, separators=(",", ":"))) > _MAX_ERROR_DETAILS_CHARS - 100:
+                details.pop("partial")
+        return BoardError("missing_read_revisions", message, 409, details)
 
     def _assert_processed_item_is_new(self, relative: str) -> None:
         """Reject a write into a processed intake item that already exists.

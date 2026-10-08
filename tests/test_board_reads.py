@@ -427,6 +427,51 @@ class PagedReadTests(unittest.TestCase):
         self.assertEqual("duplicate_path", duplicate.exception.code)
 
 
+class StandardInstructionFilePageTests(unittest.TestCase):
+    """SCHEMA.md, LIFECYCLE.md and CONNECTED.md each arrive in one read_workspace page, so a host that never follows a cursor still reads them whole."""
+
+    FILES = ("knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", "knowledge/wiki/CONNECTED.md")
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))["status"])
+        self.service = BoardService(self.root)
+        self.addCleanup(self.service.close)
+        self.actor = self.service.authenticate(self.service.create_participant("Read client", "agent")["token"])
+
+    def test_each_file_is_one_page_with_its_whole_text(self):
+        for path in self.FILES:
+            with self.subTest(path=path):
+                page = self.service.read_workspace(self.actor, [path])
+                self.assertIsNone(page["next_cursor"])
+                (record,) = page["files"]
+                on_disk = (self.root / path).read_bytes().decode("utf-8")
+                self.assertEqual(on_disk, record["content"])
+                self.assertEqual(0, record["offset"])
+                self.assertEqual(len(on_disk), record["total_chars"])
+                self.assertLessEqual(compact_size(page), board_reads.STRUCTURED_BUDGET_CHARS)
+
+    def test_the_three_files_together_never_split_a_file_across_pages(self):
+        pages, cursor = [], None
+        while True:
+            page = self.service.read_workspace(self.actor, list(self.FILES), cursor)
+            pages.append(page)
+            cursor = page["next_cursor"]
+            if cursor is None:
+                break
+        records = [record for page in pages for record in page["files"]]
+        self.assertEqual(list(self.FILES), [record["path"] for record in records])
+        self.assertTrue(all(record["offset"] == 0 and len(record["content"]) == record["total_chars"] for record in records))
+
+    def test_the_budget_is_stated_and_leaves_room_beyond_the_largest_file(self):
+        self.assertEqual(48000, board_reads.RESULT_BUDGET_CHARS)
+        self.assertEqual(46000, board_reads.STRUCTURED_BUDGET_CHARS)
+        largest = max(compact_size(self.service.read_workspace(self.actor, [path])) for path in self.FILES)
+        self.assertLess(largest, board_reads.STRUCTURED_BUDGET_CHARS - 3000, "a small edit of a standard file must not push it past one page")
+
+
 class ResultShapingTests(unittest.TestCase):
     """Pure helpers that keep MCP results within the budget and free of absolute paths."""
 
@@ -467,7 +512,7 @@ class ResultShapingTests(unittest.TestCase):
     def _items(self):
         return [
             {"path": "a.md", "role": "canonical", "before": None, "after": "new file\n"},
-            {"path": "b.md", "role": "canonical", "before": "old " * 9000, "after": "new " * 9000},
+            {"path": "b.md", "role": "canonical", "before": "old " * 18000, "after": "new " * 18000},
             {"path": "c.md", "role": "index", "before": "", "after": "row\n"},
             {"path": "d.md", "role": "log", "before": None, "after": None},
         ]

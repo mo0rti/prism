@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 import json
@@ -595,7 +597,8 @@ class DoctorCommandTests(unittest.TestCase):
     @patch("prism_cli.cli.shutil.which")
     def test_summary_reports_generate_now_when_everything_is_ready(self, mocked_which: object) -> None:
         mocked_which.return_value = "C:/tools/found.exe"
-        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"spring-backend", "android-compose"})
+        with patch.object(cli_module, "_service_problem", return_value=None):
+            results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"spring-backend", "android-compose"})
         summary = "\n".join(summarize_doctor_results(results, get_preset("backend-mobile")))
         self.assertIn("You can generate a Prism project now.", summary)
 
@@ -620,10 +623,78 @@ class DoctorCommandTests(unittest.TestCase):
             return "C:/tools/found.exe"
 
         mocked_which.side_effect = fake_which
-        results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"spring-backend", "android-compose"})
+        with patch.object(cli_module, "_service_problem", return_value=None):
+            results = evaluate_doctor_checks(build_doctor_checks(incubation_mode=True), "Windows", {"spring-backend", "android-compose"})
         next_result = choose_next_doctor_result(results, {"spring-backend", "android-compose"})
         assert next_result is not None
         self.assertEqual("JDK", next_result.check.label)
+
+    def _docker_check(self) -> cli_module.DoctorCheck:
+        return next(check for check in build_doctor_checks(incubation_mode=True) if check.label == "Docker")
+
+    def _stub_docker(self, directory: str, exit_code: int) -> dict[str, str]:
+        """A real `docker` executable on a PATH that starts with the stub's folder; `docker info` exits with ``exit_code``."""
+
+        folder = Path(directory)
+        if sys.platform == "win32":
+            (folder / "docker.cmd").write_text(f"@echo off\r\nexit /b {exit_code}\r\n", encoding="utf-8")
+        else:
+            stub = folder / "docker"
+            stub.write_text(f"#!/bin/sh\nexit {exit_code}\n", encoding="utf-8")
+            stub.chmod(0o755)
+        return {"PATH": directory + os.pathsep + os.environ.get("PATH", "")}
+
+    def test_docker_with_a_stopped_daemon_is_a_warning_with_the_way_out_not_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, self._stub_docker(directory, 1)):
+            results = evaluate_doctor_checks([self._docker_check()], "Windows", set())
+        self.assertEqual("warning", results[0].status)
+        self.assertIn("`docker info` exited with status 1", results[0].detail)
+        rendered = "\n".join(cli_module.render_doctor_result(results[0]))
+        self.assertIn("[warn]", rendered)
+        self.assertNotIn("[ready]", rendered)
+        self.assertIn("Start Docker Desktop", rendered)
+        summary = "\n".join(summarize_doctor_results(results, None))
+        self.assertIn("1 not running", summary)
+        self.assertIn("Start Docker Desktop", summary)
+        self.assertNotIn("You can generate a Prism project now.", summary)
+
+    def test_docker_with_a_running_daemon_is_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, self._stub_docker(directory, 0)):
+            results = evaluate_doctor_checks([self._docker_check()], "Windows", set())
+        self.assertEqual("ready", results[0].status)
+
+    def test_a_docker_daemon_that_does_not_answer_is_a_warning_after_a_short_timeout(self) -> None:
+        def hang(command: list[str], **kwargs: object) -> object:
+            self.assertEqual(["info"], command[1:])
+            self.assertLessEqual(kwargs["timeout"], 10)
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+        with patch("prism_cli.cli.shutil.which", return_value="C:/tools/docker.exe"), patch("prism_cli.cli.subprocess.run", side_effect=hang):
+            results = evaluate_doctor_checks([self._docker_check()], "Windows", set())
+        self.assertEqual("warning", results[0].status)
+        self.assertIn("did not answer", results[0].detail)
+
+    def test_a_docker_binary_that_cannot_run_is_a_warning(self) -> None:
+        with patch("prism_cli.cli.shutil.which", return_value="C:/tools/docker.exe"), patch("prism_cli.cli.subprocess.run", side_effect=PermissionError("denied")):
+            results = evaluate_doctor_checks([self._docker_check()], "Windows", set())
+        self.assertEqual("warning", results[0].status)
+        self.assertIn("could not run", results[0].detail)
+
+    def test_a_missing_docker_binary_is_still_missing_and_is_not_probed(self) -> None:
+        with patch("prism_cli.cli.shutil.which", return_value=None), patch("prism_cli.cli.subprocess.run") as run:
+            results = evaluate_doctor_checks([self._docker_check()], "Windows", set())
+        self.assertEqual("missing", results[0].status)
+        run.assert_not_called()
+
+    def test_doctor_with_a_stopped_docker_daemon_says_so_and_still_exits_zero(self) -> None:
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, self._stub_docker(directory, 1)), contextlib.redirect_stdout(output):
+            exit_code = cli_module.main(["doctor", "--preset", "backend-only"])
+        text = output.getvalue()
+        self.assertIn("[warn]", text)
+        self.assertIn("Docker", text)
+        self.assertIn("Start Docker Desktop", text)
+        self.assertEqual(0, exit_code, text)
 
     def test_render_doctor_result_includes_docs_for_missing_check(self) -> None:
         go_task = next(check for check in build_doctor_checks(incubation_mode=True) if check.label == "go-task")

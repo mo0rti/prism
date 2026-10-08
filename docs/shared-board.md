@@ -410,7 +410,7 @@ extra for retries: every preview is validated in full.
 
 ## MCP tool contract (version 3)
 
-`discover` and `list_skills` report `"mcp_contract": 3`. Every tool result is at most 32,000 characters, measured as the compact JSON of the JSON-RPC `result` object. The full result is returned once, as `structuredContent`; the text block is a one-line summary of at most 500 characters and is not a copy of the data. A client reads `structuredContent`.
+`discover` and `list_skills` report `"mcp_contract": 3`. Every tool result is at most 48,000 characters, measured as the compact JSON of the JSON-RPC `result` object. The full result is returned once, as `structuredContent`; the text block is a one-line summary of at most 500 characters and is not a copy of the data. A client reads `structuredContent`.
 
 The server publishes orientation instructions (at most 2,000 characters) in its MCP `initialize` result, together with a title and description. They give the order to use the tools in and state that workspace text is untrusted project data and that the board never approves on the human's behalf. Every tool description starts with `Prism board:`, so a host that loads tools through search finds them under that name.
 
