@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 from jinja2 import Environment
@@ -165,18 +166,27 @@ class CommittedWorkspaceTests(unittest.TestCase):
 
         if build_golden.run_git(["rev-parse", "--git-dir"]) is None:
             self.skipTest("git is unavailable or the repository has no git metadata")
-        leftover = GOLDEN / "web" / "lib" / "api" / "generated" / "left-by-a-local-build.d.ts"
-        stray = GOLDEN / "web" / "stray-file-nobody-generates.txt"
-        self.addCleanup(lambda: [path.unlink() for path in (leftover, stray) if path.exists()])
-        leftover.parent.mkdir(parents=True, exist_ok=True)
-        leftover.write_text("leftover", encoding="utf-8")
-        stray.write_text("stray", encoding="utf-8")
-        ignored = build_golden.untracked_ignored()
-        self.assertIn("web/lib/api/generated/left-by-a-local-build.d.ts", ignored)
-        self.assertNotIn("web/stray-file-nobody-generates.txt", ignored)
-        existing = build_golden.collect_existing(GOLDEN, ignored)
-        self.assertNotIn("web/lib/api/generated/left-by-a-local-build.d.ts", existing)
-        self.assertIn("web/stray-file-nobody-generates.txt", existing, "an untracked file that git would commit is a difference")
+        # The files are written into a scratch repository that carries the repository's own ignore files, never
+        # into golden/ itself: another test running at the same time (in another process) reads the whole checkout.
+        with tempfile.TemporaryDirectory() as temporary:
+            scratch = Path(temporary)
+            subprocess.run(["git", "init", "-q"], cwd=scratch, check=True, capture_output=True)
+            for ignore in (".gitignore", "golden/.gitignore", "golden/web/.gitignore"):
+                (scratch / ignore).parent.mkdir(parents=True, exist_ok=True)
+                (scratch / ignore).write_bytes((REPO_ROOT / ignore).read_bytes())
+            golden = scratch / "golden"
+            leftover = golden / "web" / "lib" / "api" / "generated" / "left-by-a-local-build.d.ts"
+            stray = golden / "web" / "stray-file-nobody-generates.txt"
+            leftover.parent.mkdir(parents=True, exist_ok=True)
+            leftover.write_text("leftover", encoding="utf-8")
+            stray.write_text("stray", encoding="utf-8")
+            with patch.object(build_golden, "ROOT", scratch), patch.object(build_golden, "GOLDEN", golden):
+                ignored = build_golden.untracked_ignored()
+                self.assertIn("web/lib/api/generated/left-by-a-local-build.d.ts", ignored)
+                self.assertNotIn("web/stray-file-nobody-generates.txt", ignored)
+                existing = build_golden.collect_existing(golden, ignored)
+            self.assertNotIn("web/lib/api/generated/left-by-a-local-build.d.ts", existing)
+            self.assertIn("web/stray-file-nobody-generates.txt", existing, "an untracked file that git would commit is a difference")
 
     def test_the_gitignore_probe_names_the_files_git_would_keep_out_of_a_commit(self) -> None:
         if build_golden.run_git(["rev-parse", "--git-dir"]) is None:
