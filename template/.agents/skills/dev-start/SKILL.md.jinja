@@ -6,7 +6,7 @@ description: Start implementation for one feature after design handoff. Use when
 
 # Dev start - take ownership of one ready feature
 
-<!-- prism:dev-start-contract:v1 -->
+<!-- prism:dev-start-contract:v2 -->
 
 ## Usage
 
@@ -32,13 +32,13 @@ prism wiki transition-preflight F-XXX [path] --action dev-start --json
 ```
 
 Accept the response only with envelope schema 1, command facts, capability version
-2 and an action-specific `dev-start` surface, transition version 1, target owner
+3 and an action-specific `dev-start` surface, transition version 2, target owner
 `dev`, and a consistent snapshot. A version string alone is not capability
 evidence. Fall back to direct-file checks when the probe is missing or unsupported;
 the preflight is copy-only and never authorizes a write.
 
 Check design, advisory, app requirement, API, and active `revalidation`
-facts for this route. An active `specification` or `design` domain blocks this
+facts for this route. An active `specification`, `design` or `technical-design` domain blocks this
 downstream start until the owning handoff verifies it. Other active delivery
 domains identify work for the developer and may remain while implementation
 starts. Show actual app and API evidence and the full feature/status board/log write set; presence

@@ -47,7 +47,7 @@ ACTION_TRANSITIONS = {
     "design-start": ("ready-for-design", "designer", "in-design", "designer"),
     "design-handoff": ("in-design", "designer", "ready-for-dev", "dev"),
     "dev-start": ("ready-for-dev", "dev", "in-dev", "dev"),
-    "dev-done": ("in-dev", "dev", "done", "none"),
+    "dev-done": ("in-dev", "dev", "ready-for-qa", "qa"),
     "feature-reopen": ("done", "none", "specified", "po"),
 }
 CONTEXT_PATHS = (
@@ -69,7 +69,7 @@ class TransitionTemplateContractTests(unittest.TestCase):
         for name, text in self.sources.items():
             with self.subTest(surface=name):
                 self.assertIn("specified", text)
-                self.assertIn("<!-- prism:po-handoff-contract:v1 -->", text)
+                self.assertIn("<!-- prism:po-handoff-contract:v2 -->", text)
                 self.assertIn("owner: po", text)
                 self.assertIn("ready-for-design", text)
                 self.assertIn("owner: designer", text)
@@ -158,7 +158,7 @@ class TransitionTemplateContractTests(unittest.TestCase):
         for action, surfaces in self.action_sources.items():
             source_status, source_owner, target_status, target_owner = ACTION_TRANSITIONS[action]
             command = "feature-reopen" if action == "feature-reopen" else action
-            marker = f"<!-- prism:{command}-contract:v1 -->"
+            marker = f"<!-- prism:{command}-contract:v2 -->"
             for surface, text in surfaces.items():
                 with self.subTest(action=action, surface=surface):
                     normalized = re.sub(r"\s+", " ", text).lower()
@@ -202,7 +202,10 @@ class TransitionTemplateContractTests(unittest.TestCase):
             "## Related features",
             "## API surface",
             "## Board review summary",
-            "## Post-ship notes",
+            "## Delivery evidence",
+            "## QA verification",
+            "## Release",
+            "## Evidence history",
         )
         for surface, text in self.action_sources["po-specify"].items():
             with self.subTest(surface=surface):
@@ -233,16 +236,16 @@ class TransitionTemplateContractTests(unittest.TestCase):
                     "implementation",
                     "tests",
                     "release",
-                    "design: not-applicable",
-                    "design-exemption-reason",
+                    "technical-design",
                     "## Delivery evidence",
-                    "| App | Implementation | Tests | Release |",
-                    "## Reopen history",
-                    "Prior completion/release evidence",
+                    "| App | Artifact | Contract | Implementation | Tests | Basis |",
+                    "## Evidence history",
+                    "Archived evidence",
                 ):
                     self.assertIn(fragment, text)
         self.assertIn("After confirmation, reread", schema)
-        self.assertIn("version 2", schema)
+        self.assertIn("`version: 3`", schema)
+        self.assertIn("`version: 2`", schema)
         self.assertIn("target_owner", schema)
 
     def test_context_surfaces_list_new_actions_without_cross_surface_requirement(self) -> None:
@@ -309,7 +312,7 @@ class TransitionTemplateContractTests(unittest.TestCase):
                         rendered = path.read_text(encoding="utf-8")
                         self.assertNotIn("{{", rendered)
                         self.assertNotIn("{%", rendered)
-                        self.assertIn(f"<!-- prism:{command}-contract:v1 -->", rendered)
+                        self.assertIn(f"<!-- prism:{command}-contract:v2 -->", rendered)
                         self.assertIn("## ", rendered)
                         self.assertIn("confirmation", rendered)
             for path in (

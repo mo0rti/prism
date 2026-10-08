@@ -1,6 +1,6 @@
 interface:
   display_name: "Dev Done"
-  short_description: "Mark a feature as shipped and update wiki status"
-  default_prompt: "Use $dev-done F-XXX to record post-ship notes and mark a feature as done across the wiki."
+  short_description: "Record per-app delivery evidence for a feature"
+  default_prompt: "Use $dev-done F-XXX [app ...] to record the delivery evidence of the named apps and move the feature toward QA."
 policy:
   allow_implicit_invocation: false

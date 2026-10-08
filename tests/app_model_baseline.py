@@ -164,17 +164,25 @@ def _feature(feature_id: str, title: str, status: str, owner: str, apps: list[st
         "apps": apps,
         "sources": [],
         "advisory-review": review,
+        "criteria-high-water": 2,
     }
     scope = "\n".join(f"- **{app}**: Deliver the {title.lower()} for {app}." for app in apps)
     body = (
         f"## Summary\n{title} gives reviewers one place to record an outcome.\n\n"
         "## User story\nAs a reviewer, I want to record an outcome, so that follow-up is clear.\n\n"
-        "## Acceptance criteria\n- [ ] The outcome can be recorded.\n- [ ] The outcome can be read back.\n\n"
+        f"## Acceptance criteria\n- [ ] AC-1 [{', '.join(apps)}] The outcome can be recorded.\n- [ ] AC-2 [{', '.join(apps)}] The outcome can be read back.\n\n"
         "## Open questions\n| # | Question | Owner | Status |\n|---|----------|-------|--------|\n"
         "| 1 | Which outcomes are allowed? | po | open |\n\n"
         f"## App scope\n{scope}\n\n"
         "## API surface\nNone\n"
     )
+    if status != "raw":
+        body += (
+            "\n## Delivery evidence\n| App | Artifact | Contract | Implementation | Tests | Basis |\n|---|---|---|---|---|---|\n"
+            "\n## QA verification\n| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |\n|---|---|---|---|---|---|---|---|---|\n"
+            "\n## Release\n| App | Target | Version | Attempt | Outcome | Record | Basis |\n|---|---|---|---|---|---|---|\n"
+            "\n## Evidence history\n"
+        )
     page = f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---\n\n{body}"
     return f"knowledge/wiki/features/{feature_id}-{title.lower().replace(' ', '-')}.md", page
 

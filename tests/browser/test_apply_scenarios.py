@@ -26,8 +26,8 @@ FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n(.*)\Z", re.DOTALL)
 
 # action -> (card button label, source stage, target stage, target owner)
 ACTIONS = {
-    "po-handoff": ("handoff", "specified", "ready-for-design", "designer"),
-    "design-start": ("design start", "ready-for-design", "in-design", "designer"),
+    "po-handoff": ("handoff", "specified", "ready-for-design", "tech-lead"),
+    "design-start": ("design start", "ready-for-design", "in-design", "tech-lead"),
     "dev-start": ("development start", "ready-for-dev", "in-dev", "dev"),
 }
 
@@ -221,7 +221,8 @@ class ApplyScenarioTests(BrowserCase):
 
         old_rows = before[BOARD_PATH].decode("utf-8").splitlines()
         new_rows = after[BOARD_PATH].decode("utf-8").splitlines()
-        expected_row = f"| {feature.feature_id} | {feature.title} | {target_stage} | {target_owner} | not-needed |"
+        stages = "backend: in-dev" if target_stage == "in-dev" else "\u2014"
+        expected_row = f"| {feature.feature_id} | {feature.title} | {target_stage} | {target_owner} | not-needed | \u2014 | {stages} | \u2014 |"
         self.assertEqual([expected_row], [row for row in new_rows if row.startswith(f"| {feature.feature_id} ")])
         self.assertEqual(
             [row for row in old_rows if not row.startswith(f"| {feature.feature_id} ")],

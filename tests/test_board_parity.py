@@ -26,8 +26,8 @@ from tests import real_temp  # noqa: F401
 
 ORIGIN = "http://127.0.0.1:8765"
 ACTIONS = (
-    ("po-handoff", "specified", "po", "ready-for-design", "designer"),
-    ("design-start", "ready-for-design", "designer", "in-design", "designer"),
+    ("po-handoff", "specified", "po", "ready-for-design", "tech-lead"),
+    ("design-start", "ready-for-design", "tech-lead", "in-design", "tech-lead"),
     ("dev-start", "ready-for-dev", "dev", "in-dev", "dev"),
 )
 
@@ -214,8 +214,8 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
         question = "| 2 | Is there a limit on the number of comments in one summary? | dev | open |"
         answer = "At most 200 comments are exported; the rest are summarized as a count."
         evidence = (
-            "| App | Implementation | Tests | Release |\n|---|---|---|---|\n"
-            "| backend | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | release: https://example.test/releases/1.4.0 |"
+            "| App | Artifact | Contract | Implementation | Tests | Basis |\n|---|---|---|---|---|---|\n"
+            "| backend | `build:backend#42` | none | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | checked |"
         )
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "workspace"
@@ -269,7 +269,13 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                                     return await client.call_tool("preview_skill", {"skill": skill, "changes": changes, "read_revisions": revisions})
 
                                 clarified = page.replace(question, f"| 2 | Is there a limit on the number of comments in one summary? | dev | resolved: {answer} |")
-                                clarified = _replace_body_section(service, clarified, "App scope", f"- **backend**: Store the review summary and recorded outcome. {answer}")
+                                clarified = _replace_body_section(
+                                    service,
+                                    clarified,
+                                    "Acceptance criteria",
+                                    "- [ ] AC-1 [backend] A review summary records the document's key points.\n"
+                                    f"- [ ] AC-2 [backend] A reviewer can record the outcome and requested follow-up. {answer}",
+                                )
                                 requirement = _replace_body_section(service, _journey_requirement_page("in-progress"), "Technical constraints", f"Use the existing workspace storage. {answer}")
                                 preview = self.tool_data(await propose("dev-clarify", [{"path": feature_relative, "content": clarified}, {"path": requirement_relative, "content": requirement}]))
                                 self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]))
@@ -277,14 +283,13 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                                 self.assertEqual("applied", self.tool_data(applied)["state"])
                                 self.assertIn(answer, (root / requirement_relative).read_text(encoding="utf-8"))
 
-                                done = _set_feature_stage(clarified, "done", "none", service)
-                                missing = _replace_body_section(service, done, "Post-ship notes", "Shipped.")
+                                missing = _set_feature_stage(clarified, "ready-for-qa", "qa", service)
                                 requirement_done = _set_requirement_status(requirement, "done")
                                 rejected = await propose("dev-done", [{"path": feature_relative, "content": missing}, {"path": requirement_relative, "content": requirement_done}])
                                 self.assertTrue(rejected.is_error)
                                 text = " ".join(part.text for part in rejected.content if getattr(part, "type", None) == "text")
                                 self.assertIn("delivery_evidence_required", text)
-                                self.assertIn('"missing_apps":["backend"]', text)
+                                self.assertIn('"apps":["backend"]', text)
 
                                 complete = _replace_body_section(service, missing, "Delivery evidence", evidence)
                                 preview = self.tool_data(await propose("dev-done", [{"path": feature_relative, "content": complete}, {"path": requirement_relative, "content": requirement_done}]))
@@ -294,7 +299,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 service.close()
             final = yaml.safe_load((root / feature_relative).read_text(encoding="utf-8").split("---", 2)[1])
-            self.assertEqual(("done", "none"), (final["status"], final["owner"]))
+            self.assertEqual(("ready-for-qa", "qa"), (final["status"], final["owner"]))
             self.assertIn("Pull request 42 merged as 3f9c2ab", (root / feature_relative).read_text(encoding="utf-8"))
 
     async def test_design_handoff_creates_the_agreed_api_contract_the_same_way_over_http_and_mcp(self) -> None:
@@ -328,10 +333,10 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                 create_core_workflow_fixture(root)
                 self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
                 (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/2026-10-06-document-review-brief")
-                page = _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [question])
+                page = _journey_feature_page("F-001", "Document review", "in-design", "tech-lead", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [question])
                 page = _replace_body_section(None, page, "API surface", surface)
                 (root / feature_relative).write_bytes(page.encode("utf-8"))
-                _write_index_rows(root, [("F-001", "Document review", "in-design", "designer")])
+                _write_index_rows(root, [("F-001", "Document review", "in-design", "tech-lead")])
 
                 service = BoardService(root)
                 human = service.create_participant("Parity human", "human", writable=True)

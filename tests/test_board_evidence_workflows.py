@@ -45,8 +45,8 @@ SUMMARY = (
     "- **Assumed:** A review covers exactly one document.\n"
 )
 CRITERIA = (
-    f"- [ ] **Decided:** A reviewer can record the outcome and the requested follow-up ([review brief](../../intake/processed/{ITEM}/brief.md)).\n"
-    "- [ ] **Proposed:** The summary lists the key points.\n"
+    f"- [ ] **Decided:** AC-1 [backend] A reviewer can record the outcome and the requested follow-up ([review brief](../../intake/processed/{ITEM}/brief.md)).\n"
+    "- [ ] **Proposed:** AC-2 [backend] The summary lists the key points.\n"
 )
 
 CONFLICT = """---

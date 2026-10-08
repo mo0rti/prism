@@ -11,7 +11,7 @@ codex:
 
 # Design start - take ownership of one ready feature
 
-<!-- prism:design-start-contract:v1 -->
+<!-- prism:design-start-contract:v2 -->
 
 ## Usage
 
@@ -22,7 +22,7 @@ codex:
 Prepare, preview, and, after explicit confirmation, write one feature-only
 transition:
 
-`ready-for-design` + `designer` -> `in-design` + `designer`
+`ready-for-design` + the design owner -> `in-design` + the design owner (`designer` while an active app in scope has a UI, otherwise `tech-lead`)
 
 Resolve exactly one existing feature file at
 `knowledge/wiki/features/[F-XXX]-[slug].md`. Stop for a missing, invalid, or
@@ -37,9 +37,9 @@ When available, use:
 prism wiki transition-preflight F-XXX [path] --action design-start --json
 ```
 
-Accept it only with envelope schema 1, command facts, capability version 2 and an
-action-specific `design-start` surface, transition version 1, target owner
-`designer`, and a consistent snapshot. The Prism version alone does not prove
+Accept it only with envelope schema 1, command facts, capability version 3 and an
+action-specific `design-start` surface, transition version 2, target owner
+the design owner (`designer` or `tech-lead`), and a consistent snapshot. The Prism version alone does not prove
 support. Fall back to direct-file checks when any capability or field is missing;
 the preflight is copy-only and never authorizes a write.
 

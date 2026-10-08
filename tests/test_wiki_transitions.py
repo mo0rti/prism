@@ -13,7 +13,8 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from prism_cli.wiki_model import parse_advisory_required_actions, parse_delivery_evidence, read_feature_pages
+from prism_cli.wiki_model import app_stages_text, parse_advisory_required_actions, parse_delivery_rows, read_feature_pages
+from prism_cli.workspace import inspect_workspace
 from prism_cli.wiki_graph import build_graph
 from prism_cli.cli import build_parser
 from prism_cli import wiki_lint
@@ -23,6 +24,7 @@ from prism_cli.wiki_transitions import (
     CAPABILITY_FILES,
     FingerprintCache,
     _OBSERVED_AT_CACHE_LIMIT,
+    build_board_transition_preflight,
     build_transition_preflight,
     evaluate_transition_summaries,
     fingerprint_digest,
@@ -43,7 +45,8 @@ owner: {owner}
 apps: [{platforms}]
 sources: []
 advisory-review: {advisory}
-{advisory_reason}---
+{advisory_reason}criteria-high-water: 2
+---
 
 ## Summary
 Customers can prepare a clear payout summary before review.
@@ -52,8 +55,8 @@ Customers can prepare a clear payout summary before review.
 As a finance operator, I want a payout summary, so that I can review it before handoff.
 
 ## Acceptance criteria
-- [ ] The summary includes the selected payout period.
-- [ ] The summary can be reviewed before it is handed off.
+- [ ] AC-1 [{platforms}] The summary includes the selected payout period.
+- [ ] AC-2 [{platforms}] The summary can be reviewed before it is handed off.
 
 ## Open questions
 
@@ -161,9 +164,10 @@ class WikiTransitionTests(unittest.TestCase):
         path.write_text(body, encoding="utf-8")
         index_path = self.wiki_root / "status-board.md"
         lines = index_path.read_text(encoding="utf-8").splitlines()
+        stages = app_stages_text(status, [platforms], path.read_text(encoding="utf-8"), inspect_workspace(self.root).model)
         lines = [
             (
-                f"| F-001 | Payout summary | {status} | {owner} | {advisory} |"
+                f"| F-001 | Payout summary | {status} | {owner} | {advisory} | — | {stages} | — |"
                 if line.startswith("| F-001 |")
                 else line
             )
@@ -178,7 +182,7 @@ class WikiTransitionTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             invocation = "$po-handoff F-XXX" if role == "codex" else "/po-handoff F-XXX"
             path.write_text(
-                f"<!-- prism:po-handoff-contract:v1 -->\n"
+                f"<!-- prism:po-handoff-contract:v2 -->\n"
                 f"Use {invocation}.\n",
                 encoding="utf-8",
             )
@@ -187,6 +191,8 @@ class WikiTransitionTests(unittest.TestCase):
         """Render every lifecycle instruction surface from repository templates."""
 
         for spec in ACTION_SPECS:
+            if not (spec.enabled and spec.copy):
+                continue
             for role, relative in {
                 "codex": Path(f".agents/skills/{spec.command}/SKILL.md"),
                 "claude": Path(f".claude/commands/{spec.command}.md"),
@@ -218,24 +224,19 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertEqual("po", raw_transition["target_owner"])
         self.assertEqual("ready", raw_transition["classification"])
 
-        self._write_feature(status="done", owner="none")
-        reopen = build_transition_preflight(self.root, "F-001", action="reopen-design")
-        transition = reopen["facts"]["transition"]
-        self.assertEqual("reopen-design", transition["action"])
-        self.assertEqual("in-design", transition["target_status"])
-        self.assertEqual("designer", transition["target_owner"])
-        self.assertEqual("ready", transition["classification"])
-        self.assertEqual("$feature-reopen F-001 in-design", transition["invocations"]["codex"])
-        self.assertEqual("/feature-reopen F-001 in-design", transition["invocations"]["claude"])
-        self.assertNotIn("specified|in-design|in-dev", json.dumps(transition))
+        # The return and reopen routes are registered, and unavailable until their work package lands.
+        self._write_feature(status="released", owner="none")
+        board = build_board_transition_preflight(self.root, "F-001", "reopen-design")
+        self.assertEqual("unknown", board["classification"])
+        self.assertEqual("action-unavailable", board["checks"][0]["code"])
+        copy_only = build_transition_preflight(self.root, "F-001", action="reopen-design")
+        self.assertIn("unsupported-transition-action", {item["code"] for item in copy_only["diagnostics"]})
+        self.assertEqual("unknown", copy_only["facts"]["transition"]["classification"])
 
         graph = build_graph(self.root)
         node = next(node for node in graph["facts"]["nodes"] if node["type"] == "feature")
         self.assertNotIn("transition", node)
-        self.assertEqual(
-            {"reopen-spec", "reopen-design", "reopen-dev"},
-            {record["action"] for record in node["transitions"]},
-        )
+        self.assertEqual([], node["transitions"])
 
     def test_design_start_allows_design_work_and_designer_questions(self) -> None:
         self._write_all_capabilities()
@@ -243,7 +244,7 @@ class WikiTransitionTests(unittest.TestCase):
             feature_id="F-001",
             title="Payout summary",
             status="ready-for-design",
-            owner="designer",
+            owner="tech-lead",
             platforms="backend",
             advisory="not-needed",
             advisory_reason="",
@@ -251,7 +252,7 @@ class WikiTransitionTests(unittest.TestCase):
             "|---|----------|-------|--------|\n\n## App scope",
             "|---|----------|-------|--------|\n| 1 | Which interaction needs review? | designer | open |\n\n## App scope",
         )
-        self._write_feature(status="ready-for-design", owner="designer", body=body)
+        self._write_feature(status="ready-for-design", owner="tech-lead", body=body)
 
         transition = build_transition_preflight(self.root, "F-001", action="design-start")["facts"]["transition"]
 
@@ -260,7 +261,7 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertTrue(transition["supported"])
         self.assertNotIn("design", {check["code"] for check in transition["checks"]})
 
-    def test_valid_design_exemption_reaches_downstream_dev_start(self) -> None:
+    def test_a_ui_app_needs_a_design_page_and_there_is_no_exemption(self) -> None:
         self._write_all_capabilities()
         (self.root / "mobile-ios").mkdir()
         manifest = self.root / "prism.workspace.yml"
@@ -277,10 +278,10 @@ class WikiTransitionTests(unittest.TestCase):
             advisory="not-needed",
             advisory_reason="",
         ).replace(
-            "advisory-review: not-needed\n---",
+            "advisory-review: not-needed\n",
             "advisory-review: not-needed\n"
             "design: not-applicable\n"
-            "design-exemption-reason: Confirmed backend-only workflow with no visual surface.\n---",
+            "design-exemption-reason: Confirmed backend-only workflow with no visual surface.\n",
         )
         self._write_feature(status="ready-for-dev", owner="dev", platforms="mobile-ios", body=body)
         requirements = self.wiki_root / "app-requirements" / "F-001-mobile-ios.md"
@@ -291,13 +292,25 @@ class WikiTransitionTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        lint_result = lint_wiki(self.root)
-        self.assertFalse(any(diagnostic.code == "missing-design" for diagnostic in lint_result.diagnostics))
+        codes = {diagnostic.code for diagnostic in lint_wiki(self.root).diagnostics}
+        self.assertIn("unsupported-feature-field", codes)
+        self.assertIn("missing-design", codes)
+
+        body = body.replace("design: not-applicable\ndesign-exemption-reason: Confirmed backend-only workflow with no visual surface.\n", "")
+        self._write_feature(status="ready-for-dev", owner="dev", platforms="mobile-ios", body=body)
+        design = self.wiki_root / "design" / "F-001-payout.md"
+        design.parent.mkdir(parents=True, exist_ok=True)
+        design.write_text(
+            "---\nfeature-id: F-001\ntitle: Payout design\nfigma: not applicable\n---\n\n"
+            "## Summary\nThe summary screen.\n",
+            encoding="utf-8",
+        )
+        self.assertFalse(any(diagnostic.code == "missing-design" for diagnostic in lint_wiki(self.root).diagnostics))
         transition = build_transition_preflight(self.root, "F-001", action="dev-start")["facts"]["transition"]
         self.assertEqual("pass", next(check for check in transition["checks"] if check["code"] == "app-scope")["status"])
         self.assertEqual("ready", transition["classification"])
 
-    def test_done_requires_current_evidence_requirements_api_and_revalidation(self) -> None:
+    def test_dev_done_checks_the_delivery_rows_of_the_named_apps(self) -> None:
         self._write_all_capabilities()
         self._write_completed_advisory_review()
         body = FEATURE_TEMPLATE.format(
@@ -312,9 +325,9 @@ class WikiTransitionTests(unittest.TestCase):
             "## API surface\n"
             "- The payout summary endpoint is implemented by the backend.\n\n"
             "## Delivery evidence\n"
-            "| App | Implementation | Tests | Release |\n"
-            "|---|---|---|---|\n"
-            "| backend | `backend/src/payouts.kt` implemented | `tests/payouts` passed | release: https://example.test/releases/2026-09-08 |\n"
+            "| App | Artifact | Contract | Implementation | Tests | Basis |\n"
+            "|---|---|---|---|---|---|\n"
+            "| backend | `build:backend#12` | none | `backend/src/payouts.kt` implemented | `tests/payouts` passed | checked |\n"
         )
         self._write_feature(status="in-dev", owner="dev", advisory="done", body=body)
         requirements = self.wiki_root / "app-requirements" / "F-001-backend.md"
@@ -330,15 +343,71 @@ class WikiTransitionTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        ready = build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]
-        self.assertEqual("ready", ready["classification"])
+        # The copy-only preflight has no proposal: the delivery evidence is reported as not yet supplied.
+        copy_only = build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]
+        self.assertEqual("blocked", copy_only["classification"])
+        self.assertEqual("blocked", next(check for check in copy_only["checks"] if check["code"] == "delivery-evidence")["status"])
+        # The board evaluation names the apps the proposal delivers and checks their rows.
+        identity = patch("prism_cli.wiki_transitions._board_workspace_identity_checks", return_value=[])
+        identity.start()
+        self.addCleanup(identity.stop)
+        ready = build_board_transition_preflight(self.root, "F-001", "dev-done", named_apps=["backend"])
+        self.assertEqual("ready", ready["classification"], ready["reason"])
         self.assertTrue(ready["supported"])
+        self.assertEqual("ready-for-qa", ready["target_status"])
+        self.assertEqual("qa", ready["target_owner"])
 
         current = self.feature_path.read_text(encoding="utf-8")
-        self.feature_path.write_text(current.replace("advisory-review: done", "advisory-review: done\nrevalidation: [tests]"), encoding="utf-8")
-        reopened_work = build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]
-        self.assertEqual("ready", reopened_work["classification"])
-        self.assertEqual("pass", next(check for check in reopened_work["checks"] if check["code"] == "revalidation")["status"])
+        self.feature_path.write_text(current.replace("advisory-review: done", "advisory-review: done\napp-revalidation:\n  backend: [tests]"), encoding="utf-8")
+        reopened_work = build_board_transition_preflight(self.root, "F-001", "dev-done", named_apps=["backend"])
+        self.assertEqual("ready", reopened_work["classification"], reopened_work["reason"])
+        self.assertEqual("pass", next(check for check in reopened_work["checks"] if check["code"] == "app-revalidation")["status"])
+        # A feature domain blocks the delivery.
+        self.feature_path.write_text(current.replace("advisory-review: done", "advisory-review: done\nrevalidation: [design]"), encoding="utf-8")
+        blocked = build_board_transition_preflight(self.root, "F-001", "dev-done", named_apps=["backend"])
+        self.assertEqual("blocked", blocked["classification"])
+        self.assertEqual("blocked", next(check for check in blocked["checks"] if check["code"] == "revalidation")["status"])
+
+    def test_an_unreleased_dependency_warns_and_never_blocks_dev_start(self) -> None:
+        self._write_all_capabilities()
+        self._write_completed_advisory_review()
+        body = FEATURE_TEMPLATE.format(
+            feature_id="F-001",
+            title="Payout summary",
+            status="ready-for-dev",
+            owner="dev",
+            platforms="backend",
+            advisory="done",
+            advisory_reason="",
+        )
+        self._write_feature(status="ready-for-dev", owner="dev", advisory="done", body=body)
+        other = FEATURE_TEMPLATE.format(
+            feature_id="F-002", title="Other", status="in-dev", owner="dev", platforms="backend", advisory="not-needed", advisory_reason=""
+        )
+        (self.wiki_root / "features" / "F-002-other.md").write_text(other, encoding="utf-8")
+        write_status_board(
+            self.root,
+            "| F-001 | Payout summary | ready-for-dev | dev | done |\n| F-002 | Other | in-dev | dev | not-needed |\n",
+        )
+        requirements = self.wiki_root / "app-requirements"
+        requirements.mkdir(parents=True, exist_ok=True)
+        (requirements / "F-001-backend.md").write_text(
+            "---\nfeature-id: F-001\napp: backend\nstatus: pending\n---\n\n## What to build\nThe summary data.\n\n"
+            "## Dependencies\n- [F-002](../features/F-002-other.md)\n",
+            encoding="utf-8",
+        )
+        (requirements / "F-002-backend.md").write_text(
+            "---\nfeature-id: F-002\napp: backend\nstatus: pending\n---\n\n## What to build\nSomething.\n",
+            encoding="utf-8",
+        )
+        write_index(self.root)
+
+        transition = build_transition_preflight(self.root, "F-001", action="dev-start")["facts"]["transition"]
+
+        warning = next(check for check in transition["checks"] if check["code"] == "workflow:cross-app-dependency")
+        self.assertEqual("warning", warning["status"])
+        self.assertEqual("ready", transition["classification"], transition["reason"])
+        self.assertIn("Warnings:", transition["reason"])
 
     def test_api_gate_uses_feature_scope_and_explicit_links_only(self) -> None:
         # The requirement page of an app outside the feature's scope still names an app of the workspace.
@@ -400,12 +469,12 @@ class WikiTransitionTests(unittest.TestCase):
             feature_id="F-001",
             title="Payout summary",
             status="in-design",
-            owner="designer",
+            owner="tech-lead",
             platforms="backend",
             advisory="done",
             advisory_reason="",
         )
-        self._write_feature(status="in-design", owner="designer", advisory="done", body=body)
+        self._write_feature(status="in-design", owner="tech-lead", advisory="done", body=body)
         advisory = self.wiki_root / "advisory" / "F-001-review.md"
         advisory.parent.mkdir(parents=True, exist_ok=True)
         advisory.write_text(
@@ -428,7 +497,7 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertEqual("ready", ready["classification"])
         self.assertEqual("pass", next(check for check in ready["checks"] if check["code"] == "advisory-actions")["status"])
 
-    def test_design_handoff_is_blocked_by_open_po_and_designer_questions_but_not_by_a_dev_question(self) -> None:
+    def test_design_handoff_is_blocked_by_open_design_stage_questions_but_not_by_a_dev_question(self) -> None:
         self._write_all_capabilities()
 
         def preflight_with_question(owner: str) -> dict:
@@ -436,7 +505,7 @@ class WikiTransitionTests(unittest.TestCase):
                 feature_id="F-001",
                 title="Payout summary",
                 status="in-design",
-                owner="designer",
+                owner="tech-lead",
                 platforms="backend",
                 advisory="not-needed",
                 advisory_reason="",
@@ -445,10 +514,10 @@ class WikiTransitionTests(unittest.TestCase):
                 "|---|----------|-------|--------|\n"
                 f"| 1 | Which settlement threshold applies? | {owner} | open |\n",
             )
-            self._write_feature(status="in-design", owner="designer", body=body)
+            self._write_feature(status="in-design", owner="tech-lead", body=body)
             return build_transition_preflight(self.root, "F-001", action="design-handoff")["facts"]["transition"]
 
-        for owner in ("po", "designer"):
+        for owner in ("po", "designer", "tech-lead"):
             with self.subTest(owner=owner):
                 blocked = preflight_with_question(owner)
                 self.assertEqual("blocked", blocked["classification"])
@@ -462,7 +531,7 @@ class WikiTransitionTests(unittest.TestCase):
             with self.subTest(guidance=relative):
                 text = " ".join((self.root / relative).read_text(encoding="utf-8").split())
                 self.assertIn("owned by `dev` does not block", text)
-                self.assertIn("`po` or `designer`", text)
+                self.assertIn("`po`, `designer` or `tech-lead`", text)
                 self.assertNotIn("route the question with", text)
 
     def test_advisory_examples_in_comments_or_fences_cannot_satisfy_required_actions(self) -> None:
@@ -493,31 +562,26 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertEqual([], errors)
 
     def test_delivery_evidence_ignores_examples_and_rejects_ambiguous_tables(self) -> None:
+        header = "| App | Artifact | Contract | Implementation | Tests | Basis |"
+        divider = "|---|---|---|---|---|---|"
+        row = "| backend | `build:backend#1` | none | src | passed | checked |"
         cases = [
-            """## Delivery evidence
-```markdown
-| App | Implementation | Tests | Release |
-|---|---|---|---|
-| backend | src | passed | deployed |
-```""",
-            """## Delivery evidence
-<!--
-| App | Implementation | Tests | Release |
-|---|---|---|---|
-| backend | src | passed | deployed |
--->""",
-            """## Delivery evidence
-| App | Implementation | Tests | Release |
-|---|---|---|---|
-| backend | src | passed | deployed | extra |""",
-            """## Delivery evidence
-| App | Implementation | Tests | Release | Release |
-|---|---|---|---|---|
-| backend | src | passed | deployed | pending |""",
+            f"## Delivery evidence\n```markdown\n{header}\n{divider}\n{row}\n```",
+            f"## Delivery evidence\n<!--\n{header}\n{divider}\n{row}\n-->",
         ]
         for body in cases:
             with self.subTest(body=body):
-                _rows, errors = parse_delivery_evidence(body, ["backend"])
+                rows, errors = parse_delivery_rows(body)
+                self.assertEqual(([], []), (rows, errors))
+        bad = [
+            f"## Delivery evidence\n{header}\n{divider}\n{row} extra |",
+            f"## Delivery evidence\n| App | Artifact | Contract | Implementation | Tests |\n|---|---|---|---|---|\n| backend | `build:b#1` | none | src | passed |",
+            f"## Delivery evidence\n{header}\n{divider}\n| backend | main | none | src | passed | checked |",
+            f"## Delivery evidence\n{header}\n{divider}\n| backend | `build:b#1` | none | src | passed | maybe |",
+        ]
+        for body in bad:
+            with self.subTest(body=body):
+                _rows, errors = parse_delivery_rows(body)
                 self.assertTrue(errors)
 
     def test_ready_preflight_is_copy_only_and_uses_canonical_id(self) -> None:
@@ -601,7 +665,7 @@ class WikiTransitionTests(unittest.TestCase):
             advisory="not-needed",
             advisory_reason="",
         ).replace(
-            "- [ ] The summary includes the selected payout period.\n- [ ] The summary can be reviewed before it is handed off.",
+            "- [ ] AC-1 [backend] The summary includes the selected payout period.\n- [ ] AC-2 [backend] The summary can be reviewed before it is handed off.",
             "",
         ).replace(
             "- **backend**: The backend prepares the summary data.",
@@ -637,7 +701,7 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertIsNotNone(envelope["facts"]["feature"])
 
     def test_unsupported_stage_has_explicit_gap_without_fabricated_completeness_checks(self) -> None:
-        self._write_feature(status="ready-for-design", owner="designer")
+        self._write_feature(status="ready-for-design", owner="tech-lead")
 
         transition = build_transition_preflight(self.root, "F-001")["facts"]["transition"]
 
@@ -691,7 +755,7 @@ class WikiTransitionTests(unittest.TestCase):
     def test_codex_capability_requires_real_dollar_invocation(self) -> None:
         codex_path = self.root / CAPABILITY_FILES["codex"]
         codex_path.write_text(
-            "<!-- prism:po-handoff-contract:v1 -->\n"
+            "<!-- prism:po-handoff-contract:v2 -->\n"
             "The argument shape is F-XXX, but no command invocation is provided.\n",
             encoding="utf-8",
         )

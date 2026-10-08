@@ -12,7 +12,7 @@ import yaml
 from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_query import wiki_show
-from prism_cli.wiki_transitions import build_transition_preflight
+from prism_cli.wiki_transitions import build_board_transition_preflight, build_transition_preflight
 from tests.core_workflow_fixture import (
     FEATURE_ID,
     FEATURE_PATH,
@@ -35,12 +35,16 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
             date_patch = patch(f"prism_cli.{module}.date", self.clock)
             date_patch.start()
             self.addCleanup(date_patch.stop)
+        # The board evaluation also checks the identity of a connected board; this fixture has none.
+        identity = patch("prism_cli.wiki_transitions._board_workspace_identity_checks", return_value=[])
+        identity.start()
+        self.addCleanup(identity.stop)
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.root = create_core_workflow_fixture(Path(self.temp_dir.name) / "document-review")
         self.feature_path = self.root / FEATURE_PATH
 
-    def test_neutral_scenario_covers_intake_handoff_blockers_completion_and_reopen(self) -> None:
+    def test_neutral_scenario_covers_intake_handoff_blockers_delivery_and_the_unavailable_reopen(self) -> None:
         # The fixture begins at the intake queue, with no generated app or
         # Copier answers. The empty backend directory only records declared
         # scope for today's shared workspace identity contract.
@@ -99,9 +103,9 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
 
         # Walk the existing backend-only lifecycle mappings using their named
         # preflights. These edits model accepted states only in this temp tree.
-        _set_stage(self.root, "ready-for-design", "designer")
+        _set_stage(self.root, "ready-for-design", "tech-lead")
         self.assertEqual("ready", _transition(self.root, "design-start")["classification"])
-        _set_stage(self.root, "in-design", "designer")
+        _set_stage(self.root, "in-design", "tech-lead")
         self.assertEqual("ready", _transition(self.root, "design-handoff")["classification"])
         _set_stage(self.root, "ready-for-dev", "dev")
 
@@ -111,41 +115,50 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
         _set_stage(self.root, "in-dev", "dev")
         requirement.write_text(_requirement_page("in-progress"), encoding="utf-8")
 
-        # Completion remains blocked until substantive current evidence is
-        # present. Adding evidence and completing the platform requirement
-        # changes the source snapshot and makes the same preflight ready.
-        blocked_done = _transition(self.root, "dev-done")
+        # Delivery remains blocked until the proposal carries substantive
+        # evidence for the app it delivers. Adding the row and completing the
+        # app requirement changes the source snapshot and makes the same
+        # preflight ready.
+        blocked_done = build_board_transition_preflight(self.root, FEATURE_ID, "dev-done", named_apps=["backend"])
         self.assertEqual("blocked", blocked_done["classification"])
         self.assertEqual("blocked", _check(blocked_done, "delivery-evidence")["status"])
         before_evidence = _snapshot(self.root, "dev-done")
         source = self.feature_path.read_text(encoding="utf-8")
         source += (
             "\n## Delivery evidence\n"
-            "| App | Implementation | Tests | Release |\n"
-            "|---|---|---|---|\n"
-            "| backend | Synthetic fixture reference `evidence/review-summary.md` | Synthetic fixture check `review-summary` passed | release: evidence/review-v1.md |\n"
+            "| App | Artifact | Contract | Implementation | Tests | Basis |\n"
+            "|---|---|---|---|---|---|\n"
+            "| backend | `build:backend#1` | none | Synthetic fixture reference `evidence/review-summary.md` | Synthetic fixture check `review-summary` passed | attested |\n"
+            "\n## QA verification\n"
+            "| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |\n"
+            "|---|---|---|---|---|---|---|---|---|\n"
+            "\n## Release\n"
+            "| App | Target | Version | Attempt | Outcome | Record | Basis |\n"
+            "|---|---|---|---|---|---|---|\n"
+            "\n## Evidence history\n"
         )
         self.feature_path.write_text(source, encoding="utf-8")
         requirement.write_text(_requirement_page("done"), encoding="utf-8")
-        done_preflight = _transition(self.root, "dev-done")
-        # Ready means the existing observable checks pass. These fixture-only
-        # references are not real implementation, test, or release claims.
-        self.assertEqual("ready", done_preflight["classification"])
-        self.assertEqual("done", done_preflight["target_status"])
+        done_preflight = build_board_transition_preflight(self.root, FEATURE_ID, "dev-done", named_apps=["backend"])
+        # Ready means the observable checks pass. These fixture-only
+        # references are not real implementation or test claims.
+        self.assertEqual("ready", done_preflight["classification"], done_preflight["reason"])
+        self.assertEqual("ready-for-qa", done_preflight["target_status"])
+        self.assertEqual("qa", done_preflight["target_owner"])
         self.assertNotEqual(before_evidence, _snapshot(self.root, "dev-done"))
 
-        _set_stage(self.root, "done", "none")
+        _set_stage(self.root, "ready-for-qa", "qa")
         lint = lint_wiki(self.root)
-        self.assertEqual([], [item.code for item in lint.diagnostics if item.code.startswith("done-")])
+        self.assertEqual([], [item.code for item in lint.diagnostics if item.severity == "error"])
         completed_graph = build_graph(self.root)
         node = next(node for node in completed_graph["facts"]["nodes"] if node["id"] == FEATURE_ID)
-        self.assertEqual("done", node["status"])
+        self.assertEqual("ready-for-qa", node["status"])
+        self.assertEqual([{"app": "backend", "stage": "ready-for-qa"}], node["app_stages"])
 
-        reopen = _transition(self.root, "reopen-dev")
-        self.assertEqual("ready", reopen["classification"])
-        self.assertEqual("in-dev", reopen["target_status"])
-        self.assertEqual("dev", reopen["target_owner"])
-        self.assertEqual("pass", _check(reopen, "reopen-impact-review")["status"])
+        # The reopen routes belong to a later work package: registered, and unavailable.
+        reopen = build_board_transition_preflight(self.root, FEATURE_ID, "reopen-dev")
+        self.assertEqual("unknown", reopen["classification"])
+        self.assertEqual("unknown", _check(reopen, "action-unavailable")["status"])
 
 
 def _feature_page() -> str:
@@ -157,6 +170,7 @@ def _feature_page() -> str:
         "apps": ["backend"],
         "sources": [PROCESSED_INTAKE_ITEM.as_posix()],
         "advisory-review": "not-needed",
+        "criteria-high-water": 2,
     }
     body = """## Summary
 Review a document, summarize its key points, and record the review outcome.
@@ -165,8 +179,8 @@ Review a document, summarize its key points, and record the review outcome.
 As a reviewer, I want to record a document review, so that the outcome and follow-up are clear.
 
 ## Acceptance criteria
-- [ ] A review summary records the document's key points.
-- [ ] A reviewer can record the outcome and requested follow-up.
+- [ ] AC-1 [backend] A review summary records the document's key points.
+- [ ] AC-2 [backend] A reviewer can record the outcome and requested follow-up.
 
 ## Open questions
 | # | Question | Owner | Status |

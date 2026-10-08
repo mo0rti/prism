@@ -37,8 +37,8 @@ def copy_template_knowledge(destination: Path, **context: Any) -> None:
 
 STATUS_BOARD_HEADER = (
     "# Feature Status Board\n\n"
-    "| ID | Feature | Status | Owner | Board Review |\n"
-    "|----|---------|--------|-------|--------------|\n"
+    "| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |\n"
+    "|----|---------|--------|-------|--------------|---------------|------------|-----------|\n"
 )
 
 
@@ -57,8 +57,71 @@ def write_index(root: Path) -> None:
 
 
 def write_status_board(root: Path, rows: str = "") -> None:
-    """Write `knowledge/wiki/status-board.md` under the workspace `root` with the given table rows."""
+    """Write `knowledge/wiki/status-board.md` under the workspace `root` with the given table rows.
+
+    A row of five cells (ID to Board Review) is completed with the three columns the board derives: `Design tracks` is
+    `—`, `App stages` follows the feature page on disk, `Open bugs` is `—`.
+    """
 
     wiki_root = root / "knowledge" / "wiki"
     wiki_root.mkdir(parents=True, exist_ok=True)
-    (wiki_root / "status-board.md").write_text(STATUS_BOARD_HEADER + rows, encoding="utf-8", newline="\n")
+    (wiki_root / "status-board.md").write_text(STATUS_BOARD_HEADER + _complete_rows(root, rows), encoding="utf-8", newline="\n")
+
+
+def _complete_rows(root: Path, rows: str) -> str:
+    from prism_cli.wiki_model import app_stages_text, read_feature_pages
+    from prism_cli.workspace import inspect_workspace
+
+    pages = {page.feature_id.casefold(): page for page in read_feature_pages(root / "knowledge" / "wiki")}
+    model = None
+    completed: list[str] = []
+    for line in rows.splitlines(keepends=True):
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if line.strip().startswith("|") and len(cells) == 5 and cells[0].upper().startswith("F-"):
+            page = pages.get(cells[0].casefold())
+            stages = "—"
+            if page is not None:
+                if model is None:
+                    model = inspect_workspace(root).model
+                stages = app_stages_text(page.status, page.apps, page.page.body, model)
+            ending = "\n" if line.endswith("\n") else ""
+            line = "| " + " | ".join([*cells, "—", stages, "—"]) + " |" + ending
+        completed.append(line)
+    return "".join(completed)
+
+
+def evidence_tables(
+    apps: list[str],
+    *,
+    stage: str = "released",
+    feature_id: str = "F-001",
+    criterion: str = "The summary includes the payout period.",
+    skip: tuple[str, ...] = (),
+) -> str:
+    """The three evidence tables of a feature whose `apps` are all at `stage`, each app citing criterion AC-1.
+
+    The criterion is the one the fixtures write: `AC-1 [<apps>] <criterion>` with no evidence label. `stage` is
+    `ready-for-qa` (delivery rows), `in-qa` (plus a passing QA row per app), `ready-for-release` (plus a pending
+    Release row) or `released` (a released Release row). Apps named in `skip` get no rows.
+    """
+
+    from prism_cli.wiki_model import criterion_revision
+
+    revision = criterion_revision(feature_id, 1, apps, False, "", criterion)
+    delivery = ["## Delivery evidence", "| App | Artifact | Contract | Implementation | Tests | Basis |", "|---|---|---|---|---|---|"]
+    qa = ["## QA verification", "| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |", "|---|---|---|---|---|---|---|---|---|"]
+    release = ["## Release", "| App | Target | Version | Attempt | Outcome | Record | Basis |", "|---|---|---|---|---|---|---|"]
+    levels = ("ready-for-qa", "in-qa", "ready-for-release", "released")
+    level = levels.index(stage)
+    for app in apps:
+        if app in skip:
+            continue
+        artifact = f"build:{app}#1"
+        delivery.append(f"| {app} | `{artifact}` | none | [PR 1](https://git.example/acme/pull/1) | `./run-tests`: passed | checked |")
+        if level >= 1:
+            qa.append(f"| {app} | AC-1@{revision} | automated | `{artifact}` | ci | qa-1 | pass | [run](https://ci.example/1) | checked |")
+        if level == 2:
+            release.append(f"| {app} | — | `{artifact}` | release-1 | pending | — | — |")
+        if level == 3:
+            release.append(f"| {app} | production | `{artifact}` | release-1 | released | [REL-001](https://records.example/REL-001) | checked |")
+    return "\n\n".join("\n".join(section) for section in (delivery, qa, release)) + "\n"

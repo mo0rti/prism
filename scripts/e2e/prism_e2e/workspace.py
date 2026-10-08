@@ -268,13 +268,49 @@ def rewrite_status_board(board_text: str, row: str | None) -> str:
     return "\n".join(out)
 
 
-def feature_row(front_matter: dict[str, str]) -> str:
-    return "| {id} | {title} | {status} | {owner} | {review} |".format(
+_IN_DEV_AND_LATER = ("in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released")
+
+
+def feature_apps(text: str) -> list[str]:
+    """The app IDs of a feature page's ``apps`` front matter, as a flow list or a block list."""
+
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        flow = re.match(r"^apps:\s*\[(.*)\]\s*$", line)
+        if flow:
+            return [item.strip() for item in flow.group(1).split(",") if item.strip()]
+        if line.strip() == "apps:":
+            apps = []
+            for item in lines[index + 1:]:
+                block = re.match(r"^-\s+(\S+)\s*$", item)
+                if not block:
+                    break
+                apps.append(block.group(1))
+            return apps
+    return []
+
+
+def app_stages_cell(front_matter: dict[str, str], text: str) -> str:
+    """The ``App stages`` cell of the journey: ``<app>: in-dev`` until the app has a Delivery evidence row, then ``ready-for-qa``.
+
+    The journey stops at ``ready-for-qa``, so the QA and Release rows never exist in it.
+    """
+
+    if front_matter.get("status") not in _IN_DEV_AND_LATER:
+        return "—"
+    section = re.search(r"(?ms)^## Delivery evidence\s*\n(.*?)(?=^## |\Z)", text)
+    delivered = {match.group(1) for match in re.finditer(r"(?m)^\|\s*([a-z0-9][a-z0-9-]*)\s*\|", section.group(1))} - {"app"} if section else set()
+    return "; ".join(f"{app}: {'ready-for-qa' if app in delivered else 'in-dev'}" for app in feature_apps(text)) or "—"
+
+
+def feature_row(front_matter: dict[str, str], text: str = "") -> str:
+    return "| {id} | {title} | {status} | {owner} | {review} | — | {stages} | — |".format(
         id=front_matter["id"],
         title=front_matter["title"],
         status=front_matter["status"],
         owner=front_matter["owner"],
         review=front_matter.get("advisory-review", "not-needed"),
+        stages=app_stages_cell(front_matter, text),
     )
 
 
@@ -294,7 +330,8 @@ def seed_state(workspace: Path, step: str | None, fixture_set: Path | None = Non
         shutil.copyfile(source, target)
     board_path = workspace / "knowledge/wiki/status-board.md"
     feature = find_feature_page(workspace)
-    row = feature_row(parse_front_matter(feature.read_text(encoding="utf-8"))) if feature else None
+    page_text = feature.read_text(encoding="utf-8") if feature else ""
+    row = feature_row(parse_front_matter(page_text), page_text) if feature else None
     board_path.write_text(rewrite_status_board(board_path.read_text(encoding="utf-8"), row), encoding="utf-8", newline="\n")
     return sorted(files)
 

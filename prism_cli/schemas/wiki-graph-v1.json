@@ -190,6 +190,19 @@
         "transitions": {
           "type": "array",
           "items": { "$ref": "#/$defs/transition" }
+        },
+        "app_stages": {
+          "type": "array",
+          "description": "The stage of each active app of a feature at in-dev or later; the feature's status is the minimum.",
+          "items": {
+            "type": "object",
+            "required": ["app", "stage"],
+            "properties": {
+              "app": { "type": "string", "minLength": 1 },
+              "stage": { "enum": ["in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released"] }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": true
@@ -224,12 +237,26 @@
             "po-specify",
             "po-handoff",
             "design-start",
+            "design-ui-done",
+            "tech-design-done",
             "design-handoff",
             "dev-start",
             "dev-done",
+            "dev-return-spec",
+            "dev-return-design",
+            "qa-verify",
+            "qa-pass",
+            "qa-fail",
+            "qa-return-spec",
+            "qa-return-design",
+            "release-done",
+            "release-return-dev",
+            "release-rollback",
+            "release-redeploy",
             "reopen-spec",
             "reopen-design",
-            "reopen-dev"
+            "reopen-dev",
+            "scope-edit"
           ]
         },
         "role": { "enum": ["codex", "claude"] },
@@ -258,7 +285,7 @@
       "type": "object",
       "required": ["version", "mode", "supported_actions", "snapshot", "sources", "surfaces"],
       "properties": {
-        "version": { "const": 2 },
+        "version": { "const": 3 },
         "mode": { "const": "copy-only" },
         "supported_actions": {
           "type": "array",
@@ -268,12 +295,26 @@
               "po-specify",
               "po-handoff",
               "design-start",
+              "design-ui-done",
+              "tech-design-done",
               "design-handoff",
               "dev-start",
               "dev-done",
+              "dev-return-spec",
+              "dev-return-design",
+              "qa-verify",
+              "qa-pass",
+              "qa-fail",
+              "qa-return-spec",
+              "qa-return-design",
+              "release-done",
+              "release-return-dev",
+              "release-rollback",
+              "release-redeploy",
               "reopen-spec",
               "reopen-design",
-              "reopen-dev"
+              "reopen-dev",
+              "scope-edit"
             ]
           }
         },
@@ -294,7 +335,7 @@
       "required": ["code", "status", "message"],
       "properties": {
         "code": { "type": "string", "minLength": 1 },
-        "status": { "enum": ["pass", "blocked", "unknown", "review"] },
+        "status": { "enum": ["pass", "warning", "blocked", "unknown", "review"] },
         "message": { "type": "string", "minLength": 1 },
         "path": { "type": "string", "minLength": 1 }
       },
@@ -318,14 +359,14 @@
         "reason"
       ],
       "properties": {
-        "version": { "const": 1 },
+        "version": { "const": 2 },
         "feature_id": { "type": "string", "minLength": 1 },
         "source_status": { "type": ["string", "null"] },
         "source_owner": { "type": ["string", "null"] },
         "source_path": { "type": ["string", "null"] },
         "target_status": {
           "type": ["string", "null"],
-          "enum": ["specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done", null]
+          "enum": ["specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released", null]
         },
         "target_owner": { "type": ["string", "null"] },
         "action": {
@@ -334,12 +375,26 @@
             "po-specify",
             "po-handoff",
             "design-start",
+            "design-ui-done",
+            "tech-design-done",
             "design-handoff",
             "dev-start",
             "dev-done",
+            "dev-return-spec",
+            "dev-return-design",
+            "qa-verify",
+            "qa-pass",
+            "qa-fail",
+            "qa-return-spec",
+            "qa-return-design",
+            "release-done",
+            "release-return-dev",
+            "release-rollback",
+            "release-redeploy",
             "reopen-spec",
             "reopen-design",
             "reopen-dev",
+            "scope-edit",
             null
           ]
         },

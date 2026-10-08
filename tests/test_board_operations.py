@@ -29,8 +29,8 @@ class BoardOperationTests(unittest.TestCase):
         source = self.root / "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
         source.parent.mkdir(parents=True)
         source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
-        self.put(self.feature, _feature_page().replace("status: raw", "status: ready-for-design").replace("owner: po", "owner: designer").replace("| po | open |", "| po | resolved: Summarize key points. |"))
-        _write_index(self.root, "ready-for-design", "designer")
+        self.put(self.feature, _feature_page().replace("status: raw", "status: ready-for-design").replace("owner: po", "owner: tech-lead").replace("| po | open |", "| po | resolved: Summarize key points. |"))
+        _write_index(self.root, "ready-for-design", "tech-lead")
         self.service = BoardService(self.root).start()
         self.addCleanup(lambda: self.service.close())
         self.grant = self.service.create_participant("Reviewer", "human", True)
@@ -98,7 +98,7 @@ class BoardOperationTests(unittest.TestCase):
             self.assertEqual("recovery_review_required", error.exception.code)
         # Preserve unrelated work that arrives while the human reviews the
         # target row and remaining writes.
-        extra = "| F-002 | Keep unrelated work | raw | po | not-needed |\n"
+        extra = "| F-002 | Keep unrelated work | raw | po | not-needed | — | — | — |\n"
         self.put(self.board, self.read(self.board) + extra)
         self.put(self.log, self.read(self.log) + "\nExternal note during recovery review.\n")
         receipt = self.service.recover(self.actor, "agent-operation", inspected["recovery_review_revision"], True)
@@ -127,7 +127,7 @@ class BoardOperationTests(unittest.TestCase):
         self.put(self.feature, self.read(self.feature).replace("status: in-design", "status: ready-for-design"))
         # Use a distinct feature so unresolved agent work cannot overlap.
         self.put("knowledge/wiki/features/F-002-second-review.md", self.read(self.feature).replace("F-001", "F-002"))
-        self.put(self.board, self.read(self.board) + "| F-002 | Second review | ready-for-design | designer | not-needed |\n")
+        self.put(self.board, self.read(self.board) + "| F-002 | Second review | ready-for-design | tech-lead | not-needed | — | — | — |\n")
         preview = self.preview("F-002")
         self.partial(preview, "human-operation", crash=True)
         other_grant = self.service.create_participant("Other human", "human", True)
@@ -201,7 +201,7 @@ class BoardOperationTests(unittest.TestCase):
 
     def test_unrelated_status_board_bytes_and_log_append_are_preserved(self):
         preview = self.preview()
-        extra = "| F-002 | Keep  exact spacing | raw | po | not-needed |\r\n"
+        extra = "| F-002 | Keep  exact spacing | raw | po | not-needed | — | — | — |\r\n"
         self.put(self.board, self.read(self.board).replace("\r\n", "\n").replace("\n", "\r\n") + extra)
         old_log = self.read(self.log) + "\r\nExternal human note: preserve these bytes.\r\n"
         self.put(self.log, old_log)
@@ -217,7 +217,7 @@ class BoardOperationTests(unittest.TestCase):
         self.assertEqual("stale_preview", error.exception.code)
         self.assertEqual(0, self.service.store.connection.execute("SELECT COUNT(*) FROM operations").fetchone()[0])
         fresh = self.preview()
-        self.put(self.board, self.read(self.board).replace("| designer |", "| po |"))
+        self.put(self.board, self.read(self.board).replace("| tech-lead |", "| po |"))
         with self.assertRaises(BoardError) as error:
             self.apply(fresh)
         self.assertEqual("stale_status_row", error.exception.code)
@@ -239,7 +239,7 @@ class BoardOperationTests(unittest.TestCase):
             retried = self.apply(preview)
         self.assertEqual("applied", retried["state"], retried)
         self.assertEqual(1, revalidation.call_count, "an apply that finds its operation pending revalidates it")
-        self.assertIn("| in-design | designer |", self.read(self.board))
+        self.assertIn("| in-design | tech-lead |", self.read(self.board))
 
     def test_a_source_edited_after_the_validation_still_stops_the_roll_forward_before_any_write(self):
         preview = self.preview()
@@ -270,7 +270,7 @@ class BoardOperationTests(unittest.TestCase):
         self.assertEqual(["applied", "pending", "pending"], [item["state"] for item in pending["remaining_changes"]])
         receipt = self.service.recover(self.actor, "test-operation")
         self.assertEqual("applied", receipt["state"], receipt)
-        self.assertIn("| in-design | designer |", self.read(self.board))
+        self.assertIn("| in-design | tech-lead |", self.read(self.board))
         self.assertEqual(receipt, self.apply(preview))
 
     def test_partial_recovery_rejects_changed_relevant_source_without_more_writes(self):
@@ -311,7 +311,7 @@ class BoardOperationTests(unittest.TestCase):
     def test_unrelated_operation_can_finish_while_first_is_pending(self):
         feature2 = "knowledge/wiki/features/F-002-another-review.md"
         self.put(feature2, self.read(self.feature).replace("F-001", "F-002"))
-        self.put(self.board, self.read(self.board) + "| F-002 | Document review | ready-for-design | designer | not-needed |\n")
+        self.put(self.board, self.read(self.board) + "| F-002 | Document review | ready-for-design | tech-lead | not-needed | — | — | — |\n")
         first, second = self.preview(), self.preview("F-002")
         self.partial(first, "first")
         receipt = self.apply(second, "second")

@@ -340,6 +340,8 @@ def feature_page(number: int, rng: random.Random) -> tuple[str, dict[str, str]]:
     for index, (owner, is_open) in enumerate(plan["questions"], start=1):
         question = rng.choice(_QUESTIONS)
         rows.append(f"| {index} | {question} | {owner} | {'open' if is_open else _ANSWER} |")
+    # A specified feature carries criterion IDs and the empty evidence sections; a raw one has neither (CONTRACTS 4.1).
+    specified = plan["status"] != "raw"
     page = (
         "---\n"
         f"id: {feature_id}\n"
@@ -349,13 +351,17 @@ def feature_page(number: int, rng: random.Random) -> tuple[str, dict[str, str]]:
         "apps:\n- backend\n"
         f"sources:\n- {PROCESSED_SOURCE}\n"
         "advisory-review: not-needed\n"
-        "---\n\n"
+        + (f"criteria-high-water: {criteria}\n" if specified else "")
+        + "---\n\n"
         "## Summary\n"
         f"{subject}: review a document, summarize its key points, and record the review outcome.\n\n"
         "## User story\n"
         "As a reviewer, I want to record a document review, so that the outcome and follow-up are clear.\n\n"
         "## Acceptance criteria\n"
-        + "".join(f"- [ ] Condition {i} for {title} can be checked without ambiguity.\n" for i in range(1, criteria + 1))
+        + "".join(
+            f"- [ ] {'AC-%d [backend] ' % i if specified else ''}Condition {i} for {title} can be checked without ambiguity.\n"
+            for i in range(1, criteria + 1)
+        )
         + "\n## Open questions\n"
         "| # | Question | Owner | Status |\n"
         "|---|----------|-------|--------|\n"
@@ -364,6 +370,13 @@ def feature_page(number: int, rng: random.Random) -> tuple[str, dict[str, str]]:
         "- **backend**: Store the review summary and recorded outcome.\n\n"
         "## API surface\nNone\n"
     )
+    if specified:
+        page += (
+            "\n## Delivery evidence\n| App | Artifact | Contract | Implementation | Tests | Basis |\n|---|---|---|---|---|---|\n"
+            "\n## QA verification\n| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |\n|---|---|---|---|---|---|---|---|---|\n"
+            "\n## Release\n| App | Target | Version | Attempt | Outcome | Record | Basis |\n|---|---|---|---|---|---|---|\n"
+            "\n## Evidence history\n"
+        )
     return page, {"id": feature_id, "title": title, "status": plan["status"], "owner": plan["owner"], "slug": _slug(title)}
 
 

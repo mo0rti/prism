@@ -164,8 +164,8 @@ class AgentOnlyActionTests(ScenarioCase):
             expect(dialog).to_have_count(0)
 
             # A blocked preflight keeps Copy disabled and shows why instead of a request.
-            board.agent_request_button(IN_DEV.feature_id, "completion").click()
-            blocked = self.request_dialog(board, "completion")
+            board.agent_request_button(IN_DEV.feature_id, "delivery").click()
+            blocked = self.request_dialog(board, "delivery")
             expect(blocked).to_be_visible()
             expect(blocked.get_by_text("missing requirement for `backend`.").first).to_be_visible()
             blocked_copy = self.copy_button(blocked)

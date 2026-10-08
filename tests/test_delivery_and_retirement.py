@@ -14,14 +14,15 @@ from prism_cli.board_reads import query
 from prism_cli.board_service import BoardError, BoardService
 from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_lint import lint_wiki
-from prism_cli.wiki_model import DeliveryProblem, parse_delivery_evidence, release_evidence_problem
-from prism_cli.wiki_transitions import ACTION_SPECS, build_transition_preflight
+from prism_cli.wiki_model import parse_delivery_rows, release_evidence_problem
+from prism_cli.wiki_transitions import ACTION_SPECS, build_board_transition_preflight, build_transition_preflight
 from prism_cli.workspace import MANIFEST_FILE, load_workspace
 from tests import app_model_baseline
 from tests import real_temp  # noqa: F401
 from tests import test_feature_scope_apps as scope
 from tests.test_app_model_workspace import declare_two_apps, install_workflow
 from tests.test_apps_surfaces import run_cli, run_json
+from tests.wiki_files import evidence_tables, write_status_board
 
 
 URL = "https://example.com/releases/1.4.0"
@@ -66,9 +67,38 @@ REJECTED_RELEASE_CELLS = {
 }
 
 
-def evidence_section(rows: dict[str, str], *, implementation: str = "Pull request 42 merged", tests: str = "CI run 1187 passed") -> str:
-    lines = ["## Delivery evidence", "| App | Implementation | Tests | Release |", "|---|---|---|---|"]
-    lines.extend(f"| {app} | {implementation} | {tests} | {release} |" for app, release in rows.items())
+ACCEPTED_ARTIFACTS = {
+    "version": "version:1.4.0",
+    "version with a suffix": "version:1.4.0-rc.1",
+    "build": "build:backend#412",
+    "build, backticked": "`build:backend#412`",
+    "image": "image:registry.example/acme/app@sha256:" + "a" * 64,
+    "package": "package:@acme/app@1.4.0",
+    "short commit": "commit:3f9c2ab",
+    "full commit": "commit:3f9c2ab4d5e6f708192a3b4c5d6e7f8091a2b3c4",
+}
+
+REJECTED_ARTIFACTS = {
+    "a branch": "main",
+    "a build without a number": "build:backend",
+    "a build in upper case": "build:Backend#412",
+    "an image without a digest": "image:registry.example/acme/app:latest",
+    "an image with a short digest": "image:registry.example/acme/app@sha256:abc123",
+    "a commit that is too short": "commit:3f9c2",
+    "a commit with a non-hex digit": "commit:3f9c2az",
+    "a version with a letter": "version:one",
+    "an unknown kind": "release:1.4.0",
+    "empty": "",
+    "a placeholder": "[artifact]",
+}
+
+
+
+def evidence_section(rows: dict[str, str], *, implementation: str = "Pull request 42 merged", tests: str = "CI run 1187 passed", basis: str = "checked", contract: str = "none") -> str:
+    """A `## Delivery evidence` table with one row per app; `rows` maps the app to its Artifact cell."""
+
+    lines = ["## Delivery evidence", "| App | Artifact | Contract | Implementation | Tests | Basis |", "|---|---|---|---|---|---|"]
+    lines.extend(f"| {app} | {artifact} | {contract} | {implementation} | {tests} | {basis} |" for app, artifact in rows.items())
     return "\n".join(lines) + "\n"
 
 
@@ -77,112 +107,128 @@ def snapshot(root: Path) -> dict[str, bytes]:
 
 
 class ReleaseCellTests(unittest.TestCase):
+    """`release_evidence_problem` validates the Evidence cells of release records."""
+
     def test_each_accepted_form_is_release_evidence_or_an_attestation(self) -> None:
         for name, cell in ACCEPTED_RELEASE_CELLS.items():
             with self.subTest(form=name):
                 self.assertIsNone(release_evidence_problem(cell))
-                rows, problems = parse_delivery_evidence(evidence_section({"backend": cell}), ["backend"])
-                self.assertEqual([], problems)
-                self.assertEqual(cell, rows["backend"]["release"])
 
-    def test_each_rejected_form_gets_the_release_code_and_the_shipment_message(self) -> None:
+    def test_each_rejected_form_has_a_reason(self) -> None:
         for name, cell in REJECTED_RELEASE_CELLS.items():
             with self.subTest(form=name):
                 self.assertIsNotNone(release_evidence_problem(cell))
-                _rows, problems = parse_delivery_evidence(evidence_section({"backend": cell}), ["backend"])
-                self.assertEqual(["release-evidence-required"], [problem.code for problem in problems])
-                self.assertIsInstance(problems[0], DeliveryProblem)
-                self.assertIn("`backend`", problems[0].message)
-                self.assertIn("proves which code changed, not that it shipped", problems[0].message)
-                self.assertIn("attested by <Name>", problems[0].message)
 
-    def test_the_implementation_and_tests_cells_keep_their_rule(self) -> None:
-        _rows, problems = parse_delivery_evidence(evidence_section({"backend": f"release: {URL}"}, implementation="n/a"), ["backend"])
-        self.assertEqual([("delivery-evidence", "Delivery evidence `implementation` for `backend` is empty or still a placeholder.")], [(p.code, p.message) for p in problems])
-        _rows, problems = parse_delivery_evidence(evidence_section({"backend": f"release: {URL}"}, tests="[test command and result]"), ["backend"])
-        self.assertEqual(["delivery-evidence"], [problem.code for problem in problems])
+
+class DeliveryRowTests(unittest.TestCase):
+    def test_each_accepted_artifact_form_is_a_valid_row(self) -> None:
+        for name, artifact in ACCEPTED_ARTIFACTS.items():
+            with self.subTest(form=name):
+                rows, problems = parse_delivery_rows(evidence_section({"backend": artifact}))
+                self.assertEqual([], problems)
+                self.assertEqual(["backend"], [row.app for row in rows])
+                self.assertEqual(artifact.strip("`"), rows[0].artifact)
+
+    def test_each_rejected_artifact_form_is_artifact_reference_invalid(self) -> None:
+        for name, artifact in REJECTED_ARTIFACTS.items():
+            with self.subTest(form=name):
+                _rows, problems = parse_delivery_rows(evidence_section({"backend": artifact}))
+                self.assertIn("artifact_reference_invalid", [problem.code for problem in problems])
+
+    def test_the_other_cells_keep_their_rules(self) -> None:
+        _rows, problems = parse_delivery_rows(evidence_section({"backend": "build:backend#1"}, implementation="n/a"))
+        self.assertEqual([("delivery_evidence_invalid", "backend")], [(p.code, p.subject) for p in problems])
+        _rows, problems = parse_delivery_rows(evidence_section({"backend": "build:backend#1"}, tests="[test command and result]"))
+        self.assertEqual(["delivery_evidence_invalid"], [problem.code for problem in problems])
         # A pull request or commit stays a fine Implementation reference.
-        _rows, problems = parse_delivery_evidence(evidence_section({"backend": f"release: {URL}"}, implementation="https://github.com/acme/app/pull/42"), ["backend"])
+        _rows, problems = parse_delivery_rows(evidence_section({"backend": "build:backend#1"}, implementation="https://github.com/acme/app/pull/42"))
         self.assertEqual([], problems)
+        _rows, problems = parse_delivery_rows(evidence_section({"backend": "build:backend#1"}, basis="maybe"))
+        self.assertEqual(["basis_invalid"], [problem.code for problem in problems])
+        _rows, problems = parse_delivery_rows(evidence_section({"backend": "build:backend#1"}, contract="F-001@v1:c1:" + "b" * 64))
+        self.assertEqual([], problems)
+        _rows, problems = parse_delivery_rows(evidence_section({"backend": "build:backend#1"}, contract="latest"))
+        self.assertEqual(["delivery_evidence_invalid"], [problem.code for problem in problems])
 
-    def test_a_row_for_every_app_in_scope_is_still_required(self) -> None:
-        _rows, problems = parse_delivery_evidence(evidence_section({"backend": f"release: {URL}"}), ["backend", "web-user-app"])
-        self.assertEqual([("delivery-evidence", "Delivery evidence is missing declared app(s): web-user-app.")], [(p.code, p.message) for p in problems])
+    def test_the_rows_are_read_for_every_app_and_a_missing_table_has_none(self) -> None:
+        rows, problems = parse_delivery_rows(evidence_section({"backend": "build:backend#1", "web": "build:web#2"}))
+        self.assertEqual(([], ["backend", "web"]), (problems, [row.app for row in rows]))
+        self.assertEqual(([], []), parse_delivery_rows("## Delivery evidence\n"))
 
 
-class ReleaseCellSurfaceTests(scope.WikiWorkspaceCase):
-    """The same Release rule in lint, in the dev-done transition check and in the board's validation."""
+class DeliveryEvidenceSurfaceTests(scope.WikiWorkspaceCase):
+    """The same row rules in lint, in the dev-done transition check and in the board's validation."""
 
-    def write_done(self, release: str) -> None:
-        path = self.write_feature(["customer-android"], status="done", owner="none")
-        path.write_text(path.read_text(encoding="utf-8") + "\n" + evidence_section({"customer-android": release}), encoding="utf-8")
+    def write_delivered(self, artifact: str, *, status: str = "ready-for-qa", owner: str = "qa") -> None:
+        path = self.write_feature(["customer-android"], status=status, owner=owner)
+        path.write_text(path.read_text(encoding="utf-8") + "\n" + evidence_section({"customer-android": artifact}), encoding="utf-8")
+        write_status_board(self.root, f"| F-001 | Payout summary | {status} | {owner} | not-needed |\n")
 
-    def write_in_dev(self, release: str) -> None:
-        path = self.write_feature(["customer-android"], status="in-dev", owner="dev")
-        path.write_text(path.read_text(encoding="utf-8") + "\n" + evidence_section({"customer-android": release}), encoding="utf-8")
-
-    def test_lint_applies_the_rule_to_a_done_feature(self) -> None:
+    def test_lint_reads_the_delivery_rows_of_a_feature_in_qa(self) -> None:
         self.write_requirement("customer-android", "done")
         self.write_design()
-        for name, cell in ACCEPTED_RELEASE_CELLS.items():
+        for name, artifact in ACCEPTED_ARTIFACTS.items():
             with self.subTest(accepted=name):
-                self.write_done(cell)
-                result = self.lint()
-                self.assertEqual([], self.with_code(result, "release-evidence-required"))
-                self.assertEqual([], self.with_code(result, "done-delivery-evidence"))
-        for name, cell in REJECTED_RELEASE_CELLS.items():
+                self.write_delivered(artifact)
+                self.assertEqual([], self.with_code(self.lint(), "invalid-evidence-row"))
+        for name, artifact in REJECTED_ARTIFACTS.items():
             with self.subTest(rejected=name):
-                self.write_done(cell)
-                found = self.with_code(self.lint(), "release-evidence-required")
-                self.assertEqual(1, len(found))
+                self.write_delivered(artifact)
+                found = self.with_code(self.lint(), "invalid-evidence-row")
+                self.assertTrue(found)
                 self.assertEqual("error", found[0].severity)
                 self.assertEqual("F-001", found[0].feature_id)
-                self.assertIn("not that it shipped", found[0].message)
 
-    def test_lint_leaves_a_feature_before_done_alone(self) -> None:
+    def test_lint_leaves_a_feature_before_in_dev_without_rows_alone(self) -> None:
         self.write_requirement("customer-android")
         self.write_design()
-        self.write_in_dev("merged")
-        self.assertEqual([], self.with_code(self.lint(), "release-evidence-required"))
+        self.write_feature(["customer-android"], status="ready-for-dev", owner="dev")
+        self.assertEqual([], self.with_code(self.lint(), "app-row-ahead-of-status"))
+        self.write_delivered("build:customer-android#1", status="ready-for-dev", owner="dev")
+        self.assertEqual(1, len(self.with_code(self.lint(), "app-row-ahead-of-status")))
 
-    def test_the_dev_done_check_reports_the_code(self) -> None:
+    def test_the_dev_done_check_reads_the_rows_of_the_named_apps(self) -> None:
         self.write_requirement("customer-android")
         self.write_design()
-        for name, cell in ACCEPTED_RELEASE_CELLS.items():
-            with self.subTest(accepted=name):
-                self.write_in_dev(cell)
-                self.assertEqual("pass", self.check("dev-done", "delivery-evidence")["status"])
-        for name, cell in REJECTED_RELEASE_CELLS.items():
+        path = self.write_feature(["customer-android"], status="in-dev", owner="dev")
+        # The copy-only check has no proposal: the rows are reported as not yet supplied.
+        self.assertEqual("blocked", self.check("dev-done", "delivery-evidence")["status"])
+        for name, artifact in REJECTED_ARTIFACTS.items():
             with self.subTest(rejected=name):
-                self.write_in_dev(cell)
-                blocked = self.check("dev-done", "release-evidence-required")
-                self.assertEqual("blocked", blocked["status"])
-                self.assertIn("proves which code changed, not that it shipped", blocked["message"])
-                transition = build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]
-                self.assertNotEqual("ready", transition["classification"])
-                self.assertFalse(any(item["code"] == "delivery-evidence" and item["status"] == "pass" for item in transition["checks"]))
+                path.write_text(path.read_text(encoding="utf-8").split("\n## Delivery evidence")[0] + "\n" + evidence_section({"customer-android": artifact}), encoding="utf-8")
+                check = next(
+                    item
+                    for item in build_board_transition_preflight(self.root, "F-001", "dev-done", named_apps=["customer-android"])["checks"]
+                    if item["code"] == "delivery-evidence"
+                )
+                self.assertEqual("blocked", check["status"])
 
-    def test_the_board_rejects_each_rejected_form_and_accepts_each_accepted_one(self) -> None:
-        frontmatter = {"apps": ["backend"]}
-        for name, cell in REJECTED_RELEASE_CELLS.items():
+    def validate(self, content: str, apps: list[str] | None = None):
+        service = object.__new__(BoardService)
+        service._model = None
+        old_fm = {"id": "F-001", "apps": apps or ["backend"]}
+        new_fm = dict(old_fm)
+        return service._validate_dev_done_evidence("knowledge/wiki/features/F-001.md", old_fm, new_fm, "", content)
+
+    def test_the_board_rejects_each_rejected_artifact_and_accepts_each_accepted_one(self) -> None:
+        for name, artifact in REJECTED_ARTIFACTS.items():
             with self.subTest(rejected=name), self.assertRaises(BoardError) as caught:
-                BoardService._validate_dev_done_evidence("knowledge/wiki/features/F-001.md", f"---\nid: F-001\n---\n\n{evidence_section({'backend': cell})}", frontmatter)
+                self.validate(evidence_section({"backend": artifact}))
             error = caught.exception
-            self.assertEqual(("release_evidence_required", 409), (error.code, error.status))
-            self.assertIn("not that it shipped", error.message)
-            self.assertEqual(["backend"], error.details["apps"])
-            self.assertTrue(error.details["problems"])
-        for name, cell in ACCEPTED_RELEASE_CELLS.items():
+            self.assertIn(error.code, {"artifact_reference_invalid", "delivery_evidence_invalid", "delivery_evidence_required"})
+            self.assertEqual(409, error.status)
+        for name, artifact in ACCEPTED_ARTIFACTS.items():
             with self.subTest(accepted=name):
-                BoardService._validate_dev_done_evidence("knowledge/wiki/features/F-001.md", f"---\nid: F-001\n---\n\n{evidence_section({'backend': cell})}", frontmatter)
+                self.assertEqual(("backend",), self.validate(evidence_section({"backend": artifact})))
 
-    def test_a_structural_problem_is_reported_before_the_release_cell(self) -> None:
+    def test_a_structural_problem_and_a_missing_row_have_their_codes(self) -> None:
         with self.assertRaises(BoardError) as caught:
-            BoardService._validate_dev_done_evidence(
-                "knowledge/wiki/features/F-001.md", f"---\nid: F-001\n---\n\n{evidence_section({'backend': 'merged'}, implementation='n/a')}", {"apps": ["backend"]}
-            )
+            self.validate(evidence_section({"backend": "build:backend#1"}, implementation="n/a"))
         self.assertEqual("delivery_evidence_invalid", caught.exception.code)
-        self.assertIn("(`release:`, `tag:` or `deployment:`", caught.exception.message)
+        self.assertIn("Implementation", caught.exception.message)
+        with self.assertRaises(BoardError) as caught:
+            self.validate(evidence_section({}))
+        self.assertEqual("delivery_evidence_required", caught.exception.code)
 
 
 class TwoAppDeliveryTests(scope.WikiWorkspaceCase):
@@ -197,46 +243,49 @@ class TwoAppDeliveryTests(scope.WikiWorkspaceCase):
     def evidence(self, **rows: str) -> None:
         path = self.write_feature(["customer-android", "partner-android"], status="in-dev", owner="dev")
         text = path.read_text(encoding="utf-8")
-        path.write_text(text + "\n" + evidence_section({app.replace("_", "-"): release for app, release in rows.items()}), encoding="utf-8")
+        path.write_text(text + "\n" + evidence_section({app.replace("_", "-"): artifact for app, artifact in rows.items()}), encoding="utf-8")
 
-    def test_dev_done_fails_with_valid_evidence_for_only_one_app(self) -> None:
-        self.evidence(customer_android=f"release: {URL}")
+    def named(self, *apps: str) -> dict:
+        transition = build_board_transition_preflight(self.root, "F-001", "dev-done", named_apps=list(apps))
+        return next(item for item in transition["checks"] if item["code"] == "delivery-evidence")
 
-        blocked = self.check("dev-done", "delivery-evidence")
+    def test_dev_done_fails_for_an_app_without_a_row(self) -> None:
+        self.evidence(customer_android="build:customer-android#4")
+
+        blocked = self.named("customer-android", "partner-android")
 
         self.assertEqual("blocked", blocked["status"])
-        self.assertIn("missing declared app(s): partner-android", blocked["message"])
+        self.assertIn("missing for: `partner-android`", blocked["message"])
 
-    def test_dev_done_passes_with_release_evidence_for_one_app_and_an_attestation_for_the_other(self) -> None:
-        self.evidence(customer_android=f"release: {URL}", partner_android="attested by Grace Hopper: https://example.com/checks/partner-prod-smoke")
+    def test_dev_done_passes_for_one_app_and_for_both(self) -> None:
+        self.evidence(customer_android="build:customer-android#4", partner_android="build:partner-android#9")
 
-        self.assertEqual("pass", self.check("dev-done", "delivery-evidence")["status"])
-        codes = {item["code"] for item in build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]["checks"]}
-        self.assertNotIn("release-evidence-required", codes)
+        self.assertEqual("pass", self.named("customer-android")["status"])
+        self.assertEqual("pass", self.named("customer-android", "partner-android")["status"])
 
-    def test_dev_done_passes_for_the_external_app_by_url_with_no_local_checkout(self) -> None:
+    def test_dev_done_passes_for_the_external_app_with_no_local_checkout(self) -> None:
         self.assertFalse((self.root / "prism.local.yml").exists())
-        self.evidence(customer_android=f"deployment: {URL}", partner_android="tag: https://git.example.com/acme/mobile-apps/releases/tag/partner-2.0.0")
+        self.evidence(customer_android="build:customer-android#4", partner_android="image:registry.example/partner@sha256:" + "c" * 64)
 
-        self.assertEqual("pass", self.check("dev-done", "delivery-evidence")["status"])
+        self.assertEqual("pass", self.named("customer-android", "partner-android")["status"])
         warnings = [item for item in load_workspace(self.root).diagnostics if item.code == "external-repository-unresolved"]
         self.assertEqual(1, len(warnings), "the unresolved checkout stays one warning and blocks nothing")
 
-    def test_a_pull_request_alone_does_not_ship_the_external_app(self) -> None:
-        self.evidence(customer_android=f"release: {URL}", partner_android="https://git.example.com/acme/mobile-apps/pull/7")
+    def test_a_branch_name_does_not_deliver_the_external_app(self) -> None:
+        self.evidence(customer_android="build:customer-android#4", partner_android="main")
 
-        blocked = self.check("dev-done", "release-evidence-required")
+        blocked = self.named("customer-android", "partner-android")
 
         self.assertEqual("blocked", blocked["status"])
         self.assertIn("`partner-android`", blocked["message"])
         self.assertNotIn("`customer-android`", blocked["message"])
 
-    def test_a_done_feature_lints_clean_with_a_valid_row_per_app(self) -> None:
-        path = self.write_feature(["customer-android", "partner-android"], status="done", owner="none")
+    def test_a_released_feature_lints_clean_with_a_row_per_app(self) -> None:
+        path = self.write_feature(["customer-android", "partner-android"], status="released", owner="none")
         self.write_requirement("customer-android", "done")
         self.write_requirement("partner-android", "done")
-        rows = {"customer-android": f"release: {URL}", "partner-android": "attested by Grace Hopper: https://example.com/checks/partner-prod-smoke"}
-        path.write_text(path.read_text(encoding="utf-8") + "\n" + evidence_section(rows), encoding="utf-8")
+        path.write_text(path.read_text(encoding="utf-8") + "\n" + evidence_tables(["customer-android", "partner-android"]), encoding="utf-8")
+        write_status_board(self.root, "| F-001 | Payout summary | released | none | not-needed |\n")
 
         result = self.lint()
 
@@ -284,7 +333,7 @@ class ApiServingAppTests(scope.WikiWorkspaceCase):
 
     def test_a_done_feature_is_not_flagged(self) -> None:
         self.declare_tool(**{"has-ui": False, "serves-api": False})
-        self.write_feature(["tool"], status="done", owner="none", api=self.API)
+        self.write_feature(["tool"], status="released", owner="none", api=self.API)
 
         self.assertEqual([], self.with_code(self.lint(), "api-surface-without-api-app"))
 
@@ -299,7 +348,7 @@ class ApiServingAppTests(scope.WikiWorkspaceCase):
 
     def test_the_design_handoff_dev_start_and_dev_done_checks_block_with_the_code(self) -> None:
         self.declare_tool(**{"has-ui": False, "serves-api": False})
-        for action, status, owner in (("design-handoff", "in-design", "designer"), ("dev-start", "ready-for-dev", "dev"), ("dev-done", "in-dev", "dev")):
+        for action, status, owner in (("design-handoff", "in-design", "tech-lead"), ("dev-start", "ready-for-dev", "dev"), ("dev-done", "in-dev", "dev")):
             with self.subTest(action=action):
                 self.write_feature(["tool"], status=status, owner=owner, api=self.API)
                 blocked = self.check(action, "api-surface-without-api-app")
@@ -308,12 +357,12 @@ class ApiServingAppTests(scope.WikiWorkspaceCase):
                 self.write_feature(["tool"], status=status, owner=owner, api="None.")
                 self.assertEqual("pass", self.check(action, "api-surface-without-api-app")["status"])
         self.declare_tool(**{"has-ui": False, "serves-api": "unknown"})
-        self.write_feature(["tool"], status="in-design", owner="designer", api=self.API)
+        self.write_feature(["tool"], status="in-design", owner="tech-lead", api=self.API)
         self.assertEqual("pass", self.check("design-handoff", "api-surface-without-api-app")["status"])
 
     def test_the_lint_finding_is_not_a_second_unknown_check_on_the_transition(self) -> None:
         self.declare_tool(**{"has-ui": False, "serves-api": False})
-        self.write_feature(["tool"], status="in-design", owner="designer", api=self.API)
+        self.write_feature(["tool"], status="in-design", owner="tech-lead", api=self.API)
 
         transition = build_transition_preflight(self.root, "F-001", action="design-handoff")["facts"]["transition"]
 
@@ -331,12 +380,12 @@ class RetirementWorkspaceCase(scope.WikiWorkspaceCase):
         return self.with_code(result or self.lint(), "app-retired-in-scope")
 
     def write_done_with_history(self) -> None:
-        path = self.write_feature(["customer-android", "partner-android"], status="done", owner="none")
+        path = self.write_feature(["customer-android", "partner-android"], status="released", owner="none")
         self.write_requirement("customer-android", "done")
         self.write_requirement("partner-android", "done")
         self.write_design()
-        rows = {"customer-android": f"release: {URL}", "partner-android": "attested by Grace Hopper: https://example.com/checks/partner-prod-smoke"}
-        path.write_text(path.read_text(encoding="utf-8") + "\n" + evidence_section(rows), encoding="utf-8")
+        path.write_text(path.read_text(encoding="utf-8") + "\n" + evidence_tables(["customer-android", "partner-android"]), encoding="utf-8")
+        write_status_board(self.root, "| F-001 | Payout summary | released | none | not-needed |\n")
 
 
 class AppRetireCommandTests(RetirementWorkspaceCase):
@@ -470,7 +519,7 @@ class AppRetireCommandTests(RetirementWorkspaceCase):
         self.assertIn(f"{MANIFEST_FILE} is missing", err)
 
     def test_a_retired_app_stays_in_list_status_and_the_graph_marked_retired(self) -> None:
-        self.write_feature(["customer-android", "partner-android"], status="done", owner="none")
+        self.write_feature(["customer-android", "partner-android"], status="released", owner="none")
         self.assertEqual(0, self.retire("--apply", "--yes")[0])
 
         listed = run_json("app", "list", str(self.root), "--json")
@@ -548,11 +597,12 @@ class RetirementScopeTests(RetirementWorkspaceCase):
 
     def test_every_lifecycle_action_is_blocked_with_the_code_until_the_scope_is_edited(self) -> None:
         self.assertEqual(0, self.retire("--apply", "--yes")[0])
-        actions = [spec for spec in ACTION_SPECS if not spec.action.startswith("reopen-")]
+        actions = [spec for spec in ACTION_SPECS if spec.enabled and spec.copy]
         self.assertGreaterEqual(len(actions), 6)
         for spec in actions:
             with self.subTest(action=spec.action):
-                self.write_feature(["customer-android", "partner-android"], status=spec.source_status, owner=spec.source_owner)
+                status, owner = spec.resolved_sources("designer")[0]
+                self.write_feature(["customer-android", "partner-android"], status=status, owner=owner)
                 transition = build_transition_preflight(self.root, "F-001", action=spec.action)["facts"]["transition"]
                 blocked = next(item for item in transition["checks"] if item["code"] == "app-retired-in-scope")
                 self.assertEqual("blocked", blocked["status"])
@@ -572,7 +622,7 @@ class RetirementScopeTests(RetirementWorkspaceCase):
         self.assertFalse(any(item["code"] == "app-retired-in-scope" for item in transition["checks"]))
         self.assertEqual("pass", next(item for item in transition["checks"] if item["code"] == "app-scope")["status"])
 
-    def test_a_done_feature_keeps_the_retired_app_as_history_and_lints_clean(self) -> None:
+    def test_a_released_feature_keeps_the_retired_app_as_history_and_lints_clean(self) -> None:
         self.write_done_with_history()
         self.assertTrue(self.lint().is_clean)
 
@@ -581,10 +631,13 @@ class RetirementScopeTests(RetirementWorkspaceCase):
         result = self.lint()
         self.assertEqual([], self.flagged(result))
         self.assertTrue(result.is_clean, [item.to_dict() for item in result.diagnostics if item.severity == "error"])
+        # The reopen routes are registered and answer `action_unavailable` until their work package lands, which restores
+        # the check that the retired app of a released feature is still a valid scope.
         for action in ("reopen-spec", "reopen-design", "reopen-dev"):
             with self.subTest(action=action):
-                scope_check = next(item for item in build_transition_preflight(self.root, "F-001", action=action)["facts"]["transition"]["checks"] if item["code"] == "app-scope")
-                self.assertEqual("pass", scope_check["status"])
+                unavailable = build_board_transition_preflight(self.root, "F-001", action)
+                self.assertEqual("unknown", unavailable["classification"])
+                self.assertEqual(["action-unavailable"], [item["code"] for item in unavailable["checks"]])
 
     def test_retiring_deletes_no_file_whatever_the_features_say(self) -> None:
         self.write_feature(["customer-android", "partner-android"], status="in-dev", owner="dev")
@@ -666,7 +719,7 @@ class RetiredAppBoardTests(unittest.TestCase):
         self.assertEqual("app_retired", caught.exception.code)
 
     def test_an_edit_that_keeps_a_retired_app_already_in_the_scope_is_not_an_addition(self) -> None:
-        relative, page = self.page(["customer-android", "partner-android"], "done", "none")
+        relative, page = self.page(["customer-android", "partner-android"], "released", "none")
         self.service._validate_feature_output(relative, page, "feature-reopen", ["customer-android", "partner-android"])
 
     def test_a_new_feature_with_active_apps_is_accepted(self) -> None:
@@ -687,8 +740,8 @@ class RetiredAppBoardTests(unittest.TestCase):
             self.assertEqual(("app_retired_in_scope", 409), (error.code, error.status))
             self.assertEqual({"feature_id": "F-001", "apps": ["customer-android", "partner-android"], "retired_apps": ["partner-android"]}, error.details)
 
-    def test_a_done_feature_and_a_clean_scope_take_lifecycle_proposals(self) -> None:
-        self.service._require_no_retired_app_in_progress("F-001", {"id": "F-001", "status": "done", "apps": ["customer-android", "partner-android"]})
+    def test_a_released_feature_and_a_clean_scope_take_lifecycle_proposals(self) -> None:
+        self.service._require_no_retired_app_in_progress("F-001", {"id": "F-001", "status": "released", "apps": ["customer-android", "partner-android"]})
         self.service._require_no_retired_app_in_progress("F-001", {"id": "F-001", "status": "in-dev", "apps": ["customer-android"]})
 
     def test_discover_lists_the_retired_app_marked_retired(self) -> None:

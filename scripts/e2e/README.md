@@ -54,14 +54,13 @@ The steps run in this order. Agent steps alternate between the two hosts by this
 | 2 | `ask` | Codex | one more question, routed to the product owner |
 | 3 | `po-clarify` | Claude | no open product-owner question |
 | 4 | `po-specify` | Codex | `specified`, `po` |
-| 5 | `po-handoff` | browser | `ready-for-design`, `designer` |
-| 6 | `design-start` | browser | `in-design`, `designer` |
+| 5 | `po-handoff` | browser | `ready-for-design`, `tech-lead` |
+| 6 | `design-start` | browser | `in-design`, `tech-lead` |
 | 7 | `design-clarify` | Claude | no open designer question |
 | 8 | `design-handoff` | Codex | `ready-for-dev`, `dev` (the developer's question stays open) |
 | 9 | `dev-clarify` | Claude | no open developer question |
 | 10 | `dev-start` | browser | `in-dev`, `dev` |
-| 11 | `dev-done` | Codex | `done`, `none`, delivery evidence recorded |
-| 12 | `feature-reopen` | Claude | `in-dev`, `dev` |
+| 11 | `dev-done` | Codex | `ready-for-qa`, `qa`, delivery evidence recorded |
 
 Prompts are fixed text in `prompts/`: one file per agent step plus `apply.txt`. They are short, name no host or model, and ask the agent to follow the board's guidance. The three clarify prompts hold an `{answers}` placeholder that the script fills at run time (below); every other prompt is sent as written. Under the retry rule, an agent may retry a rejected proposal inside its run; the script adds nothing.
 

@@ -227,7 +227,7 @@ class SchemaVersionTests(WorkspaceCase):
 class StatusBoardColumnsTests(unittest.TestCase):
     def test_the_template_status_board_and_index_have_no_dates(self) -> None:
         board = (TEMPLATE_WIKI / "status-board.md").read_text(encoding="utf-8")
-        self.assertIn("| ID | Feature | Status | Owner | Board Review |\n", board.replace("\r\n", "\n"))
+        self.assertIn("| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |\n", board.replace("\r\n", "\n"))
         index = (TEMPLATE_WIKI / "index.md.jinja").read_text(encoding="utf-8")
         for text in (board, index):
             self.assertNotIn("Introduced", text)
@@ -244,25 +244,25 @@ class StatusBoardColumnsTests(unittest.TestCase):
                         continue  # the ADR (`date`) and advisory review (`reviewed`) records
                     self.assertNotIn(key, HISTORY_DATE_FIELDS, f"{relative}: {line}")
 
-    def test_the_status_board_parser_reads_the_five_column_board_only(self) -> None:
+    def test_the_status_board_parser_reads_the_eight_column_board_only(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             index = Path(temporary) / "status-board.md"
-            index.write_text("# Board\n\n| ID | Feature | Status | Owner | Board Review |\n|----|----|----|----|----|\n| F-001 | A | raw | po | not-needed |\n", encoding="utf-8")
+            index.write_text("# Board\n\n| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |\n|----|----|----|----|----|\n| F-001 | A | raw | po | not-needed | — | — | — |\n", encoding="utf-8")
             rows, errors = parse_status_board_rows(index)
             self.assertEqual([], errors)
             self.assertEqual([("F-001", "A", "raw", "po", "not-needed")], [(r.feature_id, r.title, r.status, r.owner, r.advisory_review) for r in rows])
-            index.write_text("# Board\n\n| ID | Feature | Status | Owner | Board Review | Introduced |\n|----|----|----|----|----|----|\n| F-001 | A | raw | po | not-needed | 2026-01-01 |\n", encoding="utf-8")
+            index.write_text("# Board\n\n| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs | Introduced |\n|----|----|----|----|----|----|\n| F-001 | A | raw | po | not-needed | 2026-01-01 |\n", encoding="utf-8")
             rows, errors = parse_status_board_rows(index)
             self.assertEqual([], rows)
             self.assertEqual(["status-board.md is missing the feature status board table."], errors)
 
     def test_the_board_renders_rows_without_a_date_and_refuses_a_dated_table(self) -> None:
-        board = "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review |\n|----|---------|--------|-------|--------------|\n"
-        row = {"id": "F-001", "title": "Checkout", "status": "specified", "owner": "po", "advisory_review": "not-needed"}
+        board = "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |\n|----|---------|--------|-------|--------------|---------------|------------|-----------|\n"
+        row = {"id": "F-001", "title": "Checkout", "status": "specified", "owner": "po", "advisory_review": "not-needed", "design_tracks": "—", "app_stages": "—", "open_bugs": "—"}
         rendered = _render_status_board(board, {"F-001": None}, {"F-001": row})
-        self.assertIn("| F-001 | Checkout | specified | po | not-needed |\n", rendered)
-        replaced = _render_status_board(rendered, {"F-001": row}, {"F-001": {**row, "status": "in-design", "owner": "designer"}})
-        self.assertEqual(rendered.replace("specified | po", "in-design | designer"), replaced)
+        self.assertIn("| F-001 | Checkout | specified | po | not-needed | — | — | — |\n", rendered)
+        replaced = _render_status_board(rendered, {"F-001": row}, {"F-001": {**row, "status": "in-design", "owner": "tech-lead"}})
+        self.assertEqual(rendered.replace("specified | po", "in-design | tech-lead"), replaced)
         dated = board.replace("Board Review |", "Board Review | Introduced |").replace("--------------|", "--------------|------------|")
         with self.assertRaises(BoardError) as raised:
             _render_status_board(dated, {"F-001": None}, {"F-001": row})
@@ -281,10 +281,10 @@ class BoardHistoryTests(unittest.TestCase):
         source = self.root / "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
         source.parent.mkdir(parents=True)
         source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
-        page = _feature_page().replace("status: raw", "status: ready-for-design").replace("owner: po", "owner: designer").replace("| po | open |", "| po | resolved: Summarize key points. |")
+        page = _feature_page().replace("status: raw", "status: ready-for-design").replace("owner: po", "owner: tech-lead").replace("| po | open |", "| po | resolved: Summarize key points. |")
         (self.root / self.feature).parent.mkdir(parents=True, exist_ok=True)
         (self.root / self.feature).write_bytes(page.encode("utf-8"))
-        _write_index(self.root, "ready-for-design", "designer")
+        _write_index(self.root, "ready-for-design", "tech-lead")
         self.service = BoardService(self.root).start()
         self.addCleanup(lambda: self.service.close())
         grant = self.service.create_participant("Reviewer", "human", True)
@@ -307,7 +307,7 @@ class BoardHistoryTests(unittest.TestCase):
         self.assertEqual(before_body, after.body)
         self.assertEqual([], [name for name in after.frontmatter if name in HISTORY_DATE_FIELDS])
         board = self.read("knowledge/wiki/status-board.md")
-        self.assertIn("| F-001 | Document review | in-design | designer | not-needed |", board)
+        self.assertIn("| F-001 | Document review | in-design | tech-lead | not-needed | — | — | — |", board)
         self.assertNotIn("Introduced", board)
 
         log_after = self.read("knowledge/wiki/log.md")

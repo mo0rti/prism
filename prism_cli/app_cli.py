@@ -574,7 +574,7 @@ def plan_app_retire(root: Path, app_id: str) -> dict[str, Any]:
 
 
 def _features_in_progress_with_app(workspace: Path, app_id: str) -> list[dict[str, str]]:
-    """The features before done whose scope lists ``app_id``; a wiki that cannot be read lists none."""
+    """The features before released whose scope lists ``app_id``; a wiki that cannot be read lists none."""
 
     try:
         features = read_feature_pages(workspace / "knowledge" / "wiki")
@@ -583,7 +583,7 @@ def _features_in_progress_with_app(workspace: Path, app_id: str) -> list[dict[st
     return [
         {"id": feature.feature_id, "status": feature.status or "unknown"}
         for feature in features
-        if app_id in feature.apps and feature.status != "done"
+        if app_id in feature.apps and feature.status != "released"
     ]
 
 

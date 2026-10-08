@@ -411,10 +411,11 @@ def _dev_feature_page(status: str, owner: str, platforms: list[str], evidence_ro
         "apps": platforms,
         "sources": [PROCESSED_SOURCE.rsplit("/", 1)[0]],
         "advisory-review": "not-needed",
+        "criteria-high-water": 12,
         "revalidation": [],
     }
     scope = "\n".join(f"- **{platform}**: Store and show the review summary on {platform}. {bulk}" for platform in platforms)
-    criteria = "\n".join(f"- [ ] Criterion {number}: {bulk}" for number in range(12))
+    criteria = "\n".join(f"- [ ] AC-{number} [{', '.join(platforms)}] Criterion {number}: {bulk}" for number in range(1, 13))
     body = f"""## Summary
 Review a document, summarize its key points, and record the review outcome. {bulk}
 
@@ -445,14 +446,19 @@ No related feature is required for this workflow.
 The existing acceptance checks cover the scoped review workflow.
 
 ## Delivery evidence
-| App | Implementation | Tests | Release |
-|---|---|---|---|
+| App | Artifact | Contract | Implementation | Tests | Basis |
+|---|---|---|---|---|---|
 {evidence_rows}
 
-## Reopen history
+## QA verification
+| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |
+|---|---|---|---|---|---|---|---|---|
 
-## Post-ship notes
-The fixture has no post-ship deviations.
+## Release
+| App | Target | Version | Attempt | Outcome | Record | Basis |
+|---|---|---|---|---|---|---|
+
+## Evidence history
 """
     return f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---\n\n{body}"
 
@@ -517,11 +523,11 @@ def build_dev_done_workspace(root: Path, platforms: list[str], bulk: str, large_
     write_status_board(root, "| F-001 | Document review | in-dev | dev | not-needed |\n")
     write_index(root)
     evidence = "\n".join(
-        f"| {platform} | Pull request for {platform} merged as commit abc123. {bulk} | CI run on {platform}: 120 tests passed. {bulk} | release: https://example.test/releases/{platform}-1.4.0 {bulk} |"
+        f"| {platform} | `build:{platform}#1` | none | Pull request for {platform} merged as commit abc123. {bulk} | CI run on {platform}: 120 tests passed. {bulk} | checked |"
         for platform in platforms
     )
     return [
-        {"path": FEATURE_FILE, "content": _dev_feature_page("done", "none", platforms, evidence, bulk)},
+        {"path": FEATURE_FILE, "content": _dev_feature_page("ready-for-qa", "qa", platforms, evidence, bulk)},
         *(
             {"path": f"knowledge/wiki/app-requirements/F-001-{platform}.md", "content": _dev_requirement_page(platform, "done", requirement_bulk(platform))}
             for platform in platforms
@@ -621,7 +627,7 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
         )
         feature_path.write_bytes(asked.encode("utf-8"))
         answered = asked.replace("| dev | open |", f"| dev | resolved: {answer} |").replace(
-            "- **backend**: Store and show the review summary on backend.", f"- **backend**: Store and show the review summary on backend. {answer}", 1
+            "## API surface\nNone", f"## API surface\nThe export limit is part of the interface. {answer}", 1
         )
         changes = [{"path": FEATURE_FILE, "content": answered}]
         for platform in PLATFORMS:

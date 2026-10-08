@@ -258,7 +258,7 @@ class RecoveryTests(ScenarioCase):
             self.assertEqual({BOARD_PATH, LOG_PATH}, changed_paths(interrupted, after))
             run.effect("recovery wrote only the missing status board row and the log entry")
             board_row = [line for line in harness.read(BOARD_PATH).splitlines() if line.startswith(f"| {feature.feature_id} ")]
-            self.assertEqual([f"| {feature.feature_id} | {feature.title} | in-design | designer | not-needed |"], board_row)
+            self.assertEqual([f"| {feature.feature_id} | {feature.title} | in-design | tech-lead | not-needed | \u2014 | \u2014 | \u2014 |"], board_row)
             log = harness.read(LOG_PATH)
             self.assertEqual(1, log.count(f"<!-- prism:board-history:v1 preview={preview['preview_id']} -->"))
             comments = actor_comments(log)

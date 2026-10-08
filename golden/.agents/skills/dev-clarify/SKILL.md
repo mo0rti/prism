@@ -37,8 +37,8 @@ Identical in structure to `$po-clarify` but filters for open questions where own
 ## Rules
 
 - write-capable skill
-- resolve only questions owned by `dev`; leave PO and designer questions open
-- do not change a feature's status or owner, and do not change a feature that is `done`; reopen it with `$feature-reopen` first
+- resolve only questions owned by `dev`; leave every other owner's questions open
+- do not change a feature's status or owner, and do not change a criterion while an app it names is `ready-for-release` or `released`, the App scope from `ready-for-dev` on, or the API surface once an app has delivered (`clarify_stage_unavailable`); a new acceptance criterion takes the next number after `criteria-high-water` and raises the mark in the same proposal
 - present questions one feature at a time, not as one large dump
 - after each answer, confirm what you updated before moving to the next question
 - every requirement-bearing section you change (in the feature or in an app requirement page) must contain the full text of at least one answer you resolve in the same proposal; a paraphrase alone is not enough

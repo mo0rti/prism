@@ -24,7 +24,7 @@ class ParseTests(unittest.TestCase):
         with self.assertRaises(config.ConfigError) as caught:
             config.parse_steps("po-intake,nope")
         self.assertIn("nope", str(caught.exception))
-        self.assertIn("feature-reopen", str(caught.exception))
+        self.assertIn("dev-done", str(caught.exception))
 
     def test_hosts(self):
         self.assertEqual(config.parse_hosts(None), ["claude", "codex"])
@@ -72,7 +72,7 @@ class FixtureSetResolutionTests(unittest.TestCase):
         with self.assertRaises(config.ConfigError) as stray:
             config.resolve_fixture_set(self.folder("dev-done", "dev-donee"), {})
         self.assertIn("dev-donee", str(stray.exception))
-        self.assertIn("feature-reopen", str(stray.exception), "the message names the valid steps")
+        self.assertIn("dev-done", str(stray.exception), "the message names the valid steps")
 
     def test_a_prompt_must_belong_to_an_agent_step(self):
         for name in ("po-handoff", "no-such-step"):
@@ -82,11 +82,11 @@ class FixtureSetResolutionTests(unittest.TestCase):
 
 
 class TableTests(unittest.TestCase):
-    def test_the_twelve_lifecycle_steps(self):
+    def test_the_eleven_lifecycle_steps(self):
         self.assertEqual(
             config.STEP_IDS,
             ("po-intake", "ask", "po-clarify", "po-specify", "po-handoff", "design-start", "design-clarify",
-             "design-handoff", "dev-clarify", "dev-start", "dev-done", "feature-reopen"),
+             "design-handoff", "dev-clarify", "dev-start", "dev-done"),
         )
 
     def test_only_the_three_direct_human_actions_run_in_the_browser(self):
@@ -142,7 +142,7 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(config.plan_actions(["ask"]), [Action("seed", "po-intake"), Action("run", "ask")])
 
     def test_the_last_step_seeds_the_one_before_it(self):
-        self.assertEqual(config.plan_actions(["feature-reopen"]), [Action("seed", "dev-done"), Action("run", "feature-reopen")])
+        self.assertEqual(config.plan_actions(["dev-done"]), [Action("seed", "dev-start"), Action("run", "dev-done")])
 
 
 if __name__ == "__main__":

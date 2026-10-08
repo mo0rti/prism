@@ -5,7 +5,7 @@ description: Prepare the supported PO handoff from a specified feature owned by 
 
 # PO handoff - prepare a feature for design
 
-<!-- prism:po-handoff-contract:v1 -->
+<!-- prism:po-handoff-contract:v2 -->
 
 ## Usage
 
@@ -16,10 +16,10 @@ description: Prepare the supported PO handoff from a specified feature owned by 
 This action prepares, previews, and, after explicit confirmation, writes one
 transition only:
 
-`specified` + `po` -> `ready-for-design` + `designer`
+`specified` + `po` -> `ready-for-design` + the design owner (`designer` when an active app in scope has a UI or an unknown one, otherwise `tech-lead`)
 
 The destination fields are exactly `status: ready-for-design` and
-`owner: designer`.
+`owner: designer` (`owner: tech-lead` when no active app in scope has a UI); any other owner is rejected (`design_owner_mismatch`).
 
 The source feature must be one unique existing file at
 `knowledge/wiki/features/[F-XXX]-[slug].md`. A missing, invalid, or ambiguous ID
@@ -38,7 +38,7 @@ prism wiki transition-preflight F-XXX [path] --action po-handoff --json
 
 Use that response only when it explicitly identifies common envelope schema
 version 1 (`schema_version: 1`), command facts for `transition-preflight`, graph
-capability version 2 with an action-specific `po-handoff` surface, and the
+capability version 3 with an action-specific `po-handoff` surface, and the
 requested `po-handoff` action. The version string alone does not prove
 that this command or capability is present. If the probe or any required response
 fact/schema/action/capability is absent, unsupported, or fails, state the
@@ -47,9 +47,9 @@ never authorizes a write.
 
 For the exact response contract, require top-level `schema_version == 1` and
 `command == "wiki transition-preflight"`; `facts.requested_action` must be
-`"po-handoff"`; `facts.transition_capability.version` must be `2`, its
+`"po-handoff"`; `facts.transition_capability.version` must be `3`, its
 action-specific surface must identify `"po-handoff"`, and its `mode` must be
-`"copy-only"`; and `facts.transition.version` must be `1`. Require
+`"copy-only"`; and `facts.transition.version` must be `2` (transition version 2). Require
 `facts.transition_capability.snapshot.fingerprint`, `observed_at`, and
 `consistent: true` before treating a snapshot as fresh. A copy-ready result also
 requires `facts.transition.action == "po-handoff"`, `supported: true`,
@@ -60,7 +60,7 @@ field is absent or mismatched, use direct-file fallback and do not claim the CLI
 evaluated the action.
 
 This selected Codex skill must contain the explicit marker
-`<!-- prism:po-handoff-contract:v1 -->`. The Claude command is an optional
+`<!-- prism:po-handoff-contract:v2 -->`. The Claude command is an optional
 independent surface; its absence or marker does not block this Codex invocation.
 If this selected file lacks the marker, its generated instructions are an older
 contract and the action is unsupported until this file is refreshed from the

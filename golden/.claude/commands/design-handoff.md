@@ -1,6 +1,6 @@
 # Design handoff — move a feature to ready-for-development
 
-<!-- prism:design-handoff-contract:v1 -->
+<!-- prism:design-handoff-contract:v2 -->
 
 Use this skill to move one feature into `ready-for-dev` and generate app requirements.
 
@@ -17,7 +17,7 @@ prism wiki transition-preflight F-XXX [path] --action design-handoff --json
 ```
 
 Accept it only with common envelope schema 1, command facts, capability version
-2 and an action-specific `design-handoff` surface, transition version 1, target
+3 and an action-specific `design-handoff` surface, transition version 2, target
 owner `dev`, and a consistent snapshot. The Prism version alone does not prove
 support. If any required fact, schema, action, capability, or snapshot is
 missing or fails, fall back to direct-file checks. The preflight is copy-only
@@ -26,7 +26,8 @@ and never authorizes a write.
 ## Workflow
 
 1. Resolve exactly one `knowledge/wiki/features/[F-XXX]-[slug].md` source file
-   and require `status: in-design` with `owner: designer`.
+   and require `status: ready-for-design` or `in-design` with `owner` the design owner of the scope (`designer` while an active
+   app has a UI, otherwise `tech-lead`).
 2. Read SCHEMA, LIFECYCLE, `status-board.md`, the complete feature, linked design/context, workspace
    identity, current requirements/API/advisory evidence, and active revalidation.
 3. Determine whether the feature's scope includes an app with a UI. Read each scoped app's
@@ -35,17 +36,13 @@ and never authorizes a write.
    - Without a UI: apps whose `has-ui` is false (a backend by default), API-only features, infra changes, internal tooling
 4. Run completeness check:
    - **If an app with a UI is in scope:**
-     - A design page linked in the `## Design` section, unless the feature
-       frontmatter has `design: not-applicable` and a non-empty
-       `design-exemption-reason`. That UI exemption must be explicitly confirmed
-       by the user during this handoff.
+     - A design page linked in the `## Design` section
      - Design coverage for all UI states implied by acceptance criteria
    - **If no app with a UI is in scope (backend/API/infra):**
      - Design page is not required — skip design coverage check
-     - A design page is not required and no exemption field is needed.
-   - For all features: no open questions with owner = `po` or `designer`. An open question
+   - For all features: no open questions with owner = `po`, `designer` or `tech-lead`. An open question
      with owner = `dev` does not block this handoff; it stays open for `/dev-clarify`
-   - Status of `in-design` and owner `designer`
+   - Status of `ready-for-design` or `in-design` and owner the design owner
 5. Check `advisory-review` field:
    - If `pending`: board review has not been run. Inform the user. Ask:
      "Do you want to run board-review F-XXX before handing to development?"
@@ -113,7 +110,7 @@ finds it. The user who confirms this handoff is the one who agrees it.
   (other feature IDs or app-requirement files that must complete first) or says
   `None.`. Never write an open question, note or caveat there; `/dev-clarify` may not
   change that section, so the text would stay after the question is answered.
-- Open questions owned by `po` or `designer` block this handoff: resolve them first with
+- Open questions owned by `po`, `designer` or `tech-lead` block this handoff: resolve them first with
   `/po-clarify` or `/design-clarify`. An open question owned by `dev` does not block it: it
   stays open in the feature's Open questions table, which this handoff cannot change, and
   `/dev-clarify` resolves it before `/dev-start`.

@@ -12,11 +12,15 @@ from typing import Any
 from prism_cli.app_model import PURPOSE_KNOWLEDGE_ROOT, WORKSPACE_REPOSITORY_ID
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, lint_wiki
 from prism_cli.wiki_model import (
-    VALID_FEATURE_STATUSES,
+    FEATURE_STATUS_ORDER,
+    active_scope,
+    app_stages,
     parse_open_question_rows,
+    read_feature_evidence,
     read_feature_pages,
     read_app_requirement_pages,
     read_wiki_settings,
+    status_rank,
 )
 from prism_cli.workspace import (
     COPIER_ANSWERS_FILE,
@@ -116,6 +120,8 @@ class WorkspaceStatus:
     feature_owner_counts: dict[str, int] = field(default_factory=dict)
     open_questions_by_owner: dict[str, int] = field(default_factory=dict)
     app_requirement_status_counts: dict[str, int] = field(default_factory=dict)
+    # feature ID -> app ID -> app stage, for the features at `in-dev` or later (CONTRACTS 4.2).
+    feature_app_stages: dict[str, dict[str, str]] = field(default_factory=dict)
     advisory_review_snapshot: AdvisoryReviewSnapshot = field(default_factory=AdvisoryReviewSnapshot)
     settings_health: SettingsHealth | None = None
     generation_answers: dict[str, Any] = field(default_factory=dict)
@@ -174,6 +180,7 @@ class WorkspaceStatus:
                     "feature_owner_counts": dict(self.feature_owner_counts),
                     "open_questions_by_owner": dict(self.open_questions_by_owner),
                     "app_requirement_status_counts": dict(self.app_requirement_status_counts),
+                    "feature_app_stages": {feature_id: dict(stages) for feature_id, stages in self.feature_app_stages.items()},
                     "blocker_count": self.blocker_count,
                     "error_count": self.wiki_lint.error_count,
                     "warning_count": self.wiki_lint.warning_count,
@@ -442,6 +449,7 @@ def build_status(root: Path) -> WorkspaceStatus:
     setup_state = _setup_state(workspace_root, wiki_lint)
     intake = _intake_counts(workspace_root)
     feature_counts, owner_counts, open_question_counts, requirement_counts = _wiki_counts(workspace_root)
+    feature_app_stages = _feature_app_stages(workspace_root, inspection.model)
     advisory_review_snapshot = _advisory_review_snapshot(workspace_root)
     confidence = _confidence(workspace_result, status_diagnostics, wiki_lint)
 
@@ -462,6 +470,7 @@ def build_status(root: Path) -> WorkspaceStatus:
         feature_owner_counts=owner_counts,
         open_questions_by_owner=open_question_counts,
         app_requirement_status_counts=requirement_counts,
+        feature_app_stages=feature_app_stages,
         advisory_review_snapshot=advisory_review_snapshot,
         settings_health=settings_health,
         generation_answers=_safe_generation_answers(answers),
@@ -668,7 +677,7 @@ def _wiki_counts(root: Path) -> tuple[dict[str, int], dict[str, int], dict[str, 
             if row["status"] == "open":
                 open_question_counts[row["owner"]] += 1
 
-    for status in sorted(VALID_FEATURE_STATUSES):
+    for status in FEATURE_STATUS_ORDER:
         feature_status_counts.setdefault(status, 0)
 
     for requirement in read_app_requirement_pages(wiki_root):
@@ -680,6 +689,17 @@ def _wiki_counts(root: Path) -> tuple[dict[str, int], dict[str, int], dict[str, 
         dict(sorted(open_question_counts.items())),
         dict(sorted(requirement_status_counts.items())),
     )
+
+
+def _feature_app_stages(root: Path, model: Any) -> dict[str, dict[str, str]]:
+    """The stage of each active app of every feature at `in-dev` or later, from its evidence tables."""
+
+    stages: dict[str, dict[str, str]] = {}
+    for feature in read_feature_pages(root / "knowledge" / "wiki"):
+        if status_rank(feature.status) < status_rank("in-dev"):
+            continue
+        stages[feature.feature_id] = app_stages(active_scope(feature.apps, model), read_feature_evidence(feature.page.body))
+    return dict(sorted(stages.items()))
 
 
 def _confidence(

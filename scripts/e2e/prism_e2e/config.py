@@ -80,14 +80,13 @@ STEPS: tuple[Step, ...] = (
     Step("ask", "agent", "codex", "raw", "po", "the ask skill adding one question to F-001"),
     Step("po-clarify", "agent", "claude", "raw", "po", "the po-clarify answers for F-001"),
     Step("po-specify", "agent", "codex", "specified", "po", "the po-specify of F-001"),
-    Step("po-handoff", "human", None, "ready-for-design", "designer", "the product owner's handoff of F-001"),
-    Step("design-start", "human", None, "in-design", "designer", "the design start of F-001"),
-    Step("design-clarify", "agent", "claude", "in-design", "designer", "the design-clarify answer for F-001"),
+    Step("po-handoff", "human", None, "ready-for-design", "tech-lead", "the product owner's handoff of F-001"),
+    Step("design-start", "human", None, "in-design", "tech-lead", "the design start of F-001"),
+    Step("design-clarify", "agent", "claude", "in-design", "tech-lead", "the design-clarify answer for F-001"),
     Step("design-handoff", "agent", "codex", "ready-for-dev", "dev", "the design handoff of F-001"),
     Step("dev-clarify", "agent", "claude", "ready-for-dev", "dev", "the dev-clarify answer for F-001"),
     Step("dev-start", "human", None, "in-dev", "dev", "the development start of F-001"),
-    Step("dev-done", "agent", "codex", "done", "none", "the dev-done of F-001 with the delivery evidence in the proposal"),
-    Step("feature-reopen", "agent", "claude", "in-dev", "dev", "the reopen of F-001 on the in-dev route"),
+    Step("dev-done", "agent", "codex", "ready-for-qa", "qa", "the dev-done of F-001 with the delivery evidence in the proposal"),
 )
 STEP_IDS = tuple(step.id for step in STEPS)
 STEPS_BY_ID = {step.id: step for step in STEPS}

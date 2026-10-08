@@ -352,12 +352,12 @@ A feature is added as in any workflow workspace, through the agent's PO skills a
 
 ```markdown
 ## Delivery evidence
-| App | Implementation | Tests | Release |
-|---|---|---|---|
-| customer-android | https://github.com/acme/mobile-apps/pull/42 | https://github.com/acme/mobile-apps/actions/runs/1187 | release: https://github.com/acme/mobile-apps/releases/tag/v1.4.0 |
+| App | Artifact | Contract | Implementation | Tests | Basis |
+|---|---|---|---|---|---|
+| customer-android | `build:customer-android#412` | none | https://github.com/acme/mobile-apps/pull/42 | https://github.com/acme/mobile-apps/actions/runs/1187 | checked |
 ```
 
-The `dev-done` checks accept this table, as in any workspace; an agent still verifies each link before it writes Done.
+The `dev-done` checks accept this table, as in any workspace; an agent still verifies each link before it writes the row.
 
 ## What the output looks like
 

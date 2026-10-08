@@ -15,7 +15,7 @@ import yaml
 from prism_cli.app_model import normalize_manifest
 from prism_cli.board_service import BoardError, BoardService, _render_status_board
 from prism_cli.wiki_lint import lint_wiki
-from prism_cli.wiki_model import parse_delivery_evidence, parse_status_board_rows
+from prism_cli.wiki_model import parse_delivery_rows, parse_status_board_rows
 from prism_cli.workflow_install import apply_install, plan_install
 from tests import real_temp  # noqa: F401
 from tests import test_feature_scope_apps as scope
@@ -43,12 +43,12 @@ BACKEND = {"id": "backend", "stack": "spring-backend", "path": "backend"}
 
 
 class DocumentedEvidenceTests(unittest.TestCase):
-    def test_the_adding_a_feature_example_of_the_workspace_model_passes_the_release_rule(self) -> None:
+    def test_the_adding_a_feature_example_of_the_workspace_model_passes_the_delivery_rules(self) -> None:
         text = (REPO_ROOT / "docs" / "workspace-model.md").read_text(encoding="utf-8")
         table = re.search(r"### Adding a feature later.*?```markdown\n(.*?)```", text, re.DOTALL)
         self.assertIsNotNone(table)
-        rows, problems = parse_delivery_evidence(table.group(1), ["customer-android"])
-        self.assertEqual(["customer-android"], list(rows))
+        rows, problems = parse_delivery_rows(table.group(1))
+        self.assertEqual(["customer-android"], [row.app for row in rows])
         self.assertEqual([], [item.message for item in problems])
 
 
@@ -121,14 +121,17 @@ class LintAgreementTests(scope.WikiWorkspaceCase):
 
 
 class StatusBoardHeaderTests(unittest.TestCase):
-    BOARD = "# Feature Status Board\n\n| {id} | {feature} | {status} | {owner} | {review} |\n|----|---------|--------|-------|--------------|\n| F-001 | Review | raw | po | not-needed |\n"
+    BOARD = (
+        "# Feature Status Board\n\n| {id} | {feature} | {status} | {owner} | {review} | Design tracks | App stages | Open bugs |\n"
+        "|----|---------|--------|-------|--------------|---------------|------------|-----------|\n| F-001 | Review | raw | po | not-needed | — | — | — |\n"
+    )
 
     def board(self, **names: str) -> str:
         defaults = {"id": "ID", "feature": "Feature", "status": "Status", "owner": "Owner", "review": "Board Review"}
         return self.BOARD.format(**{**defaults, **names})
 
     def test_lint_and_the_board_accept_the_exact_header_and_refuse_a_differently_cased_one(self) -> None:
-        after = {"F-001": {"id": "F-001", "title": "Review", "status": "specified", "owner": "po", "advisory_review": "not-needed"}}
+        after = {"F-001": {"id": "F-001", "title": "Review", "status": "specified", "owner": "po", "advisory_review": "not-needed", "design_tracks": "—", "app_stages": "—", "open_bugs": "—"}}
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "status-board.md"
             for label, text, valid in (
@@ -187,7 +190,7 @@ class ApiRuleOnTheBoardTests(unittest.TestCase):
         return self.service.preview_skill(self.agent, skill, changes, None, _read_revisions(self.service, self.agent, skill, changes))
 
     def test_dev_start_and_dev_done_are_refused_without_an_app_that_serves_an_api(self) -> None:
-        for skill, feature_id, status, owner in (("dev-start", "F-001", "in-dev", "dev"), ("dev-done", "F-002", "done", "none")):
+        for skill, feature_id, status, owner in (("dev-start", "F-001", "in-dev", "dev"), ("dev-done", "F-002", "in-dev", "dev")):
             with self.subTest(skill=skill), self.assertRaises(BoardError) as caught:
                 self.propose(skill, feature_id, status, owner)
             error = caught.exception

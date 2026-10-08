@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Route a question to PO, designer, or dev by adding it to a feature's open questions table and appending the change to the wiki log.
+description: Route a question to PO, designer, tech lead, dev, QA, or release by adding it to a feature's open questions table and appending the change to the wiki log.
 ---
 
 # Ask — route a question to the right role
@@ -9,7 +9,7 @@ Use this skill to record and route one explicit open question for a feature.
 
 ## Usage
 
-`$ask [F-XXX] "[question text]" --to po|designer|dev`
+`$ask [F-XXX] "[question text]" --to po|designer|tech-lead|dev|qa|release`
 
 Examples:
 
@@ -32,7 +32,7 @@ $ask F-007 "What does the overflow state look like at 50+ items?" --to designer
 ## Rules
 
 - write-capable skill
-- supported owner values are exactly `po`, `designer`, and `dev`
+- supported owner values are exactly `po`, `designer`, `tech-lead`, `dev`, `qa`, and `release`
 - do not infer the owner automatically
 - change only the Open questions table, by one new row; change nothing else on the page: copy every other line and section exactly as `read_workspace` returned it, including the file's final newline
 - do not write the updated question table until the user confirms it

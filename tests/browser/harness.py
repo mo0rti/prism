@@ -95,7 +95,7 @@ class FixtureFeature:
 # so one session can compare a pointer-driven and a keyboard-driven po-handoff.
 FEATURES = (
     FixtureFeature("F-001", "Document review", "specified", "po"),
-    FixtureFeature("F-002", "Document summary", "ready-for-design", "designer"),
+    FixtureFeature("F-002", "Document summary", "ready-for-design", "tech-lead"),
     FixtureFeature("F-003", "Review follow-up", "ready-for-dev", "dev"),
     FixtureFeature("F-004", "Document review", "specified", "po"),
 )
@@ -109,7 +109,7 @@ EXTRA_FEATURES = {
     # A pending advisory review adds the skip proposal and its reason textarea.
     "advisory": FixtureFeature("F-006", "Advisory handoff", "specified", "po", advisory="pending"),
     # Agent-only lifecycle actions: the board offers a request, not a human apply.
-    "in-design": FixtureFeature("F-007", "Design in progress", "in-design", "designer"),
+    "in-design": FixtureFeature("F-007", "Design in progress", "in-design", "tech-lead"),
     "raw": FixtureFeature("F-008", "Raw idea", "raw", "po", question_open=True),
     "in-dev": FixtureFeature("F-009", "Development in progress", "in-dev", "dev"),
 }
@@ -140,14 +140,16 @@ def _feature_page_for(feature: FixtureFeature) -> str:
 
 
 def _board_text(features: tuple[FixtureFeature, ...]) -> str:
+    # The one app of the fixture workspace is in-dev from that status on; before it the cell is empty.
     rows = "".join(
-        f"| {feature.feature_id} | {feature.title} | {feature.status} | {feature.owner} | {feature.advisory} |\n"
+        f"| {feature.feature_id} | {feature.title} | {feature.status} | {feature.owner} | {feature.advisory} | \u2014 | "
+        f"{'backend: in-dev' if feature.status == 'in-dev' else chr(0x2014)} | \u2014 |\n"
         for feature in features
     )
     return (
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n" + rows
+        "| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |\n"
+        "|----|---------|--------|-------|--------------|---------------|------------|-----------|\n" + rows
     )
 
 

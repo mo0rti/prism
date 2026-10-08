@@ -233,7 +233,7 @@ class SharedLintTests(PageKindCase):
             "## Summary\nUsers sign in. See [payment flows](../topics/payment-flows.md) and [a missing page](../topics/missing.md).\n",
         )
         (self.wiki / "status-board.md").write_text(
-            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review |\n|----|---------|--------|-------|--------------|\n| F-001 | Login | raw | po | not-needed |\n",
+            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |\n|----|---------|--------|-------|--------------|---------------|------------|-----------|\n| F-001 | Login | raw | po | not-needed | — | — | — |\n",
             encoding="utf-8",
         )
         write_index(self.root)

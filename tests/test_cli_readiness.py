@@ -56,7 +56,7 @@ class ValidateReadinessTests(unittest.TestCase):
             feature = root / FEATURE_PATH
             text = feature.read_text(encoding="utf-8")
             feature.write_text(
-                text.replace("| po | open |", "| qa | maybe |"),
+                text.replace("| po | open |", "| nobody | maybe |"),
                 encoding="utf-8",
             )
             stdout = io.StringIO()

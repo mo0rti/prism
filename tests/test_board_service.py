@@ -9,12 +9,13 @@ import re
 import shutil
 import subprocess
 from contextlib import contextmanager, nullcontext
+from datetime import date
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Iterator
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import yaml
@@ -939,7 +940,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
         original = _set_feature_stage(self.service._read_text(path), "specified", "po", self.service)
         path.write_bytes(original.encode("utf-8"))
         _write_index(self.root, "specified", "po")
-        proposed = _set_feature_stage(original, "ready-for-design", "designer", self.service).replace(
+        proposed = _set_feature_stage(original, "ready-for-design", "tech-lead", self.service).replace(
             "title: Document review", "title: Renamed review", 1
         )
         changes = [{"path": FEATURE_PATH.as_posix(), "content": proposed}]
@@ -1028,7 +1029,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
                 1,
             ),
             "ready-for-design",
-            "designer",
+            "tech-lead",
             self.service,
         )
         changes = [{"path": FEATURE_PATH.as_posix(), "content": proposed}]
@@ -1042,32 +1043,30 @@ class BoardServiceValidatorTests(unittest.TestCase):
             )
         self.assertEqual("lifecycle_body_scope", error.exception.code)
 
-    def test_reopen_requires_every_substantive_impact_record_field(self) -> None:
-        old = _set_feature_stage(_feature_page(), "done", "none")
+    def test_an_evidence_history_entry_requires_every_substantive_field(self) -> None:
+        row = "| backend | `build:backend#1` | none | Reviewed source record | Review check passed | checked |\n"
+        old = _set_feature_stage(_feature_page(), "ready-for-qa", "qa")
         old += (
             "\n## Delivery evidence\n"
-            "| App | Implementation | Tests | Release |\n"
-            "|---|---|---|---|\n"
-            "| backend | Reviewed source record | Review check passed | release: https://example.test/releases/review |\n"
-            "\n## Reopen history\n"
+            "| App | Artifact | Contract | Implementation | Tests | Basis |\n"
+            "|---|---|---|---|---|---|\n"
+            + row
+            + "\n## Evidence history\n"
         )
-        proposed = _set_feature_stage(old, "in-dev", "dev")
-        proposed = proposed.replace(
-            "revalidation: []",
-            "revalidation:\n- implementation\n- tests\n- release",
-        )
+        proposed = old.replace(row, "")
         proposed += (
-            "\n### 2026-09-22 - reopen-dev\n"
+            "\n### 2026-09-22 - qa-fail\n"
             "- Reason: A new review requirement changes the outcome.\n"
-            "- Impact review: The backend outcome and test need renewed review.\n"
             "- Affected apps: backend\n"
         )
         old_frontmatter, _body = _parse_markdown(old)
 
-        with self.assertRaises(BoardError) as error:
-            self.service._validate_reopen_record("reopen-dev", old, proposed, old_frontmatter, {}, {})
+        clock = Mock(wraps=date)
+        clock.today.return_value = CHECK_DATE
+        with patch("prism_cli.board_service.date", clock), self.assertRaises(BoardError) as error:
+            self.service._validate_evidence_history("qa-fail", old, proposed, old_frontmatter, relative=FEATURE_PATH.as_posix())
         self.assertEqual("impact_review_required", error.exception.code)
-        self.assertIn("Affected artifacts", error.exception.message)
+        self.assertIn("Participants", error.exception.message)
 
     def test_proposed_duplicate_persona_ids_are_rejected(self) -> None:
         source = INTAKE_ITEM.as_posix().rsplit("/", 1)[0]
@@ -1318,6 +1317,13 @@ class BoardServiceValidatorTests(unittest.TestCase):
         self.assertTrue((self.root / design_source).is_dir())
 
 
+DELIVERY_ROW_TABLE = (
+    "| App | Artifact | Contract | Implementation | Tests | Basis |\n"
+    "|---|---|---|---|---|---|\n"
+    "| backend | `build:backend#1` | none | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | checked |"
+)
+
+
 class BoardServiceConnectedJourneyTests(unittest.TestCase):
     """Exercise accepted wiki writes through preview, confirmation, and apply."""
 
@@ -1412,8 +1418,8 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             self.service,
             clarified,
             "Acceptance criteria",
-            "- [ ] A reviewer can record the outcome and requested follow-up.\n"
-            f"- [ ] {po_answer}",
+            "- [ ] AC-1 [backend] A reviewer can record the outcome and requested follow-up.\n"
+            f"- [ ] AC-2 [backend] {po_answer}",
         )
         self._submit_skill("po-clarify", [{"path": feature_path, "content": clarified}])
 
@@ -1481,9 +1487,9 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
             ],
         )
 
-        # Complete all registered lifecycle routes for the primary feature.
+        # Hand the primary feature through design and development up to QA: the lifecycle of this version stops at ready-for-qa.
         current = self.service._read_text(self.root / feature_path)
-        po_handoff = _set_feature_stage(current, "ready-for-design", "designer", self.service)
+        po_handoff = _set_feature_stage(current, "ready-for-design", "tech-lead", self.service)
         self._submit_skill("po-handoff", [{"path": feature_path, "content": po_handoff}])
         self._submit_transition("design-start")
 
@@ -1499,79 +1505,19 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         )
         self._submit_transition("dev-start")
 
-        current = self.service._read_text(self.root / feature_path)
-        dev_done = _set_feature_stage(current, "done", "none", self.service)
-        dev_done = _replace_body_section(
-            self.service,
-            dev_done,
-            "Delivery evidence",
-            "| App | Implementation | Tests | Release |\n"
-            "|---|---|---|---|\n"
-            "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | release: https://example.test/releases/review-v1 |",
-        )
-        dev_done = _replace_body_section(self.service, dev_done, "Post-ship notes", "No deviations were recorded in this fixture.")
-        self._submit_skill(
-            "dev-done",
-            [
-                {"path": feature_path, "content": dev_done},
-                {"path": requirement_path, "content": _set_requirement_status(self.service._read_text(self.root / requirement_path), "done")},
-            ],
-        )
-
-        # Reopen dev route must archive the prior evidence and invalidate only
-        # the linked platform requirement that changes status.
-        current = self.service._read_text(self.root / feature_path)
-        prior_row = "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | release: https://example.test/releases/review-v1 |"
-        reopened = _set_feature_stage(current, "in-dev", "dev", self.service)
-        reopened = _replace_body_section(
-            self.service,
-            reopened,
-            "Delivery evidence",
-            "| App | Implementation | Tests | Release |\n|---|---|---|---|",
-        )
-        reopened = _replace_body_section(
-            self.service,
-            reopened,
-            "Reopen history",
-            "### 2026-09-22 - reopen-dev\n"
-            "- Reason: A confirmed reviewer needs a revised outcome summary.\n"
-            "- Impact review: Recheck implementation, tests, release evidence, and the linked backend requirement.\n"
-            "- Affected apps: backend\n"
-            f"- Affected artifacts: {feature_path} and {requirement_path}\n"
-            f"- Prior completion/release evidence: {prior_row}\n"
-            f"- Requirement/API invalidations: {requirement_path} done -> in-progress",
-        )
-        reopened_fm, _body = _parse_markdown(reopened)
-        reopened_fm["revalidation"] = ["implementation", "tests", "release"]
-        reopened = self.service._replace_frontmatter(reopened, reopened_fm)
-        invalidated_requirement = _set_requirement_status(self.service._read_text(self.root / requirement_path), "in-progress")
-        self._submit_skill(
-            "feature-reopen",
-            [
-                {"path": feature_path, "content": reopened},
-                {"path": requirement_path, "content": invalidated_requirement},
-            ],
-        )
+        self._deliver_backend()
 
         final = self.service.query(self.agent, "show", "F-001")
-        self.assertEqual("in-dev", final["facts"]["feature"]["status"])
-        self.assertEqual("dev", final["facts"]["feature"]["owner"])
-        self.assertEqual(["implementation", "tests", "release"], final["facts"]["feature"]["frontmatter"]["revalidation"])
-
-        # Complete again, then exercise the two remaining registered reopen
-        # routes from done. Each route is followed through its required lifecycle
-        # gates so the service accepts all nine action definitions end to end.
-        self._complete_to_done("in-dev")
-        self._submit_reopen("reopen-spec")
-        self._complete_to_done("specified")
-        self._submit_reopen("reopen-design")
-        self._complete_to_done("in-design")
-
-        final = self.service.query(self.agent, "show", "F-001")
-        self.assertEqual("done", final["facts"]["feature"]["status"])
-        self.assertEqual("none", final["facts"]["feature"]["owner"])
-        self.assertEqual([], final["facts"]["feature"]["frontmatter"]["revalidation"])
+        self.assertEqual("ready-for-qa", final["facts"]["feature"]["status"])
+        self.assertEqual("qa", final["facts"]["feature"]["owner"])
         self.assertEqual("generated", self.service.discover(self.agent)["board"]["mode"])
+        stages = self.service.query(self.agent, "show", "F-001")["facts"]["feature"]["criteria"]
+        self.assertEqual(["AC-1", "AC-2"], [item["id"] for item in stages])
+
+        # The routes of later work packages are registered and answer `action_unavailable`.
+        with self.assertRaises(BoardError) as unavailable:
+            self.service.preview_skill(self.agent, "feature-reopen", [{"path": feature_path, "content": self.service._read_text(self.root / feature_path)}], None, {})
+        self.assertEqual(("action_unavailable", 409), (unavailable.exception.code, unavailable.exception.status))
 
     def _submit_skill(self, skill: str, changes: list[dict[str, str]], moves: list[dict[str, str]] | None = None) -> dict:
         preview = self.service.preview_skill(
@@ -1600,319 +1546,159 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         self.assertEqual("applied", receipt["state"], f"{action}: {receipt}")
         return receipt
 
-    def _complete_to_done(self, starting_status: str) -> None:
+    def _deliver_backend(self) -> None:
+        """`dev-done` for the one app: a delivery row, the requirement `done`, and the status at the minimum of the app stages."""
+
         feature_path = "knowledge/wiki/features/F-001-document-review.md"
         requirement_path = "knowledge/wiki/app-requirements/F-001-backend.md"
-        if starting_status == "specified":
-            current = self.service._read_text(self.root / feature_path)
-            frontmatter, _body = _parse_markdown(current)
-            self._submit_skill(
-                "po-handoff",
-                [{
-                    "path": feature_path,
-                    "content": _set_feature_stage(
-                        current,
-                        "ready-for-design",
-                        "designer",
-                        self.service,
-                    ) if not frontmatter.get("revalidation") else _set_stage_and_revalidation(
-                        self.service,
-                        current,
-                        "ready-for-design",
-                        "designer",
-                        [item for item in frontmatter["revalidation"] if item != "specification"],
-                    ),
-                }],
-            )
-            self._submit_transition("design-start")
-            starting_status = "in-design"
-        if starting_status == "in-design":
-            current = self.service._read_text(self.root / feature_path)
-            frontmatter, _body = _parse_markdown(current)
-            remaining = [item for item in frontmatter.get("revalidation", []) if item != "design"]
-            handoff_feature = _set_stage_and_revalidation(
-                self.service,
-                current,
-                "ready-for-dev",
-                "dev",
-                remaining,
-            )
-            requirement = self.service._read_text(self.root / requirement_path)
-            self._submit_skill(
-                "design-handoff",
-                [
-                    {"path": feature_path, "content": handoff_feature},
-                    {"path": requirement_path, "content": requirement},
-                ],
-            )
-            self._submit_transition("dev-start")
         current = self.service._read_text(self.root / feature_path)
-        completed = _set_stage_and_revalidation(
-            self.service,
-            current,
-            "done",
-            "none",
-            [],
-        )
-        evidence = (
-            "| App | Implementation | Tests | Release |\n"
-            "|---|---|---|---|\n"
-            "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | release: https://example.test/releases/review-v1 |"
-        )
-        completed = _replace_body_section(self.service, completed, "Delivery evidence", evidence)
-        completed = _replace_body_section(
-            self.service,
-            completed,
-            "Post-ship notes",
-            "No deviations were recorded in this fixture.",
-        )
-        requirement = _set_requirement_status(
-            self.service._read_text(self.root / requirement_path),
-            "done",
-        )
+        delivered = _set_feature_stage(current, "ready-for-qa", "qa", self.service)
+        delivered = _replace_body_section(self.service, delivered, "Delivery evidence", DELIVERY_ROW_TABLE)
+        requirement = _set_requirement_status(self.service._read_text(self.root / requirement_path), "done")
         self._submit_skill(
             "dev-done",
             [
-                {"path": feature_path, "content": completed},
-                {"path": requirement_path, "content": requirement},
-            ],
-        )
-
-    def _submit_reopen(self, action: str) -> None:
-        feature_path = "knowledge/wiki/features/F-001-document-review.md"
-        requirement_path = "knowledge/wiki/app-requirements/F-001-backend.md"
-        target = {
-            "reopen-spec": ("specified", "po", ["specification", "design", "implementation", "tests", "release"]),
-            "reopen-design": ("in-design", "designer", ["design", "implementation", "tests", "release"]),
-        }[action]
-        current = self.service._read_text(self.root / feature_path)
-        reopened = _set_stage_and_revalidation(
-            self.service,
-            current,
-            target[0],
-            target[1],
-            target[2],
-        )
-        prior_row = (
-            "| backend | Synthetic review record `tests/fixtures/review.md` | "
-            "Acceptance check `document-review` passed | release: https://example.test/releases/review-v1 |"
-        )
-        reopened = _replace_body_section(
-            self.service,
-            reopened,
-            "Delivery evidence",
-            "| App | Implementation | Tests | Release |\n|---|---|---|---|",
-        )
-        reopened = _append_body_section(
-            self.service,
-            reopened,
-            "Reopen history",
-            "\n".join(
-                [
-                    f"### {CHECK_DATE.isoformat()} - {action}",
-                    "- Reason: A confirmed reviewer needs a revised outcome summary.",
-                    "- Impact review: Recheck implementation, tests, release evidence, and the linked backend requirement.",
-                    "- Affected apps: backend",
-                    f"- Affected artifacts: {feature_path} and {requirement_path}",
-                    f"- Prior completion/release evidence: {prior_row}",
-                    f"- Requirement/API invalidations: {requirement_path} done -> in-progress",
-                ]
-            ),
-        )
-        requirement = _set_requirement_status(
-            self.service._read_text(self.root / requirement_path),
-            "in-progress",
-        )
-        self._submit_skill(
-            "feature-reopen",
-            [
-                {"path": feature_path, "content": reopened},
+                {"path": feature_path, "content": delivered},
                 {"path": requirement_path, "content": requirement},
             ],
         )
 
 
-class BoardServiceReopenRecordTests(unittest.TestCase):
-    """The archived evidence of a reopen record may follow its label in the layouts an agent writes."""
+class EvidenceHistoryValidatorTests(unittest.TestCase):
+    """`## Evidence history` (CONTRACTS 2.7): append-only, one dated entry per archiving action, rows archived verbatim."""
 
     FEATURE = "knowledge/wiki/features/F-001-document-review.md"
     REQUIREMENT = "knowledge/wiki/app-requirements/F-001-backend.md"
-    DESIGN = "knowledge/wiki/design/F-001-document-review.md"
-    PRIOR_ROW = "| backend | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | release: https://example.test/releases/review-v1 |"
-    TABLE = ["| App | Implementation | Tests | Release |", "|---|---|---|---|", PRIOR_ROW]
+    ROW = "| backend | `build:backend#1` | none | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | checked |"
+    TABLE = ["| App | Artifact | Contract | Implementation | Tests | Basis |", "|---|---|---|---|---|---|", ROW]
+    ARCHIVED = "| Delivery evidence | backend | `build:backend#1` | none | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | checked |"
 
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
+        clock = Mock(wraps=date)
+        clock.today.return_value = CHECK_DATE
+        clock_patch = patch("prism_cli.board_service.date", clock)
+        clock_patch.start()
+        self.addCleanup(clock_patch.stop)
         self.root = create_core_workflow_fixture(Path(temporary.name) / "generated-project")
         self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))["status"])
         (self.root / INTAKE_ITEM).parent.rename(self.root / "knowledge/intake/processed/2026-10-06-document-review-brief")
-        for relative, content in (
-            (self.FEATURE, _journey_feature_page("F-001", "Document review", "in-dev", "dev", ["knowledge/intake/processed/2026-10-06-document-review-brief"], ["| 1 | Which points should a review summary highlight? | po | resolved: The key points. |"])),
-            (self.REQUIREMENT, _journey_requirement_page("in-progress")),
-            (self.DESIGN, _journey_design_page()),
-        ):
-            path = self.root / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(content.encode("utf-8"))
-        feature = (self.root / self.FEATURE).read_text(encoding="utf-8")
-        (self.root / self.FEATURE).write_bytes(feature.replace("No design has been recorded yet.", "The design is recorded in [F-001 design](../design/F-001-document-review.md).").encode("utf-8"))
-        _write_index_rows(self.root, [("F-001", "Document review", "in-dev", "dev")])
         self.service = BoardService(self.root).start()
         self.addCleanup(self.service.close)
-        self.agent = self.service.authenticate(self.service.create_participant("Workflow agent", "agent", True)["token"])
-        self.in_dev = {path: (self.root / path).read_bytes() for path in (self.FEATURE, self.REQUIREMENT)}
-        self.complete()
+        page = _journey_feature_page("F-001", "Document review", "ready-for-qa", "qa", [], [])
+        self.before = _replace_body_section(self.service, page, "Delivery evidence", "\n".join(self.TABLE))
+        self.old_frontmatter = _parse_markdown(self.before)[0]
 
-    def submit(self, skill: str, changes: list[dict[str, str]]) -> dict:
-        preview = self.service.preview_skill(self.agent, skill, changes, None, _read_revisions(self.service, self.agent, skill, changes))
-        return preview
-
-    def complete(self, table: list[str] | None = None) -> None:
-        current = self.service._read_text(self.root / self.FEATURE)
-        done = _set_feature_stage(current, "done", "none", self.service)
-        done = _replace_body_section(self.service, done, "Delivery evidence", "\n".join(table or self.TABLE))
-        done = _replace_body_section(self.service, done, "Post-ship notes", "No deviations were recorded in this fixture.")
-        requirement = _set_requirement_status(self.service._read_text(self.root / self.REQUIREMENT), "done")
-        preview = self.submit("dev-done", [{"path": self.FEATURE, "content": done}, {"path": self.REQUIREMENT, "content": requirement}])
-        self.assertTrue(preview["applicable"], preview["checks"])
-        self.assertEqual("applied", self.service.apply(self.agent, preview["preview_id"], str(uuid4()))["state"])
-
-    def record(self, archive: list[str], trailer: list[str] | None = None) -> str:
+    def entry(self, archive: list[str], *, heading: str | None = None, invalidations: str = "No requirement or API page is invalidated.", extra: list[str] | None = None) -> str:
         lines = [
-            f"### {CHECK_DATE.isoformat()} - reopen-dev",
-            "- Reason: A confirmed reviewer needs a revised outcome summary.",
-            "- Impact review: Recheck implementation, tests, release evidence, and the linked backend requirement.",
+            heading or f"### {CHECK_DATE.isoformat()} - qa-fail",
+            "- Reason: The QA run found that the saved outcome is not read back.",
             "- Affected apps: backend",
-            f"- Affected artifacts: {self.FEATURE} and {self.REQUIREMENT}",
+            "- Participants: none",
+            "- Affected tracks: none",
             *archive,
-            f"- Requirement/API invalidations: {self.REQUIREMENT} done -> in-progress",
-            *(trailer or []),
+            "- Reaffirmed evidence: none",
+            f"- Requirement/API invalidations: {invalidations}",
+            "- Linked bugs: none",
+            *(extra or []),
         ]
         return "\n".join(lines)
 
-    def reopen(self, record: str) -> dict:
-        current = self.service._read_text(self.root / self.FEATURE)
-        reopened = _set_stage_and_revalidation(self.service, current, "in-dev", "dev", ["implementation", "tests", "release"])
-        reopened = _replace_body_section(self.service, reopened, "Delivery evidence", "| App | Implementation | Tests | Release |\n|---|---|---|---|")
-        reopened = _append_body_section(self.service, reopened, "Reopen history", record)
-        requirement = _set_requirement_status(self.service._read_text(self.root / self.REQUIREMENT), "in-progress")
-        return self.submit("feature-reopen", [{"path": self.FEATURE, "content": reopened}, {"path": self.REQUIREMENT, "content": requirement}])
+    def after(self, history: str, table: list[str] | None = None) -> str:
+        page = _replace_body_section(self.service, self.before, "Delivery evidence", "\n".join(table or self.TABLE[:2]))
+        return _append_body_section(self.service, page, "Evidence history", history) if history else page
 
-    def test_the_archived_row_is_accepted_on_the_label_line_or_below_it_in_a_table_or_a_list(self) -> None:
-        label = "- Prior completion/release evidence:"
-        compact_row = "|backend|Synthetic review record `tests/fixtures/review.md`|Acceptance check `document-review` passed|release: https://example.test/releases/review-v1|"
+    def check(self, after: str, **options: object) -> None:
+        self.service._validate_evidence_history(
+            "qa-fail", self.before, after, self.old_frontmatter, relative=self.FEATURE, expected_archive=[("Delivery evidence", tuple(cell.strip() for cell in self.ROW.strip("|").split("|")))], **options
+        )
+
+    def error(self, after: str, **options: object) -> BoardError:
+        with self.assertRaises(BoardError) as caught:
+            self.check(after, **options)
+        return caught.exception
+
+    def test_the_archived_row_is_accepted_below_its_label_in_a_table_or_a_list(self) -> None:
+        label = "- Archived evidence:"
+        compact = "|Delivery evidence|backend|`build:backend#1`|none|Synthetic review record `tests/fixtures/review.md`|Acceptance check `document-review` passed|checked|"
         layouts = {
-            "same line": [f"{label} {self.PRIOR_ROW}"],
-            "sentence then table, no indent": [f"{label} Archived unchanged in the table below.", "", *self.TABLE, ""],
-            "label alone, indented table": [label, *(f"  {line}" for line in self.TABLE)],
-            "sentence then indented table": [f"{label} Archived as it was.", "", *(f"  {line}" for line in self.TABLE)],
-            "list item": [label, f"  - {self.PRIOR_ROW}"],
-            "row without spaces around pipes": [label, compact_row],
+            "label alone, row below": [label, f"  {self.ARCHIVED}"],
+            "label alone, unindented row": [label, self.ARCHIVED],
+            "sentence then row": [f"{label} Archived unchanged.", "", f"  {self.ARCHIVED}"],
+            "list item": [label, f"  - {self.ARCHIVED}"],
+            "row without spaces around pipes": [label, compact],
         }
         for name, archive in layouts.items():
             with self.subTest(layout=name):
-                preview = self.reopen(self.record(archive))
-                self.assertEqual("ready", preview["classification"], preview["checks"])
-                self.assertTrue(preview["applicable"], preview["blockers"])
+                self.check(self.after(self.entry(archive)))
 
-    def evidence_layouts(self) -> dict[str, list[str]]:
-        cells = ["Synthetic review record `tests/fixtures/review.md`", "Acceptance check `document-review` passed", "release: https://example.test/releases/review-v1"]
-        separator = "|---|---|---|---|"
-        return {
-            "canonical": self.TABLE,
-            "app capitalised": ["| App | Implementation | Tests | Release |", separator, "| Backend | " + " | ".join(cells) + " |"],
-            "columns reordered": ["| Implementation | App | Tests | Release |", separator, f"| {cells[0]} | backend | {cells[1]} | {cells[2]} |"],
-            "release first": ["| Release | Tests | Implementation | App |", separator, f"| {cells[2]} | {cells[1]} | {cells[0]} | backend |"],
-            "header case and emphasis": ["| **APP** | implementation | _Tests_ | Release |", separator, "| backend | " + " | ".join(cells) + " |"],
-            "release cell says Release": ["| App | Implementation | Tests | Release |", separator, f"| backend | {cells[0]} | {cells[1]} | Release: https://example.test/releases/Release |"],
-            "compact pipes": ["|App|Implementation|Tests|Release|", separator, "|backend|" + "|".join(cells) + "|"],
-        }
-
-    def restore_in_dev(self) -> None:
-        for relative, content in self.in_dev.items():
-            (self.root / relative).write_bytes(content)
-        _write_index_rows(self.root, [("F-001", "Document review", "in-dev", "dev")])
-
-    def test_every_evidence_table_dev_done_accepts_can_be_archived_by_a_reopen(self) -> None:
-        for name, table in self.evidence_layouts().items():
-            with self.subTest(layout=name):
-                self.restore_in_dev()
-                self.complete(table)
-                archive = ["- Prior completion/release evidence:", *(f"  {line}" for line in table)]
-                preview = self.reopen(self.record(archive))
-                self.assertEqual("ready", preview["classification"], preview["checks"])
-                self.assertTrue(preview["applicable"], preview["blockers"])
-
-    def test_a_reopen_archives_each_row_in_the_column_order_of_its_table(self) -> None:
-        table = self.evidence_layouts()["columns reordered"]
-        self.restore_in_dev()
-        self.complete(table)
-        canonical_order = self.record(["- Prior completion/release evidence:", *(f"  {line}" for line in self.TABLE)])
-        error = self.reopen_error(canonical_order)
-        self.assertEqual(("delivery_evidence_not_archived", 409), (error.code, error.status))
-        self.assertIn("Missing row: | Synthetic review record", error.message)
-        self.assertEqual(table[2], error.details["missing_row"])
-
-    def test_a_row_kept_active_must_equal_the_prior_row_whatever_its_column_order(self) -> None:
-        table = self.evidence_layouts()["columns reordered"]
-        self.restore_in_dev()
-        self.complete(table)
-        archive = ["- Prior completion/release evidence:", *(f"  {line}" for line in table)]
-        current = self.service._read_text(self.root / self.FEATURE)
-        reopened = _set_stage_and_revalidation(self.service, current, "in-dev", "dev", ["implementation", "tests", "release"])
-        reopened = _replace_body_section(self.service, reopened, "Delivery evidence", "\n".join(table))
-        reopened = _append_body_section(self.service, reopened, "Reopen history", self.record(archive))
-        requirement = _set_requirement_status(self.service._read_text(self.root / self.REQUIREMENT), "in-progress")
-        with self.assertRaises(BoardError) as error:
-            self.submit("feature-reopen", [{"path": self.FEATURE, "content": reopened}, {"path": self.REQUIREMENT, "content": requirement}])
-        self.assertEqual(("delivery_evidence_still_active", 409), (error.exception.code, error.exception.status))
-
-    def test_a_row_outside_the_label_block_or_changed_is_rejected_with_the_expected_layout(self) -> None:
-        label = "- Prior completion/release evidence:"
-        rejected = {
-            "table after the next label": self.reopen_error(self.record([f"{label} Archived below."], ["", *self.TABLE])),
-            "table under a later heading": self.reopen_error(self.record([f"{label} Archived below."], ["", "#### Archived delivery evidence", *self.TABLE])),
-            "row changed": self.reopen_error(self.record([f"{label} {self.PRIOR_ROW.replace('review-v1', 'review-v2')}"])),
-        }
-        for name, error in rejected.items():
+    def test_a_removed_row_that_is_not_archived_is_rejected_with_the_row_to_copy(self) -> None:
+        label = "- Archived evidence:"
+        for name, archive in {
+            "no row": [label],
+            "row changed": [label, f"  {self.ARCHIVED.replace('#1', '#2')}"],
+            "row without its section name": [label, f"  {self.ROW}"],
+        }.items():
             with self.subTest(case=name):
-                self.assertEqual(("delivery_evidence_not_archived", 409), (error.code, error.status))
-                self.assertIn("- Prior completion/release evidence:", error.message)
-                self.assertIn("next `- Label:` line or heading", error.message)
-                self.assertIn("Missing row: | backend | Synthetic review record", error.message)
-                self.assertEqual("Prior completion/release evidence", error.details["label"])
-                self.assertEqual(self.FEATURE, error.details["path"])
-        empty = self.reopen_error(self.record(["- Prior completion/release evidence:"]))
-        self.assertEqual("impact_review_required", empty.code)
+                error = self.error(self.after(self.entry(archive)))
+                self.assertIn(error.code, {"evidence_not_archived", "impact_review_required"})
+                if error.code == "evidence_not_archived":
+                    self.assertEqual((409, self.FEATURE), (error.status, error.details["path"]))
+                    self.assertIn("Missing row: | Delivery evidence | backend", error.message)
 
-    def test_reopen_rejections_name_the_exact_format_of_the_invalidation_line(self) -> None:
-        archive = ["- Prior completion/release evidence:", *(f"  {line}" for line in self.TABLE)]
-        arrow_line = f"- Requirement/API invalidations: {self.REQUIREMENT} done -> in-progress"
-        good = self.record(archive)
-        self.assertIn(arrow_line, good)
+    def test_a_row_that_is_archived_and_still_active_is_rejected(self) -> None:
+        after = self.after(self.entry(["- Archived evidence:", f"  {self.ARCHIVED}"]), self.TABLE)
+        error = self.error(after)
+        self.assertEqual(("evidence_still_active", 409), (error.code, error.status))
 
-        sentence = self.reopen_error(good.replace(arrow_line, f"- Requirement/API invalidations: {self.REQUIREMENT} status changed from `done` to `in-progress`"))
-        self.assertEqual(("reopen_invalidation_mismatch", 409), (sentence.code, sentence.status))
-        self.assertIn(f"`{self.REQUIREMENT}: done -> in-progress`", sentence.message)
-        self.assertEqual({"path": self.REQUIREMENT, "from": "done", "to": "in-progress"}, sentence.details)
+    def test_earlier_entries_stay_and_exactly_one_dated_entry_is_appended(self) -> None:
+        first = self.entry(["- Archived evidence:", f"  {self.ARCHIVED}"])
+        self.before = self.after(first)
+        self.old_frontmatter = _parse_markdown(self.before)[0]
+        # Rewriting the earlier entry is refused.
+        rewritten = self.before.replace("The QA run found", "Someone rewrote")
+        self.assertEqual("history_not_append_only", self.error(rewritten, require_entry=False).code)
+        # A second action with no removal and no entry passes when the entry is optional.
+        self.service._validate_evidence_history("qa-fail", self.before, self.before, self.old_frontmatter, relative=self.FEATURE, require_entry=False)
+        # A missing entry, a wrong date or a wrong action is `history_entry_required`.
+        self.assertEqual("history_entry_required", self.error(self.before).code)
+        wrong_date = self.after(self.entry(["- Archived evidence:", f"  {self.ARCHIVED}"], heading="### 2020-01-01 - qa-fail"))
+        self.assertEqual("history_entry_required", self.error(wrong_date).code)
+        wrong_action = self.after(self.entry(["- Archived evidence:", f"  {self.ARCHIVED}"], heading=f"### {CHECK_DATE.isoformat()} - reopen-dev"))
+        self.assertEqual("history_entry_required", self.error(wrong_action).code)
 
-        unnamed = self.reopen_error(good.replace(f"- Affected artifacts: {self.FEATURE} and {self.REQUIREMENT}", f"- Affected artifacts: {self.FEATURE} and the backend renderer"))
-        self.assertEqual(("reopen_artifact_missing", 409), (unnamed.code, unnamed.status))
-        self.assertIn(self.REQUIREMENT, unnamed.message)
-        self.assertIn("Affected artifacts", unnamed.message)
+    def test_the_entry_names_its_apps_tracks_and_invalidations(self) -> None:
+        archive = ["- Archived evidence:", f"  {self.ARCHIVED}"]
+        good = self.entry(archive)
+        outside = self.error(self.after(good.replace("Affected apps: backend", "Affected apps: worker")))
+        self.assertEqual("reopen_app_scope", outside.code)
+        tracks = self.error(self.after(good.replace("Affected tracks: none", "Affected tracks: visuals")))
+        self.assertEqual("impact_review_required", tracks.code)
+        short = self.error(self.after(good.replace("No requirement or API page is invalidated.", "None")))
+        self.assertEqual(("impact_review_required", {"label": "Requirement/API invalidations"}), (short.code, short.details))
+        self.assertIn("done -> in-progress", short.message)
+        placeholder = self.error(self.after(good.replace("The QA run found that the saved outcome is not read back.", "[why the evidence was archived]")))
+        self.assertEqual("impact_review_required", placeholder.code)
 
-        none = self.reopen_error(good.replace(arrow_line, "- Requirement/API invalidations: None"))
-        self.assertEqual(("impact_review_required", 409), (none.code, none.status))
-        self.assertIn("Requirement/API invalidations", none.message)
-        self.assertIn("done -> in-progress", none.message)
-        self.assertIn("No requirement or API page is invalidated.", none.message)
-        self.assertEqual({"label": "Requirement/API invalidations"}, none.details)
+    def test_linked_pages_named_by_the_entry_must_match_the_proposal(self) -> None:
+        requirement_before = _journey_requirement_page("done")
+        requirement_after = _set_requirement_status(requirement_before, "in-progress")
+        supplied = {self.REQUIREMENT: requirement_after}
+        before = {self.REQUIREMENT: requirement_before}
+        archive = ["- Archived evidence:", f"  {self.ARCHIVED}"]
+        arrow = f"{self.REQUIREMENT}: done -> in-progress"
+        self.check(self.after(self.entry(archive, invalidations=arrow)), related=(supplied, before))
+        sentence = self.error(self.after(self.entry(archive, invalidations=f"{self.REQUIREMENT} changed from done to in-progress")), related=(supplied, before))
+        self.assertEqual(("reopen_invalidation_mismatch", {"path": self.REQUIREMENT, "from": "done", "to": "in-progress"}), (sentence.code, sentence.details))
+        unlisted = self.error(self.after(self.entry(archive)), related=(supplied, before))
+        self.assertEqual("reopen_invalidation_mismatch", unlisted.code)
 
-    def reopen_error(self, record: str) -> BoardError:
-        with self.assertRaises(BoardError) as error:
-            self.reopen(record)
-        return error.exception
+    def test_reopen_routes_answer_action_unavailable(self) -> None:
+        agent = self.service.authenticate(self.service.create_participant("Workflow agent", "agent", True)["token"])
+        with self.assertRaises(BoardError) as caught:
+            self.service.preview_skill(agent, "feature-reopen", [{"path": self.FEATURE, "content": self.before}], None, {})
+        self.assertEqual(("action_unavailable", 409), (caught.exception.code, caught.exception.status))
 
 
 def _read_revisions(
@@ -2013,10 +1799,15 @@ def _journey_feature_page(
         "\n## Related features\nNo related feature is required for this workflow.\n"
         "\n## Board review summary\nThe existing acceptance checks cover the scoped review workflow.\n"
         "\n## Delivery evidence\n"
-        "| App | Implementation | Tests | Release |\n"
-        "|---|---|---|---|\n"
-        "\n## Reopen history\n"
-        "\n## Post-ship notes\nThe fixture has no post-ship deviations.\n"
+        "| App | Artifact | Contract | Implementation | Tests | Basis |\n"
+        "|---|---|---|---|---|---|\n"
+        "\n## QA verification\n"
+        "| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |\n"
+        "|---|---|---|---|---|---|---|---|---|\n"
+        "\n## Release\n"
+        "| App | Target | Version | Attempt | Outcome | Record | Basis |\n"
+        "|---|---|---|---|---|---|---|\n"
+        "\n## Evidence history\n"
     )
     return f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---\n\n{body}"
 

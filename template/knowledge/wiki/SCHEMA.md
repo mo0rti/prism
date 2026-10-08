@@ -657,16 +657,19 @@ operation reads it first to find the pages it needs, then reads those pages.
 ```markdown
 # Feature Status Board
 
-| ID | Feature | Status | Owner | Board Review |
-|----|---------|--------|-------|--------------|
-| F-001 | User login | in-dev | dev | not-needed |
-| F-002 | Nutrition score | ready-for-design | designer | pending |
+| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |
+|----|---------|--------|-------|--------------|---------------|------------|-----------|
+| F-001 | User login | in-dev | dev | not-needed | — | api: ready-for-qa; web: in-dev | — |
+| F-002 | Nutrition score | ready-for-design | designer | pending | — | — | — |
 ```
 
-The status board is a current-state page: it has no date column. Update the row of a feature
-whenever its status, owner or `advisory-review` field changes, and add the row when a feature
-is created. The connected board merges the rows itself; `prism wiki lint` reports a feature with
-no row, a row with no feature and a row that disagrees with the feature's front matter.
+The header is exact. The status board is a current-state page: it has no date column. Update
+the row of a feature whenever its status, owner, `advisory-review` field or app stages change,
+and add the row when a feature is created. `App stages` lists the stage of each active app as
+`app: stage` joined by `; ` from `in-dev` on, and is `—` before. `Design tracks` and `Open bugs`
+read `—` until the workflow fills them. The connected board merges the rows itself; `prism wiki
+lint` reports a feature with no row, a row with no feature and a row that disagrees with the
+feature's front matter or evidence (it compares `Status`, `Owner`, `Board Review` and `App stages`).
 
 ---
 
@@ -803,18 +806,24 @@ Use this blocker vocabulary consistently in `lint-wiki`, `wiki-blockers`, and
 `WIKI_REPORT.md` summaries:
 
 - `pending-board-review`: any feature with `advisory-review: pending` that is at
-  `ready-for-design`, `in-design`, `ready-for-dev`, or `in-dev`.
-- `missing-design`: any feature in `ready-for-dev`, `in-dev`, or `done` whose scope includes an app with a UI
+  `ready-for-design` up to `ready-for-release`.
+- `missing-design`: any feature from `ready-for-dev` on whose scope includes an app with a UI
   (`has-ui`) and that has no matching design page.
-- `missing-app-requirements`: any feature in `ready-for-dev` or `in-dev` that is
+- `missing-app-requirements`: any feature from `ready-for-dev` up to `ready-for-release` that is
   missing one or more app requirement files for apps listed in feature
   frontmatter.
 - `unresolved-open-questions`: any feature in `ready-for-dev` or `in-dev` with open
-  questions still assigned to `po`, `designer`, or `dev`.
+  questions still assigned to `po`, `designer`, `tech-lead` or `dev`.
 - `api-contract-not-ready`: any feature that depends on an API contract still marked
-  `draft` while downstream apps are `ready-for-dev` or `in-dev`.
+  `draft` while downstream apps are between `ready-for-dev` and `ready-for-release`.
 - `cross-app-dependency`: any app-requirement page whose `Dependencies`
-  section points to unfinished feature IDs or unfinished app-requirement pages.
+  section points to feature IDs or app-requirement pages that are not `released` yet.
+- `feature-status-not-minimum`: a feature at `in-dev` or later whose status differs from the
+  lowest stage of its active apps.
+- `app-row-missing`: a feature whose status needs an evidence row that one of its apps lacks.
+- `stale-qa-evidence`: a QA verification row that cites a criterion revision, an artifact or an
+  attempt that is no longer current.
+- `stale-delivery-evidence`: a delivery evidence row whose contract citation is no longer current.
 
 If a command cannot prove a category from current wiki files, it must not invent it.
 Report the category as unchecked or absent rather than guessing.
@@ -874,7 +883,7 @@ Follow these rules in every wiki operation:
       example `effective-date`).
     - A **dated record** states what was decided or observed at one point in time: an
       ADR (`date`), an advisory review (`reviewed`), each entry under a feature's
-      `## Reopen history` and a processed intake item (its `YYYY-MM-DD-slug` name). A
+      `## Evidence history` (headed `### YYYY-MM-DD - action`) and a processed intake item (its `YYYY-MM-DD-slug` name). A
       record keeps its own date because the date is part of what it records. It is not
       edited to follow later events, except for its status fields; a later record
       supersedes it.

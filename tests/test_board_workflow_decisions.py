@@ -14,7 +14,7 @@ import yaml
 
 from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.wiki_lint import lint_wiki
-from prism_cli.wiki_transitions import build_transition_preflight
+from prism_cli.wiki_transitions import build_board_transition_preflight, build_transition_preflight
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, create_core_workflow_fixture, write_processed_brief
 from tests.test_board_service import (
@@ -40,9 +40,10 @@ PO_QUESTION = "| 1 | Which details should the summary emphasize? | po | open |"
 DEV_QUESTION = "| 2 | Is there a limit on the number of comments in one summary? | dev | open |"
 DESIGNER_QUESTION = "| 3 | Where should the next steps appear? | designer | open |"
 DEV_ANSWER = "At most 200 comments are exported; the rest are summarized as a count."
-EVIDENCE_ROW = "| backend | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | release: https://example.test/releases/1.4.0 |"
-EVIDENCE_TABLE = f"| App | Implementation | Tests | Release |\n|---|---|---|---|\n{EVIDENCE_ROW}"
-EMPTY_EVIDENCE = "| App | Implementation | Tests | Release |\n|---|---|---|---|"
+EVIDENCE_HEADER = "| App | Artifact | Contract | Implementation | Tests | Basis |\n|---|---|---|---|---|---|\n"
+EVIDENCE_ROW = "| backend | `build:backend#42` | none | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | checked |"
+EVIDENCE_TABLE = EVIDENCE_HEADER + EVIDENCE_ROW
+EMPTY_EVIDENCE = EVIDENCE_HEADER.rstrip()
 
 
 class _BoardWorkspace(unittest.TestCase):
@@ -105,7 +106,7 @@ class RawIntakeTests(_BoardWorkspace):
     def feature_page(self, status: str, owner: str = "po", *, blank_trailing: bool = False) -> str:
         page = _journey_feature_page("F-001", "Document review", status, owner, [self.PROCESSED + "/brief.md"], [PO_QUESTION])
         if blank_trailing:
-            for heading in ("Design", "Related features", "Board review summary", "Post-ship notes"):
+            for heading in ("Design", "Related features", "Board review summary"):
                 page = _replace_body_section(self.service, page, heading, "")
         return page
 
@@ -212,9 +213,9 @@ class RawIntakeTests(_BoardWorkspace):
 
         error = self.rejection("po-specify", [{"path": FEATURE, "content": specified}])
         self.assertEqual(("required_section_missing", 409), (error.code, error.status))
-        self.assertEqual(["Board review summary", "Design", "Post-ship notes", "Related features"], error.details["sections"])
+        self.assertEqual(["Board review summary", "Design", "Related features"], error.details["sections"])
         self.assertEqual(FEATURE, error.details["path"])
-        for hint in ("Not started.", "None identified.", "Not shipped yet."):
+        for hint in ("Not started.", "None identified.", "Not reviewed yet."):
             self.assertIn(hint, error.message)
 
         completed = specified
@@ -222,7 +223,6 @@ class RawIntakeTests(_BoardWorkspace):
             ("Design", "Not started."),
             ("Related features", "None identified."),
             ("Board review summary", "Not reviewed yet."),
-            ("Post-ship notes", "Not shipped yet."),
         ):
             completed = _replace_body_section(self.service, completed, heading, line)
         preview = self.preview("po-specify", [{"path": FEATURE, "content": completed}])
@@ -274,7 +274,7 @@ class DevClarifyTests(_BoardWorkspace):
     def proposal(self, *, scope: str | None = DEV_ANSWER, requirement: str | None = DEV_ANSWER) -> list[dict[str, str]]:
         feature = self.answered(self.read(FEATURE))
         if scope is not None:
-            feature = _replace_body_section(self.service, feature, "App scope", f"- **backend**: Store the review summary and recorded outcome. {scope}")
+            feature = _replace_body_section(self.service, feature, "API surface", f"The stored review summary and outcome keep their interface. {scope}")
         changes = [{"path": FEATURE, "content": feature}]
         if requirement is not None:
             page = _replace_body_section(
@@ -332,7 +332,7 @@ class DevClarifyTests(_BoardWorkspace):
                 self.assertIn(f"cannot resolve {owner}-owned question {number}", error.message)
 
     def test_a_proposal_that_resolves_no_dev_question_is_rejected(self) -> None:
-        feature = _replace_body_section(self.service, self.read(FEATURE), "App scope", "- **backend**: Store it somewhere else.")
+        feature = _replace_body_section(self.service, self.read(FEATURE), "API surface", "The stored review summary is available to every reviewer.")
         error = self.rejection("dev-clarify", [{"path": FEATURE, "content": feature}])
         self.assertEqual("answer_required", error.code)
 
@@ -349,7 +349,7 @@ class DevClarifyTests(_BoardWorkspace):
     def test_a_paraphrase_in_a_feature_section_is_rejected(self) -> None:
         error = self.rejection("dev-clarify", self.proposal(scope="Export is capped.", requirement=None))
         self.assertEqual(("clarify_answer_unlinked", 409), (error.code, error.status))
-        self.assertEqual("App scope", error.details["section"])
+        self.assertEqual("API surface", error.details["section"])
         self.assertIn("dev-owned question(s) 2", error.message)
 
     def test_an_answer_is_matched_as_whole_words_not_inside_other_words(self) -> None:
@@ -360,21 +360,21 @@ class DevClarifyTests(_BoardWorkspace):
             "Nothing is exported, and nobody noticed.",
         ):
             with self.subTest(text=text):
-                changed = _replace_body_section(self.service, feature, "Acceptance criteria", f"- [ ] {text}")
+                changed = _replace_body_section(self.service, feature, "Acceptance criteria", f"- [ ] AC-1 [backend] {text}\n- [ ] AC-2 [backend] A saved summary can be read back.")
                 error = self.rejection("dev-clarify", [{"path": FEATURE, "content": changed}])
                 self.assertEqual(("clarify_answer_unlinked", 409), (error.code, error.status))
                 self.assertEqual("Acceptance criteria", error.details["section"])
         for text in ("No.", "Is a limit needed? NO, none.", "The answer was no\nfor now.", "(no)"):
             with self.subTest(accepted=text):
-                changed = _replace_body_section(self.service, feature, "Acceptance criteria", f"- [ ] {text}")
+                changed = _replace_body_section(self.service, feature, "Acceptance criteria", f"- [ ] AC-1 [backend] {text}\n- [ ] AC-2 [backend] A saved summary can be read back.")
                 self.assertEqual("ready", self.preview("dev-clarify", [{"path": FEATURE, "content": changed}])["classification"])
 
     def test_an_answer_with_punctuation_at_its_edges_still_matches(self) -> None:
         answer = "$5 per export (max)"
         feature = self.answered(self.read(FEATURE), answer=answer)
-        changed = _replace_body_section(self.service, feature, "App scope", f"- **backend**: The fee is {answer}.")
+        changed = _replace_body_section(self.service, feature, "API surface", f"The fee is {answer}.")
         self.assertEqual("ready", self.preview("dev-clarify", [{"path": FEATURE, "content": changed}])["classification"])
-        glued = _replace_body_section(self.service, feature, "App scope", f"- **backend**: The fee is {answer}s.")
+        glued = _replace_body_section(self.service, feature, "API surface", f"The fee is {answer}s.")
         self.assertEqual("clarify_answer_unlinked", self.rejection("dev-clarify", [{"path": FEATURE, "content": glued}]).code)
 
     def test_case_and_spacing_of_the_answer_do_not_matter(self) -> None:
@@ -406,7 +406,7 @@ class DevClarifyTests(_BoardWorkspace):
 
     def test_feature_status_owner_and_other_sections_are_protected(self) -> None:
         feature = self.answered(self.read(FEATURE))
-        error = self.rejection("dev-clarify", [{"path": FEATURE, "content": _set_feature_stage(feature, "done", "none", self.service)}])
+        error = self.rejection("dev-clarify", [{"path": FEATURE, "content": _set_feature_stage(feature, "released", "none", self.service)}])
         self.assertEqual("lifecycle_action_required", error.code)
         error = self.rejection("dev-clarify", [{"path": FEATURE, "content": feature.replace("title: Document review", "title: Renamed", 1)}])
         self.assertEqual(("clarify_frontmatter_change", 409), (error.code, error.status))
@@ -433,18 +433,22 @@ class DevClarifyTests(_BoardWorkspace):
         error = self.rejection("dev-clarify", changes)
         self.assertEqual(("requirement_page_unavailable", 409), (error.code, error.status))
 
-    def test_it_works_before_dev_and_not_on_a_done_feature(self) -> None:
+    def test_it_works_before_dev_and_not_on_a_released_feature(self) -> None:
         for status, owner in (("raw", "po"), ("specified", "po"), ("ready-for-design", "designer"), ("in-design", "designer"), ("ready-for-dev", "dev"), ("in-dev", "dev")):
             with self.subTest(status=status):
                 self.set_stage(status, owner, requirement=False)
                 (self.root / REQUIREMENT).unlink(missing_ok=True)
                 feature = self.answered(self.read(FEATURE))
                 self.assertEqual("ready", self.preview("dev-clarify", [{"path": FEATURE, "content": feature}])["classification"])
-        self.set_stage("done", "none", requirement=False)
-        error = self.rejection("dev-clarify", [{"path": FEATURE, "content": self.answered(self.read(FEATURE))}])
+        self.set_stage("released", "none", requirement=False)
+        # Answers stay possible; a criterion change on a released feature is refused and points to a return route.
+        feature = self.answered(self.read(FEATURE))
+        self.assertEqual("ready", self.preview("dev-clarify", [{"path": FEATURE, "content": feature}])["classification"])
+        changed = _replace_body_section(self.service, feature, "Acceptance criteria", "- [ ] AC-1 [backend] A changed criterion.\n- [ ] AC-2 [backend] A saved summary can be read back.")
+        error = self.rejection("dev-clarify", [{"path": FEATURE, "content": changed}])
         self.assertEqual(("clarify_stage_unavailable", 409), (error.code, error.status))
-        self.assertEqual({"path": FEATURE, "status": "done"}, error.details)
-        self.assertIn("feature-reopen", error.message)
+        self.assertEqual({"path": FEATURE, "status": "released"}, error.details)
+        self.assertIn("return route", error.message)
 
     def test_the_answer_unblocks_the_dev_owned_question_check(self) -> None:
         before = build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]
@@ -476,10 +480,9 @@ class DevDoneEvidenceTests(_DevDoneWorkspace):
     """D14: dev-done takes the delivery evidence in its proposal."""
 
     def done(self, evidence: str | None) -> list[dict[str, str]]:
-        feature = _set_feature_stage(self.read(FEATURE), "done", "none", self.service)
+        feature = _set_feature_stage(self.read(FEATURE), "ready-for-qa", "qa", self.service)
         if evidence is not None:
             feature = _replace_body_section(self.service, feature, "Delivery evidence", evidence)
-        feature = _replace_body_section(self.service, feature, "Post-ship notes", "Shipped as reported by the developer.")
         requirement = _set_requirement_status(self.read(REQUIREMENT), "done")
         return [{"path": FEATURE, "content": feature}, {"path": REQUIREMENT, "content": requirement}]
 
@@ -494,13 +497,18 @@ class DevDoneEvidenceTests(_DevDoneWorkspace):
 
         self.apply(preview)
         frontmatter, body = _parse_markdown(self.read(FEATURE))
-        self.assertEqual(("done", "none"), (frontmatter["status"], frontmatter["owner"]))
+        self.assertEqual(("ready-for-qa", "qa"), (frontmatter["status"], frontmatter["owner"]))
         self.assertIn(EVIDENCE_ROW, body)
         self.assertEqual("done", _parse_markdown(self.read(REQUIREMENT))[0]["status"])
         self.assertEqual(0, lint_wiki(self.root).error_count)
 
     def test_missing_evidence_is_rejected_with_the_row_to_add(self) -> None:
-        cases = {"empty table": EMPTY_EVIDENCE, "no table": "Shipped, trust me.", "section absent from the proposal": None}
+        cases = {
+            "empty table": EMPTY_EVIDENCE,
+            "no table": "Shipped, trust me.",
+            "section absent from the proposal": None,
+            "short row": EVIDENCE_HEADER + "| backend | `build:backend#42` | none | Pull request 42 | CI run 1187 |",
+        }
         for name, evidence in cases.items():
             with self.subTest(case=name):
                 changes = self.done(evidence)
@@ -510,40 +518,47 @@ class DevDoneEvidenceTests(_DevDoneWorkspace):
                 self.assertEqual(("delivery_evidence_required", 409), (error.code, error.status))
                 self.assertIn("## Delivery evidence", error.message)
                 self.assertIn("`backend`", error.message)
-                self.assertIn("| backend | <implementation reference> | <test command and result> | release: <URL of the release or deployment record> |", error.message)
+                self.assertIn("| backend | build:backend#412 | none | <implementation reference> | <test command and result> | checked |", error.message)
                 self.assertIn("do not invent", error.message)
                 self.assertEqual(FEATURE, error.details["path"])
                 self.assertEqual(["backend"], error.details["apps"])
-                self.assertEqual(["backend"], error.details["missing_apps"])
-                self.assertTrue(error.details["problems"])
+                self.assertEqual(["App", "Artifact", "Contract", "Implementation", "Tests", "Basis"], error.details["table_columns"])
                 self.assertLess(len(error.message) + len(json.dumps(error.details)), 2000)
         self.assertEqual("in-dev", _parse_markdown(self.read(FEATURE))[0]["status"])
+        short = self.rejection("dev-done", self.done(cases["short row"]))
+        self.assertIn("exactly 6 cells", " ".join(short.details["problems"]))
 
     def test_invalid_evidence_is_rejected_with_each_problem(self) -> None:
-        header = "| App | Implementation | Tests | Release |\n|---|---|---|---|\n"
         cases = {
-            "placeholder cell": (header + "| backend | Pull request 42 | n/a | release: https://example.test/releases/1.4.0 |", "delivery_evidence_invalid", "`tests` for `backend` is empty or still a placeholder", []),
-            "template cell": (header + "| backend | [artifact or source reference] | CI run 1187 | release: https://example.test/releases/1.4.0 |", "delivery_evidence_invalid", "`implementation` for `backend`", []),
-            "wrong platform": (header + "| web-user-app | Pull request 42 | CI run 1187 | release: https://example.test/releases/1.4.0 |", "delivery_evidence_invalid", "undeclared app(s): web-user-app", ["backend"]),
-            "duplicate platform": (header + EVIDENCE_ROW + "\n" + EVIDENCE_ROW, "delivery_evidence_invalid", "duplicate app `backend`", []),
-            "short row": (header + "| backend | Pull request 42 | CI run 1187 |", "delivery_evidence_required", "exactly App, Implementation, Tests, and Release cells", ["backend"]),
+            "placeholder cell": (EVIDENCE_HEADER + "| backend | `build:backend#42` | none | Pull request 42 | n/a | checked |", "delivery_evidence_invalid", "The Tests cell of `backend` is empty or still a placeholder"),
+            "template cell": (EVIDENCE_HEADER + "| backend | `build:backend#42` | none | [artifact or source reference] | CI run 1187 | checked |", "delivery_evidence_invalid", "The Implementation cell of `backend`"),
+            "bad artifact": (EVIDENCE_HEADER + "| backend | build-42 | none | Pull request 42 | CI run 1187 | checked |", "artifact_reference_invalid", "must start with one of `version:`, `build:`, `image:`, `package:`, `commit:`"),
+            "bad basis": (EVIDENCE_HEADER + "| backend | `build:backend#42` | none | Pull request 42 | CI run 1187 | trust me |", "basis_invalid", "must be `checked` or `attested`"),
+            "bad contract": (EVIDENCE_HEADER + "| backend | `build:backend#42` | F-001 | Pull request 42 | CI run 1187 | checked |", "delivery_evidence_invalid", "The contract of `backend`"),
+            "duplicate app": (EVIDENCE_HEADER + EVIDENCE_ROW + "\n" + EVIDENCE_ROW, "delivery_evidence_invalid", "duplicate app `backend`"),
         }
-        for name, (evidence, code, problem, missing) in cases.items():
+        for name, (evidence, code, problem) in cases.items():
             with self.subTest(case=name):
                 error = self.rejection("dev-done", self.done(evidence))
                 self.assertEqual((code, 409), (error.code, error.status))
                 self.assertIn(problem, " ".join(error.details["problems"]))
-                if code == "delivery_evidence_invalid":
-                    self.assertIn(problem, error.message)
-                self.assertEqual(missing, error.details["missing_apps"])
+                self.assertIn(problem, error.message)
                 self.assertEqual(FEATURE, error.details["path"])
+                self.assertEqual(["backend"], error.details["apps"])
                 self.assertLess(len(error.message) + len(json.dumps(error.details)), 2000)
 
-    def test_evidence_that_an_earlier_edit_recorded_is_still_valid_input(self) -> None:
+    def test_a_row_for_an_app_outside_the_scope_is_rejected(self) -> None:
+        error = self.rejection("dev-done", self.done(EVIDENCE_HEADER + "| web-user-app | `build:web#42` | none | Pull request 42 | CI run 1187 | checked |"))
+        self.assertEqual(("undeclared_app_row", 409), (error.code, error.status))
+        self.assertEqual(["web-user-app"], error.details["apps"])
+        self.assertEqual(["backend"], error.details["scope"])
+
+    def test_a_row_recorded_earlier_is_not_new_evidence(self) -> None:
+        # The delivery rows of an app are written by the dev-done that delivers it; a row that is already there names no app.
         self.write(FEATURE, _replace_body_section(self.service, self.read(FEATURE), "Delivery evidence", EVIDENCE_TABLE))
-        self.assertEqual("pass", _evidence_check(self.root)["status"])
-        self.apply(self.preview("dev-done", self.done(None)))
-        self.assertEqual("done", _parse_markdown(self.read(FEATURE))[0]["status"])
+        self.assertEqual("pass", _evidence_check(self.root, named=("backend",))["status"])
+        error = self.rejection("dev-done", self.done(None))
+        self.assertEqual("delivery_evidence_required", error.code)
 
     def test_evidence_does_not_widen_what_dev_done_may_change(self) -> None:
         changes = self.done(EVIDENCE_TABLE)
@@ -595,11 +610,11 @@ class ApiSurfaceDeclarationTests(_DevDoneWorkspace):
                 self.write(FEATURE, feature)
                 check = next(item for item in build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]["checks"] if item["code"] == "api-contract")
                 self.assertEqual("blocked" if declared else "pass", check["status"], check["message"])
-                done = _replace_body_section(self.service, _set_feature_stage(feature, "done", "none", self.service), "Delivery evidence", EVIDENCE_TABLE)
+                done = _replace_body_section(self.service, _set_feature_stage(feature, "ready-for-qa", "qa", self.service), "Delivery evidence", EVIDENCE_TABLE)
                 self.write(FEATURE, done)
                 self.write(REQUIREMENT, _set_requirement_status(self.read(REQUIREMENT), "done"))
                 codes = {item.code for item in lint_wiki(self.root).diagnostics}
-                self.assertEqual(declared, "done-api-contract" in codes, sorted(codes))
+                self.assertEqual(declared, "delivered-api-contract" in codes, sorted(codes))
                 self.write(FEATURE, base)
                 self.write(REQUIREMENT, _journey_requirement_page("in-progress"))
 
@@ -620,10 +635,10 @@ class HandoffApiContractTests(_BoardWorkspace):
             PO_QUESTION.replace("| po | open |", "| po | resolved: Key points. |"),
             DEV_QUESTION.replace("| dev | open |", "| dev | resolved: At most 200 comments. |"),
         ]
-        page = _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/2026-10-06-document-review-brief"], questions)
+        page = _journey_feature_page("F-001", "Document review", "in-design", "tech-lead", ["knowledge/intake/processed/2026-10-06-document-review-brief"], questions)
         write_processed_brief(self.root)
         self.write(FEATURE, _replace_body_section(None, page, "API surface", surface))
-        _write_index_rows(self.root, [("F-001", "Document review", "in-design", "designer")])
+        _write_index_rows(self.root, [("F-001", "Document review", "in-design", "tech-lead")])
 
     def contract(
         self,
@@ -796,8 +811,11 @@ class ApprovedReadPathTests(_BoardWorkspace):
         self.assertEqual(2, len(self.service.read_workspace(self.agent, ["knowledge/wiki/SCHEMA.md", "knowledge/wiki/log.md"])["files"]))
 
 
-def _evidence_check(root: Path) -> dict:
-    transition = build_transition_preflight(root, "F-001", action="dev-done")["facts"]["transition"]
+def _evidence_check(root: Path, named: tuple[str, ...] | None = None) -> dict:
+    if named is None:
+        transition = build_transition_preflight(root, "F-001", action="dev-done")["facts"]["transition"]
+    else:
+        transition = build_board_transition_preflight(root, "F-001", "dev-done", named_apps=named)
     return next(item for item in transition["checks"] if item["code"] == "delivery-evidence")
 
 

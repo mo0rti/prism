@@ -447,11 +447,11 @@ class BoardServerTests(unittest.TestCase):
             feature.write_bytes(
                 _feature_page()
                 .replace("status: raw", "status: ready-for-design")
-                .replace("owner: po", "owner: designer")
+                .replace("owner: po", "owner: tech-lead")
                 .replace("| po | open |", "| po | resolved: Summarize key points. |")
                 .encode("utf-8")
             )
-            _write_index(root, "ready-for-design", "designer")
+            _write_index(root, "ready-for-design", "tech-lead")
 
             service = BoardService(root)
             self.addCleanup(service.close)
@@ -502,11 +502,11 @@ class BoardServerTests(unittest.TestCase):
             feature.write_bytes(
                 _feature_page()
                 .replace("status: raw", "status: ready-for-design")
-                .replace("owner: po", "owner: designer")
+                .replace("owner: po", "owner: tech-lead")
                 .replace("| po | open |", "| po | resolved: Summarize key points. |")
                 .encode("utf-8")
             )
-            _write_index(root, "ready-for-design", "designer")
+            _write_index(root, "ready-for-design", "tech-lead")
 
             service = BoardService(root).start()
             try:

@@ -1,13 +1,12 @@
-I am the developer. Feature F-001 is implemented and shipped. Use Prism's dev-done skill to mark it done. Work only through your Prism MCP tools and follow the board's guidance.
+I am the developer. Feature F-001 is implemented. Use Prism's dev-done skill to hand it to QA. Work only through your Prism MCP tools and follow the board's guidance.
 
 Delivery evidence for the backend app (record it in the feature's delivery evidence table):
 - Implementation: pull request #42 in the review-summary-service repository, merged as commit 3f9c2ab.
 - Tests: CI run 1187 on that commit, 31 tests passed, 0 failed.
-- Release: deployment record https://example.test/review-summary-service/deployments/1.4.0 (version 1.4.0, deployed to production).
+- Artifact: commit 3f9c2ab.
+- Basis: attested, because you cannot check it yourself.
 
-The summary endpoint is live as agreed, so mark the feature's API contract page implemented.
-
-Post-ship notes: no deviations from the specification.
+The summary endpoint is implemented as agreed, so mark the feature's API contract page implemented.
 
 You cannot open the repository or the CI run from here, so record this evidence as I gave it and say clearly in your summary that you did not verify it.
 

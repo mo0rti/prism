@@ -1,13 +1,14 @@
 ---
 id: F-001
 title: Review summary export
-status: done
-owner: none
+status: ready-for-qa
+owner: qa
 apps:
 - backend
 sources:
 - knowledge/intake/processed/2026-09-30-review-summary
 advisory-review: not-needed
+criteria-high-water: 10
 ---
 
 ## Summary
@@ -17,17 +18,17 @@ A reviewer who has finished reviewing a document can export a one-page summary o
 As a [Legal operations document reviewer](../personas/legal-operations-reviewer.md), I want to export a summary of my finished review, so that I can send it on without editing and without copying my comments by hand.
 
 ## Acceptance criteria
-- [ ] For a finished review, the backend service operation provides the summary to the calling client for the requesting reviewer.
-- [ ] The backend serves the export through a service operation. The "Export summary" button from question 4 lives in the client that calls the backend, and that client is outside this feature. Only the backend app is in scope.
-- [ ] The summary contains the document title, the reviewer, the decision (approved, changes requested or rejected) and the comments the reviewer left, subject to the one-page limit below.
-- [ ] The summary is one page.
-- [ ] The summary can be sent on without editing.
-- [ ] The summary never includes comments from other reviewers.
-- [ ] Export is not available while the review is still in progress.
+- [ ] AC-1 [backend] For a finished review, the backend service operation provides the summary to the calling client for the requesting reviewer.
+- [ ] AC-2 [backend] The backend serves the export through a service operation. The "Export summary" button from question 4 lives in the client that calls the backend, and that client is outside this feature. Only the backend app is in scope.
+- [ ] AC-3 [backend] The summary contains the document title, the reviewer, the decision (approved, changes requested or rejected) and the comments the reviewer left, subject to the one-page limit below.
+- [ ] AC-4 [backend] The summary is one page.
+- [ ] AC-5 [backend] The summary can be sent on without editing.
+- [ ] AC-6 [backend] The summary never includes comments from other reviewers.
+- [ ] AC-7 [backend] Export is not available while the review is still in progress.
 
-- [ ] A downloaded PDF file. The system only produces it; the reviewer sends it on themselves.
-- [ ] One page stays the limit. Show as many whole comments as fit and end with a line saying how many more comments are not shown.
-- [ ] The header shows the date the review was finished. It does not show a document version.
+- [ ] AC-8 [backend] A downloaded PDF file. The system only produces it; the reviewer sends it on themselves.
+- [ ] AC-9 [backend] One page stays the limit. Show as many whole comments as fit and end with a line saying how many more comments are not shown.
+- [ ] AC-10 [backend] The header shows the date the review was finished. It does not show a document version.
 
 ## Open questions
 | # | Question | Owner | Status |
@@ -56,12 +57,17 @@ None.
 ## Board review summary
 Not needed.
 
-## Post-ship notes
-No deviations from the specification.
-
-The backend delivery references (pull request #42 merged as commit 3f9c2ab, CI run 1187 with 31 tests passed and 0 failed, and version 1.4.0 deployed to production) are the developer's attestation as reported. They were not verified against the repository, the CI run or the production deployment.
-
 ## Delivery evidence
-| App | Implementation | Tests | Release |
-|---|---|---|---|
-| backend | Pull request #42 in the review-summary-service repository, merged as commit 3f9c2ab | CI run 1187 on commit 3f9c2ab: 31 tests passed, 0 failed | deployment: https://example.test/review-summary-service/deployments/1.4.0 |
+| App | Artifact | Contract | Implementation | Tests | Basis |
+|---|---|---|---|---|---|
+| backend | commit:3f9c2ab | none | Pull request #42 in the review-summary-service repository, merged as commit 3f9c2ab | CI run 1187 on commit 3f9c2ab: 31 tests passed, 0 failed | attested |
+
+## QA verification
+| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |
+|---|---|---|---|---|---|---|---|---|
+
+## Release
+| App | Target | Version | Attempt | Outcome | Record | Basis |
+|---|---|---|---|---|---|---|
+
+## Evidence history

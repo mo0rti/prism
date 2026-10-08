@@ -28,7 +28,10 @@ class WorkflowAssetsTests(unittest.TestCase):
         skills = list_skills()
         by_name = {item["name"]: item for item in skills}
         self.assertEqual(EXPECTED_SKILLS, set(by_name))
-        self.assertEqual(["reopen-spec", "reopen-design", "reopen-dev"], by_name["feature-reopen"]["actions"])
+        self.assertEqual(
+            ["dev-return-spec", "dev-return-design", "qa-return-spec", "qa-return-design", "reopen-spec", "reopen-design", "reopen-dev"],
+            by_name["feature-reopen"]["actions"],
+        )
         self.assertEqual("1", by_name["po-intake"]["version"])
         self.assertEqual(64, len(asset_digest()))
 

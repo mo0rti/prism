@@ -50,17 +50,50 @@ from prism_cli.wiki_index import (
     render_index_lines,
 )
 from prism_cli.wiki_log import VERIFY_OPERATION, append_log_entry, format_verification_entry
+from prism_cli.wiki_model import HISTORY_HEADING as _HISTORY_HEADING
 from prism_cli.wiki_model import (
+    APP_REVALIDATION_DOMAINS,
+    APP_STAGE_ORDER,
+    DESIGN_OWNERS,
+    EVIDENCE_SECTIONS,
+    EvidenceProblem,
+    FEATURE_FRONTMATTER_FIELDS,
+    FEATURE_SECTIONS,
+    FEATURE_STATUS_ORDER,
+    OWNER_BY_STATUS,
+    STATUS_BOARD_COLUMNS,
+    VALID_FEATURE_OWNERS,
+    VALID_FEATURE_STATUSES,
+    VALID_OPEN_QUESTION_OWNERS,
+    active_scope,
     api_surface_declared,
+    app_stage,
+    app_stages,
+    app_stages_text,
+    criteria_high_water,
+    design_owner,
+    evidence_generation,
+    expected_owner,
     intake_item_name_problem,
     is_pending_intake_source,
+    merge_revalidation,
+    minimum_stage,
+    parse_app_revalidation,
     parse_conflict_report,
+    parse_criteria,
+    parse_evidence_history,
     parse_iso_date,
     processed_source_path,
+    read_feature_evidence,
+    row_digest,
     section_text,
     source_link_parts,
+    stale_qa_rows,
+    status_rank,
     within_wiki_read_scope,
 )
+from prism_cli.wiki_transitions import ACTION_SPECS as _REGISTERED_ACTION_SPECS
+from prism_cli.wiki_transitions import DESIGN_OWNER, MINIMUM, WRITE_SCOPES
 
 
 _MAX_TEXT_FILE = 512 * 1024
@@ -87,23 +120,26 @@ _CANONICAL_MANIFEST_PATHS = {
     "intake_root": "knowledge/intake",
     "advisory_board": "knowledge/wiki/advisory/BOARD.md",
 }
-_LIFECYCLE_SKILLS = {
-    "po-specify": "po-specify",
-    "po-handoff": "po-handoff",
-    "design-start": "design-start",
-    "design-handoff": "design-handoff",
-    "dev-start": "dev-start",
-    "dev-done": "dev-done",
-    "feature-reopen": None,
-}
+def _lifecycle_skills() -> dict[str, str | None]:
+    """The skill (command) of each lifecycle action of the registry, with the action it performs, or ``None`` when the command covers several."""
+
+    skills: dict[str, str | None] = {}
+    for spec in _REGISTERED_ACTION_SPECS:
+        if spec.subject == "operation" or spec.command == SCOPE_SKILL:
+            continue
+        skills[spec.command] = spec.action if spec.command not in skills else None
+    return skills
+
+
+# `feature-scope` is the explicit scope edit of one feature: ungated before `ready-for-dev`, the `scope-edit` action (F26) from there on.
+SCOPE_SKILL = "feature-scope"
+_LIFECYCLE_SKILLS = _lifecycle_skills()
 _DEV_CLARIFY_REQUIREMENT_ORDER = ("What to build", "Technical constraints", "API contract reference", "Acceptance criteria")
 _DEV_CLARIFY_REQUIREMENT_SECTIONS = set(_DEV_CLARIFY_REQUIREMENT_ORDER)
 _QUESTION_SKILLS = {"po-clarify": "po", "design-clarify": "designer", "dev-clarify": "dev", "ask": None}
 _INTAKE_SKILLS = {"po-intake", "design-intake", "ingest"}
 # `verify-pages` records a verification of current-state pages as one `verify` entry in log.md and changes no page.
 VERIFY_SKILL = "verify-pages"
-# `feature-scope` is the explicit scope edit of one feature: its `apps`, its `## App scope` section and the requirement pages of the apps it gains.
-SCOPE_SKILL = "feature-scope"
 _WRITE_SKILLS = frozenset((*_LIFECYCLE_SKILLS, *_QUESTION_SKILLS, *_INTAKE_SKILLS, VERIFY_SKILL, SCOPE_SKILL))
 # The log operation a skill's entry carries. Every other skill's entry is `board-<skill>`; freshness reads `verify` by that exact name.
 _LOG_OPERATION_BY_SKILL = {VERIFY_SKILL: VERIFY_OPERATION}
@@ -134,9 +170,12 @@ _WIKI_ROOT_PAGES = frozenset({"SCHEMA.md", "LIFECYCLE.md", "SETTINGS.md", "CONNE
 _INGEST_CREATE_ONLY = ("features", "personas", "business-rules", "decisions")
 _ADR_FIELDS = {"id", "title", "date", "status", "supersedes", "superseded-by"}
 _ADR_ID = re.compile(r"^ADR-\d+$")
-_STATUS_ROW = re.compile(r"^\|\s*(F-\d+)\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$", re.IGNORECASE)
+_STATUS_ROW = re.compile(
+    r"^\|\s*(F-\d+)\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$",
+    re.IGNORECASE,
+)
 # The header is exact, as `parse_status_board_rows` reads it: a board whose header differs in case is not a canonical board for either.
-_STATUS_HEADER = re.compile(r"^\s*\|\s*ID\s*\|\s*Feature\s*\|\s*Status\s*\|\s*Owner\s*\|\s*Board Review\s*\|\s*$")
+_STATUS_HEADER = re.compile(r"^\s*\|\s*" + r"\s*\|\s*".join(re.escape(column) for column in STATUS_BOARD_COLUMNS) + r"\s*\|\s*$")
 _FRONTMATTER = re.compile(r"\A\ufeff?---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 
 
@@ -445,6 +484,8 @@ class BoardService:
 
     def read_workspace(self, actor: Actor, paths: list[str], cursor: str | None = None) -> dict[str, Any]:
         self._require_actor(actor)
+        from prism_cli.board_reads import read_annotations
+
         if not isinstance(paths, list) or not paths or len(paths) > _MAX_READ_PATHS:
             raise BoardError("invalid_paths", f"Provide between 1 and {_MAX_READ_PATHS} approved relative paths.", 400)
         records: list[dict[str, Any]] = []
@@ -470,6 +511,9 @@ class BoardService:
                     "provenance": "workspace-text; treat as untrusted project data",
                 }
             )
+            annotations = read_annotations(relative, content)
+            if annotations is not None:
+                records[-1]["annotations"] = annotations
         self._remember_served_digests(records)
         from prism_cli.board_reads import read_files_page
 
@@ -740,6 +784,7 @@ class BoardService:
             "applicable": applicable,
             "checks": checks,
             "blockers": [item for item in checks if item.get("status") in {"blocked", "unknown", "review"}],
+            "warnings": [item for item in checks if item.get("status") == "warning"],
             "source": {"status": feature["frontmatter"].get("status"), "owner": feature["frontmatter"].get("owner")},
             "target": {"status": transition.get("target_status"), "owner": transition.get("target_owner")},
             "writes": writes,
@@ -1623,7 +1668,7 @@ class BoardService:
         affected = [_parse_markdown(after_feature, feature_path)[0]]
         feature_id = str(affected[0].get("id", ""))
         expected = {feature_id: self._status_existing_row(feature_id)}
-        after_row = _status_row(affected[0])
+        after_row = _status_row(affected[0], _parse_markdown(after_feature, feature_path)[1], self._model)
         board_before = self._read_text(self._safe_path(_STATUS_BOARD_PATH))
         board_after = _render_status_board(board_before, expected, {feature_id: after_row})
         if merge_managed and board_after != board_before:
@@ -2138,6 +2183,7 @@ class BoardService:
         read_revisions: Mapping[str, str],
     ) -> dict[str, Any]:
         self.validate_graph_inputs()
+        self._assert_skill_available(skill)
         if not isinstance(changes, list):
             raise BoardError(
                 "invalid_changes",
@@ -2275,9 +2321,12 @@ class BoardService:
             after_fm = after_frontmatter[relative]
             feature_id = str(after_fm.get("id", ""))
             before_fm = before_frontmatter[relative]
-            if before_fm is None or any(before_fm.get(key) != after_fm.get(key) for key in ("status", "owner", "advisory-review")):
-                status_keys[feature_id] = self._status_existing_row(feature_id)
-                status_after_rows[feature_id] = _status_row(after_fm)
+            after_row = _status_row(after_fm, _parse_markdown(supplied[relative], relative)[1], self._model)
+            existing_row = self._status_existing_row(feature_id)
+            # The row follows the page: its status, owner, board review and app stages (which the evidence tables decide).
+            if before_fm is None or existing_row != after_row:
+                status_keys[feature_id] = existing_row
+                status_after_rows[feature_id] = after_row
         if status_keys:
             board_before = self._read_text(self._safe_path(_STATUS_BOARD_PATH))
             board_after = _render_status_board(board_before, status_keys, status_after_rows)
@@ -2330,6 +2379,7 @@ class BoardService:
             "applicable": applicable,
             "checks": checks,
             "blockers": operation.get("blockers", []),
+            "warnings": operation.get("warnings", []),
             "source": operation.get("source"),
             "target": operation.get("target"),
             "writes": writes,
@@ -2338,8 +2388,35 @@ class BoardService:
             "proposed_changes": [{"path": path, "content": content} for path, content in sorted(supplied.items())],
             "read_revisions": normalized_revisions,
         }
+        criteria = {
+            relative: entry
+            for relative in feature_changes
+            if (entry := self._criteria_preview(before[relative], supplied[relative], relative)) is not None
+        }
+        if criteria:
+            payload["criteria"] = criteria
+        # The evidence rows the operation produces and the subjects of the QA/Dev separation check: the provenance seam (CONTRACTS 1.6).
+        for key in ("produces_evidence", "separation_subjects"):
+            if key in operation:
+                payload[key] = operation[key]
         self._save_preview(payload)
         return self._preview_envelope(payload)
+
+    @staticmethod
+    def _criteria_preview(before_text: str | None, after_text: str, relative: str) -> dict[str, Any] | None:
+        """The criteria revisions of a feature page before and after a proposal, and the QA rows the change makes stale (CONTRACTS 4.1)."""
+
+        from prism_cli.board_reads import criteria_facts
+
+        after_fm, after_body = _parse_markdown(after_text, relative)
+        feature_id = str(after_fm.get("id"))
+        after = criteria_facts(feature_id, after_body)
+        before = criteria_facts(feature_id, _parse_markdown(before_text, relative)[1]) if before_text else []
+        if not after and not before:
+            return None
+        evidence = read_feature_evidence(after_body)
+        stale = [row.key for row, _reason in stale_qa_rows(parse_criteria(after_body, feature_id), evidence, parse_evidence_history(after_body))]
+        return {"before": before, "after": after, "stale_rows": stale}
 
     def _assert_skill_write_path(self, skill: str, relative: str) -> None:
         if not relative.lower().endswith(".md"):
@@ -2663,7 +2740,7 @@ class BoardService:
         """
 
         frontmatter, body = _parse_markdown(content, relative)
-        self._assert_frontmatter_fields(frontmatter, {"id", "title", "status", "owner", "apps", "sources", "advisory-review", "advisory-skip-reason", "design", "design-exemption-reason", "revalidation"}, relative)
+        self._assert_frontmatter_fields(frontmatter, set(FEATURE_FRONTMATTER_FIELDS), relative)
         feature_id = frontmatter.get("id")
         if not isinstance(feature_id, str) or not re.fullmatch(r"F-\d+", feature_id):
             raise BoardError("invalid_feature_output", f"Feature output `{relative}` must have a canonical F-number id.", 409)
@@ -2674,7 +2751,7 @@ class BoardService:
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` requires a nonblank title.", 409)
         status = frontmatter.get("status")
         owner = frontmatter.get("owner")
-        if status not in {"raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done"} or owner not in {"po", "designer", "dev", "none"}:
+        if status not in VALID_FEATURE_STATUSES or owner not in VALID_FEATURE_OWNERS:
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` has an invalid status or owner.", 409)
         sources = frontmatter.get("sources")
         if not isinstance(sources, list) or any(not isinstance(path, str) or not path.strip() or ".." in PurePosixPath(path).parts or PurePosixPath(path).is_absolute() for path in sources):
@@ -2720,10 +2797,6 @@ class BoardService:
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` has invalid advisory-review state.", 409)
         if frontmatter.get("advisory-review") == "skipped" and not (isinstance(frontmatter.get("advisory-skip-reason"), str) and frontmatter["advisory-skip-reason"].strip()):
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` requires an advisory-skip-reason when review is skipped.", 409)
-        if frontmatter.get("design") == "not-applicable" and not (isinstance(frontmatter.get("design-exemption-reason"), str) and frontmatter["design-exemption-reason"].strip()):
-            raise BoardError("invalid_feature_output", f"Feature `{feature_id}` requires a design-exemption-reason when design is not applicable.", 409)
-        if ("design" in frontmatter) != ("design-exemption-reason" in frontmatter):
-            raise BoardError("invalid_feature_output", f"Feature `{feature_id}` must keep the design exemption fields together.", 409)
         if skill in {"po-intake", "po-specify", "ingest"}:
             _require_headings(body, ("Summary", "User story", "Acceptance criteria", "Open questions", "App scope"), relative)
         if skill == "design-intake":
@@ -2768,7 +2841,7 @@ class BoardService:
             else:
                 self._assert_feature_id_available(new["id"], except_path=relative)
             self._validate_feature_shape(relative, content, skill)
-            if old is not None:
+            if old is not None and skill != SCOPE_SKILL:
                 action = self._action_from_feature_change(skill, old, new)
                 if action:
                     actions.append(action)
@@ -2879,18 +2952,20 @@ class BoardService:
             if requirement_pages != declared or len(requirement_page_list) != len(declared):
                 raise BoardError("requirements_incomplete", "Design handoff must propose exactly one linked requirement page for each declared app.", 409)
 
+        gated_scope_action: str | None = None
         if skill == SCOPE_SKILL:
-            self._validate_scope_edit(changed_features, supplied, before)
+            gated_scope_action = self._validate_scope_edit(changed_features, supplied, before)
 
         action = actions[0] if actions else None
         if len(actions) > 1:
             raise BoardError("multiple_lifecycle_actions", "One preview may perform only one lifecycle transition.", 409)
 
         if skill in _LIFECYCLE_SKILLS:
+            self._assert_skill_available(skill)
             expected_action = _LIFECYCLE_SKILLS[skill]
-            if skill == "feature-reopen":
-                if len(actions) != 1 or not actions[0].startswith("reopen-"):
-                    raise BoardError("reopen_route_required", "feature-reopen must select exactly one explicit reopen route.", 409)
+            if expected_action is None:
+                if len(actions) != 1:
+                    raise BoardError("reopen_route_required", f"`{skill}` must select exactly one explicit route.", 409)
                 expected_action = actions[0]
             elif action != expected_action:
                 raise BoardError("lifecycle_action_required", f"Skill `{skill}` must propose its exact registered status and owner transition.", 409)
@@ -2900,6 +2975,7 @@ class BoardService:
             old = target_feature["before"]
             if old is None:
                 raise BoardError("feature_not_found", "Lifecycle skills cannot create a feature page.", 409)
+            self._assert_action_available(expected_action)
             self._require_no_retired_app_in_progress(str(old.get("id")), old)
             self._validate_lifecycle_write_scope(
                 expected_action,
@@ -2918,16 +2994,27 @@ class BoardService:
                 original_content=before[target_feature["path"]] or "",
                 supplied=supplied,
                 before=before,
+                defer_minimum=expected_action == "dev-done",
             )
             if expected_action in {"design-handoff", "dev-start", "dev-done"}:
                 self._require_api_serving_app(supplied, target_feature)
-            self._validate_lifecycle_related_writes(expected_action, supplied, before, target_feature)
+            named_apps: tuple[str, ...] = ()
+            if expected_action == "dev-done":
+                named_apps = self._validate_dev_done_evidence(
+                    target_feature["path"],
+                    old,
+                    target_feature["after"],
+                    _parse_markdown(before[target_feature["path"]] or "", target_feature["path"])[1],
+                    _parse_markdown(supplied[target_feature["path"]], target_feature["path"])[1],
+                )
+                # The status follows the minimum of the app stages the evidence produces, so it is judged after the evidence.
+                self._assert_minimum_status(expected_action, target_feature["path"], supplied[target_feature["path"]], old, target_feature["after"])
+            self._validate_lifecycle_related_writes(expected_action, supplied, before, target_feature, named_apps)
             if expected_action == "design-handoff":
                 self._require_handoff_api_contract(supplied, target_feature)
-            if expected_action == "dev-done":
-                self._validate_dev_done_evidence(target_feature["path"], supplied[target_feature["path"]], target_feature["after"])
             feature_id = target_feature["id"]
-            transition = self._evaluate_proposed_action(expected_action, supplied, target_feature)
+            produces = self._produced_delivery_evidence(expected_action, str(feature_id), supplied[target_feature["path"]], target_feature["path"], named_apps)
+            transition = self._evaluate_proposed_action(expected_action, supplied, target_feature, named_apps)
             checks.extend(transition.get("checks", []))
             classification = transition.get("classification", "unknown")
             if not transition.get("supported"):
@@ -2941,6 +3028,30 @@ class BoardService:
                 "classification": classification,
                 "checks": checks,
                 "blockers": blockers,
+                "warnings": [item for item in checks if item.get("status") == "warning"],
+                # The evidence rows this operation produces, bound to it in the provenance journal (CONTRACTS 1.6).
+                "produces_evidence": produces,
+                "separation_subjects": [],
+            }
+
+        if gated_scope_action is not None:
+            feature = changed_features[0]
+            self._assert_action_available(gated_scope_action)
+            transition = self._evaluate_proposed_action(gated_scope_action, supplied, feature, ())
+            checks.extend(transition.get("checks", []))
+            classification = transition.get("classification", "unknown")
+            if not transition.get("supported"):
+                classification = "unknown" if classification == "ready" else classification
+            blockers = [item for item in checks if item.get("status") in {"blocked", "unknown", "review"}]
+            return {
+                "action": gated_scope_action,
+                "feature_id": feature["id"],
+                "source": {"status": feature["before"].get("status"), "owner": feature["before"].get("owner")},
+                "target": {"status": feature["after"].get("status"), "owner": feature["after"].get("owner")},
+                "classification": classification,
+                "checks": checks,
+                "blockers": blockers,
+                "warnings": [item for item in checks if item.get("status") == "warning"],
             }
 
         if skill in {"ask", "po-clarify", "design-clarify", "dev-clarify"}:
@@ -2956,6 +3067,20 @@ class BoardService:
             old_feature_frontmatter = changed_features[0]["before"] or {}
             old_feature_body = _parse_markdown(before[changed_features[0]["path"]] or "", changed_features[0]["path"])[1]
             new_feature_body = _parse_markdown(supplied[changed_features[0]["path"]], changed_features[0]["path"])[1]
+            if skill in {"po-clarify", "dev-clarify"}:
+                clarified_path = changed_features[0]["path"]
+                self._assert_clarify_stage(skill, clarified_path, old_feature_frontmatter, old_feature_body, new_feature_body)
+                if status_rank(old_feature_frontmatter.get("status")) >= status_rank("specified") and (
+                    _section(old_feature_body, "Acceptance criteria") != _section(new_feature_body, "Acceptance criteria")
+                    or old_feature_frontmatter.get("criteria-high-water") != changed_features[0]["after"].get("criteria-high-water")
+                ):
+                    self._validate_criteria_change(
+                        clarified_path,
+                        before[clarified_path] or "",
+                        supplied[clarified_path],
+                        old_feature_frontmatter,
+                        changed_features[0]["after"],
+                    )
             if skill == "po-clarify":
                 self._assert_only_body_sections_changed(
                     old_feature_body,
@@ -2978,13 +3103,6 @@ class BoardService:
                     "Design clarify may update the feature's Open questions section only.",
                 )
             elif skill == "dev-clarify":
-                if old_feature_frontmatter.get("status") == "done":
-                    raise BoardError(
-                        "clarify_stage_unavailable",
-                        f"Skill `dev-clarify` cannot change `{changed_features[0]['path']}` because the feature is `done`. Reopen it with feature-reopen first.",
-                        409,
-                        {"path": changed_features[0]["path"], "status": "done"},
-                    )
                 self._assert_only_body_sections_changed(
                     old_feature_body,
                     new_feature_body,
@@ -3078,11 +3196,165 @@ class BoardService:
             "blockers": [],
         }
 
-    def _validate_scope_edit(self, changed_features: list[dict[str, Any]], supplied: Mapping[str, str], before: Mapping[str, str | None]) -> None:
+    def _validate_criteria_change(
+        self,
+        relative: str,
+        original: str,
+        proposed: str,
+        old: Mapping[str, Any],
+        new: Mapping[str, Any],
+        *,
+        first_specification: bool = False,
+    ) -> None:
+        """The rules for the acceptance criteria of a feature written from `specified` on (CONTRACTS 4.1).
+
+        Every criterion has an ID and an `applies-to`; the IDs are unique; a new criterion takes the high-water mark plus 1 and
+        the write raises the mark to the highest ID ever assigned; an ID at or below the old mark that the page did not have is
+        a reuse; every active app of the scope is named by a criterion.
+        """
+
+        _old_fm, old_body = _parse_markdown(original, relative) if original else ({}, "")
+        new_fm, new_body = _parse_markdown(proposed, relative)
+        feature_id = str(new_fm.get("id"))
+        criteria = parse_criteria(new_body, feature_id)
+        if not criteria:
+            raise BoardError("criterion_id_required", f"`{relative}` needs at least one acceptance criterion, written as `- [ ] **Decided:** AC-1 [app] text`.", 409, {"path": relative})
+        for code, board_code, label in (
+            ("criterion-id-required", "criterion_id_required", "has no ID"),
+            ("invalid-applies-to", "invalid_applies_to", "has no valid `applies-to`"),
+        ):
+            offenders = [item for item in criteria if any(problem[0] == code for problem in item.problems)]
+            if offenders:
+                first = offenders[0]
+                message = next(problem[1] for problem in first.problems if problem[0] == code)
+                raise BoardError(
+                    board_code,
+                    f"{len(offenders)} acceptance criterion(s) in `{relative}` {label}; the first is `{_clip(first.raw, 100)}`. {message} "
+                    "Write each criterion as `- [ ] **Decided:** AC-1 [app] text` or `AC-2 [integration: app-a, app-b] text`.",
+                    409,
+                    {"path": relative, "criterion": _clip(first.raw, 100), "count": len(offenders)},
+                )
+        numbers = [item.number for item in criteria if item.number is not None]
+        duplicates = sorted({number for number in numbers if numbers.count(number) > 1})
+        if duplicates:
+            raise BoardError(
+                "duplicate_criterion_id",
+                f"Criterion ID(s) {_quoted(f'AC-{number}' for number in duplicates)} appear more than once in `{relative}`; each ID is used once.",
+                409,
+                {"path": relative, "ids": [f"AC-{number}" for number in duplicates]},
+            )
+        apps = _scope_of(new) or []
+        for item in criteria:
+            outside = [app for app in item.applies_to if app not in apps]
+            if outside:
+                raise BoardError(
+                    "invalid_applies_to",
+                    f"`{item.id}` applies to {_quoted(outside)}, which {'is' if len(outside) == 1 else 'are'} not in the feature's `apps` ({_quoted(_names(apps))}).",
+                    409,
+                    {"path": relative, "criterion": item.id, "apps": _names(outside)},
+                )
+        named = {app for item in criteria for app in item.applies_to}
+        missing = [app for app in active_scope(apps, self._model) if app not in named]
+        if missing:
+            raise BoardError(
+                "app_without_criteria",
+                f"Every app in scope is named by at least one acceptance criterion; none of the criteria of `{relative}` names {_quoted(missing)}. "
+                "Add a criterion that verifies the app's part of the feature, or remove the app from the scope.",
+                409,
+                {"path": relative, "apps": _names(missing)},
+            )
+        old_mark, old_problem = criteria_high_water(old)
+        old_numbers = [item.number for item in parse_criteria(old_body, str(old.get("id"))) if item.number is not None]
+        old_effective = max([old_mark or 0, *old_numbers])
+        new_mark, new_problem = criteria_high_water(new_fm)
+        if new_problem is not None or new_mark is None:
+            raise BoardError(
+                "criteria_high_water_invalid",
+                new_problem or f"`{relative}` needs `criteria-high-water`, the highest criterion number ever assigned.",
+                409,
+                {"path": relative},
+            )
+        if old_mark is not None and new_mark < old_mark:
+            raise BoardError(
+                "criteria_high_water_decreased",
+                f"`criteria-high-water` of `{relative}` drops from {old_mark} to {new_mark}; the mark only rises, so an ID is never reused.",
+                409,
+                {"path": relative, "from": old_mark, "to": new_mark},
+            )
+        reused = sorted(number for number in numbers if number not in old_numbers and number <= old_effective)
+        if reused:
+            raise BoardError(
+                "criterion_id_reused",
+                f"`AC-{reused[0]}` is at or below the high-water mark {old_effective} of `{relative}` but is not on the page now: that ID was assigned to a criterion that was removed. "
+                f"A new criterion takes `AC-{old_effective + 1}` or higher.",
+                409,
+                {"path": relative, "id": f"AC-{reused[0]}", "high_water": old_effective},
+            )
+        wanted = max([old_effective, *numbers])
+        if new_mark != wanted:
+            raise BoardError(
+                "criteria_high_water_invalid",
+                f"`criteria-high-water` of `{relative}` is {new_mark}; it is the highest criterion number ever assigned, {wanted} after this write.",
+                409,
+                {"path": relative, "expected": wanted, "value": new_mark},
+            )
+
+    def _assert_clarify_stage(
+        self,
+        skill: str,
+        relative: str,
+        old_fm: Mapping[str, Any],
+        old_body: str,
+        new_body: str,
+    ) -> None:
+        """What `po-clarify` and `dev-clarify` may change by the stage of the apps involved (CONTRACTS 2.9).
+
+        A criterion change is refused while an affected app is `ready-for-release` or `released`; `App scope` changes are refused
+        from `ready-for-dev` on, and `API surface` changes once any app is at `ready-for-qa` or later.
+        """
+
+        status = old_fm.get("status")
+        apps = _scope_of(old_fm) or []
+        stages: dict[str, str] = {}
+        if status_rank(status) >= status_rank("in-dev"):
+            stages = app_stages(active_scope(apps, self._model), read_feature_evidence(old_body))
+
+        def unavailable(what: str, why: str) -> BoardError:
+            return BoardError(
+                "clarify_stage_unavailable",
+                f"Skill `{skill}` cannot change {what} of `{relative}`: {why} Use a return route, then clarify.",
+                409,
+                {"path": relative, "status": status},
+            )
+
+        if _section(old_body, "Acceptance criteria") != _section(new_body, "Acceptance criteria") and status_rank(status) >= status_rank("specified"):
+            feature_id = str(old_fm.get("id"))
+            old_criteria = {item.number: item for item in parse_criteria(old_body, feature_id) if item.number is not None}
+            new_criteria = {item.number: item for item in parse_criteria(new_body, feature_id) if item.number is not None}
+            affected: set[str] = set()
+            for number in set(old_criteria) | set(new_criteria):
+                before_item, after_item = old_criteria.get(number), new_criteria.get(number)
+                if before_item is not None and after_item is not None and before_item.revision == after_item.revision and before_item.checked == after_item.checked:
+                    continue
+                affected |= set(before_item.applies_to if before_item else ()) | set(after_item.applies_to if after_item else ())
+            if status == "released":
+                affected |= set(apps)
+            late = sorted(app for app in affected if stages.get(app) in {"ready-for-release", "released"} or (status == "released" and app in apps))
+            if late:
+                raise unavailable("its acceptance criteria", f"{_quoted(late)} {'is' if len(late) == 1 else 'are'} already ready for release or released.")
+        if _section(old_body, "App scope") != _section(new_body, "App scope") and status_rank(status) >= status_rank("ready-for-dev"):
+            raise unavailable("its App scope", f"the feature is `{status}`; its scope changes with `feature-scope` or a return route.")
+        if _section(old_body, "API surface") != _section(new_body, "API surface"):
+            if status_rank(status) >= status_rank("ready-for-qa") or any(stage != "in-dev" for stage in stages.values()):
+                raise unavailable("its API surface", "an app is already delivered.")
+
+    def _validate_scope_edit(self, changed_features: list[dict[str, Any]], supplied: Mapping[str, str], before: Mapping[str, str | None]) -> str | None:
         """The explicit scope edit of one feature: `apps`, `## App scope` and the new requirement pages of the apps it gains.
 
         The feature page itself went through `_validate_feature_output` with its current scope, so a retired app the
-        feature already lists may stay or leave, and a retired app is never added.
+        feature already lists may stay or leave, and a retired app is never added. Before `ready-for-dev` the edit is an
+        ungated write; from there on it is the gated `scope-edit` action (CONTRACTS 2.9, F26), which only removes apps, and
+        this returns that action's name.
         """
 
         if len(changed_features) != 1 or changed_features[0]["before"] is None:
@@ -3090,13 +3362,7 @@ class BoardService:
         feature = changed_features[0]
         path = feature["path"]
         old_fm, new_fm = feature["before"], feature["after"]
-        if old_fm.get("status") == "done":
-            raise BoardError(
-                "scope_stage_unavailable",
-                f"Skill `{SCOPE_SKILL}` cannot change `{path}` because the feature is `done`. A shipped feature keeps its scope as history; reopen it with feature-reopen first.",
-                409,
-                {"path": path, "status": "done"},
-            )
+        gated = status_rank(old_fm.get("status")) >= status_rank("ready-for-dev")
         changed = _names(key for key in set(old_fm) | set(new_fm) if old_fm.get(key) != new_fm.get(key))
         if "apps" not in changed:
             raise BoardError(
@@ -3105,18 +3371,37 @@ class BoardService:
                 409,
                 {"path": path, "apps": _names(_scope_of(old_fm) or [])},
             )
-        if set(changed) - {"apps"}:
-            others = [name for name in changed if name != "apps"]
+        old_apps = _scope_of(old_fm) or []
+        new_apps = _scope_of(new_fm) or []
+        old_text = before[path] or ""
+        old_body = _parse_markdown(old_text, path)[1]
+        new_body = _parse_markdown(supplied[path], path)[1]
+        if gated:
+            self._validate_gated_scope_edit(feature, supplied, old_text, old_fm, new_fm, old_apps, new_apps, old_body, new_body, changed)
+            return "scope-edit"
+        allowed = {"apps", "criteria-high-water"}
+        design_statuses = old_fm.get("status") in {"ready-for-design", "in-design"}
+        if design_statuses:
+            # The design owner follows the scope: it is `designer` while an active app has a UI and `tech-lead` otherwise.
+            allowed.add("owner")
+            owner = design_owner(new_apps, self._model)
+            if new_fm.get("owner") != owner:
+                raise BoardError(
+                    "design_owner_mismatch",
+                    f"The feature is in design, so after the scope edit its owner is the design owner of the new scope, `{owner}`; `{path}` has `{_clip(new_fm.get('owner'), 40)}`.",
+                    409,
+                    {"path": path, "owner": new_fm.get("owner"), "design_owner": owner},
+                )
+        if set(changed) - allowed:
+            others = [name for name in changed if name not in allowed]
             raise BoardError(
                 "scope_frontmatter_change",
-                f"Skill `{SCOPE_SKILL}` changes only `apps`, but `{path}` also changes frontmatter field(s) {_quoted(others)}. Restore them to their current values; status and owner change only through a lifecycle skill.",
+                f"Skill `{SCOPE_SKILL}` changes only `apps`{' and the design owner' if design_statuses else ''}, but `{path}` also changes frontmatter field(s) {_quoted(others)}. Restore them to their current values; status and owner change only through a lifecycle skill.",
                 409,
                 {"path": path, "fields": others},
             )
-        old_body = _parse_markdown(before[path] or "", path)[1]
-        new_body = _parse_markdown(supplied[path], path)[1]
         self._assert_only_body_sections_changed(
-            old_body, new_body, {"App scope"}, "scope_body_exceeded", "A scope edit may change only the feature's App scope section."
+            old_body, new_body, {"App scope", "Acceptance criteria"}, "scope_body_exceeded", "A scope edit may change only the feature's App scope and Acceptance criteria sections."
         )
         if _section(old_body, "App scope") == _section(new_body, "App scope"):
             raise BoardError(
@@ -3125,7 +3410,11 @@ class BoardService:
                 409,
                 {"path": path},
             )
-        gained = [item for item in (_scope_of(new_fm) or []) if item not in (_scope_of(old_fm) or [])]
+        if status_rank(old_fm.get("status")) >= status_rank("specified"):
+            self._validate_criteria_change(path, old_text, supplied[path], old_fm, new_fm)
+        elif _section(old_body, "Acceptance criteria") != _section(new_body, "Acceptance criteria") or "criteria-high-water" in changed:
+            raise BoardError("scope_body_exceeded", "A raw feature's criteria change through po-specify, not through a scope edit.", 409, {"path": path})
+        gained = [item for item in new_apps if item not in old_apps]
         for relative, content in supplied.items():
             if not relative.startswith("knowledge/wiki/app-requirements/"):
                 continue
@@ -3147,15 +3436,239 @@ class BoardService:
                 )
             if frontmatter.get("status") != "pending":
                 raise BoardError("requirement_initial_status", "A scope edit creates new app requirements in pending status.", 409, {"path": relative})
+        return None
+
+    def _validate_gated_scope_edit(
+        self,
+        feature: Mapping[str, Any],
+        supplied: Mapping[str, str],
+        old_text: str,
+        old_fm: Mapping[str, Any],
+        new_fm: Mapping[str, Any],
+        old_apps: list[str],
+        new_apps: list[str],
+        old_body: str,
+        new_body: str,
+        changed: list[str],
+    ) -> None:
+        """F26: from `ready-for-dev` on a scope edit removes apps and nothing else (CONTRACTS 2.9)."""
+
+        path = feature["path"]
+        scope = WRITE_SCOPES["scope-edit"]
+        model = self._model
+        added = [item for item in new_apps if item not in old_apps]
+        removed = [item for item in old_apps if item not in new_apps]
+        if added:
+            if old_apps and model is not None and len(model.retired_apps(old_apps)) == len(old_apps):
+                raise BoardError(
+                    "scope_replacement_requires_return",
+                    f"Every app of `{path}` is retired, so replacing them changes the design: return the feature with dev-return-design, qa-return-design or reopen-design, then edit the scope in design.",
+                    409,
+                    {"path": path, "apps": _names(old_apps), "added_apps": _names(added)},
+                )
+            raise BoardError(
+                "scope_stage_unavailable",
+                f"`{path}` is past design, so a scope edit only removes apps; `{_quoted(_names(added))}` would be added. Return the feature with dev-return-design (or qa-return-design) to add an app.",
+                409,
+                {"path": path, "added_apps": _names(added)},
+            )
+        if not new_apps:
+            raise BoardError("scope_empty", f"A feature keeps at least one app in scope; `{path}` would have none. Remove the feature's work through a bug or a new feature instead.", 409, {"path": path})
+        extra = [name for name in changed if name not in scope.frontmatter]
+        if extra:
+            raise BoardError(
+                "scope_frontmatter_change",
+                f"The scope edit of a feature past design changes only {_quoted(sorted(scope.frontmatter))}, but `{path}` also changes {_quoted(extra)}.",
+                409,
+                {"path": path, "fields": extra},
+            )
+        others = [relative for relative in supplied if relative != path]
+        if others:
+            raise BoardError("lifecycle_write_scope", "A scope edit past design writes only the feature page, the managed index, status board and log.", 409, {"paths": _names(others)})
+        self._assert_only_body_sections_changed(
+            old_body,
+            new_body,
+            set(scope.sections),
+            "scope_body_exceeded",
+            f"A scope edit may change only the sections {_quoted(sorted(scope.sections))} of the feature page.",
+        )
+        if _section(old_body, "App scope") == _section(new_body, "App scope"):
+            raise BoardError("scope_text_unchanged", f"`{path}` changes `apps` but not its `## App scope` section. Rewrite the section so that it describes the new scope.", 409, {"path": path})
+        old_evidence = read_feature_evidence(old_body)
+        new_evidence = read_feature_evidence(new_body)
+        for app_id in removed:
+            retired = model is not None and bool(model.retired_apps([app_id]))
+            has_rows = bool(
+                old_evidence.delivery_row(app_id)
+                or old_evidence.qa_rows_naming(app_id)
+                or any(row.app == app_id for row in old_evidence.release)
+            )
+            if not retired and has_rows:
+                raise BoardError(
+                    "scope_stage_unavailable",
+                    f"`{app_id}` is active and already has evidence rows, so it cannot leave the scope of `{path}` by a scope edit. Retire the app first, or return the feature with dev-return-design or qa-return-design.",
+                    409,
+                    {"path": path, "app": app_id},
+                )
+        # The criteria after the edit are the criteria before it without the removed apps (three edits, nothing else).
+        feature_id = str(old_fm.get("id"))
+        old_criteria = parse_criteria(old_body, feature_id)
+        new_criteria = parse_criteria(new_body, feature_id)
+        if any(item.problems for item in old_criteria):
+            raise BoardError("scope_criteria_invalid", f"The acceptance criteria of `{path}` are not valid yet, so the scope edit cannot derive their new form. Fix them first.", 409, {"path": path})
+        removed_set = set(removed)
+        expected_criteria: list[tuple[Any, ...]] = []
+        changed_criteria: list[Any] = []
+        for item in old_criteria:
+            remaining = tuple(app for app in item.applies_to if app not in removed_set)
+            if not remaining:
+                changed_criteria.append(item)
+                continue
+            integration = item.integration and len(remaining) >= 2
+            if remaining != item.applies_to or integration != item.integration:
+                changed_criteria.append(item)
+            expected_criteria.append((item.number, remaining, integration, item.label, item.text, item.checked))
+        actual_criteria = [(item.number, item.applies_to, item.integration, item.label, item.text, item.checked) for item in new_criteria]
+        if actual_criteria != expected_criteria or any(item.problems for item in new_criteria):
+            raise BoardError(
+                "scope_criteria_mismatch",
+                f"A scope edit past design edits the acceptance criteria in three ways only: drop the removed app from each `applies-to`, drop a criterion left with no app, "
+                f"and turn an integration criterion left with one app into a per-app one. The criteria of `{path}` do not match that result for the removed app(s) {_quoted(_names(removed))}.",
+                409,
+                {"path": path, "removed_apps": _names(removed)},
+            )
+        old_mark, _problem = criteria_high_water(old_fm)
+        new_mark, _problem = criteria_high_water(new_fm)
+        if new_mark != old_mark:
+            raise BoardError("criteria_high_water_decreased" if (new_mark or 0) < (old_mark or 0) else "criteria_high_water_invalid", "A scope edit assigns no new criterion, so `criteria-high-water` stays as it is.", 409, {"path": path})
+        remaining_apps = [item for item in active_scope(new_apps, model)]
+        named = {app for item in new_criteria for app in item.applies_to}
+        missing = [app for app in remaining_apps if app not in named]
+        if missing:
+            raise BoardError("app_without_criteria", f"After the edit {_quoted(_names(missing))} would be named by no criterion.", 409, {"path": path, "apps": _names(missing)})
+
+        # The evidence archived by the edit.
+        lost_release: list[str] = []
+        archive: list[tuple[str, tuple[str, ...]]] = []
+        for row in old_evidence.delivery:
+            if row.app in removed_set:
+                archive.append(("Delivery evidence", row.cells))
+        for row in old_evidence.qa:
+            if removed_set & set(row.apps):
+                archive.append(("QA verification", row.cells))
+        for row in old_evidence.release:
+            if row.app in removed_set:
+                archive.append(("Release", row.cells))
+        stages = app_stages(active_scope(old_apps, model), old_evidence)
+        affected_remaining = sorted({app for item in changed_criteria for app in item.applies_to if app not in removed_set})
+        for app_id in affected_remaining:
+            release = old_evidence.authoritative_release(app_id)
+            if release is not None and release.outcome in {"pending", "failed"} and stages.get(app_id) != "released":
+                archive.append(("Release", release.cells))
+                lost_release.append(app_id)
+        self._validate_evidence_history(
+            "scope-edit",
+            old_text,
+            supplied[path],
+            old_fm,
+            relative=path,
+            expected_archive=archive,
+            require_entry=bool(archive),
+        )
+        if archive:
+            entry = parse_evidence_history(new_body)[-1]
+            if sorted(entry.participants) != sorted(lost_release):
+                raise BoardError(
+                    "history_participants_mismatch",
+                    f"Evidence history lists as participants the remaining apps that lose their Release row: {_quoted(sorted(lost_release)) or 'none'}.",
+                    409,
+                    {"path": path, "expected": sorted(lost_release)},
+                )
+            if sorted(entry.affected_apps) != sorted(removed):
+                raise BoardError("reopen_app_scope", f"The affected apps of a scope edit are the removed apps: {_quoted(sorted(removed))}.", 409, {"path": path})
+        # Per-app revalidation: an app that loses its Release row re-verifies QA and release.
+        old_domains, _errors = parse_app_revalidation(old_fm.get("app-revalidation"))
+        new_domains, new_errors = parse_app_revalidation(new_fm.get("app-revalidation"))
+        expected_domains = {app: list(domains) for app, domains in old_domains.items() if app not in removed_set}
+        for app_id in lost_release:
+            expected_domains[app_id] = merge_revalidation(expected_domains.get(app_id, []), ["qa", "release"], APP_REVALIDATION_DOMAINS)
+        if new_errors or new_domains != expected_domains:
+            raise BoardError(
+                "revalidation_required",
+                f"The scope edit writes `app-revalidation` exactly: the removed apps leave it, and an app that loses its Release row ({_quoted(sorted(lost_release)) or 'none'}) gains `qa` and `release`.",
+                409,
+                {"path": path},
+            )
+        # The status follows the minimum of the app stages that remain.
+        self._assert_minimum_status("scope-edit", path, supplied[path], old_fm, new_fm)
+
+    @staticmethod
+    def _produced_delivery_evidence(action: str, feature_id: str, content: str, relative: str, named_apps: tuple[str, ...]) -> list[dict[str, Any]]:
+        """The Delivery evidence rows a `dev-done` proposal produces: (item, app, generation, row digest) for each named app."""
+
+        if action != "dev-done":
+            return []
+        body = _parse_markdown(content, relative)[1]
+        evidence = read_feature_evidence(body)
+        history = parse_evidence_history(body)
+        produced: list[dict[str, Any]] = []
+        for app_id in named_apps:
+            row = evidence.delivery_row(app_id)
+            if row is None:
+                continue
+            produced.append(
+                {
+                    "kind": "delivery",
+                    "item_id": feature_id,
+                    "app": app_id,
+                    "generation": evidence_generation(history, "Delivery evidence", app_id),
+                    "row_digest": row_digest(row.cells),
+                }
+            )
+        return produced
+
+    def _assert_skill_available(self, skill: str) -> None:
+        """A lifecycle skill none of whose registry rows is enabled answers `action_unavailable` (CONTRACTS 1.8)."""
+
+        if skill == SCOPE_SKILL or skill not in _LIFECYCLE_SKILLS:
+            return
+        rows = [spec for spec in _REGISTERED_ACTION_SPECS if spec.command == skill and spec.subject != "operation"]
+        if rows and not any(spec.enabled for spec in rows):
+            packages = ", ".join(sorted({spec.package for spec in rows}))
+            raise BoardError(
+                "action_unavailable",
+                f"Skill `{skill}` performs lifecycle actions that this Prism version does not provide yet (work package {packages}).",
+                409,
+                {"skill": skill, "actions": sorted(spec.action for spec in rows)},
+            )
+
+    @staticmethod
+    def _assert_action_available(action: str) -> None:
+        spec = next((item for item in _REGISTERED_ACTION_SPECS if item.action == action), None)
+        if spec is not None and not spec.enabled:
+            raise BoardError(
+                "action_unavailable",
+                f"Action `{action}` is registered but this Prism version does not provide it yet (work package {spec.package}).",
+                409,
+                {"action": action, "package": spec.package},
+            )
 
     @staticmethod
     def _lifecycle_change_error(skill: str, relative: str, old: Mapping[str, Any], new: Mapping[str, Any]) -> BoardError:
-        spec = _ACTION_BY_NAME.get(_LIFECYCLE_SKILLS.get(skill) or "")
-        if spec is not None:
-            allowed = (
-                f"`{skill}` moves a feature only from `{spec['source_status']}` / `{spec['source_owner']}` "
-                f"to `{spec['target_status']}` / `{spec['target_owner']}`."
-            )
+        specs = [spec for spec in _REGISTERED_ACTION_SPECS if spec.command == skill and spec.subject == "feature" and spec.enabled]
+        if specs:
+            described = []
+            for spec in specs:
+                sources = " or ".join(f"`{status}` / `{owner}`" if owner != DESIGN_OWNER else f"`{status}` / the design owner of its scope" for status, owner in spec.sources)
+                target = (
+                    "the minimum over its app stages"
+                    if spec.target_status == MINIMUM
+                    else f"`{spec.target_status}` / `{spec.target_owner}`"
+                    if spec.target_owner != DESIGN_OWNER
+                    else f"`{spec.target_status}` / the design owner of its scope"
+                )
+                described.append(f"from {sources} to {target}" if len(specs) == 1 else f"`{spec.action}` moves a feature from {sources} to {target}")
+            allowed = f"`{skill}` moves a feature only " + "; ".join(described) + "."
         else:
             allowed = f"`{skill}` never changes status or owner; restore both to their current values."
         return BoardError(
@@ -3167,23 +3680,27 @@ class BoardService:
         )
 
     def _action_from_feature_change(self, skill: str, old: Mapping[str, Any], new: Mapping[str, Any]) -> str | None:
-        if old.get("status") == new.get("status") and old.get("owner") == new.get("owner"):
-            return None
-        if skill == "feature-reopen":
-            for action, target in _ACTION_BY_NAME.items():
-                if action.startswith("reopen-") and (old.get("status"), old.get("owner"), new.get("status"), new.get("owner")) == (
-                    "done", "none", target["target_status"], target["target_owner"]
-                ):
-                    return action
-            return None
-        action = _LIFECYCLE_SKILLS.get(skill)
-        if action is None:
-            return None
-        target = _ACTION_BY_NAME[action]
-        if (old.get("status"), old.get("owner"), new.get("status"), new.get("owner")) == (
-            target["source_status"], target["source_owner"], target["target_status"], target["target_owner"]
-        ):
-            return action
+        """The enabled registry action of `skill` that moves a feature from `old` to `new`, or ``None``.
+
+        A `minimum` target (`dev-done`) accepts any app-stage status; the minimum itself is checked with the evidence.
+        """
+
+        old_pair = (old.get("status"), old.get("owner"))
+        new_pair = (new.get("status"), new.get("owner"))
+        design_before = design_owner(_scope_of(old) or [], self._model)
+        design_after = design_owner(_scope_of(new) or [], self._model)
+        for spec in _REGISTERED_ACTION_SPECS:
+            if spec.command != skill or spec.subject != "feature" or not spec.enabled:
+                continue
+            if old_pair not in spec.resolved_sources(design_before):
+                continue
+            target = spec.resolved_target(design_after)
+            if target[0] == MINIMUM:
+                if new_pair in {(stage, OWNER_BY_STATUS[stage]) for stage in APP_STAGE_ORDER}:
+                    return spec.action
+                continue
+            if new_pair == target:
+                return spec.action
         return None
 
     def _validate_transition_source(
@@ -3197,34 +3714,90 @@ class BoardService:
         original_content: str,
         supplied: Mapping[str, str],
         before: Mapping[str, str | None],
+        defer_minimum: bool = False,
     ) -> None:
-        spec = _ACTION_BY_NAME[action]
-        if (old.get("status"), old.get("owner")) != (spec["source_status"], spec["source_owner"]):
-            raise BoardError("unsupported_source_pair", f"Action `{action}` requires `{spec['source_status']}` + `{spec['source_owner']}`.", 409)
-        if (new.get("status"), new.get("owner")) != (spec["target_status"], spec["target_owner"]):
+        spec = next(item for item in _REGISTERED_ACTION_SPECS if item.action == action)
+        design_before = design_owner(_scope_of(old) or [], self._model)
+        design_after = design_owner(_scope_of(new) or [], self._model)
+        if (old.get("status"), old.get("owner")) not in spec.resolved_sources(design_before):
+            wanted = " or ".join(f"`{status}` + `{owner}`" for status, owner in spec.resolved_sources(design_before))
+            raise BoardError("unsupported_source_pair", f"Action `{action}` requires {wanted}.", 409)
+        target_status, target_owner = spec.resolved_target(design_after)
+        new_pair = (new.get("status"), new.get("owner"))
+        if target_status == MINIMUM:
+            if not defer_minimum:
+                self._assert_minimum_status(action, feature_path, feature_content, old, new)
+        elif new_pair != (target_status, target_owner):
+            if new.get("status") == target_status and new.get("owner") in DESIGN_OWNERS and spec.target_owner == DESIGN_OWNER:
+                raise BoardError(
+                    "design_owner_mismatch",
+                    f"Action `{action}` hands the feature to the design owner of its scope, `{target_owner}` "
+                    f"({'an active app has a UI or an unknown one' if target_owner == 'designer' else 'no active app has a UI'}), not `{new.get('owner')}`.",
+                    409,
+                    {"path": feature_path, "owner": new.get("owner"), "design_owner": target_owner},
+                )
             raise BoardError("invalid_transition_target", f"Action `{action}` has a fixed registered destination.", 409)
+        body = _parse_markdown(feature_content, feature_path)[1]
         if action == "po-specify":
             _require_headings(
-                _parse_markdown(feature_content, feature_path)[1],
-                ("Summary", "User story", "Acceptance criteria", "Open questions", "App scope", "Design", "Related features", "API surface", "Board review summary", "Post-ship notes"),
+                body,
+                _SPECIFIED_SUBSTANTIVE_SECTIONS,
                 feature_path,
                 " po-specify completes a raw feature: give each of them one line of supported content or an explicit statement that nothing exists yet, "
-                "for example `Not started.` under Design, `None identified.` under Related features, `None.` under API surface, "
-                "`Not reviewed yet.` under Board review summary and `Not shipped yet.` under Post-ship notes. "
+                "for example `Not started.` under Design, `None identified.` under Related features, `None.` under API surface and "
+                "`Not reviewed yet.` under Board review summary. "
                 "Any API surface text other than `None.` needs an API contract page before dev-start, so write `None.` unless the intake material or an answered question states an API change. "
                 "Keep questions in the Open questions table, never in these sections.",
             )
-            self._validate_substantive_spec(_parse_markdown(feature_content, feature_path)[1], feature_path)
-        if action.startswith("reopen-"):
-            domains = new.get("revalidation")
-            expected = {
-                "reopen-spec": ["specification", "design", "implementation", "tests", "release"],
-                "reopen-design": ["design", "implementation", "tests", "release"],
-                "reopen-dev": ["implementation", "tests", "release"],
-            }[action]
-            if domains != expected:
-                raise BoardError("revalidation_required", "The reopen route must add its exact required revalidation domains.", 409)
-            self._validate_reopen_record(action, original_content, feature_content, old, supplied, before, relative=feature_path)
+            missing = [name for name in EVIDENCE_SECTIONS + ("Evidence history",) if not _has_section(body, name)]
+            if missing:
+                raise BoardError(
+                    "required_section_missing",
+                    f"`{feature_path}` needs the evidence sections as empty headings: add {_quoted(missing)}. They hold no rows until the work they record happens.",
+                    409,
+                    {"path": feature_path, "sections": _names(missing)},
+                )
+            self._validate_substantive_spec(body, feature_path)
+            self._validate_criteria_change(feature_path, original_content, feature_content, old, new, first_specification=True)
+            evidence = read_feature_evidence(body)
+            populated = [name for name, rows in (("Delivery evidence", evidence.delivery), ("QA verification", evidence.qa), ("Release", evidence.release)) if rows]
+            if populated or parse_evidence_history(body):
+                raise BoardError(
+                    "evidence_sections_not_empty",
+                    f"`{feature_path}` is being specified, so its evidence sections stay empty; {', '.join(populated) or 'Evidence history'} already hold entries.",
+                    409,
+                    {"path": feature_path, "sections": _names(populated)},
+                )
+
+    def _assert_minimum_status(
+        self,
+        action: str,
+        feature_path: str,
+        feature_content: str,
+        old: Mapping[str, Any],
+        new: Mapping[str, Any],
+    ) -> None:
+        """From `in-dev` on the proposal sets status and owner to the minimum over the app stages (CONTRACTS 2.2); otherwise `app_stage_mismatch`."""
+
+        body = _parse_markdown(feature_content, feature_path)[1]
+        apps = _scope_of(new) or []
+        stages = app_stages(active_scope(apps, self._model), read_feature_evidence(body))
+        minimum = minimum_stage(stages.values())
+        if minimum is None:
+            raise BoardError(
+                "no_active_app_in_scope",
+                f"`{feature_path}` has no active app in scope, so its status has no app stage to follow. Return it through a design route and edit its scope.",
+                409,
+                {"path": feature_path},
+            )
+        if (new.get("status"), new.get("owner")) != (minimum, OWNER_BY_STATUS[minimum]):
+            raise BoardError(
+                "app_stage_mismatch",
+                f"After `{action}` the app stages are {', '.join(f'`{app}`: {stage}' for app, stage in stages.items())}, so the feature is `{minimum}` + `{OWNER_BY_STATUS[minimum]}` "
+                f"(the minimum), but `{feature_path}` proposes `{new.get('status')}` + `{new.get('owner')}`.",
+                409,
+                {"path": feature_path, "stages": stages, "minimum": minimum, "proposed": [new.get("status"), new.get("owner")]},
+            )
 
     def _validate_lifecycle_write_scope(
         self,
@@ -3235,24 +3808,18 @@ class BoardService:
         old: Mapping[str, Any],
         new: Mapping[str, Any],
     ) -> None:
+        """Check the feature page change against the action's allowlists (`WRITE_SCOPES`)."""
+
         old_fm, old_body = _parse_markdown(original, relative)
         new_fm, new_body = _parse_markdown(proposed, relative)
-        allowed_frontmatter = {"status", "owner"}
-        if action == "po-handoff":
-            allowed_frontmatter |= {"advisory-review", "advisory-skip-reason", "revalidation"}
-        elif action == "design-handoff":
-            allowed_frontmatter.add("revalidation")
-        elif action == "dev-done":
-            allowed_frontmatter.add("revalidation")
-        elif action.startswith("reopen-"):
-            allowed_frontmatter.add("revalidation")
+        scope = WRITE_SCOPES[action]
         changed = {
             key for key in set(old_fm) | set(new_fm)
             if old_fm.get(key) != new_fm.get(key)
         }
-        if changed - allowed_frontmatter:
-            offending = _names(changed - allowed_frontmatter)
-            allowed_names = sorted(allowed_frontmatter)
+        if changed - scope.frontmatter:
+            offending = _names(changed - scope.frontmatter)
+            allowed_names = sorted(scope.frontmatter)
             raise BoardError(
                 "lifecycle_frontmatter_scope",
                 f"Action `{action}` cannot change frontmatter fields: {', '.join(offending)} in `{relative}`. Restore them to their current values; this action may change only {_quoted(allowed_names)}.",
@@ -3267,107 +3834,134 @@ class BoardService:
                 raise BoardError("advisory_skip_scope", "PO handoff may propose only pending-to-skipped advisory review.", 409)
             elif not isinstance(new_fm.get("advisory-skip-reason"), str) or not new_fm["advisory-skip-reason"].strip():
                 raise BoardError("advisory_skip_reason_required", "A skipped advisory review requires a nonblank reason.", 409)
-        clearable = {
-            "po-handoff": {"specification"},
-            "design-handoff": {"design"},
-            "dev-done": {"implementation", "tests", "release"},
-        }.get(action, set())
-        if action.startswith("reopen-"):
-            expected_domains = {
-                "reopen-spec": ["specification", "design", "implementation", "tests", "release"],
-                "reopen-design": ["design", "implementation", "tests", "release"],
-                "reopen-dev": ["implementation", "tests", "release"],
-            }[action]
-            if new_fm.get("revalidation") != expected_domains:
-                raise BoardError("revalidation_required", "The reopen route must set exactly its registered revalidation domains.", 409)
-        else:
-            old_domains = old_fm.get("revalidation", [])
-            new_domains = new_fm.get("revalidation", [])
-            if not isinstance(old_domains, list) or not isinstance(new_domains, list) or any(not isinstance(item, str) for item in old_domains):
-                raise BoardError("invalid_revalidation", "Revalidation fields must be lists of known domains.", 409)
-            expected_domains = [item for item in old_domains if item not in clearable]
-            if new_domains != expected_domains:
-                raise BoardError("revalidation_scope", f"Action `{action}` may clear only its verified revalidation domains.", 409)
 
-        if action in {"po-handoff", "design-start", "dev-start", "design-handoff"}:
-            if old_body != new_body:
-                # Names the sections and the first line that differ; the body of this action may not change at all.
-                self._assert_only_body_sections_changed(
-                    old_body, new_body, set(), "lifecycle_body_scope", f"Action `{action}` changes only lifecycle metadata on the feature page."
-                )
-                raise BoardError("lifecycle_body_scope", f"Action `{action}` changes only lifecycle metadata on the feature page.", 409)
-        elif action == "dev-done":
+        # The feature-level revalidation domains: the action may clear only the domains of its scope, in the order written.
+        old_domains = old_fm.get("revalidation", [])
+        new_domains = new_fm.get("revalidation", [])
+        if not isinstance(old_domains, list) or not isinstance(new_domains, list) or any(not isinstance(item, str) for item in old_domains):
+            raise BoardError("invalid_revalidation", "Revalidation fields must be lists of known domains.", 409)
+        expected_domains = [item for item in old_domains if item not in scope.clears]
+        if new_domains != expected_domains:
+            raise BoardError("revalidation_scope", f"Action `{action}` may clear only its verified revalidation domains.", 409)
+
+        if scope.sections:
             self._assert_only_body_sections_changed(
                 old_body,
                 new_body,
-                {"Delivery evidence", "Post-ship notes"},
+                set(scope.sections),
                 "lifecycle_body_scope",
-                "Dev done may update delivery evidence and post-ship notes only.",
+                f"Action `{action}` may change only the sections {_quoted(sorted(scope.sections))} of the feature page.",
             )
-        elif action.startswith("reopen-"):
+        elif old_body != new_body:
+            # Names the sections and the first line that differ; the body of this action may not change at all.
             self._assert_only_body_sections_changed(
-                old_body,
-                new_body,
-                {"Delivery evidence", "Reopen history"},
-                "lifecycle_body_scope",
-                "Feature reopen may archive delivery evidence and append reopen history only.",
+                old_body, new_body, set(), "lifecycle_body_scope", f"Action `{action}` changes only lifecycle metadata on the feature page."
             )
-        elif action == "po-specify":
+            raise BoardError("lifecycle_body_scope", f"Action `{action}` changes only lifecycle metadata on the feature page.", 409)
+        if action == "po-specify":
             if old_fm.get("apps") != new_fm.get("apps") or old_fm.get("sources") != new_fm.get("sources"):
                 raise BoardError("specification_identity_change", "PO specify preserves source and app scope.", 409)
+        if action != "dev-done" and "app-revalidation" in changed:
+            raise BoardError("revalidation_scope", f"Action `{action}` does not change `app-revalidation`.", 409)
 
-    @staticmethod
-    def _validate_dev_done_evidence(relative: str, content: str, frontmatter: Mapping[str, Any]) -> None:
-        """Require the proposed feature page to carry valid delivery evidence.
+    def _validate_dev_done_evidence(
+        self,
+        relative: str,
+        old_fm: Mapping[str, Any],
+        new_fm: Mapping[str, Any],
+        old_body: str,
+        new_body: str,
+    ) -> tuple[str, ...]:
+        """Check the delivery evidence a `dev-done` proposal adds (CONTRACTS 2.4, 5.1) and return the apps it names.
 
-        The evidence arrives as part of the proposal, so one preview shows the
-        evidence row beside the status change. The rules are the ones the
-        transition pre-check applies to a recorded table: each app needs
-        substantive Implementation and Tests cells and a `Release` cell that is
-        release evidence or a delivery attestation.
+        The evidence arrives as part of the proposal, so one preview shows the new rows beside the status change. A named app
+        is one that gains a row; each needs a valid row, was `in-dev`, and clears its `implementation` and `tests` domains.
         """
 
-        from prism_cli.wiki_model import RELEASE_EVIDENCE_REQUIRED, parse_delivery_evidence
-
-        declared = [item for item in frontmatter.get("apps", []) if isinstance(item, str)]
-        _frontmatter, body = _parse_markdown(content, relative)
-        rows, problems = parse_delivery_evidence(body, declared)
-        if not problems:
-            return
-        structural = [item.message for item in problems if item.code != RELEASE_EVIDENCE_REQUIRED]
-        release = [item.message for item in problems if item.code == RELEASE_EVIDENCE_REQUIRED]
-        example = "| " + " | ".join([declared[0] if declared else "backend", "<implementation reference>", "<test command and result>", "release: <URL of the release or deployment record>"]) + " |"
-        details: dict[str, Any] = {
-            "path": relative,
-            "apps": _names(declared),
-            "missing_apps": _names(set(item.casefold() for item in declared) - set(rows)),
-            "problems": [_clip(item, 200) for item in structural[:6]],
-        }
-        if not rows:
+        declared = _scope_of(new_fm) or []
+        old_evidence = read_feature_evidence(old_body)
+        new_evidence = read_feature_evidence(new_body)
+        old_rows = {row.app: row for row in old_evidence.delivery}
+        new_rows = {row.app: row for row in new_evidence.delivery}
+        for app_id, row in old_rows.items():
+            if app_id not in new_rows:
+                raise BoardError(
+                    "delivery_evidence_removed",
+                    f"`{relative}` drops the delivery evidence of `{app_id}`. Delivered rows leave the active table only when a return or reopen archives them in Evidence history.",
+                    409,
+                    {"path": relative, "app": app_id},
+                )
+            if new_rows[app_id].cells != row.cells:
+                raise BoardError(
+                    "evidence_still_active",
+                    f"`{relative}` changes the active delivery evidence of `{app_id}`. An app that already has a row is not delivered again until a return archives its row.",
+                    409,
+                    {"path": relative, "app": app_id},
+                )
+        named = tuple(app_id for app_id in new_rows if app_id not in old_rows)
+        if not named:
+            shape = [_clip(item.message, 200) for item in new_evidence.problems if item.code == "delivery_evidence_invalid"]
+            example = "| " + " | ".join([declared[0] if declared else "backend", "build:backend#412", "none", "<implementation reference>", "<test command and result>", "checked"]) + " |"
             raise BoardError(
                 "delivery_evidence_required",
-                f"Dev done needs the delivery evidence in the proposal: the `## Delivery evidence` table in the proposed `{relative}` has no app rows. "
-                f"Add one row per declared app ({_quoted(_names(declared))}) with the implementation, test and release references the developer reports, "
+                f"Dev done needs the delivery evidence in the proposal: the `## Delivery evidence` table in the proposed `{relative}` adds no row for an app. "
+                f"Add one row per delivered app ({_quoted(_names(declared))}) with the artifact, contract, implementation, tests and basis the developer reports, "
                 f"for example `{example}`. Ask the developer for what is missing; do not invent it.",
                 409,
-                details,
+                {"path": relative, "apps": _names(declared), "table_columns": ["App", "Artifact", "Contract", "Implementation", "Tests", "Basis"], "problems": shape[:6]},
             )
-        if structural:
+        active = active_scope(declared, self._model)
+        outside = [app_id for app_id in named if app_id not in active]
+        if outside:
             raise BoardError(
-                "delivery_evidence_invalid",
-                f"The `## Delivery evidence` table in the proposed `{relative}` is not valid: {' '.join(_clip(item, 200) for item in structural[:6])} "
-                "It needs exactly one row per declared app, each with a substantive Implementation and Tests cell and a Release cell that is release evidence "
-                "(`release:`, `tag:` or `deployment:` and a URL or record path) or a delivery attestation (`attested by <Name>:` and a URL or path).",
+                "undeclared_app_row",
+                f"`{relative}` adds delivery evidence for {_quoted(_names(outside))}, which {'is not' if len(outside) == 1 else 'are not'} an active app of the feature's scope ({_quoted(_names(active))}).",
                 409,
-                details,
+                {"path": relative, "apps": _names(outside), "scope": _names(active)},
             )
-        raise BoardError(
-            "release_evidence_required",
-            f"The `Release` cell of the delivery evidence in the proposed `{relative}` must be release evidence or a delivery attestation. "
-            f"{' '.join(_clip(item, 500) for item in release[:6])} Ask the developer for the release or deployment record, or for who confirms the shipment; do not invent it.",
-            409,
-            {**details, "problems": [_clip(item, 500) for item in release[:6]]},
+        problems = [problem for problem in new_evidence.problems if problem.code != "qa_row_invalid" and (problem.subject is None or problem.subject in named)]
+        problems = [problem for problem in problems if problem.code in {"delivery_evidence_invalid", "artifact_reference_invalid", "basis_invalid"}]
+        counted = [row.app for row in new_evidence.delivery]
+        problems.extend(
+            EvidenceProblem("delivery_evidence_invalid", f"The table has more than one row for duplicate app `{app_id}`; one row per app.", app_id)
+            for app_id in dict.fromkeys(counted)
+            if counted.count(app_id) > 1 and app_id in named
         )
+        if problems:
+            first = problems[0]
+            code = first.code
+            raise BoardError(
+                code,
+                f"The `## Delivery evidence` table in the proposed `{relative}` is not valid: {' '.join(_clip(item.message, 200) for item in problems[:6])} "
+                "A row has the cells App, Artifact (`version:`, `build:`, `image:`, `package:` or `commit:` and its form), Contract (`none` or `F-XXX@v<n>:c1:<digest>`), "
+                "Implementation, Tests (substantive references) and Basis (`checked` or `attested`).",
+                409,
+                {"path": relative, "apps": _names(named), "problems": [_clip(item.message, 200) for item in problems[:6]]},
+            )
+        for app_id in named:
+            if app_stage(app_id, old_evidence) != "in-dev":
+                raise BoardError(
+                    "app_stage_mismatch",
+                    f"`dev-done` delivers only apps that are `in-dev`, but `{app_id}` is `{app_stage(app_id, old_evidence)}`.",
+                    409,
+                    {"path": relative, "app": app_id, "stage": app_stage(app_id, old_evidence)},
+                )
+        # The named apps' implementation and tests domains clear, nothing else changes.
+        old_domains, _errors = parse_app_revalidation(old_fm.get("app-revalidation"))
+        new_domains, new_errors = parse_app_revalidation(new_fm.get("app-revalidation"))
+        expected: dict[str, list[str]] = {}
+        for app_id, domains in old_domains.items():
+            kept = [domain for domain in domains if app_id not in named or domain not in {"implementation", "tests"}]
+            if kept:
+                expected[app_id] = kept
+        if new_errors or new_domains != expected:
+            raise BoardError(
+                "revalidation_scope",
+                "Dev done clears only the `implementation` and `tests` domains of the apps it delivers in `app-revalidation`; every other entry stays as it is.",
+                409,
+                {"path": relative, "apps": _names(named)},
+            )
+        return named
 
     def _validate_lifecycle_related_writes(
         self,
@@ -3375,31 +3969,26 @@ class BoardService:
         supplied: Mapping[str, str],
         before: Mapping[str, str | None],
         feature: Mapping[str, Any],
+        named_apps: tuple[str, ...] = (),
     ) -> None:
         related = {
             path for path in supplied
             if path.startswith(("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/"))
         }
+        scope = WRITE_SCOPES[action]
         if action in {"po-specify", "po-handoff", "design-start", "dev-start"} and related:
             raise BoardError("lifecycle_write_scope", f"Action `{action}` may change only its feature, managed index, and log.", 409)
-        allowed_prefixes = {
-            "design-handoff": ("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/"),
-            "dev-done": ("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/"),
-        }
-        if action.startswith("reopen-"):
-            allowed = ("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/")
-        else:
-            allowed = allowed_prefixes.get(action, ())
-        if related - {path for path in supplied if path.startswith(allowed)}:
+        if related - {path for path in supplied if path.startswith(scope.pages)}:
             raise BoardError("lifecycle_write_scope", f"Action `{action}` cannot write those linked artifact types.", 403)
+        feature_id = str(feature["id"])
         for relative in related:
             original = before.get(relative)
             proposed = supplied[relative]
-            if action in {"dev-done", "feature-reopen"} and original is None:
+            if action == "dev-done" and original is None:
                 raise BoardError("linked_page_not_found", f"Action `{action}` can update only existing linked artifact `{relative}`.", 409)
             new_fm, new_body = _parse_markdown(proposed, relative)
             old_fm, old_body = _parse_markdown(original, relative) if original is not None else ({}, "")
-            if not isinstance(new_fm.get("feature-id"), str) or new_fm["feature-id"].casefold() != str(feature["id"]).casefold():
+            if not isinstance(new_fm.get("feature-id"), str) or new_fm["feature-id"].casefold() != feature_id.casefold():
                 raise BoardError("feature_context_mismatch", f"Linked artifact `{relative}` does not belong to {feature['id']}.", 409)
             if action == "design-handoff":
                 if relative.startswith("knowledge/wiki/api-contracts/"):
@@ -3412,6 +4001,14 @@ class BoardService:
             elif action == "dev-done":
                 status = new_fm.get("status")
                 if relative.startswith("knowledge/wiki/app-requirements/"):
+                    requirement_app = new_fm.get("app")
+                    if requirement_app not in named_apps and status != old_fm.get("status"):
+                        raise BoardError(
+                            "requirement_status_change",
+                            f"Dev done changes the requirement only of the apps it delivers ({_quoted(_names(named_apps))}), but `{relative}` is the requirement of `{_clip(requirement_app, 60)}`.",
+                            409,
+                            {"path": relative},
+                        )
                     if status not in {old_fm.get("status"), "done"}:
                         raise BoardError("requirement_status_change", "Dev done may preserve a requirement status or mark that linked requirement done.", 409)
                 elif status not in {old_fm.get("status"), "implemented"}:
@@ -3423,18 +4020,40 @@ class BoardService:
                         409,
                         {"path": relative},
                     )
-            elif action.startswith("reopen-"):
-                if relative.startswith("knowledge/wiki/app-requirements/"):
-                    if new_fm.get("status") not in {"pending", "in-progress"}:
-                        raise BoardError("requirement_invalidation", "Reopen may invalidate a requirement only to pending or in-progress.", 409)
-                elif new_fm.get("status") not in {"draft", "agreed"}:
-                    raise BoardError("api_invalidation", "Reopen may invalidate an API contract only to draft or agreed.", 409)
-                if {key: val for key, val in old_fm.items() if key != "status"} != {key: val for key, val in new_fm.items() if key != "status"} or old_body != new_body:
+        if action == "dev-done":
+            self._assert_delivered_pages_complete(supplied, feature, named_apps)
+
+    def _assert_delivered_pages_complete(self, supplied: Mapping[str, str], feature: Mapping[str, Any], named_apps: tuple[str, ...]) -> None:
+        """The requirement of each delivered app is `done`, and the API contracts are `implemented` once every app is delivered (CONTRACTS 2.5)."""
+
+        feature_id = str(feature["id"])
+        for app_id in named_apps:
+            relative = f"knowledge/wiki/app-requirements/{feature_id}-{app_id}.md"
+            text = supplied.get(relative)
+            if text is None:
+                path = self._safe_path(relative, allow_missing=True)
+                text = self._optional_text(path)
+            status = _parse_markdown(text, relative)[0].get("status") if text is not None else None
+            if status != "done":
+                raise BoardError(
+                    "requirement_not_completed",
+                    f"`{app_id}` is delivered, so its requirement `{relative}` is `done`; it is `{_clip(status, 40)}`. Include the page with `status: done` in the proposal.",
+                    409,
+                    {"path": relative, "status": _clip(status, 40)},
+                )
+        after = feature["after"]
+        evidence = read_feature_evidence(_parse_markdown(supplied[feature["path"]], feature["path"])[1])
+        stages = app_stages(active_scope(_scope_of(after) or [], self._model), evidence)
+        if stages and all(APP_STAGE_ORDER.index(stage) >= APP_STAGE_ORDER.index("ready-for-qa") for stage in stages.values()):
+            for contract in sorted(self._feature_api_contract_paths(feature, supplied)):
+                text = supplied.get(contract) or self._optional_text(self._safe_path(contract, allow_missing=True))
+                status = _parse_markdown(text, contract)[0].get("status") if text is not None else None
+                if status != "implemented":
                     raise BoardError(
-                        "linked_page_scope",
-                        f"Reopen may change only the `status` of an existing linked artifact, but `{relative}` also changes its text or other fields. Restore everything except `status` to the current text.",
+                        "api_contract_not_implemented",
+                        f"Every app of {feature_id} is delivered, so its API contract `{contract}` is `implemented`; it is `{_clip(status, 40)}`. Include the page with `status: implemented` in the proposal.",
                         409,
-                        {"path": relative},
+                        {"path": contract, "status": _clip(status, 40)},
                     )
 
     def _validate_handoff_api_contract(
@@ -3489,7 +4108,7 @@ class BoardService:
     def _require_no_retired_app_in_progress(self, feature_id: str, current: Mapping[str, Any]) -> None:
         """A feature in progress that lists a retired app takes no lifecycle transition until its scope is edited explicitly."""
 
-        if self._model is None or current.get("status") == "done":
+        if self._model is None or current.get("status") == "released":
             return
         scope = _scope_of(current) or []
         retired = self._model.retired_apps(scope)
@@ -3560,116 +4179,180 @@ class BoardService:
                         continue
         return found
 
-    def _validate_reopen_record(
+    def _validate_evidence_history(
         self,
         action: str,
         original: str,
         proposed: str,
         old: Mapping[str, Any],
-        supplied: Mapping[str, str],
-        before: Mapping[str, str | None],
-        relative: str | None = None,
+        *,
+        relative: str,
+        expected_archive: Iterable[tuple[str, tuple[str, ...]]] = (),
+        require_entry: bool = True,
+        reaffirmable: bool = False,
+        related: tuple[Mapping[str, str], Mapping[str, str | None]] | None = None,
     ) -> None:
+        """The validator of `## Evidence history` for every action that archives evidence (CONTRACTS 2.7).
+
+        The section is append-only: earlier entries stay as they are, and the write appends exactly one entry headed
+        `### <preview date> - <action>`. Each row the write removes from an active evidence table is copied verbatim into the
+        entry's Archived evidence, prefixed by its section name; a row both archived and active is `evidence_still_active`.
+        `expected_archive` are the rows the action must remove (the caller derives them from the action's rules). With
+        `require_entry` false an unchanged section passes, for an action whose archive is conditional. `related` is the
+        proposal's (supplied, before) pair: the entry then lists exactly the linked requirement and API pages the write
+        invalidates (`reopen_invalidation_mismatch`).
+        """
+
         _old_fm, old_body = _parse_markdown(original, relative)
         _new_fm, new_body = _parse_markdown(proposed, relative)
-        old_history = _section(old_body, "Reopen history")
-        new_history = _section(new_body, "Reopen history")
+        old_history = _section(old_body, "Evidence history")
+        new_history = _section(new_body, "Evidence history")
         if not new_history.startswith(old_history):
-            raise BoardError("reopen_history_not_append_only", "Reopen history must preserve all previous records and append one new record.", 409)
+            raise BoardError("history_not_append_only", "Evidence history must preserve all previous entries and append one new entry.", 409)
         addition = new_history[len(old_history):]
-        expected_heading = f"reopen-{action.removeprefix('reopen-')}"
-        headings = re.findall(r"(?im)^###\s+(\d{4}-\d{2}-\d{2})\s+-\s+(reopen-[a-z]+)\s*$", addition)
-        if len(headings) != 1 or headings[0][1] != expected_heading:
-            raise BoardError("reopen_record_required", "A reopen proposal must append exactly one dated record for its selected route.", 409)
-        labels = ("Reason", "Impact review", "Affected apps", "Affected artifacts", "Prior completion/release evidence", "Requirement/API invalidations")
-        values: dict[str, str] = {}
-        for label in labels:
-            match = re.search(rf"(?im)^\s*-\s*{re.escape(label)}:\s*(.*?)\s*$", addition)
-            value = match.group(1).strip() if match else ""
-            if match and label == _ARCHIVE_LABEL:
-                value = _label_block(addition, label, labels)
-            if not match or not value or (label != "Affected apps" and len(value) < 8):
+        old_evidence = read_feature_evidence(old_body)
+        new_evidence = read_feature_evidence(new_body)
+
+        def active_rows(evidence: Any) -> list[tuple[str, tuple[str, ...]]]:
+            return [
+                *(("Delivery evidence", row.cells) for row in evidence.delivery),
+                *(("QA verification", row.cells) for row in evidence.qa),
+                *(("Release", row.cells) for row in evidence.release),
+            ]
+
+        def key(section: str, cells: Iterable[str]) -> str:
+            return _normalized_table_text(section + " | " + " | ".join(cells))
+
+        before_rows = {key(section, cells): (section, cells) for section, cells in active_rows(old_evidence)}
+        after_rows = {key(section, cells): (section, cells) for section, cells in active_rows(new_evidence)}
+        removed = {item: row for item, row in before_rows.items() if item not in after_rows}
+        expected = {key(section, cells): (section, cells) for section, cells in expected_archive}
+        if not addition.strip():
+            if require_entry or removed or expected:
+                raise BoardError(
+                    "history_entry_required",
+                    f"Evidence history needs one new entry headed `### {date.today().isoformat()} - {action}` that archives the evidence this write removes.",
+                    409,
+                    {"path": relative, "action": action},
+                )
+            return
+        headings = [(match.group(1), match.group(2)) for line in addition.splitlines() if (match := _HISTORY_HEADING.match(line.strip()))]
+        if len(headings) != 1 or headings[0] != (date.today().isoformat(), action):
+            raise BoardError(
+                "history_entry_required",
+                f"This write appends exactly one Evidence history entry, headed `### {date.today().isoformat()} - {action}` (the preview day and the action).",
+                409,
+                {"path": relative, "action": action},
+            )
+        entry = parse_evidence_history(new_body)[-1]
+        labels = {
+            "Reason": 8,
+            "Affected apps": 1,
+            "Participants": 1,
+            "Affected tracks": 1,
+            "Archived evidence": 1,
+            "Reaffirmed evidence": 1,
+            "Requirement/API invalidations": 8,
+            "Linked bugs": 1,
+        }
+        for label, minimum in labels.items():
+            value = entry.fields.get(label, "").strip()
+            if len(value) < minimum:
                 hint = ""
                 if label == "Requirement/API invalidations":
                     hint = (
                         " Name each invalidated requirement or API page as `knowledge/wiki/.../page.md: done -> in-progress` (its current and new status), "
                         "or, when no page is invalidated, write a sentence such as `No requirement or API page is invalidated.`"
                     )
-                raise BoardError("impact_review_required", f"Reopen history must include a `- {label}:` bullet with substantive evidence (at least 8 characters).{hint}", 409, {"label": label})
-            values[label] = value
-        if any(token in " ".join(values.values()).casefold() for token in ("[reason", "[impact", "[affected", "[prior completion", "todo", "tbd", "placeholder")):
-            raise BoardError("impact_review_required", "Reopen history cannot contain copied placeholders or unresolved template text.", 409)
+                elif label in {"Participants", "Linked bugs"}:
+                    hint = " Write `none` when there is nothing to list."
+                raise BoardError("impact_review_required", f"Evidence history must include a `- {label}:` bullet with substantive text.{hint}", 409, {"label": label})
+        if any(token in " ".join(entry.fields.values()).casefold() for token in ("[reason", "[why", "[affected", "[app", "todo", "tbd", "placeholder")):
+            raise BoardError("impact_review_required", "Evidence history cannot contain copied placeholders or unresolved template text.", 409)
         declared = old.get("apps")
-        affected = {part.strip().strip("`[]") for part in re.split(r"[,;]", values["Affected apps"]) if part.strip()}
-        if not isinstance(declared, list) or not affected or not affected.issubset(set(declared)):
-            raise BoardError("reopen_app_scope", "Reopen history must name affected app IDs from the feature's declared scope.", 409)
-        from prism_cli.wiki_model import parse_delivery_evidence_cells
+        declared_set = {item for item in declared if isinstance(item, str)} if isinstance(declared, list) else set()
+        if not entry.affected_apps or not set(entry.affected_apps) <= declared_set:
+            raise BoardError("reopen_app_scope", "Evidence history must name affected app IDs from the feature's declared scope.", 409)
+        if not set(entry.participants) <= declared_set:
+            raise BoardError("reopen_app_scope", "Evidence history may list as participants only apps of the feature's declared scope.", 409)
+        tracks = [item for item in re.split(r"[\s,;]+", entry.fields.get("Affected tracks", "").strip().strip("[]").lower()) if item]
+        if not tracks or any(item not in {"ui", "technical", "none"} for item in tracks):
+            raise BoardError("impact_review_required", "Evidence history lists the affected tracks as `ui`, `technical` or `none`.", 409, {"label": "Affected tracks"})
 
-        # The same parser that dev-done applies to the evidence it accepts, so every
-        # table dev-done wrote can be archived here. Rows keep their own column order.
-        declared_apps = [item for item in declared if isinstance(item, str)]
-        declared_keys = {item.strip().lower() for item in declared_apps}
-        prior_canonical, prior_cells, _prior_problems = parse_delivery_evidence_cells(old_body, declared_apps)
-        if not prior_cells or set(prior_cells) != declared_keys:
-            raise BoardError("delivery_evidence_missing", "Reopen must archive the existing active delivery evidence for every declared app.", 409)
-        normalized_archive = _normalized_table_text(values[_ARCHIVE_LABEL])
-        for cells in prior_cells.values():
-            row_text = "| " + " | ".join(cells) + " |"
-            if _normalized_table_text(row_text) not in normalized_archive:
+        archived = {key(section, cells): (section, cells) for section, cells in entry.archived_rows}
+        for item, (section, cells) in removed.items():
+            if item not in archived:
                 raise BoardError(
-                    "delivery_evidence_not_archived",
-                    f"Reopen history must retain each prior delivery-evidence row verbatim under `- {_ARCHIVE_LABEL}:`, "
-                    "on that line or on the lines directly below it, before the next `- Label:` line or heading. "
-                    "A table row or a list item both work. "
-                    f"Missing row: {_clip(row_text, 300)}",
+                    "evidence_not_archived",
+                    f"Evidence history must copy each removed evidence row verbatim under `- Archived evidence:`, prefixed by its section name, "
+                    f"as a table row on the lines directly below the label. Missing row: {_clip(_row_line(section, cells), 300)}",
                     409,
-                    {"path": relative, "label": _ARCHIVE_LABEL, "missing_row": _clip(row_text, 300)},
+                    {"path": relative, "label": "Archived evidence", "missing_row": _clip(_row_line(section, cells), 300)},
                 )
-        new_delivery = _section(new_body, "Delivery evidence")
-        active_canonical, active_cells, _active_problems = parse_delivery_evidence_cells(new_body, declared_apps)
-        # A row the parser does not read as an app row still counts as active evidence.
-        known_rows = list(active_cells.values())
-        for cells in _table_rows(new_delivery, expected_columns=4):
-            if cells not in known_rows:
-                raise BoardError("delivery_evidence_still_active", "Reopen may preserve only unchanged evidence for unaffected apps explicitly reaffirmed in the impact review.", 409)
-        affected_keys = {item.lower() for item in affected}
-        for app_key, cells in active_cells.items():
-            if app_key not in prior_canonical or active_canonical[app_key] != prior_canonical[app_key] or app_key in affected_keys:
-                raise BoardError("delivery_evidence_still_active", "Reopen may preserve only unchanged evidence for unaffected apps explicitly reaffirmed in the impact review.", 409)
-            if "reaffirm" not in values["Impact review"].casefold() or re.sub(r"\s+", " ", "| " + " | ".join(cells) + " |").casefold() not in re.sub(r"\s+", " ", values["Impact review"]).casefold():
-                raise BoardError("delivery_evidence_not_reaffirmed", "Unchanged evidence kept active must be named as reaffirmed in the impact review.", 409)
-        related_paths = {
-            path for path in supplied
-            if path.startswith(("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/"))
-        }
-        invalidations = values["Requirement/API invalidations"]
-        artifacts = values["Affected artifacts"]
+        for item, (section, cells) in archived.items():
+            if item in after_rows:
+                raise BoardError(
+                    "evidence_still_active",
+                    f"The evidence row {_clip(_row_line(section, cells), 200)} is archived and still active. An archived row leaves its active table in the same write.",
+                    409,
+                    {"path": relative},
+                )
+            if item not in before_rows:
+                raise BoardError(
+                    "evidence_not_archived",
+                    f"Archived evidence lists a row that is not in the active tables of `{relative}`: {_clip(_row_line(section, cells), 200)}",
+                    409,
+                    {"path": relative},
+                )
+        for item, (section, cells) in expected.items():
+            if item in after_rows:
+                raise BoardError(
+                    "evidence_still_active",
+                    f"`{action}` archives {_clip(_row_line(section, cells), 200)}, but the row is still in the active table.",
+                    409,
+                    {"path": relative},
+                )
+        unexpected = [row for item, row in removed.items() if item not in expected]
+        if unexpected and (expected or not reaffirmable):
+            section, cells = unexpected[0]
+            raise BoardError(
+                "evidence_unexpectedly_removed",
+                f"`{action}` removes {_clip(_row_line(section, cells), 200)} from the active evidence, which this action does not archive.",
+                409,
+                {"path": relative},
+            )
+        reaffirmed = {key(section, cells) for section, cells in entry.reaffirmed_rows}
+        if not reaffirmable and reaffirmed:
+            raise BoardError("delivery_evidence_not_reaffirmed", f"`{action}` archives all affected evidence; it reaffirms none. Write `none` under `- Reaffirmed evidence:`.", 409)
+        if related is not None:
+            self._validate_history_invalidations(entry, related[0], related[1], relative)
+
+    def _validate_history_invalidations(
+        self,
+        entry: Any,
+        supplied: Mapping[str, str],
+        before: Mapping[str, str | None],
+        relative: str,
+    ) -> None:
+        related_paths = {path for path in supplied if path.startswith(("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/"))}
+        invalidations = entry.fields.get("Requirement/API invalidations", "")
         listed_paths = set(re.findall(r"knowledge/wiki/(?:app-requirements|api-contracts)/[A-Za-z0-9_.-]+\.md", invalidations))
         if listed_paths != related_paths:
-            raise BoardError("reopen_invalidation_mismatch", "Reopen history must list exactly the linked requirement/API pages proposed in this write.", 409)
-        for relative in related_paths:
-            prior = before.get(relative)
+            raise BoardError("reopen_invalidation_mismatch", "Evidence history must list exactly the linked requirement/API pages proposed in this write.", 409)
+        for page in related_paths:
+            prior = before.get(page)
             if prior is None:
-                raise BoardError("linked_page_not_found", f"Reopen may invalidate only existing linked artifact `{relative}`.", 409)
-            old_page_fm, _ = _parse_markdown(prior, relative)
-            new_page_fm, _ = _parse_markdown(supplied[relative], relative)
-            old_status = str(old_page_fm.get("status", ""))
-            new_status = str(new_page_fm.get("status", ""))
-            status_phrase = re.compile(rf"{re.escape(relative)}\s*:?\s*{re.escape(old_status)}\s*(?:->|→)\s*{re.escape(new_status)}", re.IGNORECASE)
+                raise BoardError("linked_page_not_found", f"Evidence history may invalidate only existing linked artifact `{page}`.", 409)
+            old_status = str(_parse_markdown(prior, page)[0].get("status", ""))
+            new_status = str(_parse_markdown(supplied[page], page)[0].get("status", ""))
+            status_phrase = re.compile(rf"{re.escape(page)}\s*:?\s*{re.escape(old_status)}\s*(?:->|→)\s*{re.escape(new_status)}", re.IGNORECASE)
             if old_status == new_status or not status_phrase.search(invalidations):
                 raise BoardError(
                     "reopen_invalidation_mismatch",
-                    f"Reopen history must record `{relative}` changing exactly from `{old_status}` to `{new_status}`. "
-                    f"Write it under `- Requirement/API invalidations:` as `{relative}: {old_status} -> {new_status}` (an arrow, not a sentence).",
+                    f"Evidence history must record `{page}` changing exactly from `{old_status}` to `{new_status}`. "
+                    f"Write it under `- Requirement/API invalidations:` as `{page}: {old_status} -> {new_status}` (an arrow, not a sentence).",
                     409,
-                    {"path": relative, "from": old_status, "to": new_status},
-                )
-            if relative not in artifacts:
-                raise BoardError(
-                    "reopen_artifact_missing",
-                    f"`- Affected artifacts:` must also name the invalidated page `{relative}` by its full relative path.",
-                    409,
-                    {"path": relative},
+                    {"path": page, "from": old_status, "to": new_status},
                 )
 
     @staticmethod
@@ -3798,11 +4481,19 @@ class BoardService:
         if errors:
             raise BoardError("invalid_open_questions", "; ".join(errors), 409)
         for item in questions:
-            if not isinstance(item.get("number"), str) or not item["number"].isdigit() or int(item["number"]) < 1 or not item.get("question") or item.get("owner") not in {"po", "designer", "dev"}:
+            if not isinstance(item.get("number"), str) or not item["number"].isdigit() or int(item["number"]) < 1 or not item.get("question") or item.get("owner") not in VALID_OPEN_QUESTION_OWNERS:
                 raise BoardError("invalid_open_question", f"Feature `{relative}` contains a malformed open question.", 409)
         revalidation = frontmatter.get("revalidation", [])
         if not isinstance(revalidation, list) or any(not isinstance(item, str) or item not in REVALIDATION_DOMAINS for item in revalidation) or len(set(revalidation)) != len(revalidation):
             raise BoardError("invalid_revalidation", f"Feature `{relative}` contains invalid revalidation domains.", 409)
+        app_domains, app_errors = parse_app_revalidation(frontmatter.get("app-revalidation"))
+        scope = _scope_of(frontmatter) or []
+        if app_errors or any(app_id not in scope for app_id in app_domains):
+            raise BoardError(
+                "invalid_revalidation",
+                f"Feature `{relative}` contains invalid `app-revalidation`: " + ("; ".join(app_errors) or "it names an app outside the feature's `apps`."),
+                409,
+            )
         _validate_no_placeholders(body, relative)
 
     @staticmethod
@@ -3819,10 +4510,14 @@ class BoardService:
 
         old_frontmatter, old_body = _parse_markdown(before, relative)
         new_frontmatter, new_body = _parse_markdown(after, relative)
-        if old_frontmatter != new_frontmatter:
+        # `po-clarify` and `dev-clarify` may change criteria, and a new criterion raises `criteria-high-water` in the same write.
+        mark_allowed = skill in {"po-clarify", "dev-clarify"}
+        compared_old = {key: value for key, value in old_frontmatter.items() if not (mark_allowed and key == "criteria-high-water")}
+        compared_new = {key: value for key, value in new_frontmatter.items() if not (mark_allowed and key == "criteria-high-water")}
+        if compared_old != compared_new:
             changed_fields = _names(
-                key for key in set(old_frontmatter) | set(new_frontmatter)
-                if old_frontmatter.get(key) != new_frontmatter.get(key)
+                key for key in set(compared_old) | set(compared_new)
+                if compared_old.get(key) != compared_new.get(key)
             )
             raise BoardError(
                 "clarify_frontmatter_change",
@@ -4246,13 +4941,21 @@ class BoardService:
             if isinstance(page.frontmatter.get(field), str) and page.frontmatter[field].casefold() == value.casefold():
                 raise BoardError("duplicate_wiki_id", f"ID `{value}` already exists at `{page.path.relative_to(self.root).as_posix()}`.", 409)
 
-    def _evaluate_proposed_action(self, action: str, supplied: Mapping[str, str], feature: Mapping[str, Any]) -> dict[str, Any]:
-        spec = _ACTION_BY_NAME[action]
+    def _evaluate_proposed_action(
+        self,
+        action: str,
+        supplied: Mapping[str, str],
+        feature: Mapping[str, Any],
+        named_apps: tuple[str, ...] | None = None,
+    ) -> dict[str, Any]:
+        """Evaluate the action against a scratch copy of the workspace holding the proposal at the feature's source status and owner."""
+
+        source = feature["before"]
         temporary = tempfile.TemporaryDirectory(prefix="prism-board-preview-")
         self._build_candidate_root(Path(temporary.name), supplied, [])
         candidate_feature = _parse_markdown(supplied[feature["path"]], feature["path"])[0]
-        candidate_feature["status"] = spec["source_status"]
-        candidate_feature["owner"] = spec["source_owner"]
+        candidate_feature["status"] = source.get("status")
+        candidate_feature["owner"] = source.get("owner")
         candidate_content = self._replace_frontmatter(supplied[feature["path"]], candidate_feature)
         (Path(temporary.name) / feature["path"]).write_text(candidate_content, encoding="utf-8")
         try:
@@ -4260,7 +4963,7 @@ class BoardService:
             from prism_cli.wiki_transitions import build_board_transition_preflight
 
             candidate = Path(temporary.name)
-            evaluated = build_board_transition_preflight(candidate, str(feature["id"]), action)
+            evaluated = build_board_transition_preflight(candidate, str(feature["id"]), action, named_apps=named_apps)
             # The scratch tree and the workspace are never part of a result.
             return relativize_paths(evaluated, [candidate, candidate.resolve(), self.root])
         finally:
@@ -4956,17 +5659,19 @@ class BoardService:
                 raise BoardError("unresolved_operation_overlap", f"Operation `{operation_id}` has unresolved writes that overlap this operation.", 409)
 
 
-from prism_cli.wiki_transitions import ACTION_SPECS as _REGISTERED_ACTION_SPECS
-
+# The feature actions of the registry. `sources` are (status, owner) pairs in which the owner `D` is the design owner;
+# `enabled` is false for an action whose work package has not landed, which the service refuses with `action_unavailable`.
 _ACTION_BY_NAME = {
     spec.action: {
-        "source_status": spec.source_status,
-        "source_owner": spec.source_owner,
+        "sources": [list(pair) for pair in spec.sources],
         "target_status": spec.target_status,
         "target_owner": spec.target_owner,
         "command": spec.command,
+        "enabled": spec.enabled,
+        "package": spec.package,
     }
     for spec in _REGISTERED_ACTION_SPECS
+    if spec.subject == "feature"
 }
 
 
@@ -5223,23 +5928,6 @@ def _body_without_sections(body: str, headings: set[str]) -> str:
     return "".join(out)
 
 
-def _table_rows(section: str, *, expected_columns: int) -> list[list[str]]:
-    rows: list[list[str]] = []
-    for raw_line in section.splitlines():
-        line = raw_line.strip()
-        if not line.startswith("|"):
-            continue
-        cells = [cell.strip() for cell in line.strip("|").split("|")]
-        if len(cells) != expected_columns or not all(cells):
-            continue
-        if all(re.fullmatch(r":?-+:?", cell) for cell in cells):
-            continue
-        if any(cell.casefold() in {"app", "implementation", "tests", "release"} for cell in cells):
-            continue
-        rows.append(cells)
-    return rows
-
-
 def _require_headings(body: str, headings: Iterable[str], relative: str, hint: str = "") -> None:
     missing = [heading for heading in headings if not _section(body, heading).strip()]
     if missing:
@@ -5348,7 +6036,7 @@ def _validate_no_placeholders(body: str, relative: str) -> None:
         raise BoardError("template_placeholder", f"`{relative}` contains unresolved template placeholder text.", 409)
 
 
-def _status_row(frontmatter: Mapping[str, Any]) -> dict[str, str]:
+def _status_row(frontmatter: Mapping[str, Any], body: str = "", model: WorkspaceModel | None = None) -> dict[str, str]:
     feature_id = frontmatter.get("id")
     title = frontmatter.get("title")
     status = frontmatter.get("status")
@@ -5362,6 +6050,10 @@ def _status_row(frontmatter: Mapping[str, Any]) -> dict[str, str]:
         "status": status.strip(),
         "owner": owner.strip(),
         "advisory_review": advisory.strip(),
+        # `Design tracks` and `Open bugs` are written as `—` until the packages that fill them land (CONTRACTS 8.2).
+        "design_tracks": "—",
+        "app_stages": app_stages_text(status.strip(), _scope_of(frontmatter) or [], body, model),
+        "open_bugs": "—",
     }
 
 
@@ -5372,11 +6064,17 @@ def _status_row_from_match(match: re.Match[str]) -> dict[str, str]:
         "status": match.group(3).strip(),
         "owner": match.group(4).strip(),
         "advisory_review": match.group(5).strip(),
+        "design_tracks": match.group(6).strip(),
+        "app_stages": match.group(7).strip(),
+        "open_bugs": match.group(8).strip(),
     }
 
 
 def _format_status_row(row: Mapping[str, str]) -> str:
-    return f"| {row['id']} | {row['title']} | {row['status']} | {row['owner']} | {row['advisory_review']} |"
+    return (
+        f"| {row['id']} | {row['title']} | {row['status']} | {row['owner']} | {row['advisory_review']} "
+        f"| {row['design_tracks']} | {row['app_stages']} | {row['open_bugs']} |"
+    )
 
 
 def _render_status_board(content: str, expected: Mapping[str, Any], after: Mapping[str, Mapping[str, str]]) -> str:
@@ -5466,6 +6164,8 @@ def _append_once(existing: str, marker: str, entry: str) -> str:
 
 
 def _classification(checks: Iterable[Mapping[str, Any]]) -> str:
+    """`unknown`, `blocked` or `ready` for a list of checks. A `warning` check is non-blocking: it counts as a pass (CONTRACTS 2.2)."""
+
     statuses = [item.get("status") for item in checks]
     if "unknown" in statuses:
         return "unknown"
@@ -5474,32 +6174,34 @@ def _classification(checks: Iterable[Mapping[str, Any]]) -> str:
     return "ready"
 
 
-_ARCHIVE_LABEL = "Prior completion/release evidence"
-_HEADING_LINE = re.compile(r"^\s{0,3}#{1,6}\s")
+# The sections `po-specify` requires to carry content; the evidence sections are required as headings and stay empty.
+_SPECIFIED_SUBSTANTIVE_SECTIONS = (
+    "Summary",
+    "User story",
+    "Acceptance criteria",
+    "Open questions",
+    "App scope",
+    "Design",
+    "Related features",
+    "API surface",
+    "Board review summary",
+)
 
 
-def _label_block(text: str, label: str, labels: Iterable[str]) -> str:
-    """The text of one reopen-record label: its own line and the lines below it.
+def _has_section(body: str, heading: str) -> bool:
+    """Whether the body has a `## heading` section, empty or not."""
 
-    The block ends at the next labelled bullet or heading, so evidence rows may
-    follow the label on the lines beneath it as a list or a table.
-    """
+    wanted = heading.strip().casefold()
+    return any(
+        (match := re.match(r"^##\s+(.+?)\s*#*\s*$", line.rstrip("\r\n"))) and match.group(1).strip().casefold() == wanted
+        for line in body.splitlines()
+    )
 
-    head = re.compile(rf"(?i)^\s*-\s*{re.escape(label)}:[ \t]*(.*)$")
-    next_label = re.compile(r"(?i)^\s*-\s*(?:" + "|".join(re.escape(item) for item in labels) + r"):")
-    lines = text.splitlines()
-    for index, line in enumerate(lines):
-        found = head.match(line)
-        if found:
-            break
-    else:
-        return ""
-    block = [found.group(1).strip()]
-    for line in lines[index + 1:]:
-        if next_label.match(line) or _HEADING_LINE.match(line):
-            break
-        block.append(line)
-    return "\n".join(block).strip()
+
+def _row_line(section: str, cells: Iterable[str]) -> str:
+    """An archived evidence row as the Evidence history writes it: the section name, then the row's own cells."""
+
+    return "| " + " | ".join([section, *cells]) + " |"
 
 
 def _normalized_table_text(text: str) -> str:

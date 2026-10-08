@@ -15,9 +15,9 @@ INDEX = """# Feature Status Board
 
 This file is maintained by the AI agent. Do not edit directly.
 
-| ID | Feature | Status | Owner | Board Review |
-|----|---------|--------|-------|--------------|
-| F-009 | Old row | raw | po | not-needed |
+| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |
+|----|---------|--------|-------|--------------|---------------|------------|-----------|
+| F-009 | Old row | raw | po | not-needed | — | — | — |
 """
 
 PAGE = """---
@@ -65,8 +65,8 @@ class PageParsingTests(unittest.TestCase):
 
 class StatusBoardTests(unittest.TestCase):
     def test_rewrite_status_board_replaces_the_feature_rows_and_keeps_everything_else(self):
-        row = ws.feature_row(ws.parse_front_matter(PAGE))
-        self.assertEqual(row, "| F-001 | Review summary export | ready-for-dev | dev | not-needed |")
+        row = ws.feature_row(ws.parse_front_matter(PAGE), PAGE)
+        self.assertEqual(row, "| F-001 | Review summary export | ready-for-dev | dev | not-needed | — | — | — |")
         rewritten = ws.rewrite_status_board(INDEX, row)
         self.assertIn(row, rewritten)
         self.assertNotIn("F-009", rewritten)
