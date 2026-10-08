@@ -22,7 +22,7 @@ A verification says: a person or an agent checked these current-state pages agai
 1. Read `knowledge/wiki/SCHEMA.md` (its Freshness section), `knowledge/wiki/LIFECYCLE.md` and every page to verify. A page is a current-state page, named as `knowledge/wiki/topics/pricing.md` or `topics/pricing.md`: a feature, persona, business rule, design page, app requirement, API contract, topic, research page, plan, `direction.md` or `roadmap.md`
 2. For each page, compare its labeled claims with the sources it links and lists in `sources`, and with the current workspace. Check only what you can check; a claim you cannot check stays as it is and does not count against the page
 3. If a page is no longer true, do not verify it. Tell the user which claims are out of date and which operation corrects them (`@@invoke:ingest@@` or the page kind's own skill or command)
-4. Show the user the pages you verified and the evidence you will link, and wait for confirmation
+4. Show the user the pages you verified and the evidence you will link. Without a connected board, wait for confirmation before writing. On the connected board, do not stop before the preview; show this together with the complete preview of step 5 and wait for the confirmation there
 5. Record the verification once, for all confirmed pages:
    - **Connected board:** call `preview_skill` with `skill` set to `verify-pages`, an empty `changes` list, no `moves`, and `read_revisions` naming each verified page with the digest `read_workspace` returned for the page you read. This is the one skill that needs `read_revisions`. Then `apply` the preview after the user confirms it
    - **Prism CLI (version 0.6.0 or newer):** `prism wiki verify <page>... --evidence <link> --by <name>`

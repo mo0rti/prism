@@ -19,8 +19,10 @@ _MAX_QUERY_BYTES = 4 * 1024 * 1024
 # One MCP tool result, measured as the compact JSON of the JSON-RPC result
 # object, never exceeds RESULT_BUDGET_CHARS. The structured payload is cut to
 # STRUCTURED_BUDGET_CHARS so the short text summary and the result wrapper fit.
-RESULT_BUDGET_CHARS = 32000
-STRUCTURED_BUDGET_CHARS = 30000
+# The largest standard instruction file, knowledge/wiki/SCHEMA.md (about 39,000
+# characters, about 40,200 as a read_workspace page), fits one page with headroom.
+RESULT_BUDGET_CHARS = 48000
+STRUCTURED_BUDGET_CHARS = 46000
 _MAX_CURSOR_CHARS = 4096
 _PAGED_QUERY_LISTS = {
     "owner": ("features", "open_questions"),
@@ -372,23 +374,53 @@ def read_annotations(relative: str, content: str) -> dict[str, Any] | None:
     return {"criteria": criteria_facts(feature_id, page.body)}
 
 
-def read_files_page(files: list[dict[str, Any]], paths: list[str], cursor: str | None) -> dict[str, Any]:
+def read_request_id(paths: list[str]) -> str:
+    """The identity a read cursor binds: the request's paths, in order."""
+
+    return hashlib.sha256("\n".join(paths).encode("utf-8")).hexdigest()[:32]
+
+
+def _foreign_read_cursor_message(owner: list[str] | None) -> str:
+    """Say which read request a cursor belongs to, by its path list, and how to continue or restart."""
+
+    if not owner:
+        return (
+            "The cursor belongs to a different read request, whose path list is no longer known (for example after a restart). "
+            "Send this request again without a cursor."
+        )
+    listed = json.dumps(owner, ensure_ascii=True, separators=(",", ":"))
+    if len(listed) > 600:
+        listed = json.dumps(owner[:3], ensure_ascii=True, separators=(",", ":"))[:-1] + f",...] ({len(owner)} paths)"
+    return (
+        f"The cursor belongs to the read request for paths {listed}, in that order, not to this request. "
+        "Resend exactly those paths with this cursor to continue that read, or send this request again without a cursor."
+    )
+
+
+def read_files_page(
+    files: list[dict[str, Any]],
+    paths: list[str],
+    cursor: str | None,
+    known_requests: Callable[[str], list[str] | None] | None = None,
+) -> dict[str, Any]:
     """Return the next budget-sized page of already validated workspace reads.
 
     `files` holds each requested file's `path`, full `content`, `digest` and
     `provenance` in request order. Whole files are returned until the next one
     would not fit; a file larger than a page is returned in chunks. Continuation
     cursors bind the exact request paths and the file digests, so a changed
-    workspace is reported instead of stitched together.
+    workspace is reported instead of stitched together. `known_requests` maps a
+    request ID to the path list of the read that issued the cursor, when known,
+    so a cursor sent with other paths is answered with the paths it belongs to.
     """
 
-    request = hashlib.sha256("\n".join(paths).encode("utf-8")).hexdigest()[:32]
+    request = read_request_id(paths)
     fingerprint = hashlib.sha256("\n".join(f"{item['path']} {item['digest']}" for item in files).encode("utf-8")).hexdigest()[:32]
     index, offset = 0, 0
     if cursor is not None:
         position = decode_cursor(cursor, "read", {"p", "f", "i"})
         if position["p"] != request:
-            raise BoardError("invalid_cursor", "The cursor belongs to a different read request.", 400)
+            raise BoardError("invalid_cursor", _foreign_read_cursor_message(known_requests(position["p"]) if known_requests else None), 400)
         if position["f"] != fingerprint:
             raise BoardError("stale_cursor", "Workspace files changed since the first page; restart the read from the first page.", 409)
         index, offset = position["i"], position["o"]
@@ -453,7 +485,7 @@ _BODY_SIDES = ("before", "after")
 # before/after text of every write. Internal bookkeeping and copies of the
 # caller's own input stay out of the result.
 _PREVIEW_OMITTED = ("writes", "proposed_changes", "source_map", "moves", "read_revisions")
-_TRUNCATION_NOTE = "Lists named in `truncated` were cut to keep this result within 32,000 characters; the omitted items are not shown."
+_TRUNCATION_NOTE = f"Lists named in `truncated` were cut to keep this result within {RESULT_BUDGET_CHARS:,} characters; the omitted items are not shown."
 
 
 def relativize_paths(value: Any, roots: Iterable[Any]) -> Any:

@@ -168,6 +168,9 @@ class DoctorCheck:
     required_os: str | None = None
     blocking: bool = False
     packaged_status: str | None = None
+    # A found tool that must also answer: the arguments of a command that exits 0 only when its service is up, and the way out.
+    service_probe: tuple[str, ...] | None = None
+    service_start_hint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -818,6 +821,9 @@ def build_doctor_checks(incubation_mode: bool) -> list[DoctorCheck]:
                 "default": "https://docs.docker.com/desktop/",
             },
             resolver="docker",
+            # The backend build needs a running daemon, so a found binary alone is not ready.
+            service_probe=("info",),
+            service_start_hint="Start Docker Desktop (or the Docker service), wait until it reports that it is running, then run `prism doctor` again.",
             stacks=("spring-backend",),
         ),
         DoctorCheck(
@@ -885,6 +891,11 @@ def evaluate_doctor_checks(checks: list[DoctorCheck], system: str, target_stacks
             resolved = f"{sys.executable} -m copier" if importlib.util.find_spec("copier") else None
         else:
             resolved = shutil.which(check.resolver) if check.resolver else None
+        if resolved and check.service_probe:
+            problem = _service_problem(resolved, check)
+            if problem:
+                results.append(DoctorResult(check=check, status="warning", detail=problem))
+                continue
         if resolved:
             results.append(DoctorResult(check=check, status="ready", detail=resolved))
         else:
@@ -898,6 +909,31 @@ def evaluate_doctor_checks(checks: list[DoctorCheck], system: str, target_stacks
                 )
             )
     return results
+
+
+_SERVICE_PROBE_TIMEOUT_SECONDS = 10
+
+
+def _service_problem(executable: str, check: DoctorCheck) -> str | None:
+    """Why the tool's service does not answer, or None when it does. The probe is bounded by a short timeout."""
+
+    command = " ".join([Path(executable).stem, *(check.service_probe or ())])
+    try:
+        completed = subprocess.run(
+            [executable, *(check.service_probe or ())],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=_SERVICE_PROBE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return f"`{command}` did not answer within {_SERVICE_PROBE_TIMEOUT_SECONDS} seconds."
+    except OSError as exc:
+        return f"`{command}` could not run ({type(exc).__name__})."
+    if completed.returncode != 0:
+        return f"`{command}` exited with status {completed.returncode}."
+    return None
 
 
 def folder_is_prism_workspace(args: argparse.Namespace) -> bool:
@@ -917,6 +953,9 @@ def summarize_doctor_results(results: list[DoctorResult], selected_preset: Prese
     platform_missing = sum(
         1 for result in results if result.check.category in {"backend", "web", "build", "ios"} and result.status == "missing"
     )
+    platform_warnings = sum(
+        1 for result in results if result.check.category in {"backend", "web", "build", "ios"} and result.status == "warning"
+    )
     next_step = (
         "Run `prism doctor --workspace .` to check this workspace."
         if folder_is_workspace
@@ -929,6 +968,10 @@ def summarize_doctor_results(results: list[DoctorResult], selected_preset: Prese
     platform_status = "Ready"
     if platform_missing:
         platform_status = f"{platform_missing} missing"
+        if platform_warnings:
+            platform_status += f", {platform_warnings} not running"
+    elif platform_warnings:
+        platform_status = f"{platform_warnings} not running"
     elif any(result.status == "not-applicable" and result.check.category == "ios" for result in results):
         platform_status = "Platform checks vary by OS"
 
@@ -945,7 +988,7 @@ def summarize_doctor_results(results: list[DoctorResult], selected_preset: Prese
         review_key_value(
             "Platform path",
             platform_status,
-            *(STYLE.green, STYLE.bold) if platform_missing == 0 and platform_status == "Ready" else (STYLE.yellow, STYLE.bold),
+            *(STYLE.green, STYLE.bold) if platform_status == "Ready" else (STYLE.yellow, STYLE.bold),
         )
     )
     lines.extend(review_key_value("Target preset", selected_preset.label if selected_preset else "General Prism readiness", STYLE.white))
@@ -954,7 +997,7 @@ def summarize_doctor_results(results: list[DoctorResult], selected_preset: Prese
 
 
 def choose_next_doctor_result(results: list[DoctorResult], target_stacks: set[str]) -> DoctorResult | None:
-    missing_results = [result for result in results if result.status == "missing"]
+    missing_results = [result for result in results if result.status in {"missing", "warning"}]
     if not missing_results:
         return None
 
@@ -968,6 +1011,8 @@ def choose_next_doctor_result(results: list[DoctorResult], target_stacks: set[st
 
 
 def next_doctor_step(result: DoctorResult) -> str:
+    if result.status == "warning" and result.check.service_start_hint:
+        return result.check.service_start_hint
     return result.check.next_step_hint
 
 
@@ -987,6 +1032,7 @@ def doctor_status_badge(status: str) -> str:
     labels = {
         "ready": ("[ready]", (STYLE.green, STYLE.bold)),
         "missing": ("[missing]", (STYLE.yellow, STYLE.bold)),
+        "warning": ("[warn]", (STYLE.yellow, STYLE.bold)),
         "bundled": ("[bundled]", (STYLE.cyan, STYLE.bold)),
         "not-applicable": ("[n/a]", (STYLE.dim,)),
     }
@@ -1019,6 +1065,10 @@ def render_doctor_result(result: DoctorResult) -> list[str]:
     lines.append(f"  {result.check.purpose}")
     if result.status == "ready":
         lines.append(f"  {colorize('Found:', STYLE.dim)} {result.detail}")
+    elif result.status == "warning":
+        lines.append(f"  {colorize('Problem:', STYLE.dim)} {result.check.label} is installed, but it is not running. {result.detail}")
+        lines.append(f"  {colorize('Impact:', STYLE.dim)} Whatever needs {result.check.label} to run, such as the backend build and its tests, fails until it answers.")
+        lines.append(f"  {colorize('Fix:', STYLE.dim)} {result.check.service_start_hint}")
     elif result.status == "bundled":
         lines.append(f"  {colorize('Handled by Prism:', STYLE.dim)} {result.detail}")
     elif result.status == "not-applicable":

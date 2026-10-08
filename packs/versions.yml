@@ -29,7 +29,7 @@ nextjs-web:
   # renovate: datasource=npm depName=typescript depType=nextjs-web
   typescript: "5.9.3"
   # renovate: datasource=npm depName=eslint depType=nextjs-web
-  eslint: "9.39.5"
+  eslint: "10.12.0"
   # renovate: datasource=npm depName=eslint-config-next depType=nextjs-web
   eslint_config_next: "16.4.0"
   # renovate: datasource=npm depName=openapi-typescript depType=nextjs-web

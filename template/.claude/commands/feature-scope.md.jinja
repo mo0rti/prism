@@ -28,7 +28,7 @@ From `ready-for-dev` on, the edit only removes an app: a retired app, or an acti
    - the feature page with the new `apps` list and a rewritten `## App scope` section that describes the new scope, with nothing else changed (status, owner, sources, advisory fields and every other section stay as they are)
    - for each app the scope gains, one new app requirement page `knowledge/wiki/app-requirements/F-XXX-<app-id>.md` with `feature-id`, `app` and `status: pending` and the canonical sections, written only from what the feature page and its sources support. A feature that has not reached `ready-for-dev` needs none yet; a later handoff creates them
    - never rewrite an existing requirement page, and leave the page of a removed app as it is: it stays as history
-5. Show the user the old and new scope, the rewritten section, any new requirement page and the log entry, and wait for confirmation
+5. Show the user the old and new scope, the rewritten section, any new requirement page and the log entry. Direct files: wait for confirmation before writing. Connected board: do not stop before the preview; show this together with the complete preview of step 6 and wait for the confirmation there
 6. Write the confirmed proposal:
    - **Connected board:** call `preview_skill` with `skill` set to `feature-scope` and the changed pages in `changes` (no `moves`), then `apply` the preview after the user confirms it. The board writes the `index.md` lines and the `log.md` entry itself; do not send them
    - **Direct files:** edit the pages, then append one entry to `knowledge/wiki/log.md` in the log format of the wiki schema (`paths:` the pages you changed, `by:` who confirmed it)

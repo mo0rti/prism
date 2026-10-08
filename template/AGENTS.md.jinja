@@ -19,9 +19,13 @@ This file names an operation without a prefix, for example `po-intake`. Invoke i
 
 ## First-time setup
 
-If this project was just created with `prism new` or adopted with `prism workflow install`, run `setup-project` before anything else. It
+After `prism new` creates the project or `prism workflow install` adopts it, run `setup-project`. It
 initializes the wiki, interviews the team about the domain, and generates the advisory board
-configuration. It takes 15-20 minutes and runs once.
+configuration. It takes 15-20 minutes and runs once. It runs in the agent host on the files (the
+direct-file workflow), never through a connected board.
+
+Lifecycle work does not wait for setup. Until setup runs, the advisory board is not set up, so
+`board-review` is unavailable, and a feature that needs a review keeps `advisory-review: pending`.
 
 See `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md` for the full cross-tool workflow.
 

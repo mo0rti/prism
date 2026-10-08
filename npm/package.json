@@ -1,6 +1,6 @@
 {
   "name": "@mortitech/prism",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Runs the Prism CLI (the prism-kit Python package) through uv, with no Python setup.",
   "license": "MIT",
   "author": "Mortitech",

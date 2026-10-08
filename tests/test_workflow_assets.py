@@ -61,7 +61,7 @@ class WorkflowAssetsTests(unittest.TestCase):
 
     def test_connected_guide_teaches_reference_fetching_cursors_and_digests(self):
         guide = {item["path"]: item for item in get_skill("po-intake")["references"]}["knowledge/wiki/CONNECTED.md"]["content"]
-        for term in ("get_skill_reference", "next_cursor", "total_chars", "digest", "32,000", "required_workspace_reads"):
+        for term in ("get_skill_reference", "next_cursor", "total_chars", "digest", "48,000", "required_workspace_reads"):
             self.assertIn(term, guide)
         template = (REPO_ROOT / "template/knowledge/wiki/CONNECTED.md").read_text(encoding="utf-8")
         self.assertEqual(template.splitlines(), guide.splitlines())

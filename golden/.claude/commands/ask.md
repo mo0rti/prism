@@ -20,8 +20,8 @@ Examples:
    - Next question number for this feature
    - Owner = the value of `--to`
    - Status = `open`
-3. Show the user the updated open questions table for confirmation
-4. After confirmation, update the feature file
+3. Show the user the updated open questions table for confirmation. Direct files: wait for confirmation before writing. Connected board: do not stop before the preview; prepare the change as the `preview_skill` proposal and show the table together with the complete preview, where the human confirms
+4. After confirmation, update the feature file (on the connected board: `apply` the preview)
 5. Append a `log.md` entry in the log format that the wiki schema defines
 
 ## Rules

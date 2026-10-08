@@ -1,7 +1,7 @@
-"""No MCP tool result exceeds 32,000 characters, and paged content stays complete.
+"""No MCP tool result exceeds 48,000 characters, and paged content stays complete.
 
 The tests use the real BoardService, ``create_app`` and the MCP SDK client over
-the ASGI transport against a disposable workspace with 500 feature pages. Each
+the ASGI transport against a disposable workspace with 700 feature pages. Each
 result is measured as the compact JSON of the JSON-RPC ``result`` object read
 from the transport, the same way the size measurement script does.
 """
@@ -38,9 +38,9 @@ from tests.wiki_files import write_index, write_status_board
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = "http://127.0.0.1:8765"
-RESULT_BUDGET = 32000
+RESULT_BUDGET = 48000
 SUMMARY_LIMIT = 500
-FEATURE_COUNT = 500
+FEATURE_COUNT = 700
 TODAY = date.today().isoformat()
 PROCESSED_SOURCE = "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
 
@@ -309,7 +309,7 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual({reference["digest"]}, {chunk["digest"] for chunk in chunks})
                         self.assertEqual([0] + [sum(len(c["content"]) for c in chunks[:i + 1]) for i in range(len(chunks) - 1)], [c["offset"] for c in chunks])
 
-    async def test_get_skill_stays_within_budget_for_every_skill_on_a_500_feature_workspace(self) -> None:
+    async def test_get_skill_stays_within_budget_for_every_skill_on_a_700_feature_workspace(self) -> None:
         async with connected(self, self.root) as client:
             names = [item["name"] for item in (await client.call("list_skills", {}))["skills"]]
             for name in names:

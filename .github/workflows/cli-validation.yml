@@ -125,7 +125,7 @@ jobs:
       - name: Install wheel in a clean environment
         run: |
           python -m venv "$RUNNER_TEMP/prism-wheel-env"
-          "$RUNNER_TEMP/prism-wheel-env/bin/python" -m pip install dist/prism_kit-0.6.0-py3-none-any.whl
+          "$RUNNER_TEMP/prism-wheel-env/bin/python" -m pip install dist/prism_kit-0.6.1-py3-none-any.whl
 
       - name: Validate installed package and package data
         working-directory: ${{ runner.temp }}
@@ -137,8 +137,8 @@ jobs:
           from prism_cli import __version__
           from prism_cli.cli import DEFAULT_TEMPLATE_URL, default_template_reference
 
-          assert importlib.metadata.version("prism-kit") == "0.6.0"
-          assert __version__ == "0.6.0"
+          assert importlib.metadata.version("prism-kit") == "0.6.1"
+          assert __version__ == "0.6.1"
           assert default_template_reference() == DEFAULT_TEMPLATE_URL
           assert resources.files("prism_cli").joinpath("assets", "graph_template.html").is_file()
           assert resources.files("prism_cli").joinpath("assets", "force-graph.LICENSE.txt").is_file()
