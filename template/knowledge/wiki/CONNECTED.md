@@ -201,7 +201,9 @@ owner and change only its Status to `resolved: <answer>`, with the answer as the
 gave it. A row whose number is not in the current table is a new question and must be
 `open`, so a question that is not in the table is added with `ask` first. A clarify skill
 never changes `status` or `owner`; a requirement-bearing section it may change must
-contain the full text of an answer it resolves.
+contain the full text of an answer it resolves, written inside a complete sentence that
+uses the question's wording (a short answer such as `yes` is never the whole text of a
+bullet, cell or paragraph). The Status cell keeps the answer as the human gave it.
 
 The skill describes the complete logical write set. For this transport,
 `knowledge/wiki/index.md`, `knowledge/wiki/status-board.md` and `knowledge/wiki/log.md`

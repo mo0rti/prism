@@ -92,7 +92,7 @@ class ValidateAnswersTests(unittest.TestCase):
     def test_emits_expected_warnings(self) -> None:
         errors, warnings = validate_answers({"apps": [{"id": "mobile-ios", "stack": "ios-swiftui"}, {"id": "web", "stack": "nextjs-web"}]})
         self.assertEqual([], errors)
-        self.assertIn("Validate iOS generation locally on macOS before treating it as build-proven.", warnings)
+        self.assertIn("An iOS app builds and tests only on macOS with Xcode; the macOS CI job builds and tests the pack.", warnings)
         self.assertEqual(1, len(warnings))
 
 

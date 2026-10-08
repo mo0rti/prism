@@ -8,7 +8,7 @@ globs: {{ (app_path ~ "/**") | tojson }}
 ## Stack
 - Kotlin {{ versions.kotlin }}, Jetpack Compose (BOM {{ versions.compose_bom }}), Android Gradle Plugin {{ versions.agp }}, Gradle {{ versions.gradle }}, JDK {{ versions.jdk }}
 - Retrofit {{ versions.retrofit }} with kotlinx.serialization, OkHttp {{ versions.okhttp }}; no DI framework, no database
-- Min SDK {{ versions.min_sdk }}, target and compile SDK {{ versions.target_sdk }}
+- Min SDK {{ versions.min_sdk }}, target SDK {{ versions.target_sdk }}, compile SDK {{ versions.compile_sdk }}
 - Tests on the JVM: JUnit {{ versions.junit }}, coroutines-test, MockWebServer, Robolectric {{ versions.robolectric }} with the Compose test rule
 - Release and signing are the project owner's choice (see the `deployment` skill, `.agents/skills/deployment/SKILL.md`)
 

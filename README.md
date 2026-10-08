@@ -148,9 +148,10 @@ After generating a project:
    - Claude Code: `/setup-project`
    - Codex: `$setup-project`
    - Cursor: ask the agent to run `setup-project`
-4. to enable the shared board and MCP writes, preview `prism workflow upgrade .`,
-   then confirm with `prism workflow upgrade . --apply` and register participants
-   as in the quickstart above.
+4. register participants and start the board as in the quickstart above (`prism board grant`,
+   then `prism board serve .`). `prism new` already pins the workspace to the workflow, so
+   the board accepts writes without `prism workflow upgrade`; that command is needed only
+   after a newer Prism ships a new workflow.
 
 For the full first-run path, read [docs/getting-started.md](https://github.com/mo0rti/prism/blob/main/docs/getting-started.md).
 

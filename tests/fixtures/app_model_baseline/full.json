@@ -65,7 +65,7 @@
           },
           "id": "mobile-ios",
           "maturity": {
-            "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+            "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
             "level": "experimental"
           },
           "name": "iOS (Swift/SwiftUI)",
@@ -345,7 +345,7 @@
             },
             "id": "mobile-ios",
             "maturity": {
-              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
               "level": "experimental"
             },
             "name": "iOS (Swift/SwiftUI)",
@@ -532,7 +532,7 @@
             },
             "id": "mobile-ios",
             "maturity": {
-              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
               "level": "experimental"
             },
             "name": "iOS (Swift/SwiftUI)",
@@ -706,7 +706,7 @@
             },
             "id": "mobile-ios",
             "maturity": {
-              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
               "level": "experimental"
             },
             "name": "iOS (Swift/SwiftUI)",
@@ -880,7 +880,7 @@
             },
             "id": "mobile-ios",
             "maturity": {
-              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
               "level": "experimental"
             },
             "name": "iOS (Swift/SwiftUI)",
@@ -1056,7 +1056,7 @@
             },
             "id": "mobile-ios",
             "maturity": {
-              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
               "level": "experimental"
             },
             "name": "iOS (Swift/SwiftUI)",
@@ -1248,7 +1248,7 @@
             },
             "id": "mobile-ios",
             "maturity": {
-              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
               "level": "experimental"
             },
             "name": "iOS (Swift/SwiftUI)",
@@ -1772,7 +1772,7 @@
             },
             "id": "mobile-ios",
             "maturity": {
-              "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+              "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
               "level": "experimental"
             },
             "name": "iOS (Swift/SwiftUI)",
@@ -1790,7 +1790,7 @@
   "cli": {
     "doctor-workspace": {
       "exit": 3,
-      "output": "+ Workspace -------------------------------------------------------------------------+\n|Project: Baseline Full |\n|Kind: generated-project |\n|Apps: backend, web, mobile-android, mobile-ios |\n|Setup: not initialized |\n|Confidence: error |\n+------------------------------------------------------------------------------------+\n\nApps\nID Name Stack Repository Path Status Maturity\nbackend Spring Boot Backend spring-backend workspace backend active baseline\nweb Web App nextjs-web workspace web active provisional\nmobile-android Android (Kotlin/Compose) android-compose workspace mobile-android active baseline\nmobile-ios iOS (Swift/SwiftUI) ios-swiftui workspace mobile-ios active experimental\n\n+ Queues and wiki -------------------------------------------------------------------+\n|Pending intake: 0 |\n|Quarantined intake: 0 |\n|Features: 3 |\n|Blockers: 3 |\n|Wiki errors: 3 |\n|Wiki warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nsetup-project has not initialized the wiki yet.\n\nApp maturity\n- web: Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.\n- mobile-ios: Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.\n\nFeature lifecycle\n- in-design: 1\n- in-dev: 1\n- raw: 1\n\nAttention\n- missing-app-requirements: Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- missing-design: Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n\nShared board\n[ok] Workspace is outside cloud-synced folders\n[ok] Workflow pin is compatible with this Prism installation\n Workflow version 1 matches this installation.\n[warn] At least one active board grant exists\n No grants yet.\n[skip] `.prism/state` is ignored by git\n This folder is not a git repository, so this check was skipped.\n"
+      "output": "+ Workspace -------------------------------------------------------------------------+\n|Project: Baseline Full |\n|Kind: generated-project |\n|Apps: backend, web, mobile-android, mobile-ios |\n|Setup: not initialized |\n|Confidence: error |\n+------------------------------------------------------------------------------------+\n\nApps\nID Name Stack Repository Path Status Maturity\nbackend Spring Boot Backend spring-backend workspace backend active baseline\nweb Web App nextjs-web workspace web active provisional\nmobile-android Android (Kotlin/Compose) android-compose workspace mobile-android active baseline\nmobile-ios iOS (Swift/SwiftUI) ios-swiftui workspace mobile-ios active experimental\n\n+ Queues and wiki -------------------------------------------------------------------+\n|Pending intake: 0 |\n|Quarantined intake: 0 |\n|Features: 3 |\n|Blockers: 3 |\n|Wiki errors: 3 |\n|Wiki warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nsetup-project has not initialized the wiki yet.\n\nApp maturity\n- web: Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.\n- mobile-ios: The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.\n\nFeature lifecycle\n- in-design: 1\n- in-dev: 1\n- raw: 1\n\nAttention\n- missing-app-requirements: Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- missing-design: Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n\nShared board\n[ok] Workspace is outside cloud-synced folders\n[ok] Workflow pin is compatible with this Prism installation\n Workflow version 1 matches this installation.\n[warn] At least one active board grant exists\n No grants yet.\n[skip] `.prism/state` is ignored by git\n This folder is not a git repository, so this check was skipped.\n"
     },
     "status-json": {
       "exit": 0,
@@ -2030,7 +2030,7 @@
               },
               "id": "mobile-ios",
               "maturity": {
-                "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+                "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
                 "level": "experimental"
               },
               "name": "iOS (Swift/SwiftUI)",
@@ -2230,7 +2230,7 @@
               },
               "id": "mobile-ios",
               "maturity": {
-                "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+                "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
                 "level": "experimental"
               },
               "name": "iOS (Swift/SwiftUI)",
@@ -2263,7 +2263,7 @@
         "level": "baseline"
       },
       "mobile-ios": {
-        "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+        "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
         "level": "experimental"
       },
       "web": {
@@ -2457,7 +2457,7 @@
           },
           "id": "mobile-ios",
           "maturity": {
-            "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+            "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
             "level": "experimental"
           },
           "name": "iOS (Swift/SwiftUI)",
@@ -2707,7 +2707,7 @@
           },
           "id": "mobile-ios",
           "maturity": {
-            "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven.",
+            "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.",
             "level": "experimental"
           },
           "name": "iOS (Swift/SwiftUI)",

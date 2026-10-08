@@ -35,6 +35,13 @@ Identical in structure to `$po-clarify` but filters for open questions where own
 - after each answer, confirm what you updated before moving to the next question
 - questions tagged "[Board: ...]" came from a board review: flag them clearly and treat them as high priority, because they represent domain expert concerns the designer must address
 - update the design page when answers resolve previously missing UI states
+- turn a short answer into a complete sentence before it goes into the design page: build the sentence from the
+  question's own wording and keep the answer's words unchanged inside it, so the board can trace it. A
+  bare `yes`, `no` or `30 days` is never the whole text of a bullet, cell or paragraph. Question
+  "Can the export run inside the request?" answered `yes` becomes "The export can run inside the
+  request: yes."; question "How long are comments kept?" answered `30 days` becomes "Comments are kept
+  for 30 days." The Status cell of the question keeps the answer as the human gave it
+- change nothing else on the page: copy every other line and section exactly as `read_workspace` returned it, including the file's final newline
 - on the feature page change only the Open questions table; leave every other section,
   including Acceptance criteria and App scope, exactly as it is; design detail belongs on the design page
 - if one feature hits a contradiction, stop updates for that feature only

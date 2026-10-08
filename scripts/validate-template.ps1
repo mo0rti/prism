@@ -448,9 +448,9 @@ function Validate-WikiStructure {
     Assert-FileContains -Path (Join-Path $Root "AGENTS.md") -Needle "Claude Code" -Message "Rendered AGENTS.md must include Claude Code setup instruction."
     Assert-FileContains -Path (Join-Path $Root "AGENTS.md") -Needle "Codex" -Message "Rendered AGENTS.md must include Codex setup instruction."
 
-    # Cursor advisory-review rule must point to knowledge/wiki, not docs/advisory-board.md
-    Assert-FileContains -Path (Join-Path $Root ".cursor\rules\advisory-review.mdc") -Needle "knowledge/wiki/advisory/BOARD.md" -Message "Cursor advisory-review rule must reference knowledge/wiki/advisory/BOARD.md."
-    Assert-FileNotContains -Path (Join-Path $Root ".cursor\rules\advisory-review.mdc") -Needle "docs/advisory-board.md" -Message "Cursor advisory-review rule must not reference docs/advisory-board.md."
+    # The board review is a skill that Cursor loads from the skill folders; no Cursor rule repeats it
+    Assert-PathMissing -Path (Join-Path $Root ".cursor\rules\advisory-review.mdc") -Message "The board review has no Cursor rule: Cursor loads the board-review skill."
+    Assert-FileContains -Path (Join-Path $Root ".agents\skills\board-review\SKILL.md") -Needle "knowledge/wiki/advisory/BOARD.md" -Message ".agents/skills/board-review/SKILL.md must reference knowledge/wiki/advisory/BOARD.md."
 
     # Claude board-review skill (directory renamed from advisory-review) must point at wiki
     Assert-PathMissing -Path (Join-Path $Root ".claude\skills\advisory-review") -Message ".claude/skills/advisory-review directory must not exist (renamed to board-review)."

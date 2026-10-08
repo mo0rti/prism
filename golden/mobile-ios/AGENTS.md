@@ -26,7 +26,7 @@ The pack generates one vertical slice and no example business features:
 - `Sources/Networking/APIClient.swift` is the client of the two contract operations. `Sources/Networking/APIEndpoint.swift` lists their paths, `Sources/Networking/APIURL.swift` joins the base URL and a path, and `Sources/Networking/APIError.swift` holds the errors the screens show.
 - `Sources/Session/TokenStore.swift` keeps the token in memory. `Sources/Session/SessionModel.swift` says whether a person is signed in, and `Sources/RootView.swift` chooses the screen from it.
 - `Sources/AppInfo.swift` reads the display name and the audience from `Sources/Info.plist`. The audience is display text only: no screen, check or permission reads it.
-- `Tests/` holds the unit tests of both view models (with `Tests/Support/FakeAPIClient.swift.jinja`) and of the client; `UITests/SignInUITests.swift` is the UI test of the sign-in screen.
+- `Tests/` holds the unit tests of both view models (with `Tests/Support/FakeAPIClient.swift`) and of the client; `UITests/SignInUITests.swift` is the UI test of the sign-in screen.
 - `project.yml` defines the app target `MobileIos`, its test targets, the scheme `MobileIos` and `API_BASE_URL` per build configuration. The bundle identifier is `com.example.prismgolden.mobileios`.
 
 ## The dev identity is not authentication, and it works in the simulator only
@@ -86,5 +86,5 @@ Project-specific Codex skills live in `.agents/skills/`. Detailed conventions ar
 - `$ios-contract-alignment` - keep models, endpoints and the API client aligned with the OpenAPI contract
 - `$ios-testing` - unit tests with the fake client, UI tests and the hittable wait
 - `$swiftui-design-system` - SwiftUI patterns for screens, accessibility and Dynamic Type
-- `$generate-clients` - regenerate typed clients after OpenAPI changes
+- `$generate-clients` - validate the shared contract; this app's client is hand-written and kept to it with `$ios-contract-alignment`
 - `$deployment` - worked examples for store releases; the user and their agent own signing and the release

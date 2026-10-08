@@ -99,7 +99,8 @@ class QuestionnaireTests(unittest.TestCase):
         for removed in REMOVED_QUESTIONS:
             self.assertNotIn(removed, DEFAULT_ANSWERS)
             for preset in PRESETS:
-                self.assertNotIn(removed, preset.answers)
+                for app in preset.apps:
+                    self.assertNotIn(removed, app)
 
     def test_template_conditions_do_not_read_a_removed_answer(self) -> None:
         pattern = re.compile(r"(\{%|\{\{)[^}]*\b(" + "|".join(REMOVED_QUESTIONS) + r")\b")

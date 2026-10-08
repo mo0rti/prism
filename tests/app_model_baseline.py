@@ -85,8 +85,8 @@ app_maturity:
     caveat: ''
   mobile-ios:
     level: experimental
-    caveat: Generated iOS structure requires local macOS/Xcode validation before treating
-      it as build-proven.
+    caveat: The macOS CI job builds and tests the generated iOS app; no local macOS build
+      is part of the evidence.
 paths:
   wiki_root: knowledge/wiki
   intake_root: knowledge/intake

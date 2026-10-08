@@ -59,10 +59,10 @@ tasks:
   # Cross-Platform Commands
   # ===========================================================================
   lint:
-    desc: "Lint all platforms"
+    desc: "Lint every web, Android and agent service app (a backend app has no linter; task <app-id>:check runs its Gradle check)"
     cmds:
-{% for app in apps if app.stack == "spring-backend" %}      - task: {{ app.id }}:lint
-{% endfor %}
+{% if not ("nextjs-web" in stacks or "android-compose" in stacks or "python-agent-service" in stacks) %}      - echo "No web, Android or agent service app to lint"
+{% endif %}
 {% for app in apps if app.stack == "nextjs-web" %}      - task: {{ app.id }}:lint
       - task: {{ app.id }}:typecheck
 {% endfor %}

@@ -8,7 +8,7 @@ globs: "mobile-android/**"
 ## Stack
 - Kotlin 2.3.10, Jetpack Compose (BOM 2026.01.01), Android Gradle Plugin 8.13.2, Gradle 8.14.3, JDK 21
 - Retrofit 3.0.0 with kotlinx.serialization, OkHttp 4.12.0; no DI framework, no database
-- Min SDK 29, target and compile SDK 36
+- Min SDK 29, target SDK 36, compile SDK 36
 - Tests on the JVM: JUnit 4.13.2, coroutines-test, MockWebServer, Robolectric 4.16 with the Compose test rule
 - Release and signing are the project owner's choice (see the `deployment` skill, `.agents/skills/deployment/SKILL.md`)
 

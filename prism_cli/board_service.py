@@ -1454,6 +1454,7 @@ class BoardService:
             limitations.append(
                 "Every changed requirement or design section must include the full text of at least one answer "
                 "resolved by this proposal (case and whitespace differences are ignored). Paraphrases alone do not pass. "
+                "Write each answer inside a complete sentence that uses the question's wording; a short answer such as `yes` is never the whole text. "
                 "This is a structural traceability check; the agent and reviewer must still verify that every edit follows the answer."
             )
         if name == "dev-clarify":
@@ -3756,7 +3757,8 @@ class BoardService:
         message = (
             f"{subject} must include the full text of an answer resolved{owned} "
             f"{', '.join(numbers) or 'none'}. Paste one of those answers verbatim into the section "
-            "(case and whitespace differences are ignored, but paraphrases alone do not pass)."
+            "(case and whitespace differences are ignored, but paraphrases alone do not pass). "
+            "Write the answer inside a complete sentence that uses the question's wording; a short answer such as `yes` is never the whole text."
         )
         details: dict[str, Any] = {"path": path, "section": sections[0] if sections else None, "resolved_questions": numbers, "resolved_answers": starts}
         if len(sections) > 1:

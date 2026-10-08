@@ -59,9 +59,8 @@ tasks:
   # Cross-Platform Commands
   # ===========================================================================
   lint:
-    desc: "Lint all platforms"
+    desc: "Lint every web, Android and agent service app (a backend app has no linter; task <app-id>:check runs its Gradle check)"
     cmds:
-      - task: backend:lint
 
       - task: web:lint
       - task: web:typecheck

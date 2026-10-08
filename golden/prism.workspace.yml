@@ -60,8 +60,9 @@ app_maturity:
     caveat: ''
   mobile-ios:
     level: experimental
-    caveat: Generated iOS structure requires local macOS/Xcode validation before treating
-      it as build-proven.
+    caveat: The macOS CI job builds and tests the generated iOS app; no local macOS
+      build is part of the evidence, and a physical device cannot use the local development
+      sign-in.
   agent-service:
     level: provisional
     caveat: The generated agent service is verified by lint, typecheck, tests and
@@ -92,4 +93,4 @@ workflow:
   version: '1'
   mode: generated
   board_id: 00000000-0000-4000-8000-000000000000
-  asset_digest: fe92ced9f5f515e7e89827328731c1657333b76914cbabcbafef01a8f1cf490a
+  asset_digest: d909e5bd2959faec52786face6031b5d242692c79b98eaa42762f6bae7e1cdc1

@@ -35,6 +35,13 @@ Use this skill to work through open PO-owned questions one feature at a time.
   `## Answers`)
 - every requirement-bearing section you change must contain the full text of at least one
   answer you resolve in the same proposal; a paraphrase alone is not enough
+- turn a short answer into a complete sentence before it goes into a page: build the sentence from the
+  question's own wording and keep the answer's words unchanged inside it, so the board can trace it. A
+  bare `yes`, `no` or `30 days` is never the whole text of a bullet, cell or paragraph. Question
+  "Can the export run inside the request?" answered `yes` becomes "The export can run inside the
+  request: yes."; question "How long are comments kept?" answered `30 days` becomes "Comments are kept
+  for 30 days." The Status cell of the question keeps the answer as the human gave it
+- change nothing else on the page: copy every other line and section exactly as `read_workspace` returned it, including the file's final newline
 - present questions one feature at a time, not as one large dump
 - confirm each update before moving to the next question
 - if an answer introduces a new open question, add it immediately

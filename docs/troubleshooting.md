@@ -218,7 +218,7 @@ Cannot start the Prism board: Another Prism board service or workflow upgrade al
 
 **Cause.** Open questions owned by `dev` block `dev-start` and `dev-done`; they do not block `design-handoff`, which only open `po` or `designer` questions block. `po-clarify` and `design-clarify` resolve only PO and designer questions.
 
-**Fix.** Use `dev-clarify`. It resolves the dev-owned questions of a feature that is not `done`, with the developer's answers. Each section it changes, in the feature or in an app requirement page, must contain an answer verbatim. If the feature is `done`, reopen it with `feature-reopen` first.
+**Fix.** Use `dev-clarify`. It resolves the dev-owned questions of a feature that is not `done`, with the developer's answers. Each section it changes, in the feature or in an app requirement page, must contain an answer verbatim, written inside a complete sentence that uses the question's wording (a short answer such as `yes` is never the whole text). If the feature is `done`, reopen it with `feature-reopen` first.
 
 ## An agent stopped after the board rejected a proposal
 

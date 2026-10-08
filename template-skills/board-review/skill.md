@@ -1,15 +1,12 @@
 ---
 name: board-review
 description: "Run a structured domain expert review of a feature using the advisory board defined in knowledge/wiki/advisory/BOARD.md. Use when the feature's advisory-review is pending, or for features with domain-specific calculations, behavioral implications, vulnerable user groups, or cultural assumptions; not for auth flows, settings, CRUD, or infrastructure changes."
-layers: [codex, command, claude-skill, cursor]
+layers: [codex, command, claude-skill]
 codex:
   display_name: "Board Review"
   short_description: "Domain expert feature review via the project advisory board"
   default_prompt: "Use @@invoke:board-review@@ F-XXX to review a feature through the advisory board before development starts."
   implicit: false
-cursor:
-  file: advisory-review
-  always-apply: false
 ---
 
 # Board Review

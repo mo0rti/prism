@@ -36,7 +36,7 @@ task {{ app_id }}:dev       # SPRING_PROFILES_ACTIVE=local ./gradlew bootRun, on
 task {{ app_id }}:run       # ./gradlew bootRun with no profile
 task {{ app_id }}:build     # ./gradlew build -x test
 task {{ app_id }}:test      # ./gradlew test (needs Docker for Testcontainers)
-task {{ app_id }}:lint      # ./gradlew check -x test
+task {{ app_id }}:check     # ./gradlew check -x test (Gradle's verification without the tests; no Kotlin style linter is configured)
 ```
 
 The package is `{{ app_package }}`. Configuration lives in `src/main/resources/application.yml`: the server port comes from `PORT` (default {{ port }}), the database from `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` and `DATABASE_SCHEMA` (defaults match the workspace's `docker-compose.yml`).

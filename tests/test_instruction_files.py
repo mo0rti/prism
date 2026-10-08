@@ -85,12 +85,11 @@ class TemplateSourceTests(unittest.TestCase):
     def test_the_root_claude_file_is_only_the_import(self) -> None:
         self.assertEqual(IMPORT_LINE + "\n", (TEMPLATE / "CLAUDE.md.jinja").read_text(encoding="utf-8"))
 
-    def test_the_cursor_rules_are_the_scoped_stack_rules_and_the_board_review_rule(self) -> None:
+    def test_the_cursor_rules_are_only_the_scoped_stack_rules(self) -> None:
         # Cursor reads AGENTS.md itself, so no rule repeats it: there is no always-on pointer rule.
         rules = sorted(path.name for path in (TEMPLATE / ".cursor" / "rules").iterdir())
         self.assertEqual(
             [
-                "advisory-review.mdc.jinja",
                 "api-conventions.mdc.jinja",
             ],
             rules,

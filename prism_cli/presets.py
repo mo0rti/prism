@@ -10,7 +10,7 @@ from prism_cli.app_model import GENERATION_SCAFFOLDED, apps_from_platforms
 
 @dataclass(frozen=True)
 class Preset:
-    """A recommended start: an app list, plus any answers that are not about the apps."""
+    """A recommended start: an app list."""
 
     slug: str
     label: str
@@ -18,7 +18,6 @@ class Preset:
     summary: str
     # The apps `prism new` scaffolds, as manifest app entries with the default IDs.
     apps: tuple[dict[str, str], ...]
-    answers: dict[str, Any] = field(default_factory=dict)
     notes: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -40,7 +39,7 @@ PRESETS: tuple[Preset, ...] = (
         slug="backend-mobile",
         label="Backend + Mobile",
         maturity="partial",
-        summary="Backend with Android and iOS clients; iOS requires macOS/Xcode validation.",
+        summary="Backend with Android and iOS clients; the iOS app builds only on macOS with Xcode.",
         apps=_scaffolded("backend", "mobile-android", "mobile-ios"),
     ),
     Preset(
@@ -57,7 +56,7 @@ PRESETS: tuple[Preset, ...] = (
         slug="full",
         label="Full",
         maturity="partial",
-        summary="Backend, web, Android and iOS apps, one of each stack; iOS requires macOS/Xcode validation.",
+        summary="Backend, web, Android and iOS apps, one of each stack; the iOS app builds only on macOS with Xcode.",
         apps=_scaffolded("backend", "web", "mobile-android", "mobile-ios"),
     ),
 )

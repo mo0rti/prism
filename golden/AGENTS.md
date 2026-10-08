@@ -19,7 +19,7 @@ This file names an operation without a prefix, for example `po-intake`. Invoke i
 
 ## First-time setup
 
-If this is a newly scaffolded project, run `setup-project` before anything else. It
+If this project was just created with `prism new` or adopted with `prism workflow install`, run `setup-project` before anything else. It
 initializes the wiki, interviews the team about the domain, and generates the advisory board
 configuration. It takes 15-20 minutes and runs once.
 
@@ -178,7 +178,7 @@ no date, so freshness comes from `log.md`: a current-state page's last verificat
 
 ### Lifecycle / write
 
-- `setup-project` - interactive project initialization (run once after scaffolding)
+- `setup-project` - interactive project initialization (run once after `prism new` or `prism workflow install`)
 - `po-intake [folder]` - process raw PO notes into feature specs
 - `ingest [folder]` - process raw notes into topics, research, plans, direction, roadmap, personas, business rules, decisions or features (any role)
 - `verify-pages <page>...` - record that current-state pages were checked against their sources (one `verify` entry in `log.md`; it never edits a page)

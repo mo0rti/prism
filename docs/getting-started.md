@@ -27,7 +27,7 @@ Recommended first evaluation paths:
 - **Backend only** for repository shape and contract inspection
 - **Backend + Mobile** for the Android and iOS client path; the Android app builds and passes its JVM tests with JDK 21 and an Android SDK, and the iOS app is built and tested by the macOS CI job
 - **Backend + Web** to inspect the web slice: a Next.js app with a local development sign-in and one authenticated read, built, tested and proven in CI
-- **Full** for one app of every stack: the backend, a web app, an Android app and an iOS app
+- **Full** for one app of each of the backend, web, Android and iOS stacks (add an agent service with one more entry in an answers file, see [questionnaire.md](questionnaire.md))
 
 For the maturity notes behind those recommendations, read
 [current-status.md](current-status.md).
@@ -212,7 +212,7 @@ Platform-specific caution:
   sign-in"; that sign-in is a development identity, not complete authentication, and hosting is yours
   to choose (see the `deployment` skill)
 - for each Android app, run `./gradlew assembleDebug testDebugUnitTest` in its folder (JDK 21 and an Android SDK with the platform its `README.md` names), then start a backend under its `local` profile, run `adb reverse tcp:8080 tcp:8080` (`task <app-id>:reverse`) and try the "Local development sign-in" on an emulator or a USB device; that sign-in is a development identity, not complete authentication
-- for each iOS app, on macOS run `task <app-id>:build` and `task <app-id>:test` (they generate the Xcode project with XcodeGen first), then start a backend under its `local` profile and try the "Local development sign-in" in the simulator; the dev identity works in the simulator only, because the backend serves it to loopback requests, and it is not complete authentication. The macOS CI job is the build proof, and validating locally on macOS comes before you treat the slice as build-proven
+- for each iOS app, on macOS run `task <app-id>:build` and `task <app-id>:test` (they generate the Xcode project with XcodeGen first), then start a backend under its `local` profile and try the "Local development sign-in" in the simulator; the dev identity works in the simulator only, because the backend serves it to loopback requests, and it is not complete authentication. The macOS CI job builds and tests the pack and is its build proof
 
 Do not assume every command, workflow, or platform combination has been fully hardened just
 because the repository generated successfully.
@@ -337,7 +337,7 @@ app api-two: CONFLICT in 1 file(s), committed as 6565f95
 Without conflicts the branch stays checked out for you to review and merge (`git switch <original branch>` then
 `git merge --ff-only prism-update-<tag>`); Prism never merges for you. When a layer conflicted, the update exits with 6
 before merging, and the branch holds one commit per layer with the conflict as `<<<<<<<` markers: resolve them there,
-commit, then merge. The manifest is merged field by field as before. Copier's `.rej` files (the hunks it could not apply)
+commit, then merge. The manifest is merged field by field. Copier's `.rej` files (the hunks it could not apply)
 are never committed: they stay in the working tree beside the conflict markers, for you to resolve and delete.
 
 A scaffolded app whose own answers file is missing stops the update before anything changes. The message names three

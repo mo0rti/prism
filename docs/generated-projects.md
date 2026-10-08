@@ -22,7 +22,7 @@ Generated projects include:
 - a required `knowledge/` tree with raw intake and the living product wiki
 - the code of each scaffolded app under its own path, from a stack pack (`packs/<stack>/`), each with its own `AGENTS.md`, `CLAUDE.md` and `docs/`; `docs/` holds the project-wide docs
 - a generated `AGENTS.md`, the single source of agent rules, and a `CLAUDE.md` that only imports it with `@AGENTS.md`; each app folder repeats the pattern
-- Cursor rules under `.cursor/rules/` that scope stack facts by file path and describe the board review; Cursor reads `AGENTS.md` itself and loads the skills in `.agents/skills/` and `.claude/skills/`
+- Cursor rules under `.cursor/rules/` that scope stack facts by file path; Cursor reads `AGENTS.md` itself and loads the skills in `.agents/skills/` and `.claude/skills/`
 - Codex skills in `.agents/skills/`, Claude commands in `.claude/commands/` and Claude skills in `.claude/skills/`, generated from one source in this repository (`template-skills/`), so the guidance has the same text in every tool
 - GitHub workflow files that build and test, one `<app-id>.yml` for each scaffolded app, scoped to the app's path; they hold no deploy job and no secrets
 - a `docker-compose.yml` with the PostgreSQL development database and one service for each backend app, when a backend app exists
@@ -67,8 +67,8 @@ informs a workflow decision.
 
 The shared board that `prism board serve` provides shows the same views and adds direct
 human actions (`po-handoff`, `design-start` and `dev-start`) plus an MCP endpoint for
-agents. A generated project activates it with `prism workflow upgrade . --apply`; see
-[shared-board.md](shared-board.md).
+agents. A generated project is already pinned to the workflow, so `prism board grant` and
+`prism board serve .` work as they are; see [shared-board.md](shared-board.md).
 
 A generated project's `prism.workspace.yml` declares the apps you listed, each `scaffolded` (Prism
 generated its code) or `registered`. A preset's apps have the IDs `backend`, `web`, `mobile-android`

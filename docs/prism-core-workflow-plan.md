@@ -32,7 +32,7 @@ Agents connect to a Prism board through one shared, provider-neutral interface. 
 - Freshness rejects changes to relevant action inputs, preserves unrelated work and the human's unsent inputs, and rechecks deterministic conditions at apply time. A calendar change alone is not reported as a source edit.
 - Durable operation receipts and recoverable writes support human-only recovery through the board. Actor attribution lives in the operation journal and a versioned history format. Legacy and direct-file changes are unattributed.
 - A workspace pinned to an old workflow contract stays read-only until an explicit workflow upgrade. A blocked mapped drop opens an explanatory preview with confirmation disabled.
-- Adoption supports existing repositories and empty workspaces. The manifest declares the workspace's apps ([workspace-model.md](workspace-model.md)); `--app` registers any of the four generated app IDs (`backend`, `web`, `mobile-android`, `mobile-ios`), and `prism app add` registers others. A workspace may have no apps. Application files and custom guidance are preserved through a reviewed setup diff, and agent-led `setup-project` initializes the workflow after the assets are installed.
+- Adoption supports existing repositories and empty workspaces. The manifest declares the workspace's apps ([workspace-model.md](workspace-model.md)); `--app` registers any of the five generated app IDs (`backend`, `web`, `mobile-android`, `mobile-ios`, `agent-service`), and `prism app add` registers others. A workspace may have no apps. Application files and custom guidance are preserved through a reviewed setup diff, and agent-led `setup-project` initializes the workflow after the assets are installed.
 - Connected intake is text-only and clearly reports unsupported attachments.
 - A writable human can review and recover an interrupted agent operation after that agent's grant is revoked. Recovery requires a fresh review of the remaining changes and records the original and recovering actors separately.
 - Ordinary workflow blockers are readiness information for `prism validate`. Integrity errors fail validation, and a blocked transition preflight exits 3.
@@ -47,7 +47,7 @@ Agents connect to a Prism board through one shared, provider-neutral interface. 
 | Agent connection | One MCP endpoint at `/mcp` (Streamable HTTP) exposes 14 tools: `discover`, `list_skills`, `get_skill`, `get_skill_reference`, `list_workspace`, `read_workspace`, `query`, `preview_skill`, `preview_transition`, `get_preview`, `apply`, `operation`, `recover` and `changes`. The browser uses the same service through the board API. |
 | Workspace identity | A workspace manifest records a board UUID, the workflow version, the mode and the canonical asset digest. The core contract does not require generated application directories or Copier answers. |
 | Ownership and scope | Owners are the workflow roles `po`, `designer` and `dev`. App IDs are the scope labels of the workspace's apps. A participant name labels a locally registered grant and is not a verified identity. |
-| Updates | `prism update` merges the workspace manifest field by field and stops before changing the project when both sides changed the same field differently. |
+| Updates | `prism update` works on a branch with one commit per layer: the workspace layer, then each scaffolded app from its own answers file. It checks every layer's saved answers before Copier runs, merges the workspace manifest field by field, reports conflicts per layer and stops before merging when a layer conflicted. |
 | Live state | The board derives its live indicator from state, fetches again after a reconnect, disables copying while stale, and shows "Board session expired" with **Reconnect** after a service restart or an expired session. |
 
 Source anchors: [workflow model](prism-model.md), [lifecycle contract](../template/knowledge/wiki/LIFECYCLE.md), [workspace inspection](../prism_cli/workspace.py), [transition evaluator](../prism_cli/wiki_transitions.py), [board service](../prism_cli/board_service.py), [MCP adapter](../prism_cli/board_mcp.py) and [board server](../prism_cli/board_server.py).
@@ -59,7 +59,7 @@ Source anchors: [workflow model](prism-model.md), [lifecycle contract](../templa
 | Adoption | `prism workflow install` and `prism workflow upgrade` preview every file and apply only with `--apply`. | Existing knowledge and custom guidance are preserved; conflicts stop the command and name the file. |
 | Board actions | Humans confirm their own named actions; agents follow skill confirmations in their CLI. Both use one service. | No second approval queue for agents and no automatic agent launcher. |
 | Human and agent ownership | Roles stay PO, designer and dev. The service records the registered participant that performs each connected operation. | A token establishes a participant, not an independently verified person. Named assignment is deferred. |
-| Project scope | The manifest declares apps with a stack, repository and path. Feature scope uses the four generated app IDs. | A feature cannot yet name an app with another ID. |
+| Project scope | The manifest declares apps with a stack, repository and path. A feature's `apps` names the declared apps, and the `feature-scope` skill edits it through the board. | A feature cannot name an app the manifest does not declare, nor a retired app. |
 | Agent protocol | One standard MCP endpoint and a versioned tool contract (contract 3), backed by the shared service and packaged skills. | The official SDK is pinned (`mcp==2.2.0`). There are no provider-specific workflow connectors. |
 | Deployment model | One local process per workspace with separate revocable participant tokens. | Remote hosting and authorization are not supported. |
 | Human action coverage | Direct `po-handoff`, `design-start` and `dev-start`; the other six actions are agent-led. | Existing prerequisites and review obligations apply. A gesture cannot author missing evidence. |
@@ -182,7 +182,7 @@ The MCP specification and SDK are pinned and tested together, and the first jour
 
 ## Core capabilities
 
-**Dependable core.** The dashboard derives its connection indicator from state and recovers after a reconnect. `prism update` merges the manifest semantically. The CLI validates input before prompting or rendering, and `prism new` takes an explicit slug that Copier receives unchanged. Local working snapshots are identified as unversioned, and a versioned update keeps Copier's recorded revision. Human and JSON preflight output agree, and one change poller serves all connected clients.
+**Dependable core.** The dashboard derives its connection indicator from state and recovers after a reconnect. `prism update` merges the manifest semantically and updates each layer on its own commit. The CLI validates input before prompting or rendering, and `prism new` takes an explicit slug that Copier receives unchanged. Local working snapshots are identified as unversioned, and a versioned update keeps Copier's recorded revision. Human and JSON preflight output agree, and one change poller serves all connected clients.
 
 **Manifest merge policy.** `prism update` compares the old template, the current workspace and the new template field by field. It keeps user-only changes, applies template-only changes and stops before modifying the project when both sides changed the same field differently. Lists are whole values. Prism-owned provenance is regenerated independently. The manifest is excluded from Copier's text merge, the old and new inputs render without running tasks, and an unresolved baseline or conflict is rejected before the project changes. For example, an unchanged minimum version can advance from `0.5.0` to the template's `0.6.0` and a workspace-only `team_notes` field stays intact, while a workspace that moved the minimum to `0.7.0` against a template change to `0.6.0` is a conflict that the command reports without choosing either value.
 
@@ -218,7 +218,6 @@ The core scenario is a small product-neutral workspace that spans intake, an una
 - Remote access and its authorization.
 - Direct human completion of `po-specify`, `design-handoff`, `dev-done` and the three reopen routes.
 - Named participant assignment, work claims and a board chat.
-- Feature scope that names an app other than the four generated app IDs.
 - PDF and image extraction for connected intake.
 - Release tag and publication.
 - Remaining application-sample hardening, which is tracked in [current-status.md](current-status.md) and does not define core acceptance.

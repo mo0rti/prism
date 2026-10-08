@@ -197,17 +197,22 @@ Without `--apply` the command previews every file. With it, the command prints t
 {
   "schema_version": 1,
   "status": "applied",
-  "plan_id": "a66433cb-c399-4cb0-8102-3436e4421509",
-  "digest": "a60819e6f51bee384ca73c4db60b9bbd063ae89d75a8a1fa57a25aa0c31a5750",
+  "plan_id": "6d084a3b-9525-44e9-aad5-001c28ef994c",
+  "digest": "937ac7845482b0f8a6c6c4d59533047a034bcc4914ce752aa8f4c1cd9ea3f00e",
   "root": "…/acme-knowledge",
   "version": "1",
   "mode": "workflow",
   "purpose": "knowledge-root",
-  "board_id": "cd1a6d2c-f87a-4c72-8ae4-7d38422983c4",
-  "asset_digest": "b0c7175b90ff23d1249b1339792dfa900a8c7b53018d4f93b1a710d128f72a16",
+  "board_id": "a19c67fe-44fd-416a-8bea-fdd21b0b6b7e",
+  "asset_digest": "d909e5bd2959faec52786face6031b5d242692c79b98eaa42762f6bae7e1cdc1",
   "name": "Acme knowledge",
   "apps": [],
-  "applied": [ … 35 files … ]
+  "applied": [ … 44 files … ],
+  "already_applied": [],
+  "remaining": [],
+  "conflicts": [],
+  "created_directories": [ … ],
+  "plan": { … }
 }
 ```
 
@@ -248,8 +253,8 @@ workflow:
   version: '1'
   mode: workflow
   purpose: knowledge-root
-  board_id: cd1a6d2c-f87a-4c72-8ae4-7d38422983c4
-  asset_digest: b0c7175b90ff23d1249b1339792dfa900a8c7b53018d4f93b1a710d128f72a16
+  board_id: a19c67fe-44fd-416a-8bea-fdd21b0b6b7e
+  asset_digest: d909e5bd2959faec52786face6031b5d242692c79b98eaa42762f6bae7e1cdc1
 paths:
   wiki_root: knowledge/wiki
   intake_root: knowledge/intake
@@ -315,11 +320,11 @@ $ prism board grant "Product owner" --kind human --write --path .
 {
   "schema_version": 1,
   "participant": {
-    "participant_id": "a6aa00f5-0510-412f-8c7c-8ece315e1f5f",
+    "participant_id": "034bfa8b-66c8-44d2-866e-2da22c6c693f",
     "kind": "human",
     "name": "Product owner",
     "writable": true,
-    "board_id": "cd1a6d2c-f87a-4c72-8ae4-7d38422983c4",
+    "board_id": "a19c67fe-44fd-416a-8bea-fdd21b0b6b7e",
     "workflow_version": "1",
     "scopes": [
       "read",

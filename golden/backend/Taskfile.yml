@@ -26,8 +26,8 @@ tasks:
     cmds:
       - "{{.GRADLEW}} test"
 
-  lint:
-    desc: Run backend static verification
+  check:
+    desc: "Run Gradle's check on backend without the tests (no Kotlin style linter is configured)"
     cmds:
       - "{{.GRADLEW}} check -x test"
 

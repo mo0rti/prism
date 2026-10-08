@@ -22,7 +22,7 @@ The agent system in this workspace does four jobs:
 | Claude commands | [`.claude/commands/`](../.claude/commands/) | Structured project operations such as setup, PO intake, review, handoff, and wiki maintenance |
 | Claude skills | [`.claude/skills/`](../.claude/skills/) | Reusable Claude Code guidance for implementation, conventions, testing, and platform work |
 | Codex skills | [`.agents/skills/`](../.agents/skills/) | Reusable Codex guidance for shared workflows and supported platform work |
-| Cursor rules | [`.cursor/rules/`](../.cursor/rules/) | Stack facts scoped by file path, and the board review; Cursor reads `AGENTS.md` itself and loads the skills in `.agents/skills/` and `.claude/skills/` |
+| Cursor rules | [`.cursor/rules/`](../.cursor/rules/) | Stack facts scoped by file path; Cursor reads `AGENTS.md` itself and loads the skills in `.agents/skills/` and `.claude/skills/` |
 | Backend guidance | [`backend/AGENTS.md`](../backend/AGENTS.md), [`backend/CLAUDE.md`](../backend/CLAUDE.md), [`backend/docs/guide.md`](../backend/docs/guide.md) | Backend-specific architecture, conventions, and delivery rules |
 | Web guidance | [`web/AGENTS.md`](../web/AGENTS.md), [`web/CLAUDE.md`](../web/CLAUDE.md), [`web/docs/guide.md`](../web/docs/guide.md) | Web implementation rules, the sign-in slice and workflow expectations |
 | Android App guidance | [`mobile-android/AGENTS.md`](../mobile-android/AGENTS.md), [`mobile-android/CLAUDE.md`](../mobile-android/CLAUDE.md), [`mobile-android/docs/guide.md`](../mobile-android/docs/guide.md) | Android implementation rules, the sign-in slice and workflow expectations |
@@ -85,8 +85,8 @@ Each rule is written once, in `AGENTS.md`. The tools load it like this:
   A platform folder's `CLAUDE.md` does the same for that folder's `AGENTS.md` and adds only
   the Claude Code skills and commands that no other tool shares.
 - **Cursor** applies `AGENTS.md` at the root and in subfolders itself, so no rule repeats or
-  references it. The rules in `.cursor/rules/` carry only stack facts scoped by file path and the
-  board review, and Cursor loads the skills in `.agents/skills/` and `.claude/skills/` too.
+  references it. The rules in `.cursor/rules/` carry only stack facts scoped by file path, and Cursor loads the skills in `.agents/skills/` and
+  `.claude/skills/` too (the board review is a skill, not a rule, so Cursor does not load it twice).
 
 Add or change a rule in `AGENTS.md`, or in the platform `AGENTS.md` that owns it, and nowhere
 else. The skills in `.agents/skills/` and `.claude/skills/` and the commands in
@@ -145,7 +145,7 @@ For a terminal fallback, use `prism wiki graph --json` or
 
 ### Connected board
 
-After `prism workflow upgrade . --apply`, `prism board serve .` runs one local service
+`prism board serve .` runs one local service
 that serves the browser board and a standard MCP endpoint. Agents that connect to it
 read the same canonical skills through the endpoint and need no `.claude/` or
 `.agents/` folder; [`knowledge/wiki/CONNECTED.md`](../knowledge/wiki/CONNECTED.md)

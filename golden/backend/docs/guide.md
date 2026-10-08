@@ -36,7 +36,7 @@ task backend:dev       # SPRING_PROFILES_ACTIVE=local ./gradlew bootRun, on port
 task backend:run       # ./gradlew bootRun with no profile
 task backend:build     # ./gradlew build -x test
 task backend:test      # ./gradlew test (needs Docker for Testcontainers)
-task backend:lint      # ./gradlew check -x test
+task backend:check     # ./gradlew check -x test (Gradle's verification without the tests; no Kotlin style linter is configured)
 ```
 
 The package is `com.example.prismgolden.backend`. Configuration lives in `src/main/resources/application.yml`: the server port comes from `PORT` (default 8080), the database from `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` and `DATABASE_SCHEMA` (defaults match the workspace's `docker-compose.yml`).

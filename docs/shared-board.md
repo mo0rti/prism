@@ -29,9 +29,7 @@ optional steps when existing `AGENTS.md` or `CLAUDE.md` files are preserved. Add
 those custom files. When it keeps your `knowledge/wiki/index.md`, it only adds a line for each
 page it installs and leaves every existing line as it is.
 
-Generated workspaces, including a fresh `prism new` result, use an explicit
-upgrade preview to activate connected writes. Generation supplies the wiki and
-agent guidance; this step adds the board identity and canonical workflow pin:
+A workspace from `prism new` is already pinned: generation writes the board identity and the canonical workflow pin into `prism.workspace.yml` and ignores `.prism/state/`, so `prism board grant` and `prism board serve` accept writes at once. A workspace whose pin is missing or stale (an older generation, or a Prism with a newer workflow) opens read-only until an explicit upgrade:
 
 ```text
 prism workflow upgrade .
@@ -333,7 +331,10 @@ Connected clarification has a deterministic traceability requirement: each chang
 requirement-bearing section of a feature, an app requirement page or a design
 page includes the full text of at least one answer resolved in that proposal. Case and whitespace differences are ignored,
 and the answer must stand as whole words (`no` is not found inside `not` or `know`);
-paraphrases alone do not pass. Skill discovery reports this limitation. Including
+paraphrases alone do not pass. The skills write the answer inside a complete sentence that
+uses the question's wording, so a short answer such as `yes` is never the whole text of a
+section. The board checks only that the answer is present; it does not judge the sentence.
+Skill discovery reports this limitation. Including
 an answer does not establish that every edit follows it: the agent and reviewer
 still perform that semantic check before confirmation.
 
@@ -348,7 +349,7 @@ Only short excerpts of workspace text appear in an error.
 
 | Code | `details` |
 | --- | --- |
-| `clarify_answer_unlinked`, `design_answer_unlinked`, `requirement_answer_unlinked` | `path`, `section`, `resolved_questions` (numbers), `resolved_answers` (question number to the first 160 characters of its answer). One of those answers must appear verbatim in that section; case and whitespace are ignored. |
+| `clarify_answer_unlinked`, `design_answer_unlinked`, `requirement_answer_unlinked` | `path`, `section`, `resolved_questions` (numbers), `resolved_answers` (question number to the first 160 characters of its answer). One of those answers must appear verbatim in that section, inside a complete sentence that uses the question's wording; case and whitespace are ignored. |
 | `managed_file` (403) | The proposal supplies `index.md`, `status-board.md` or `log.md`. The board derives their changes; leave them out. |
 | `write_path_unavailable` (403) | A skill writes Markdown pages directly in its wiki directories, for example `knowledge/wiki/features/F-001-export.md` (`ingest` also `topics/`, `research/`, `plans/`, `decisions/`, `direction.md` and `roadmap.md`), and the intake `MANIFEST.md` or `CONFLICT.md` of a processed or quarantined folder. A page in a sub-folder such as `knowledge/wiki/features/2026/F-001-export.md` is refused, because the wiki reads one folder level and would never lint, graph or query it. |
 | `stale_preview` (409) at `apply` | The preview's sources changed, or a source this skill must read changed or appeared after the preview. `details.paths` lists the sources that appeared. Nothing was written: read them and preview again. |

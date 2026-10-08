@@ -1,6 +1,6 @@
 # Setup project — interactive project initialization
 
-Run this once, immediately after scaffolding a new project with Copier.
+Run this once, immediately after `prism new` creates the project or `prism workflow install` adopts it.
 This operation initializes the wiki state and generates the advisory board configuration
 through a structured conversation with the team.
 
@@ -9,7 +9,7 @@ through a structured conversation with the team.
 `/setup-project`
 
 ## When to run
-Immediately after `copier copy` produces the project structure. Run before any other
+Immediately after `prism new` creates the project or `prism workflow install` adopts it. Run before any other
 wiki command. If the wiki already has feature entries, this operation will warn and ask
 for confirmation before proceeding.
 
@@ -22,14 +22,16 @@ to the next. If something needs adjustment at any step, fix it before moving on.
 
 Read the following files:
 - AGENTS.md (the rendered monorepo root agent instructions)
-- `.copier-answers.yml` if present (Copier writes this file to the generated project
-  root with the answers the user gave during scaffolding — this is NOT the template
-  repo's `copier.yml`, which is not present in the generated project)
+- `prism.workspace.yml` (the project identity, the repositories and the apps; `prism app list`
+  prints the apps)
+- `.copier-answers.yml` if present (Copier writes this file to a project that `prism new`
+  generated, with the answers the user gave — this is NOT the template repo's
+  `copier.yml`, which is not present in the generated project)
 - Any existing docs/ or README files
 
 Present a confirmation summary:
 - Project name and description
-- Platforms included
+- Apps included (ID, stack and path)
 - Any pre-existing structure the AI discovered
 
 Ask: "Is this correct? Is there anything important about this project not captured above?"

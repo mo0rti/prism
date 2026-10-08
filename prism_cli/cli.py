@@ -59,7 +59,6 @@ from prism_cli.packs import (
     assign_ports,
     backend_port_of,
     layer_answers_problems,
-    has_pack,
     pack_answers,
     parse_app_list,
     read_app_answers,
@@ -1515,7 +1514,7 @@ def validate_generated_project_structure(path: Path) -> tuple[list[str], list[st
         if not (path / app_answers_path(app.path)).is_file():
             errors.append(f"Missing answers file for scaffolded app `{app.id}`: {app_answers_path(app.path)}")
         workflow = workflow_path(app.id)
-        if has_pack(app.stack) and not (path / workflow).is_file():
+        if not (path / workflow).is_file():
             errors.append(f"Missing workflow for scaffolded app `{app.id}`: {workflow}")
 
     if not detected_apps:
@@ -1618,9 +1617,9 @@ def resolve_preset_answers(args: argparse.Namespace) -> dict[str, Any] | None:
 
 
 def preset_answers(preset: Preset) -> dict[str, Any]:
-    """A preset's answers: its app list, which `prism new` scaffolds, and its other answers."""
+    """A preset's answers: its app list, which `prism new` scaffolds."""
 
-    return {**{key: value for key, value in preset.answers.items()}, "apps": [dict(app) for app in preset.apps]}
+    return {"apps": [dict(app) for app in preset.apps]}
 
 
 def prompt_preset() -> str:
@@ -1935,7 +1934,7 @@ def validate_answers(answers: dict[str, Any]) -> tuple[list[str], list[str]]:
             errors.extend(validate_scaffold(apps))
 
     if any(app["stack"] == "ios-swiftui" and app["generation"] == GENERATION_SCAFFOLDED for app in apps):
-        warnings.append("Validate iOS generation locally on macOS before treating it as build-proven.")
+        warnings.append("An iOS app builds and tests only on macOS with Xcode; the macOS CI job builds and tests the pack.")
     return errors, warnings
 
 
@@ -2001,7 +2000,7 @@ def run_copier(template_path: str, dest_path: Path, answers: dict[str, Any], *, 
     workspace_answers.update(workspace_data(project, apps, ports))
     layers: list[tuple[Layer, dict[str, Any]]] = [(Layer(name=WORKSPACE_LAYER, answers_file=COPIER_ANSWERS_FILE), workspace_answers)]
     for app in apps:
-        if app.get("generation") == GENERATION_SCAFFOLDED and has_pack(app["stack"]):
+        if app.get("generation") == GENERATION_SCAFFOLDED:
             layer = Layer(name=app["id"], answers_file=app_answers_path(app["path"]), app_id=app["id"], app_path=app["path"])
             layers.append((layer, pack_answers(project, app, port=ports.get(app["id"]), backend_port=backend_port_of(app, apps, ports))))
 
@@ -2253,7 +2252,7 @@ def plan_update_layers(project_path: Path, workspace_answers: dict[str, Any] | N
         return layers, workspace_problems
     approved_source = workspace_answers.get("_src_path")
     for app in model.workspace_apps(active_only=True):
-        if not app.scaffolded or not has_pack(app.stack):
+        if not app.scaffolded:
             continue
         recorded = read_app_answers(project_path, app.path)
         if recorded is None or "_src_path" not in recorded:
@@ -2288,7 +2287,7 @@ def workspace_layer_data_from_manifest(project_path: Path) -> dict[str, Any]:
     ]
     ports: dict[str, int | None] = {}
     for app in apps:
-        recorded = read_app_answers(project_path, app["path"]) if has_pack(app["stack"]) else None
+        recorded = read_app_answers(project_path, app["path"])
         port = recorded.get("port") if recorded else None
         ports[app["id"]] = port if isinstance(port, int) and not isinstance(port, bool) else None
     data = workspace_data({}, apps, ports)

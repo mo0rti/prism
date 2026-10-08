@@ -200,8 +200,7 @@ class GeneratorTests(unittest.TestCase):
                 self.assertTrue(by_name[name].has("command"))
         for name in ("document-entity", "generate-clients"):
             self.assertTrue(by_name[name].has("codex") and by_name[name].has("command"))
-        self.assertEqual({"codex", "command", "claude-skill", "cursor"}, set(by_name["board-review"].layers))
-        self.assertEqual("advisory-review", by_name["board-review"].cursor_file)
+        self.assertEqual({"codex", "command", "claude-skill"}, set(by_name["board-review"].layers), "the board review is a skill; Cursor loads it from the skill folders, so no rule repeats it")
 
     def test_an_invocation_takes_the_form_of_each_host(self) -> None:
         with tempfile.TemporaryDirectory(prefix="prism-skill-sources-") as temporary:

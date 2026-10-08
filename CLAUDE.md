@@ -25,7 +25,7 @@ template/               # The workspace layer - Jinja2 files (.jinja suffix stri
   docs/                 # Project-wide reference docs (architecture, API conventions, deployment)
   .claude/              # Claude commands and skills for generated projects (generated from template-skills/)
   .agents/              # Codex skills for generated projects (generated from template-skills/)
-  .cursor/              # Cursor rules for generated projects: scoped stack facts and the board review (generated from template-skills/)
+  .cursor/              # Cursor rules for generated projects: the scoped API conventions (generated from template-skills/); each app's rule comes from its pack
   .github/              # CI/CD workflow templates
 ```
 

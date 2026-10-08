@@ -40,6 +40,7 @@ Examples:
 - write-capable skill
 - supported owner values are exactly `po`, `designer`, and `dev`
 - do not infer the owner automatically
+- change only the Open questions table, by one new row; change nothing else on the page: copy every other line and section exactly as `read_workspace` returned it, including the file's final newline
 - do not write the updated question table until the user confirms it
 - record a gap in the Open questions table, which is the Unknown form of the evidence labels; do not write an `**Unknown:**` item for it
 

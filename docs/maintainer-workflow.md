@@ -16,7 +16,7 @@ golden/               # The generated reference workspace, one app of each stack
 template/             # Files copied into generated projects (the workspace layer)
   .claude/            # Claude commands and skills (generated from template-skills/)
   .agents/            # Codex skills (generated from template-skills/)
-  .cursor/            # Cursor rules: scoped stack facts and the board review (generated from template-skills/)
+  .cursor/            # Cursor rules: the scoped API conventions (generated from template-skills/); each app's rule comes from its pack
   .github/            # Workflow templates
   shared/             # OpenAPI and design tokens
   docs/               # Generated-project documentation
@@ -39,7 +39,7 @@ CLAUDE.md             # Claude maintainer guidance for this repo
    After a change of `template/`, `packs/`, `template-skills/` or `packs/versions.yml`, also run `python scripts/build-golden.py` and commit `golden/` with it ([Golden Workspace](#golden-workspace)); after a pin moves, run `python scripts/sync-golden.py`, which also refreshes the pack lockfiles.
 3. Run `./scripts/validate-template.ps1` after template changes, and `python -B -m unittest discover -s tests` after changes to `prism_cli/`, the packaged assets or the template. When the board UI changes, also run the browser tests that [current-status.md](current-status.md#validation) describes.
 4. Generate any extra explicit variants you need instead of relying on assumptions.
-5. Compare generated output against the root docs, generated README/docs, task wiring, and the selected platform combinations.
+5. Compare generated output against the root docs, generated README/docs, task wiring, and the selected app lists.
 6. Update repository docs when the template contract changes. When a CLI command, message, board behaviour or security check changes, also update the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md`, run the documented commands in a disposable workspace, and add the change under `Unreleased` in `CHANGELOG.md`.
 7. Keep roadmap-visible options honest about whether they are current, partial, experimental, or planned.
 
@@ -59,10 +59,10 @@ To check the lifecycle with real Claude Code and Codex sessions and a browser ag
 The front matter of a source holds:
 
 - `name` (the folder name), one `description` and `layers`, the layers the skill ships to;
-- `platforms`, when the skill ships only with some apps (it ships when any listed platform is selected); `reference-platforms` does the same for a file or folder under `references/`. The generator writes these conditions into the generated block of `_exclude` in `copier.yml`;
+- `stacks`, when the skill ships only with some stacks (it ships when any listed stack has an app in the workspace); `reference-stacks` does the same for a file or folder under `references/`. The generator writes these conditions into the generated block of `_exclude` in `copier.yml`;
 - the per-host fields: `codex` (`display_name`, `short_description`, `default_prompt`, `implicit` for `allow_implicit_invocation`), `claude-skill` (`argument-hint`, `disable-model-invocation`, `user-invocable`, `allowed-tools`) and `cursor` (`file`, and `globs` or `always-apply`).
 
-The body is written once. Copier conditions and variables (`{% if "backend" in platforms %}`, `{{ project_name }}`) pass through unchanged. Two mechanisms cover the differences between hosts:
+The body is written once. Copier conditions and variables (`{% if "spring-backend" in stacks %}`, `{{ project_name }}`) pass through unchanged. Two mechanisms cover the differences between hosts:
 
 - `@@invoke:<name>@@` becomes the host's way to run that skill: `$name` in Codex, `/name` in a Claude command, and the bare name in a Claude skill or a Cursor rule;
 - a block from `::: only <layers>` to `:::` stays only in those layers (`codex`, `command`, `claude-skill`, `cursor`, or `claude` for both Claude layers).
@@ -79,7 +79,7 @@ python scripts/build-skill-layers.py --check  # fails when a generated file diff
 
 `tests/test_skill_layers.py` runs the check, fails when a layer file is edited without its source, and tests how each tool discovers the rendered skills.
 
-A skill that teaches a stack's slice cites the files it teaches from in a `## Slice files` section, one bullet each, with the path inside the app's folder (`<package path>` stands for the app's package written with slashes). `tests/test_stack_skill_slice_paths.py` generates a workspace with all four stacks and checks that every cited path exists in every app of the skill's stack, in both skill layers; a skill source that names one stack and has no such section fails it, except the build and deploy task skills. Change a slice file and its skill in the same commit.
+A skill that teaches a stack's slice cites the files it teaches from in a `## Slice files` section, one bullet each, with the path inside the app's folder (`<package path>` stands for the app's package written with slashes). `tests/test_stack_skill_slice_paths.py` generates a workspace with all five stacks and checks that every cited path exists in every app of the skill's stack, in both skill layers; a skill source that names one stack and has no such section fails it, except the build and deploy task skills. Change a slice file and its skill in the same commit.
 
 ## Golden Workspace
 

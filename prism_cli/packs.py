@@ -155,7 +155,7 @@ def backend_port_in_workspace(root: Path, app: Mapping[str, Any], apps: Iterable
 
 
 def _remembered_port(root: Path, app: Mapping[str, Any]) -> int | None:
-    answers = read_app_answers(root, str(app["path"])) if app.get("generation") == GENERATION_SCAFFOLDED and has_pack(str(app.get("stack"))) else None
+    answers = read_app_answers(root, str(app["path"])) if app.get("generation") == GENERATION_SCAFFOLDED else None
     port = answers.get("port") if answers else None
     return port if isinstance(port, int) and not isinstance(port, bool) else None
 
@@ -440,7 +440,7 @@ def taken_ports(root: Path, apps: Iterable[Mapping[str, Any]]) -> set[int]:
 
     ports: set[int] = set()
     for app in apps:
-        if app.get("generation") != GENERATION_SCAFFOLDED or not has_pack(str(app.get("stack"))):
+        if app.get("generation") != GENERATION_SCAFFOLDED:
             continue
         answers = read_app_answers(root, str(app["path"]))
         port = answers.get("port") if answers else None
@@ -456,7 +456,7 @@ def stack_maturity(stack: str) -> dict[str, str]:
     """The ``app_maturity`` entry of a scaffolded app of this stack."""
 
     if stack == "ios-swiftui":
-        return {"level": "experimental", "caveat": "Generated iOS structure requires local macOS/Xcode validation before treating it as build-proven."}
+        return {"level": "experimental", "caveat": "The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence, and a physical device cannot use the local development sign-in."}
     if stack == "nextjs-web":
         return {
             "level": "provisional",

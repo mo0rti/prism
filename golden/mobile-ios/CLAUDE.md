@@ -14,4 +14,4 @@ Project-specific Claude skills live in `.claude/skills/`; Claude Code loads them
 
 ## iOS Claude Commands
 
-- `/generate-clients` - regenerate API clients from the shared contract
+- `/generate-clients` - validate the shared contract; this app's client is hand-written and kept to it with `ios-contract-alignment`

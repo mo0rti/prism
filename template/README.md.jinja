@@ -70,9 +70,9 @@ On a fresh workspace it walks you through setup, your first intake brief, and
 `po-intake` so your first feature appears on the board as it is born.
 
 To let a human perform `po-handoff`, `design-start` and `dev-start` directly in the
-board, and to connect agents over MCP, run `prism workflow upgrade .` to preview and
-`prism workflow upgrade . --apply` to apply, issue grants with `prism board grant`, and
-start the service with `prism board serve .`. `docs/shared-board.md` in the Prism
+board, and to connect agents over MCP, issue grants with `prism board grant` and
+start the service with `prism board serve .`. This workspace is already pinned to the
+workflow; `prism workflow upgrade .` is needed only after a newer Prism ships a new one. `docs/shared-board.md` in the Prism
 repository has the steps, and `knowledge/wiki/CONNECTED.md` describes how agents use
 the connection.
 
@@ -171,4 +171,4 @@ task generate-clients
 {% endfor %}{% for app in apps if app.stack == "python-agent-service" %}| Start {{ app.id }} with the local development identity | `task {{ app.id }}:dev` |
 | Evaluate {{ app.id }} with the fake provider | `task {{ app.id }}:eval` |
 {% endfor %}| Run all tests | `task test` |
-| Lint all platforms | `task lint` |
+| Lint every app that has a linter (not a backend app, whose `task <app-id>:check` runs its Gradle check) | `task lint` |
