@@ -9,6 +9,11 @@ sources:
 - knowledge/intake/processed/2026-09-30-review-summary
 advisory-review: not-needed
 criteria-high-water: 10
+design-tracks:
+  ui: not-applicable
+  technical: done
+  ui-reason: No app in scope has a UI.
+design-reaffirm: []
 ---
 
 ## Summary
@@ -60,7 +65,7 @@ Not needed.
 ## Delivery evidence
 | App | Artifact | Contract | Implementation | Tests | Basis |
 |---|---|---|---|---|---|
-| backend | commit:3f9c2ab | none | Pull request #42 in the review-summary-service repository, merged as commit 3f9c2ab | CI run 1187 on commit 3f9c2ab: 31 tests passed, 0 failed | attested |
+| backend | commit:3f9c2ab | F-001@v1:c1:acd0d4da2450d65ab401f518cfd9d8c003a5b8238862630eec4f72a7ba968654 | Pull request #42 in the review-summary-service repository, merged as commit 3f9c2ab | CI run 1187 on commit 3f9c2ab: 31 tests passed, 0 failed | attested |
 
 ## QA verification
 | Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |

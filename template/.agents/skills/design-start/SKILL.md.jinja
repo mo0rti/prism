@@ -46,10 +46,25 @@ Designer-owned open questions may remain while design starts. Pending advisory
 review remains an unresolved blocker; follow the existing board-review or
 explicit skip policy instead of inventing a waiver.
 
+Starting design also writes the feature's design tracks, which are absent until then:
+
+```yaml
+design-tracks:
+  ui: pending           # not-applicable when every active scoped app has has-ui: false
+  technical: pending
+  ui-reason: "No app in scope has a UI."   # only with ui: not-applicable
+design-reaffirm: []
+```
+
+`unknown` counts as a UI, so only an explicit exemption by the designer
+(`$design-ui-done`) makes the UI track `not-applicable` for such an app. Write
+nothing else about the tracks: the track actions settle them.
+
 Show the observed fields, proposed destination, evidence, and every feature,
 status board, and log write. Reread the source and context immediately before asking for
 confirmation and once more after confirmation. Only then update `status` to
-`in-design`, keep `owner: designer`, update the status board row, and append the log.
+`in-design`, keep the owner the design owner, write the initial `design-tracks` and `design-reaffirm`,
+update the status board row, and append the log.
 Decline or cancel means no writes. If a multi-file write is partial, report the
 exact observed changes and stop for fresh recovery; no transaction is implied.
 

@@ -9,6 +9,11 @@ sources:
 - knowledge/intake/processed/2026-09-30-review-summary
 advisory-review: not-needed
 criteria-high-water: 10
+design-tracks:
+  ui: not-applicable
+  technical: done
+  ui-reason: No app in scope has a UI.
+design-reaffirm: []
 ---
 
 ## Summary

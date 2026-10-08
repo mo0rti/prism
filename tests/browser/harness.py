@@ -43,6 +43,8 @@ from prism_cli.board_server import create_app
 from prism_cli.board_service import BoardService
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.core_workflow_fixture import INTAKE_ITEM, PROCESSED_INTAKE_ITEM, create_core_workflow_fixture
+from prism_cli.wiki_model import NO_UI_TRACK_REASON, DesignTracks
+from tests.design_tracks import ensure_tracks, technical_design_page, with_tracks
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page, _requirement_page
 from tests.wiki_files import write_index
 
@@ -133,11 +135,24 @@ def _feature_page_for(feature: FixtureFeature) -> str:
     content = content.replace("title: Document review\n", f"title: {feature.title}\n", 1)
     content = content.replace("status: raw\n", f"status: {feature.status}\n", 1).replace("owner: po\n", f"owner: {feature.owner}\n", 1)
     content = content.replace("advisory-review: not-needed\n", f"advisory-review: {feature.advisory}\n", 1)
+    # A feature in design or later carries the design tracks its status needs.
+    content = ensure_tracks(content, feature.status)
     if feature.question_open:
         return content
     # Resolved questions keep every action ready, so scenarios exercise the
     # preview and apply path rather than the blocked-preview path.
     return content.replace("| po | open |", "| po | resolved: Capture key points and requested follow-up. |")
+
+
+def _settle_technical_track(root: Path, feature: FixtureFeature) -> None:
+    """A feature in design whose handoff is ready: the technical track is `done` with its technical design page."""
+
+    path = root / feature.path
+    text = path.read_text(encoding="utf-8")
+    path.write_bytes(with_tracks(text, DesignTracks("not-applicable", "done", NO_UI_TRACK_REASON, None)).encode("utf-8"))
+    page = root / f"knowledge/wiki/technical-design/{feature.feature_id}-{feature.path.stem.split('-', 2)[2]}.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_bytes(technical_design_page(feature.feature_id, ("backend",), ("AC-1", "AC-2")).encode("utf-8"))
 
 
 def _board_text(features: tuple[FixtureFeature, ...]) -> str:
@@ -172,6 +187,8 @@ def build_workspace(root: Path, extras: tuple[FixtureFeature, ...] = ()) -> Path
         # Canonical LF bytes keep before/after comparisons independent of the
         # platform's newline translation.
         target.write_bytes(_feature_page_for(feature).encode("utf-8"))
+        if feature.status == "in-design":
+            _settle_technical_track(root, feature)
     (root / "knowledge/wiki/status-board.md").write_bytes(_board_text(features).encode("utf-8"))
     requirement = _requirement_page("pending").replace("feature-id: F-001", "feature-id: F-003", 1)
     (root / "knowledge/wiki/app-requirements/F-003-backend.md").write_bytes(requirement.encode("utf-8"))

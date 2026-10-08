@@ -6,7 +6,7 @@ Use this format for every file in `wiki/design/`. Filename: `F-XXX-[slug].md`.
 ---
 feature-id: F-XXX
 title: [Design title]
-designer: [name, optional]
+apps: [the apps of the feature this design covers, each with a UI]
 figma: [Figma URL or "not applicable"]
 ---
 
@@ -29,3 +29,14 @@ Links to relevant entries in design/ for reused components or patterns.
 Questions for the Designer that affect implementation. This section is the Unknown form of
 the evidence labels.
 ```
+
+## Rules
+
+- `apps` lists the apps of the feature that this page designs. Together the feature's design pages cover
+  every active app with a UI (`has-ui` true or `unknown`, which counts as a UI); `design-coverage-incomplete`
+  names the apps no page covers. A page does not carry a designer's name.
+- Design pages belong to the `ui` design track of the feature. `design-ui-done` writes them and settles the
+  track, or `design-handoff` does when it settles the track. They are writable while the feature is
+  `ready-for-design` or `in-design` and locked from `ready-for-dev` on. Changing a page while the track is
+  settled sets the track back to `pending` in the same write, and the technical track joins `design-reaffirm`
+  when it is `done`.

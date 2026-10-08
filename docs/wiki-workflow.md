@@ -553,7 +553,7 @@ App requirements:
 
 Current blockers:
 - api-contract-not-ready: mobile-ios app requirements depend on the API contract status changing from draft to agreed
-- missing-design: design page does not define the expired payment-method state
+- design-track-pending: the UI design track is pending; the design pages do not define the expired payment-method state
 
 Suggested next action:
 Run design-clarify or update the design page before active implementation begins.
@@ -600,7 +600,7 @@ Purpose:
 Canonical blocker categories:
 
 - `pending-board-review`
-- `missing-design`
+- `design-track-pending`
 - `missing-app-requirements`
 - `unresolved-open-questions`
 - `api-contract-not-ready`

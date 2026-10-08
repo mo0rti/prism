@@ -47,7 +47,7 @@ fails, or lacks `wiki blockers`, say:
 
 ## Canonical blocker categories
 
-Compute only these canonical facts: `pending-board-review`, `missing-design`,
+Compute only these canonical facts: `pending-board-review`, `design-track-pending`,
 `missing-app-requirements`, `unresolved-open-questions`,
 `api-contract-not-ready`, and `cross-app-dependency`. Include malformed
 pages as diagnostics rather than silently skipping them.

@@ -27,6 +27,7 @@ from prism_cli.wiki_lint import lint_wiki
 from prism_cli.workflow_install import apply_install, plan_install
 from prism_cli.workspace import inspect_workspace
 from tests import real_temp  # noqa: F401
+from tests.design_tracks import apply_tracks
 from tests.wiki_files import write_index, write_status_board
 
 
@@ -166,6 +167,7 @@ def _feature(feature_id: str, title: str, status: str, owner: str, apps: list[st
         "advisory-review": review,
         "criteria-high-water": 2,
     }
+    apply_tracks(frontmatter, status)
     scope = "\n".join(f"- **{app}**: Deliver the {title.lower()} for {app}." for app in apps)
     body = (
         f"## Summary\n{title} gives reviewers one place to record an outcome.\n\n"

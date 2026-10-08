@@ -27,7 +27,7 @@ from prism_cli import __version__  # noqa: E402
 from prism_cli.wiki_index import build_index  # noqa: E402
 from prism_cli.app_model import apps_from_platforms  # noqa: E402
 from prism_cli.workspace import write_workspace_manifest  # noqa: E402
-from prism_cli.wiki_model import criterion_revision  # noqa: E402
+from prism_cli.wiki_model import DesignTracks, contract_citation, criterion_revision  # noqa: E402
 from prism_cli.wiki_transitions import ACTION_SPECS  # noqa: E402
 
 
@@ -362,8 +362,31 @@ pending so the dashboard can show intake visibility without claiming that an int
         )
 
 
+UI_PLATFORMS = ["mobile-android", "mobile-ios"]  # the demo apps that have a UI
+
+CONTRACT_BODY = """## Endpoints
+- `POST /payout-requests`: create or submit a request.
+- `POST /payout-requests/{id}/decision`: record an approval or rejection.
+
+## Data models
+The request carries an ID, amount, currency, actor, status, and outcome metadata.
+
+## Authentication requirements
+Require the role appropriate to the operation: operator, manager, or finance admin.
+
+## Notes
+This is a synthetic contract summary for graph relationships; it is not an implementation promise.
+"""
+
+
+def _has_designed(feature: dict[str, Any]) -> bool:
+    """A feature past design carries both settled tracks, the design pages of its UI apps and a technical design page."""
+
+    return feature["status"] in {"in-dev", "released"}
+
+
 def _feature_frontmatter(feature: dict[str, Any], today: date) -> dict[str, Any]:
-    return {
+    frontmatter = {
         "id": feature["id"],
         "title": feature["title"],
         "status": feature["status"],
@@ -373,6 +396,9 @@ def _feature_frontmatter(feature: dict[str, Any], today: date) -> dict[str, Any]
         "advisory-review": feature["advisory"],
         "criteria-high-water": len(feature["criteria"]),
     }
+    if _has_designed(feature):
+        frontmatter.update(DesignTracks("done", "done").frontmatter())
+    return frontmatter
 
 
 def _evidence_sections(feature: dict[str, Any]) -> str:
@@ -389,7 +415,7 @@ def _evidence_sections(feature: dict[str, Any]) -> str:
         for platform in PLATFORMS:
             artifact = f"build:{platform}#1"
             delivery.append(
-                f"| {platform} | `{artifact}` | none | Synthetic local demo {platform} surface for {feature['id']} (no production implementation claim) "
+                f"| {platform} | `{artifact}` | {contract_citation(feature['id'], 1, CONTRACT_BODY)} | Synthetic local demo {platform} surface for {feature['id']} (no production implementation claim) "
                 f"| Synthetic local graph fixture checks for {platform} (no production test claim) | attested |"
             )
             qa.append(
@@ -491,7 +517,7 @@ No unfinished app dependency is asserted in this synthetic fixture.
             {
                 "feature-id": feature_id,
                 "title": f"{feature['title']} interaction design",
-                "designer": "synthetic-demo",
+                "apps": UI_PLATFORMS,
                 "figma": "not applicable",
             },
             f"""## Summary
@@ -510,22 +536,50 @@ No external component reference is asserted by this synthetic fixture.
 No design question is recorded for this local fixture.
 """,
         )
+        if _has_designed(feature):
+            impact = "\n".join(f"| {platform} | request workflow | Present or record the {feature['title'].lower()} state |" for platform in PLATFORMS)
+            strategy = "\n".join(
+                f"| AC-{number} | {', '.join(PLATFORMS)} | manual | end-to-end | Synthetic fixture check |" for number, _text in enumerate(feature["criteria"], start=1)
+            )
+            _write_page(
+                wiki_root / "technical-design" / f"{feature_id}-{slug}.md",
+                {"feature-id": feature_id, "title": f"{feature['title']} technical design", "apps": list(PLATFORMS), "decisions": []},
+                f"""## Summary
+The {feature['title'].lower()} flow reuses the shared request workflow in every app.
+
+## Architecture impact
+| App | Modules | Change |
+|---|---|---|
+{impact}
+
+## Data model and migrations
+No migration is asserted by this synthetic fixture.
+
+## Security and privacy
+Every operation requires the role named in the API contract.
+
+## Non-functional requirements
+No measurable target is asserted by this synthetic fixture.
+
+## Risks
+No risk beyond the shared workflow is asserted by this synthetic fixture.
+
+## Decisions
+No technical decision is recorded for this local fixture.
+
+## API contract
+[API contract](../api-contracts/{feature_id}-{slug}.md)
+
+## Test strategy
+| Criterion | Applies to | Method | Level | Notes |
+|---|---|---|---|---|
+{strategy}
+""",
+            )
         _write_page(
             wiki_root / "api-contracts" / f"{feature_id}-{slug}.md",
             {"feature-id": feature_id, "version": 1, "status": status},
-            f"""## Endpoints
-- `POST /payout-requests`: create or submit a request.
-- `POST /payout-requests/{{id}}/decision`: record an approval or rejection.
-
-## Data models
-The request carries an ID, amount, currency, actor, status, and outcome metadata.
-
-## Authentication requirements
-Require the role appropriate to the operation: operator, manager, or finance admin.
-
-## Notes
-This is a synthetic contract summary for graph relationships; it is not an implementation promise.
-""",
+            CONTRACT_BODY,
         )
         required_action = "- [x] Review the threshold question with the product owner." if feature["status"] == "released" else "- [ ] Review the threshold question with the product owner."
         _write_page(

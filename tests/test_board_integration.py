@@ -22,6 +22,7 @@ from prism_cli.roles import RolePredicate, required_roles
 from prism_cli.workflow_install import apply_install, plan_install
 from tests import real_temp  # noqa: F401
 from tests.board_approval import approve, give_apps_a_ui, human_with_roles
+from tests.design_tracks import STARTED, started
 from tests.test_board_service import _read_revisions
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 
@@ -71,7 +72,7 @@ class _IntegratedBoard(unittest.TestCase):
         return self.service.preview_transition(actor, "F-001", "design-start", {"semantic_review_acknowledged": True})
 
     def agent_proposal(self):
-        content = self.read(FEATURE).replace("status: ready-for-design", "status: in-design")
+        content = started(self.read(FEATURE), STARTED)
         changes = [{"path": FEATURE, "content": content}]
         revisions = _read_revisions(self.service, self.agent, "design-start", changes)
         return self.service.preview_skill(self.agent, "design-start", changes, read_revisions=revisions)

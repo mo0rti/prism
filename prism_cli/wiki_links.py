@@ -12,6 +12,7 @@ from prism_cli.wiki_paths import decoded_link_path
 
 LINKED_CONTEXT_DIRECTORIES = {
     "design": "design",
+    "technical_design": "technical-design",
     "api_contracts": "api-contracts",
     "advisory_reviews": "advisory",
     "business_rules": "business-rules",

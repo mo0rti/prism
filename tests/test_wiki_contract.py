@@ -33,7 +33,7 @@ class WikiContractLintTests(unittest.TestCase):
         self.assertEqual(
             {
                 "pending-board-review",
-                "missing-design",
+                "design-track-pending",
                 "missing-app-requirements",
                 "unresolved-open-questions",
                 "api-contract-not-ready",
@@ -63,9 +63,9 @@ class WikiContractLintTests(unittest.TestCase):
         self.assertEqual({"F-001", "F-002", "F-005"}, {diagnostic.feature_id for diagnostic in pending})
         self.assertTrue(any("ready-for-design" in diagnostic.message for diagnostic in pending))
 
-        missing_design = self.diagnostics_for(result, "missing-design")
-        self.assertEqual({"F-003", "F-006"}, {diagnostic.feature_id for diagnostic in missing_design})
-        self.assertFalse(any(diagnostic.feature_id == "F-001" for diagnostic in missing_design))
+        pending_tracks = self.diagnostics_for(result, "design-track-pending")
+        self.assertEqual({"F-003", "F-006"}, {diagnostic.feature_id for diagnostic in pending_tracks})
+        self.assertFalse(any(diagnostic.feature_id in {"F-001", "F-002"} for diagnostic in pending_tracks))
 
         missing_requirements = self.diagnostics_for(result, "missing-app-requirements")
         self.assertEqual({"F-006"}, {diagnostic.feature_id for diagnostic in missing_requirements})
@@ -118,7 +118,7 @@ class WikiContractLintTests(unittest.TestCase):
         self.assertEqual(1, len(nodes))
         self.assertEqual("error", nodes[0]["health"])
 
-    def test_a_design_page_is_required_only_for_a_scope_with_a_ui_app(self) -> None:
+    def test_a_settled_ui_track_needs_design_pages_only_for_a_scope_with_a_ui_app(self) -> None:
         def lint_with(status: str, owner: str, apps: str, extra: str = "") -> bool:
             with tempfile.TemporaryDirectory() as temp_dir:
                 workspace = Path(temp_dir)
@@ -139,15 +139,19 @@ class WikiContractLintTests(unittest.TestCase):
                 )
                 feature.write_text(body, encoding="utf-8")
                 result = lint_wiki(workspace, today=CHECK_DATE)
-                return any(diagnostic.code == "missing-design" and diagnostic.feature_id == "F-001" for diagnostic in result.diagnostics)
+                return any(diagnostic.code == "design-coverage-incomplete" and diagnostic.feature_id == "F-001" for diagnostic in result.diagnostics)
 
+        done = "design-tracks:\n  ui: done\n  technical: not-applicable\n  technical-reason: The feature changes no architecture.\ndesign-reaffirm: []\n"
+        exempt = "design-tracks:\n  ui: not-applicable\n  technical: not-applicable\n  ui-reason: The screens are unchanged.\n  technical-reason: The feature changes no architecture.\ndesign-reaffirm: []\n"
         for status, owner in (("ready-for-dev", "dev"), ("in-dev", "dev")):
             with self.subTest(status=status, apps="backend"):
-                self.assertFalse(lint_with(status, owner, "backend"))
+                self.assertFalse(lint_with(status, owner, "backend", done))
             with self.subTest(status=status, apps="mobile-ios"):
-                self.assertTrue(lint_with(status, owner, "mobile-ios"))
+                self.assertTrue(lint_with(status, owner, "mobile-ios", done))
+            with self.subTest(status=status, apps="mobile-ios", ui="not-applicable"):
+                self.assertFalse(lint_with(status, owner, "mobile-ios", exempt))
         # The old exemption fields are not feature fields: they exempt nothing and are reported.
-        exemption = "design: not-applicable\ndesign-exemption-reason: Confirmed backend-only workflow with no visual surface.\n"
+        exemption = done + "design: not-applicable\ndesign-exemption-reason: Confirmed backend-only workflow with no visual surface.\n"
         self.assertTrue(lint_with("ready-for-dev", "dev", "mobile-ios", exemption))
 
     def test_a_released_feature_requires_resolved_advisory_and_open_questions(self) -> None:

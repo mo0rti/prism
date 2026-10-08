@@ -31,6 +31,7 @@ from prism_cli.board_service import BoardError, BoardService
 from prism_cli.app_model import apps_from_platforms
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.core_workflow_fixture import create_core_workflow_fixture
+from tests.design_tracks import apply_tracks
 from tests.test_board_service import _read_revisions
 from tests import real_temp  # noqa: F401
 from tests.wiki_files import write_index, write_status_board
@@ -275,7 +276,7 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
             listed = await client.call("list_skills", {})
             self.assertEqual(4, discovered["mcp_contract"])
             self.assertEqual(4, listed["mcp_contract"])
-            self.assertEqual(27, len(listed["skills"]))
+            self.assertEqual(29, len(listed["skills"]))
             self.assertEqual(listed["read_support"], discovered["capability"]["read_support"])
             for item in discovered["skills"]:
                 self.assertEqual({"name", "description"}, set(item))
@@ -287,7 +288,7 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
     async def test_every_skill_and_reference_chunk_stays_within_budget_and_reassembles_to_its_digest(self) -> None:
         async with connected(self, self.small_root) as client:
             names = [item["name"] for item in (await client.call("list_skills", {}))["skills"]]
-            self.assertEqual(27, len(names))
+            self.assertEqual(29, len(names))
             for name in names:
                 with self.subTest(skill=name):
                     pages = await client.paged("get_skill", {"name": name})
@@ -435,7 +436,8 @@ def _dev_feature_page(status: str, owner: str, platforms: list[str], evidence_ro
         "criteria-high-water": 12,
         "revalidation": [],
     }
-    scope = "\n".join(f"- **{platform}**: Store and show the review summary on {platform}. {bulk}" for platform in platforms)
+    apply_tracks(frontmatter, status)
+    scope ="\n".join(f"- **{platform}**: Store and show the review summary on {platform}. {bulk}" for platform in platforms)
     criteria = "\n".join(f"- [ ] AC-{number} [{', '.join(platforms)}] Criterion {number}: {bulk}" for number in range(1, 13))
     body = f"""## Summary
 Review a document, summarize its key points, and record the review outcome. {bulk}
@@ -496,9 +498,9 @@ def _dev_requirement_page(platform: str, status: str, bulk: str) -> str:
     )
 
 
-def _dev_design_page() -> str:
+def _dev_design_page(platforms: list[str]) -> str:
     return (
-        f"---\nfeature-id: F-001\ntitle: Document review\ndesigner: Reviewer\nfigma: reviewed-document-flow\n---\n\n"
+        f"---\nfeature-id: F-001\ntitle: Document review\napps: [{', '.join(platforms)}]\nfigma: reviewed-document-flow\n---\n\n"
         "## Summary\nThe reviewer sees the document title and review status.\n\n"
         "## Key design decisions\nKeep the review outcome beside the source document.\n\n"
         "## States covered\nThe page shows pending and completed reviews.\n\n"
@@ -538,7 +540,7 @@ def build_dev_done_workspace(root: Path, platforms: list[str], bulk: str, large_
         return bulk * 120 if platform == large_platform else bulk
 
     write(FEATURE_FILE, _dev_feature_page("in-dev", "dev", platforms, "", bulk))
-    write(DESIGN_FILE, _dev_design_page())
+    write(DESIGN_FILE, _dev_design_page(platforms))
     for platform in platforms:
         write(f"knowledge/wiki/app-requirements/F-001-{platform}.md", _dev_requirement_page(platform, "in-progress", requirement_bulk(platform)))
     write_status_board(root, "| F-001 | Document review | in-dev | dev | not-needed |\n")

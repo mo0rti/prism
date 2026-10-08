@@ -1,0 +1,6 @@
+interface:
+  display_name: "Tech Design Done"
+  short_description: "Settle the technical design track of a feature"
+  default_prompt: "Use $tech-design-done F-XXX [not-applicable] to settle the technical track: write the technical design page, its test strategy and the API contract."
+policy:
+  allow_implicit_invocation: false

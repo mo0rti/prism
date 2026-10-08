@@ -220,8 +220,15 @@ class BoardPage:
         return self.page.get_by_role("button", name="Review the proposals that wait for approval")
 
     def agent_request_button(self, feature_id: str, label: str) -> Locator:
-        """The card button that opens a provider-neutral MCP request for an agent-only action."""
+        """The card button that opens a provider-neutral MCP request for an agent-only action.
 
+        A feature with several workflow actions has a picker on its card; the action named by `label` is chosen there first.
+        """
+
+        picker = self.page.get_by_role("combobox", name=f"Workflow action for {feature_id}")
+        if picker.count():
+            option = picker.locator("option", has_text=label).first
+            picker.select_option(value=option.get_attribute("value"))
         return self.page.get_by_role("button", name=f"Prepare {label} for {feature_id}")
 
     def stages(self) -> dict[str, list[str]]:

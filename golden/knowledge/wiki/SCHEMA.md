@@ -26,6 +26,7 @@ knowledge/
     ├── personas/         # Customer segments and user types: [slug].md
     ├── business-rules/   # Invariants and constraints: BR-XXX-[slug].md
     ├── design/           # Component specs and interaction patterns: F-XXX-[slug].md
+    ├── technical-design/ # Technical design of a feature: F-XXX-[slug].md
     ├── app-requirements/  # Per-app implementation specs: F-XXX-[app-id].md
     ├── api-contracts/    # API shapes and endpoint contracts: F-XXX.md
     ├── decisions/        # Architecture Decision Records: ADR-XXX-[slug].md
@@ -119,7 +120,7 @@ Every file in `wiki/design/` must follow this format:
 ---
 feature-id: F-XXX
 title: [Design title]
-designer: [name, optional]
+apps: [the apps of the feature this design covers, each with a UI]
 figma: [Figma URL or "not applicable"]
 ---
 
@@ -141,6 +142,44 @@ Links to relevant entries in design/ for reused components or patterns.
 Questions for the Designer that affect implementation. This section is the Unknown form of
 the evidence labels.
 ```
+
+Together the design pages of a feature list, under `apps`, every active app with a UI. They belong to the `ui`
+design track (see `LIFECYCLE.md`, Design owner and design tracks).
+
+---
+
+## Technical design page format
+
+Every file in `wiki/technical-design/` must follow this format. It is a current-state page, one per feature,
+and belongs to the `technical` design track:
+
+```markdown
+---
+feature-id: F-XXX
+title: [Technical design title]
+apps: [every app of the feature]
+decisions: [ADR-001]
+---
+
+## Summary
+## Architecture impact
+| App | Modules | Change |
+|---|---|---|
+## Data model and migrations
+## Security and privacy
+## Non-functional requirements
+## Risks
+## Decisions
+## API contract
+## Test strategy
+| Criterion | Applies to | Method | Level | Notes |
+|---|---|---|---|---|
+```
+
+Each section has content of its own, the Architecture impact table names every app, and the Test strategy names
+every acceptance criterion ID of the feature (`technical-design-incomplete`, `test-strategy-incomplete`). The
+filename names the feature (`technical-design-feature-mismatch`). The index line of a technical design page is its
+title and the first sentence of its Summary. See `technical-design/_FORMAT.md`.
 
 ---
 
@@ -208,10 +247,10 @@ Design decisions, backwards-compatibility concerns.
 - **Decided:** [a decision about this contract] ([ADR-001](../decisions/ADR-001-slug.md))
 ```
 
-`design-handoff` creates the page at `status: agreed` when the feature's API surface
-declares API work; `dev-done` moves it to `implemented`. List each endpoint as
-`METHOD /path` and define only data models that the API surface or an endpoint names.
-See `LIFECYCLE.md` (API contract at design handoff).
+`tech-design-done` (or a `design-handoff` that settles the technical track) creates the page at
+`status: agreed`, `version: 1` when the feature's API surface declares API work; `dev-done` moves it to
+`implemented`. List each endpoint as `METHOD /path` and define only data models that the API surface or an endpoint
+names. A revision raises `version` by one while the feature is in design. See `LIFECYCLE.md` (API contract).
 
 ---
 
@@ -591,6 +630,7 @@ for feature and design pages; `ingest` is the general operation.
 | A customer segment or user type | `personas/[slug].md` |
 | An invariant or constraint | `business-rules/BR-XXX-[slug].md` |
 | A decision with consequences | `decisions/ADR-XXX-[slug].md` |
+| Technical design notes for an existing feature, while its technical track is `pending` or the feature has no tracks yet | `technical-design/F-XXX-[slug].md` |
 | A feature request | `features/F-XXX-[slug].md`, written as `raw` + `po` |
 
 1. Read `index.md`, find the pages the source touches and read them.
@@ -637,8 +677,8 @@ operation reads it first to find the pages it needs, then reads those pages.
   (a persona uses `## Who they are`, a business rule `## Rule` and a decision
   `## Decision`).
 - **Groups.** Lines sit under a `##` heading for their kind: Direction and roadmap, Plans,
-  Topics, Research, Features, Personas, Business rules, Design, App requirements, API
-  contracts, Decisions, Advisory and Meta.
+  Topics, Research, Features, Personas, Business rules, Design, Technical design, App
+  requirements, API contracts, Decisions, Advisory and Meta.
 - **Replaced in place.** When a page changes, its line is rewritten where it stands, never
   appended. The index has no dates, no narrative and no "was" or "now" wording; history lives
   in `log.md`.
@@ -725,7 +765,7 @@ sources on the entry's date:
   the connected board, the `verify-pages` skill records it: the agent names the pages it
   read, and a human confirms the preview.
 - **Which pages.** Current-state pages: features, personas, business rules, design pages,
-  app requirements, API contracts, topics, research pages, plans, `direction.md` and
+  technical design pages, app requirements, API contracts, topics, research pages, plans, `direction.md` and
   `roadmap.md`. Records (ADRs, advisory reviews), `log.md`, `index.md`, `status-board.md`,
   the schema files and generated files are exempt.
 - **Lint.** A page's last verification is the latest `verify` entry that lists it.
@@ -807,8 +847,8 @@ Use this blocker vocabulary consistently in `lint-wiki`, `wiki-blockers`, and
 
 - `pending-board-review`: any feature with `advisory-review: pending` that is at
   `ready-for-design` up to `ready-for-release`.
-- `missing-design`: any feature from `ready-for-dev` on whose scope includes an app with a UI
-  (`has-ui`) and that has no matching design page.
+- `design-track-pending`: any feature from `ready-for-dev` on whose `design-tracks` are not both
+  settled (`done` or `not-applicable`) or whose `design-reaffirm` is not empty.
 - `missing-app-requirements`: any feature from `ready-for-dev` up to `ready-for-release` that is
   missing one or more app requirement files for apps listed in feature
   frontmatter.
@@ -873,7 +913,7 @@ Follow these rules in every wiki operation:
 11. **Keep history out of current-state pages.** Every page is a current-state page or
     a dated record.
     - A **current-state page** states what is true now: features, personas, business
-      rules, design pages, app requirements, API contracts, topics, research pages,
+      rules, design pages, technical design pages, app requirements, API contracts, topics, research pages,
       plans, direction, roadmap, the index, the status board, the advisory board and the
       project foundation. It carries no date about the page itself, in
       front matter or in a table column: no field says when the page was introduced,

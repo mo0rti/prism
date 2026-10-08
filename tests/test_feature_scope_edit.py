@@ -233,7 +233,10 @@ class ScopeEditBoardTests(unittest.TestCase):
         edited = with_apps(self.read(FEATURE_ONE), ["backend"])
         status_changed = _set_feature_stage(edited, "ready-for-dev", "dev")
         self.assertEqual("app_stage_mismatch", self.rejected("feature-scope", [{"path": FEATURE_ONE, "content": status_changed}]).code)
-        raw = _set_feature_stage(edited, "raw", "po")
+        # Only the status and owner differ: the stage rule answers before any front-matter rule.
+        raw_frontmatter, raw_body = _parse_markdown(edited)
+        raw_frontmatter.update({"status": "raw", "owner": "po"})
+        raw = f"---\n{yaml.safe_dump(raw_frontmatter, sort_keys=False).rstrip()}\n---\n{raw_body}"
         self.assertEqual("app_stage_mismatch", self.rejected("feature-scope", [{"path": FEATURE_ONE, "content": raw}]).code)
 
         frontmatter, body = _parse_markdown(edited)

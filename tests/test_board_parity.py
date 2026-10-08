@@ -18,8 +18,10 @@ import yaml
 
 from prism_cli.board_server import create_app
 from prism_cli.board_service import BoardService
+from prism_cli.wiki_model import NO_UI_TRACK_REASON, DesignTracks
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, create_core_workflow_fixture
+from tests.design_tracks import ensure_tracks, technical_design_page, with_tracks
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page, _requirement_page, _write_index
 from tests import real_temp  # noqa: F401
 
@@ -51,6 +53,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
         content = _feature_page().replace("status: raw\n", f"status: {action[1]}\n").replace("owner: po\n", f"owner: {action[2]}\n")
         if not blocked:
             content = content.replace("| po | open |", "| po | resolved: Capture key points and requested follow-up. |")
+        content = ensure_tracks(content, action[1])
         # Canonical LF fixture bytes avoid conflating transport parity with the
         # separately disclosed formatting normalization of adopted YAML pages.
         (root / FEATURE_PATH).write_bytes(content.encode("utf-8"))
@@ -115,6 +118,8 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
         proposal = before[FEATURE_PATH.as_posix()].decode("utf-8")
         proposal = proposal.replace(f"status: {action[1]}\n", f"status: {action[3]}\n", 1)
         proposal = proposal.replace(f"owner: {action[2]}\n", f"owner: {action[4]}\n", 1)
+        # Starting design initializes the tracks, as the human preview does.
+        proposal = ensure_tracks(proposal, action[3])
         service = BoardService(root)
         # The action is gated: the human who approves it holds its role and signs in to the board. A human run previews and
         # approves it directly; an agent run proposes it over MCP and the same kind of human approves it (the intended difference).
@@ -399,12 +404,13 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                 human = service.create_participant("Parity human", "human", writable=True, roles="tech-lead,dev")
                 agent = service.create_participant("Parity agent", "agent", writable=True)
                 app = create_app(root, port=8765, service=service)
-                handoff = _set_feature_stage(page, "ready-for-dev", "dev", service)
+                handoff = with_tracks(_set_feature_stage(page, "ready-for-dev", "dev", service), DesignTracks("not-applicable", "done", NO_UI_TRACK_REASON, None))
+                technical = {"path": "knowledge/wiki/technical-design/F-001-document-review.md", "content": technical_design_page("F-001", ("backend",), ("AC-1", "AC-2"))}
                 requirement = _replace_body_section(
                     service, _journey_requirement_page("pending"), "API contract reference", "See [the API contract](../api-contracts/F-001.md) for the export endpoint."
                 )
-                without = [{"path": feature_relative, "content": handoff}, {"path": requirement_relative, "content": requirement.replace("See [the API contract](../api-contracts/F-001.md) for", "No contract exists for")}]
-                with_contract = [*without[:1], {"path": requirement_relative, "content": requirement}, {"path": contract_relative, "content": contract}]
+                without = [{"path": feature_relative, "content": handoff}, technical, {"path": requirement_relative, "content": requirement.replace("See [the API contract](../api-contracts/F-001.md) for", "No contract exists for")}]
+                with_contract = [without[0], technical, {"path": requirement_relative, "content": requirement}, {"path": contract_relative, "content": contract}]
                 try:
                     async with app.router.lifespan_context(app):
                         asgi = httpx2.ASGITransport(app=app)

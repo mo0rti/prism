@@ -55,9 +55,9 @@ The steps run in this order. Agent steps alternate between the two hosts by this
 | 3 | `po-clarify` | Claude | no open product-owner question |
 | 4 | `po-specify` | Codex | `specified`, `po` |
 | 5 | `po-handoff` | browser | `ready-for-design`, `tech-lead` |
-| 6 | `design-start` | browser | `in-design`, `tech-lead` |
+| 6 | `design-start` | browser | `in-design`, `tech-lead`; `design-tracks` initialized (UI track `not-applicable` for the backend-only scope, technical track `pending`) |
 | 7 | `design-clarify` | Claude | no open designer question |
-| 8 | `design-handoff` | Codex | `ready-for-dev`, `dev` (the developer's question stays open) |
+| 8 | `design-handoff` | Codex | `ready-for-dev`, `dev`; the technical track `done` with its technical design page, requirement pages generated (the developer's question stays open) |
 | 9 | `dev-clarify` | Claude | no open developer question |
 | 10 | `dev-start` | browser | `in-dev`, `dev` |
 | 11 | `dev-done` | Codex | `ready-for-qa`, `qa`, delivery evidence recorded |
@@ -83,7 +83,7 @@ A step runs on the state its predecessor leaves. `--steps` therefore seeds that 
 
 `fixtures/` is the default set: a backend-only feature whose API surface says `None.`, so no API contract page exists. `--fixtures <dir>` (or `PRISM_E2E_FIXTURES`) names a set that overlays it. A set holds `<step>/` folders in the layout of `fixtures/` and, optionally, `prompts/<step>.txt` files. Within a step a set's file replaces the default file with the same path; a step or a prompt the set does not hold comes from the default set. The report names the set.
 
-`fixtures-api-work/` is the second set: the feature's API surface declares one endpoint, so from `po-specify` on every state carries that text, and the states from `design-handoff` on hold the contract page (`agreed`, `implemented` after `dev-done`) and the requirement page that links it. Its prompts tell `po-specify` to record the endpoint, `dev-clarify` to leave the API surface alone and `dev-done` to mark the contract implemented. Start a run with it at `po-specify` or later: the earlier steps keep the default states and prompts. After `design-handoff` the journey also checks that the contract page exists at `agreed` and that the requirement page links it.
+`fixtures-api-work/` is the second set: the feature's API surface declares one endpoint, so from `po-specify` on every state carries that text, and the states from `design-handoff` on hold the contract page (`agreed`, `implemented` after `dev-done`) and the requirement page that links it. Its prompts tell `po-specify` to record the endpoint, `dev-clarify` to leave the API surface alone and `dev-done` to mark the contract implemented. Start a run with it at `po-specify` or later: the earlier steps keep the default states and prompts. After `design-handoff` the journey also checks that the contract page exists at `agreed` and that the requirement page links it. Every set holds the technical design page from `design-handoff` on.
 
 The unit tests validate both sets against the step table and the question tables. `python -B -m unittest tests.test_e2e_fixtures` (from the repository root) lints every state, previews the `design-handoff` and `dev-done` proposals against the real board service and runs the `dev-start` preflight.
 
@@ -94,7 +94,7 @@ After every apply the script checks, through the board's HTTP API and the worksp
 - the operation receipt reads `applied`;
 - the feature page and its status board row show the expected stage and owner;
 - `prism wiki lint` reports no error (the design handoff leaves the developer's open question as the one expected `unresolved-open-questions` error);
-- step-specific facts: intake folder moved, one question added and routed to the product owner, no open question left for the owner who clarified, an agreed API contract page that the requirement page links after a `design-handoff` of a feature whose API surface declares API work, delivery evidence recorded;
+- step-specific facts: intake folder moved, both design tracks settled with a technical design page after `design-handoff`, one question added and routed to the product owner, no open question left for the owner who clarified, an agreed API contract page that the requirement page links after a `design-handoff` of a feature whose API surface declares API work, delivery evidence recorded;
 - the host's records name the configured model and effort.
 
 An agent step also fails when the host times out or exits non-zero, when no preview was produced, when the agent applied during the preview run, or when it reported no preview ID that its own calls returned.

@@ -285,10 +285,14 @@ confirmation. `D` is the design owner of the feature's scope.
 |---|---|---|---|
 | `po-specify` | `raw` + `po` | `specified` + `po` | Author a canonical structured body from one raw page; give every criterion its ID and `applies-to`; preserve facts and represent unknowns as owned questions. |
 | `po-handoff` | `specified` + `po` | `ready-for-design` + `D` | Verify factual PO completeness and hand the specification to design. |
-| `design-start` | `ready-for-design` + `D` | `in-design` + `D` | Start design work after rereading the assigned feature. |
-| `design-handoff` | `ready-for-design` or `in-design` + `D` | `ready-for-dev` + `dev` | Verify design evidence, prepare app requirements and, when the API surface declares API work, create the agreed API contract. |
+| `design-start` | `ready-for-design` + `D` | `in-design` + `D` | Start design work after rereading the assigned feature, and write the initial design tracks. |
+| `design-ui-done` | `ready-for-design` or `in-design` + `D` | `in-design` + `D` | Settle the UI track: design pages that cover every app with a UI, or an exemption with a reason. |
+| `tech-design-done` | `ready-for-design` or `in-design` + `D` | `in-design` + `D` | Settle the technical track: the technical design page, its test strategy and, when the API surface declares API work, the agreed API contract. |
+| `design-handoff` | `ready-for-design` or `in-design` + `D` | `ready-for-dev` + `dev` | Verify both tracks are settled (settling either in the same confirmation), prepare app requirements, and write the API contract when it settles the technical track. |
 | `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` | Start implementation after rereading requirements and applicable API contracts. |
 | `dev-done` | `ready-for-dev` or `in-dev` + `dev` | the minimum of the app stages: `in-dev` + `dev`, or `ready-for-qa` + `qa` once every app has delivered | Record the delivery evidence of the apps it names: the artifact, tests and implementation for each. |
+| `dev-return-spec` | `ready-for-dev` or `in-dev` + `dev` | `specified` + `po` | Send the feature back to the PO: archive every evidence row, remove the design tracks and set the revalidation domains. |
+| `dev-return-design` | `ready-for-dev` or `in-dev` + `dev` | `in-design` + `D` | Send the feature back to design: archive every evidence row, set the affected tracks to `pending` and the other settled track to be reaffirmed. |
 | `scope-edit` | `ready-for-dev` up to `released` | the minimum of the app stages after the edit | Remove an app from the scope (the `feature-scope` skill from `ready-for-dev` on). |
 
 `/dev-start` and `/dev-done` also start development: `/dev-done` from `ready-for-dev` moves the
@@ -297,12 +301,15 @@ feature into development and records the delivery in the same write. Before `rea
 `ready-for-design` or `in-design`, sets the owner to the design owner of the new scope.
 
 The QA, release and return actions of the full lifecycle (QA verification, release, bug
-handling, and the routes back from development, QA and release) are registered but answer
+handling, and the routes back from QA and release) are registered but answer
 `action_unavailable` in this version of the board; a feature in `ready-for-qa` stays there.
 
 Each gated action needs a human who holds the role that approves it: `po` for `po-specify`,
-`po-handoff` and `scope-edit`; the design owner role for `design-start` and `design-handoff`;
-`dev` for `dev-start` and `dev-done`. The board checks the role when it applies the action.
+`po-handoff` and `scope-edit`; the design owner role for `design-start` and `design-handoff`, and
+`designer` for `design-ui-done` and `tech-lead` for `tech-design-done`; `dev` for `dev-start`,
+`dev-done` and the returns from implementation. A `design-handoff` that settles the UI track also needs
+`designer`, and one that settles the technical track `tech-lead`, on top of the design owner. The board checks
+the role when it applies the action.
 
 #### Common action protocol
 
@@ -342,10 +349,13 @@ refuses any other change (`lifecycle_frontmatter_scope`, `lifecycle_body_scope`,
 |---|---|---|---|
 | `po-specify` | `status`, `owner`, `criteria-high-water` | every section except the evidence sections, which exist and stay empty | none |
 | `po-handoff` | `status`, `owner`, `advisory-review`, `advisory-skip-reason`, `revalidation` | none | none |
-| `design-start` | `status`, `owner` | none | none |
-| `design-handoff` | `status`, `owner`, `revalidation` | none | requirement pages, the API contract |
+| `design-start` | `status`, `owner`, `design-tracks`, `design-reaffirm` | none | none |
+| `design-ui-done` | `status`, `owner`, `design-tracks` (`ui`, `ui-reason`; the first design action initializes both tracks), `design-reaffirm` | Design | this feature's `design/` pages |
+| `tech-design-done` | `status`, `owner`, `design-tracks` (`technical`, `technical-reason`; the first design action initializes both tracks), `design-reaffirm` | Design | `technical-design/F-XXX-*.md`, `api-contracts/F-XXX.md` |
+| `design-handoff` | `status`, `owner`, `revalidation`, `design-tracks` (the tracks it settles), `design-reaffirm` | Design | the pages of each track it settles (as the two track actions), requirement pages |
 | `dev-start` | `status`, `owner` | none | none |
 | `dev-done` | `status`, `owner`, `app-revalidation` | Delivery evidence (add rows) | the named apps' requirement pages (`status` to `done`), the API contract (`status` to `implemented` once every app has delivered) |
+| `dev-return-spec`, `dev-return-design` | `status`, `owner`, `revalidation`, `app-revalidation`, `design-tracks`, `design-reaffirm` | the evidence tables (remove every row) and Evidence history (one entry) | requirement pages and the API contract, only to a lower `status` |
 | `scope-edit` | `apps`, `status`, `owner`, `app-revalidation`, `criteria-high-water` | App scope; Acceptance criteria (three edits); the evidence tables and Evidence history | none |
 
 #### Specification and handoff boundaries
@@ -360,7 +370,7 @@ Evidence history) exist and stay empty, every criterion gets its ID and `applies
 spec checks below are satisfied before the feature becomes `specified`.
 An API surface other than an empty section or a plain statement that there is none
 (`None.`) declares API work and needs an API contract page before `dev-start`, which
-`design-handoff` creates, so `po-specify` writes `None.` unless the intake material or
+`tech-design-done` (or a `design-handoff` that settles the technical track) creates, so `po-specify` writes `None.` unless the intake material or
 an answered question states an API change. Open questions stay in the Open questions table, never in these
 sections.
 
@@ -382,26 +392,86 @@ open PO questions, and a nonblank skip reason when a proposed advisory skip is
 used. The proposal is evaluated without writing the pending advisory early. The destination
 owner is the design owner of the scope (`design_owner_mismatch` otherwise).
 
-#### Design owner
+#### Design owner and design tracks
 
-For an app with a UI (`has-ui`, `unknown` counting as a UI), `design-handoff` requires a design
-page that links the feature. A feature whose active apps have no UI has the `tech-lead` as its
-design owner and needs no design page. The scope decides the owner, so a scope edit at
+The design owner `D` is `designer` while an active app in the feature's `apps` has a UI (`has-ui`,
+`unknown` counting as a UI) and `tech-lead` otherwise. The scope decides the owner, so a scope edit at
 `ready-for-design` or `in-design` moves the owner to the design owner of the new scope.
 
-#### API contract at design handoff
+From the first design action on, the feature page carries `design-tracks` and `design-reaffirm`:
 
-When the feature's API surface declares API work and no API contract exists for it,
-`design-handoff` creates `api-contracts/F-XXX.md` as a new page with `status:
-agreed`; the user confirming the handoff preview is the agreement. The page is
-written only from the API surface: each endpoint as `METHOD /path`, using the paths
+```yaml
+design-tracks:
+  ui: pending              # pending | done | not-applicable
+  technical: done          # pending | done | not-applicable
+  ui-reason: "..."         # only with ui: not-applicable
+  technical-reason: "..."  # only with technical: not-applicable
+design-reaffirm: []        # [ui] | [technical] | [ui, technical]
+```
+
+- The first design action writes `technical: pending` and `ui: pending`, or `ui: not-applicable` with the
+  reason `No app in scope has a UI.` when every active scoped app has `has-ui: false`. The keys are absent
+  before design starts and after a return to `specified`; they are required from `in-design` on
+  (`design-tracks-missing`, `design-tracks-invalid`).
+- `ui` is settled by `design-ui-done` (design pages in `design/` whose `apps` together cover every active app with a UI:
+  `design-coverage-incomplete`) or `not-applicable` with a non-blank `ui-reason` (`ui-exemption-reason-required`).
+  `unknown` counts as a UI, so only the designer's explicit exemption makes the track `not-applicable` for such an app.
+- `technical` is settled by `tech-design-done`: a complete technical design page in `technical-design/`
+  (`technical-design-incomplete`) whose Test strategy names every criterion ID (`test-strategy-incomplete`), the agreed
+  API contract when the API surface declares API work, and an active app that serves an API; or `not-applicable` with a
+  non-blank `technical-reason` and no declared API work (`technical-track-required`).
+- `design-handoff` needs both tracks settled and `design-reaffirm` empty after the proposal
+  (`design-tracks-incomplete`, `design-reaffirm-pending`), and each track it settles passes that track's checks. It writes
+  the pages of a track only when it settles that track, and the API contract only when it settles the technical track.
+  `ready-for-dev` and later need both tracks settled (blocker `design-track-pending`).
+- The track pages (`design/` for `ui`; `technical-design/` and the API contract for `technical`) are writable while
+  `design-tracks` is absent and at `ready-for-design` or `in-design`, and locked from `ready-for-dev` on
+  (`track_page_locked`), except a contract `status` change by `dev-done` or a return. Changing the pages of a settled
+  track sets that track to `pending` in the same proposal (without its reason) and lists the other track in
+  `design-reaffirm` when it is `done` (`track_reset_required`); `design-clarify` and `design-intake` do this when they
+  change such a page. The other track's action, run with no page change, removes its entry. Each track action writes only
+  the keys and pages of its own track (`track_scope`).
+- A scope change at `ready-for-design` or `in-design` sets every settled track back to `pending` and applies the no-UI
+  initialization again. A return to `in-design` sets the affected tracks (named in the Evidence history entry) to `pending`
+  and lists every other `done` track in `design-reaffirm`; a return to `specified` removes both keys.
+
+#### API contract
+
+When the feature's API surface declares API work, `tech-design-done` (or a `design-handoff` that
+settles the technical track with the `tech-lead` role) creates `api-contracts/F-XXX.md` as a new page with
+`status: agreed` and `version: 1`; the user confirming the preview is the agreement, and no other action writes a
+contract body. The page is written only from the API surface: each endpoint as `METHOD /path`, using the paths
 the API surface names (or, when it names none, a resource word it uses), and only data
-models that the API surface or a listed endpoint names. The handoff writes no
-contract when the API surface declares none, never rewrites an existing contract, and
-creates no second contract for a feature that a linked or existing page already covers.
+models that the API surface or a listed endpoint names. No contract is written
+when the API surface declares none, and a feature has one contract: a linked or existing page that already covers
+the feature is not duplicated.
+A contract changes after its creation only as a revision while the feature is in design: `version` plus one, a changed body
+and `status: agreed` (`contract_revision_required` for a changed body without the bump). A revision is refused with
+`shared_contract_in_use` while another feature that links the contract has an app between `ready-for-dev` and
+`ready-for-release`; that feature returns first with `dev-return-design`.
+The contract has a digest, `c1:` and the SHA-256 of `[1, feature ID, version, sections]`, with the body's sections as
+heading and text pairs (NFC, whitespace collapsed); front matter other than `version` is not part of it. Delivery evidence
+cites it as `F-XXX@v<version>:c1:<digest>`, and the board reports that citation beside the contract page. A delivery row
+that cites another contract, a revised one or `none` for a feature with a contract is `contract_binding_stale`.
 Requirement pages link the contract in `## API contract reference`. `dev-start` accepts
 an `agreed` contract and blocks on a `draft` one; `dev-done` marks the contract
-`implemented` once every app has delivered.
+`implemented` once every app has delivered, which keeps its digest.
+
+#### Requirement pages at handoff
+
+`design-handoff` leaves exactly one requirement page per scoped app (`requirements_incomplete`). A missing page is
+created `pending`. An existing `pending` or `in-progress` page may change its body sections and is set to `pending`. A
+`done` page stays unchanged (`requirement_body_change`).
+
+#### Returns from implementation
+
+`dev-return-spec` and `dev-return-design` send a feature at `ready-for-dev` or `in-dev` back while no app is in QA or beyond.
+One `## Evidence history` entry (`### <preview day> - <action>`) lists every app as affected, no participants, the affected
+tracks (`ui, technical` for a return to `specified`), every evidence row archived verbatim, and each requirement or contract
+page lowered. The same write sets `revalidation` (`specification`, `design`, `technical-design` for `specified`; `design`,
+`technical-design` for `in-design`) and `app-revalidation` (`implementation`, `tests`, `qa`, `release` for every app),
+merged with what is pending (`revalidation_required`), and resets the tracks as the previous section says. A feature of
+which some apps are released and others not is refused with `partial_release_requires_new_feature`.
 
 API work needs an app that serves an API: when the API surface declares API work, at
 least one active app in the feature's `apps` must have the `serves-api` capability

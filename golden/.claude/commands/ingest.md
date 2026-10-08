@@ -40,7 +40,7 @@ joined by hyphens. The connected board rejects any other name.
 6. **Summarize your interpretation:**
    - Which pages does this input create? List each by kind and proposed title.
    - Which existing topic, research, plan, direction or roadmap pages does it replace in place?
-   - Which new features, personas, business rules or decisions does it introduce?
+   - Which new features, personas, business rules or decisions does it introduce, and which technical design page does it create or replace?
    - What is ambiguous or unclear that you could not resolve?
    - For each new feature: does it appear to need an advisory board review?
 
@@ -63,6 +63,12 @@ joined by hyphens. The connected board rejects any other name.
    - A persona, business rule or decision: create it; never rewrite an existing one. A new
      decision replaces an older one only through the decision-supersession workflow in
      `SCHEMA.md`.
+   - Technical design notes for an existing feature: create `knowledge/wiki/technical-design/[F-XXX]-[slug].md`
+     in the format of its folder, or replace that feature's page in place. This is allowed only
+     while the feature is before `ready-for-dev` and its technical track is `pending` or the
+     feature has no design tracks yet (`track_page_locked`, `track_reset_required`); a settled
+     technical track is changed with `/design-clarify`, which sets it back to `pending`.
+     Ingest settles no track: `/tech-design-done` does.
    - A feature: assign the next available feature ID and create
      `knowledge/wiki/features/[F-XXX]-[slug].md` with `status: raw` and `owner: po`, under
      the `/po-intake` rules: the Summary, User story, Acceptance criteria, Open questions
@@ -90,6 +96,7 @@ joined by hyphens. The connected board rejects any other name.
 
 - write-capable skill
 - never rewrite an existing feature, persona, business rule or decision, and never edit a processed intake item; corrected material is a new dated pending folder
+- a technical design page is the one feature-related page ingest may replace in place, while the feature's technical track is `pending` or the feature has no tracks yet
 - Do not invent requirements not present in the input. Mark gaps as open questions on a
   feature and as `**Unknown:**` items on other pages.
 - Update or conflict: a source that refines a claim, or replaces an Observed claim with a newer

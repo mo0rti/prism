@@ -1,6 +1,6 @@
 # Design Clarify
 
-Use this skill to work through open designer-owned questions one feature at a time.
+Use this skill to work through open designer-owned and tech-lead-owned questions one feature at a time.
 
 ## Usage
 
@@ -8,11 +8,11 @@ Use this skill to work through open designer-owned questions one feature at a ti
 
 ## Workflow
 
-Identical in structure to `/po-clarify` but filters for open questions where owner = `designer`.
+Identical in structure to `/po-clarify` but filters for open questions where owner = `designer` or `tech-lead`.
 
 1. Read `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
 2. Read all files in `knowledge/wiki/features/`
-3. Collect all open questions where owner = `designer` and status = `open`
+3. Collect all open questions where owner = `designer` or `tech-lead` and status = `open`
 4. Present questions grouped by feature, one feature at a time
 5. For each answer:
    - Update the open questions table in the feature file
@@ -20,8 +20,21 @@ Identical in structure to `/po-clarify` but filters for open questions where own
      feature has no design page, record the answer in the question table only and tell the
      user that design intake can attach a page later
    - If the answer resolves a design state gap, update the design page's "States covered" section
-6. Update the feature's row in `status-board.md` if any feature status changes
-7. Append a `log.md` entry in the log format that the wiki schema defines, with a summary of questions resolved
+   - If the answer settles a technical decision, update the matching section of the technical design
+     page (architecture impact, data model and migrations, security and privacy, non-functional
+     requirements, risks, decisions or test strategy); when the feature has no technical design page,
+     record the answer in the question table only
+6. Track pages and tracks. The design pages belong to the `ui` track and the technical design page and the
+   API contract to the `technical` track (the contract changes only through `/tech-design-done`).
+   They are writable while the feature is `ready-for-design` or `in-design`, and locked from `ready-for-dev` on
+   (`track_page_locked`; send the feature back with `dev-return-design` first). When a page of a track that is
+   `done` (or `not-applicable`) changes, the same proposal sets that track back to `pending` in the feature's
+   `design-tracks` (and removes its `ui-reason` or `technical-reason`), removes it from `design-reaffirm`, and adds
+   the other track to `design-reaffirm` when that one is `done`; the board rejects any other result
+   (`track_reset_required`). The owner of the track then settles it again with `/design-ui-done` or
+   `/tech-design-done`. A feature whose tracks are still absent (before design started) gets none.
+7. Update the feature's row in `status-board.md` if any feature status changes
+8. Append a `log.md` entry in the log format that the wiki schema defines, with a summary of questions resolved
 
 ## Rules
 
@@ -30,15 +43,15 @@ Identical in structure to `/po-clarify` but filters for open questions where own
 - after each answer, confirm what you updated before moving to the next question
 - questions tagged "[Board: ...]" came from a board review: flag them clearly and treat them as high priority, because they represent domain expert concerns the designer must address
 - update the design page when answers resolve previously missing UI states
-- turn a short answer into a complete sentence before it goes into the design page: build the sentence from the
+- turn a short answer into a complete sentence before it goes into the design page or the technical design page: build the sentence from the
   question's own wording and keep the answer's words unchanged inside it, so the board can trace it. A
   bare `yes`, `no` or `30 days` is never the whole text of a bullet, cell or paragraph. Question
   "Can the export run inside the request?" answered `yes` becomes "The export can run inside the
   request: yes."; question "How long are comments kept?" answered `30 days` becomes "Comments are kept
   for 30 days." The Status cell of the question keeps the answer as the human gave it
 - change nothing else on the page: copy every other line and section exactly as `read_workspace` returned it, including the file's final newline
-- on the feature page change only the Open questions table; leave every other section,
-  including Acceptance criteria and App scope, exactly as it is; design detail belongs on the design page
+- on the feature page change only the Open questions table and, when a track page changes, the design tracks; leave every other section,
+  including Acceptance criteria and App scope, exactly as it is; design detail belongs on the design page and technical detail on the technical design page
 - if one feature hits a contradiction, stop updates for that feature only
 - do not stop the whole clarify session unless the user asks to stop
 - write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
@@ -48,11 +61,11 @@ Identical in structure to `/po-clarify` but filters for open questions where own
 Return:
 
 - current feature being clarified
-- open designer questions for that feature
-- design-page and feature-file updates made from each answer
+- open designer and tech-lead questions for that feature
+- design-page, technical-design-page and feature-file updates made from each answer, and any track set back to `pending`
 - final summary of questions resolved
 
 ## Error and stop conditions
 
-- if there are no open designer questions, return a clean empty-state response
+- if there are no open designer or tech-lead questions, return a clean empty-state response
 - if the feature has no design page, still record each answer in the feature's Open questions table, report that the design-page update is skipped because no design page exists (design intake attaches one), and continue with the next feature unless the user wants to stop

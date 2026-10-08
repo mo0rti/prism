@@ -15,7 +15,7 @@ from prism_cli.board_service import BoardError, BoardService
 from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_model import parse_delivery_rows, release_evidence_problem
-from prism_cli.wiki_transitions import ACTION_SPECS, build_board_transition_preflight, build_transition_preflight
+from prism_cli.wiki_transitions import ACTION_SPECS, RETIRED_ALLOWED_ACTIONS, build_board_transition_preflight, build_transition_preflight
 from prism_cli.workspace import MANIFEST_FILE, load_workspace
 from tests import app_model_baseline
 from tests import real_temp  # noqa: F401
@@ -599,11 +599,17 @@ class RetirementScopeTests(RetirementWorkspaceCase):
         self.assertEqual(0, self.retire("--apply", "--yes")[0])
         actions = [spec for spec in ACTION_SPECS if spec.enabled and spec.copy]
         self.assertGreaterEqual(len(actions), 6)
+        self.assertIn("dev-return-design", {spec.action for spec in actions})
         for spec in actions:
             with self.subTest(action=spec.action):
                 status, owner = spec.resolved_sources("designer")[0]
                 self.write_feature(["customer-android", "partner-android"], status=status, owner=owner)
                 transition = build_transition_preflight(self.root, "F-001", action=spec.action)["facts"]["transition"]
+                if spec.action in RETIRED_ALLOWED_ACTIONS:
+                    # The routes that send a feature back are the way out of a retired app: it never blocks them.
+                    self.assertFalse(any(item["code"] == "app-retired-in-scope" for item in transition["checks"]))
+                    self.assertEqual("pass", next(item for item in transition["checks"] if item["code"] == "app-scope")["status"])
+                    continue
                 blocked = next(item for item in transition["checks"] if item["code"] == "app-retired-in-scope")
                 self.assertEqual("blocked", blocked["status"])
                 self.assertIn("`partner-android`", blocked["message"])

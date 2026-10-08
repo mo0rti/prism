@@ -22,6 +22,7 @@ from prism_cli.workflow_assets import _load as load_workflow_asset
 from tests import app_model_baseline
 from tests import real_temp  # noqa: F401
 from prism_cli.wiki_model import app_stages_text
+from tests.design_tracks import ensure_tracks
 from tests.wiki_files import evidence_tables, write_index, write_status_board
 from tests.test_app_model_workspace import declare_two_apps, install_workflow
 
@@ -73,6 +74,10 @@ As an operator, I want a payout summary, so that I can review it.
 """
 
 
+# The UI track settled by design pages, and the technical track settled by a reason.
+UI_DONE = "design-tracks:\n  ui: done\n  technical: not-applicable\n  technical-reason: The feature changes no architecture.\ndesign-reaffirm: []\n"
+
+
 class WikiWorkspaceCase(unittest.TestCase):
     """A disposable wiki workspace whose manifest declares the apps a test needs."""
 
@@ -112,7 +117,7 @@ class WikiWorkspaceCase(unittest.TestCase):
             + FEATURE_BODY.format(scope=scope, api=api, criterion_apps=", ".join(apps))
         )
         path = self.wiki / "features" / "F-001-payout-summary.md"
-        path.write_text(text, encoding="utf-8")
+        path.write_text(ensure_tracks(text, status), encoding="utf-8")
         write_status_board(self.root, f"| F-001 | Payout summary | {status} | {owner} | not-needed |\n")
         write_index(self.root)
         return path
@@ -123,9 +128,9 @@ class WikiWorkspaceCase(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def write_design(self) -> None:
+    def write_design(self, apps: list[str] | tuple[str, ...] = ("customer-android",)) -> None:
         (self.wiki / "design" / "F-001-payout-summary.md").write_text(
-            "---\nfeature-id: F-001\ntitle: Payout summary\nfigma: not applicable\n---\n\n## Summary\nThe summary screen.\n",
+            f"---\nfeature-id: F-001\ntitle: Payout summary\napps: [{', '.join(apps)}]\nfigma: not applicable\n---\n\n## Summary\nThe summary screen.\n",
             encoding="utf-8",
         )
 
@@ -169,21 +174,27 @@ class TwoAppsOfOneStackTests(WikiWorkspaceCase):
         self.assertNotIn("customer-android", blocked["message"])
 
     def test_both_apps_fire_the_design_gate_because_of_has_ui(self) -> None:
-        self.write_feature(["customer-android", "partner-android"])
+        self.write_feature(["customer-android", "partner-android"], extra=UI_DONE)
         self.write_requirement("customer-android")
         self.write_requirement("partner-android")
 
-        design = self.with_code(self.lint(), "missing-design")
+        design = self.with_code(self.lint(), "design-coverage-incomplete")
 
         self.assertEqual(1, len(design))
         self.assertIn("customer-android", design[0].message)
         self.assertIn("partner-android", design[0].message)
-        self.write_feature(["customer-android", "partner-android"], status="in-design", owner="designer")
-        self.assertEqual("blocked", self.check("design-handoff", "design")["status"])
+        self.write_feature(["customer-android", "partner-android"], status="in-design", owner="designer", extra=UI_DONE)
+        self.assertEqual("blocked", self.check("design-handoff", "design-coverage-incomplete")["status"])
 
-        self.write_feature(["customer-android", "partner-android"])
-        self.write_design()
-        self.assertEqual([], self.with_code(self.lint(), "missing-design"))
+        self.write_feature(["customer-android", "partner-android"], extra=UI_DONE)
+        self.write_design(["customer-android", "partner-android"])
+        self.assertEqual([], self.with_code(self.lint(), "design-coverage-incomplete"))
+        # A page that lists only one of the apps leaves the other uncovered.
+        self.write_design(["customer-android"])
+        partial = self.with_code(self.lint(), "design-coverage-incomplete")
+        self.assertEqual(1, len(partial))
+        self.assertIn("partner-android", partial[0].message)
+        self.assertNotIn("customer-android", partial[0].message)
 
     def test_the_app_scope_section_lists_every_scoped_app_by_id(self) -> None:
         path = self.write_feature(["customer-android", "partner-android"], status="specified", owner="po")
@@ -237,26 +248,26 @@ class CapabilityGateTests(WikiWorkspaceCase):
 
         result = self.lint()
 
-        self.assertEqual([], self.with_code(result, "missing-design"))
+        self.assertEqual([], self.with_code(result, "design-coverage-incomplete"))
         self.write_feature(["batch"], status="in-design", owner="tech-lead")
-        self.assertEqual("pass", self.check("design-handoff", "design")["status"])
+        self.assertEqual("pass", self.check("design-handoff", "ui-track")["status"])
         self.assertEqual([], self.with_code(result, "app-capability-unknown"))
 
     def test_an_unknown_ui_capability_counts_as_true_and_is_reported_once(self) -> None:
         self.declare([other_app("batch", **{"has-ui": "unknown", "serves-api": False})])
-        self.write_feature(["batch"])
+        self.write_feature(["batch"], extra=UI_DONE)
         self.write_requirement("batch")
 
         result = self.lint()
 
-        self.assertEqual(1, len(self.with_code(result, "missing-design")))
+        self.assertEqual(1, len(self.with_code(result, "design-coverage-incomplete")))
         unknown = self.with_code(result, "app-capability-unknown")
         self.assertEqual(1, len(unknown))
         self.assertEqual("info", unknown[0].severity)
         self.assertIn("`batch`", unknown[0].message)
         self.assertIn("`has-ui`", unknown[0].message)
-        self.write_feature(["batch"], status="in-design", owner="designer")
-        self.assertEqual("blocked", self.check("design-handoff", "design")["status"])
+        self.write_feature(["batch"], status="in-design", owner="designer", extra=UI_DONE)
+        self.assertEqual("blocked", self.check("design-handoff", "design-coverage-incomplete")["status"])
 
     def test_one_information_finding_per_app_and_capability(self) -> None:
         self.declare([other_app("one", **{"has-ui": "unknown", "serves-api": "unknown"}), other_app("two", **{"has-ui": "unknown", "serves-api": True})])
@@ -270,16 +281,20 @@ class CapabilityGateTests(WikiWorkspaceCase):
 
     def test_an_app_with_an_unknown_ui_needs_a_design_page_and_no_exemption_exists(self) -> None:
         self.declare([other_app("batch", **{"has-ui": "unknown", "serves-api": False})])
-        self.write_feature(["batch"], extra="design: not-applicable\ndesign-exemption-reason: The tool has no screens.\n")
+        self.write_feature(["batch"], extra=UI_DONE + "design: not-applicable\ndesign-exemption-reason: The tool has no screens.\n")
         self.write_requirement("batch")
 
         result = self.lint()
 
-        self.assertEqual(1, len(self.with_code(result, "missing-design")))
+        self.assertEqual(1, len(self.with_code(result, "design-coverage-incomplete")))
         self.assertEqual(2, len(self.with_code(result, "unsupported-feature-field")))
-        self.write_feature(["batch"])
-        self.write_design()
-        self.assertEqual([], self.with_code(self.lint(), "missing-design"))
+        self.write_feature(["batch"], extra=UI_DONE)
+        self.write_design(["batch"])
+        self.assertEqual([], self.with_code(self.lint(), "design-coverage-incomplete"))
+        # The explicit exemption is the track's own: a reason on the UI track settles it with no design page.
+        self.write_feature(["batch"], extra="design-tracks:\n  ui: not-applicable\n  technical: not-applicable\n  ui-reason: The tool has no screens.\n  technical-reason: No architecture change.\ndesign-reaffirm: []\n")
+        (self.wiki / "design" / "F-001-payout-summary.md").unlink()
+        self.assertEqual([], self.with_code(self.lint(), "design-coverage-incomplete"))
 
     def test_the_api_contract_check_follows_the_api_surface_for_every_app(self) -> None:
         """The API-contract check reads the feature's API surface, never an app ID or stack; an app that serves an API needs the contract once the surface declares work."""

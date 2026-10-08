@@ -1,14 +1,18 @@
 {# Generated from template-skills/design-handoff/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 ---
 name: design-handoff
-description: Move a feature from design to development readiness. Use when validating design completeness, advisory review state, and generating app requirements for a confirmed feature.
+description: Move a feature from design to development readiness. Use when both design tracks are settled and the feature should be handed to development with generated app requirements.
 ---
 
 # Design handoff — move a feature to ready-for-development
 
 <!-- prism:design-handoff-contract:v2 -->
 
-Use this skill to move one feature into `ready-for-dev` and generate app requirements.
+Use this skill to move one feature into `ready-for-dev` and generate app requirements. The feature
+has two design tracks, `ui` and `technical`. This skill needs both settled (`done` or
+`not-applicable`) and `design-reaffirm` empty after the handoff; it may settle either track in the
+same confirmation, and `$design-ui-done` and `$tech-design-done` settle one track
+each beforehand.
 
 ## Usage
 
@@ -34,21 +38,26 @@ and never authorizes a write.
 1. Resolve exactly one `knowledge/wiki/features/[F-XXX]-[slug].md` source file
    and require `status: ready-for-design` or `in-design` with `owner` the design owner of the scope (`designer` while an active
    app has a UI, otherwise `tech-lead`).
-2. Read SCHEMA, LIFECYCLE, `status-board.md`, the complete feature, linked design/context, workspace
-   identity, current requirements/API/advisory evidence, and active revalidation.
-3. Determine whether the feature's scope includes an app with a UI. Read each scoped app's
-   `has-ui` capability from `prism.workspace.yml` or `prism app list`; `unknown` counts as true:
-   - With a UI: apps whose `has-ui` is true (Android, iOS and web apps by default)
-   - Without a UI: apps whose `has-ui` is false (a backend by default), API-only features, infra changes, internal tooling
-4. Run completeness check:
-   - **If an app with a UI is in scope:**
-     - A design page linked in the `## Design` section
-     - Design coverage for all UI states implied by acceptance criteria
-   - **If no app with a UI is in scope (backend/API/infra):**
-     - Design page is not required — skip design coverage check
-   - For all features: no open questions with owner = `po`, `designer` or `tech-lead`. An open question
-     with owner = `dev` does not block this handoff; it stays open for `$dev-clarify`
-   - Status of `ready-for-design` or `in-design` and owner the design owner
+2. Read SCHEMA, LIFECYCLE, `status-board.md`, the complete feature, linked design and technical design pages,
+   workspace identity, current requirements/API/advisory evidence, and active revalidation.
+3. Read the feature's `design-tracks` and `design-reaffirm`. Each track is one of:
+   - settled (`done`, or `not-applicable` with its reason) and not listed in `design-reaffirm`: nothing to do;
+   - settled and listed in `design-reaffirm`: the other track changed since; the handoff reaffirms it only
+     with the owner's confirmation and no page change;
+   - `pending`, or absent before design started: the handoff settles it in this confirmation, or stops.
+4. For a track the handoff settles, run that track's completeness check, the same as its own skill:
+   - **`ui`**: design pages in `knowledge/wiki/design/` whose `apps` cover every active scoped app with
+     `has-ui` true or unknown (`unknown` counts as a UI), covering the UI states the acceptance criteria
+     imply; or `not-applicable` with a non-blank `ui-reason` (`design-coverage-incomplete`,
+     `ui-exemption-reason-required`). When no active app has a UI the track is `not-applicable` already.
+   - **`technical`**: a complete technical design page in `knowledge/wiki/technical-design/` whose Test
+     strategy names every criterion ID, and, when `## API surface` declares API work, the `agreed` API
+     contract; or `not-applicable` with a non-blank `technical-reason` and no API work
+     (`technical-design-incomplete`, `test-strategy-incomplete`, `technical-track-required`).
+   Settling a track needs the role of that track on top of the design owner: `designer` for `ui`,
+   `tech-lead` for `technical`. For all features: no open questions with owner = `po`, `designer` or
+   `tech-lead`. An open question with owner = `dev` does not block this handoff; it stays open for
+   `$dev-clarify`.
 5. Check `advisory-review` field:
    - If `pending`: board review has not been run. Inform the user. Ask:
      "Do you want to run board-review F-XXX before handing to development?"
@@ -59,48 +68,55 @@ and never authorizes a write.
    - If `done`: check that the board review's "Actions required before dev starts"
      checklist has been addressed. If items remain open, list them and ask how to proceed.
 6. Check active `revalidation` domains. An active `specification` domain blocks
-   this handoff. If `design` is active, prepare a fresh design verification and
-   propose clearing only that domain; evaluate the proposal while the source is
+   this handoff. If `design` or `technical-design` is active, prepare a fresh verification of that track
+   and propose clearing only those domains; evaluate the proposal while the source is
    unchanged. Do not clear other domains or shared contracts here.
 7. If the completeness check fails, list what is missing and stop
 8. If the check passes:
-   - Show the user: status → `ready-for-dev`, owner → `dev`
+   - Show the user: status → `ready-for-dev`, owner → `dev`, and the tracks the handoff settles
    - Wait for confirmation
-   - Update feature file frontmatter only: change `status` and `owner`
-     (and clear the verified `design` revalidation domain). Leave every body section,
-     including `## Design`, exactly as it is; the service rejects any other change
-   - Generate app-requirements pages for all apps in scope, incorporating
-     design decisions and any board review findings relevant to implementation
-   - If the feature's `## API surface` declares API work (anything other than an empty
-     section or a plain statement that there is none, such as `None.`) and no API
-     contract exists for the feature, create `knowledge/wiki/api-contracts/F-XXX.md` as
-     a new page (see "API contract" below)
-   - Update the feature's row in `status-board.md`, add the `index.md` line of each requirement and API contract page created, and append a `log.md` entry in the log format that the wiki schema defines
+   - Update the feature file frontmatter: `status` and `owner`, the `design-tracks` the handoff settles
+     (and `design-reaffirm`), and the verified `design` and `technical-design` revalidation domains.
+     The `## Design` section may change; every other body section stays exactly as it is, and
+     the service rejects any other change
+   - Write the pages of each track the handoff settles, as its own skill would (design pages for `ui`,
+     the technical design page and the API contract for `technical`). A page of a track the handoff does not
+     settle is not written
+   - Write the requirement pages (below) incorporating design decisions and any board review findings
+     relevant to implementation
+   - Update the feature's row in `status-board.md`, add the `index.md` line of each page created, and append a `log.md` entry in the log format that the wiki schema defines
 
-Before confirmation show every feature, generated requirement, status board, index, and log
+Before confirmation show every feature, generated page, status board, index, and log
 write. Reread the source and context immediately before confirmation and once
 again after it. The preflight and any copied request are copy-only and never
 authorize a write. Decline or cancel means no write. If a multi-file write is partial,
 report the exact observed state and require fresh recovery; no transaction is
 implied.
 
+## Requirement pages
+
+The feature leaves the handoff with exactly one requirement page per scoped app, in
+`knowledge/wiki/app-requirements/F-XXX-[app].md`:
+
+- missing for a scoped app: create it with `status: pending`;
+- existing at `pending` or `in-progress`: it may change its body sections (What to build, Technical
+  constraints, Design reference, API contract reference, Acceptance criteria, Dependencies) and is set to `pending`;
+- existing at `done`: leave it unchanged; the board rejects a change with `requirement_body_change`.
+
 ## API contract
 
-The API contract page is created here, never later and never by hand, so `$dev-start`
-finds it. The user who confirms this handoff is the one who agrees it.
+The contract belongs to the technical track. Only a handoff that settles the technical track writes
+a contract page, and only `$tech-design-done` or this skill with the `tech-lead` role does
+(`lifecycle_write_scope` otherwise). See `$tech-design-done` for its rules: created once at
+`version: 1`, `status: agreed`; revised only while the feature is in design, with `version` raised by
+one (`contract_revision_required`) and not while another feature that links it is between
+`ready-for-dev` and `ready-for-release` (`shared_contract_in_use`); written only from the API surface
+text, each endpoint as `METHOD /path`.
 
-- Create it only when `## API surface` declares API work and no contract for the feature
-  exists yet. When the API surface says there is none, write no contract page.
-- Frontmatter `feature-id: F-XXX`, `version: 1`, `status: agreed`; sections `## Endpoints`,
-  `## Data models`, `## Authentication requirements` and `## Notes` (format in
-  `knowledge/wiki/api-contracts/_FORMAT.md`).
-- Write it only from the API surface text: list each endpoint as `METHOD /path`, use the
-  paths the API surface names, and define only data models that the API surface or a
-  listed endpoint names. Add no endpoint, model or behavior the API surface does not state;
-  an API surface that is too vague to write from needs `ask` and `po-clarify` or
-  `dev-clarify` first.
+- Write it only from the API surface text. An API surface that is too vague to write from needs `ask` and
+  `po-clarify` or `dev-clarify` first.
 - Link the page from each generated requirement's `## API contract reference`.
-- Never rewrite an existing contract page: leave it out of the write set.
+- Never rewrite an existing contract page unless the technical track is settled in this handoff.
 - API work needs an app that serves an API: at least one active app in the feature's
   `apps` must have the `serves-api` capability (`unknown` counts as serving one).
   Otherwise the handoff is blocked with `api-surface-without-api-app` (`api_surface_without_api_app`
@@ -134,11 +150,11 @@ finds it. The user who confirms this handoff is the one who agrees it.
 
 Return:
 
-- completeness result
+- completeness result and the state of each design track
 - advisory-review result
 - any blocking missing items
-- proposed status and owner change
-- generated app-requirements targets and the API contract page, if one is required, after confirmation
+- proposed status and owner change, and the tracks the handoff settles
+- generated app-requirements targets and the pages of each settled track, after confirmation
 
 ## Error and stop conditions
 

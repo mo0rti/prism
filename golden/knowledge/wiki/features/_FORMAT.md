@@ -15,6 +15,13 @@ advisory-review: not-needed | pending | done | skipped
 advisory-skip-reason: [reason]
 # The highest acceptance-criterion number ever assigned; required from `specified` on:
 criteria-high-water: 3
+# From the first design action on (absent before design starts and after a return to `specified`):
+design-tracks:
+  ui: pending            # pending | done | not-applicable
+  technical: pending     # pending | done | not-applicable
+  ui-reason: "..."       # only with ui: not-applicable
+  technical-reason: "..." # only with technical: not-applicable
+design-reaffirm: []      # [ui] | [technical] | [ui, technical]
 # Omit or use [] until a return or reopen marks domains for fresh evidence:
 revalidation: [specification | design | technical-design]
 # Per app, the domains that need fresh evidence:
@@ -129,6 +136,29 @@ surface text other than `None.` declares API work and needs an API contract page
 change. Keep open questions in the Open questions table, never in these sections. A later
 action replaces that line with its real content.
 
+## Design tracks
+
+A feature in design has two tracks under one owner, the design owner (`designer` while an active app has a
+UI, otherwise `tech-lead`). `ui` covers the design pages and `technical` the technical design page and the API
+contract. Each track is `pending`, `done` or `not-applicable`; `not-applicable` carries a non-blank reason
+(`ui-reason`, `technical-reason`).
+
+- The first design action (`design-start`, `design-ui-done`, `tech-design-done` or `design-handoff`) writes
+  `technical: pending` and `ui: pending`, or `ui: not-applicable` with the reason `No app in scope has a UI.`
+  when every active app has `has-ui: false`. `unknown` counts as a UI, so only an explicit exemption by the
+  designer makes the UI track `not-applicable` for such an app. `design-reaffirm` is written with the tracks.
+- `design-ui-done` sets `ui` (needs design pages whose `apps` cover every app with a UI, or a reason).
+  `tech-design-done` sets `technical` (needs a complete technical design page whose Test strategy names every
+  criterion, the agreed API contract when the API surface declares API work, or a reason and no API work).
+  `design-handoff` needs both settled and `design-reaffirm` empty, and may settle either track in the same
+  confirmation. `ready-for-dev` and later need both tracks settled (`design-track-pending`).
+- Changing the pages of a settled track sets that track back to `pending` in the same write and lists the
+  other track in `design-reaffirm` when it is `done` (`track_reset_required`). The other track's action, run
+  with no page change, removes its entry. A scope change in design sends every settled track back to `pending`.
+  The track pages are locked from `ready-for-dev` on (`track_page_locked`).
+- A return to `specified` removes both keys. A return to `in-design` sets the affected tracks to `pending` and
+  lists every other `done` track in `design-reaffirm`.
+
 ## Evidence tables
 
 A feature at `in-dev` or later carries its evidence in three tables. Each app has its own rows,
@@ -137,7 +167,9 @@ so one app can be in QA while another is still in development.
 - **Delivery evidence**: one row per app that delivered. `Artifact` is `version:1.4.0`,
   `build:backend#412`, `image:registry/app@sha256:<64 hex digits>`, `package:name@1.4.0` or
   `commit:<7 to 40 hex digits>`; the board checks the form, never that the artifact exists.
-  `Contract` is `none` or `F-XXX@v<version>:c1:<digest>` once the feature has an API contract.
+  `Contract` is `none` when the feature has no API contract, otherwise the citation of the current contract,
+  `F-XXX@v<version>:c1:<digest>`, as the board reports it beside the contract page (`contract_binding_stale`
+  when the contract changed since).
   `Implementation` and `Tests` are substantive references. `Basis` is `checked` (the proposer
   verified the references) or `attested` (the approving human vouches for them).
 - **QA verification**: one row per app, or an `integration:app+app` row for criteria that two

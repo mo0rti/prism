@@ -1459,6 +1459,386 @@ def parse_evidence_history(body: str) -> list[HistoryEntry]:
     return entries
 
 
+# --- Design tracks -------------------------------------------------------------------------------------------------
+
+DESIGN_TRACKS = ("ui", "technical")
+TRACK_STATES = ("pending", "done", "not-applicable")
+NO_UI_TRACK_REASON = "No app in scope has a UI."
+_TRACK_KEYS = ("ui", "technical", "ui-reason", "technical-reason")
+
+
+@dataclass(frozen=True)
+class DesignTracks:
+    """The `design-tracks` and `design-reaffirm` front matter of a feature in design or later (CONTRACTS 3.1)."""
+
+    ui: str
+    technical: str
+    ui_reason: str | None = None
+    technical_reason: str | None = None
+    reaffirm: tuple[str, ...] = ()
+
+    def state(self, track: str) -> str:
+        return self.ui if track == "ui" else self.technical
+
+    def reason(self, track: str) -> str | None:
+        return self.ui_reason if track == "ui" else self.technical_reason
+
+    def resolved(self, track: str) -> bool:
+        return self.state(track) in {"done", "not-applicable"}
+
+    @property
+    def unresolved(self) -> list[str]:
+        return [track for track in DESIGN_TRACKS if not self.resolved(track)]
+
+    def tracks_value(self) -> dict[str, str]:
+        """The `design-tracks` mapping in the order of the contract: both states, then the reasons that exist."""
+
+        value = {"ui": self.ui, "technical": self.technical}
+        if self.ui_reason is not None:
+            value["ui-reason"] = self.ui_reason
+        if self.technical_reason is not None:
+            value["technical-reason"] = self.technical_reason
+        return value
+
+    def reaffirm_value(self) -> list[str]:
+        return [track for track in DESIGN_TRACKS if track in self.reaffirm]
+
+    def frontmatter(self) -> dict[str, Any]:
+        """Both front matter keys, which are written together."""
+
+        return {"design-tracks": self.tracks_value(), "design-reaffirm": self.reaffirm_value()}
+
+    def with_track(self, track: str, state: str, reason: str | None = None) -> "DesignTracks":
+        """A copy with one track set to `state`; a reason is kept only for `not-applicable`."""
+
+        reason = reason if state == "not-applicable" else None
+        if track == "ui":
+            return _replace_tracks(self, ui=state, ui_reason=reason)
+        return _replace_tracks(self, technical=state, technical_reason=reason)
+
+    def with_reaffirm(self, tracks: Iterable[str]) -> "DesignTracks":
+        wanted = set(tracks)
+        return _replace_tracks(self, reaffirm=tuple(track for track in DESIGN_TRACKS if track in wanted))
+
+
+def _replace_tracks(tracks: DesignTracks, **changes: Any) -> DesignTracks:
+    values: dict[str, Any] = {
+        "ui": tracks.ui,
+        "technical": tracks.technical,
+        "ui_reason": tracks.ui_reason,
+        "technical_reason": tracks.technical_reason,
+        "reaffirm": tracks.reaffirm,
+    }
+    values.update(changes)
+    return DesignTracks(**values)
+
+
+def parse_design_tracks(frontmatter: Mapping[str, Any]) -> tuple[DesignTracks | None, list[str]]:
+    """The design tracks of a feature page and the problems with their shape (`design-tracks-invalid`).
+
+    ``(None, [])`` is a page that has neither key. A reason belongs only to a `not-applicable` track and is a string; whether a
+    reason is blank is a prerequisite of the action that sets the track, not part of the shape.
+    """
+
+    has_tracks = "design-tracks" in frontmatter
+    has_reaffirm = "design-reaffirm" in frontmatter
+    if not has_tracks and not has_reaffirm:
+        return None, []
+    if not has_tracks:
+        return None, ["`design-reaffirm` exists without `design-tracks`; the two keys are written together."]
+    value = frontmatter["design-tracks"]
+    problems: list[str] = []
+    if not isinstance(value, Mapping):
+        return None, ["`design-tracks` must be a mapping with the keys `ui` and `technical`."]
+    unknown = sorted(str(key) for key in value if key not in _TRACK_KEYS)
+    if unknown:
+        problems.append(
+            f"`design-tracks` has unsupported key(s) {', '.join(f'`{key}`' for key in unknown)}; the keys are {', '.join(f'`{key}`' for key in _TRACK_KEYS)}."
+        )
+    states: dict[str, str] = {}
+    for track in DESIGN_TRACKS:
+        state = value.get(track)
+        if not isinstance(state, str) or state not in TRACK_STATES:
+            problems.append(f"`design-tracks.{track}` must be one of {', '.join(f'`{item}`' for item in TRACK_STATES)}.")
+            continue
+        states[track] = state
+    reasons: dict[str, str | None] = {}
+    for track in DESIGN_TRACKS:
+        key = f"{track}-reason"
+        if key not in value:
+            reasons[track] = None
+            continue
+        reason = value[key]
+        if not isinstance(reason, str):
+            problems.append(f"`design-tracks.{key}` must be a string.")
+            reasons[track] = None
+        elif states.get(track) != "not-applicable":
+            problems.append(f"`design-tracks.{key}` exists only while `{track}` is `not-applicable`.")
+            reasons[track] = None
+        else:
+            reasons[track] = reason
+    reaffirm: list[str] = []
+    if has_reaffirm:
+        listed = frontmatter["design-reaffirm"]
+        if not isinstance(listed, list):
+            problems.append("`design-reaffirm` must be a list of tracks (`ui`, `technical`).")
+        else:
+            for item in listed:
+                if not isinstance(item, str) or item not in DESIGN_TRACKS:
+                    problems.append("`design-reaffirm` lists only the tracks `ui` and `technical`.")
+                elif item in reaffirm:
+                    problems.append(f"`design-reaffirm` lists `{item}` twice.")
+                else:
+                    reaffirm.append(item)
+    if problems or len(states) != 2:
+        return None, problems
+    for track in reaffirm:
+        if states[track] != "done":
+            problems.append(f"`design-reaffirm` lists `{track}`, which is `{states[track]}`; only a `done` track is reaffirmed.")
+    if problems:
+        return None, problems
+    ordered = tuple(item for item in DESIGN_TRACKS if item in reaffirm)
+    return DesignTracks(states["ui"], states["technical"], reasons["ui"], reasons["technical"], ordered), []
+
+
+def scope_has_ui(apps: Iterable[str], model: WorkspaceModel | None) -> bool:
+    """Whether an active app of the scope has a UI (`has-ui` true or unknown), which makes the design owner the designer."""
+
+    return design_owner(list(apps), model) == "designer"
+
+
+def ui_apps(apps: Iterable[str], model: WorkspaceModel | None) -> list[str]:
+    """The active apps of a scope whose `has-ui` is true or unknown, in the order of the scope."""
+
+    if model is None:
+        return list(apps)
+    return [app_id for app_id in apps if (app := model.app(app_id)) is not None and app.active and app.gate_capability(CAPABILITY_HAS_UI)]
+
+
+def initial_design_tracks(apps: Iterable[str], model: WorkspaceModel | None) -> DesignTracks:
+    """The tracks of a feature that starts design or whose scope changed (CONTRACTS 3.1, 2.9): `technical: pending`, and the UI
+    track `pending` or, when every active scoped app has `has-ui: false`, `not-applicable` with the standard reason."""
+
+    if scope_has_ui(apps, model):
+        return DesignTracks("pending", "pending")
+    return DesignTracks("not-applicable", "pending", NO_UI_TRACK_REASON, None)
+
+
+def normalize_ui_track(tracks: DesignTracks, apps: Iterable[str], model: WorkspaceModel | None) -> DesignTracks:
+    """The no-UI initialization applied to existing tracks: a pending UI track of a scope with no UI becomes `not-applicable`."""
+
+    if tracks.ui == "pending" and not scope_has_ui(apps, model):
+        return tracks.with_track("ui", "not-applicable", NO_UI_TRACK_REASON)
+    return tracks
+
+
+def track_of_page(relative: str) -> str | None:
+    """The track a workspace path belongs to: `ui` for a design page, `technical` for a technical design page or an API contract."""
+
+    parts = PurePosixPath(relative).parts
+    if len(parts) >= 4 and parts[:2] == ("knowledge", "wiki"):
+        if parts[2] == "design":
+            return "ui"
+        if parts[2] in {"technical-design", "api-contracts"}:
+            return "technical"
+    return None
+
+
+# --- Technical design and the API contract -------------------------------------------------------------------------
+
+TECHNICAL_DESIGN_SECTIONS = (
+    "Summary",
+    "Architecture impact",
+    "Data model and migrations",
+    "Security and privacy",
+    "Non-functional requirements",
+    "Risks",
+    "Decisions",
+    "API contract",
+    "Test strategy",
+)
+TECHNICAL_DESIGN_FIELDS = ("feature-id", "title", "apps", "decisions")
+ARCHITECTURE_IMPACT_COLUMNS = ("app", "modules", "change")
+TEST_STRATEGY_COLUMNS = ("criterion", "applies to", "method", "level", "notes")
+_TEST_STRATEGY_CRITERION = re.compile(r"^AC-([0-9]+)$")
+_PLACEHOLDER_TEXT = re.compile(r"\b(?:TODO|TBD|FIXME|placeholder)\b|^\[[^\]]*\]$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class StrategyRow:
+    """One row of the Test strategy table: a criterion and how QA verifies it."""
+
+    criterion: str
+    applies_to: tuple[str, ...]
+    method: str
+    level: str
+    notes: str
+
+
+def _has_content(text: str) -> bool:
+    """Whether a section holds text of its own: some visible line that is not a bare template placeholder."""
+
+    lines = [
+        line
+        for line in _visible_markdown_lines(text)
+        if not _is_separator_row(_split_table_row(line)) and not re.fullmatch(r"[#>*\-\s]*", line)
+    ]
+    if not lines:
+        return False
+    joined = re.sub(r"\s+", " ", " ".join(lines)).strip()
+    return bool(re.search(r"\w", joined)) and not _PLACEHOLDER_TEXT.search(joined)
+
+
+def parse_test_strategy(body: str) -> tuple[list[StrategyRow], list[str]]:
+    """The rows of the `## Test strategy` table and the problems with them (messages)."""
+
+    cell_rows, table_problems = parse_evidence_table(body, "Test strategy", TEST_STRATEGY_COLUMNS, "test-strategy-incomplete")
+    problems = [item.message for item in table_problems]
+    rows: list[StrategyRow] = []
+    for criterion, applies, method, level, notes in cell_rows:
+        criterion = clean_cell(criterion)
+        if not _TEST_STRATEGY_CRITERION.match(criterion):
+            problems.append(f"The criterion cell `{_clip_text(criterion, 40)}` of the Test strategy is not a criterion ID such as `AC-1`.")
+            continue
+        listed = re.sub(r"(?i)^\s*\[?\s*integration\s*:", "", applies)
+        targets = tuple(item for item in (part.strip().strip("`[]").strip() for part in re.split(r"[,;]", listed)) if item)
+        if not targets:
+            problems.append(f"The Test strategy row of `{criterion}` names no app under Applies to.")
+        method = clean_cell(method).lower()
+        if method not in QA_METHODS:
+            problems.append(f"The method of `{criterion}` in the Test strategy must be one of {', '.join(f'`{item}`' for item in QA_METHODS)}.")
+        if not clean_cell(level):
+            problems.append(f"The Test strategy row of `{criterion}` has no level (unit, integration, end-to-end or another).")
+        rows.append(StrategyRow(criterion, targets, method, clean_cell(level), notes.strip()))
+    return rows, problems
+
+
+def technical_design_problems(
+    frontmatter: Mapping[str, Any],
+    body: str,
+    *,
+    feature_id: str,
+    scope: Iterable[str],
+    criteria_ids: Iterable[str],
+    check_strategy: bool = True,
+) -> list[tuple[str, str]]:
+    """Why a technical design page is not complete, as (code, message) pairs; empty when it is (CONTRACTS 6.2).
+
+    `scope` are the active apps of the feature: each one is named in `apps` and in the Architecture impact table.
+    `criteria_ids` are the feature's criterion IDs (`AC-1`): each one is named in the Test strategy.
+    """
+
+    problems: list[tuple[str, str]] = []
+    incomplete = "technical-design-incomplete"
+    scope_apps = list(scope)
+    unknown = sorted(str(key) for key in frontmatter if key not in TECHNICAL_DESIGN_FIELDS)
+    if unknown:
+        problems.append(
+            (
+                incomplete,
+                f"The technical design page has unsupported front matter field(s) {', '.join(f'`{key}`' for key in unknown)}; its fields are {', '.join(f'`{key}`' for key in TECHNICAL_DESIGN_FIELDS)}.",
+            )
+        )
+    page_feature = frontmatter.get("feature-id")
+    if not isinstance(page_feature, str) or page_feature.strip().lower() != feature_id.strip().lower():
+        problems.append((incomplete, f"`feature-id` of the technical design page must be `{feature_id}`."))
+    if not isinstance(frontmatter.get("title"), str) or not frontmatter["title"].strip():
+        problems.append((incomplete, "The technical design page needs a non-empty `title`."))
+    apps = frontmatter.get("apps")
+    if not isinstance(apps, list) or not apps or any(not isinstance(item, str) or not item.strip() for item in apps):
+        problems.append((incomplete, "`apps` of the technical design page must list the apps it covers."))
+        apps = []
+    missing_apps = [app for app in scope_apps if app not in apps]
+    if missing_apps:
+        problems.append((incomplete, f"`apps` of the technical design page must name every app of the scope; missing {', '.join(f'`{app}`' for app in missing_apps)}."))
+    decisions = frontmatter.get("decisions")
+    if not isinstance(decisions, list) or any(not isinstance(item, str) for item in decisions):
+        problems.append((incomplete, "`decisions` of the technical design page must be a list of ADR IDs (an empty list when there are none)."))
+    for heading in TECHNICAL_DESIGN_SECTIONS:
+        if not _has_content(section_text(body, heading)):
+            problems.append((incomplete, f"The technical design page needs content under `## {heading}`."))
+    impact_rows, impact_problems = parse_evidence_table(body, "Architecture impact", ARCHITECTURE_IMPACT_COLUMNS, incomplete)
+    problems.extend((incomplete, item.message) for item in impact_problems)
+    if section_text(body, "Architecture impact").strip() and not impact_rows and not impact_problems:
+        problems.append((incomplete, "The Architecture impact table has no row; list the app, its modules and the change."))
+    for row in impact_rows:
+        if any(not cell.strip() for cell in row):
+            problems.append((incomplete, f"An Architecture impact row of `{clean_cell(row[0]) or '?'}` has an empty cell."))
+    impact_apps = {clean_cell(row[0]) for row in impact_rows}
+    uncovered = [app for app in scope_apps if app not in impact_apps]
+    if uncovered and impact_rows:
+        problems.append((incomplete, f"The Architecture impact table must name every app of the scope; missing {', '.join(f'`{app}`' for app in uncovered)}."))
+    if check_strategy:
+        strategy, strategy_problems = parse_test_strategy(body)
+        problems.extend(("test-strategy-incomplete", message) for message in strategy_problems)
+        named = {row.criterion for row in strategy}
+        wanted = list(criteria_ids)
+        absent = [item for item in wanted if item not in named]
+        if absent:
+            problems.append(("test-strategy-incomplete", f"The Test strategy must name every acceptance criterion; missing {', '.join(f'`{item}`' for item in absent)}."))
+        stray = sorted(named - set(wanted), key=lambda item: int(item.split("-")[1]))
+        if stray:
+            problems.append(("test-strategy-incomplete", f"The Test strategy names {', '.join(f'`{item}`' for item in stray)}, which the feature does not have."))
+        outside = sorted({app for row in strategy for app in row.applies_to if scope_apps and app not in scope_apps})
+        if outside:
+            problems.append(("test-strategy-incomplete", f"The Test strategy names app(s) {', '.join(f'`{app}`' for app in outside)} outside the feature's scope."))
+    return problems
+
+
+def contract_sections(body: str) -> list[list[str]]:
+    """The ordered sections of an API contract body as [heading, text] pairs, NFC with whitespace collapsed (CONTRACTS 3.4).
+
+    Text before the first `##` heading is a section with the empty heading, so a change there changes the digest too.
+    """
+
+    def clean(value: str) -> str:
+        return re.sub(r"\s+", " ", unicodedata.normalize("NFC", value)).strip()
+
+    sections: list[list[str]] = []
+    heading = ""
+    lines: list[str] = []
+    started = False
+    for line in body.splitlines():
+        match = re.match(r"^##\s+(.+?)\s*#*\s*$", line.strip())
+        if match:
+            if started or clean("\n".join(lines)):
+                sections.append([clean(heading), clean("\n".join(lines))])
+            heading, lines, started = match.group(1), [], True
+        else:
+            lines.append(line)
+    if started or clean("\n".join(lines)):
+        sections.append([clean(heading), clean("\n".join(lines))])
+    return sections
+
+
+def contract_digest(feature_id: str, version: int, body: str) -> str:
+    """`c1:` followed by the SHA-256 of the canonical JSON `[1, feature_id, version, sections]`.
+
+    Front matter other than `version` is not part of it, so a contract that becomes `implemented` keeps its digest.
+    """
+
+    payload = canonical_json([1, feature_id.strip().upper(), version, contract_sections(body)])
+    return "c1:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def contract_citation(feature_id: str, version: int, body: str) -> str:
+    """The Contract cell a delivery row cites: `<feature ID>@v<version>:<digest>`."""
+
+    return f"{feature_id.strip().upper()}@v{version}:{contract_digest(feature_id, version, body)}"
+
+
+def contract_page_citation(frontmatter: Mapping[str, Any], body: str) -> str | None:
+    """The citation of an API contract page, or ``None`` when its `feature-id` or `version` is not usable."""
+
+    feature = frontmatter.get("feature-id")
+    version = frontmatter.get("version")
+    if not isinstance(feature, str) or not re.fullmatch(r"F-\d+", feature.strip(), re.IGNORECASE):
+        return None
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        return None
+    return contract_citation(feature, version, body)
+
+
 # --- Acceptance criteria -------------------------------------------------------------------------------------------
 
 _CRITERION_ITEM = re.compile(r"^(?P<indent>[ \t]*)(?:[-*+]|\d+[.)])[ \t]+(?:\[(?P<check>[ xX])\][ \t]+)?(?P<rest>.*)$")

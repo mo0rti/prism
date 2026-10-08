@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+
+import yaml
 from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -17,6 +19,8 @@ from unittest.mock import Mock, patch
 from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_transitions import ACTION_SPECS, build_board_transition_preflight, build_transition_preflight
+from prism_cli.wiki_model import DesignTracks, contract_citation, status_rank
+from tests.design_tracks import SETTLED, technical_design_page, with_tracks
 from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
 from tests.wiki_files import evidence_tables, write_index, write_status_board
@@ -24,6 +28,7 @@ from tests.wiki_files import evidence_tables, write_index, write_status_board
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CHECK_DATE = date(2026, 9, 8)
+UI_DONE_TRACKS = "design-tracks:\n  ui: done\n  technical: not-applicable\n  technical-reason: The feature changes no architecture.\ndesign-reaffirm: []"
 CRITERION = "The summary includes the selected payout period."
 
 
@@ -159,6 +164,16 @@ class LifecycleRegressionTests(unittest.TestCase):
             f"{delivery_block}"
             f"{extra_body.rstrip()}\n"
         )
+        if "design-tracks" not in extra_frontmatter and status_rank(status) >= status_rank("in-design"):
+            # A feature with API work settles the technical track with a technical design page; any other settles it by a reason.
+            if api_section.strip():
+                tracks = DesignTracks("not-applicable", "done", "No app in scope has a UI.", None)
+                technical = self.wiki_root / "technical-design" / f"{feature_id}-payout-summary.md"
+                technical.parent.mkdir(parents=True, exist_ok=True)
+                technical.write_text(technical_design_page(feature_id, tuple(platforms), ("AC-1",)), encoding="utf-8")
+            else:
+                tracks = SETTLED
+            body = with_tracks(body, tracks)
         path.write_text(body, encoding="utf-8")
         self._upsert_index(feature_id, title, status, owner, advisory)
         return path
@@ -235,6 +250,17 @@ class LifecycleRegressionTests(unittest.TestCase):
         )
         return path
 
+    def _cite_contract(self, filename: str = "SHARED.md") -> None:
+        """Make the delivery rows of F-001 cite the contract they depend on, as the board requires of a feature that has one."""
+
+        contract = self.wiki_root / "api-contracts" / filename
+        text = contract.read_text(encoding="utf-8")
+        frontmatter, body = text.split("---\n", 2)[1], text.split("---\n", 2)[2]
+        citation = contract_citation(yaml.safe_load(frontmatter)["feature-id"], 1, body)
+        feature = self.wiki_root / "features" / "F-001-payout-summary.md"
+        lines = feature.read_text(encoding="utf-8").splitlines(keepends=True)
+        feature.write_text("".join(line.replace("` | none |", f"` | {citation} |") if line.startswith("| backend | `build:") else line for line in lines), encoding="utf-8")
+
     def _write_api(self, *, filename: str = "SHARED.md", feature_id: str = "F-999", status: str = "draft") -> Path:
         path = self.wiki_root / "api-contracts" / filename
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -259,7 +285,7 @@ class LifecycleRegressionTests(unittest.TestCase):
             "---\n"
             f"feature-id: {feature_id}\n"
             "title: Payout summary design\n"
-            "designer: regression\n"
+            "apps: [mobile-ios]\n"
             "figma: not applicable\n"
             "---\n\n"
             "## Summary\nThe review view covers the payout summary.\n\n"
@@ -422,6 +448,7 @@ class LifecycleRegressionTests(unittest.TestCase):
                 self.assertEqual("blocked", self._check(blocked, "api-contract")["status"])
 
                 api.write_text(api.read_text(encoding="utf-8").replace("status: draft", "status: agreed"), encoding="utf-8")
+                self._cite_contract()
                 agreed = self._transition("dev-done")
                 self.assertEqual("pass", self._check(agreed, "api-contract")["status"])
                 self.assertEqual("ready", agreed["classification"])
@@ -579,7 +606,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         self.assertIn("unrecognized-domain", self._check(transition, "revalidation")["message"])
 
     def test_a_scope_without_a_ui_app_needs_no_design_page_and_a_ui_app_needs_one(self) -> None:
-        """The design owner follows the scope: only an app with a UI (or an unknown one) needs a design page."""
+        """The design owner follows the scope: a settled UI track covers every app with a UI (or an unknown one) by a design page."""
 
         self._write_manifest_platforms(("backend", "mobile-ios"))
         self._write_review(required_action=False, deferred_action=False)
@@ -592,7 +619,7 @@ class LifecycleRegressionTests(unittest.TestCase):
             with self.subTest(scope="backend", action=action):
                 self._write_feature(status=status, owner=owner, platforms=("backend",), advisory="done", delivery_rows=evidence if action == "dev-done" else ())
                 lint_result = lint_wiki(self.root, today=CHECK_DATE)
-                self.assertFalse(any(item.code == "missing-design" and item.feature_id == "F-001" for item in lint_result.diagnostics), lint_result.diagnostics)
+                self.assertFalse(any(item.code == "design-coverage-incomplete" and item.feature_id == "F-001" for item in lint_result.diagnostics), lint_result.diagnostics)
                 transition = self._transition(action)
                 self.assertEqual("ready", transition["classification"], transition["checks"])
 
@@ -604,20 +631,27 @@ class LifecycleRegressionTests(unittest.TestCase):
                     platforms=("mobile-ios",),
                     advisory="done",
                     delivery_rows=(("mobile-ios", "mobile-ios/Summary.swift implemented", "tests/SummaryTests passed"),) if action == "dev-done" else (),
+                    extra_frontmatter=UI_DONE_TRACKS,
                 )
                 lint_result = lint_wiki(self.root, today=CHECK_DATE)
-                self.assertTrue(any(item.code == "missing-design" and item.feature_id == "F-001" for item in lint_result.diagnostics), lint_result.diagnostics)
-                if action == "dev-done":
-                    transition = self._transition(action, ("mobile-ios",))
-                    self.assertEqual("blocked", transition["classification"])
-                    self.assertEqual("blocked", self._check(transition, "workflow:missing-design")["status"])
-        # A recorded design page clears it.
+                self.assertTrue(any(item.code == "design-coverage-incomplete" and item.feature_id == "F-001" for item in lint_result.diagnostics), lint_result.diagnostics)
+                transition = self._transition(action, ("mobile-ios",) if action == "dev-done" else None)
+                self.assertNotEqual("ready", transition["classification"])
+                self.assertEqual("unknown", self._check(transition, "source-integrity:design-coverage-incomplete")["status"])
+        # A recorded design page that lists the app clears it.
         self._write_design()
-        self._write_feature(status="in-dev", owner="dev", platforms=("mobile-ios",), advisory="done", delivery_rows=(("mobile-ios", "mobile-ios/Summary.swift implemented", "tests/SummaryTests passed"),))
-        self.assertFalse(any(item.code == "missing-design" for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics))
+        self._write_feature(
+            status="in-dev",
+            owner="dev",
+            platforms=("mobile-ios",),
+            advisory="done",
+            delivery_rows=(("mobile-ios", "mobile-ios/Summary.swift implemented", "tests/SummaryTests passed"),),
+            extra_frontmatter=UI_DONE_TRACKS,
+        )
+        self.assertFalse(any(item.code == "design-coverage-incomplete" for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics))
         recorded = self._transition("dev-done", ("mobile-ios",))
         self.assertEqual("ready", recorded["classification"], recorded["checks"])
-        self.assertNotIn("workflow:missing-design", {check["code"] for check in recorded["checks"]})
+        self.assertNotIn("source-integrity:design-coverage-incomplete", {check["code"] for check in recorded["checks"]})
 
     def test_the_design_exemption_fields_are_no_longer_feature_fields(self) -> None:
         self._write_feature(
@@ -763,6 +797,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         self._write_review(required_action=False, deferred_action=False)
         requirement = self._write_requirement(status="in-progress")
         api = self._write_api(status="agreed")
+        self._cite_contract()
 
         request = self._transition("dev-done")
         self.assertEqual("pass", self._check(request, "app-requirements")["status"])

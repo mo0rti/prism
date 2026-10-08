@@ -6,6 +6,10 @@ owner: dev
 apps: [backend, mobile-ios]
 sources: []
 advisory-review: done
+design-tracks:
+  ui: pending
+  technical: pending
+design-reaffirm: []
 ---
 
 ## Summary

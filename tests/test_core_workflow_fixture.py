@@ -11,6 +11,7 @@ import yaml
 
 from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_lint import lint_wiki
+from prism_cli.wiki_model import NO_UI_TRACK_REASON, DesignTracks, parse_design_tracks
 from prism_cli.wiki_query import wiki_show
 from prism_cli.wiki_transitions import build_board_transition_preflight, build_transition_preflight
 from tests.core_workflow_fixture import (
@@ -20,6 +21,7 @@ from tests.core_workflow_fixture import (
     PROCESSED_INTAKE_ITEM,
     create_core_workflow_fixture,
 )
+from tests.design_tracks import apply_tracks, technical_design_page, with_tracks
 from tests import real_temp  # noqa: F401
 from tests.wiki_files import write_index, write_status_board
 
@@ -106,6 +108,12 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
         _set_stage(self.root, "ready-for-design", "tech-lead")
         self.assertEqual("ready", _transition(self.root, "design-start")["classification"])
         _set_stage(self.root, "in-design", "tech-lead")
+        # Design starts with the no-UI initialization: the UI track is not applicable and the technical track is pending, so
+        # the handoff is blocked until the technical track is settled by its page.
+        started = _transition(self.root, "design-handoff")
+        self.assertEqual("blocked", started["classification"])
+        self.assertEqual("blocked", _check(started, "technical-design-incomplete")["status"])
+        _settle_technical_track(self.root)
         self.assertEqual("ready", _transition(self.root, "design-handoff")["classification"])
         _set_stage(self.root, "ready-for-dev", "dev")
 
@@ -212,6 +220,7 @@ def _set_stage(root: Path, status: str, owner: str) -> None:
     frontmatter = yaml.safe_load(frontmatter_text)
     frontmatter["status"] = status
     frontmatter["owner"] = owner
+    apply_tracks(frontmatter, status, parse_design_tracks(frontmatter)[0])
     updated = (
         "---\n"
         + yaml.safe_dump(frontmatter, sort_keys=False).rstrip()
@@ -220,6 +229,17 @@ def _set_stage(root: Path, status: str, owner: str) -> None:
     )
     (root / FEATURE_PATH).write_text(updated, encoding="utf-8")
     _write_index(root, status, owner)
+
+
+def _settle_technical_track(root: Path) -> None:
+    """Model `tech-design-done` in the temp tree: the technical design page, and the track `done`."""
+
+    page = root / "knowledge/wiki/technical-design/F-001-document-review.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(technical_design_page(FEATURE_ID, ("backend",), ("AC-1", "AC-2")), encoding="utf-8")
+    feature = root / FEATURE_PATH
+    feature.write_text(with_tracks(feature.read_text(encoding="utf-8"), DesignTracks("not-applicable", "done", NO_UI_TRACK_REASON, None)), encoding="utf-8")
+    _write_index(root, "in-design", "tech-lead")
 
 
 def _write_index(root: Path, status: str, owner: str) -> None:
