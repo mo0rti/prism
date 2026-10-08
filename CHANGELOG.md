@@ -4,6 +4,12 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- **The QA stage and bugs.** Four skills join the connected workflow: `qa-verify` records QA rows (one per app, or per integration of two or more apps) against the delivered artifact, the criterion revision, the attempt and the environment; `qa-pass` passes apps through QA with a `pending` Release row each, in one approval when it carries the QA rows that are missing; `qa-fail` sends apps back to development and archives their delivery, QA and Release rows in Evidence history; `bug-update` moves one bug page through triage, scope, fix, verification, reverification, rejection, closure (`wont-fix`, `duplicate`, `promoted`), deferral and reopening. `feature-reopen` gains the routes back from QA (`qa-return-spec`, `qa-return-design`). A bug is a current-state page in `knowledge/wiki/bugs/` created by a QA action or by `ingest`; an open bug of an app blocks its pass, and a bug created between a preview and its apply makes the preview stale (`stale_preview`).
+- **Separation at the service level.** With `qa-separate-from-dev: true`, `qa-pass` refuses the grant that produced, recovered or repaired the Delivery evidence of an app it passes, and `bug-update` refuses the same for the Fix evidence of a bug it verifies (`separation_required`, `separation_unverifiable`). `bug-update` to `fixed` records the Fix rows it produces in the provenance journal.
+- **`prism wiki owner`** lists the bugs an owner holds, and `wiki search` finds bug pages. Wiki lint reports the bug page findings (`bug-page-invalid`, `invalid-bug-status-owner`, `bug-close-reason-required`, `duplicate-target-invalid`, `promoted-bug-unreopened`, `bug-feature-missing`) and the blocker `open-bug-blocks-qa`.
+
 ## [0.6.1]
 
 Release date: 2026-10-08

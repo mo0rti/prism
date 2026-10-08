@@ -721,9 +721,18 @@ const ACTION_LABELS = {
   "po-specify": "specification",
   "po-handoff": "handoff",
   "design-start": "design start",
+  "design-ui-done": "UI design",
+  "tech-design-done": "technical design",
   "design-handoff": "development handoff",
   "dev-start": "development start",
   "dev-done": "delivery",
+  "qa-verify": "QA verification",
+  "qa-pass": "QA pass",
+  "qa-fail": "QA failure",
+  "dev-return-spec": "return to specification",
+  "dev-return-design": "return to design",
+  "qa-return-spec": "QA return to specification",
+  "qa-return-design": "QA return to design",
 };
 function transitionRecords(node) {
   if (!node || !Array.isArray(node.transitions)) return [];
@@ -761,8 +770,11 @@ function transitionOptionLabel(t) {
   return `${transitionActionLabel(t)} -> ${target} (${classification})`;
 }
 // Each field lists the values a transition record may carry. The design owner is `designer` or `tech-lead` by the
-// feature's scope, and a delivery moves the feature to the minimum of its app stages (`in-dev` or `ready-for-qa`).
+// feature's scope, and a delivery or a QA action moves the feature to the minimum of its app stages.
 const DESIGN_OWNERS = ["designer", "tech-lead"];
+const QA_SOURCE_STATUSES = ["in-dev", "ready-for-qa", "in-qa"];
+const QA_STAGE_STATUSES = ["in-dev", "ready-for-qa", "in-qa", "ready-for-release"];
+const QA_STAGE_OWNERS = ["dev", "qa", "release"];
 const ACTION_CONTRACTS = {
   "po-specify": { source_status: ["raw"], source_owner: ["po"], target_status: ["specified"], target_owner: ["po"] },
   "po-handoff": { source_status: ["specified"], source_owner: ["po"], target_status: ["ready-for-design"], target_owner: DESIGN_OWNERS },
@@ -770,6 +782,11 @@ const ACTION_CONTRACTS = {
   "design-handoff": { source_status: ["ready-for-design", "in-design"], source_owner: DESIGN_OWNERS, target_status: ["ready-for-dev"], target_owner: ["dev"] },
   "dev-start": { source_status: ["ready-for-dev"], source_owner: ["dev"], target_status: ["in-dev"], target_owner: ["dev"] },
   "dev-done": { source_status: ["ready-for-dev", "in-dev"], source_owner: ["dev"], target_status: ["in-dev", "ready-for-qa"], target_owner: ["dev", "qa"] },
+  "design-ui-done": { source_status: ["ready-for-design", "in-design"], source_owner: DESIGN_OWNERS, target_status: ["in-design"], target_owner: DESIGN_OWNERS },
+  "tech-design-done": { source_status: ["ready-for-design", "in-design"], source_owner: DESIGN_OWNERS, target_status: ["in-design"], target_owner: DESIGN_OWNERS },
+  "qa-verify": { source_status: QA_SOURCE_STATUSES, source_owner: ["dev", "qa"], target_status: QA_STAGE_STATUSES, target_owner: QA_STAGE_OWNERS },
+  "qa-pass": { source_status: QA_SOURCE_STATUSES, source_owner: ["dev", "qa"], target_status: QA_STAGE_STATUSES, target_owner: QA_STAGE_OWNERS },
+  "qa-fail": { source_status: QA_STAGE_STATUSES, source_owner: QA_STAGE_OWNERS, target_status: ["in-dev"], target_owner: ["dev"] },
 };
 // The column a card is dropped on to request the action.
 const ACTION_DROP_STAGE = {
@@ -781,11 +798,16 @@ function contractMatches(contract, record) {
 }
 const BOARD_SESSION_EXPIRED = "The board session has expired. Reconnect to continue this connected action.";
 const CONNECTED_HUMAN_ACTIONS = new Set(["po-handoff", "design-start", "dev-start"]);
-const CONNECTED_AGENT_ACTIONS = new Set(["po-specify", "design-handoff", "dev-done"]);
+const CONNECTED_AGENT_ACTIONS = new Set(["po-specify", "design-ui-done", "tech-design-done", "design-handoff", "dev-done", "qa-verify", "qa-pass", "qa-fail"]);
 const CONNECTED_AGENT_SKILLS = {
   "po-specify": "po-specify",
+  "design-ui-done": "design-ui-done",
+  "tech-design-done": "tech-design-done",
   "design-handoff": "design-handoff",
   "dev-done": "dev-done",
+  "qa-verify": "qa-verify",
+  "qa-pass": "qa-pass",
+  "qa-fail": "qa-fail",
 };
 const CONNECTED_ACTION_BY_STAGE = {
   specified: "po-handoff",
@@ -887,9 +909,14 @@ const ACTION_COMMANDS = {
   "po-specify": "po-specify",
   "po-handoff": "po-handoff",
   "design-start": "design-start",
+  "design-ui-done": "design-ui-done",
+  "tech-design-done": "tech-design-done",
   "design-handoff": "design-handoff",
   "dev-start": "dev-start",
   "dev-done": "dev-done",
+  "qa-verify": "qa-verify",
+  "qa-pass": "qa-pass",
+  "qa-fail": "qa-fail",
 };
 function capabilityActionKnown(t) {
   const cap = transitionCapability(), action = t && t.action;

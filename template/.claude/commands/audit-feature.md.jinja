@@ -11,12 +11,14 @@ Use this skill to audit one feature against its source documents.
 
 1. Read `knowledge/wiki/features/[F-XXX]-[slug].md`
 2. Read the `sources` field in the frontmatter
-3. Read all files listed in sources (from intake/processed/ or intake/quarantined/)
+3. Read all files listed in sources (from intake/processed/ or intake/quarantined/), and the bug pages of the feature
 4. Compare spec against source documents:
    - Are all requirements in the spec traceable to the sources?
    - Are there items in the sources that didn't make it into the spec?
    - Does the acceptance criteria match what was described in the source?
    - If a board review exists: do the board's findings trace back to the spec content?
+   - If the feature is in or past QA: does each QA row cite the current revision of a real criterion, and does each bug of the
+     feature (`knowledge/wiki/bugs/`) trace to a QA row, a report or a source in `sources`?
 5. Report findings:
    - **Confirmed:** requirements with clear source traceability
    - **Untraced:** requirements in the spec with no source — possibly hallucinated by AI

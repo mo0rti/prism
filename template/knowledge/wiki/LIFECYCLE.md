@@ -6,7 +6,7 @@ schema-version: 1
 
 This file extends `SCHEMA.md`, which is read first. It holds the feature page format,
 the status and owner lifecycle, the lifecycle action registry and the advisory file
-formats. Read it, after `SCHEMA.md`, for every feature, board or advisory operation.
+formats, and is read for every feature, board or advisory operation.
 
 ---
 
@@ -102,7 +102,7 @@ Append-only entries, one for every action that removes evidence from the active 
 - Participants: [apps that lost a Release row through a removed integration row, or none]
 - Affected tracks: [ui, technical, or none]
 - Archived evidence:
-  | Delivery evidence | backend | `build:backend#412` | none | [PR 31](https://git.example/app/pull/31) | `./gradlew test`: 214 passed | checked |
+  | Delivery evidence | backend | `build:backend#412` | none | [PR 31](https://git.example/app/pull/31) | 214 passed | checked |
 - Reaffirmed evidence: [rows kept active, verbatim, or none]
 - Requirement/API invalidations: [path: done -> in-progress, or a sentence that none are invalidated]
 - Linked bugs: [BUG-XXX, or none]
@@ -112,28 +112,25 @@ Owner values in the open-questions table must be one of: `po`, `designer`, `tech
 `qa`, `release`.
 Open-question status values must be one of: `open`, `resolved: [answer]`.
 
-The open-questions table is the Unknown form of the evidence labels in `SCHEMA.md`.
-Summary, Acceptance criteria and the other sections carry the Decided, Observed,
-Proposed and Assumed labels, and a Decided or Observed claim links its evidence: the
-processed intake item, a record or a URL. A later source that changes a claim replaces
-the item in place.
+The open-questions table is the Unknown form of the evidence labels in `SCHEMA.md`; the other
+sections carry the Decided, Observed, Proposed and Assumed labels, and a Decided or Observed claim
+links its evidence (the processed intake item, a record or a URL). A later source that changes a
+claim replaces the item in place.
 
 Each owner has one clarify action that resolves only that owner's open questions:
-`/po-clarify` (`po`), `/design-clarify` (`designer`) and `/dev-clarify` (`dev`).
+`/po-clarify` (`po`), `/design-clarify` (`designer`, `tech-lead`) and `/dev-clarify` (`dev`).
 Each one preserves question text, owners and lifecycle fields. A clarify action
-that changes a requirement-bearing section of the feature, a design page or a
+that changes a requirement-bearing section of the feature, a design page or an
 app requirement page must carry the full text of at least one answer it
 resolves in that section. `/dev-clarify` may update the feature's Acceptance
-criteria, App scope and API surface sections and the What to build,
-Technical constraints, API contract reference and Acceptance criteria sections of
-that feature's existing app requirement pages; it leaves their frontmatter
-unchanged, except that a new acceptance criterion raises `criteria-high-water`.
+criteria, App scope and API surface sections and the What to build, Technical
+constraints, API contract reference and Acceptance criteria sections of its existing
+app requirement pages, leaving their frontmatter unchanged except that a new criterion raises `criteria-high-water`.
 `/po-clarify` and `/dev-clarify` change what the stage of the apps allows: a criterion is
 not changed while an app it names is `ready-for-release` or `released`; the App scope section is
 not changed from `ready-for-dev` on, and the API surface section not once an app is delivered
-(use the feature-scope action, or a return route). Open dev-owned questions block
-`/dev-start` and `/dev-done`. `qa` and `release` questions are resolved by the QA and release
-actions.
+(use the feature-scope action, or a return route). Open dev-owned questions block `/dev-start` and `/dev-done`; `qa` and `release` questions are resolved by the
+QA and release actions.
 
 ### Acceptance criteria and their revisions
 
@@ -153,17 +150,14 @@ A criterion has a revision: `v1:` and the SHA-256 of the canonical JSON `[1, fea
 criterion ID, applies-to, evidence label, text]`. The applies-to is a sorted list, or
 `{"integration": [...]}` sorted; the text is NFC with links written as `text <destination>`
 and whitespace collapsed; the checkbox is not part of it. QA rows cite `AC-<n>@v1:<64 hex
-digits>`. A change to a criterion's applies-to, label or text, or to the destination of a link
-in it, changes its revision and makes the rows that cite the old one stale
-(`stale-qa-evidence`). `read_workspace` returns the revisions of a feature page as
-`annotations.criteria`, the `show` query returns them, and a preview shows the revisions
-before and after and the QA rows the change makes stale.
+digits>`. A change to a criterion's applies-to, label, text or link destination changes its revision
+and makes the rows that cite the old one stale (`stale-qa-evidence`). `read_workspace` (as
+`annotations.criteria`), the `show` query and a preview return the revisions, the preview with the QA rows the change makes stale.
 
 ### Status and owner lifecycle
 
-The `status` and `owner` fields together represent the feature's position in the
-lifecycle. An approved handoff updates both fields together in the feature page;
-updates across the feature page, status board, and log are not a filesystem transaction.
+The `status` and `owner` fields together represent the feature's position in the lifecycle and
+change together; updates across the feature page, status board, and log are not a filesystem transaction.
 
 | Status | Owner | Meaning |
 |--------|-------|---------|
@@ -178,8 +172,7 @@ updates across the feature page, status board, and log are not a filesystem tran
 | ready-for-release | release | Every app is verified and has a pending or failed release row |
 | released | none | Every app is released |
 
-The **design owner** is `designer` while an active app in the feature's `apps` has a UI
-(`has-ui` true or `unknown`) and `tech-lead` otherwise. It is resolved from the scope when the
+The **design owner** (see "Design owner and design tracks") is resolved from the scope when the
 action is previewed and again when it is applied.
 
 From `in-dev` on, a feature's status is the **minimum over the stages of its active apps**
@@ -198,7 +191,7 @@ an app lacks (`app-row-missing`).
 
 ### advisory-review field
 
-This field tracks whether domain review has been done. Only specific commands set it:
+This field tracks whether domain review has been done; only these commands set it:
 
 - `not-needed` - set by `/po-intake` for features with no domain complexity
   (authentication flows, settings screens, CRUD operations, admin tools, infrastructure)
@@ -210,10 +203,8 @@ This field tracks whether domain review has been done. Only specific commands se
   `advisory-skip-reason` frontmatter. For `/po-handoff`, the skip and reason stay
   as a proposal until that command's final handoff confirmation.
 
-No other command touches the `advisory-review` field.
-
-The lint command flags features from `ready-for-design` up to `ready-for-release` with
-`advisory-review: pending` as incomplete. Setting `skipped` with a reason suppresses this flag.
+No other command touches `advisory-review`. Lint flags features from `ready-for-design` up to
+`ready-for-release` with `advisory-review: pending` as incomplete; `skipped` with a reason suppresses it.
 
 ### PO handoff transition contract
 
@@ -227,40 +218,30 @@ The PO handoff action is a confirmation-gated transition from
   specified structured-draft action.
   Do not invent a legacy adapter or a generic transition setter.
 - Read the current `SCHEMA.md`, `LIFECYCLE.md`, `status-board.md`, feature, linked context, workspace
-  identity, and any available source fingerprint before preparing a preview.
-  Re-read them immediately before confirmation and once again before writing.
-  Compare the unique path, identity, status, owner, advisory state, and fingerprint
-  with any copied request or static snapshot; a mismatch or unavailable comparison
-  blocks the write and requires a fresh preview.
+  identity, and any available source fingerprint before preparing a preview, and again immediately before
+  confirmation and before writing. Compare the unique path, identity, status, owner, advisory state, and
+  fingerprint with any copied request or static snapshot; a mismatch or unavailable comparison blocks the
+  write and requires a fresh preview.
 - Factual PO completeness requires a non-empty Summary, one singular `## User
   story` section with content, meaningful acceptance criterion entries, a non-empty
   frontmatter `apps` list with a non-empty matching `## App scope` entry
   for every declared app, and no open questions owned by `po`. A `skipped`
   advisory requires a non-blank
   `advisory-skip-reason`. Semantic sufficiency remains a human or agent judgment.
-- When advisory review is `pending`, offer an independent `/board-review F-XXX`.
-  Preserve that command's own confirmation and write rules, then reread all source
-  files and rerun the advisory and completeness checks after any board changes. If
-  the user declines, request an explicit non-blank reason and keep the skip fields
-  as a proposal until the final handoff confirmation. Evaluate that valid proposed
-  skip as the `skipped` advisory outcome for this preview while leaving the current
-  `pending` source unchanged. Never silently skip review.
-- A preview is not an approval or a status write. It must show the observed source
-  fields, advisory and completeness checks, identity/fingerprint facts, exact
-  destination fields, and every feature/advisory/status board/index/log file that would change.
-  Decline or cancel means no feature, advisory, status board, index, or log mutation.
-- A dashboard or clipboard request is copy-only. It must not execute an agent,
-  mutate the wiki, or move a board card. The intended process is a confirmed agent
-  workflow followed by a fresh source snapshot. The Board derives columns from
-  current source fields and cannot prove which human or agent changed them or
-  whether confirmation happened.
-- The selected generated handoff surface must contain
-  `<!-- prism:po-handoff-contract:v2 -->`: Codex checks
-  `.agents/skills/po-handoff/SKILL.md`, while Claude checks
-  `.claude/commands/po-handoff.md`. The other surface is optional. A missing marker
-  on the selected file means its instructions are older and unsupported; refresh
-  that file from the current template before using the handoff. A Prism version
-  alone cannot prove capability.
+- When advisory review is `pending`, offer an independent `/board-review F-XXX` (with its own confirmation
+  and write rules), then reread all source files and rerun the checks. If the user declines, request an explicit
+  non-blank reason and keep the skip fields as a proposal until the final handoff confirmation; evaluate that
+  proposed skip as the `skipped` outcome for this preview while the source stays `pending`. Never silently skip review.
+- A preview is not an approval or a status write. It shows the observed source fields, advisory and
+  completeness checks, identity/fingerprint facts, exact destination fields, and every file that would change.
+  Decline or cancel means no mutation.
+- A dashboard or clipboard request is copy-only: it executes no agent, mutates no wiki
+  and moves no board card. The Board derives columns from current source fields and
+  cannot prove who changed them or whether confirmation happened.
+- The selected generated handoff surface (Codex: `.agents/skills/po-handoff/SKILL.md`;
+  Claude: `.claude/commands/po-handoff.md`) must contain `<!-- prism:po-handoff-contract:v2 -->`.
+  A missing marker means older, unsupported instructions: refresh the file from the current
+  template. A Prism version alone cannot prove capability.
 - The optional `prism wiki transition-preflight F-XXX [path] --action po-handoff
   --json` response uses the common envelope with `schema_version: 1` and
   `command: "wiki transition-preflight"`. Its `facts` include
@@ -276,121 +257,115 @@ The PO handoff action is a confirmation-gated transition from
 
 ### Lifecycle action registry
 
-The generated workflow exposes these named, feature-only actions. Each action
-requires the exact source status/owner pair and writes only the proposed feature
-and the directly corresponding status board, index, log or evidence records after final user
-confirmation. `D` is the design owner of the feature's scope.
+The generated workflow exposes these named, feature-only actions. Each requires the exact source
+status/owner pair and, after final user confirmation, writes only the proposed feature and the
+corresponding status board, index, log or evidence records. `D` is the design owner of the scope.
 
 | Action | Exact source | Destination | Primary responsibility |
 |---|---|---|---|
-| `po-specify` | `raw` + `po` | `specified` + `po` | Author a canonical structured body from one raw page; give every criterion its ID and `applies-to`; preserve facts and represent unknowns as owned questions. |
+| `po-specify` | `raw` + `po` | `specified` + `po` | Author a structured body from one raw page, with every criterion's ID and `applies-to`; keep facts and turn unknowns into owned questions. |
 | `po-handoff` | `specified` + `po` | `ready-for-design` + `D` | Verify factual PO completeness and hand the specification to design. |
 | `design-start` | `ready-for-design` + `D` | `in-design` + `D` | Start design work after rereading the assigned feature, and write the initial design tracks. |
 | `design-ui-done` | `ready-for-design` or `in-design` + `D` | `in-design` + `D` | Settle the UI track: design pages that cover every app with a UI, or an exemption with a reason. |
-| `tech-design-done` | `ready-for-design` or `in-design` + `D` | `in-design` + `D` | Settle the technical track: the technical design page, its test strategy and, when the API surface declares API work, the agreed API contract. |
-| `design-handoff` | `ready-for-design` or `in-design` + `D` | `ready-for-dev` + `dev` | Verify both tracks are settled (settling either in the same confirmation), prepare app requirements, and write the API contract when it settles the technical track. |
+| `tech-design-done` | `ready-for-design` or `in-design` + `D` | `in-design` + `D` | Settle the technical track: the technical design page, its test strategy and, for declared API work, the agreed API contract. |
+| `design-handoff` | `ready-for-design` or `in-design` + `D` | `ready-for-dev` + `dev` | Verify both tracks are settled (settling either in the same confirmation) and prepare the app requirements. |
 | `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` | Start implementation after rereading requirements and applicable API contracts. |
 | `dev-done` | `ready-for-dev` or `in-dev` + `dev` | the minimum of the app stages: `in-dev` + `dev`, or `ready-for-qa` + `qa` once every app has delivered | Record the delivery evidence of the apps it names: the artifact, tests and implementation for each. |
 | `dev-return-spec` | `ready-for-dev` or `in-dev` + `dev` | `specified` + `po` | Send the feature back to the PO: archive every evidence row, remove the design tracks and set the revalidation domains. |
-| `dev-return-design` | `ready-for-dev` or `in-dev` + `dev` | `in-design` + `D` | Send the feature back to design: archive every evidence row, set the affected tracks to `pending` and the other settled track to be reaffirmed. |
+| `dev-return-design` | `ready-for-dev` or `in-dev` + `dev` | `in-design` + `D` | Send the feature back to design: archive every evidence row; the affected tracks go back to `pending`, the other settled track awaits reaffirmation. |
+| `qa-verify` | `in-dev` + `dev`, `ready-for-qa` + `qa` or `in-qa` + `qa` | the minimum of the app stages | Record QA rows for apps or integrations; the first row of an app opens its QA stage. |
+| `qa-pass` | as `qa-verify` | the minimum of the app stages: `ready-for-release` + `release` once every app has passed | Pass the apps it names: a `pending` Release row for each, with the QA rows still missing in the same proposal. |
+| `qa-fail` | as `qa-verify`, or `ready-for-release` + `release` | `in-dev` + `dev` | Send the apps it names back to development; their delivery, QA and Release rows move to Evidence history. |
+| `qa-return-spec`, `qa-return-design` | as `qa-fail` | `specified` + `po`, or `in-design` + the design owner | Send the whole feature back to specification or design from QA (`feature-reopen`); refused when an app is released. |
 | `scope-edit` | `ready-for-dev` up to `released` | the minimum of the app stages after the edit | Remove an app from the scope (the `feature-scope` skill from `ready-for-dev` on). |
 
-`/dev-start` and `/dev-done` also start development: `/dev-done` from `ready-for-dev` moves the
-feature into development and records the delivery in the same write. Before `ready-for-dev`,
-`/feature-scope` is an ordinary write that edits `apps`, the App scope section and, at
-`ready-for-design` or `in-design`, sets the owner to the design owner of the new scope.
+`/dev-done` from `ready-for-dev` also starts development in the same write. Before `ready-for-dev`,
+`/feature-scope` is an ordinary write that edits `apps` and the App scope section and, at `ready-for-design`
+or `in-design`, sets the owner to the design owner of the new scope.
 
-The QA, release and return actions of the full lifecycle (QA verification, release, bug
-handling, and the routes back from QA and release) are registered but answer
-`action_unavailable` in this version of the board; a feature in `ready-for-qa` stays there.
+Bug handling is the `bug-update` skill, which selects one of the bug actions below. The release
+actions and the routes back from released work are registered but answer `action_unavailable` in
+this version of the board; a feature in `ready-for-release` stays there.
 
 Each gated action needs a human who holds the role that approves it: `po` for `po-specify`,
 `po-handoff` and `scope-edit`; the design owner role for `design-start` and `design-handoff`, and
 `designer` for `design-ui-done` and `tech-lead` for `tech-design-done`; `dev` for `dev-start`,
-`dev-done` and the returns from implementation. A `design-handoff` that settles the UI track also needs
-`designer`, and one that settles the technical track `tech-lead`, on top of the design owner. The board checks
-the role when it applies the action.
+`dev-done` and the returns from implementation; `qa` for `qa-verify`, `qa-pass`, `qa-fail` and the
+routes back from QA. A `design-handoff` that settles the UI track also needs `designer`, and one that
+settles the technical track `tech-lead`, on top of the design owner. The board checks the role when
+it applies the action.
 
 #### Common action protocol
 
 1. Resolve one canonical feature path and read `SCHEMA.md`, this file, `status-board.md`, the
    feature, linked context, relevant requirements and API contracts, workspace
-   identity, and current fingerprints. Intake folders remain outside these
-   feature-only actions.
+   identity, and current fingerprints. Intake folders are outside these actions.
 2. If a Prism preflight is available, accept it only when the common envelope is
-   schema 1, command facts identify the requested action, transition capability
+   schema 1, command facts name the requested action, transition capability
    is version 3 with the requested action in its per-action surfaces, transition
    version is 2, and the snapshot is consistent. Check the selected generated
-   Codex or Claude file for its matching `prism:<command>-contract:v2` marker;
-   the other surface is optional. A version string alone is insufficient. An
-   older capability or generated instruction falls back to these direct-file
-   rules after the selected instructions are refreshed.
-3. Verify the exact source pair, action-specific checks, current advisory and
-   question state, and affected app evidence. Show observed facts and the
-   complete proposed body/metadata/write diff. Unknown or blocked checks require
-   review or repair guidance.
+   Codex or Claude file for its matching `prism:<command>-contract:v2` marker; a
+   version string alone is insufficient. An older capability or generated
+   instruction falls back to these direct-file rules after the instructions are refreshed.
+3. Verify the exact source pair, action-specific checks, advisory and question
+   state, and affected app evidence. Show observed facts and the complete proposed
+   write diff. Unknown or blocked checks need review or repair guidance.
 4. Every proposed write must name its exact feature, requirement, API, status board,
    index, log, evidence, revalidation, and history paths. Preserve unrelated
-   statuses and API contracts; never reset a shared contract or all features as
-   a convenience.
+   statuses and API contracts.
 5. Reread the source and context immediately before asking for final
    confirmation. A copied dashboard, clipboard request, or CLI preflight is
    read-only and never approval. Decline or cancel means no mutation. If a
    multi-file write is partial, report the exact observed changes and recover
-   from a fresh reread; no transaction is implied. After confirmation, reread
-   the same sources once more and compare the recorded identity, path, status,
-   owner, advisory, revalidation, and fingerprint before writing anything.
+   from a fresh reread. After confirmation, reread the same sources once more and
+   compare the recorded identity, path, status, owner, advisory, revalidation, and
+   fingerprint before writing anything.
 
-Each action may change only the front matter keys and sections its row allows; the board
-refuses any other change (`lifecycle_frontmatter_scope`, `lifecycle_body_scope`,
-`lifecycle_write_scope`):
+Each action may change only what its row allows; the board refuses anything else
+(`lifecycle_frontmatter_scope`, `lifecycle_body_scope`, `lifecycle_write_scope`):
 
 | Action | Front matter | Feature sections | Other pages |
 |---|---|---|---|
 | `po-specify` | `status`, `owner`, `criteria-high-water` | every section except the evidence sections, which exist and stay empty | none |
 | `po-handoff` | `status`, `owner`, `advisory-review`, `advisory-skip-reason`, `revalidation` | none | none |
 | `design-start` | `status`, `owner`, `design-tracks`, `design-reaffirm` | none | none |
-| `design-ui-done` | `status`, `owner`, `design-tracks` (`ui`, `ui-reason`; the first design action initializes both tracks), `design-reaffirm` | Design | this feature's `design/` pages |
-| `tech-design-done` | `status`, `owner`, `design-tracks` (`technical`, `technical-reason`; the first design action initializes both tracks), `design-reaffirm` | Design | `technical-design/F-XXX-*.md`, `api-contracts/F-XXX.md` |
-| `design-handoff` | `status`, `owner`, `revalidation`, `design-tracks` (the tracks it settles), `design-reaffirm` | Design | the pages of each track it settles (as the two track actions), requirement pages |
+| `design-ui-done` | `status`, `owner`, `design-tracks` (`ui`, `ui-reason`), `design-reaffirm` | Design | this feature's `design/` pages |
+| `tech-design-done` | `status`, `owner`, `design-tracks` (`technical`, `technical-reason`), `design-reaffirm` | Design | `technical-design/F-XXX-*.md`, `api-contracts/F-XXX.md` |
+| `design-handoff` | `status`, `owner`, `revalidation`, `design-tracks` (the tracks it settles), `design-reaffirm` | Design | the pages of each track it settles, requirement pages |
 | `dev-start` | `status`, `owner` | none | none |
-| `dev-done` | `status`, `owner`, `app-revalidation` | Delivery evidence (add rows) | the named apps' requirement pages (`status` to `done`), the API contract (`status` to `implemented` once every app has delivered) |
-| `dev-return-spec`, `dev-return-design` | `status`, `owner`, `revalidation`, `app-revalidation`, `design-tracks`, `design-reaffirm` | the evidence tables (remove every row) and Evidence history (one entry) | requirement pages and the API contract, only to a lower `status` |
+| `dev-done` | `status`, `owner`, `app-revalidation` | Delivery evidence (add rows) | the named apps' requirement pages (to `done`), the API contract (to `implemented` once every app has delivered) |
+| `dev-return-spec`, `dev-return-design` | `status`, `owner`, `revalidation`, `app-revalidation`, `design-tracks`, `design-reaffirm` | the three evidence tables (remove every row); Evidence history (one entry) | requirement pages and the API contract, only to a lower `status` |
+| `qa-verify` | `status`, `owner` | QA verification (add or replace rows); Open questions (`qa` rows) | new bug pages |
+| `qa-pass` | `status`, `owner`, `app-revalidation` | QA verification; Release (a `pending` row per app passed); Open questions (`qa` rows) | new bug pages |
+| `qa-fail` | `status`, `owner`, `app-revalidation` | Delivery evidence, QA verification, Release (remove rows); Evidence history | the named apps' requirement pages and the API contract, to a lower `status`; new bug pages |
+| `qa-return-spec`, `qa-return-design` | as the returns from implementation | as the returns from implementation | as the returns from implementation |
 | `scope-edit` | `apps`, `status`, `owner`, `app-revalidation`, `criteria-high-water` | App scope; Acceptance criteria (three edits); the evidence tables and Evidence history | none |
 
 #### Specification and handoff boundaries
 
-`po-intake` creates every new feature as `raw` + `po`. It writes the Summary, User
-story, Acceptance criteria, Open questions and App scope sections from the
-intake material and leaves the other sections empty. `po-specify` adds what is missing: each
-of Design, Related features, API surface and Board review summary gets one line of supported
-content or an explicit statement that nothing exists yet (for example `Not started.`; under API
-surface, `None.`), the four evidence sections (Delivery evidence, QA verification, Release,
-Evidence history) exist and stay empty, every criterion gets its ID and `applies-to`, and the
-spec checks below are satisfied before the feature becomes `specified`.
+`po-intake` creates every new feature as `raw` + `po`, with the Summary, User story, Acceptance
+criteria, Open questions and App scope sections from the intake material and the others empty.
+`po-specify` adds what is missing: each of Design, Related features, API surface and Board review
+summary gets one line of supported content or an explicit statement that nothing exists yet (for
+example `Not started.`; under API surface, `None.`), the four evidence sections exist and stay
+empty, every criterion gets its ID and `applies-to`, and the spec checks below hold before the
+feature becomes `specified`.
 An API surface other than an empty section or a plain statement that there is none
-(`None.`) declares API work and needs an API contract page before `dev-start`, which
-`tech-design-done` (or a `design-handoff` that settles the technical track) creates, so `po-specify` writes `None.` unless the intake material or
-an answered question states an API change. Open questions stay in the Open questions table, never in these
-sections.
+(`None.`) declares API work and needs an API contract page before `dev-start` (created by `tech-design-done`, or by a
+`design-handoff` that settles the technical track), so `po-specify` writes `None.` unless the intake material or
+an answered question states an API change. Open questions stay in the Open questions table, never in these sections.
 
-`po-specify` must verify or author the complete required feature body from raw
-input. It must not merely change status, status board, index, and log without showing and
-confirming the body. When the raw page is incomplete, the confirmed write set
-includes the authored body. A raw page that already passes the complete
-structured-output gate may be preserved after verification; in that case the
-confirmed write set may contain only status/metadata, status board, index, and log updates.
-An incomplete raw page is filled from supported facts and explicit questions
-owned by `po`, `designer`, `tech-lead` or `dev`. No placeholder text is accepted as a
-requirement. Existing advisory state is preserved, and a pending advisory remains
-a later-action blocker.
+`po-specify` must verify or author the complete required feature body from raw input and show and
+confirm that body. An incomplete raw page is filled from supported facts and explicit questions
+owned by `po`, `designer`, `tech-lead` or `dev`, and the write set includes the authored body; a raw
+page that already passes the structured-output gate may be preserved, so the write set may hold only
+status/metadata, status board, index, and log updates. No placeholder text is accepted as a
+requirement. Existing advisory state is preserved, and a pending advisory remains a later-action blocker.
 
-`po-handoff` remains the stricter factual handoff from specified to design. Its
-completeness checks include nonempty Summary, exactly one substantive `## User
-story`, meaningful acceptance entries, a nonempty matching app scope, no
-open PO questions, and a nonblank skip reason when a proposed advisory skip is
-used. The proposal is evaluated without writing the pending advisory early. The destination
-owner is the design owner of the scope (`design_owner_mismatch` otherwise).
+`po-handoff` is the stricter factual handoff from specified to design. Its completeness checks
+include a nonempty Summary, exactly one substantive `## User story`, meaningful acceptance entries,
+a nonempty matching app scope, no open PO questions, and a nonblank skip reason for a proposed
+advisory skip. The destination owner is the design owner of the scope (`design_owner_mismatch` otherwise).
 
 #### Design owner and design tracks
 
@@ -414,8 +389,8 @@ design-reaffirm: []        # [ui] | [technical] | [ui, technical]
   before design starts and after a return to `specified`; they are required from `in-design` on
   (`design-tracks-missing`, `design-tracks-invalid`).
 - `ui` is settled by `design-ui-done` (design pages in `design/` whose `apps` together cover every active app with a UI:
-  `design-coverage-incomplete`) or `not-applicable` with a non-blank `ui-reason` (`ui-exemption-reason-required`).
-  `unknown` counts as a UI, so only the designer's explicit exemption makes the track `not-applicable` for such an app.
+  `design-coverage-incomplete`) or `not-applicable` with a non-blank `ui-reason` (`ui-exemption-reason-required`);
+  only the designer's explicit exemption makes the track `not-applicable` for an `unknown` app.
 - `technical` is settled by `tech-design-done`: a complete technical design page in `technical-design/`
   (`technical-design-incomplete`) whose Test strategy names every criterion ID (`test-strategy-incomplete`), the agreed
   API contract when the API surface declares API work, and an active app that serves an API; or `not-applicable` with a
@@ -432,19 +407,17 @@ design-reaffirm: []        # [ui] | [technical] | [ui, technical]
   change such a page. The other track's action, run with no page change, removes its entry. Each track action writes only
   the keys and pages of its own track (`track_scope`).
 - A scope change at `ready-for-design` or `in-design` sets every settled track back to `pending` and applies the no-UI
-  initialization again. A return to `in-design` sets the affected tracks (named in the Evidence history entry) to `pending`
-  and lists every other `done` track in `design-reaffirm`; a return to `specified` removes both keys.
+  initialization again. A return to `in-design` (from development or QA) sets the affected tracks, named in the Evidence
+  history entry, to `pending` and lists every other `done` track in `design-reaffirm`; a return to `specified` removes both keys.
 
 #### API contract
 
 When the feature's API surface declares API work, `tech-design-done` (or a `design-handoff` that
-settles the technical track with the `tech-lead` role) creates `api-contracts/F-XXX.md` as a new page with
+settles the technical track with the `tech-lead` role) creates `api-contracts/F-XXX.md` with
 `status: agreed` and `version: 1`; the user confirming the preview is the agreement, and no other action writes a
-contract body. The page is written only from the API surface: each endpoint as `METHOD /path`, using the paths
-the API surface names (or, when it names none, a resource word it uses), and only data
-models that the API surface or a listed endpoint names. No contract is written
-when the API surface declares none, and a feature has one contract: a linked or existing page that already covers
-the feature is not duplicated.
+contract body. The page is written only from the API surface: each endpoint as `METHOD /path` (the paths the surface
+names or, when it names none, a resource word it uses) and only data models that the surface or an endpoint names.
+No contract is written when the surface declares none, and a feature has one contract.
 A contract changes after its creation only as a revision while the feature is in design: `version` plus one, a changed body
 and `status: agreed` (`contract_revision_required` for a changed body without the bump). A revision is refused with
 `shared_contract_in_use` while another feature that links the contract has an app between `ready-for-dev` and
@@ -453,25 +426,23 @@ The contract has a digest, `c1:` and the SHA-256 of `[1, feature ID, version, se
 heading and text pairs (NFC, whitespace collapsed); front matter other than `version` is not part of it. Delivery evidence
 cites it as `F-XXX@v<version>:c1:<digest>`, and the board reports that citation beside the contract page. A delivery row
 that cites another contract, a revised one or `none` for a feature with a contract is `contract_binding_stale`.
-Requirement pages link the contract in `## API contract reference`. `dev-start` accepts
-an `agreed` contract and blocks on a `draft` one; `dev-done` marks the contract
-`implemented` once every app has delivered, which keeps its digest.
+Requirement pages link the contract in `## API contract reference`. `dev-start` accepts an `agreed` contract and
+blocks on a `draft` one; `dev-done` marks it `implemented` once every app has delivered, keeping its digest.
 
 #### Requirement pages at handoff
 
-`design-handoff` leaves exactly one requirement page per scoped app (`requirements_incomplete`). A missing page is
-created `pending`. An existing `pending` or `in-progress` page may change its body sections and is set to `pending`. A
+`design-handoff` leaves exactly one requirement page per scoped app (`requirements_incomplete`): a missing page is
+created `pending`, a `pending` or `in-progress` page may change its body sections and is set to `pending`, and a
 `done` page stays unchanged (`requirement_body_change`).
 
 #### Returns from implementation
 
 `dev-return-spec` and `dev-return-design` send a feature at `ready-for-dev` or `in-dev` back while no app is in QA or beyond.
-One `## Evidence history` entry (`### <preview day> - <action>`) lists every app as affected, no participants, the affected
-tracks (`ui, technical` for a return to `specified`), every evidence row archived verbatim, and each requirement or contract
-page lowered. The same write sets `revalidation` (`specification`, `design`, `technical-design` for `specified`; `design`,
-`technical-design` for `in-design`) and `app-revalidation` (`implementation`, `tests`, `qa`, `release` for every app),
-merged with what is pending (`revalidation_required`), and resets the tracks as the previous section says. A feature of
-which some apps are released and others not is refused with `partial_release_requires_new_feature`.
+One `## Evidence history` entry lists every app as affected, no participants, the affected tracks (`ui, technical` for
+`specified`), every evidence row archived verbatim, and each requirement or contract page lowered. The same write sets
+`revalidation` (`specification`, `design`, `technical-design` for `specified`; `design`, `technical-design` for `in-design`)
+and gives every app all four `app-revalidation` domains, merged with what is pending (`revalidation_required`), and resets
+the tracks as above. Released and unreleased apps together: `partial_release_requires_new_feature`.
 
 API work needs an app that serves an API: when the API surface declares API work, at
 least one active app in the feature's `apps` must have the `serves-api` capability
@@ -481,30 +452,24 @@ with that code (`api_surface_without_api_app` on the connected board).
 
 #### Delivery and revalidation
 
-`dev-done` records the delivery of the apps it names.
-Delivery evidence is an input to `dev-done`: the proposal carries the rows, and the board checks them in the same preview.
-Each named app gets one row in the `## Delivery evidence` table, with the columns `App | Artifact | Contract | Implementation |
-Tests | Basis`:
+Delivery evidence is an input to `dev-done`: the proposal carries the rows of the apps it names and the board checks
+them in the same preview. Each named app gets one row in `## Delivery evidence` (`App | Artifact | Contract | Implementation | Tests | Basis`):
 
-- **Artifact** is one of `version:<semver>`, `build:<name>#<number>`,
-  `image:<name>@sha256:<64 hex digits>`, `package:<name>@<version>` or
-  `commit:<7 to 40 hex digits>`. The board checks the form only (`artifact_reference_invalid`).
-- **Contract** is `none`, or `F-XXX@v<version>:c1:<digest>` when the feature has an API contract.
-- **Implementation** and **Tests** are substantive references an agent can verify: a pull
-  request or source reference and a test command with its result. A placeholder is rejected.
-- **Basis** is `checked` when the agent verified the references, or `attested` when the approving
-  human vouches for them (`basis_invalid` otherwise). The log names who approved.
+- **Artifact**: `version:<semver>`, `build:<name>#<number>`, `image:<name>@sha256:<64 hex>`, `package:<name>@<version>`
+  or `commit:<7 to 40 hex>`; the board checks the form only (`artifact_reference_invalid`).
+- **Contract**: `none`, or `F-XXX@v<version>:c1:<digest>` when the feature has an API contract.
+- **Implementation**, **Tests**: substantive references (a pull request or source reference; a test command and its
+  result). A placeholder is rejected.
+- **Basis**: `checked` when the agent verified the references, `attested` when the approving human vouches for them
+  (`basis_invalid` otherwise).
 
-A reference the agent cannot check is recorded with the basis `attested`, and the agent says in
-its summary that it did not verify the references itself. The agent must not invent delivery
-evidence.
+A reference the agent cannot check is `attested`, and the agent says so; it never invents delivery evidence.
 
-An app that has a row is delivered. The proposal adds rows only for apps that are `in-dev` and
-that no earlier row covers (`evidence_still_active`, `app_stage_mismatch`); delivered rows leave
-the table only when a return archives them in Evidence history. The status the proposal writes
-is the minimum over the app stages: `in-dev` while an app has no row, `ready-for-qa` when
-every active app has one (`app_stage_mismatch` otherwise). The named apps' requirement pages
-become `done`, and once every app has delivered the API contract becomes `implemented`.
+An app that has a row is delivered. The proposal adds rows only for apps that are `in-dev` and that no earlier row
+covers (`evidence_still_active`, `app_stage_mismatch`); delivered rows leave the table only when a return archives them.
+The status is the minimum over the app stages (`in-dev` while an app has no row, `ready-for-qa` once every active app has
+one; `app_stage_mismatch` otherwise). The named apps' requirement pages become `done`, and once every app has delivered
+the API contract becomes `implemented`.
 
 A `revalidation` list invalidates current readiness even when older status fields or evidence
 still say delivered. Its domains are `specification`, `design` and `technical-design` for the
@@ -517,33 +482,60 @@ A dependency on another feature is satisfied when that feature is `released`; a 
 requirement page is satisfied when the app's stage in its feature is `released`. An unmet
 dependency is shown as a `warning` at `dev-start` and `dev-done`.
 
+#### QA verification, QA outcomes and bugs
+
+`qa-verify` records what QA ran. A row names an app, or an integration of two or more apps
+(`integration:app+app`), and cites the criteria it covered with their revisions; it is checked
+against the delivered artifact (`qa_artifact_mismatch`), the criterion's revision and applicability
+(`criterion_revision_stale`, `criterion_not_applicable`), the attempt (`qa_attempt_mismatch`) and the
+environment (`environment_unknown`). An app's first row opens its QA stage (`in-qa`); an app can only
+be tested while it is `ready-for-qa` or `in-qa` (`app_stage_mismatch`), and an integration row needs
+every participant delivered.
+
+`qa-pass` passes the apps it names: each needs coverage (every criterion that lists it has a passing
+row on its current artifact in its current attempt, every integration criterion naming it has a
+passing integration row, and no `fail` or `blocked` row is in the attempt), and no bug of the feature
+may block it. A bug blocks an app when it names the feature and the app, is not `verified`, `released`
+or `closed`, and is not deferred; a blocking bug cannot be deferred, and a verified bug must be verified
+on the current artifact (`bug_verified_on_other_artifact`). The proposal may carry the missing QA rows,
+so a clean run is one approval. With `qa-separate-from-dev` on, the approver is not a grant that
+produced, recovered or repaired the app's Delivery evidence (`separation_required`).
+
+`qa-fail` sends the apps it names back to development and archives their evidence. It needs a failure
+on record for each app: a `fail` or `blocked` QA row in its current attempt, or a linked, non-deferred
+bug that is `open`, `in-fix` or `fixed`. Archiving a QA row advances the app's attempt (`qa-<n+1>`).
+`qa-return-spec` and `qa-return-design` (through `feature-reopen`) send the whole feature back from QA
+before anything shipped; an app that is released refuses them (`partial_release_requires_new_feature`).
+
+A bug page (`wiki/bugs/`, format in `bugs/_FORMAT.md`) moves `open`, `in-fix`, `fixed`, `verified`, and
+from there to `released` inside `release-done`. `bug-update` performs the bug actions: triage and scope,
+start, fixed, verified, reverify, reject, close (`wont-fix`, `duplicate`, `promoted`), defer and reopen.
+A fix cannot be recorded while an app of the bug's feature is in its QA cycle (`feature_in_qa_cycle`):
+the app returns first with `qa-fail`, citing the bug. Rejecting or reopening a bug archives its rows and
+advances the generation of the Fix rows and the attempt of the verification.
+
 #### Evidence history and scope edits
 
-`## Evidence history` is append-only. Every action that removes evidence from the active tables
-appends exactly one entry, headed `### <preview day> - <action>`, and copies each removed row
-verbatim under `- Archived evidence:` as a table row that starts with its section name. A row
-that is both archived and active is `evidence_still_active`; a removed row that is not archived
-is `evidence_not_archived`; changing earlier entries is `history_not_append_only`; the entry
-lists the affected apps, the participants that lost a Release row, the affected tracks, the
-reaffirmed evidence, the requirement and API invalidations and the linked bugs. An app's rows
-are archived as a unit; a released app never loses rows to another app's change.
+`## Evidence history` is append-only. Every action that removes evidence from the active tables appends exactly
+one entry, headed `### <preview day> - <action>`, and copies each removed row verbatim under `- Archived evidence:`
+as a table row that starts with its section name. A row both archived and active is `evidence_still_active`; a
+removed row that is not archived is `evidence_not_archived`; changing earlier entries is `history_not_append_only`.
+An app's rows are archived as a unit; a released app never loses rows to another app's change.
 
-From `ready-for-dev` on, `feature-scope` is the `scope-edit` action and only removes apps:
-a retired app, or an active app that has no evidence rows. Adding an app is refused
-(`scope_stage_unavailable`; return the feature to design), removing the last app is refused
-(`scope_empty`), and replacing the apps of a scope whose apps are all retired is refused
-(`scope_replacement_requires_return`). In one write the edit drops the removed app from every
-`applies-to`, removes a criterion left with no app, turns an integration criterion left with one
-app into a per-app criterion, archives the removed app's rows and every integration row that
-names it, archives the `pending` or `failed` Release row of every remaining app whose criteria
-changed (those apps gain the `qa` and `release` revalidation domains), and sets the status to
-the minimum of the remaining app stages. Released apps keep their rows.
+From `ready-for-dev` on, `feature-scope` is the `scope-edit` action and only removes apps: a retired
+app, or an active app that has no evidence rows. Adding an app (`scope_stage_unavailable`; return
+the feature to design), removing the last app (`scope_empty`) and replacing the apps of an all-retired
+scope (`scope_replacement_requires_return`) are refused. In one write the edit drops the removed app
+from every `applies-to`, removes a criterion left with no app, turns an integration criterion left
+with one app into a per-app criterion, archives the removed app's rows and every integration row
+naming it, archives the `pending` or `failed` Release row of every remaining app whose criteria
+changed (those apps gain the `qa` and `release` revalidation domains), and sets the status to the
+minimum of the remaining app stages. Released apps keep their rows.
 
-**App scope and membership.** A feature's scope is its `apps` list. The workspace's apps
-change over time, and a change never edits a feature's scope by itself:
+**App scope and membership.** A feature's scope is its `apps` list; a change to the workspace's apps never edits it:
 
-- Adding an app (`prism app add`) leaves every existing feature's `apps` as it is. A
-  feature gains the app only by an explicit scope edit, recorded in `log.md`.
+- Adding an app (`prism app add`) leaves every feature's `apps` as it is; a feature gains
+  the app only by an explicit scope edit, recorded in `log.md`.
 - Retiring an app (`prism app retire <id>`) sets `status: retired` in
   `prism.workspace.yml` and deletes no code, wiki page, requirement page or evidence.
   A retired app stays valid in the `apps` of a feature that is `released`, as history.
@@ -553,9 +545,8 @@ change over time, and a change never edits a feature's scope by itself:
   A new feature, and any edit that adds a retired app to a feature's scope, is
   rejected with `app-retired`.
 - Re-pointing a feature from one app to another is an explicit scope edit through the
-  normal lifecycle: the feature's current owner edits `apps`, its `## App scope`
-  entry and its app requirement pages, and records the change in `log.md`. No command
-  re-points features automatically.
+  normal lifecycle: the current owner edits `apps`, the `## App scope` entry and the app
+  requirement pages, and records the change in `log.md`. No command does it automatically.
 
 
 ---

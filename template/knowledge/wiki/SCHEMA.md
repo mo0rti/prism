@@ -29,6 +29,7 @@ knowledge/
     ├── technical-design/ # Technical design of a feature: F-XXX-[slug].md
     ├── app-requirements/  # Per-app implementation specs: F-XXX-[app-id].md
     ├── api-contracts/    # API shapes and endpoint contracts: F-XXX.md
+    ├── bugs/             # One file per bug: BUG-XXX-[slug].md
     ├── decisions/        # Architecture Decision Records: ADR-XXX-[slug].md
     ├── topics/           # Synthesis pages: [slug].md
     ├── research/         # Research pages: [slug].md
@@ -51,8 +52,7 @@ Each subdirectory has a `_FORMAT.md` file describing the required format for pag
 that directory. Read the relevant `_FORMAT.md` before creating a new page. `direction.md`
 and `roadmap.md` are single pages whose formats this file defines.
 
-After `setup-project`, `wiki/advisory/` should contain both `BOARD.md` and
-`PROJECT_FOUNDATION.md`.
+After `setup-project`, `wiki/advisory/` holds `BOARD.md` and `PROJECT_FOUNDATION.md`.
 
 ---
 
@@ -616,9 +616,8 @@ Added when `status` becomes `resolved`: which claim holds, and links to the chan
 
 ## Ingest: any role, any page kind
 
-Ingest turns one pending intake folder into wiki pages. Any role can run it, and it can
-write any page kind. `po-intake` and `design-intake` remain the role-specific entry points
-for feature and design pages; `ingest` is the general operation.
+Ingest turns one pending intake folder into wiki pages. Any role can run it, for any page kind;
+`po-intake` and `design-intake` are the role-specific entry points for feature and design pages.
 
 | The source holds | The page it becomes |
 |------------------|---------------------|
@@ -632,6 +631,7 @@ for feature and design pages; `ingest` is the general operation.
 | A decision with consequences | `decisions/ADR-XXX-[slug].md` |
 | Technical design notes for an existing feature, while its technical track is `pending` or the feature has no tracks yet | `technical-design/F-XXX-[slug].md` |
 | A feature request | `features/F-XXX-[slug].md`, written as `raw` + `po` |
+| A defect report | `bugs/BUG-XXX-[slug].md`, written `open` + `dev` with empty evidence sections |
 
 1. Read `index.md`, find the pages the source touches and read them.
 2. Compare every claim in the source with those pages. A contradiction is quarantined and
@@ -639,11 +639,10 @@ for feature and design pages; `ingest` is the general operation.
 3. Show the user an interpretation summary: the pages to create, the pages to replace and
    the open questions. Wait for confirmation (operational rule 9).
 4. Write the pages. A topic, research page, plan, `direction.md` and `roadmap.md` are
-   created, or replaced in place when they exist. A persona, business rule, decision or
-   feature is created and never rewritten: a changed fact about one of them goes through
-   its own operation (a new decision supersedes an older one, see "Records and decision
-   supersession"). A new feature follows the `po-intake` rules: `status: raw`,
-   `owner: po`, and the five required sections.
+   created, or replaced in place when they exist. A persona, business rule, decision,
+   bug or feature is created and never rewritten: a changed fact goes through its own
+   operation (a new decision supersedes an older one, see "Records and decision
+   supersession"). A new feature follows the `po-intake` rules: `raw` + `po`, five required sections.
 5. Label each claim and link its evidence (operational rule 13), and replace superseded
    content in place (rule 12).
 6. Add or replace each page's line in `index.md`, update the feature's row in
@@ -678,7 +677,7 @@ operation reads it first to find the pages it needs, then reads those pages.
   `## Decision`).
 - **Groups.** Lines sit under a `##` heading for their kind: Direction and roadmap, Plans,
   Topics, Research, Features, Personas, Business rules, Design, Technical design, App
-  requirements, API contracts, Decisions, Advisory and Meta.
+  requirements, API contracts, Bugs, Decisions, Advisory and Meta.
 - **Replaced in place.** When a page changes, its line is rewritten where it stands, never
   appended. The index has no dates, no narrative and no "was" or "now" wording; history lives
   in `log.md`.
@@ -732,15 +731,14 @@ operation appends one entry in this format:
 - `paths` lists every path the operation changed, relative to the repository root and
   comma-separated, without `log.md` itself.
 - `evidence` links to the evidence for the entry: the processed intake source, a review
-  or requirement page, a release or deployment record, a board preview. Evidence is
-  linked, never copied into the log. Write `none` when there is none.
+  or requirement page, a release or deployment record, a board preview. Link it, never copy
+  it; write `none` when there is none.
 - `by` names who made the change: the person, or the agent and the person who confirmed it.
 - One optional line of plain text may follow: at most one sentence of context.
 
-Never edit existing entries. Most recent entry at the bottom. `prism wiki lint` reports
-an entry that is not in this format as the warning `malformed-log-entry` and never
-rewrites it. Lint ignores HTML comment lines, which the board service uses as markers
-inside the entries it writes.
+Never edit existing entries; the most recent is at the bottom. `prism wiki lint` reports an entry
+that is not in this format as the warning `malformed-log-entry` and never rewrites it. Lint ignores
+HTML comment lines, which the board service uses as markers inside the entries it writes.
 
 ---
 
@@ -771,8 +769,7 @@ sources on the entry's date:
 - **Lint.** A page's last verification is the latest `verify` entry that lists it.
   `prism wiki lint` reports `stale-page` (warning) when it is older than
   `wiki-stale-after-days` in `SETTINGS.md` (14 when absent or invalid), and
-  `never-verified` (information) when there is none. The two are separate: a page that
-  was verified and has gone overdue is not a page that nobody has ever checked.
+  `never-verified` (information) when there is none.
 - **Only a request for review.** Freshness never changes a status, and never blocks a
   lifecycle action or a board write.
 
@@ -864,6 +861,8 @@ Use this blocker vocabulary consistently in `lint-wiki`, `wiki-blockers`, and
 - `stale-qa-evidence`: a QA verification row that cites a criterion revision, an artifact or an
   attempt that is no longer current.
 - `stale-delivery-evidence`: a delivery evidence row whose contract citation is no longer current.
+- `open-bug-blocks-qa`: a bug of a feature that blocks an app with a `pending` or `failed` Release row (the bug is
+  not `verified`, `released` or `closed`, and it is not deferred).
 
 If a command cannot prove a category from current wiki files, it must not invent it.
 Report the category as unchecked or absent rather than guessing.
@@ -902,10 +901,9 @@ Follow these rules in every wiki operation:
 8. **Before running `/board-review`**, always read [`advisory/BOARD.md`](advisory/BOARD.md) in full.
 
 9. **Confirm before committing:** For any intake command, show the user a summary of
-   what you intend to create or modify and wait for confirmation before writing files.
-   If the user corrects your interpretation, revise and confirm again before proceeding.
-   This rule is not optional. Its purpose is to prevent the wiki from filling with
-   AI-hallucinated requirements that no human actually specified.
+   what you intend to create or modify and wait for confirmation before writing files;
+   if the user corrects your interpretation, revise and confirm again. This rule is not
+   optional: it keeps AI-hallucinated requirements that no human specified out of the wiki.
 
 10. **Do not invent requirements.** Mark gaps as open questions. Mark ambiguities as
     open questions. A requirement with no source is a risk.
@@ -931,16 +929,14 @@ Follow these rules in every wiki operation:
       amended is recorded there as a log entry, and nowhere on a current-state page.
     - `prism wiki lint` reports a history-date field (`introduced`, `last-updated`,
       `created`, `updated`, `date-updated` and similar) in the front matter of a
-      current-state page as the error `history-date-on-page`. Remove the field and
-      record the event in `log.md`. A record's own date field (an ADR's `date`, a
-      review's `reviewed`) is not reported.
+      current-state page as the error `history-date-on-page`; remove it and record the
+      event in `log.md`. A record's own date field (an ADR's `date`, a review's `reviewed`) is not reported.
 
 12. **Write the current state.** A page describes what is true now. When a source or a
     decision changes a fact, replace the superseded content in place; never append
     "was" or "now" notes. State rationale as a current fact ("The export is CSV because
     finance imports CSV"), not as the story of how the decision came about. History
-    lives in `log.md` and in the records: ADRs, advisory reviews and processed intake
-    items.
+    lives in `log.md` and in the records.
 
 13. **Label claims and link their evidence.** Mark each claim on a current-state page
     Decided, Observed, Proposed, Assumed or Unknown (see "Evidence labels"), and link

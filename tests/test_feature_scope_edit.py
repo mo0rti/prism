@@ -196,8 +196,12 @@ class ScopeEditBoardTests(unittest.TestCase):
         # 4. The released feature that lists the retired app keeps it as history and is not flagged; its reopen route is a later package's.
         self.assertEqual("released", _parse_markdown(self.read(FEATURE_TWO))[0]["status"])
         self.assertNotIn("F-002", self.flagged())
-        with self.assertRaises(BoardError) as unavailable:
+        with self.assertRaises(BoardError) as no_route:
             self.preview("feature-reopen", [{"path": FEATURE_TWO, "content": self.read(FEATURE_TWO)}])
+        # Every route out of `released` belongs to a package that has not landed, so no route can be named.
+        self.assertEqual(("action_unavailable", 409), (no_route.exception.code, no_route.exception.status))
+        with self.assertRaises(BoardError) as unavailable:
+            self.preview("feature-reopen", [{"path": FEATURE_TWO, "content": _set_feature_stage(self.read(FEATURE_TWO), "in-dev", "dev")}])
         self.assertEqual(("action_unavailable", 409), (unavailable.exception.code, unavailable.exception.status))
 
     # -- what a scope edit refuses ----------------------------------------------------------------

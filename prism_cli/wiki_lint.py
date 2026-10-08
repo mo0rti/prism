@@ -19,6 +19,7 @@ from prism_cli.app_model import (
     api_surface_without_api_app_message,
     retired_in_scope_message,
 )
+from prism_cli.wiki_bugs import BugFinding, blocks, lint_bugs, read_bug_pages
 from prism_cli.wiki_model import (
     APP_STAGE_ORDER,
     FEATURE_FRONTMATTER_FIELDS,
@@ -120,6 +121,7 @@ WIKI_BLOCKER_CODES = {
     "app-row-missing",
     "stale-qa-evidence",
     "stale-delivery-evidence",
+    "open-bug-blocks-qa",
 }
 
 _FEATURE_ID_PATTERN = re.compile(r"\bF-\d+\b")
@@ -157,6 +159,7 @@ FRESHNESS_CODES = frozenset({"stale-page", "never-verified"})
 _ADR_ID_PATTERN = re.compile(r"^ADR-\d+$", re.IGNORECASE)
 _FRONTMATTER_PAGE_DIRECTORIES = {
     "api-contracts",
+    "bugs",
     "business-rules",
     "decisions",
     "design",
@@ -376,6 +379,8 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
             diagnostics.append(_diag("orphan-app-requirement", "error", requirement.page.path,
                 f"Requirement refers to missing feature `{requirement.feature_id}`.", requirement.feature_id))
 
+    diagnostics.extend(_lint_bug_pages(wiki_root, feature_pages, model))
+
     for feature in feature_pages:
         if feature.status == "released":
             diagnostics.extend(_lint_released_completion(feature, requirement_pages, all_pages, wiki_root))
@@ -489,6 +494,47 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
 
     diagnostics.sort(key=_diagnostic_order)
     return WikiLintResult(root=root, diagnostics=diagnostics, feature_count=len(feature_pages), information=sorted(information, key=_diagnostic_order))
+
+
+def _bug_diagnostic(finding: BugFinding) -> WikiDiagnostic:
+    return _diag(finding.code, finding.severity, finding.path, finding.message, finding.feature_id)
+
+
+def _lint_bug_pages(wiki_root: Path, feature_pages: list[FeaturePage], model: WorkspaceModel) -> list[WikiDiagnostic]:
+    """CONTRACTS 6.2: the bug pages, the duplicate constraints, and a bug that blocks an app that is ready for release.
+
+    A bug finding names the bug's page and carries no feature ID, so a malformed bug never blocks an unrelated feature.
+    """
+
+    bugs = read_bug_pages(wiki_root)
+    if not bugs:
+        return []
+    features = {
+        normalize_feature_id(feature.feature_id): (feature.page.frontmatter, feature.page.body, feature.status, feature.apps)
+        for feature in feature_pages
+    }
+    diagnostics = [_bug_diagnostic(finding) for finding in lint_bugs(bugs, app_ids={app.id for app in model.apps}, features=features)]
+    for feature in feature_pages:
+        if feature.status not in {"ready-for-release", "in-dev", "ready-for-qa", "in-qa"}:
+            continue
+        evidence = read_feature_evidence(feature.page.body)
+        for app_id in active_scope(feature.apps, model):
+            release = evidence.authoritative_release(app_id)
+            if release is None or release.outcome not in {"pending", "failed"}:
+                continue
+            for bug in bugs:
+                if blocks(bug, feature.feature_id, app_id):
+                    diagnostics.append(
+                        _diag(
+                            "open-bug-blocks-qa",
+                            "error",
+                            feature.page.path,
+                            f"`{bug.bug_id}` ({bug.status}) blocks `{app_id}`, which has a `{release.outcome}` Release row. "
+                            f"Return the app with qa-fail citing `{bug.bug_id}`, or resolve the bug.",
+                            feature.feature_id,
+                        )
+                    )
+    return diagnostics
 
 
 def _lint_open_questions_closed(feature: FeaturePage) -> list[WikiDiagnostic]:
@@ -1878,7 +1924,7 @@ def _source_fields(page: MarkdownPage, wiki_root: Path) -> list[tuple[str, bool,
         field_name, path_only = "sources", True
     elif directory == "business-rules":
         field_name, path_only = "source", False
-    elif directory in {"personas", *GENERAL_PAGE_FOLDERS, *ROOT_PAGE_KINDS}:
+    elif directory in {"personas", "bugs", *GENERAL_PAGE_FOLDERS, *ROOT_PAGE_KINDS}:
         field_name, path_only = "sources", False
     else:
         return []
@@ -1998,6 +2044,7 @@ def _is_non_source_page(path: Path, wiki_root: Path) -> bool:
     return not relative.parts or relative.parts[0] not in {
         "advisory",
         "api-contracts",
+        "bugs",
         "business-rules",
         "decisions",
         "design",

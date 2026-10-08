@@ -91,6 +91,9 @@ class JsonContractTests(unittest.TestCase):
                 "dev-done",
                 "dev-return-spec",
                 "dev-return-design",
+                "qa-verify",
+                "qa-pass",
+                "qa-fail",
             },
             {surface["action"] for surface in capability["surfaces"]},
         )

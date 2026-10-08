@@ -1,0 +1,6 @@
+interface:
+  display_name: "Bug Update"
+  short_description: "Move one bug through triage, fix, verification and closure"
+  default_prompt: "Use $bug-update BUG-XXX triage|scope|in-fix|fixed|verified|reverify|reject|closed|defer|undefer|open to change one bug page."
+policy:
+  allow_implicit_invocation: false

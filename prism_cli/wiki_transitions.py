@@ -31,6 +31,7 @@ from prism_cli.app_model import (
     retired_in_scope_message,
 )
 from prism_cli.fs_safety import reparse_kind
+from prism_cli.qa_checks import qa_fail_checks, qa_pass_checks, qa_verify_checks
 from prism_cli.roles import RolePredicate
 from prism_cli.status import IGNORED_INTAKE_FILES
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, _wiki_path_references, lint_wiki
@@ -93,7 +94,7 @@ SUPPORTED_TARGET_STATUS = "ready-for-design"
 
 # The packages whose actions are enabled. A row of another package is registered but answers `action_unavailable` in the
 # service and in discovery until its package lands and adds its ID here.
-ENABLED_PACKAGES = frozenset({"D1", "D2"})
+ENABLED_PACKAGES = frozenset({"D1", "D2", "D3"})
 
 DESIGN_OWNER = "D"  # the owner symbol that resolves to `designer` or `tech-lead` from the feature's scope
 MINIMUM = "minimum"  # the status or owner is the minimum over the app stages after the action
@@ -253,9 +254,9 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
     _spec("dev-done", "dev-done", _DEV_SOURCES, (MINIMUM, MINIMUM), ("dev",), _AP, "D1", ("F8", "F9"), per_app=True, copy=True),
     _spec("dev-return-spec", "feature-reopen", _DEV_SOURCES, ("specified", "po"), ("dev",), _AP, "D2", ("F10",), arguments="specified", copy=True),
     _spec("dev-return-design", "feature-reopen", _DEV_SOURCES, ("in-design", _D), ("dev",), _AP, "D2", ("F11",), arguments="in-design", copy=True),
-    _spec("qa-verify", "qa-verify", _QA_SOURCES, (MINIMUM, MINIMUM), ("qa",), _AP, "D3", ("F12",), per_app=True),
-    _spec("qa-pass", "qa-pass", _QA_SOURCES, (MINIMUM, MINIMUM), ("qa",), _AP, "D3", ("F13", "F14"), per_app=True),
-    _spec("qa-fail", "qa-fail", (*_QA_SOURCES, ("ready-for-release", "release")), ("in-dev", "dev"), ("qa",), _AP, "D3", ("F15",), per_app=True),
+    _spec("qa-verify", "qa-verify", _QA_SOURCES, (MINIMUM, MINIMUM), ("qa",), _AP, "D3", ("F12",), per_app=True, copy=True),
+    _spec("qa-pass", "qa-pass", _QA_SOURCES, (MINIMUM, MINIMUM), ("qa",), _AP, "D3", ("F13", "F14"), per_app=True, copy=True),
+    _spec("qa-fail", "qa-fail", (*_QA_SOURCES, ("ready-for-release", "release")), ("in-dev", "dev"), ("qa",), _AP, "D3", ("F15",), per_app=True, copy=True),
     _spec("qa-return-spec", "feature-reopen", _RELEASE_SOURCES, ("specified", "po"), ("qa",), _AP, "D3", ("F16",), arguments="specified"),
     _spec("qa-return-design", "feature-reopen", _RELEASE_SOURCES, ("in-design", _D), ("qa",), _AP, "D3", ("F17",), arguments="in-design"),
     _spec("release-done", "release-done", _RELEASE_SOURCES, (MINIMUM, MINIMUM), ("release",), _AP, "D4", ("F18", "F19"), per_app=True),
@@ -296,20 +297,6 @@ FEATURE_ACTIONS = tuple(spec.action for spec in ACTION_SPECS if spec.subject == 
 SUPPORTED_ACTIONS = tuple(spec.action for spec in ACTION_SPECS if spec.enabled and spec.copy)
 
 
-# The actions that stay valid for a feature whose scope lists a retired app: the scope edit that removes it and the routes that
-# send the feature back (CONTRACTS 2.2).
-RETIRED_ALLOWED_ACTIONS = frozenset(
-    {
-        "scope-edit",
-        "dev-return-spec",
-        "dev-return-design",
-        "qa-return-spec",
-        "qa-return-design",
-        "reopen-spec",
-        "reopen-design",
-        "reopen-dev",
-    }
-)
 _FEATURE_REVALIDATION_ORDER = ("specification", "design", "technical-design")
 _TRACK_KEYS_ALLOWED = frozenset({"design-tracks", "design-reaffirm"})
 
@@ -341,6 +328,7 @@ _BASE_KEYS = frozenset({"status", "owner"})
 _PAGE_SECTIONS = frozenset({"Summary", "User story", "Acceptance criteria", "Open questions", "App scope", "Design", "Related features", "API surface", "Board review summary"})
 _EVIDENCE_PAGE_SECTIONS = frozenset({"Delivery evidence", "QA verification", "Release", "Evidence history"})
 _LINKED_PAGES = ("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/")
+_BUG_PAGES = "knowledge/wiki/bugs/"
 
 WRITE_SCOPES: dict[str, WriteScope] = {
     # `po-specify` writes the page body but no evidence: the evidence sections exist and stay empty (checked separately).
@@ -383,7 +371,43 @@ WRITE_SCOPES: dict[str, WriteScope] = {
         _BASE_KEYS | {"apps", "app-revalidation", "criteria-high-water"},
         frozenset({"App scope", "Acceptance criteria", "Delivery evidence", "QA verification", "Release", "Evidence history"}),
     ),
+    # QA (CONTRACTS 2.5). A new bug page may accompany the three QA actions (B1); the bug folder is the one other page they write.
+    "qa-verify": WriteScope(_BASE_KEYS, frozenset({"QA verification", "Open questions"}), (_BUG_PAGES,)),
+    "qa-pass": WriteScope(
+        _BASE_KEYS | {"app-revalidation"},
+        frozenset({"QA verification", "Release", "Open questions"}),
+        (_BUG_PAGES,),
+        clears_app=frozenset({"qa"}),
+    ),
+    "qa-fail": WriteScope(
+        _BASE_KEYS | {"app-revalidation"},
+        frozenset({"Delivery evidence", "QA verification", "Release", "Evidence history"}),
+        (*_LINKED_PAGES, _BUG_PAGES),
+    ),
+    # The routes back from QA reset the design tracks and both revalidation lists (CONTRACTS 2.6, 3.1).
+    "qa-return-spec": WriteScope(
+        _BASE_KEYS | {"revalidation", "app-revalidation"} | _TRACK_KEYS_ALLOWED,
+        frozenset({"Delivery evidence", "QA verification", "Release", "Evidence history"}),
+        _LINKED_PAGES,
+        sets=frozenset({"specification", "design", "technical-design"}),
+        sets_app=frozenset({"implementation", "tests", "qa", "release"}),
+    ),
+    "qa-return-design": WriteScope(
+        _BASE_KEYS | {"revalidation", "app-revalidation"} | _TRACK_KEYS_ALLOWED,
+        frozenset({"Delivery evidence", "QA verification", "Release", "Evidence history"}),
+        _LINKED_PAGES,
+        sets=frozenset({"design", "technical-design"}),
+        sets_app=frozenset({"implementation", "tests", "qa", "release"}),
+    ),
 }
+# The actions that return a feature to an earlier status: they set revalidation domains rather than clear them, and a retired
+# app in the scope does not block them (CONTRACTS 2.2).
+RETURN_ROUTE_ACTIONS = frozenset(
+    {"dev-return-spec", "dev-return-design", "qa-return-spec", "qa-return-design", "reopen-spec", "reopen-design", "reopen-dev"}
+)
+# The actions that stay valid for a feature whose scope lists a retired app: the scope edit that removes it and the routes that
+# send the feature back (CONTRACTS 2.2).
+RETIRED_ALLOWED_ACTIONS = RETURN_ROUTE_ACTIONS | {"scope-edit"}
 
 
 def lookup_action(action: str) -> ActionSpec | None:
@@ -1513,6 +1537,13 @@ _IGNORED_INTEGRITY: dict[str, tuple[str, ...]] = {
     "design-handoff": _TRACK_FINDINGS,
     "dev-return-spec": _RETURN_FINDINGS,
     "dev-return-design": _RETURN_FINDINGS,
+    **{
+        action: ("app-row-ahead-of-status", "feature-status-not-minimum", "app-row-missing", "status-board-frontmatter-drift")
+        for action in ("qa-verify", "qa-pass", "qa-fail")
+    },
+    # The routes back from QA reset what the routes back from implementation reset.
+    "qa-return-spec": _RETURN_FINDINGS,
+    "qa-return-design": _RETURN_FINDINGS,
 }
 # The workflow blockers of the 0.6 gates; the evidence-staleness blockers do not gate these actions.
 LEGACY_BLOCKER_CODES = frozenset(
@@ -1525,6 +1556,7 @@ LEGACY_BLOCKER_CODES = frozenset(
         "cross-app-dependency",
     }
 )
+QA_BLOCKER_CODES = LEGACY_BLOCKER_CODES - {"cross-app-dependency"}
 
 
 def _action_specific_checks(
@@ -1603,6 +1635,17 @@ def _action_specific_checks(
             _scope_not_empty_check(feature, model),
             _open_questions_check_for_action(feature, {"po"}),
         ]
+    if action == "qa-verify":
+        return qa_verify_checks(feature, model, named_apps)
+    if action == "qa-pass":
+        return [
+            *qa_pass_checks(feature, model, named_apps),
+            _revalidation_check(feature, {"specification", "design", "technical-design"}, set()),
+            _app_revalidation_check(feature, named_apps or (), {"qa"}),
+            _open_questions_check_for_action(feature, {"po", "designer", "tech-lead", "dev", "qa"}),
+        ]
+    if action == "qa-fail":
+        return qa_fail_checks(feature, model, named_apps)
     return []
 
 
@@ -1627,6 +1670,8 @@ def _planned_target(
     stages = app_stages(active_scope(feature.apps, model), evidence)
     if spec.action == "dev-done" and named_apps is None:
         stages = {app: ("ready-for-qa" if stage == "in-dev" else stage) for app, stage in stages.items()}
+    if spec.action == "qa-pass" and named_apps is None:
+        stages = {app: ("ready-for-release" if stage in {"ready-for-qa", "in-qa"} else stage) for app, stage in stages.items()}
     minimum = minimum_stage(stages.values())
     if minimum is None:
         return feature.status, feature.owner
@@ -1952,6 +1997,13 @@ def _feature_workflow_checks(
         "dev-start": LEGACY_BLOCKER_CODES,
         "dev-done": LEGACY_BLOCKER_CODES,
         "scope-edit": LEGACY_BLOCKER_CODES,
+        # QA checks the delivered work as it is: the earlier gates still hold and an unreleased dependency does not matter yet.
+        # The evidence of the QA rows is judged by the QA rules, not by the staleness blockers of the page the proposal replaces.
+        "qa-verify": QA_BLOCKER_CODES,
+        "qa-pass": QA_BLOCKER_CODES,
+        "qa-fail": frozenset(),
+        "qa-return-spec": frozenset(),
+        "qa-return-design": frozenset(),
     }.get(action, WIKI_BLOCKER_CODES)
     # An unreleased dependency warns while work starts and is delivered; `release-done` blocks on it (CONTRACTS 8.1).
     warns = {"cross-app-dependency"} if action in {"dev-start", "dev-done"} else set()

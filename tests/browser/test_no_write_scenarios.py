@@ -218,6 +218,45 @@ class AgentOnlyActionTests(ScenarioCase):
             self.journal_is_empty()
             self.assertEqual([], self.page_errors)
 
+    def test_scenario_j_a_card_with_several_actions_names_each_and_opens_the_chosen_request(self) -> None:
+        """An in-design card offers the two track actions beside the development handoff, each under a readable name."""
+
+        with self.scenario("J-several-actions-on-one-card") as run:
+            page = self.page
+            harness = self.harness
+            board = self.sign_in()
+            self.open_board(board)
+            before = workspace_tree(harness.root)
+            picker = page.get_by_role("combobox", name=f"Workflow action for {IN_DESIGN.feature_id}")
+            expect(picker).to_be_visible()
+            options = [text.strip() for text in picker.locator("option").all_text_contents()]
+            self.assertEqual(
+                ["Choose a workflow action...", "development handoff -> ready-for-dev (ready)", "UI design -> in-design (ready)", "technical design -> in-design (ready)"],
+                options,
+            )
+            for raw in ("design-ui-done", "tech-design-done", "design ui done", "tech design done"):
+                self.assertFalse(any(raw in option for option in options), f"{raw!r} is not a readable name")
+            run.effect("the card lists development handoff, UI design and technical design, each under a readable name")
+
+            board.agent_request_button(IN_DESIGN.feature_id, "technical design").click()
+            dialog = self.request_dialog(board, "technical design")
+            expect(dialog).to_be_visible()
+            expect(dialog.get_by_text("Provider-neutral MCP request")).to_be_visible()
+            expect(self.copy_button(dialog)).not_to_have_attribute("aria-disabled", "true")
+            expect(dialog.get_by_role("button", name="Apply reviewed changes")).to_have_count(0)
+            request_text = dialog.locator("pre").text_content()
+            self.assertIn('Skill: "tech-design-done"', request_text)
+            self.assertIn('Action: "tech-design-done"', request_text)
+            self.assertIn(f'Feature ID: "{IN_DESIGN.feature_id}"', request_text)
+            run.screenshot(page, "technical-design-request")
+            run.effect("choosing technical design opens its request for the tech-design-done skill, with Copy enabled and no apply control")
+            page.keyboard.press("Escape")
+            expect(dialog).to_have_count(0)
+
+            self.assertEqual(before, workspace_tree(harness.root), "Choosing an action and opening its request writes nothing.")
+            self.journal_is_empty()
+            self.assertEqual([], self.page_errors)
+
 
 if __name__ == "__main__":
     unittest.main()

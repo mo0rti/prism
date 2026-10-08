@@ -19,7 +19,7 @@ EXPECTED_SKILLS = {
     "design-intake", "design-start", "design-ui-done", "tech-design-done", "dev-clarify", "dev-done", "dev-start", "feature-reopen", "feature-scope",
     "feature-status", "ingest", "lint-wiki", "po-clarify", "po-handoff", "po-intake",
     "po-specify", "prep-sprint", "setup-project", "verify-pages", "wiki-blockers", "wiki-owner",
-    "wiki-app", "wiki-query", "wiki-show",
+    "wiki-app", "wiki-query", "wiki-show", "qa-verify", "qa-pass", "qa-fail", "bug-update",
 }
 
 

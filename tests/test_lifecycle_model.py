@@ -55,6 +55,7 @@ from prism_cli.wiki_transitions import (
     capability_marker,
     lookup_action,
 )
+from prism_cli.wiki_graph import build_graph
 from prism_cli.workflow_install import apply_install, plan_install
 from prism_cli.workspace import inspect_workspace
 from tests import real_temp  # noqa: F401
@@ -426,7 +427,7 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(set(names), set(ACTION_BY_ID))
 
     def test_only_the_rows_of_enabled_packages_are_available(self) -> None:
-        self.assertEqual({"D1", "D2"}, set(ENABLED_PACKAGES))
+        self.assertEqual({"D1", "D2", "D3"}, set(ENABLED_PACKAGES))
         enabled = sorted(spec.action for spec in ACTION_SPECS if spec.enabled)
         self.assertEqual(
             sorted(
@@ -443,6 +444,9 @@ class RegistryTests(unittest.TestCase):
                     "dev-return-design",
                     "scope-edit",
                     "operation-repair",
+                    "qa-verify", "qa-pass", "qa-fail", "qa-return-spec", "qa-return-design",
+                    "bug-open", "bug-triage", "bug-scope", "bug-start", "bug-fixed", "bug-verify", "bug-reverify",
+                    "bug-reject", "bug-close", "bug-defer", "bug-reopen",
                 ]
             ),
             enabled,
@@ -454,7 +458,7 @@ class RegistryTests(unittest.TestCase):
                     self.assertIsNone(spec.unavailable_reason)
                 else:
                     self.assertIn(spec.package, spec.unavailable_reason)
-                    self.assertNotIn(spec.package, {"D1", "D2"})
+                    self.assertNotIn(spec.package, ENABLED_PACKAGES)
 
     def test_the_direct_human_actions_are_exactly_the_three_of_the_contract(self) -> None:
         human = sorted(spec.action for spec in ACTION_SPECS if MODE_HUMAN_DIRECT in spec.modes and spec.subject == "feature")
@@ -490,6 +494,7 @@ class RegistryTests(unittest.TestCase):
                 "dev-return-spec",
                 "dev-return-design",
                 "scope-edit",
+                "qa-verify", "qa-pass", "qa-fail", "qa-return-spec", "qa-return-design",
             },
             set(WRITE_SCOPES),
         )
@@ -964,14 +969,28 @@ class FlowTests(_Workspace):
 
     def test_actions_of_later_packages_answer_action_unavailable(self) -> None:
         self.walk_to_dev()
-        for action in ("qa-pass", "release-done", "qa-return-design", "reopen-dev"):
+        page = self.read(FEATURE)
+        # A reopen route of a package that has landed still needs its explicit route; the page is unchanged here.
+        error = self.rejection("feature-reopen", [{"path": FEATURE, "content": page}])
+        self.assertEqual(("reopen_route_required", 409), (error.code, error.status))
+        for action in ("release-done", "release-return-dev", "reopen-dev"):
             with self.subTest(action=action), self.assertRaises(BoardError) as caught:
                 self.service.query(self.agent, "transition-preflight", "F-001", action)
             self.assertEqual("action_unavailable", caught.exception.code)
-        unavailable = build_board_transition_preflight(self.root, "F-001", "qa-pass")
+        unavailable = build_board_transition_preflight(self.root, "F-001", "release-done")
         self.assertEqual("unknown", unavailable["classification"])
         self.assertEqual("action-unavailable", unavailable["checks"][0]["code"])
+        self.assertEqual("D4", lookup_action("release-done").package)
         self.assertEqual("D3", lookup_action("qa-pass").package)
+
+    def test_a_feature_in_development_is_offered_the_qa_actions_only_once_an_app_reached_qa(self) -> None:
+        self.walk_to_dev()
+        node = next(item for item in build_graph(self.root)["facts"]["nodes"] if item["id"] == "F-001")
+        # The returns from implementation are offered; the QA actions wait until an app reaches QA.
+        self.assertEqual(["dev-done", "dev-return-spec", "dev-return-design"], [record["action"] for record in node["transitions"]])
+        # The preflight of a named QA action still evaluates it.
+        evaluated = build_board_transition_preflight(self.root, "F-001", "qa-pass")
+        self.assertNotIn("action-unavailable", {check["code"] for check in evaluated["checks"]})
 
     def test_a_warning_check_does_not_block(self) -> None:
         from prism_cli.board_service import _classification

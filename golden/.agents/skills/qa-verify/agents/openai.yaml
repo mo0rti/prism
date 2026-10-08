@@ -1,0 +1,6 @@
+interface:
+  display_name: "QA Verify"
+  short_description: "Record QA results for apps or integrations of a feature"
+  default_prompt: "Use $qa-verify F-XXX [app ...] to record the QA rows the tester reports, and a bug for each defect found."
+policy:
+  allow_implicit_invocation: false

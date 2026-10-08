@@ -1,0 +1,84 @@
+{# Generated from template-skills/qa-fail/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
+# QA fail - send apps back to development
+
+<!-- prism:qa-fail-contract:v1 -->
+
+Use this skill when an app of a feature failed QA. The app returns to development: its Delivery evidence, every QA row that
+names it and its Release rows move to `## Evidence history`, and a later `/dev-done` delivers it again.
+
+## Usage
+
+`/qa-fail [F-XXX] app [app ...]`
+
+## Read-only preflight
+
+When available, use:
+
+```text
+prism wiki transition-preflight F-XXX [path] --action qa-fail --json
+```
+
+Accept it only with common envelope schema 1, command facts, capability version 3 and an action-specific `qa-fail`
+surface, transition version 2 and a consistent snapshot. Otherwise fall back to direct-file checks. The preflight is
+copy-only and never authorizes a write.
+
+## Supported action
+
+`in-dev` + `dev`, `ready-for-qa` + `qa`, `in-qa` + `qa` or `ready-for-release` + `release` -> `in-dev` + `dev`
+
+Each named app is at `ready-for-qa`, `in-qa` or `ready-for-release` (`app_stage_mismatch`). An app that is already released
+changes through a bug fix or a reopen, never through `qa-fail`.
+
+## Evidence and confirmation
+
+Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md`, the complete feature, its requirement
+pages and API contract, and every bug page of the feature.
+
+Each named app needs a failure on record (`qa_failure_unsupported`): a `fail` or `blocked` QA row in its current attempt, or a
+linked bug. A linked bug is listed under `- Linked bugs:` of the history entry, belongs to the feature, lists the app, is
+`open`, `in-fix` or `fixed`, and is not deferred. Record the failure first with `/qa-verify`, or create the bug in
+this proposal (a new `open` + `dev` page under `knowledge/wiki/bugs/`).
+
+The proposal, in one write:
+
+- removes from the active tables, for each named app, its Delivery evidence row, every QA row that names it (an app row or an
+  integration row) and its Release rows, and copies each verbatim under `- Archived evidence:` of one new
+  `### <today> - qa-fail` entry in `## Evidence history`, as a table row that starts with its section name
+  (`Delivery evidence`, `QA verification` or `Release`);
+- removes the `pending` or `failed` Release row of every other app that is not released and took part in an archived
+  integration row, archives it the same way and lists the app under `- Participants:` (its Delivery evidence and its app QA
+  rows stay);
+- fills the entry's `- Reason:`, `- Affected apps:` (the named apps), `- Affected tracks: none`, `- Reaffirmed evidence: none`,
+  `- Requirement/API invalidations:` (one `path: done -> in-progress` line for each requirement page of a named app that was
+  `done`, and `path: implemented -> agreed` for an API contract that was `implemented`) and `- Linked bugs:`;
+- sets the requirement pages of the named apps from `done` to `in-progress` and an `implemented` API contract to `agreed`
+  (change only `status` in those pages);
+- adds `implementation`, `tests`, `qa` and `release` to the named apps in `app-revalidation`, and `qa` and `release` to each
+  participant;
+- sets the feature to `in-dev` + `dev`.
+
+Show the complete write set. Reread the source and context immediately before confirmation and once again after it. After
+explicit confirmation write the pages, the status board row and a `log.md` entry. If a multi-file write is partial, report the
+exact observed changes and stop for fresh recovery; no transaction is implied. Decline or cancel means no mutation.
+
+## Rules
+
+- write-capable skill
+- the history entry is append-only; never rewrite an earlier entry
+- an archived row is copied exactly; a row that is archived and still active is `evidence_still_active`
+- write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
+
+## Output behavior
+
+Return:
+
+- feature and the apps sent back, with the failure that supports each
+- the rows archived and the participants that lost a Release row
+- the pages whose status changed
+- the feature's new status
+
+## Error and stop conditions
+
+- if the feature file does not exist, return a clean missing-feature response
+- if an app has no failure on record, stop and ask the tester to record it with `/qa-verify`
+- if the user wants to cancel, stop without writing

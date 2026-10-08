@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from prism_cli.wiki_index import INDEX_FILE, ROOT_PAGE_KINDS, page_group, parse_index_entries
+from prism_cli.wiki_bugs import ACTIVE_BUG_STATUSES, read_bug_pages
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, lint_wiki
 from prism_cli.wiki_model import (
     AppRequirementPage,
@@ -29,6 +30,7 @@ SEARCH_DIRECTORIES = {
     "technical-design": "technical-design",
     "app-requirement": "app-requirements",
     "api-contract": "api-contracts",
+    "bug": "bugs",
     "decision": "decisions",
     "topic": "topics",
     "research": "research",
@@ -43,6 +45,7 @@ _INDEX_GROUP_TYPES = {
     "technical-design": "technical-design",
     "app-requirements": "app-requirement",
     "api-contracts": "api-contract",
+    "bugs": "bug",
     "decisions": "decision",
     "topics": "topic",
     "research": "research",
@@ -130,15 +133,33 @@ def wiki_owner(root: Path, owner: str) -> dict[str, Any]:
                     }
                 )
 
+    owner_bugs = [bug for bug in read_bug_pages(wiki_root) if bug.owner == owner and bug.status in ACTIVE_BUG_STATUSES]
     facts = {
         "owner": owner,
         "feature_count": len(owner_features),
         "features": [_feature_summary(feature) for feature in owner_features],
         "open_question_count": len(owner_questions),
         "open_questions": owner_questions,
+        "bug_count": len(owner_bugs),
+        "bugs": [
+            {
+                "id": bug.bug_id,
+                "title": bug.title,
+                "status": bug.status,
+                "owner": bug.owner,
+                "severity": bug.severity,
+                "blocking": bug.blocking,
+                "apps": bug.apps,
+                "feature": bug.feature,
+                "deferred": bug.deferred,
+                "path": str(bug.page.path),
+            }
+            for bug in owner_bugs
+        ],
     }
     sources = [str(feature.page.path) for feature in owner_features]
     sources.extend(question["path"] for question in owner_questions)
+    sources.extend(str(bug.page.path) for bug in owner_bugs)
     return _envelope(workspace_root, "wiki owner", lint_result.diagnostics, facts, _unique([str(wiki_root), *sources]))
 
 

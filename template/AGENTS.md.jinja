@@ -192,7 +192,7 @@ no date, so freshness comes from `log.md`: a current-state page's last verificat
 
 - `setup-project` - interactive project initialization (run once after `prism new` or `prism workflow install`)
 - `po-intake [folder]` - process raw PO notes into feature specs
-- `ingest [folder]` - process raw notes into topics, research, plans, direction, roadmap, personas, business rules, decisions or features (any role)
+- `ingest [folder]` - process raw notes into topics, research, plans, direction, roadmap, personas, business rules, decisions, bugs or features (any role)
 - `verify-pages <page>...` - record that current-state pages were checked against their sources (one `verify` entry in `log.md`; it never edits a page)
 - `po-clarify` - answer open questions assigned to PO
 - `po-specify [F-XXX]` - author one raw page as a structured `specified` draft
@@ -206,7 +206,11 @@ no date, so freshness comes from `log.md`: a current-state page's last verificat
 - `dev-clarify` - answer open questions assigned to Dev
 - `dev-start [F-XXX]` - move confirmed `ready-for-dev` work to `in-dev`
 - `dev-done [F-XXX] [app ...]` - record the delivery evidence of the named apps
-- `feature-reopen [F-XXX] [specified|in-design|in-dev]` - send a feature in development back to `specified` or `in-design`, or reopen one shipped feature, after impact review
+- `qa-verify [F-XXX] [app ...]` - record QA results for apps or integrations, and a bug for each defect found
+- `qa-pass [F-XXX] [app ...]` - pass apps through QA toward release
+- `qa-fail [F-XXX] app ...` - send apps back to development after a QA failure
+- `bug-update BUG-XXX <triage|scope|in-fix|fixed|verified|reverify|reject|closed|defer|undefer|open>` - move one bug through its lifecycle
+- `feature-reopen [F-XXX] [specified|in-design|in-dev]` - send a feature in development or QA back to `specified` or `in-design`, or reopen one shipped feature, after impact review
 - `feature-scope [F-XXX]` - edit the app scope of one feature that is not `done`: its `apps`, its `## App scope` section and the requirement pages of the apps it gains (the way out of `app-retired-in-scope`)
 - `ask [F-XXX] "question" --to po|designer|dev` - route a question
 

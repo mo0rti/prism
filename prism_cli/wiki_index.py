@@ -36,6 +36,7 @@ PAGE_DIRECTORIES = (
     "technical-design",
     "app-requirements",
     "api-contracts",
+    "bugs",
     "decisions",
     "advisory",
     "topics",
@@ -51,6 +52,7 @@ CURRENT_STATE_DIRECTORIES = frozenset(
     {
         "api-contracts",
         "app-requirements",
+        "bugs",
         "business-rules",
         "design",
         "features",
@@ -93,6 +95,7 @@ GROUPS = (
     ("technical-design", "Technical design"),
     ("app-requirements", "App requirements"),
     ("api-contracts", "API contracts"),
+    ("bugs", "Bugs"),
     ("decisions", "Decisions"),
     ("advisory", "Advisory"),
     ("project-docs", "Project docs"),

@@ -179,6 +179,17 @@ so one app can be in QA while another is still in development.
 - **Release**: one row per app and delivery, with the target, the version, the attempt
   `release-<n>`, the outcome (`pending`, `released` or `failed`), the record and the basis.
 
+A QA row names an app (`backend`) or an integration (`integration:backend+web`, the participants
+sorted and joined by `+`) and cites the criteria it covered as `AC-<n>@v1:<64 hex digits>`. The
+artifact is the delivered artifact of the app (an integration row writes `app=artifact` for every
+participant, joined by `;`), and the environment is `local`, `ci` or an environment the app's
+delivery target declares. The attempt of an app is 1 plus the Evidence history entries that list it
+under Affected apps and archived a QA row that names it; an integration row takes the highest attempt
+of its participants. A row is replaced by a row with the same key and criterion in the current attempt.
+`/qa-verify` records QA rows, `/qa-pass` adds the `pending` Release row of each app it passes, and
+`/qa-fail` archives the rows of an app that failed. A defect found in QA is a bug page in `wiki/bugs/`
+(format in `bugs/_FORMAT.md`), created in the same proposal as the QA row.
+
 An app's stage follows its rows: `in-dev` without a delivery row, `ready-for-qa` with one,
 `in-qa` once a QA row names it, `ready-for-release` with a pending or failed Release row, and
 `released` when its Release row is `released`. The feature's status is the lowest stage of its

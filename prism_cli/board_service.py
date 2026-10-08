@@ -36,6 +36,8 @@ from prism_cli.app_model import (
     retired_in_scope_message,
 )
 from prism_cli import roles as _roles
+from prism_cli.board_bugs import BugActionsMixin, is_bug_path
+from prism_cli.board_qa import D3_ACTIONS, D3_QA_ACTIONS, D3_RETURN_ACTIONS, QaActionsMixin
 from prism_cli.board_store import BoardLockError, BoardStore, UnsupportedBoardState
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError, reparse_kind
 from prism_cli.roles import ROLES, RoleError, RolePredicate, parse_roles
@@ -53,6 +55,7 @@ from prism_cli.wiki_index import (
     remove_index_lines,
     render_index_lines,
 )
+from prism_cli.wiki_bugs import bug_listing_digest
 from prism_cli.wiki_log import VERIFY_OPERATION, append_log_entry, format_verification_entry
 from prism_cli.wiki_model import HISTORY_HEADING as _HISTORY_HEADING
 from prism_cli.wiki_model import (
@@ -109,7 +112,7 @@ from prism_cli.wiki_model import (
     workflow_policy,
 )
 from prism_cli.wiki_transitions import ACTION_SPECS as _REGISTERED_ACTION_SPECS
-from prism_cli.wiki_transitions import DESIGN_OWNER, MINIMUM, RETIRED_ALLOWED_ACTIONS, WRITE_SCOPES, lookup_action
+from prism_cli.wiki_transitions import DESIGN_OWNER, MINIMUM, RETIRED_ALLOWED_ACTIONS, RETURN_ROUTE_ACTIONS, WRITE_SCOPES, lookup_action
 
 
 _MAX_TEXT_FILE = 512 * 1024
@@ -181,6 +184,7 @@ _WIKI_DIRS = (
     "app-requirements",
     "api-contracts",
     "advisory",
+    "bugs",
     "decisions",
     *GENERAL_PAGE_FOLDERS,
 )
@@ -214,7 +218,7 @@ _CONTRACT_RANK = {"draft": 0, "agreed": 1, "implemented": 2}
 _CONTRACT_CONSUMER_STATUSES = frozenset({"ready-for-dev", "in-dev", "ready-for-qa", "in-qa", "ready-for-release"})
 _WIKI_ROOT_PAGES = frozenset({"SCHEMA.md", "LIFECYCLE.md", "SETTINGS.md", "CONNECTED.md", "index.md", "status-board.md", "log.md", *ROOT_PAGE_KINDS})
 # The page folders where an ingest only creates pages and never rewrites one; a decision changes only by supersession.
-_INGEST_CREATE_ONLY = ("features", "personas", "business-rules", "decisions")
+_INGEST_CREATE_ONLY = ("features", "personas", "business-rules", "decisions", "bugs")
 _ADR_FIELDS = {"id", "title", "date", "status", "supersedes", "superseded-by"}
 _ADR_ID = re.compile(r"^ADR-\d+$")
 _STATUS_ROW = re.compile(
@@ -360,7 +364,7 @@ class Actor:
         }
 
 
-class BoardService:
+class BoardService(QaActionsMixin, BugActionsMixin):
     """Shared workflow service used by local HTTP, MCP, and CLI adapters."""
 
     def __init__(self, root: Path) -> None:
@@ -1431,7 +1435,17 @@ class BoardService:
 
         paths = set(payload.get("source_map", {}))
         paths |= {write["path"] for write in payload.get("writes", []) if write.get("role") not in {*_ROW_ROLES, "log"}}
-        return _revision(self._fingerprint_paths(paths))
+        digests: dict[str, Any] = dict(self._fingerprint_paths(paths))
+        if payload.get("bug_listing") is not None:
+            digests["bug-listing"] = self._current_bug_listing(payload)
+        return _revision(digests)
+
+    def _current_bug_listing(self, payload: Mapping[str, Any]) -> str:
+        """The bug listing as it is now, plus the bug pages this preview itself creates, so applying it does not change the answer."""
+
+        creates = sorted(PurePosixPath(write["path"]).name for write in payload.get("writes", []) if is_bug_path(write["path"]) and write.get("before") is None)
+        listing = bug_listing_digest(self.root / "knowledge" / "wiki")
+        return listing if not creates else listing + "+" + ",".join(creates)
 
     def _review_revision(self, actor: Actor, payload: Mapping[str, Any], payload_hash: str) -> str:
         """What a reviewer confirms: this preview, this reviewer and roles, the current policy and the current sources."""
@@ -2453,6 +2467,7 @@ class BoardService:
                 "knowledge/wiki/business-rules/*.md",
                 "knowledge/wiki/technical-design/*.md",
                 "knowledge/wiki/decisions/*.md",
+                "knowledge/wiki/bugs/*.md",
                 "knowledge/wiki/topics/*.md",
                 "knowledge/wiki/research/*.md",
                 "knowledge/wiki/plans/*.md",
@@ -2489,6 +2504,17 @@ class BoardService:
                 "knowledge/wiki/app-requirements/*.md",
                 "knowledge/wiki/api-contracts/*.md",
             ]
+        if name in {"qa-verify", "qa-pass"}:
+            return ["knowledge/wiki/features/*.md", "knowledge/wiki/bugs/*.md"]
+        if name == "qa-fail":
+            return [
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/app-requirements/*.md",
+                "knowledge/wiki/api-contracts/*.md",
+                "knowledge/wiki/bugs/*.md",
+            ]
+        if name == "bug-update":
+            return ["knowledge/wiki/bugs/*.md"]
         return []
 
     @staticmethod
@@ -2526,8 +2552,9 @@ class BoardService:
             )
         if name == "ingest":
             limitations.append(
-                "Any role may ingest, into any of these page kinds: topic, research, plan, direction, roadmap, persona, business rule, decision (ADR) "
-                "or feature. A new feature meets every po-intake rule: `raw` + `po`, the five required sections, no rewrite of an existing feature. "
+                "Any role may ingest, into any of these page kinds: topic, research, plan, direction, roadmap, persona, business rule, decision (ADR), "
+                "bug or feature. A new bug is `open` + `dev` with empty Fix, Verification, Release and Evidence history sections (`bug_creation_invalid`) "
+                "and is never rewritten by ingest. A new feature meets every po-intake rule: `raw` + `po`, the five required sections, no rewrite of an existing feature. "
                 "A persona, business rule or decision is created, never rewritten, except that a new decision may supersede one by setting `supersedes` "
                 "and changing only the status fields of the old one. A topic, research, plan, direction or roadmap page is created or replaced in place. "
                 "The processed MANIFEST.md lists every page the proposal writes by its full relative path and, where it has one, its canonical ID."
@@ -2582,6 +2609,31 @@ class BoardService:
                 "and a URL or record path) or a delivery attestation (`attested by <Name>:` and a URL or path), taken from what the developer reports. "
                 "A commit or pull request proves which code changed, not that it shipped. A missing or invalid table is rejected "
                 "with `delivery_evidence_required`, `delivery_evidence_invalid` or `release_evidence_required` and `details`."
+            )
+        if name in {"qa-verify", "qa-pass"}:
+            limitations.append(
+                "Records QA verification in the feature's `## QA verification` table: one row per app, or per integration of two or more apps, with the criteria it "
+                "verified (`AC-n@v1:<hex>`), the method, the delivered artifact, the environment, the attempt `qa-<n>`, the result and its evidence. A row is checked "
+                "against the delivered artifact, the criterion revision and the attempt (`qa_artifact_mismatch`, `criterion_revision_stale`, `qa_attempt_mismatch`). "
+                "A defect found while testing is created in the same proposal as a new `open` bug page under `knowledge/wiki/bugs/`; a QA action never rewrites a bug."
+            )
+        if name == "qa-pass":
+            limitations.append(
+                "The same proposal adds a `pending` Release row for each app it passes. Every criterion of an app needs a passing row on its current artifact in its current "
+                "attempt, no row of the attempt may be `fail` or `blocked`, no open bug of the feature and app may block, and with `qa-separate-from-dev` on the approving "
+                "human must not be the grant that produced, recovered or repaired the delivery evidence (`separation_required`)."
+            )
+        if name == "qa-fail":
+            limitations.append(
+                "Sends the apps it names back to development: their Delivery evidence, every QA row that names them and their Release rows move to `## Evidence history` "
+                "in one entry (`- Affected apps:`, `- Participants:`, `- Linked bugs:`), their requirement pages go from `done` to `in-progress` and an `implemented` API "
+                "contract goes back to `agreed`. Each app needs a `fail` or `blocked` row in its current attempt, or a linked, non-deferred bug (`qa_failure_unsupported`)."
+            )
+        if name == "bug-update":
+            limitations.append(
+                "Changes one existing bug page. The change selects the action: triage (`severity`, `blocking`), scope, start, fixed (a Fix row per app), verified "
+                "(a passing Verification row per app on the verification artifact), reverify, reject, close (`wont-fix`, `duplicate`, `promoted`), defer and reopen. "
+                "Each action may change only the front matter keys and sections of its row (`bug_frontmatter_scope`). A bug becomes `released` only inside release-done."
             )
         if name in _HUMAN_ACTIONS:
             limitations.append(
@@ -2652,6 +2704,17 @@ class BoardService:
                     linked_feature_id = _page_feature_id(self._read_text(path), path.stem)
                     if isinstance(linked_feature_id, str) and linked_feature_id.casefold() == feature_id.casefold():
                         paths.add(rel)
+            # The bug pages of the feature decide `qa-pass` and `release-done`; a bug created after a preview is caught by the
+            # bug listing the preview records (`bug_listing`).
+            for path in sorted((wiki_root / "bugs").glob("*.md")):
+                if path.name.startswith("_"):
+                    continue
+                try:
+                    linked = _parse_markdown(self._read_text(path), path.name)[0].get("feature")
+                except BoardError:
+                    continue
+                if isinstance(linked, str) and linked.casefold() == feature_id.casefold():
+                    paths.add(path.relative_to(self.root).as_posix())
         # Linked and sibling pages are names read from disk; a name Windows
         # cannot hold is not context the board can fingerprint or show.
         return set(self._split_portable(paths)[0])
@@ -3405,7 +3468,8 @@ class BoardService:
         if index_write is not None:
             writes.append(index_write)
 
-        log_subject = ", ".join(sorted(str(after_frontmatter[p].get("id")) for p in feature_changes)) or _move_subject(normalized_moves) or skill
+        bug_ids = sorted(str(bs_id) for relative in supplied if is_bug_path(relative) and (bs_id := _parse_markdown(supplied[relative], relative)[0].get("id")))
+        log_subject = ", ".join(sorted(str(after_frontmatter[p].get("id")) for p in feature_changes)) or ", ".join(bug_ids) or _move_subject(normalized_moves) or skill
         log_before = self._optional_text(self._safe_path(_LOG_PATH, allow_missing=True))
         log_entry = _actor_log_entry(
             actor,
@@ -3466,6 +3530,9 @@ class BoardService:
         }
         if approval is not None:
             payload["approval"] = approval
+        if operation.get("action") in D3_ACTIONS or skill == "bug-update":
+            # A bug created or removed between this preview and its apply changes the bug rules (CONTRACTS 2.4 freshness).
+            payload["bug_listing"] = bug_listing_digest(self.root / "knowledge" / "wiki")
         criteria = {
             relative: entry
             for relative in feature_changes
@@ -3529,6 +3596,12 @@ class BoardService:
             allowed = {"features", "design", "technical-design", "app-requirements", "api-contracts"}
         elif skill == "dev-done":
             allowed = {"features", "app-requirements", "api-contracts"}
+        elif skill in {"qa-verify", "qa-pass"}:
+            allowed = {"features", "bugs"}
+        elif skill == "qa-fail":
+            allowed = {"features", "app-requirements", "api-contracts", "bugs"}
+        elif skill == "bug-update":
+            allowed = {"bugs"}
         elif skill == "feature-reopen":
             allowed = {"features", "app-requirements", "api-contracts"}
         elif skill == SCOPE_SKILL:
@@ -3599,6 +3672,8 @@ class BoardService:
                             existing = None
                         if existing is not None:
                             required.update(self._feature_context_paths(existing["path"], existing["frontmatter"]))
+
+        required.update(self._bug_required_paths(skill, supplied, before))
 
         # Intake processors need to compare against existing canonical entries,
         # not only the proposed source folder.
@@ -3956,7 +4031,9 @@ class BoardService:
                 self._assert_feature_id_available(new["id"], except_path=relative)
             self._validate_feature_shape(relative, content, skill)
             if old is not None and skill != SCOPE_SKILL:
-                action = self._action_from_feature_change(skill, old, new, _parse_markdown(before[relative] or "", relative)[1])
+                action = self._action_from_feature_change(
+                    skill, old, new, _parse_markdown(before[relative] or "", relative)[1], _parse_markdown(content, relative)[1]
+                )
                 if action:
                     actions.append(action)
                 elif old.get("status") != new.get("status") or old.get("owner") != new.get("owner"):
@@ -3969,8 +4046,8 @@ class BoardService:
         if skill in {"po-intake", "ingest"}:
             if any(item["before"] is not None for item in changed_features):
                 raise BoardError("intake_existing_feature", f"`{skill}` may create new canonical features but may not rewrite existing feature pages.", 409)
-            if any(before.get(path) is not None for path in supplied if path.startswith(("knowledge/wiki/personas/", "knowledge/wiki/business-rules/"))):
-                raise BoardError("intake_existing_page", f"`{skill}` may not rewrite an existing persona or business-rule page.", 409)
+            if any(before.get(path) is not None for path in supplied if path.startswith(("knowledge/wiki/personas/", "knowledge/wiki/business-rules/", "knowledge/wiki/bugs/"))):
+                raise BoardError("intake_existing_page", f"`{skill}` may not rewrite an existing persona, business-rule or bug page.", 409)
         elif skill == "design-intake":
             if len(changed_features) != 1 or changed_features[0]["before"] is None:
                 raise BoardError("one_existing_feature_required", "Design intake requires exactly one existing feature.", 409)
@@ -4015,6 +4092,8 @@ class BoardService:
                 self._validate_api_contract(relative, content)
             elif relative.startswith("knowledge/wiki/decisions/"):
                 self._validate_decision(relative, content, before.get(relative), supplied, before)
+            elif is_bug_path(relative):
+                self._validate_bug_page(relative, content, before.get(relative), supplied)
             elif general_page_kind(relative.removeprefix("knowledge/wiki/")) is not None:
                 self._validate_general_page(relative, content)
             elif not relative.startswith("knowledge/wiki/features/") and not relative.startswith("knowledge/intake/"):
@@ -4100,6 +4179,10 @@ class BoardService:
         if len(actions) > 1:
             raise BoardError("multiple_lifecycle_actions", "One preview may perform only one lifecycle transition.", 409)
 
+        if skill == "bug-update":
+            self._assert_skill_available(skill)
+            return self._validate_bug_update(supplied, before)
+
         if skill in _LIFECYCLE_SKILLS:
             self._assert_skill_available(skill)
             expected_action = _LIFECYCLE_SKILLS[skill]
@@ -4138,7 +4221,7 @@ class BoardService:
                 original_content=before[target_feature["path"]] or "",
                 supplied=supplied,
                 before=before,
-                defer_minimum=expected_action == "dev-done",
+                defer_minimum=expected_action == "dev-done" or expected_action in D3_QA_ACTIONS,
             )
             completes: list[str] | None = None
             if expected_action == "design-start":
@@ -4162,13 +4245,20 @@ class BoardService:
                 )
                 # The status follows the minimum of the app stages the evidence produces, so it is judged after the evidence.
                 self._assert_minimum_status(expected_action, target_feature["path"], supplied[target_feature["path"]], old, target_feature["after"])
+            d3: dict[str, Any] = {}
+            if expected_action in D3_ACTIONS:
+                d3 = self._d3_validate(expected_action, target_feature, supplied, before)
+                named_apps = d3["named"]
+                if expected_action in D3_QA_ACTIONS:
+                    # The status follows the minimum of the app stages the QA rows and Release rows produce, so it is judged after them.
+                    self._assert_minimum_status(expected_action, target_feature["path"], supplied[target_feature["path"]], old, target_feature["after"])
             self._validate_lifecycle_related_writes(expected_action, supplied, before, target_feature, named_apps, completes)
             if expected_action == "tech-design-done" or (expected_action == "design-handoff" and "technical" in (completes or ())):
                 self._validate_technical_track_pages(target_feature, supplied, before)
             if expected_action == "dev-done":
                 self._assert_contract_bindings(target_feature, supplied, named_apps)
             feature_id = target_feature["id"]
-            produces = self._produced_delivery_evidence(expected_action, str(feature_id), supplied[target_feature["path"]], target_feature["path"], named_apps)
+            produces = d3.get("produces") or self._produced_delivery_evidence(expected_action, str(feature_id), supplied[target_feature["path"]], target_feature["path"], named_apps)
             transition = self._evaluate_proposed_action(expected_action, supplied, target_feature, named_apps)
             checks.extend(transition.get("checks", []))
             classification = transition.get("classification", "unknown")
@@ -4186,7 +4276,7 @@ class BoardService:
                 "warnings": [item for item in checks if item.get("status") == "warning"],
                 # The evidence rows this operation produces, bound to it in the provenance journal (CONTRACTS 1.6).
                 "produces_evidence": produces,
-                "separation_subjects": [],
+                "separation_subjects": d3.get("separation", []),
                 **({"completes": completes} if expected_action == "design-handoff" else {}),
             }
 
@@ -4872,18 +4962,23 @@ class BoardService:
             {"path": relative, "skill": skill, "from": [old.get("status"), old.get("owner")], "to": [new.get("status"), new.get("owner")]},
         )
 
-    def _action_from_feature_change(self, skill: str, old: Mapping[str, Any], new: Mapping[str, Any], old_body: str = "") -> str | None:
+    def _action_from_feature_change(
+        self, skill: str, old: Mapping[str, Any], new: Mapping[str, Any], old_body: str = "", new_body: str | None = None
+    ) -> str | None:
         """The enabled registry action of `skill` that moves a feature from `old` to `new`, or ``None``.
 
         A `minimum` target (`dev-done`) accepts any app-stage status; the minimum itself is checked with the evidence. A return
         route applies by the app stages of the feature (`_route_stage_error`); when none applies, the error names the way out.
+        Two routes can share a source and a destination (`dev-return-spec` and `qa-return-spec` both leave `in-dev` for
+        `specified`); the proposal names its route in the Evidence history entry it appends, and without one the stage of the
+        apps decides: a QA route when an app has reached QA.
         """
 
         old_pair = (old.get("status"), old.get("owner"))
         new_pair = (new.get("status"), new.get("owner"))
         design_before = design_owner(_scope_of(old) or [], self._model)
         design_after = design_owner(_scope_of(new) or [], self._model)
-        refused: BoardError | None = None
+        matches: list[Any] = []
         for spec in _REGISTERED_ACTION_SPECS:
             if spec.command != skill or spec.subject != "feature" or not spec.enabled:
                 continue
@@ -4892,13 +4987,24 @@ class BoardService:
             target = spec.resolved_target(design_after)
             if target[0] == MINIMUM:
                 if new_pair in {(stage, OWNER_BY_STATUS[stage]) for stage in APP_STAGE_ORDER}:
-                    return spec.action
+                    matches.append(spec)
                 continue
             if new_pair == target:
-                error = self._route_stage_error(spec.action, old, old_body)
-                if error is None:
-                    return spec.action
-                refused = refused or error
+                matches.append(spec)
+        if len(matches) > 1:
+            named = _entry_action(new_body, old_body)
+            if named is not None and any(spec.action == named for spec in matches):
+                matches = [spec for spec in matches if spec.action == named]
+        if len(matches) > 1:
+            stages = app_stages(active_scope(_scope_of(old) or [], self._model), read_feature_evidence(old_body)) if status_rank(old.get("status")) >= status_rank("in-dev") else {}
+            in_qa = any(stage in {"ready-for-qa", "in-qa", "ready-for-release"} for stage in stages.values())
+            matches = [spec for spec in matches if spec.action.startswith("qa-") == in_qa] or matches
+        refused: BoardError | None = None
+        for spec in matches:
+            error = self._route_stage_error(spec.action, old, old_body)
+            if error is None:
+                return spec.action
+            refused = refused or error
         if refused is not None:
             raise refused
         return None
@@ -5116,7 +5222,7 @@ class BoardService:
         if action == "po-specify":
             if old_fm.get("apps") != new_fm.get("apps") or old_fm.get("sources") != new_fm.get("sources"):
                 raise BoardError("specification_identity_change", "PO specify preserves source and app scope.", 409)
-        if action != "dev-done" and not scope.sets_app and "app-revalidation" in changed:
+        if "app-revalidation" not in scope.frontmatter and "app-revalidation" in changed:
             raise BoardError("revalidation_scope", f"Action `{action}` does not change `app-revalidation`.", 409)
 
     # -- design tracks, technical design and the API contract (CONTRACTS 3) ------------------------------------------
@@ -5423,6 +5529,57 @@ class BoardService:
         if error is not None:
             raise error
 
+    def _validate_return_tracks(
+        self, action: str, path: str, old_fm: Mapping[str, Any], new_fm: Mapping[str, Any], apps: list[str], entry: Any
+    ) -> None:
+        """The design tracks a return writes (CONTRACTS 3.1 to 3.3): the one track model of every route back from development or QA.
+
+        A return to `specified` removes both keys; a return to design sets each affected track to `pending` (a UI track of a scope
+        with no UI is `not-applicable` again) and lists every other settled track in `design-reaffirm`. The affected tracks are the
+        ones the Evidence history entry names.
+        """
+
+        listed = [item for item in re.split(r"[\s,;]+", entry.fields.get("Affected tracks", "").strip().strip("[]").lower()) if item]
+        old_tracks = self._tracks_of(old_fm, path, required=True)
+        if action.endswith("-spec"):
+            if set(listed) != set(DESIGN_TRACKS):
+                raise BoardError(
+                    "impact_review_required",
+                    "A return to `specified` sends both tracks back: list `ui, technical` under Affected tracks.",
+                    409,
+                    {"label": "Affected tracks"},
+                )
+            if "design-tracks" in new_fm or "design-reaffirm" in new_fm:
+                raise BoardError(
+                    "track_scope",
+                    f"A return to `specified` removes `design-tracks` and `design-reaffirm` from `{path}`; the first design action writes them again.",
+                    409,
+                    {"path": path},
+                )
+            return
+        affected = [item for item in DESIGN_TRACKS if item in listed]
+        if not affected or "none" in listed:
+            raise BoardError(
+                "impact_review_required",
+                "A return to design sends at least one track back: list `ui`, `technical` or both under Affected tracks.",
+                409,
+                {"label": "Affected tracks"},
+            )
+        expected = old_tracks
+        for track in affected:
+            expected = expected.with_track(track, "pending")
+        expected = normalize_ui_track(expected, apps, self._model)
+        expected = expected.with_reaffirm([track for track in DESIGN_TRACKS if track not in affected and expected.state(track) == "done"])
+        new_tracks = self._tracks_of(new_fm, path, required=True)
+        if new_tracks != expected:
+            raise BoardError(
+                "track_reset_required",
+                f"The affected tracks {_quoted(affected)} return to `pending` and each unaffected settled track awaits reaffirmation: "
+                f"`design-tracks` is {expected.tracks_value()} and `design-reaffirm` is {expected.reaffirm_value()}; `{path}` has {new_tracks.tracks_value()} and {new_tracks.reaffirm_value()}.",
+                409,
+                {"path": path, "expected": expected.tracks_value(), "reaffirm": expected.reaffirm_value()},
+            )
+
     def _validate_dev_return(
         self, action: str, feature: Mapping[str, Any], supplied: Mapping[str, str], before: Mapping[str, str | None]
     ) -> None:
@@ -5465,46 +5622,7 @@ class BoardService:
                 409,
                 {"path": path},
             )
-        listed = [item for item in re.split(r"[\s,;]+", entry.fields.get("Affected tracks", "").strip().strip("[]").lower()) if item]
-        old_tracks = self._tracks_of(old_fm, path, required=True)
-        if action == "dev-return-spec":
-            if set(listed) != set(DESIGN_TRACKS):
-                raise BoardError(
-                    "impact_review_required",
-                    "A return to `specified` sends both tracks back: list `ui, technical` under Affected tracks.",
-                    409,
-                    {"label": "Affected tracks"},
-                )
-            if "design-tracks" in new_fm or "design-reaffirm" in new_fm:
-                raise BoardError(
-                    "track_scope",
-                    f"A return to `specified` removes `design-tracks` and `design-reaffirm` from `{path}`; the first design action writes them again.",
-                    409,
-                    {"path": path},
-                )
-        else:
-            affected = [item for item in DESIGN_TRACKS if item in listed]
-            if not affected or "none" in listed:
-                raise BoardError(
-                    "impact_review_required",
-                    "A return to design sends at least one track back: list `ui`, `technical` or both under Affected tracks.",
-                    409,
-                    {"label": "Affected tracks"},
-                )
-            expected = old_tracks
-            for track in affected:
-                expected = expected.with_track(track, "pending")
-            expected = normalize_ui_track(expected, apps, self._model)
-            expected = expected.with_reaffirm([track for track in DESIGN_TRACKS if track not in affected and expected.state(track) == "done"])
-            new_tracks = self._tracks_of(new_fm, path, required=True)
-            if new_tracks != expected:
-                raise BoardError(
-                    "track_reset_required",
-                    f"The affected tracks {_quoted(affected)} return to `pending` and each unaffected settled track awaits reaffirmation: "
-                    f"`design-tracks` is {expected.tracks_value()} and `design-reaffirm` is {expected.reaffirm_value()}; `{path}` has {new_tracks.tracks_value()} and {new_tracks.reaffirm_value()}.",
-                    409,
-                    {"path": path, "expected": expected.tracks_value(), "reaffirm": expected.reaffirm_value()},
-                )
+        self._validate_return_tracks(action, path, old_fm, new_fm, apps, entry)
         old_domains, _errors = parse_app_revalidation(old_fm.get("app-revalidation"))
         expected_domains = {app: merge_revalidation(old_domains.get(app, []), APP_REVALIDATION_DOMAINS, APP_REVALIDATION_DOMAINS) for app in apps}
         new_domains, new_errors = parse_app_revalidation(new_fm.get("app-revalidation"))
@@ -5746,6 +5864,9 @@ class BoardService:
         named_apps: tuple[str, ...] = (),
         completes: list[str] | None = None,
     ) -> None:
+        if action in D3_ACTIONS:
+            # The QA actions validate their linked pages with the rest of their rules (`_d3_validate`).
+            return
         related = {path for path in supplied if path.startswith(_LINKED_PAGE_PREFIXES)}
         scope = WRITE_SCOPES[action]
         if action in {"po-specify", "po-handoff", "design-start", "dev-start"} and related:
@@ -6485,7 +6606,7 @@ class BoardService:
                 field_name, path_only = "sources", False
             elif relative.startswith("knowledge/wiki/business-rules/"):
                 field_name, path_only = "source", False
-            elif general_page_kind(relative.removeprefix("knowledge/wiki/")) is not None:
+            elif general_page_kind(relative.removeprefix("knowledge/wiki/")) is not None or is_bug_path(relative):
                 field_name, path_only = "sources", False
             else:
                 continue
@@ -6885,6 +7006,8 @@ class BoardService:
                 actual = self._tree_digest(path)
             if actual != expected:
                 raise BoardError("stale_preview", f"Relevant source `{relative}` changed after this preview.", 409)
+        if payload.get("bug_listing") is not None and bug_listing_digest(self.root / "knowledge" / "wiki") != payload["bug_listing"]:
+            raise BoardError("stale_preview", "A bug page was created or removed after this preview; preview again.", 409)
         for move in payload.get("moves", []):
             source = self._safe_path(move["source"], allow_missing=True)
             destination = self._safe_path(move["destination"], allow_missing=True)
@@ -7842,6 +7965,17 @@ def _require_headings(body: str, headings: Iterable[str], relative: str, hint: s
 
 _API_ENDPOINT = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b[\s`*|:()\[\]-]*(/[A-Za-z0-9_\-./{}:~%]*)")
 _API_SURFACE_PATH = re.compile(r"(?<![\w/.:])(/[A-Za-z0-9_\-./{}:~%]*[A-Za-z0-9_}])")
+
+
+def _entry_action(new_body: str | None, old_body: str) -> str | None:
+    """The action named by the Evidence history entry a proposal appends (`### <date> - <action>`), or ``None`` without one."""
+
+    if new_body is None:
+        return None
+    entries = parse_evidence_history(new_body)
+    if len(entries) <= len(parse_evidence_history(old_body)):
+        return None
+    return entries[-1].action
 
 
 def _tracks_after_page_changes(
