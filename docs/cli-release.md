@@ -56,7 +56,7 @@ tests; Node.js is needed for the dashboard boot checks.
 ```bash
 python -m pip install -e . jsonschema
 python -m unittest tests.test_workspace_contract
-python -m unittest discover -s tests
+python -B scripts/run-tests.py
 python -m pip install --upgrade build twine "readme-renderer[md]"
 python -m build --sdist --wheel
 python -m twine check --strict dist/*
@@ -138,7 +138,7 @@ A pending publisher creates the project on its first upload and then becomes the
 Every job of the release workflow needs **verify-tag**, directly or through another job, so nothing is built or published while that job fails. The gate is a check in that first job, not a separate required workflow, because a tag push starts only the release workflow. It judges the commit the tag points at (for a manual run, the commit of the named tag):
 
 - **Template Validation** builds and tests the golden app of every pack: the backend, web, Android, iOS and agent-service apps of `golden/` run their own generated workflows (`scripts/run-golden-workflow.py`), next to the generated two-app workspaces, and `golden-current` checks that `golden/` is current. A pack whose slice no longer builds fails its job, and that stops the release.
-- **CLI Validation** runs the Python suite on Ubuntu, Windows and macOS (it includes the golden check), the wheel, the browser and the npm launcher jobs.
+- **CLI Validation** runs the Python suite on Ubuntu, Windows and macOS through `scripts/run-tests.py` (it includes the golden check; the Windows job runs as two shards), the wheel, the browser and the npm launcher jobs.
 
 A workflow that never ran for the commit, because its path filters skipped it, counts as missing. Start it on the tag and release again once it passes:
 

@@ -61,6 +61,9 @@ wiki commands from a generated project against this repository.
 ## Common Commands
 
 ```bash
+# Run the Python suite across worker processes (-j N, module names, --shard N/M); it finds the same tests as python -B -m unittest discover -s tests
+python -B scripts/run-tests.py
+
 # Test template generation through the CLI (the workspace layer and each scaffolded app's pack)
 prism new --preset backend-only --project-name "Test App" --dest C:\temp\template-test --yes
 
