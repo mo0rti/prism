@@ -785,12 +785,14 @@ class AnswersSnapshotTests(LayeredTestCase):
         self.assertEqual([], copier.calls)
         self.assert_nothing_started(ws, code, err, relative)
 
-    def test_a_smart_update_whose_result_records_another_answer_than_the_validated_one_is_refused_before_the_commit(self) -> None:
-        ws = self.copy_workspace("update-diverged")
+    def smart_update_whose_result_is_changed_by(self, name: str, change) -> None:
+        """Run a smart update whose Copier leaves the root answers file changed by ``change(data)``; the update must refuse before the commit."""
+
+        ws = self.copy_workspace(name)
 
         def copier_that_consumed_other_answers(command) -> subprocess.CompletedProcess:
             data = read_yaml(ws / ".copier-answers.yml")
-            data["project_name"] = "Another Name"
+            change(data)
             (ws / ".copier-answers.yml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
             return subprocess.CompletedProcess(command, 0)
 
@@ -800,6 +802,39 @@ class AnswersSnapshotTests(LayeredTestCase):
         self.assert_nothing_started(ws, code, err, ".copier-answers.yml")
         self.assertEqual(1, len(recorder.calls))
         self.assertEqual([".copier-answers.yml"], [call["answers_file"] for call in recorder.calls], "a smart update lets Copier read the tracked file itself")
+
+    def test_a_smart_update_whose_result_records_another_answer_than_the_validated_one_is_refused_before_the_commit(self) -> None:
+        self.smart_update_whose_result_is_changed_by("update-diverged", lambda data: data.update(project_name="Another Name"))
+
+    def test_a_smart_update_whose_result_lost_a_validated_answer_is_refused_before_the_commit(self) -> None:
+        self.assertIn("project_slug", read_yaml(self.workspace / ".copier-answers.yml"))
+        self.smart_update_whose_result_is_changed_by("update-missing-key", lambda data: data.pop("project_slug"))
+
+    def test_a_smart_update_whose_result_gained_an_answer_is_refused_before_the_commit(self) -> None:
+        self.assertNotIn("app_package", read_yaml(self.workspace / ".copier-answers.yml"))
+        self.smart_update_whose_result_is_changed_by("update-added-key", lambda data: data.update(app_package=INJECTED_PACKAGE))
+
+    def test_the_answers_a_smart_update_hands_over_and_the_commit_may_differ_and_nothing_else(self) -> None:
+        root = cli.AnswersSnapshot(".copier-answers.yml", b"", {"_commit": "v1.0.0", "project_name": "A", "stacks": ["x"], "apps": [{"id": "a"}]})
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+
+            def written(**data) -> None:
+                (project / ".copier-answers.yml").write_text(yaml.safe_dump(data), encoding="utf-8")
+
+            written(_commit="v2.0.0", project_name="A", stacks=["x", "y"], apps=[])
+            cli.require_answers_kept(project, root, ignore=("stacks", "apps"))
+            written(_commit="v2.0.0", project_name="A")
+            cli.require_answers_kept(project, root, ignore=("stacks", "apps"))
+            for label, data in (
+                ("another value", {"_commit": "v2.0.0", "project_name": "B", "stacks": [], "apps": []}),
+                ("a missing key", {"_commit": "v2.0.0", "stacks": [], "apps": []}),
+                ("an added key", {"_commit": "v2.0.0", "project_name": "A", "stacks": [], "apps": [], "app_package": "p"}),
+            ):
+                with self.subTest(label):
+                    written(**data)
+                    with self.assertRaises(cli.UpdateSafetyError):
+                        cli.require_answers_kept(project, root, ignore=("stacks", "apps"))
 
     def test_a_smart_update_keeps_every_validated_answer_and_moves_each_layer_to_the_new_revision(self) -> None:
         ws = self.copy_workspace("update-clean")

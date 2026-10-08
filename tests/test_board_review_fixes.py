@@ -19,7 +19,15 @@ from prism_cli.board_service import BoardError, BoardService
 from prism_cli.board_store import unresolved_board_operations
 from prism_cli.workflow_assets import asset_digest
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, create_core_workflow_fixture
-from tests.test_board_service import _design_page, _read_revisions
+from prism_cli.workflow_install import apply_install, plan_install
+from tests.test_board_service import (
+    _design_page,
+    _journey_design_page,
+    _journey_feature_page,
+    _journey_requirement_page,
+    _read_revisions,
+    _write_index_rows,
+)
 from tests.test_core_workflow_fixture import _feature_page
 from tests import real_temp  # noqa: F401
 
@@ -599,6 +607,100 @@ class BoardReviewFixTests(unittest.TestCase):
         # A fresh preview that reads the new source applies.
         again = self.ask_preview()
         self.assertEqual("applied", self.service.apply(self.agent, again["preview_id"], "op-ask-2")["state"])
+
+
+class RetryDependencyBindingTests(unittest.TestCase):
+    """An ordinary apply binds the dependency set (membership and digests) when it validates, and every retry compares against it."""
+
+    FEATURE = "knowledge/wiki/features/F-001-document-review.md"
+    REQUIREMENT = "knowledge/wiki/app-requirements/F-001-backend.md"
+    DESIGN = "knowledge/wiki/design/F-001-document-review.md"
+    EXTRA_REQUIREMENT = "knowledge/wiki/app-requirements/F-001-backend-second.md"
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = create_core_workflow_fixture(Path(temporary.name) / "generated-project")
+        self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))["status"])
+        (self.root / INTAKE_ITEM).parent.rename(self.root / "knowledge/intake/processed/2026-10-06-document-review-brief")
+        for relative, content in (
+            (self.FEATURE, _journey_feature_page("F-001", "Document review", "ready-for-dev", "dev", ["knowledge/intake/processed/2026-10-06-document-review-brief"], ["| 1 | Which points should a review summary highlight? | po | resolved: The key points. |"])),
+            (self.REQUIREMENT, _journey_requirement_page("pending")),
+            (self.DESIGN, _journey_design_page()),
+        ):
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content.encode("utf-8"))
+        feature = (self.root / self.FEATURE).read_text(encoding="utf-8")
+        (self.root / self.FEATURE).write_bytes(feature.replace("No design has been recorded yet.", "The design is recorded in [F-001 design](../design/F-001-document-review.md).").encode("utf-8"))
+        _write_index_rows(self.root, [("F-001", "Document review", "ready-for-dev", "dev")])
+        self.service = BoardService(self.root).start()
+        self.addCleanup(self.service.close)
+        self.human = self.service.authenticate(self.service.create_participant("Owner", "human", writable=True)["token"])
+
+    def dev_start_preview(self) -> dict:
+        preview = self.service.preview_transition(self.human, "F-001", "dev-start", {"semantic_review_acknowledged": True})
+        self.assertEqual("ready", preview["classification"], preview["checks"])
+        self.assertTrue(preview["applicable"], preview["blockers"])
+        return preview
+
+    def add_a_second_requirement(self) -> None:
+        (self.root / self.EXTRA_REQUIREMENT).write_bytes(_journey_requirement_page("pending").encode("utf-8"))
+
+    def apply_with_the_replace_refused_once(self, change=None, *, times: int = 1) -> tuple[dict, list[str]]:
+        """Apply `dev-start` with the feature page's replace refused ``times`` times; ``change`` runs right after the first refusal."""
+
+        preview = self.dev_start_preview()
+        real = os.replace
+        refused: list[str] = []
+
+        def replace(source, destination, *args, **kwargs):
+            if Path(destination).as_posix().endswith(self.FEATURE) and len(refused) < times:
+                refused.append(str(destination))
+                if len(refused) == 1 and change is not None:
+                    change()
+                error = PermissionError(13, "Access is denied")
+                error.winerror = 5
+                raise error
+            return real(source, destination, *args, **kwargs)
+
+        with patch.object(board_service.os, "replace", side_effect=replace), patch.object(board_service, "_REPLACE_WAIT_SECONDS", 0):
+            receipt = self.service.apply(self.human, preview["preview_id"], "op-dev-start")
+        return receipt, refused
+
+    def status_of_the_feature(self) -> str:
+        return yaml.safe_load((self.root / self.FEATURE).read_text(encoding="utf-8").split("---")[1])["status"]
+
+    def test_a_requirement_page_that_appears_while_the_replace_waits_is_a_conflict_and_nothing_is_written(self) -> None:
+        feature_before = (self.root / self.FEATURE).read_bytes()
+        receipt, refused = self.apply_with_the_replace_refused_once(self.add_a_second_requirement)
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("recovery_source_changed", receipt["conflicts"][0]["reason"])
+        self.assertIn(self.EXTRA_REQUIREMENT, receipt["conflicts"][0]["reason"])
+        self.assertEqual(1, len(refused), "the refused attempt was not repeated")
+        self.assertEqual(feature_before, (self.root / self.FEATURE).read_bytes(), "nothing was written")
+        self.assertEqual("ready-for-dev", self.status_of_the_feature())
+
+    def test_a_dependency_page_that_changes_while_the_replace_waits_is_a_conflict(self) -> None:
+        feature_before = (self.root / self.FEATURE).read_bytes()
+        edit = lambda: (self.root / self.DESIGN).write_bytes((self.root / self.DESIGN).read_bytes() + b"\nA late design note.\n")
+        receipt, refused = self.apply_with_the_replace_refused_once(edit)
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertEqual(1, len(refused))
+        self.assertEqual(feature_before, (self.root / self.FEATURE).read_bytes())
+
+    def test_an_unchanged_set_of_dependencies_is_retried_and_applied(self) -> None:
+        receipt, refused = self.apply_with_the_replace_refused_once(times=3)
+        self.assertEqual("applied", receipt["state"], receipt)
+        self.assertEqual(3, len(refused))
+        self.assertEqual("in-dev", self.status_of_the_feature())
+
+    def test_the_dependency_set_is_recorded_when_the_operation_is_applied_and_not_taken_again_after_a_refusal(self) -> None:
+        self.apply_with_the_replace_refused_once(self.add_a_second_requirement)
+        row = self.service.store.connection.execute("SELECT intent_json FROM operations WHERE operation_id = 'op-dev-start'").fetchone()
+        bound = json.loads(row[0])["bound_sources"]
+        self.assertIn(self.REQUIREMENT, bound)
+        self.assertNotIn(self.EXTRA_REQUIREMENT, bound, "the page that appeared after the refusal is not part of the baseline")
 
 
 if __name__ == "__main__":

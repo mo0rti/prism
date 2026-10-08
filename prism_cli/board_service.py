@@ -981,6 +981,9 @@ class BoardService:
             if not payload.get("applicable"):
                 raise BoardError("preview_blocked", "This preview is blocked, unknown, or missing required confirmation.", 409)
             self._assert_preview_fresh(payload)
+            # The dependency set (membership and digests) is bound before the validation reads it, so a dependency that appears
+            # while the operation validates, or while a write waits to be retried, is a change against this baseline.
+            bound_sources = self._recovery_snapshot(payload)
             try:
                 self._revalidate_operation(actor, payload)
             except BoardError as exc:
@@ -997,7 +1000,9 @@ class BoardService:
             # Validation can read several files. Recheck them after it finishes
             # and before recording an intent that may be recovered after a crash.
             self._assert_preview_fresh(payload)
-            intent = {**payload, "operation_id": operation_id, "actor": actor.to_dict()}
+            if self._recovery_snapshot(payload) != bound_sources:
+                raise BoardError("stale_preview", "A relevant source or dependency changed while the operation was validated; preview again.", 409)
+            intent = {**payload, "operation_id": operation_id, "actor": actor.to_dict(), "bound_sources": bound_sources}
             self._assert_unresolved_writes_safe(operation_id, intent)
             now = _now()
             with store.transaction() as db:
@@ -4451,10 +4456,11 @@ class BoardService:
         move_states = [self._move_state(move, intent) for move in intent.get("moves", [])]
         complete = all(item["state"] == "applied" for item in states) and all(state == "applied" for state in move_states)
         if not complete:
-            self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
+            # A fresh apply compared the dependency set it bound a moment ago, under the same lock; its first check here would repeat that.
+            self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed, check_bound=revalidate)
             if revalidate:
                 self._revalidate_recovery(actor, intent, reviewed=reviewed is not None)
-            self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
+            self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed, check_bound=revalidate)
         return complete
 
     def _roll_forward(
@@ -4717,8 +4723,20 @@ class BoardService:
             raise BoardError("recovery_move_conflict", "The moved intake tree contains changed directory structure.", 409)
         return "applied"
 
+    @staticmethod
+    def _snapshot_changes(current: Mapping[str, str | None], expected: Mapping[str, str | None]) -> list[str]:
+        """The paths whose digest differs between two relevant-source snapshots, or that only one of them holds (membership counts)."""
+
+        missing = object()
+        return sorted(path for path in {*current, *expected} if current.get(path, missing) != expected.get(path, missing))
+
     def _assert_recovery_sources(
-        self, intent: Mapping[str, Any], conflict_paths: list[str] | None = None, *, reviewed: Mapping[str, str | None] | None = None
+        self,
+        intent: Mapping[str, Any],
+        conflict_paths: list[str] | None = None,
+        *,
+        reviewed: Mapping[str, str | None] | None = None,
+        check_bound: bool = True,
     ) -> None:
         """Refuse a recovery whose relevant sources changed.
 
@@ -4736,9 +4754,7 @@ class BoardService:
             self._move_state(move, intent)
             moved_prefixes.extend((move["source"], move["destination"]))
         if reviewed is not None:
-            current = self._recovery_snapshot(intent)
-            missing = object()
-            changed = sorted(path for path in {*current, *reviewed} if current.get(path, missing) != reviewed.get(path, missing))
+            changed = self._snapshot_changes(self._recovery_snapshot(intent), reviewed)
             if changed:
                 if conflict_paths is not None:
                     conflict_paths.extend(changed)
@@ -4757,6 +4773,19 @@ class BoardService:
                     if conflict_paths is not None:
                         conflict_paths.append(relative)
                     raise BoardError("recovery_source_changed", f"Relevant source `{relative}` changed; recorded writes cannot be recovered automatically.", 409)
+            bound = intent.get("bound_sources")
+            if check_bound and isinstance(bound, Mapping):
+                # The dependency set bound when the operation was applied: a dependency that appeared since is as much a change as an edit.
+                changed = self._snapshot_changes(self._recovery_snapshot(intent), bound)
+                if changed:
+                    if conflict_paths is not None:
+                        conflict_paths.extend(changed)
+                    raise BoardError(
+                        "recovery_source_changed",
+                        f"Relevant source `{changed[0]}` changed since the operation was validated; recorded writes cannot be recovered automatically.",
+                        409,
+                        {"paths": changed[:20]},
+                    )
         for state in self._operation_file_states(intent):
             if state["state"] == "conflict":
                 if conflict_paths is not None:

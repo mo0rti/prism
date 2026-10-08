@@ -2512,10 +2512,10 @@ def require_answers_unchanged(project_path: Path, snapshots: Iterable[AnswersSna
 
 
 def require_answers_kept(project_path: Path, snapshot: AnswersSnapshot, *, ignore: Iterable[str] = ()) -> None:
-    """After Copier rewrote a layer's answers file: every validated answer in it still has its value.
+    """After Copier rewrote a layer's answers file: it holds the validated answers exactly, key set and values.
 
-    Copier moves `_commit` forward and the update sets the answers it hands over itself (``ignore``); any other answer
-    that Prism validated and that Copier now records differently was not the one Copier consumed.
+    Only Copier's `_commit` (it moves forward) and the answers the update hands over itself (``ignore``) may differ. An
+    answer that went missing, one that was added and one that has another value were not the answers Copier consumed.
     """
 
     try:
@@ -2526,7 +2526,9 @@ def require_answers_kept(project_path: Path, snapshot: AnswersSnapshot, *, ignor
     if not isinstance(written, dict):
         raise UpdateSafetyError(changed_answers_message(snapshot.answers_file))
     skipped = {"_commit", *ignore}
-    if any(key in written and written[key] != value for key, value in snapshot.data.items() if key not in skipped):
+    validated = {key: value for key, value in snapshot.data.items() if key not in skipped}
+    recorded = {key: value for key, value in written.items() if key not in skipped}
+    if recorded != validated:
         raise UpdateSafetyError(changed_answers_message(snapshot.answers_file))
 
 

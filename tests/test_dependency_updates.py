@@ -354,6 +354,30 @@ class AuditGateFailsClosedTests(unittest.TestCase):
         self.assertIsNone(audit_gate.npm_entries_problem({"braces": braces, "evil": {**chain, "via": ["braces"]}}, {"high": 1, "critical": 1, "total": 2}, 1, "high"), "a chain through a listed entry is followed")
         self.assertIn("`missing`", audit_gate.npm_entries_problem({"braces": braces, "evil": chain}, {"high": 1, "critical": 1, "total": 2}, 1, "high"))
 
+    def test_an_entry_without_an_advisory_that_leads_to_none_fails(self) -> None:
+        # Astra's case: one allow-listed high advisory, and a critical entry whose `via` is empty, names only itself or loops.
+        braces = NPM_REPORT["vulnerabilities"]["braces"]
+        declared = {"high": 1, "critical": 1, "total": 2}
+        for label, via in (("an empty via", []), ("a self reference", ["evil"])):
+            with self.subTest(label):
+                report = {"auditReportVersion": 2, "vulnerabilities": {"braces": braces, "evil": {"name": "evil", "severity": "critical", "via": via}}, "metadata": {"vulnerabilities": declared}}
+                for returncode in (1, 0):
+                    code, text = self.run_gate("npm", json.dumps(report), returncode)
+                    self.assertEqual(1, code, text)
+                    self.assertNotIn("No unlisted advisory", text)
+                self.assertIn("`evil` without an advisory", audit_gate.npm_entries_problem(report["vulnerabilities"], declared, 1, "high"))
+        loop = {"braces": braces, "a": {"name": "a", "severity": "critical", "via": ["b"]}, "b": {"name": "b", "severity": "critical", "via": ["a"]}}
+        self.assertIn("without an advisory", audit_gate.npm_entries_problem(loop, {"high": 1, "critical": 2, "total": 3}, 1, "high"))
+
+    def test_an_entry_that_leads_to_an_advisory_through_other_entries_passes(self) -> None:
+        braces = NPM_REPORT["vulnerabilities"]["braces"]
+        chain = {
+            "braces": braces,
+            "micromatch": {"name": "micromatch", "severity": "high", "via": ["braces"]},
+            "fast-glob": {"name": "fast-glob", "severity": "high", "via": ["fast-glob", "micromatch"]},
+        }
+        self.assertIsNone(audit_gate.npm_entries_problem(chain, {"high": 3, "total": 3}, 1, "high"))
+
     def test_an_unlisted_finding_still_blocks(self) -> None:
         code, text = self.run_gate("npm", json.dumps(NPM_REPORT), 1)
         self.assertEqual(1, code)

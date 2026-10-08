@@ -14,7 +14,7 @@ The gate fails closed. An ``npm audit`` that exits with anything but 0 (clean) o
 report without the expected structure, or whose exit status and report disagree (a failure with no finding, a
 clean exit with a finding) is an operational error, never "no unlisted advisory". The report's totals must equal its
 entries (``metadata.vulnerabilities`` against ``vulnerabilities``), each entry and advisory must carry the fields the
-gate reports, and every package an entry is vulnerable through must be an entry of the report. ``uv audit`` is held to the same exit statuses.
+gate reports, and every entry must lead to an advisory through entries of the report. ``uv audit`` is held to the same exit statuses.
 """
 
 from __future__ import annotations
@@ -92,7 +92,8 @@ def npm_entries_problem(vulnerabilities: dict, declared: dict, returncode: int, 
     so they must equal the entries present: a report that declares a high vulnerability with no entry for it, or the other
     way round, is not a complete audit. A clean exit (0) with an entry at or above the level disagrees with npm's own rule.
     A ``via`` item that is a package name must name an entry of the report: an entry that is vulnerable through a package
-    the report does not list has a chain the gate cannot follow, so its severity and advisory are unknown.
+    the report does not list has a chain the gate cannot follow, so its severity and advisory are unknown. An entry with no advisory
+    object must lead to one through the entries it names: an empty `via`, a reference to itself or a loop does not.
     """
 
     actual = {severity: 0 for severity in SEVERITIES}
@@ -121,6 +122,19 @@ def npm_entries_problem(vulnerabilities: dict, declared: dict, returncode: int, 
         for via in entry.get("via", []):
             if isinstance(via, str) and via not in vulnerabilities:
                 return f"npm audit lists `{name}` as vulnerable through `{via}`, which its report has no entry for, so the advisory chain is incomplete."
+    # Every entry must lead to an advisory: it carries one itself, or it is vulnerable through another entry that does. An empty
+    # `via`, one that names only the entry itself and a loop of entries without an advisory have no advisory to report.
+    resolved = {name for name, entry in vulnerabilities.items() if any(isinstance(via, dict) for via in entry.get("via", []))}
+    progress = True
+    while progress:
+        progress = False
+        for name, entry in vulnerabilities.items():
+            if name not in resolved and any(isinstance(via, str) and via != name and via in resolved for via in entry.get("via", [])):
+                resolved.add(name)
+                progress = True
+    for name in vulnerabilities:
+        if name not in resolved:
+            return f"npm audit lists `{name}` without an advisory, and no chain of its `via` entries leads to one, so its severity and advisory are unknown."
     return None
 
 
