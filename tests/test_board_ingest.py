@@ -6,6 +6,7 @@ the conflict, idempotence and recovery guarantees that the feature status rows a
 
 from __future__ import annotations
 
+import os
 import re
 import unittest
 from pathlib import Path
@@ -14,6 +15,7 @@ from uuid import uuid4
 
 import yaml
 
+from prism_cli import board_service
 from prism_cli.board_service import BoardError
 from prism_cli.wiki_index import parse_index_entries
 from tests import real_temp  # noqa: F401
@@ -107,6 +109,67 @@ class IngestCase(BoardWorkspaceCase):
 
     def headings(self) -> list[str]:
         return [line for line in self.read(INDEX).splitlines() if line.startswith("## ")]
+
+
+class IntakeMoveRetryTests(IngestCase):
+    """The folder rename of an intake is retried while Windows refuses it, and every check made before it is made again before each retry."""
+
+    NAME = "2026-10-08-first"
+
+    def apply_with_the_rename_refused_once(self, change=None, *, times: int = 1) -> tuple[dict, list[str]]:
+        changes, moves = self.proposal(self.NAME, {"topics/payment-flows.md": TOPIC})
+        preview = self.service.preview_skill(self.agent, "ingest", changes, moves, _read_revisions(self.service, self.agent, "ingest", changes, moves))
+        self.assertTrue(preview["applicable"], preview["blockers"])
+        real = os.replace
+        refused: list[str] = []
+
+        def replace(source, destination, *args, **kwargs):
+            if Path(destination).as_posix().endswith(f"intake/processed/{self.NAME}") and len(refused) < times:
+                refused.append(str(destination))
+                if len(refused) == 1 and change is not None:
+                    change()
+                error = PermissionError(13, "Access is denied")
+                error.winerror = 32
+                raise error
+            return real(source, destination, *args, **kwargs)
+
+        with patch.object(board_service.os, "replace", side_effect=replace), patch.object(board_service, "_REPLACE_WAIT_SECONDS", 0):
+            receipt = self.service.apply(self.agent, preview["preview_id"], "op-move")
+        return receipt, refused
+
+    def test_an_unchanged_tree_is_moved_after_the_refusals(self) -> None:
+        receipt, refused = self.apply_with_the_rename_refused_once(times=3)
+        self.assertEqual("applied", receipt["state"], receipt)
+        self.assertEqual(3, len(refused))
+        self.assertTrue((self.root / f"knowledge/intake/processed/{self.NAME}/note.md").is_file())
+        self.assertFalse((self.root / f"knowledge/intake/pending/{self.NAME}").exists())
+
+    def test_an_edit_inside_the_folder_while_the_rename_waits_is_a_conflict_and_the_folder_stays_put(self) -> None:
+        note = self.root / f"knowledge/intake/pending/{self.NAME}/note.md"
+        edited = self.NOTE + "\nAn editor added this line while the rename waited.\n"
+        receipt, refused = self.apply_with_the_rename_refused_once(lambda: note.write_text(edited, encoding="utf-8"))
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("recovery_move_conflict", receipt["conflicts"][0]["reason"])
+        self.assertEqual(1, len(refused), "the refused rename was not repeated")
+        self.assertEqual(edited, note.read_text(encoding="utf-8"), "the editor's text is where it was")
+        self.assertFalse((self.root / f"knowledge/intake/processed/{self.NAME}").exists())
+        self.assertFalse((self.root / "knowledge/wiki/topics/payment-flows.md").exists(), "no page was written after the conflict")
+
+    def test_a_relevant_source_that_changes_while_the_rename_waits_is_a_conflict(self) -> None:
+        settings = self.root / "knowledge/wiki/SETTINGS.md"
+        receipt, refused = self.apply_with_the_rename_refused_once(lambda: settings.write_text(settings.read_text(encoding="utf-8") + "\nA policy note.\n", encoding="utf-8"))
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("recovery_source_changed", receipt["conflicts"][0]["reason"])
+        self.assertEqual(1, len(refused))
+        self.assertTrue((self.root / f"knowledge/intake/pending/{self.NAME}").is_dir())
+        self.assertFalse((self.root / f"knowledge/intake/processed/{self.NAME}").exists())
+
+    def test_a_grant_that_is_revoked_while_the_rename_waits_is_not_used_for_the_retry(self) -> None:
+        receipt, refused = self.apply_with_the_rename_refused_once(lambda: self.service.revoke_participant(self.agent.participant_id))
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("unauthorized", receipt["conflicts"][0]["reason"])
+        self.assertEqual(1, len(refused))
+        self.assertTrue((self.root / f"knowledge/intake/pending/{self.NAME}").is_dir())
 
 
 class PageKindIngestTests(IngestCase):

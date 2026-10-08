@@ -313,11 +313,12 @@ def _plan_scaffold(
     from prism_cli import cli
 
     try:
-        answers = cli.load_copier_answers(workspace / cli.COPIER_ANSWERS_FILE)
+        root = cli.read_answers_snapshot(workspace, cli.COPIER_ANSWERS_FILE)
     except cli.UpdateSafetyError as exc:
         conflicts.append(str(exc))
         return None
-    if answers is None:
+    answers = root.data if root is not None and "_src_path" in root.data else None
+    if root is None or answers is None:
         conflicts.append(f"Scaffolding needs the workspace's {cli.COPIER_ANSWERS_FILE}, which records the template and the project identity; it is missing or unreadable.")
         return None
     src_path = answers.get("_src_path")
@@ -356,6 +357,8 @@ def _plan_scaffold(
         "package": package,
         "template": src_path,
         "ref": answers.get("_commit"),
+        # The apply compares this with the workspace's answers file as it reads it, so a file that changes in between is refused.
+        "answers_digest": root.digest,
         "branch": f"prism-scaffold-{app_entry['id']}",
         "workflow": workflow_path(app_entry["id"]),
     }

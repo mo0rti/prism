@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import importlib.util
 import json
 import os
@@ -15,10 +16,10 @@ import sys
 import tempfile
 import webbrowser
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import yaml
 
@@ -58,6 +59,7 @@ from prism_cli.packs import (
     app_answers_path,
     assign_ports,
     backend_port_of,
+    has_pack,
     layer_answers_problems,
     pack_answers,
     parse_app_list,
@@ -83,9 +85,10 @@ from prism_cli.status import BoardCheck, build_board_checks, build_status
 from prism_cli.wiki_paths import resolve_confined
 from prism_cli.workspace import (
     MANIFEST_FILE,
-    confined_answers_file,
+    AnswersRefused,
     detect_workspace_kind,
     inspect_workspace,
+    read_answers_bytes,
     write_workspace_manifest,
 )
 from prism_cli.wiki_model import VALID_FEATURE_OWNERS
@@ -1217,15 +1220,17 @@ def cmd_update(args: argparse.Namespace) -> int:
         return EXIT_VALIDATION
 
     answers_path = project_path / COPIER_ANSWERS_FILE
+    # The saved answers are read once. The plan validates these bytes, and the update hands Copier exactly them.
     try:
-        answers_data = load_copier_answers(answers_path)
+        root_snapshot = read_answers_snapshot(project_path, COPIER_ANSWERS_FILE)
     except UpdateSafetyError as exc:
         print(error(str(exc)), file=sys.stderr)
         return EXIT_VALIDATION
-    if answers_data is None:
+    if root_snapshot is None or "_src_path" not in root_snapshot.data:
         print(error(f"Missing {COPIER_ANSWERS_FILE} in generated project: {project_path}"), file=sys.stderr)
         print(info("Generate the project with the Prism CLI first, or add a valid Copier answers file before updating."), file=sys.stderr)
         return EXIT_VALIDATION
+    answers_data = root_snapshot.data
 
     src_path = answers_data.get("_src_path")
     if args.strategy != "recopy" and not has_trustworthy_template_baseline(src_path, answers_data):
@@ -1240,7 +1245,8 @@ def cmd_update(args: argparse.Namespace) -> int:
     src_path = answers_data.get("_src_path")
     if not ensure_template_trust(str(src_path), getattr(args, "trust_template", False)):
         return EXIT_VALIDATION
-    layers, layer_problems = plan_update_layers(project_path, answers_data)
+    plan = plan_update(project_path, root_snapshot)
+    layers, layer_problems = plan.layers, plan.problems
     if layer_problems:
         for message in layer_problems:
             print(error(message), file=sys.stderr)
@@ -1261,7 +1267,7 @@ def cmd_update(args: argparse.Namespace) -> int:
         print(warn("Update cancelled."))
         return 0
 
-    return run_copier_update(project_path, answers_data, strategy)
+    return run_copier_update(project_path, plan, strategy)
 
 
 def cmd_new(args: argparse.Namespace) -> int:
@@ -1555,20 +1561,10 @@ def load_copier_answers(path: Path) -> dict[str, Any] | None:
     ask whether it exists: a symlink or a reparse point raises `UpdateSafetyError` with the way out.
     """
 
-    checked = confined_answers_path(path)
-    try:
-        with checked.open("r", encoding="utf-8") as handle:
-            data = yaml.safe_load(handle) or {}
-    except (OSError, UnicodeError):
+    snapshot = read_answers_snapshot(path.parent, path.name)
+    if snapshot is None or "_src_path" not in snapshot.data:
         return None
-    except (yaml.YAMLError, ValueError, OverflowError):
-        return None
-
-    if not isinstance(data, dict):
-        return None
-    if "_src_path" not in data:
-        return None
-    return data
+    return snapshot.data
 
 
 def resolve_update_strategy(requested: str, answers_data: dict[str, Any]) -> str:
@@ -2217,14 +2213,31 @@ def run_copier_generation_process(command: list[str], cwd: Path, *, capture_stde
     return {"returncode": returncode, "event_count": event_count, "tail": list(output_tail)}
 
 
-def plan_update_layers(project_path: Path, workspace_answers: dict[str, Any] | None = None) -> tuple[list[Layer], list[str]]:
+@dataclass
+class UpdatePlan:
+    """What `prism update` goes on to do, built from one reading of every saved answers file.
+
+    ``snapshots`` holds the exact bytes of each layer's answers file (``root`` is the workspace layer's), already
+    validated; the update gives Copier those bytes and nothing it reads again. ``workspace_data`` is what the manifest
+    decides for the workspace layer (its stacks and app list, with the ports the app snapshots record), validated as
+    it is handed to Copier. ``problems`` lists why the update cannot go on; ``layers`` holds the layers that can.
+    """
+
+    layers: list[Layer]
+    problems: list[str]
+    root: AnswersSnapshot | None = None
+    snapshots: dict[str, AnswersSnapshot] = field(default_factory=dict)
+    workspace_data: dict[str, Any] = field(default_factory=dict)
+
+
+def plan_update(project_path: Path, root: AnswersSnapshot | None = None) -> UpdatePlan:
     """The layers `prism update` brings along: the workspace layer, then each active scaffolded app that has a pack.
 
-    Every layer's saved answers are validated here, before any Copier call: the workspace layer's file must select
-    the workspace layer and hold only safe values, and each app layer's file must come from the same approved source
-    with the identity the manifest and the workspace give it. A scaffolded app whose own answers file is missing
-    cannot be updated; that is a problem too, reported before anything changes. ``workspace_answers`` is the object the
-    update goes on to use (read once by the caller); without it, the file is read here.
+    Every layer's saved answers are read once and validated here, before any Copier call: the workspace layer's file must
+    select the workspace layer and hold only safe values, and each app layer's file must come from the same approved
+    source with the identity the manifest and the workspace give it. A scaffolded app whose own answers file is missing
+    cannot be updated; that is a problem too, reported before anything changes. ``root`` is the workspace layer's
+    snapshot (read once by the caller); without it, the file is read here.
     """
 
     layers = [Layer(name=WORKSPACE_LAYER, answers_file=COPIER_ANSWERS_FILE)]
@@ -2232,30 +2245,44 @@ def plan_update_layers(project_path: Path, workspace_answers: dict[str, Any] | N
     try:
         manifest = load_workspace_manifest(project_path / MANIFEST_FILE)
     except ManifestUpdateError as exc:
-        return layers, [f"Unable to read {MANIFEST_FILE}: {exc}"]
+        return UpdatePlan(layers, [f"Unable to read {MANIFEST_FILE}: {exc}"])
     model, _diagnostics = normalize_manifest(manifest, path=project_path / MANIFEST_FILE)
-    if workspace_answers is None:
+    if root is None:
         try:
-            workspace_answers = load_copier_answers(project_path / COPIER_ANSWERS_FILE)
+            root = read_answers_snapshot(project_path, COPIER_ANSWERS_FILE)
         except UpdateSafetyError as exc:
-            return layers, [str(exc)]
-    if not workspace_answers:
-        return layers, [f"The workspace's {COPIER_ANSWERS_FILE} is missing or unreadable."]
-    workspace_problems = workspace_answers_problems(workspace_answers)
+            return UpdatePlan(layers, [str(exc)])
+        if root is not None and "_src_path" not in root.data:
+            root = None
+    if root is None or not root.data:
+        return UpdatePlan(layers, [f"The workspace's {COPIER_ANSWERS_FILE} is missing or unreadable."])
+    workspace_problems = workspace_answers_problems(root.data)
+    # Every scaffolded app with a pack is read once, retired ones too: the workspace layer takes their ports from here.
+    app_snapshots: dict[str, AnswersSnapshot | None] = {}
+    for app in model.workspace_apps():
+        if app.scaffolded and has_pack(app.stack):
+            try:
+                app_snapshots[app.path] = read_answers_snapshot(project_path, app_answers_path(app.path))
+            except UpdateSafetyError:
+                app_snapshots[app.path] = None
+    manifest_layer: dict[str, Any] = {}
     try:
         # The update goes on to give Copier the apps of the manifest, so those are rendered into files too.
-        manifest_layer = workspace_layer_data_from_manifest(project_path)
+        manifest_layer = workspace_layer_data_from_manifest(
+            project_path, {path: snapshot.data if snapshot is not None else None for path, snapshot in app_snapshots.items()}
+        )
         workspace_problems.extend(f"The manifest's apps: {problem}" for problem in workspace_apps_problems(manifest_layer["stacks"], manifest_layer["apps"]))
     except ManifestUpdateError as exc:
         workspace_problems.append(f"Unable to read {MANIFEST_FILE}: {exc}")
     if workspace_problems:
-        return layers, workspace_problems
-    approved_source = workspace_answers.get("_src_path")
+        return UpdatePlan(layers, workspace_problems)
+    snapshots = {COPIER_ANSWERS_FILE: root}
+    approved_source = root.data.get("_src_path")
     for app in model.workspace_apps(active_only=True):
         if not app.scaffolded:
             continue
-        recorded = read_app_answers(project_path, app.path)
-        if recorded is None or "_src_path" not in recorded:
+        recorded = app_snapshots.get(app.path)
+        if recorded is None or "_src_path" not in recorded.data:
             problems.append(
                 f"App `{app.id}` is scaffolded, but `{app_answers_path(app.path)}` is missing, sits behind a link or does not record its template. "
                 f"Restore the file from git, or leave the app out of the update: retire it (`prism app retire {app.id}`), or drop its entry from {MANIFEST_FILE} "
@@ -2263,19 +2290,29 @@ def plan_update_layers(project_path: Path, workspace_answers: dict[str, Any] | N
             )
             continue
         entry = {"id": app.id, "name": app.name, "stack": app.stack, "path": app.path, "audience": app.audience or ""}
-        layer_problems = layer_answers_problems(recorded, workspace_answers, entry, approved_source=str(approved_source))
+        layer_problems = layer_answers_problems(recorded.data, root.data, entry, approved_source=str(approved_source))
         if layer_problems:
             problems.extend(layer_problems)
             continue
         layers.append(Layer(name=app.id, answers_file=app_answers_path(app.path), app_id=app.id, app_path=app.path))
-    return layers, problems
+        snapshots[recorded.answers_file] = recorded
+    return UpdatePlan(layers, problems, root, snapshots, manifest_layer)
 
 
-def workspace_layer_data_from_manifest(project_path: Path) -> dict[str, Any]:
+def plan_update_layers(project_path: Path) -> tuple[list[Layer], list[str]]:
+    """The layers of `plan_update` and the problems that keep the update from going on."""
+
+    plan = plan_update(project_path)
+    return plan.layers, plan.problems
+
+
+def workspace_layer_data_from_manifest(project_path: Path, app_answers: dict[str, dict[str, Any] | None] | None = None) -> dict[str, Any]:
     """The answers the manifest decides for the workspace layer: the stacks and the app list of its scaffolded apps.
 
     A retired app stays on the list: retiring changes only its manifest entry, so the workspace layer keeps
-    rendering its files (its compose service and task include) until its code is removed.
+    rendering its files (its compose service and task include) until its code is removed. Each app keeps the port its
+    answers file records; ``app_answers`` holds those answers by app path when the caller has read them already (an
+    update reads every answers file once), and the files are read here otherwise.
     """
 
     manifest = load_workspace_manifest(project_path / MANIFEST_FILE)
@@ -2287,31 +2324,37 @@ def workspace_layer_data_from_manifest(project_path: Path) -> dict[str, Any]:
     ]
     ports: dict[str, int | None] = {}
     for app in apps:
-        recorded = read_app_answers(project_path, app["path"])
+        if app_answers is not None:
+            recorded = app_answers.get(app["path"])
+        else:
+            recorded = read_app_answers(project_path, app["path"])
         port = recorded.get("port") if recorded else None
         ports[app["id"]] = port if isinstance(port, int) and not isinstance(port, bool) else None
     data = workspace_data({}, apps, ports)
     return {"stacks": data["stacks"], "apps": data["apps"]}
 
 
-def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy: str) -> int:
+def run_copier_update(project_path: Path, plan: UpdatePlan, strategy: str) -> int:
     """Bring every layer of a generated workspace to one template revision, on an update branch with one commit per layer.
 
     The workspace layer goes first, then each scaffolded app from its own answers file. Copier needs a clean
     git tree for each update, so each layer is committed before the next. Copier exits 0 on a conflict, so
     after each layer the CLI scans for `.rej` files and conflict markers and reports per layer. The branch is
     left checked out for the user to review and merge; when any layer conflicted, the update stops there and
-    names the layers to resolve first.
+    names the layers to resolve first. ``plan`` holds the answers of every layer as `plan_update` read and validated
+    them; nothing here reads an answers file again.
     """
 
+    root = plan.root
+    if root is None or plan.problems:
+        for message in plan.problems or [f"The workspace's {COPIER_ANSWERS_FILE} is missing or unreadable."]:
+            print(error(message), file=sys.stderr)
+        return EXIT_VALIDATION
+    answers_data = root.data
     src_path = str(answers_data["_src_path"])
     manifest_plan = None
     print(section("Updating"))
-    layers, problems = plan_update_layers(project_path, answers_data)
-    if problems:
-        for message in problems:
-            print(error(message), file=sys.stderr)
-        return EXIT_VALIDATION
+    layers = plan.layers
     if not has_commit_identity(project_path):
         print(error("`prism update` commits each layer on an update branch, and git does not know who you are."), file=sys.stderr)
         print(info("Set `git config user.name` and `git config user.email` in this project, then retry."), file=sys.stderr)
@@ -2324,13 +2367,13 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
             print(info("Use `prism update --strategy recopy` to explicitly reapply an unversioned template snapshot."), file=sys.stderr)
             return EXIT_VALIDATION
         for layer in layers[1:]:
-            recorded = read_app_answers(project_path, layer.app_path) or {}
+            recorded = plan.snapshots[layer.answers_file].data
             if not has_trustworthy_template_baseline(recorded.get("_src_path"), recorded):
                 print(error(f"App `{layer.name}` records an unversioned or unknown template snapshot, so Copier cannot update it."), file=sys.stderr)
                 print(info("Use `prism update --strategy recopy` to explicitly reapply the template."), file=sys.stderr)
                 return EXIT_VALIDATION
         try:
-            manifest_plan = prepare_manifest_update(project_path, revision)
+            manifest_plan = prepare_manifest_update(project_path, revision, root.raw)
         except ManifestUpdateError as exc:
             print(error(f"Unable to safely update {MANIFEST_FILE}: {exc}"), file=sys.stderr)
             print(info("Resolve the manifest issue or conflict, commit the project, then retry."), file=sys.stderr)
@@ -2349,9 +2392,8 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
             print(info("Merge or delete it, then retry."), file=sys.stderr)
             return EXIT_VALIDATION
         original = current_branch(project_path)
-        data_for_workspace = workspace_layer_data_from_manifest(project_path)
         create_branch(project_path, branch)
-    except (GitError, ManifestUpdateError) as exc:
+    except GitError as exc:
         print(error(str(exc)), file=sys.stderr)
         return EXIT_VALIDATION
     print(info(f"Updating on branch `{branch}`; the layers are committed one by one."))
@@ -2362,16 +2404,16 @@ def run_copier_update(project_path: Path, answers_data: dict[str, Any], strategy
     with staged_template_path(src_path) as effective_template:
         if strategy == "recopy" and using_staged_template:
             print(info("Using a temporary clean copy of the local template for recopy."))
-        for layer in layers:
+        for position, layer in enumerate(layers):
             result = update_layer(
                 project_path,
                 layer,
                 strategy,
-                answers_data=answers_data,
+                plan=plan,
+                pending=[plan.snapshots[later.answers_file] for later in layers[position:]],
                 effective_template=effective_template,
                 src_path=src_path,
                 manifest_plan=manifest_plan,
-                workspace_answers=data_for_workspace,
             )
             results.append(result)
             if result.outcome == "failed":
@@ -2408,13 +2450,84 @@ class UpdateSafetyError(ValueError):
     """A path or a recorded answer that an update must not follow or trust."""
 
 
-def confined_answers_path(path: Path) -> Path:
-    """The checked path of an answers file, or an `UpdateSafetyError` that names the way out when it is a link or leaves its folder."""
+@dataclass(frozen=True)
+class AnswersSnapshot:
+    """One layer's saved answers as read once: the exact bytes of the file and what they parse to.
 
-    checked, refusal = confined_answers_file(path)
-    if checked is None:
-        raise UpdateSafetyError(refusal or f"{path.name} cannot be used.")
-    return checked
+    Validation and every later use work on this object, never on the file again. The bytes are parsed the way Copier
+    parses its answers file, so what Prism validates is what Copier would consume.
+    """
+
+    answers_file: str
+    raw: bytes
+    data: dict[str, Any]
+
+    @property
+    def digest(self) -> str:
+        return hashlib.sha256(self.raw).hexdigest()
+
+
+def read_answers_snapshot(project_path: Path, answers_file: str) -> AnswersSnapshot | None:
+    """The saved answers of a layer, read once and never through a link; ``None`` when the file is missing or unreadable.
+
+    The path is confined to the project, the file is opened without following a link and the handle is compared with
+    the path (`read_answers_bytes`), so a link planted at the place of the file, or swapped in after the check, raises
+    `UpdateSafetyError` with the way out and is never opened.
+    """
+
+    try:
+        raw = read_answers_bytes(project_path / answers_file, project_path)
+    except AnswersRefused as exc:
+        raise UpdateSafetyError(str(exc)) from exc
+    except OSError:
+        return None
+    if raw is None:
+        return None
+    try:
+        data = yaml.safe_load(raw) or {}
+    except (yaml.YAMLError, ValueError, OverflowError):
+        return None
+    return AnswersSnapshot(answers_file, raw, data) if isinstance(data, dict) else None
+
+
+def changed_answers_message(answers_file: str) -> str:
+    return (
+        f"`{answers_file}` changed after Prism read and validated it, so nothing that depends on it is used, moved into place or committed. "
+        f"Look at the change (`git diff -- {answers_file}`), then run the command again."
+    )
+
+
+def require_answers_unchanged(project_path: Path, snapshots: Iterable[AnswersSnapshot]) -> None:
+    """Raise `UpdateSafetyError` naming the file when an answers file no longer holds the bytes that were validated."""
+
+    for snapshot in snapshots:
+        try:
+            current = read_answers_bytes(project_path / snapshot.answers_file, project_path)
+        except (AnswersRefused, OSError):
+            current = None
+        if current != snapshot.raw:
+            raise UpdateSafetyError(changed_answers_message(snapshot.answers_file))
+
+
+def require_answers_kept(project_path: Path, snapshot: AnswersSnapshot, *, ignore: Iterable[str] = ()) -> None:
+    """After Copier rewrote a layer's answers file: it holds the validated answers exactly, key set and values.
+
+    Only Copier's `_commit` (it moves forward) and the answers the update hands over itself (``ignore``) may differ. An
+    answer that went missing, one that was added and one that has another value were not the answers Copier consumed.
+    """
+
+    try:
+        raw = read_answers_bytes(project_path / snapshot.answers_file, project_path)
+        written = yaml.safe_load(raw) if raw is not None else None
+    except (AnswersRefused, OSError, yaml.YAMLError, ValueError, OverflowError):
+        written = None
+    if not isinstance(written, dict):
+        raise UpdateSafetyError(changed_answers_message(snapshot.answers_file))
+    skipped = {"_commit", *ignore}
+    validated = {key: value for key, value in snapshot.data.items() if key not in skipped}
+    recorded = {key: value for key, value in written.items() if key not in skipped}
+    if recorded != validated:
+        raise UpdateSafetyError(changed_answers_message(snapshot.answers_file))
 
 
 def confined_project_path(project_path: Path, relative: str) -> Path:
@@ -2453,25 +2566,33 @@ def update_layer(
     layer: Layer,
     strategy: str,
     *,
-    answers_data: dict[str, Any],
+    plan: UpdatePlan,
+    pending: list[AnswersSnapshot],
     effective_template: Any,
     src_path: str,
     manifest_plan: Any,
-    workspace_answers: dict[str, Any],
 ) -> LayerResult:
-    """Update one layer with Copier, then scan it for conflicts and commit it."""
+    """Update one layer with Copier, then scan it for conflicts and commit it.
+
+    ``pending`` holds the validated answers of this layer first and of every layer after it. A recopy gives Copier a
+    private file with the validated answers of the layer and leaves the original alone, so the original must still hold
+    those bytes when Copier is done, or nothing is moved into place or committed. A smart update has to let Copier read
+    and rewrite the tracked file itself (a copy would make the tree dirty, which Copier refuses): the file is checked
+    right before Copier starts, Copier's own clean-tree check follows, and afterwards every answer Prism validated
+    must still be in the file Copier wrote. The layers after this one must hold their validated bytes in both cases.
+    """
 
     label = "workspace layer" if layer.is_workspace else f"app `{layer.name}`"
     print(info(f"Updating the {label}..."))
-    if layer.is_workspace:
-        layer_answers = answers_data
-    else:
-        layer_answers = read_app_answers(project_path, layer.app_path) or {}
+    snapshot = pending[0]
+    answers_data = plan.root.data if plan.root is not None else {}
+    workspace_answers = plan.workspace_data
 
     # A recopy renders the template's manifest again, which names no apps: the workspace keeps its own.
     recorded_apps, recorded_repositories = manifest_apps_snapshot(project_path) if layer.is_workspace and strategy == "recopy" else (None, None)
     temp_answers_path: Path | None = None
     try:
+        require_answers_unchanged(project_path, pending)
         if strategy == "update":
             # Copier reads this file itself, so the path is confirmed to be a plain file right before it runs.
             confined_project_path(project_path, layer.answers_file)
@@ -2482,7 +2603,7 @@ def update_layer(
                 for key, value in workspace_answers.items():
                     command.extend(["--data", f"{key}={format_data_value(value)}"])
         else:
-            recorded = dict(layer_answers)
+            recorded = dict(snapshot.data)
             recorded["_src_path"] = str(effective_template)
             temp_answers_path = create_recopy_answers(project_path, layer.answers_file, recorded)
             temp_relative = temp_answers_path.relative_to(project_path).as_posix()
@@ -2491,6 +2612,10 @@ def update_layer(
                 command.extend(["--data", f"_prism_cli_version={__version__}"])
         command.append(str(project_path))
         completed = subprocess.run(command, cwd=str(project_path))
+        # Nothing Copier produced is moved into place or committed unless the answers it was given are the ones validated.
+        require_answers_unchanged(project_path, pending[1:] if strategy == "update" else pending)
+        if strategy == "update" and completed.returncode == 0:
+            require_answers_kept(project_path, snapshot, ignore=workspace_answers if layer.is_workspace else ())
         if completed.returncode == 0 and temp_answers_path is not None and temp_answers_path.exists():
             # Replace, never write through: the target is confined and a link at its place is replaced, not followed.
             os.replace(temp_answers_path, confined_project_path(project_path, layer.answers_file))
@@ -2613,15 +2738,19 @@ def scaffold_app(
     """
 
     problems: list[str] = []
+    # The saved answers are read once: validated, compared with the preview's and used from this snapshot.
     try:
-        answers = load_copier_answers(workspace / COPIER_ANSWERS_FILE)
+        root = read_answers_snapshot(workspace, COPIER_ANSWERS_FILE)
     except UpdateSafetyError as exc:
         return {"status": "conflict", "conflicts": [str(exc)]}
-    if answers is None:
+    if root is None or "_src_path" not in root.data:
         return {"status": "conflict", "conflicts": [f"The workspace's {COPIER_ANSWERS_FILE} is missing or unreadable."]}
+    answers = root.data
     saved_problems = workspace_answers_problems(answers)
     if saved_problems:
         return {"status": "conflict", "conflicts": saved_problems}
+    if scaffold.get("answers_digest") != root.digest:
+        return {"status": "conflict", "conflicts": [f"{COPIER_ANSWERS_FILE} changed after the preview; run the command again to prepare a fresh plan."]}
     src_path = str(answers["_src_path"])
     ref = answers.get("_commit")
     if not has_trustworthy_template_baseline(src_path, answers):
@@ -2668,9 +2797,12 @@ def scaffold_app(
         workspace_command.extend(["--data", f"_prism_cli_version={__version__}"])
         workspace_command.extend(["--data", f"stacks={format_data_value(stacks_data)}", "--data", f"apps={format_data_value(apps_data)}"])
         workspace_command.append(str(workspace))
+        # Copier reads the tracked answers file itself: it is checked right before, and what Copier wrote is checked right after.
+        require_answers_unchanged(workspace, [root])
         ok, output = run_quietly(workspace_command)
         if not ok:
             return {"status": "conflict", "branch": branch, "conflicts": [f"Updating the workspace layer failed: {output}", abandon]}
+        require_answers_kept(workspace, root, ignore=("stacks", "apps"))
         workspace_conflicts = scan_conflicts(workspace)
         conflicts.extend(f"{path} (workspace layer)" for path in workspace_conflicts)
         note = f"\n\nUnresolved conflicts in {len(workspace_conflicts)} file(s)" if workspace_conflicts else ""

@@ -19,7 +19,7 @@ import stat
 import tempfile
 import threading
 import time
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 from uuid import UUID, uuid4
 
 import yaml
@@ -140,8 +140,13 @@ _STATUS_HEADER = re.compile(r"^\s*\|\s*ID\s*\|\s*Feature\s*\|\s*Status\s*\|\s*Ow
 _FRONTMATTER = re.compile(r"\A\ufeff?---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 
 
-def _replace_file(source: Path, destination: Path) -> None:
-    """`os.replace`, retried while Windows reports a momentary sharing refusal; any other error, and the last refusal, is raised."""
+def _replace_file(source: Path, destination: Path, *, recheck: Callable[[], None] | None = None) -> None:
+    """`os.replace`, retried while Windows reports a momentary sharing refusal; any other error, and the last refusal, is raised.
+
+    The retry waits, and a file or a folder can change in that time, so ``recheck`` runs after each wait and before the
+    next attempt. It repeats everything the caller checked before the first attempt (the expected content or tree state,
+    confinement, authorization and the relevant sources) and raises when any of it changed; nothing is replaced then.
+    """
 
     for attempt in range(_REPLACE_ATTEMPTS):
         try:
@@ -151,6 +156,8 @@ def _replace_file(source: Path, destination: Path) -> None:
             if getattr(error, "winerror", None) not in _TRANSIENT_WINDOWS_ERRORS or attempt == _REPLACE_ATTEMPTS - 1:
                 raise
             time.sleep(_REPLACE_WAIT_SECONDS)
+            if recheck is not None:
+                recheck()
 
 
 class BoardError(Exception):
@@ -974,6 +981,9 @@ class BoardService:
             if not payload.get("applicable"):
                 raise BoardError("preview_blocked", "This preview is blocked, unknown, or missing required confirmation.", 409)
             self._assert_preview_fresh(payload)
+            # The dependency set (membership and digests) is bound before the validation reads it, so a dependency that appears
+            # while the operation validates, or while a write waits to be retried, is a change against this baseline.
+            bound_sources = self._recovery_snapshot(payload)
             try:
                 self._revalidate_operation(actor, payload)
             except BoardError as exc:
@@ -990,7 +1000,9 @@ class BoardService:
             # Validation can read several files. Recheck them after it finishes
             # and before recording an intent that may be recovered after a crash.
             self._assert_preview_fresh(payload)
-            intent = {**payload, "operation_id": operation_id, "actor": actor.to_dict()}
+            if self._recovery_snapshot(payload) != bound_sources:
+                raise BoardError("stale_preview", "A relevant source or dependency changed while the operation was validated; preview again.", 409)
+            intent = {**payload, "operation_id": operation_id, "actor": actor.to_dict(), "bound_sources": bound_sources}
             self._assert_unresolved_writes_safe(operation_id, intent)
             now = _now()
             with store.transaction() as db:
@@ -4446,10 +4458,11 @@ class BoardService:
         move_states = [self._move_state(move, intent) for move in intent.get("moves", [])]
         complete = all(item["state"] == "applied" for item in states) and all(state == "applied" for state in move_states)
         if not complete:
-            self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
+            # A fresh apply compared the dependency set it bound a moment ago, under the same lock; its first check here would repeat that.
+            self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed, check_bound=revalidate)
             if revalidate:
                 self._revalidate_recovery(actor, intent, reviewed=reviewed is not None)
-            self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
+            self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed, check_bound=revalidate)
         return complete
 
     def _roll_forward(
@@ -4493,13 +4506,28 @@ class BoardService:
                         self._require_actor(actor, write=True)
                         if self._move_state(move, intent) != "pending":
                             raise BoardError("recovery_conflict", "The intake tree changed immediately before its rename.", 409)
-                        _replace_file(source, destination)
+
+                        def recheck_move(move=move, destination=destination) -> None:
+                            """Everything checked before the rename, again before a retry: the grant, the confined paths, the sources and the tree state."""
+                            self._require_actor(actor, write=True)
+                            self._safe_path(move["source"], allow_missing=True)
+                            self._safe_path(move["destination"], allow_missing=True)
+                            self._reject_reparse(destination.parent, include_leaf=True)
+                            self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
+                            if self._move_state(move, intent) != "pending":
+                                raise BoardError("recovery_conflict", "The intake tree changed immediately before its rename.", 409)
+
+                        _replace_file(source, destination, recheck=recheck_move)
                     moved.append({"source": move["source"], "destination": move["destination"]})
                 if not complete:
                     for write in intent.get("writes", []):
                         self._require_actor(actor, write=True)
                         self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed)
-                        result = self._apply_write(write, actor=actor)
+                        result = self._apply_write(
+                            write,
+                            actor=actor,
+                            recheck=lambda: self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed),
+                        )
                         if result == "conflict":
                             conflict_paths.append(write["path"])
                             conflicts.append({"path": write["path"], "reason": "current file matches neither the recorded before-state nor the proposed after-state"})
@@ -4697,8 +4725,20 @@ class BoardService:
             raise BoardError("recovery_move_conflict", "The moved intake tree contains changed directory structure.", 409)
         return "applied"
 
+    @staticmethod
+    def _snapshot_changes(current: Mapping[str, str | None], expected: Mapping[str, str | None]) -> list[str]:
+        """The paths whose digest differs between two relevant-source snapshots, or that only one of them holds (membership counts)."""
+
+        missing = object()
+        return sorted(path for path in {*current, *expected} if current.get(path, missing) != expected.get(path, missing))
+
     def _assert_recovery_sources(
-        self, intent: Mapping[str, Any], conflict_paths: list[str] | None = None, *, reviewed: Mapping[str, str | None] | None = None
+        self,
+        intent: Mapping[str, Any],
+        conflict_paths: list[str] | None = None,
+        *,
+        reviewed: Mapping[str, str | None] | None = None,
+        check_bound: bool = True,
     ) -> None:
         """Refuse a recovery whose relevant sources changed.
 
@@ -4716,9 +4756,7 @@ class BoardService:
             self._move_state(move, intent)
             moved_prefixes.extend((move["source"], move["destination"]))
         if reviewed is not None:
-            current = self._recovery_snapshot(intent)
-            missing = object()
-            changed = sorted(path for path in {*current, *reviewed} if current.get(path, missing) != reviewed.get(path, missing))
+            changed = self._snapshot_changes(self._recovery_snapshot(intent), reviewed)
             if changed:
                 if conflict_paths is not None:
                     conflict_paths.extend(changed)
@@ -4737,6 +4775,19 @@ class BoardService:
                     if conflict_paths is not None:
                         conflict_paths.append(relative)
                     raise BoardError("recovery_source_changed", f"Relevant source `{relative}` changed; recorded writes cannot be recovered automatically.", 409)
+            bound = intent.get("bound_sources")
+            if check_bound and isinstance(bound, Mapping):
+                # The dependency set bound when the operation was applied: a dependency that appeared since is as much a change as an edit.
+                changed = self._snapshot_changes(self._recovery_snapshot(intent), bound)
+                if changed:
+                    if conflict_paths is not None:
+                        conflict_paths.extend(changed)
+                    raise BoardError(
+                        "recovery_source_changed",
+                        f"Relevant source `{changed[0]}` changed since the operation was validated; recorded writes cannot be recovered automatically.",
+                        409,
+                        {"paths": changed[:20]},
+                    )
         for state in self._operation_file_states(intent):
             if state["state"] == "conflict":
                 if conflict_paths is not None:
@@ -4785,7 +4836,8 @@ class BoardService:
             with BoardService(candidate_root) as candidate:
                 candidate._revalidate_operation(actor, intent, reviewed=reviewed)
 
-    def _apply_write(self, write: Mapping[str, Any], *, actor: Actor | None = None) -> str:
+    def _apply_write(self, write: Mapping[str, Any], *, actor: Actor | None = None, recheck: Callable[[], None] | None = None) -> str:
+        """Apply one recorded write; ``recheck`` is the caller's source check, which a replacement repeats before each retry."""
         relative = self._relative_path(write["path"])
         path = self._safe_path(relative, allow_missing=True)
         role = write.get("role")
@@ -4798,7 +4850,7 @@ class BoardService:
             if actual_rows != merge.get("expected_rows"):
                 return "conflict"
             merged = self._render_managed(role, current, merge.get("expected_rows", {}), merge.get("after_rows", {}))
-            self._atomic_replace(path, merged, expected=current, actor=actor)
+            self._atomic_replace(path, merged, expected=current, actor=actor, recheck=recheck)
             return "applied"
         if role == "log":
             current = self._optional_text(path)
@@ -4809,7 +4861,7 @@ class BoardService:
             if marker in (current or ""):
                 return "conflict"
             merged = _append_once(current or "", marker, merge.get("entry", ""))
-            self._atomic_replace(path, merged, expected=current, actor=actor)
+            self._atomic_replace(path, merged, expected=current, actor=actor, recheck=recheck)
             return "applied"
         current = self._optional_text(path)
         actual = _file_digest(current)
@@ -4817,10 +4869,25 @@ class BoardService:
             return "already"
         if actual != write.get("before_digest"):
             return "conflict"
-        self._atomic_replace(path, write.get("after", ""), expected=current, actor=actor)
+        self._atomic_replace(path, write.get("after", ""), expected=current, actor=actor, recheck=recheck)
         return "applied"
 
-    def _atomic_replace(self, path: Path, content: str, *, expected: str | None, actor: Actor | None = None) -> None:
+    def _atomic_replace(
+        self,
+        path: Path,
+        content: str,
+        *,
+        expected: str | None,
+        actor: Actor | None = None,
+        recheck: Callable[[], None] | None = None,
+    ) -> None:
+        """Replace ``path`` with ``content`` while it still holds ``expected``.
+
+        A momentary sharing refusal makes the replacement wait and try again. Each retry repeats every check made before
+        the first attempt: confinement, the participant's grant, the expected content and, through ``recheck``, the
+        caller's own source checks. A change of any of them raises instead of replacing.
+        """
+
         self._reject_reparse(path.parent, include_leaf=True)
         path.parent.mkdir(parents=True, exist_ok=True)
         self._reject_reparse(path.parent, include_leaf=True)
@@ -4832,12 +4899,23 @@ class BoardService:
                 stream.write(content)
                 stream.flush()
                 os.fsync(stream.fileno())
-            self._reject_reparse(path, include_leaf=True)
-            if actor is not None:
-                self._require_actor(actor, write=True)
-            if self._optional_text(path) != expected:
-                raise BoardError("write_changed", f"`{path.relative_to(self.root).as_posix()}` changed immediately before replacement.", 409)
-            _replace_file(temp_path, path)
+
+            def recheck_target() -> None:
+                self._reject_reparse(path, include_leaf=True)
+                if actor is not None:
+                    self._require_actor(actor, write=True)
+                if self._optional_text(path) != expected:
+                    raise BoardError("write_changed", f"`{path.relative_to(self.root).as_posix()}` changed immediately before replacement.", 409)
+
+            def recheck_retry() -> None:
+                self._safe_path(path.relative_to(self.root).as_posix(), allow_missing=True)
+                self._reject_reparse(path.parent, include_leaf=True)
+                recheck_target()
+                if recheck is not None:
+                    recheck()
+
+            recheck_target()
+            _replace_file(temp_path, path, recheck=recheck_retry)
             try:
                 directory_fd = os.open(path.parent, getattr(os, "O_DIRECTORY", 0) | os.O_RDONLY)
             except OSError:

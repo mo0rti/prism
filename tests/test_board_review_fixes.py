@@ -19,7 +19,15 @@ from prism_cli.board_service import BoardError, BoardService
 from prism_cli.board_store import unresolved_board_operations
 from prism_cli.workflow_assets import asset_digest
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, create_core_workflow_fixture
-from tests.test_board_service import _design_page, _read_revisions
+from prism_cli.workflow_install import apply_install, plan_install
+from tests.test_board_service import (
+    _design_page,
+    _journey_design_page,
+    _journey_feature_page,
+    _journey_requirement_page,
+    _read_revisions,
+    _write_index_rows,
+)
 from tests.test_core_workflow_fixture import _feature_page
 from tests import real_temp  # noqa: F401
 
@@ -223,8 +231,11 @@ class BoardReviewFixTests(unittest.TestCase):
 
     # -- A reader that holds a page open for a moment must not conflict an apply (Windows) ---------------
 
-    def refuse_replacing_the_feature_page(self, times: int | None, winerror: int | None = 5):
-        """A patch of `os.replace` that refuses to replace the feature page `times` times (always when ``None``), like a reader that holds it open."""
+    def refuse_replacing_the_feature_page(self, times: int | None, winerror: int | None = 5, *, after_refusal=None):
+        """A patch of `os.replace` that refuses to replace the feature page `times` times (always when ``None``), like a reader that holds it open.
+
+        ``after_refusal`` runs right after the first refusal, before the replace tries again: the moment an editor changes something while it waits.
+        """
 
         real = os.replace
         calls: list[str] = []
@@ -235,6 +246,8 @@ class BoardReviewFixTests(unittest.TestCase):
                 error = PermissionError(13, "Access is denied")
                 if winerror is not None:
                     error.winerror = winerror
+                if len(calls) == 1 and after_refusal is not None:
+                    after_refusal()
                 raise error
             return real(source, destination, *args, **kwargs)
 
@@ -271,6 +284,100 @@ class BoardReviewFixTests(unittest.TestCase):
                     with self.assertRaises(PermissionError):
                         board_service._replace_file(self.root / "source.tmp", self.root / FEATURE)
                 self.assertEqual(1, len(refused))
+
+    # -- Everything checked before the first attempt is checked again before each retry -------------------
+
+    def apply_with_a_refusal_and_a_change_while_it_waits(self, change) -> tuple[dict, list[str]]:
+        """Apply the ask preview with the page's replace refused once and ``change`` happening before the retry."""
+
+        preview = self.ask_preview()
+        refusal, refused = self.refuse_replacing_the_feature_page(1, after_refusal=change)
+        with refusal, patch.object(board_service, "_REPLACE_WAIT_SECONDS", 0):
+            receipt = self.service.apply(self.agent, preview["preview_id"], "op-ask")
+        return receipt, refused
+
+    def test_an_edit_that_lands_between_a_refused_attempt_and_the_retry_is_a_conflict_and_nothing_is_overwritten(self) -> None:
+        edited = self.read(FEATURE) + "\nAn editor added this line while the replace waited.\n"
+        receipt, refused = self.apply_with_a_refusal_and_a_change_while_it_waits(lambda: self.put(FEATURE, edited))
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("write_changed", receipt["conflicts"][0]["reason"])
+        self.assertEqual(1, len(refused), "the refused attempt was not repeated")
+        self.assertEqual(edited, self.read(FEATURE), "the editor's text was not overwritten")
+        self.assertNotIn(NEW_QUESTION, self.read(FEATURE))
+
+    def test_a_relevant_source_that_changes_while_the_replace_waits_is_a_conflict(self) -> None:
+        feature_before = self.read(FEATURE)
+        receipt, refused = self.apply_with_a_refusal_and_a_change_while_it_waits(
+            lambda: self.put(SETTINGS, self.read(SETTINGS) + "\nA policy note added while the replace waited.\n")
+        )
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("recovery_source_changed", receipt["conflicts"][0]["reason"])
+        self.assertEqual(1, len(refused))
+        self.assertEqual(feature_before, self.read(FEATURE), "nothing was written against the changed source")
+
+    def test_a_grant_that_is_revoked_while_the_replace_waits_is_not_used_for_the_retry(self) -> None:
+        feature_before = self.read(FEATURE)
+        receipt, refused = self.apply_with_a_refusal_and_a_change_while_it_waits(lambda: self.service.revoke_participant(self.agent.participant_id))
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("unauthorized", receipt["conflicts"][0]["reason"])
+        self.assertEqual(1, len(refused))
+        self.assertEqual(feature_before, self.read(FEATURE))
+
+    def test_a_link_planted_while_the_replace_waits_is_refused_on_the_retry(self) -> None:
+        feature = self.root / FEATURE
+        moved = self.root / "elsewhere.md"
+
+        def plant_a_link() -> None:
+            content = feature.read_bytes()
+            feature.unlink()
+            moved.write_bytes(content)
+            try:
+                os.symlink(moved, feature)
+            except (OSError, NotImplementedError):
+                moved.unlink()
+                feature.write_bytes(content)
+                self.skipTest("symbolic links are not available on this machine")
+
+        receipt, refused = self.apply_with_a_refusal_and_a_change_while_it_waits(plant_a_link)
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertEqual(1, len(refused))
+        self.assertTrue(feature.is_symlink(), "the link was not replaced")
+        self.assertNotIn(NEW_QUESTION, moved.read_bytes().decode("utf-8"), "nothing was written through the link")
+
+    def test_the_recheck_runs_before_every_retry_and_an_unchanged_target_is_replaced(self) -> None:
+        source = self.root / "source.tmp"
+        source.write_bytes(b"replacement\n")
+        rechecks: list[int] = []
+        refusal, refused = self.refuse_replacing_the_feature_page(3)
+        with refusal, patch.object(board_service, "_REPLACE_WAIT_SECONDS", 0):
+            board_service._replace_file(source, self.root / FEATURE, recheck=lambda: rechecks.append(len(refused)))
+        self.assertEqual(3, len(refused))
+        self.assertEqual([1, 2, 3], rechecks, "once after each refused attempt, before the next one")
+        self.assertEqual("replacement\n", self.read(FEATURE))
+
+    def test_a_recheck_that_raises_stops_the_retries_and_replaces_nothing(self) -> None:
+        source = self.root / "source.tmp"
+        source.write_bytes(b"replacement\n")
+        before = self.read(FEATURE)
+
+        def changed() -> None:
+            raise BoardError("write_changed", "changed", 409)
+
+        refusal, refused = self.refuse_replacing_the_feature_page(None)
+        with refusal, patch.object(board_service, "_REPLACE_WAIT_SECONDS", 0), self.assertRaises(BoardError):
+            board_service._replace_file(source, self.root / FEATURE, recheck=changed)
+        self.assertEqual(1, len(refused))
+        self.assertEqual(before, self.read(FEATURE))
+
+    def test_an_error_that_is_not_a_sharing_refusal_is_neither_retried_nor_rechecked(self) -> None:
+        for winerror in (None, 1314):
+            with self.subTest(winerror=winerror):
+                rechecks: list[int] = []
+                refusal, refused = self.refuse_replacing_the_feature_page(None, winerror)
+                with refusal, patch.object(board_service, "_REPLACE_WAIT_SECONDS", 0), self.assertRaises(PermissionError):
+                    board_service._replace_file(self.root / "source.tmp", self.root / FEATURE, recheck=lambda: rechecks.append(1))
+                self.assertEqual(1, len(refused))
+                self.assertEqual([], rechecks)
 
     def test_an_external_edit_between_two_writes_stops_the_remaining_writes(self) -> None:
         preview = self.ask_preview()
@@ -500,6 +607,100 @@ class BoardReviewFixTests(unittest.TestCase):
         # A fresh preview that reads the new source applies.
         again = self.ask_preview()
         self.assertEqual("applied", self.service.apply(self.agent, again["preview_id"], "op-ask-2")["state"])
+
+
+class RetryDependencyBindingTests(unittest.TestCase):
+    """An ordinary apply binds the dependency set (membership and digests) when it validates, and every retry compares against it."""
+
+    FEATURE = "knowledge/wiki/features/F-001-document-review.md"
+    REQUIREMENT = "knowledge/wiki/app-requirements/F-001-backend.md"
+    DESIGN = "knowledge/wiki/design/F-001-document-review.md"
+    EXTRA_REQUIREMENT = "knowledge/wiki/app-requirements/F-001-backend-second.md"
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = create_core_workflow_fixture(Path(temporary.name) / "generated-project")
+        self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))["status"])
+        (self.root / INTAKE_ITEM).parent.rename(self.root / "knowledge/intake/processed/2026-10-06-document-review-brief")
+        for relative, content in (
+            (self.FEATURE, _journey_feature_page("F-001", "Document review", "ready-for-dev", "dev", ["knowledge/intake/processed/2026-10-06-document-review-brief"], ["| 1 | Which points should a review summary highlight? | po | resolved: The key points. |"])),
+            (self.REQUIREMENT, _journey_requirement_page("pending")),
+            (self.DESIGN, _journey_design_page()),
+        ):
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content.encode("utf-8"))
+        feature = (self.root / self.FEATURE).read_text(encoding="utf-8")
+        (self.root / self.FEATURE).write_bytes(feature.replace("No design has been recorded yet.", "The design is recorded in [F-001 design](../design/F-001-document-review.md).").encode("utf-8"))
+        _write_index_rows(self.root, [("F-001", "Document review", "ready-for-dev", "dev")])
+        self.service = BoardService(self.root).start()
+        self.addCleanup(self.service.close)
+        self.human = self.service.authenticate(self.service.create_participant("Owner", "human", writable=True)["token"])
+
+    def dev_start_preview(self) -> dict:
+        preview = self.service.preview_transition(self.human, "F-001", "dev-start", {"semantic_review_acknowledged": True})
+        self.assertEqual("ready", preview["classification"], preview["checks"])
+        self.assertTrue(preview["applicable"], preview["blockers"])
+        return preview
+
+    def add_a_second_requirement(self) -> None:
+        (self.root / self.EXTRA_REQUIREMENT).write_bytes(_journey_requirement_page("pending").encode("utf-8"))
+
+    def apply_with_the_replace_refused_once(self, change=None, *, times: int = 1) -> tuple[dict, list[str]]:
+        """Apply `dev-start` with the feature page's replace refused ``times`` times; ``change`` runs right after the first refusal."""
+
+        preview = self.dev_start_preview()
+        real = os.replace
+        refused: list[str] = []
+
+        def replace(source, destination, *args, **kwargs):
+            if Path(destination).as_posix().endswith(self.FEATURE) and len(refused) < times:
+                refused.append(str(destination))
+                if len(refused) == 1 and change is not None:
+                    change()
+                error = PermissionError(13, "Access is denied")
+                error.winerror = 5
+                raise error
+            return real(source, destination, *args, **kwargs)
+
+        with patch.object(board_service.os, "replace", side_effect=replace), patch.object(board_service, "_REPLACE_WAIT_SECONDS", 0):
+            receipt = self.service.apply(self.human, preview["preview_id"], "op-dev-start")
+        return receipt, refused
+
+    def status_of_the_feature(self) -> str:
+        return yaml.safe_load((self.root / self.FEATURE).read_text(encoding="utf-8").split("---")[1])["status"]
+
+    def test_a_requirement_page_that_appears_while_the_replace_waits_is_a_conflict_and_nothing_is_written(self) -> None:
+        feature_before = (self.root / self.FEATURE).read_bytes()
+        receipt, refused = self.apply_with_the_replace_refused_once(self.add_a_second_requirement)
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("recovery_source_changed", receipt["conflicts"][0]["reason"])
+        self.assertIn(self.EXTRA_REQUIREMENT, receipt["conflicts"][0]["reason"])
+        self.assertEqual(1, len(refused), "the refused attempt was not repeated")
+        self.assertEqual(feature_before, (self.root / self.FEATURE).read_bytes(), "nothing was written")
+        self.assertEqual("ready-for-dev", self.status_of_the_feature())
+
+    def test_a_dependency_page_that_changes_while_the_replace_waits_is_a_conflict(self) -> None:
+        feature_before = (self.root / self.FEATURE).read_bytes()
+        edit = lambda: (self.root / self.DESIGN).write_bytes((self.root / self.DESIGN).read_bytes() + b"\nA late design note.\n")
+        receipt, refused = self.apply_with_the_replace_refused_once(edit)
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertEqual(1, len(refused))
+        self.assertEqual(feature_before, (self.root / self.FEATURE).read_bytes())
+
+    def test_an_unchanged_set_of_dependencies_is_retried_and_applied(self) -> None:
+        receipt, refused = self.apply_with_the_replace_refused_once(times=3)
+        self.assertEqual("applied", receipt["state"], receipt)
+        self.assertEqual(3, len(refused))
+        self.assertEqual("in-dev", self.status_of_the_feature())
+
+    def test_the_dependency_set_is_recorded_when_the_operation_is_applied_and_not_taken_again_after_a_refusal(self) -> None:
+        self.apply_with_the_replace_refused_once(self.add_a_second_requirement)
+        row = self.service.store.connection.execute("SELECT intent_json FROM operations WHERE operation_id = 'op-dev-start'").fetchone()
+        bound = json.loads(row[0])["bound_sources"]
+        self.assertIn(self.REQUIREMENT, bound)
+        self.assertNotIn(self.EXTRA_REQUIREMENT, bound, "the page that appeared after the refusal is not part of the baseline")
 
 
 if __name__ == "__main__":

@@ -99,14 +99,17 @@ CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
         "scandir": (0, 42),
     },
     # A fresh apply no longer evaluates the same files a second time in its roll-forward (the recovery revalidation).
+    # It binds the operation's dependency set (the relevant-source snapshot of a reviewed recovery) before it validates, compares it
+    # after, and compares it again before every write, so a dependency that appears while a write waits is a change. That is five
+    # snapshots of a fixed cost each; no slope changed.
     "apply": {
         "page_parses": (1, 15),
-        "file_opens": (4, 262),
+        "file_opens": (4, 330),
         "workspace_fingerprint": (0, 4),
-        "validate_graph_inputs": (0, 11),
+        "validate_graph_inputs": (0, 16),
         "lint_wiki": (0, 2),
         "build_graph": (0, 1),
-        "scandir": (0, 410),
+        "scandir": (0, 530),
     },
 }
 

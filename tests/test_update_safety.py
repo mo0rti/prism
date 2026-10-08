@@ -26,7 +26,7 @@ from unittest.mock import patch
 import yaml
 from jinja2 import Environment, StrictUndefined
 
-from prism_cli import cli
+from prism_cli import app_cli, cli, wiki_paths
 from prism_cli.packs import (
     layer_answers_problems,
     pack_answers,
@@ -36,7 +36,7 @@ from prism_cli.packs import (
     workspace_data,
 )
 from prism_cli.manifest_update import ManifestUpdateError, prepare_manifest_update
-from prism_cli.workspace import _read_answers, inspect_workspace, write_workspace_manifest
+from prism_cli.workspace import AnswersRefused, _read_answers, inspect_workspace, read_answers_bytes, write_workspace_manifest
 from tests import real_temp  # noqa: F401
 from tests.layered_support import commit_workspace, generate_workspace, git, read_yaml, run_cli, tag_template_change
 from tests.test_layered_generation import API_TWO, BACKEND, PACK_AGENTS, WORKSPACE_DOCS, LayeredTestCase
@@ -626,6 +626,346 @@ class RootAnswersLinkThroughTheCliTests(LayeredTestCase):
         self.assertEqual([], copier.calls)
         self.assertEqual(before, outside.read_bytes(), "the file behind the link was not written")
         self.assertEqual("main", git(ws, "symbolic-ref", "--short", "HEAD").stdout.strip())
+
+
+class CopierRecorder:
+    """Stand in for `subprocess.run`: note every Copier command and the answers file it is given, then run it (or ``fake`` it).
+
+    ``before(record)`` runs when a Copier command starts and ``after(record)`` when it is done; every other subprocess (git) runs for real.
+    A record holds the ``--answers-file`` argument and what that file held (parsed) when Copier started.
+    """
+
+    def __init__(self, project: Path, *, before=None, after=None, fake=None) -> None:
+        self.project = project
+        self.before, self.after, self.fake = before, after, fake
+        self.calls: list[dict] = []
+        self._real = subprocess.run
+
+    def __call__(self, command, *args, **kwargs):
+        if not (isinstance(command, (list, tuple)) and "copier" in command and "--answers-file" in command):
+            return self._real(command, *args, **kwargs)
+        relative = str(command[list(command).index("--answers-file") + 1])
+        path = self.project / relative
+        record = {"command": [str(item) for item in command], "answers_file": relative, "content": yaml.safe_load(path.read_bytes()) if path.is_file() else None}
+        self.calls.append(record)
+        if self.before is not None:
+            self.before(record)
+        completed = self.fake(command) if self.fake is not None else self._real(command, *args, **kwargs)
+        if self.after is not None:
+            self.after(record)
+        return completed
+
+
+class AnswersSnapshotTests(LayeredTestCase):
+    """Validation and use are one operation on one snapshot: Copier is given the validated answers, and a file that changed is never consumed."""
+
+    LAYER_FILES = (".copier-answers.yml", "backend/.copier-answers.yml", "services/api-two/.copier-answers.yml")
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls.workspace = cls.root / "base"
+        code, out, err = generate_workspace(cls.repo, cls.workspace, {"project_name": "Layered App", "apps": [BACKEND, API_TWO]}, cls.root)
+        if code != 0:
+            raise AssertionError(out + err)
+        commit_workspace(cls.workspace)
+        tag_template_change(cls.repo, "v2.0.0", (PACK_AGENTS, "append", "\nTemplate v2 note for {{ app_id }}.\n"))
+
+    def copy_workspace(self, name: str) -> Path:
+        ws = self.root / name
+        shutil.copytree(self.workspace, ws)
+        return ws
+
+    @staticmethod
+    def hostile(ws: Path, relative: str = ".copier-answers.yml") -> bytes:
+        """Replace an answers file with one that carries a package no layer may record, as a changed file in a merge would."""
+
+        path = ws / relative
+        data = read_yaml(path)
+        data["app_package"] = INJECTED_PACKAGE
+        path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        return path.read_bytes()
+
+    def assert_nothing_started(self, ws: Path, code: int, err: str, relative: str) -> None:
+        self.assertNotEqual(0, code, err)
+        self.assertIn(f"`{relative}` changed after Prism read and validated it", err)
+        self.assertIn("run the command again", err)
+        self.assertEqual("", git(ws, "log", "--format=%s", "main..HEAD").stdout.strip(), "no layer was committed")
+
+    # -- recopy -----------------------------------------------------------------
+
+    def test_a_recopy_gives_copier_the_validated_answers_of_every_layer_in_a_private_file_and_never_the_live_path(self) -> None:
+        ws = self.copy_workspace("recopy-spy")
+        originals = {relative: read_yaml(ws / relative) for relative in self.LAYER_FILES}
+        recorder = CopierRecorder(ws)
+        app_reads: list[str] = []
+        real_snapshot = cli.read_answers_snapshot
+
+        def counting_snapshot(project, answers_file):
+            app_reads.append(answers_file)
+            return real_snapshot(project, answers_file)
+
+        with patch.object(subprocess, "run", recorder), patch.object(cli, "read_answers_snapshot", counting_snapshot), patch.object(cli, "read_app_answers", side_effect=AssertionError("answers are not read again")):
+            code, out, err = run_cli("update", str(ws), "--strategy", "recopy", "--yes", "--trust-template")
+        self.assertEqual(0, code, out + err)
+        self.assertEqual(3, len(recorder.calls), "one Copier run per layer")
+        for call, relative in zip(recorder.calls, self.LAYER_FILES):
+            with self.subTest(layer=relative):
+                self.assertNotEqual(relative, call["answers_file"], "the live answers file is never passed")
+                self.assertTrue(Path(call["answers_file"]).name.startswith(".copier-answers.prism-recopy."))
+                self.assertEqual(Path(relative).parent, Path(call["answers_file"]).parent)
+                self.assertEqual(originals[relative], call["content"], "Copier got exactly the validated content")
+        for relative in self.LAYER_FILES[1:]:
+            self.assertEqual(1, app_reads.count(relative), f"{relative} is read once")
+        self.assertEqual([], list(ws.rglob(".copier-answers.prism-recopy.*")), "no private file is left behind")
+
+    def test_an_answers_file_that_changes_before_copier_starts_is_never_consumed_and_the_recopy_refuses(self) -> None:
+        ws = self.copy_workspace("recopy-swap-before")
+        relative = "services/api-two/.copier-answers.yml"
+        real_branch = cli.create_branch
+
+        def swap_after_the_plan(project, name):
+            real_branch(project, name)
+            self.hostile(ws, relative)
+
+        copier = CopierSpy()
+        with patch.object(subprocess, "run", copier), patch.object(cli, "create_branch", swap_after_the_plan):
+            code, out, err = run_cli("update", str(ws), "--strategy", "recopy", "--yes", "--trust-template")
+        self.assertEqual([], copier.calls, "Copier never started")
+        self.assert_nothing_started(ws, code, err, relative)
+
+    def test_an_answers_file_that_changes_while_copier_runs_is_refused_before_anything_is_moved_into_place_or_committed(self) -> None:
+        ws = self.copy_workspace("recopy-swap-during")
+        original = read_yaml(ws / ".copier-answers.yml")
+        swapped: list[bytes] = []
+        recorder = CopierRecorder(ws, after=lambda record: swapped.append(self.hostile(ws)))
+        with patch.object(subprocess, "run", recorder):
+            code, out, err = run_cli("update", str(ws), "--strategy", "recopy", "--yes", "--trust-template")
+        self.assert_nothing_started(ws, code, err, ".copier-answers.yml")
+        self.assertEqual(1, len(recorder.calls), "the update stopped at the failed layer")
+        self.assertEqual(original, recorder.calls[0]["content"], "Copier was given the validated answers, not the changed file")
+        self.assertNotIn("app_package", recorder.calls[0]["content"])
+        self.assertEqual(swapped[0], (ws / ".copier-answers.yml").read_bytes(), "the private file was not moved over the changed original")
+        self.assertEqual([], list(ws.glob(".copier-answers.prism-recopy.*")))
+
+    # -- smart update -----------------------------------------------------------
+
+    def test_a_smart_update_prepares_the_manifest_from_the_validated_bytes_and_refuses_a_file_that_changed_before_copier_starts(self) -> None:
+        ws = self.copy_workspace("update-swap")
+        validated = (ws / ".copier-answers.yml").read_bytes()
+        real_identity = cli.has_commit_identity
+        swapped: list[bytes] = []
+
+        def swap_after_the_plan(project):
+            swapped.append(self.hostile(ws))
+            return real_identity(project)
+
+        copier = CopierSpy()
+        prepared = patch.object(cli, "prepare_manifest_update", wraps=cli.prepare_manifest_update)
+        with patch.object(subprocess, "run", copier), patch.object(cli, "has_commit_identity", swap_after_the_plan), prepared as prepare:
+            code, out, err = run_cli("update", str(ws), "--yes", "--trust-template")
+        self.assertEqual([], copier.calls, "Copier never started")
+        prepare.assert_called_once()
+        self.assertEqual(validated, prepare.call_args.args[2], "the manifest was prepared from the validated bytes")
+        self.assertNotEqual(swapped[0], prepare.call_args.args[2])
+        self.assert_nothing_started(ws, code, err, ".copier-answers.yml")
+
+    def test_a_layer_that_changes_before_its_turn_stops_the_smart_update_before_the_workspace_layer_runs(self) -> None:
+        ws = self.copy_workspace("update-swap-app")
+        relative = "backend/.copier-answers.yml"
+        real_branch = cli.create_branch
+
+        def swap_after_the_plan(project, name):
+            real_branch(project, name)
+            self.hostile(ws, relative)
+
+        copier = CopierSpy()
+        with patch.object(subprocess, "run", copier), patch.object(cli, "create_branch", swap_after_the_plan):
+            code, out, err = run_cli("update", str(ws), "--yes", "--trust-template")
+        self.assertEqual([], copier.calls)
+        self.assert_nothing_started(ws, code, err, relative)
+
+    def smart_update_whose_result_is_changed_by(self, name: str, change) -> None:
+        """Run a smart update whose Copier leaves the root answers file changed by ``change(data)``; the update must refuse before the commit."""
+
+        ws = self.copy_workspace(name)
+
+        def copier_that_consumed_other_answers(command) -> subprocess.CompletedProcess:
+            data = read_yaml(ws / ".copier-answers.yml")
+            change(data)
+            (ws / ".copier-answers.yml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0)
+
+        recorder = CopierRecorder(ws, fake=copier_that_consumed_other_answers)
+        with patch.object(subprocess, "run", recorder):
+            code, out, err = run_cli("update", str(ws), "--yes", "--trust-template")
+        self.assert_nothing_started(ws, code, err, ".copier-answers.yml")
+        self.assertEqual(1, len(recorder.calls))
+        self.assertEqual([".copier-answers.yml"], [call["answers_file"] for call in recorder.calls], "a smart update lets Copier read the tracked file itself")
+
+    def test_a_smart_update_whose_result_records_another_answer_than_the_validated_one_is_refused_before_the_commit(self) -> None:
+        self.smart_update_whose_result_is_changed_by("update-diverged", lambda data: data.update(project_name="Another Name"))
+
+    def test_a_smart_update_whose_result_lost_a_validated_answer_is_refused_before_the_commit(self) -> None:
+        self.assertIn("project_slug", read_yaml(self.workspace / ".copier-answers.yml"))
+        self.smart_update_whose_result_is_changed_by("update-missing-key", lambda data: data.pop("project_slug"))
+
+    def test_a_smart_update_whose_result_gained_an_answer_is_refused_before_the_commit(self) -> None:
+        self.assertNotIn("app_package", read_yaml(self.workspace / ".copier-answers.yml"))
+        self.smart_update_whose_result_is_changed_by("update-added-key", lambda data: data.update(app_package=INJECTED_PACKAGE))
+
+    def test_the_answers_a_smart_update_hands_over_and_the_commit_may_differ_and_nothing_else(self) -> None:
+        root = cli.AnswersSnapshot(".copier-answers.yml", b"", {"_commit": "v1.0.0", "project_name": "A", "stacks": ["x"], "apps": [{"id": "a"}]})
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+
+            def written(**data) -> None:
+                (project / ".copier-answers.yml").write_text(yaml.safe_dump(data), encoding="utf-8")
+
+            written(_commit="v2.0.0", project_name="A", stacks=["x", "y"], apps=[])
+            cli.require_answers_kept(project, root, ignore=("stacks", "apps"))
+            written(_commit="v2.0.0", project_name="A")
+            cli.require_answers_kept(project, root, ignore=("stacks", "apps"))
+            for label, data in (
+                ("another value", {"_commit": "v2.0.0", "project_name": "B", "stacks": [], "apps": []}),
+                ("a missing key", {"_commit": "v2.0.0", "stacks": [], "apps": []}),
+                ("an added key", {"_commit": "v2.0.0", "project_name": "A", "stacks": [], "apps": [], "app_package": "p"}),
+            ):
+                with self.subTest(label):
+                    written(**data)
+                    with self.assertRaises(cli.UpdateSafetyError):
+                        cli.require_answers_kept(project, root, ignore=("stacks", "apps"))
+
+    def test_a_smart_update_keeps_every_validated_answer_and_moves_each_layer_to_the_new_revision(self) -> None:
+        ws = self.copy_workspace("update-clean")
+        before = {relative: read_yaml(ws / relative) for relative in self.LAYER_FILES}
+        code, out, err = run_cli("update", str(ws), "--yes", "--trust-template")
+        self.assertEqual(0, code, out + err)
+        for relative in self.LAYER_FILES:
+            with self.subTest(layer=relative):
+                after = read_yaml(ws / relative)
+                self.assertEqual("v2.0.0", after["_commit"])
+                self.assertEqual({key: value for key, value in before[relative].items() if key != "_commit"}, {key: value for key, value in after.items() if key != "_commit"})
+
+    # -- scaffolding ------------------------------------------------------------
+
+    def scaffold_plan(self, ws: Path) -> dict:
+        plan = app_cli.plan_app_add(ws, "api-three", "spring-backend", path="services/api-three", scaffold=True)
+        self.assertEqual([], plan["conflicts"])
+        return plan
+
+    def test_a_scaffold_refuses_a_root_answers_file_that_changed_after_the_preview(self) -> None:
+        ws = self.copy_workspace("scaffold-preview")
+        plan = self.scaffold_plan(ws)
+        self.assertEqual(64, len(plan["scaffold"]["answers_digest"]))
+        with (ws / ".copier-answers.yml").open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write("# edited after the preview\n")
+        git(ws, "commit", "-qam", "Edit the answers file")
+        copier = CopierSpy()
+        with patch.object(subprocess, "run", copier):
+            receipt = app_cli.apply_app_add(ws, plan, trust_template=True)
+        self.assertEqual("conflict", receipt["status"], receipt)
+        self.assertTrue(any("changed after the preview" in item for item in receipt["conflicts"]), receipt)
+        self.assertEqual([], copier.calls)
+        self.assertFalse((ws / "services" / "api-three").exists())
+
+    def test_a_scaffold_refuses_a_root_answers_file_that_changes_before_copier_starts(self) -> None:
+        ws = self.copy_workspace("scaffold-swap")
+        plan = self.scaffold_plan(ws)
+        real_branch = cli.create_branch
+
+        def swap_after_the_checks(project, name):
+            real_branch(project, name)
+            self.hostile(ws)
+
+        copier = CopierSpy()
+        with patch.object(subprocess, "run", copier), patch.object(cli, "create_branch", swap_after_the_checks):
+            receipt = app_cli.apply_app_add(ws, plan, trust_template=True)
+        self.assertEqual("conflict", receipt["status"], receipt)
+        self.assertTrue(any("`.copier-answers.yml` changed after Prism read and validated it" in item and "run the command again" in item for item in receipt["conflicts"]), receipt)
+        self.assertEqual([], copier.calls)
+        self.assertFalse((ws / "services" / "api-three").exists())
+
+
+class ManifestPreparationAnswersTests(unittest.TestCase):
+    """The workers that render the manifest get the validated bytes in a private folder, never the live file."""
+
+    VALIDATED = b"_src_path: https://example.test/t.git\n_commit: v1.0.0\nproject_name: Validated\n"
+    LIVE = b"_src_path: https://evil.example/malicious-template.git\n_commit: v1.0.0\nproject_name: Hostile\n"
+
+    def prepare(self, **arguments) -> list[bytes]:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            write_workspace_manifest(
+                project,
+                {"project_name": "P", "project_slug": "p", "package_identifier": "com.example.p"},
+                prism_cli_version="0.5.0",
+                template_source="https://example.test/t.git",
+                template_version="v1.0.0",
+                template_commit="abc123",
+            )
+            (project / ".copier-answers.yml").write_bytes(self.LIVE)
+            seen: list[bytes] = []
+
+            class StopWorker:
+                def __init__(self, **kwargs) -> None:
+                    seen.append((Path(kwargs["dst_path"]) / ".copier-answers.yml").read_bytes())
+                    self.dst = Path(kwargs["dst_path"])
+                    seen.append(str(self.dst == project).encode())
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc) -> bool:
+                    return False
+
+                def _ask(self) -> None:
+                    raise RuntimeError("stop after the first worker")
+
+            with patch("copier._main.Worker", StopWorker), self.assertRaises(ManifestUpdateError):
+                prepare_manifest_update(project, "v1.0.0", **arguments)
+            return seen
+
+    def test_the_worker_reads_the_validated_bytes_and_not_the_live_file(self) -> None:
+        self.assertEqual([self.VALIDATED, b"False"], self.prepare(answers=self.VALIDATED))
+
+    def test_without_a_snapshot_the_file_is_read_once_in_the_private_folder(self) -> None:
+        self.assertEqual([self.LIVE, b"False"], self.prepare())
+
+
+class SwappedAnswersLinkTests(unittest.TestCase):
+    """A link swapped in between the check and the open is refused, and the file behind it is never read."""
+
+    def test_a_link_swapped_in_after_the_check_is_never_read(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary).resolve()
+            project = base / "project"
+            project.mkdir()
+            victim = base / "victim.yml"
+            victim.write_bytes(b"_src_path: https://evil.example/malicious-template.git\n")
+            answers = project / ".copier-answers.yml"
+            answers.write_bytes(b"_src_path: https://example.test/t.git\n")
+            self.assertEqual(b"_src_path: https://example.test/t.git\n", read_answers_bytes(answers), "a regular file is read as it is")
+            real_open = os.open
+
+            def swap_then_open(path, *arguments, **keywords):
+                if Path(path) == answers:
+                    answers.unlink()
+                    link(victim, answers)
+                return real_open(path, *arguments, **keywords)
+
+            with patch.object(wiki_paths.os, "open", swap_then_open), self.assertRaises(AnswersRefused) as raised:
+                read_answers_bytes(answers)
+            self.assertIn("restore it from git", str(raised.exception))
+            self.assertEqual(b"_src_path: https://evil.example/malicious-template.git\n", victim.read_bytes())
+
+    def test_a_missing_file_and_a_folder_at_its_place(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary).resolve()
+            self.assertIsNone(read_answers_bytes(project / ".copier-answers.yml"))
+            (project / ".copier-answers.yml").mkdir()
+            with self.assertRaises(OSError):
+                read_answers_bytes(project / ".copier-answers.yml")
 
 
 if __name__ == "__main__":

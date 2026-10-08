@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-import shutil
 import tempfile
 from typing import Any
 
@@ -15,7 +14,7 @@ import yaml
 from prism_cli import __version__
 from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, normalize_manifest
 from prism_cli.packs import WORKSPACE_LAYER
-from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, _VERSION_PATTERN, confined_answers_file
+from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, _VERSION_PATTERN, AnswersRefused, read_answers_bytes
 
 
 _PROVENANCE_KEYS = {
@@ -53,8 +52,13 @@ class ManifestUpdatePlan:
     target_label: str = ""
 
 
-def prepare_manifest_update(project_path: Path, old_revision: str) -> ManifestUpdatePlan:
-    """Render both template baselines without running Copier copy/update tasks."""
+def prepare_manifest_update(project_path: Path, old_revision: str, answers: bytes | None = None) -> ManifestUpdatePlan:
+    """Render both template baselines without running Copier copy/update tasks.
+
+    ``answers`` is the workspace layer's saved answers exactly as Prism read and validated them; the Copier workers
+    get a private copy of those bytes and never the live file. Without it, the file is read here, once and never
+    through a link.
+    """
 
     try:
         # Worker is Copier's renderer and revision resolver. We only inspect its
@@ -67,13 +71,21 @@ def prepare_manifest_update(project_path: Path, old_revision: str) -> ManifestUp
         project_path / MANIFEST_FILE, "workspace"
     )
 
-    answers_path, refusal = confined_answers_file(project_path / COPIER_ANSWERS_FILE)
-    if answers_path is None:
-        raise ManifestUpdateError(refusal or f"{COPIER_ANSWERS_FILE} cannot be used.")
+    if answers is None:
+        try:
+            answers = read_answers_bytes(project_path / COPIER_ANSWERS_FILE)
+        except AnswersRefused as exc:
+            raise ManifestUpdateError(str(exc)) from exc
+        except OSError as exc:
+            raise ManifestUpdateError(f"Unable to read {COPIER_ANSWERS_FILE}: {exc}") from exc
+        if answers is None:
+            raise ManifestUpdateError(f"{COPIER_ANSWERS_FILE} is missing; it records the template the manifest is rendered from.")
     try:
         with tempfile.TemporaryDirectory(prefix="prism-manifest-render-") as temp_dir:
             isolated_project = Path(temp_dir)
-            shutil.copyfile(answers_path, isolated_project / COPIER_ANSWERS_FILE)
+            # Created exclusively in a folder nobody else knows: the workers read these bytes and nothing else.
+            with (isolated_project / COPIER_ANSWERS_FILE).open("xb") as handle:
+                handle.write(answers)
             with Worker(
                 dst_path=isolated_project,
                 data={"_prism_cli_version": __version__},
