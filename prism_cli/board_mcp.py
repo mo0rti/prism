@@ -31,7 +31,8 @@ SERVER_INSTRUCTIONS = (
     "6. Propose changes with preview_skill. preview_transition is for human participants only; "
     "an agent prepares a human action with preview_skill or asks the human to complete it in the board. "
     "A preview longer than one result continues with get_preview.\n"
-    "7. Apply an applicable preview with apply and a new operation ID. "
+    "7. Apply an applicable ungated preview with apply and a new operation ID. A gated preview carries approval.required_roles: "
+    "it waits in list_proposals and a human who holds those roles approves it in the board; an agent never applies it. "
     "If the board rejects a proposal, you may correct exactly what the error names and preview again, at most 2 more times, "
     "without widening the change; then stop and report the rejection.\n"
     "8. Check a receipt with operation (it pages like a preview); reconcile an interrupted operation with recover.\n"
@@ -85,6 +86,8 @@ def _summarize(tool: str, data: dict[str, Any]) -> str:
             f"{tool}: {data.get('classification')!s}, applicable {data.get('applicable')!s}, "
             f"{_count(data.get('writes'))} of {chunk.get('total')!s} writes on this page (read them all), {_more(data)}."
         )
+    elif tool == "list_proposals":
+        text = f"list_proposals: {_count(data.get('proposals'))} proposals awaiting approval."
     elif tool == "operation" and isinstance(data.get("remaining_changes"), list):
         chunk = data.get("remaining_changes_chunk") if isinstance(data.get("remaining_changes_chunk"), dict) else {}
         text = (
@@ -307,15 +310,17 @@ def create_mcp_server(service: Any) -> Any:
     async def get_skill_reference(name: str, path: str, ctx: Context, cursor: str | None = None) -> ToolReply:
         return reply("get_skill_reference", await call(ctx, "get_skill_reference", name, path, cursor))
 
-    @server.tool(name="preview_transition", description="Prism board: calculate an exact preview of a supported human lifecycle action on a feature (po-handoff, design-start, dev-start). Only a human participant may call it. Follow next_cursor with get_preview, then apply it with apply.", annotations=preview_annotations, structured_output=True)
+    @server.tool(name="preview_transition", description="Prism board: calculate an exact preview of a supported human lifecycle action on a feature (po-handoff, design-start, dev-start), or of operation-repair for an abandoned operation (pass operation_id). Only a human participant may call it. Follow next_cursor with get_preview, then apply it with apply.", annotations=preview_annotations, structured_output=True)
     async def preview_transition(
         ctx: Context,
-        feature_id: str,
         action: str,
+        feature_id: str | None = None,
         inputs: PreviewTransitionInputs | None = None,
+        operation_id: str | None = None,
     ) -> ToolReply:
         input_values = inputs.model_dump(exclude_unset=True) if inputs is not None else None
-        return reply("preview_transition", await shaped(preview_page, await call(ctx, "preview_transition", feature_id, action, input_values), None))
+        extra = {"operation_id": operation_id} if operation_id is not None else {}
+        return reply("preview_transition", await shaped(preview_page, await call(ctx, "preview_transition", feature_id, action, input_values, **extra), None))
 
     @server.tool(name="preview_skill", description="Prism board: preview a bounded wiki or intake write proposed by a canonical workflow skill. Read each required source with read_workspace first and leave read_revisions out: the board uses the digests you read, and a required source you did not read is rejected as missing_read_revisions, listing the paths. A long preview continues with get_preview; apply an applicable preview with apply.", annotations=preview_annotations, structured_output=True)
     async def preview_skill(
@@ -333,9 +338,28 @@ def create_mcp_server(service: Any) -> Any:
     async def get_preview(preview_id: str, ctx: Context, cursor: str | None = None) -> ToolReply:
         return reply("get_preview", await shaped(preview_page, await call(ctx, "get_preview", preview_id), cursor))
 
-    @server.tool(name="apply", description="Prism board: apply a previously returned, applicable preview (skill write or lifecycle action) using an idempotent operation ID.", annotations=operation_annotations, structured_output=True)
-    async def apply(preview_id: str, operation_id: str, ctx: Context) -> ToolReply:
-        return reply("apply", await shaped(shrink_to_budget, await call(ctx, "apply", preview_id, operation_id)))
+    @server.tool(name="apply", description="Prism board: apply a previously returned, applicable ungated preview (skill write or lifecycle action) using an idempotent operation ID. A gated preview (approval.required_roles) is refused here: a human approves it in the board.", annotations=operation_annotations, structured_output=True)
+    async def apply(
+        preview_id: str,
+        operation_id: str,
+        ctx: Context,
+        review_revision: StrictStr | None = None,
+        semantic_review_acknowledged: StrictBool = False,
+    ) -> ToolReply:
+        extra: dict[str, Any] = {}
+        if review_revision is not None:
+            extra["review_revision"] = review_revision
+        if semantic_review_acknowledged:
+            extra["semantic_review_acknowledged"] = True
+        return reply("apply", await shaped(shrink_to_budget, await call(ctx, "apply", preview_id, operation_id, **extra)))
+
+    @server.tool(name="list_proposals", description="Prism board: list the gated previews that wait for a human's approval. A human sees those whose required_roles they hold; an agent sees its own.", annotations=read_annotations, structured_output=True)
+    async def list_proposals(ctx: Context) -> ToolReply:
+        return reply("list_proposals", await shaped(shrink_to_budget, await call(ctx, "list_proposals")))
+
+    @server.tool(name="decline_proposal", description="Prism board: decline a gated proposal with a reason. It is refused over MCP: a human declines in the board.", annotations=operation_annotations, structured_output=True)
+    async def decline_proposal(preview_id: str, reason: StrictStr, ctx: Context) -> ToolReply:
+        return reply("decline_proposal", await shaped(shrink_to_budget, await call(ctx, "decline_proposal", preview_id, reason)))
 
     @server.tool(name="operation", description="Prism board: read the receipt for a previously submitted board operation by its operation ID. An unfinished operation lists its remaining changes in pages: follow next_cursor until it is null.", annotations=read_annotations, structured_output=True)
     async def operation(operation_id: str, ctx: Context, cursor: str | None = None) -> ToolReply:

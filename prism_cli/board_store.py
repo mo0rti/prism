@@ -7,12 +7,15 @@ operation receipts, and the last change cursor in a small SQLite journal.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime, timezone
+import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 import stat
 import threading
-from typing import Iterator
+from typing import Any, Iterator
 from urllib.parse import quote
 
 from prism_cli.fs_safety import CloudSyncPathError, reparse_kind
@@ -20,6 +23,10 @@ from prism_cli.fs_safety import CloudSyncPathError, reparse_kind
 
 class BoardLockError(RuntimeError):
     """The workspace is already served by another process."""
+
+
+class UnsupportedBoardState(ValueError):
+    """The state database predates the current schema; reissue the workspace's board state with `prism board state reset`."""
 
 
 class BoardStore:
@@ -115,6 +122,7 @@ class BoardStore:
         self._lock_stream = _acquire_lock_stream(self.lock_path)
 
     def _initialize(self) -> None:
+        self._require_current_schema()
         self.connection.executescript(
             """
             BEGIN IMMEDIATE;
@@ -124,6 +132,7 @@ class BoardStore:
                     name TEXT NOT NULL,
                     kind TEXT NOT NULL CHECK (kind IN ('human', 'agent')),
                     writable INTEGER NOT NULL CHECK (writable IN (0, 1)),
+                    roles TEXT NOT NULL,
                     active INTEGER NOT NULL CHECK (active IN (0, 1)),
                     board_id TEXT NOT NULL,
                     workflow_version TEXT NOT NULL,
@@ -137,7 +146,11 @@ class BoardStore:
                     payload_hash TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
-                    consumed_by TEXT
+                    consumed_by TEXT,
+                    gated INTEGER NOT NULL DEFAULT 0,
+                    declined_by TEXT,
+                    declined_at TEXT,
+                    decline_reason TEXT
                 );
                 CREATE TABLE IF NOT EXISTS operations (
                     operation_id TEXT PRIMARY KEY,
@@ -148,7 +161,9 @@ class BoardStore:
                     receipt_json TEXT,
                     state TEXT NOT NULL,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    repair_of TEXT,
+                    repaired_by TEXT
                 );
                 CREATE TABLE IF NOT EXISTS events (
                     cursor INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,9 +172,37 @@ class BoardStore:
                     event_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS provenance (
+                    board_id TEXT NOT NULL,
+                    item_id TEXT NOT NULL,
+                    app TEXT NOT NULL,
+                    generation INTEGER NOT NULL,
+                    kind TEXT NOT NULL CHECK (kind IN ('delivery', 'fix')),
+                    operation_id TEXT NOT NULL REFERENCES operations(operation_id),
+                    row_digest TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (board_id, item_id, app, generation, kind)
+                );
             COMMIT;
             """
         )
+
+    # The columns each table must have. A database from before one of them exists is refused whole: the board keeps no
+    # upgrade path for its own journal.
+    _REQUIRED_COLUMNS = {
+        "grants": ("roles",),
+        "previews": ("gated", "declined_by", "declined_at", "decline_reason"),
+        "operations": ("repair_of", "repaired_by"),
+    }
+
+    def _require_current_schema(self) -> None:
+        for table, columns in self._REQUIRED_COLUMNS.items():
+            present = {row[1] for row in self.connection.execute(f"PRAGMA table_info({table})")}
+            if present and not set(columns) <= present:
+                raise UnsupportedBoardState(
+                    "The board state database was created by an earlier Prism version and has no role support. "
+                    "Resolve its operations, then run `prism board state reset` and issue the grants again."
+                )
 
     def _check_sqlite_paths(self) -> None:
         for suffix in ("", "-journal", "-wal", "-shm"):
@@ -268,6 +311,162 @@ def unresolved_board_operations(root: Path) -> list[tuple[str, str]]:
     except sqlite3.Error as exc:
         raise ValueError(f"Unable to inspect the Prism board journal before workflow upgrade: {exc}") from exc
     return [(str(operation_id), str(state) if state is not None else "unknown") for operation_id, state in rows]
+
+
+class UnresolvedOperationsError(ValueError):
+    """The board state holds operations that are neither applied nor abandoned."""
+
+    def __init__(self, operations: list[tuple[str, str]]) -> None:
+        super().__init__(
+            f"{len(operations)} board operation(s) are unresolved (neither applied nor abandoned): "
+            + ", ".join(f"{operation_id} ({state})" for operation_id, state in operations[:5])
+            + ". Recover or abandon them first."
+        )
+        self.operations = operations
+        # The same fields as a board error, so a caller can report the code the contract names.
+        self.code = "unresolved_operations"
+        self.message = str(self)
+        self.status = 409
+
+
+def _open_read_only(root: Path) -> sqlite3.Connection | None:
+    """The journal opened read-only, or ``None`` when the workspace has no board state yet."""
+
+    prism_dir = Path(root) / ".prism"
+    state_dir = prism_dir / "state"
+    if not _inspect_directory(prism_dir) or not _inspect_directory(state_dir):
+        return None
+    database = state_dir / "board.sqlite3"
+    try:
+        info = database.lstat()
+    except FileNotFoundError:
+        return None
+    if reparse_kind(info) == "cloud":
+        raise CloudSyncPathError()
+    if not stat.S_ISREG(info.st_mode) or _is_reparse_point(info):
+        raise ValueError("Prism board journal must be a regular file.")
+    uri_path = quote(str(database.resolve(strict=True)).replace(chr(92), "/"), safe="/:")
+    try:
+        return sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True, timeout=1)
+    except sqlite3.Error as exc:
+        raise ValueError(f"Unable to read the Prism board journal: {exc}") from exc
+
+
+def _table_rows(connection: sqlite3.Connection, table: str, order: str) -> list[dict[str, Any]]:
+    """Every row of ``table`` by column name, whatever columns the journal's version gave it; an absent table has no rows."""
+
+    present = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if table not in present:
+        return []
+    cursor = connection.execute(f"SELECT * FROM {table} ORDER BY {order}")
+    names = [column[0] for column in cursor.description]
+    return [dict(zip(names, row)) for row in cursor.fetchall()]
+
+
+def _decoded(value: Any) -> Any:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return None
+
+
+def export_board_state(root: Path) -> dict[str, Any]:
+    """The audit view of the board journal: grants without token hashes, preview metadata, operations with their
+    intents, receipts and repair links, events and the evidence provenance. It only reads; an absent journal exports empty."""
+
+    connection = _open_read_only(root)
+    exported: dict[str, Any] = {"schema_version": 1, "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    if connection is None:
+        return {**exported, "grants": [], "previews": [], "operations": [], "events": [], "provenance": []}
+    try:
+        grants = [
+            {key: value for key, value in row.items() if key != "token_hash"}
+            for row in _table_rows(connection, "grants", "created_at, participant_id")
+        ]
+        previews = []
+        for row in _table_rows(connection, "previews", "created_at, preview_id"):
+            payload = _decoded(row.pop("payload_json", None)) or {}
+            previews.append({
+                **row,
+                "kind": payload.get("kind"),
+                "skill": payload.get("skill"),
+                "action": payload.get("action"),
+                "feature_id": payload.get("feature_id"),
+                "approval": payload.get("approval"),
+            })
+        operations = []
+        for row in _table_rows(connection, "operations", "created_at, operation_id"):
+            intent = _decoded(row.pop("intent_json", None))
+            receipt = _decoded(row.pop("receipt_json", None))
+            operations.append({**row, "intent": intent, "receipt": receipt})
+        events = []
+        for row in _table_rows(connection, "events", "cursor"):
+            events.append({**{key: value for key, value in row.items() if key != "event_json"}, "event": _decoded(row.get("event_json"))})
+        provenance = _table_rows(connection, "provenance", "board_id, item_id, app, generation, kind")
+    except sqlite3.Error as exc:
+        raise ValueError(f"Unable to read the Prism board journal: {exc}") from exc
+    finally:
+        connection.close()
+    return {**exported, "grants": grants, "previews": previews, "operations": operations, "events": events, "provenance": provenance}
+
+
+def write_audit_export(root: Path, out: Path) -> Path:
+    """Write the audit export to ``out``, which must be a new file outside ``.prism/state/``."""
+
+    root = Path(root)
+    target = Path(out).expanduser()
+    state_dir = (root / ".prism" / "state").absolute()
+    resolved = target.absolute()
+    if resolved == state_dir or state_dir in resolved.parents:
+        raise ValueError("The audit export cannot be written inside .prism/state/, which `state reset` removes.")
+    payload = export_board_state(root)
+    text = json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
+    try:
+        with open(target, "x", encoding="utf-8", newline="\n") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except FileExistsError as exc:
+        raise ValueError(f"The audit export file already exists: {target.name}.") from exc
+    return target
+
+
+def reset_board_state(root: Path, out: Path | None = None) -> dict[str, Any]:
+    """Write an audit export, then remove ``.prism/state/``; refused while any operation is unresolved.
+
+    The process lock is held across the check, the export and the removal of the journal, so no board server runs
+    against the state that is being removed.
+    """
+
+    root = Path(root)
+    prism_dir = root / ".prism"
+    state_dir = prism_dir / "state"
+    nothing = {"schema_version": 1, "reset": False, "reason": "The workspace has no board state."}
+    if not _inspect_directory(prism_dir) or not _inspect_directory(state_dir):
+        return nothing
+    with workspace_process_lock(root, create=False) as lock_path:
+        if lock_path is None:
+            return nothing
+        unresolved = unresolved_board_operations(root)
+        if unresolved:
+            raise UnresolvedOperationsError(unresolved)
+        if out is None:
+            audit_dir = prism_dir / "audit"
+            if not _inspect_directory(audit_dir):
+                audit_dir.mkdir()
+                _require_plain_directory(audit_dir)
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            out = audit_dir / f"state-reset-{stamp}.json"
+        exported = write_audit_export(root, out)
+        for name in ("board.sqlite3", "board.sqlite3-journal", "board.sqlite3-wal", "board.sqlite3-shm"):
+            path = state_dir / name
+            if path.exists():
+                _require_plain_file(path)
+                path.unlink()
+    shutil.rmtree(state_dir)
+    return {"schema_version": 1, "reset": True, "audit_export": str(exported)}
 
 
 def count_active_grants(root: Path, identity: tuple[str, str, str] | None = None) -> tuple[int, int] | None:
