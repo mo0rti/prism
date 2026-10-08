@@ -71,16 +71,16 @@ To check a wheel built from a checkout before it is published:
 ```bash
 python -m pip install build
 python -m build
-python -m pip install dist/prism_kit-0.6.0-py3-none-any.whl
+python -m pip install dist/prism_kit-0.6.1-py3-none-any.whl
 ```
 
 An installed CLI uses the canonical GitHub template by default, at the release tag
-that matches the CLI version (`v0.6.0` for Prism 0.6.0). When that tag does not exist,
+that matches the CLI version (`v0.6.1` for Prism 0.6.1). When that tag does not exist,
 for example in a build of an unreleased checkout, `prism new` stops with exit code 3 and
 one message, and creates nothing:
 
 ```text
-The template release tag `v0.6.0` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
+The template release tag `v0.6.1` is not published, so the default template cannot be used. Pass `--template <path or URL>` or install a released version of Prism.
 ```
 
 Pass `--template <path-or-url>` to choose another template, for example a checkout

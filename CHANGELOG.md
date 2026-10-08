@@ -4,6 +4,12 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.6.1]
+
+Release date: 2026-10-08
+
+Prism 0.6.1 fixes what the 0.6.0 rehearsal found. Connected agents no longer stop before their preview: `setup-project` is not a precondition of lifecycle work, and the skills that confirm an interpretation show it together with the preview, where the human confirms. The full lifecycle journey passes with real agent hosts. Dependency discovery fails closed, `prism doctor` checks the Docker daemon, the web pack pins a supported `eslint`, and the standard instruction files fit one `read_workspace` page.
+
 ### Fixed
 
 - **`setup-project` no longer blocks connected lifecycle work.** `template/AGENTS.md.jinja` and the `setup-project` skill say once that setup initializes the wiki and the advisory board, that it runs in the agent host on the files (the direct-file workflow) and never through a connected board, and that lifecycle work does not wait for it. Until setup runs, the advisory board is not set up: `board-review` is unavailable (it reports that and changes nothing) and a feature that needs a review keeps `advisory-review: pending`. The placeholder `BOARD.md` and `PROJECT_FOUNDATION.md` no longer say to run setup first, and `list_skills` describes `setup-project` as a direct-file operation that lifecycle work does not wait for, instead of an unfinished connected write. A strict host that read "before anything else" stopped at `po-specify` and never previewed; a test now fails when a lifecycle skill, the connected guide or the lifecycle protocol makes setup a precondition.
