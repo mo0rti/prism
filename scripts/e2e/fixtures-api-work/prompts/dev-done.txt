@@ -4,6 +4,7 @@ Delivery evidence for the backend app (record it in the feature's delivery evide
 - Implementation: pull request #42 in the review-summary-service repository, merged as commit 3f9c2ab.
 - Tests: CI run 1187 on that commit, 31 tests passed, 0 failed.
 - Artifact: commit 3f9c2ab.
+- Contract: the feature's agreed API contract, cited as the contract page reports it (feature, version and digest).
 - Basis: attested, because you cannot check it yourself.
 
 The summary endpoint is implemented as agreed, so mark the feature's API contract page implemented.

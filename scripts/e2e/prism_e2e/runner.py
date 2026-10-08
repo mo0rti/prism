@@ -410,6 +410,14 @@ class Journey:
         elif step.id == "dev-clarify":
             result.add_check("no_open_dev_questions", not feature.open_questions("dev"), f"{len(feature.open_questions('dev'))} open")
         elif step.id == "design-handoff":
+            tracks = ws.design_tracks(feature.text)
+            result.add_check(
+                "design_tracks_settled",
+                tracks.get("technical") == "done" and tracks.get("ui") in {"done", "not-applicable"},
+                f"design tracks ui {tracks.get('ui', 'missing')}, technical {tracks.get('technical', 'missing')}",
+            )
+            technical = ws.find_technical_design(self.env.workspace)
+            result.add_check("technical_design_page", technical is not None, "the technical design page exists" if technical else "no technical design page")
             if ws.declares_api_work(feature.text):
                 contract = ws.read_api_contract(self.env.workspace)
                 result.add_check(

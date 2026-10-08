@@ -30,6 +30,8 @@ from prism_cli.wiki_transitions import (
     fingerprint_digest,
     workspace_fingerprint,
 )
+from prism_cli.wiki_model import DesignTracks, contract_citation
+from tests.design_tracks import SETTLED, ensure_tracks, technical_design_page, with_tracks
 from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
 from tests.wiki_files import write_index, write_status_board
@@ -161,7 +163,7 @@ class WikiTransitionTests(unittest.TestCase):
                 advisory=advisory,
                 advisory_reason=advisory_reason,
             )
-        path.write_text(body, encoding="utf-8")
+        path.write_text(ensure_tracks(body, status), encoding="utf-8")
         index_path = self.wiki_root / "status-board.md"
         lines = index_path.read_text(encoding="utf-8").splitlines()
         stages = app_stages_text(status, [platforms], path.read_text(encoding="utf-8"), inspect_workspace(self.root).model)
@@ -294,18 +296,30 @@ class WikiTransitionTests(unittest.TestCase):
 
         codes = {diagnostic.code for diagnostic in lint_wiki(self.root).diagnostics}
         self.assertIn("unsupported-feature-field", codes)
-        self.assertIn("missing-design", codes)
 
+        # The old exemption fields exempt nothing. A settled UI track needs design pages that cover the app with a UI, or an exemption in the track.
         body = body.replace("design: not-applicable\ndesign-exemption-reason: Confirmed backend-only workflow with no visual surface.\n", "")
-        self._write_feature(status="ready-for-dev", owner="dev", platforms="mobile-ios", body=body)
+        done = with_tracks(body, DesignTracks("done", "not-applicable", None, "The feature changes no architecture."))
+        self._write_feature(status="ready-for-dev", owner="dev", platforms="mobile-ios", body=done)
+        self.assertIn("design-coverage-incomplete", {diagnostic.code for diagnostic in lint_wiki(self.root).diagnostics})
         design = self.wiki_root / "design" / "F-001-payout.md"
         design.parent.mkdir(parents=True, exist_ok=True)
         design.write_text(
-            "---\nfeature-id: F-001\ntitle: Payout design\nfigma: not applicable\n---\n\n"
+            "---\nfeature-id: F-001\ntitle: Payout design\napps: [mobile-ios]\nfigma: not applicable\n---\n\n"
             "## Summary\nThe summary screen.\n",
             encoding="utf-8",
         )
-        self.assertFalse(any(diagnostic.code == "missing-design" for diagnostic in lint_wiki(self.root).diagnostics))
+        self.assertFalse(any(diagnostic.code == "design-coverage-incomplete" for diagnostic in lint_wiki(self.root).diagnostics))
+        exempt = with_tracks(body, DesignTracks("not-applicable", "not-applicable", "The screens are unchanged.", "The feature changes no architecture."))
+        self._write_feature(status="ready-for-dev", owner="dev", platforms="mobile-ios", body=exempt)
+        design.unlink()
+        self.assertFalse(any(diagnostic.code == "design-coverage-incomplete" for diagnostic in lint_wiki(self.root).diagnostics))
+        self._write_feature(status="ready-for-dev", owner="dev", platforms="mobile-ios", body=done)
+        design.write_text(
+            "---\nfeature-id: F-001\ntitle: Payout design\napps: [mobile-ios]\nfigma: not applicable\n---\n\n"
+            "## Summary\nThe summary screen.\n",
+            encoding="utf-8",
+        )
         transition = build_transition_preflight(self.root, "F-001", action="dev-start")["facts"]["transition"]
         self.assertEqual("pass", next(check for check in transition["checks"] if check["code"] == "app-scope")["status"])
         self.assertEqual("ready", transition["classification"])
@@ -327,8 +341,14 @@ class WikiTransitionTests(unittest.TestCase):
             "## Delivery evidence\n"
             "| App | Artifact | Contract | Implementation | Tests | Basis |\n"
             "|---|---|---|---|---|---|\n"
-            "| backend | `build:backend#12` | none | `backend/src/payouts.kt` implemented | `tests/payouts` passed | checked |\n"
+            "| backend | `build:backend#12` | CONTRACT | `backend/src/payouts.kt` implemented | `tests/payouts` passed | checked |\n"
         )
+        contract_text = "---\nfeature-id: F-001\nversion: 1\nstatus: implemented\n---\n\n## Endpoints\nGET /payouts\n"
+        body = body.replace("CONTRACT", contract_citation("F-001", 1, contract_text.split("---\n", 2)[2]))
+        body = with_tracks(body, DesignTracks("not-applicable", "done", "No app in scope has a UI.", None))
+        technical = self.wiki_root / "technical-design" / "F-001-payout-summary.md"
+        technical.parent.mkdir(parents=True, exist_ok=True)
+        technical.write_text(technical_design_page(), encoding="utf-8")
         self._write_feature(status="in-dev", owner="dev", advisory="done", body=body)
         requirements = self.wiki_root / "app-requirements" / "F-001-backend.md"
         requirements.parent.mkdir(parents=True, exist_ok=True)
@@ -338,10 +358,7 @@ class WikiTransitionTests(unittest.TestCase):
         )
         api = self.wiki_root / "api-contracts" / "F-001.md"
         api.parent.mkdir(parents=True, exist_ok=True)
-        api.write_text(
-            "---\nfeature-id: F-001\nversion: 1\nstatus: implemented\n---\n\n## Endpoints\nGET /payouts\n",
-            encoding="utf-8",
-        )
+        api.write_text(contract_text, encoding="utf-8")
 
         # The copy-only preflight has no proposal: the delivery evidence is reported as not yet supplied.
         copy_only = build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]
@@ -458,6 +475,10 @@ class WikiTransitionTests(unittest.TestCase):
             "See [the persona](../personas/operator.md) for context.",
             "## API surface\nSee [shared](../api-contracts/SHARED.md) for the endpoint.\n\nSee [the persona](../personas/operator.md) for context.",
         )
+        technical = self.wiki_root / "technical-design" / "F-001-payout-summary.md"
+        technical.parent.mkdir(parents=True, exist_ok=True)
+        technical.write_text(technical_design_page(), encoding="utf-8")
+        feature_with_api = with_tracks(feature_with_api, DesignTracks("not-applicable", "done", "No app in scope has a UI.", None))
         self._write_feature(status="ready-for-dev", owner="dev", advisory="done", body=feature_with_api)
         linked = build_transition_preflight(self.root, "F-001", action="dev-start")["facts"]["transition"]
         self.assertEqual("blocked", linked["classification"])
@@ -474,6 +495,7 @@ class WikiTransitionTests(unittest.TestCase):
             advisory="done",
             advisory_reason="",
         )
+        body = with_tracks(body, SETTLED)
         self._write_feature(status="in-design", owner="tech-lead", advisory="done", body=body)
         advisory = self.wiki_root / "advisory" / "F-001-review.md"
         advisory.parent.mkdir(parents=True, exist_ok=True)
@@ -514,6 +536,7 @@ class WikiTransitionTests(unittest.TestCase):
                 "|---|----------|-------|--------|\n"
                 f"| 1 | Which settlement threshold applies? | {owner} | open |\n",
             )
+            body = with_tracks(body, SETTLED)
             self._write_feature(status="in-design", owner="tech-lead", body=body)
             return build_transition_preflight(self.root, "F-001", action="design-handoff")["facts"]["transition"]
 

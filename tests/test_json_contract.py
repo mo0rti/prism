@@ -84,9 +84,13 @@ class JsonContractTests(unittest.TestCase):
                 "po-specify",
                 "po-handoff",
                 "design-start",
+                "design-ui-done",
+                "tech-design-done",
                 "design-handoff",
                 "dev-start",
                 "dev-done",
+                "dev-return-spec",
+                "dev-return-design",
             },
             {surface["action"] for surface in capability["surfaces"]},
         )

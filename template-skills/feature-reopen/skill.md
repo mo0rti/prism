@@ -1,15 +1,15 @@
 ---
 name: feature-reopen
-description: "Reopen one shipped feature to a specified, in-design, or in-dev route after impact review and confirmation."
+description: "Send one feature back to specified or in-design from development, or reopen one shipped feature, after impact review and confirmation."
 layers: [codex, command]
 codex:
   display_name: "Feature Reopen"
-  short_description: "Reopen shipped work through an impact-reviewed route"
-  default_prompt: "Use @@invoke:feature-reopen@@ F-XXX specified|in-design|in-dev to review impact and reopen one shipped feature."
+  short_description: "Return or reopen a feature through an impact-reviewed route"
+  default_prompt: "Use @@invoke:feature-reopen@@ F-XXX specified|in-design|in-dev to review impact and return a feature in development, or reopen one shipped feature."
   implicit: false
 ---
 
-# Feature reopen - reopen one shipped feature through an impact-reviewed route
+# Feature reopen - return or reopen one feature through an impact-reviewed route
 
 <!-- prism:feature-reopen-contract:v2 -->
 
@@ -17,7 +17,51 @@ codex:
 
 `@@invoke:feature-reopen@@ [F-XXX] [specified|in-design|in-dev]`
 
-The route selects one exact action:
+The route selects one exact action. A feature in development goes back through a return; a shipped
+one through a reopen.
+
+### Returns from implementation
+
+A feature at `ready-for-dev` or `in-dev` whose apps are not in QA yet goes back when its specification or
+its design turns out to be wrong. The change stays in the same feature.
+
+| Route | Action | Source | Destination | Pending revalidation |
+|---|---|---|---|---|
+| `specified` | `dev-return-spec` | `ready-for-dev` or `in-dev` + `dev` | `specified` + `po` | specification, design, technical-design; every app: implementation, tests, qa, release |
+| `in-design` | `dev-return-design` | `ready-for-dev` or `in-dev` + `dev` | `in-design` + the design owner | design, technical-design; every app: implementation, tests, qa, release |
+
+A `dev` participant approves it. The return applies while no app is in QA or beyond. With an app in QA,
+use the QA return instead. When some apps of the feature are released and others are not, a specification or
+design change goes to a new feature and an implementation defect to a bug: the board refuses the return with
+`partial_release_requires_new_feature`.
+
+Write one `## Evidence history` entry headed `### YYYY-MM-DD - dev-return-spec` (or `dev-return-design`),
+with the preview day, in the format of `knowledge/wiki/features/_FORMAT.md`:
+
+- **Reason**: why the feature goes back.
+- **Affected apps**: every app of the feature. Participants: `none`.
+- **Affected tracks**: `ui, technical` for a return to `specified`; for a return to `in-design` the tracks the
+  change touches (`ui`, `technical` or both).
+- **Archived evidence**: every row of `## Delivery evidence`, `## QA verification` and `## Release`, copied
+  verbatim with its section name, and removed from the active tables (`evidence_not_archived`,
+  `evidence_still_active`). Reaffirmed evidence: `none`.
+- **Requirement/API invalidations**: each requirement or contract page you lower, as
+  `path: done -> in-progress` (a requirement goes down to `in-progress` or `pending`, a contract from
+  `implemented` to `agreed` or `draft`), or a sentence that none is lowered. Change nothing else on those pages.
+
+In the same proposal, write `revalidation` and `app-revalidation` exactly as the table says (merged with what is
+pending, in the canonical order), and the design tracks:
+
+- return to `specified`: remove `design-tracks` and `design-reaffirm`; the first design action writes them again;
+- return to `in-design`: each affected track becomes `pending` (a UI track of a scope with no UI stays
+  `not-applicable`), the reason of an affected track is removed, every other `done` track is listed in
+  `design-reaffirm`, and a `not-applicable` track stays as it is.
+
+The feature page changes only `status`, `owner`, `revalidation`, `app-revalidation`, `design-tracks`,
+`design-reaffirm`, the three evidence sections and `## Evidence history`. The preflight to probe is
+`prism wiki transition-preflight F-XXX [path] --action dev-return-spec --json` (or `dev-return-design`).
+
+### Reopens of shipped work
 
 | Route | Action | Source | Destination | Pending revalidation |
 |---|---|---|---|---|

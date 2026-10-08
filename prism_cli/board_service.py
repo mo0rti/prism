@@ -59,13 +59,18 @@ from prism_cli.wiki_model import (
     APP_REVALIDATION_DOMAINS,
     APP_STAGE_ORDER,
     DESIGN_OWNERS,
+    DESIGN_TRACKS,
     EVIDENCE_SECTIONS,
+    FEATURE_REVALIDATION_DOMAINS,
+    DesignTracks,
     EvidenceProblem,
     FEATURE_FRONTMATTER_FIELDS,
     FEATURE_SECTIONS,
     FEATURE_STATUS_ORDER,
     OWNER_BY_STATUS,
     STATUS_BOARD_COLUMNS,
+    TECHNICAL_DESIGN_FIELDS,
+    TECHNICAL_DESIGN_SECTIONS,
     VALID_FEATURE_OWNERS,
     VALID_FEATURE_STATUSES,
     VALID_OPEN_QUESTION_OWNERS,
@@ -74,17 +79,22 @@ from prism_cli.wiki_model import (
     app_stage,
     app_stages,
     app_stages_text,
+    clean_cell,
+    contract_page_citation,
     criteria_high_water,
     design_owner,
     evidence_generation,
     expected_owner,
+    initial_design_tracks,
     intake_item_name_problem,
     is_pending_intake_source,
     merge_revalidation,
     minimum_stage,
+    normalize_ui_track,
     parse_app_revalidation,
     parse_conflict_report,
     parse_criteria,
+    parse_design_tracks,
     parse_evidence_history,
     parse_iso_date,
     processed_source_path,
@@ -94,11 +104,12 @@ from prism_cli.wiki_model import (
     source_link_parts,
     stale_qa_rows,
     status_rank,
+    track_of_page,
     within_wiki_read_scope,
     workflow_policy,
 )
 from prism_cli.wiki_transitions import ACTION_SPECS as _REGISTERED_ACTION_SPECS
-from prism_cli.wiki_transitions import DESIGN_OWNER, MINIMUM, WRITE_SCOPES, lookup_action
+from prism_cli.wiki_transitions import DESIGN_OWNER, MINIMUM, RETIRED_ALLOWED_ACTIONS, WRITE_SCOPES, lookup_action
 
 
 _MAX_TEXT_FILE = 512 * 1024
@@ -148,7 +159,13 @@ SCOPE_SKILL = "feature-scope"
 _LIFECYCLE_SKILLS = _lifecycle_skills()
 _DEV_CLARIFY_REQUIREMENT_ORDER = ("What to build", "Technical constraints", "API contract reference", "Acceptance criteria")
 _DEV_CLARIFY_REQUIREMENT_SECTIONS = set(_DEV_CLARIFY_REQUIREMENT_ORDER)
-_QUESTION_SKILLS = {"po-clarify": "po", "design-clarify": "designer", "dev-clarify": "dev", "ask": None}
+# The skills that work through the Open questions table and the owners whose questions each may resolve (`ask` only adds).
+_QUESTION_SKILLS: dict[str, tuple[str, ...] | None] = {
+    "po-clarify": ("po",),
+    "design-clarify": ("designer", "tech-lead"),
+    "dev-clarify": ("dev",),
+    "ask": None,
+}
 _INTAKE_SKILLS = {"po-intake", "design-intake", "ingest"}
 # `verify-pages` records a verification of current-state pages as one `verify` entry in log.md and changes no page.
 VERIFY_SKILL = "verify-pages"
@@ -160,6 +177,7 @@ _WIKI_DIRS = (
     "personas",
     "business-rules",
     "design",
+    "technical-design",
     "app-requirements",
     "api-contracts",
     "advisory",
@@ -178,6 +196,22 @@ _LOG_APPEND_ATTEMPTS = 3
 _MANAGED_PATHS = frozenset({_INDEX_PATH, _STATUS_BOARD_PATH, _LOG_PATH})
 # The write roles whose merge is by key: a feature row of the status board, a page line of the index.
 _ROW_ROLES = frozenset({"index", "status-board"})
+# The linked pages a lifecycle action may write beside its feature page: the track pages and the requirement pages.
+_LINKED_PAGE_PREFIXES = (
+    "knowledge/wiki/design/",
+    "knowledge/wiki/technical-design/",
+    "knowledge/wiki/app-requirements/",
+    "knowledge/wiki/api-contracts/",
+)
+_TECHNICAL_DESIGN_PREFIX = "knowledge/wiki/technical-design/"
+_API_CONTRACT_PREFIX = "knowledge/wiki/api-contracts/"
+_DESIGN_PREFIX = "knowledge/wiki/design/"
+# The returns from implementation (CONTRACTS F10 and F11) and the order of the requirement and contract states they may lower.
+_DEV_RETURN_ACTIONS = frozenset({"dev-return-spec", "dev-return-design"})
+_REQUIREMENT_RANK = {"pending": 0, "in-progress": 1, "done": 2}
+_CONTRACT_RANK = {"draft": 0, "agreed": 1, "implemented": 2}
+# The feature statuses in which a feature that links a contract is a consumer of it (CONTRACTS 3.4).
+_CONTRACT_CONSUMER_STATUSES = frozenset({"ready-for-dev", "in-dev", "ready-for-qa", "in-qa", "ready-for-release"})
 _WIKI_ROOT_PAGES = frozenset({"SCHEMA.md", "LIFECYCLE.md", "SETTINGS.md", "CONNECTED.md", "index.md", "status-board.md", "log.md", *ROOT_PAGE_KINDS})
 # The page folders where an ingest only creates pages and never rewrites one; a decision changes only by supersession.
 _INGEST_CREATE_ONLY = ("features", "personas", "business-rules", "decisions")
@@ -856,6 +890,8 @@ class BoardService:
             after_feature["status"] = transition.get("target_status")
             after_feature["owner"] = transition.get("target_owner")
             after_feature.update(frontmatter_overrides)
+            if action == "design-start" and parse_design_tracks(after_feature)[0] is None:
+                after_feature.update(initial_design_tracks(_scope_of(after_feature) or [], self._model).frontmatter())
             if advisory_override is not None:
                 after_feature["advisory-review"] = "skipped"
                 after_feature["advisory-skip-reason"] = advisory_override[1]
@@ -2415,6 +2451,7 @@ class BoardService:
                 "knowledge/wiki/features/*.md",
                 "knowledge/wiki/personas/*.md",
                 "knowledge/wiki/business-rules/*.md",
+                "knowledge/wiki/technical-design/*.md",
                 "knowledge/wiki/decisions/*.md",
                 "knowledge/wiki/topics/*.md",
                 "knowledge/wiki/research/*.md",
@@ -2427,14 +2464,26 @@ class BoardService:
         if name in {"po-clarify", "ask"}:
             return ["knowledge/wiki/features/*.md"]
         if name == "design-clarify":
+            return ["knowledge/wiki/features/*.md", "knowledge/wiki/design/*.md", "knowledge/wiki/technical-design/*.md"]
+        if name == "design-ui-done":
             return ["knowledge/wiki/features/*.md", "knowledge/wiki/design/*.md"]
+        if name == "tech-design-done":
+            return ["knowledge/wiki/features/*.md", "knowledge/wiki/technical-design/*.md", "knowledge/wiki/api-contracts/*.md"]
         if name == "dev-clarify":
             return ["knowledge/wiki/features/*.md", "knowledge/wiki/app-requirements/*.md"]
         if name in {"po-specify", "po-handoff", "design-start", "dev-start"}:
             return ["knowledge/wiki/features/*.md"]
         if name == SCOPE_SKILL:
             return ["knowledge/wiki/features/*.md", "knowledge/wiki/app-requirements/*.md"]
-        if name in {"design-handoff", "dev-done", "feature-reopen"}:
+        if name == "design-handoff":
+            return [
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/design/*.md",
+                "knowledge/wiki/technical-design/*.md",
+                "knowledge/wiki/app-requirements/*.md",
+                "knowledge/wiki/api-contracts/*.md",
+            ]
+        if name in {"dev-done", "feature-reopen"}:
             return [
                 "knowledge/wiki/features/*.md",
                 "knowledge/wiki/app-requirements/*.md",
@@ -2496,14 +2545,35 @@ class BoardService:
                 "Acceptance criteria, App scope and API surface sections and the What to build, Technical constraints, "
                 "API contract reference and Acceptance criteria sections of that feature's existing app requirement pages."
             )
+        if name in {"design-ui-done", "tech-design-done", "design-handoff"}:
+            limitations.append(
+                "The feature page carries `design-tracks` (`ui` and `technical`: `pending`, `done` or `not-applicable` with a reason) and `design-reaffirm`. "
+                "`design-ui-done` settles the UI track and writes the feature's design pages; `tech-design-done` settles the technical track and writes the "
+                "technical design page and the API contract; `design-handoff` hands the feature to development once both tracks are settled and `design-reaffirm` is empty, "
+                "and may settle either track in the same confirmation. A track action writes only the keys and pages of its own track (`track_scope`); a design "
+                "handoff that completes the UI track needs the designer, one that completes the technical track needs the tech lead, on top of the design owner."
+            )
+        if name in {"tech-design-done", "design-handoff"}:
+            limitations.append(
+                "When the feature's `## API surface` declares API work and no API contract exists yet, a proposal that settles the technical track must create "
+                "`knowledge/wiki/api-contracts/F-XXX.md` as a new page with `status: agreed` and `version: 1`; the human confirming the preview is the agreement. "
+                "Its endpoints (`METHOD /path`) and data models must trace to the API surface section. Without declared API work no contract may be "
+                "proposed. An existing contract is revised only while the feature is in design, with `version` raised by one, a changed body and `status: agreed`, "
+                "and not while another feature that links it is between `ready-for-dev` and `ready-for-release` (`shared_contract_in_use`). A missing, misplaced or "
+                "untraceable page is rejected with `api_contract_required`, `api_contract_not_applicable`, `api_contract_exists`, `api_contract_initial_status`, "
+                "`contract_revision_required` or `api_contract_untraceable` and `details`."
+            )
         if name == "design-handoff":
             limitations.append(
-                "When the feature's `## API surface` declares API work and no API contract exists yet, the proposal must create "
-                "`knowledge/wiki/api-contracts/F-XXX.md` as a new page with `status: agreed`; the human confirming the preview is the agreement. "
-                "Its endpoints (`METHOD /path`) and data models must trace to the API surface section. Without declared API work no contract may be "
-                "proposed, and an existing contract is never rewritten. A missing, misplaced or untraceable page is rejected with "
-                "`api_contract_required`, `api_contract_not_applicable`, `api_contract_exists`, `api_contract_initial_status` or "
-                "`api_contract_untraceable` and `details`."
+                "The proposal leaves exactly one requirement page for each app: a missing one is created `pending`, a `pending` or `in-progress` one may change its "
+                "body and is set to `pending`, and a `done` one stays unchanged (`requirement_body_change`, `requirements_incomplete`)."
+            )
+        if name == "feature-reopen":
+            limitations.append(
+                "Returns a feature from `ready-for-dev` or `in-dev` to `specified` or to `in-design` while no app is in QA (`dev-return-spec`, `dev-return-design`): "
+                "one Evidence history entry archives every evidence row of every app, `revalidation` and `app-revalidation` are set, and the design tracks "
+                "are removed (to `specified`) or the affected ones return to `pending` while the others await reaffirmation (to `in-design`). "
+                "A feature of which some apps are released and others not is refused with `partial_release_requires_new_feature`."
             )
         if name == "dev-done":
             limitations.append(
@@ -2576,7 +2646,7 @@ class BoardService:
                 paths.add(resolved.relative_to(self.root).as_posix())
         feature_id = frontmatter.get("id")
         if isinstance(feature_id, str):
-            for directory in ("design", "app-requirements", "api-contracts", "advisory"):
+            for directory in ("design", "technical-design", "app-requirements", "api-contracts", "advisory"):
                 for path in (wiki_root / directory).glob("*.md"):
                     rel = path.relative_to(self.root).as_posix()
                     linked_feature_id = _page_feature_id(self._read_text(path), path.stem)
@@ -3405,7 +3475,8 @@ class BoardService:
             payload["criteria"] = criteria
         # The evidence rows the operation produces and the subjects of the QA/Dev separation check: the provenance seam (CONTRACTS 1.6).
         # `apply` binds `produces_evidence` in the journal; `separation_subjects` is `[]` until D3 names the rows a verification reads.
-        for key in ("produces_evidence", "separation_subjects"):
+        # `completes` are the design tracks a handoff settles; they decide its role predicate, so the reviewer sees them.
+        for key in ("produces_evidence", "separation_subjects", "completes"):
             if key in operation:
                 payload[key] = operation[key]
         self._save_preview(payload)
@@ -3445,13 +3516,17 @@ class BoardService:
         if skill == "po-intake":
             allowed = {"features", "personas", "business-rules"}
         elif skill == "ingest":
-            allowed = {*_INGEST_CREATE_ONLY, *GENERAL_PAGE_FOLDERS}
+            allowed = {*_INGEST_CREATE_ONLY, *GENERAL_PAGE_FOLDERS, "technical-design"}
         elif skill == "design-intake":
             allowed = {"features", "design"}
         elif skill in {"po-clarify", "design-clarify", "dev-clarify", "ask"}:
-            allowed = {"features", "design"} if skill == "design-clarify" else {"features", "app-requirements"} if skill == "dev-clarify" else {"features"}
+            allowed = {"features", "design", "technical-design"} if skill == "design-clarify" else {"features", "app-requirements"} if skill == "dev-clarify" else {"features"}
+        elif skill == "design-ui-done":
+            allowed = {"features", "design"}
+        elif skill == "tech-design-done":
+            allowed = {"features", "technical-design", "api-contracts"}
         elif skill == "design-handoff":
-            allowed = {"features", "app-requirements", "api-contracts"}
+            allowed = {"features", "design", "technical-design", "app-requirements", "api-contracts"}
         elif skill == "dev-done":
             allowed = {"features", "app-requirements", "api-contracts"}
         elif skill == "feature-reopen":
@@ -3509,13 +3584,21 @@ class BoardService:
                 frontmatter = _parse_markdown(current, relative)[0]
                 target_features.append((relative, frontmatter))
                 required.update(self._feature_context_paths(relative, frontmatter))
-            elif relative.startswith(("knowledge/wiki/design/", "knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/")):
+            elif relative.startswith(_LINKED_PAGE_PREFIXES):
                 frontmatter = _parse_markdown(current or content, relative)[0]
                 feature_id = frontmatter.get("feature-id")
                 if isinstance(feature_id, str):
                     target = next((item for item in target_features if str(item[1].get("id", "")).casefold() == feature_id.casefold()), None)
                     if target is not None:
                         required.update(self._feature_context_paths(target[0], target[1]))
+                    elif skill == "ingest" and relative.startswith(_TECHNICAL_DESIGN_PREFIX):
+                        # Ingest writes the technical design page of a feature it does not change: the feature is context it has read.
+                        try:
+                            existing = self._resolve_feature(feature_id)
+                        except BoardError:
+                            existing = None
+                        if existing is not None:
+                            required.update(self._feature_context_paths(existing["path"], existing["frontmatter"]))
 
         # Intake processors need to compare against existing canonical entries,
         # not only the proposed source folder.
@@ -3873,10 +3956,11 @@ class BoardService:
                 self._assert_feature_id_available(new["id"], except_path=relative)
             self._validate_feature_shape(relative, content, skill)
             if old is not None and skill != SCOPE_SKILL:
-                action = self._action_from_feature_change(skill, old, new)
+                action = self._action_from_feature_change(skill, old, new, _parse_markdown(before[relative] or "", relative)[1])
                 if action:
                     actions.append(action)
                 elif old.get("status") != new.get("status") or old.get("owner") != new.get("owner"):
+                    self._require_route_available(skill, old, new)
                     raise self._lifecycle_change_error(skill, relative, old, new)
                 if skill in _QUESTION_SKILLS:
                     self._validate_question_change(skill, relative, before[relative] or "", content)
@@ -3894,8 +3978,10 @@ class BoardService:
             old_text = before[feature["path"]] or ""
             old_fm, old_body = _parse_markdown(old_text, feature["path"])
             new_fm, new_body = _parse_markdown(supplied[feature["path"]], feature["path"])
-            if old_fm != new_fm:
+            track_keys = {"design-tracks", "design-reaffirm"}
+            if {k: v for k, v in old_fm.items() if k not in track_keys} != {k: v for k, v in new_fm.items() if k not in track_keys}:
                 raise BoardError("design_intake_frontmatter_scope", "Design intake preserves feature identity and lifecycle metadata.", 409)
+            self._validate_track_page_writes(skill, changed_features, supplied, before)
             self._assert_only_body_sections_changed(
                 old_body,
                 new_body,
@@ -3911,14 +3997,18 @@ class BoardService:
         elif moves:
             raise BoardError("move_unavailable", f"Skill `{skill}` cannot move intake folders.", 403)
         self._validate_source_links(supplied, before, moves)
+        if skill == "ingest":
+            self._validate_track_page_writes(skill, changed_features, supplied, before)
 
         for relative, content in supplied.items():
             if relative.startswith("knowledge/wiki/personas/"):
                 self._validate_persona(relative, content)
             elif relative.startswith("knowledge/wiki/business-rules/"):
                 self._validate_business_rule(relative, content)
-            elif relative.startswith("knowledge/wiki/design/"):
+            elif relative.startswith(_DESIGN_PREFIX):
                 self._validate_design(relative, content)
+            elif relative.startswith(_TECHNICAL_DESIGN_PREFIX):
+                self._validate_technical_design(relative, content)
             elif relative.startswith("knowledge/wiki/app-requirements/"):
                 self._validate_requirement(relative, content, self._listed_apps(content, relative, changed_features))
             elif relative.startswith("knowledge/wiki/api-contracts/"):
@@ -3959,6 +4049,33 @@ class BoardService:
                     raise BoardError("design_feature_mismatch", f"Design page `{relative}` must link to the feature in this preview.", 409)
                 if not PurePosixPath(relative).stem.casefold().startswith(str(frontmatter["feature-id"]).casefold() + "-"):
                     raise BoardError("design_path_mismatch", f"Design page `{relative}` must be named for its linked feature.", 409)
+                outside = [app for app in frontmatter["apps"] if app not in ((target_feature["after"] or {}).get("apps") or [])]
+                if outside:
+                    raise BoardError(
+                        "design_scope_mismatch",
+                        f"Design page `{relative}` lists {_quoted(_names(outside))} under `apps`, which the feature does not have.",
+                        409,
+                        {"path": relative, "apps": _names(outside)},
+                    )
+            elif relative.startswith(_TECHNICAL_DESIGN_PREFIX) and skill != "ingest":
+                frontmatter, _body = _parse_markdown(content, relative)
+                if target_feature is None or not isinstance(frontmatter.get("feature-id"), str) or frontmatter["feature-id"].casefold() not in target_ids:
+                    raise BoardError("technical_design_feature_mismatch", f"Technical design page `{relative}` must link to the feature in this preview.", 409)
+                if not PurePosixPath(relative).stem.casefold().startswith(str(frontmatter["feature-id"]).casefold() + "-"):
+                    raise BoardError("technical_design_path_mismatch", f"Technical design page `{relative}` must be named `{frontmatter['feature-id']}-<slug>.md`.", 409)
+                outside = [app for app in frontmatter["apps"] if app not in ((target_feature["after"] or {}).get("apps") or [])]
+                if outside:
+                    raise BoardError(
+                        "technical_design_scope_mismatch",
+                        f"Technical design page `{relative}` lists {_quoted(_names(outside))} under `apps`, which the feature does not have.",
+                        409,
+                        {"path": relative, "apps": _names(outside)},
+                    )
+            elif relative.startswith(_TECHNICAL_DESIGN_PREFIX):
+                frontmatter, _body = _parse_markdown(content, relative)
+                feature_ref = frontmatter.get("feature-id")
+                if not isinstance(feature_ref, str) or not PurePosixPath(relative).stem.casefold().startswith(feature_ref.casefold() + "-"):
+                    raise BoardError("technical_design_path_mismatch", f"Technical design page `{relative}` must be named `<feature ID>-<slug>.md` for the feature it names.", 409)
             elif relative.startswith("knowledge/wiki/app-requirements/") or relative.startswith("knowledge/wiki/api-contracts/"):
                 frontmatter, _body = _parse_markdown(content, relative)
                 if target_feature is None or not isinstance(frontmatter.get("feature-id"), str) or frontmatter["feature-id"].casefold() not in target_ids:
@@ -3973,15 +4090,7 @@ class BoardService:
                     raise BoardError("api_contract_path_mismatch", f"API contract `{relative}` must use its canonical {feature_id}.md path.", 409)
 
         if skill == "design-handoff" and target_feature is not None:
-            requirement_page_list = [
-                _parse_markdown(content, path)[0].get("app")
-                for path, content in supplied.items()
-                if path.startswith("knowledge/wiki/app-requirements/")
-            ]
-            requirement_pages = set(requirement_page_list)
-            declared = set((target_feature["after"] or {}).get("apps", []))
-            if requirement_pages != declared or len(requirement_page_list) != len(declared):
-                raise BoardError("requirements_incomplete", "Design handoff must propose exactly one linked requirement page for each declared app.", 409)
+            self._assert_requirement_pages_complete(supplied, before, target_feature)
 
         gated_scope_action: str | None = None
         if skill == SCOPE_SKILL:
@@ -3996,6 +4105,9 @@ class BoardService:
             expected_action = _LIFECYCLE_SKILLS[skill]
             if expected_action is None:
                 if len(actions) != 1:
+                    if len(changed_features) == 1 and changed_features[0]["before"] is not None:
+                        # Every route from this state belongs to a package that has not landed.
+                        self._require_route_available(skill, changed_features[0]["before"], None)
                     raise BoardError("reopen_route_required", f"`{skill}` must select exactly one explicit route.", 409)
                 expected_action = actions[0]
             elif action != expected_action:
@@ -4007,7 +4119,8 @@ class BoardService:
             if old is None:
                 raise BoardError("feature_not_found", "Lifecycle skills cannot create a feature page.", 409)
             self._require_action_available(expected_action)
-            self._require_no_retired_app_in_progress(str(old.get("id")), old)
+            if expected_action not in RETIRED_ALLOWED_ACTIONS:
+                self._require_no_retired_app_in_progress(str(old.get("id")), old)
             self._validate_lifecycle_write_scope(
                 expected_action,
                 target_feature["path"],
@@ -4027,7 +4140,16 @@ class BoardService:
                 before=before,
                 defer_minimum=expected_action == "dev-done",
             )
-            if expected_action in {"design-handoff", "dev-start", "dev-done"}:
+            completes: list[str] | None = None
+            if expected_action == "design-start":
+                self._validate_design_start_tracks(target_feature)
+            elif expected_action in {"design-ui-done", "tech-design-done"}:
+                self._validate_track_action(expected_action, target_feature, supplied, before)
+            elif expected_action == "design-handoff":
+                completes = self._validate_handoff_tracks(target_feature, supplied, before)
+            elif expected_action in _DEV_RETURN_ACTIONS:
+                self._validate_dev_return(expected_action, target_feature, supplied, before)
+            if expected_action in {"design-handoff", "tech-design-done", "dev-start", "dev-done"}:
                 self._require_api_serving_app(supplied, target_feature)
             named_apps: tuple[str, ...] = ()
             if expected_action == "dev-done":
@@ -4040,9 +4162,11 @@ class BoardService:
                 )
                 # The status follows the minimum of the app stages the evidence produces, so it is judged after the evidence.
                 self._assert_minimum_status(expected_action, target_feature["path"], supplied[target_feature["path"]], old, target_feature["after"])
-            self._validate_lifecycle_related_writes(expected_action, supplied, before, target_feature, named_apps)
-            if expected_action == "design-handoff":
-                self._require_handoff_api_contract(supplied, target_feature)
+            self._validate_lifecycle_related_writes(expected_action, supplied, before, target_feature, named_apps, completes)
+            if expected_action == "tech-design-done" or (expected_action == "design-handoff" and "technical" in (completes or ())):
+                self._validate_technical_track_pages(target_feature, supplied, before)
+            if expected_action == "dev-done":
+                self._assert_contract_bindings(target_feature, supplied, named_apps)
             feature_id = target_feature["id"]
             produces = self._produced_delivery_evidence(expected_action, str(feature_id), supplied[target_feature["path"]], target_feature["path"], named_apps)
             transition = self._evaluate_proposed_action(expected_action, supplied, target_feature, named_apps)
@@ -4063,6 +4187,7 @@ class BoardService:
                 # The evidence rows this operation produces, bound to it in the provenance journal (CONTRACTS 1.6).
                 "produces_evidence": produces,
                 "separation_subjects": [],
+                **({"completes": completes} if expected_action == "design-handoff" else {}),
             }
 
         if gated_scope_action is not None:
@@ -4180,6 +4305,37 @@ class BoardService:
                     ]
                     if not changed_design_sections or ungrounded_design_sections:
                         raise self._unlinked_answer_error("design_answer_unlinked", relative, ungrounded_design_sections, question_rows, owner="designer")
+                elif relative.startswith(_TECHNICAL_DESIGN_PREFIX):
+                    old_content = before[relative]
+                    if old_content is None or _page_feature_id(old_content, PurePosixPath(relative).stem) != changed_features[0]["id"]:
+                        raise BoardError("design_page_unavailable", f"Skill `{skill}` may update only an existing technical design page linked to its feature.", 409)
+                    if skill != "design-clarify":
+                        raise BoardError("write_path_unavailable", f"Skill `{skill}` cannot update technical design pages.", 403)
+                    old_fm, old_technical_body = _parse_markdown(old_content, relative)
+                    new_fm, new_technical_body = _parse_markdown(content, relative)
+                    identity = {key: value for key, value in old_fm.items() if key in {"feature-id", "title"}}
+                    if identity != {key: value for key, value in new_fm.items() if key in {"feature-id", "title"}}:
+                        raise BoardError(
+                            "design_frontmatter_change",
+                            f"Design clarify may not change the identity of a technical design page; restore `feature-id` and `title` of `{relative}`.",
+                            409,
+                            {"path": relative},
+                        )
+                    changed_technical_sections = [
+                        section for section in TECHNICAL_DESIGN_SECTIONS if _section(old_technical_body, section) != _section(new_technical_body, section)
+                    ]
+                    self._assert_only_body_sections_changed(
+                        old_technical_body,
+                        new_technical_body,
+                        set(TECHNICAL_DESIGN_SECTIONS),
+                        "design_clarify_scope_exceeded",
+                        "Design clarify may update the sections of a technical design page only.",
+                    )
+                    ungrounded_technical = [
+                        section for section in changed_technical_sections if not self._answers_ground_section(_section(new_technical_body, section), question_answers)
+                    ]
+                    if (not changed_technical_sections and old_fm == new_fm) or ungrounded_technical:
+                        raise self._unlinked_answer_error("design_answer_unlinked", relative, ungrounded_technical, question_rows, owner="tech-lead")
                 elif relative.startswith("knowledge/wiki/app-requirements/"):
                     old_content = before[relative]
                     if old_content is None or _page_feature_id(old_content, PurePosixPath(relative).stem) != changed_features[0]["id"]:
@@ -4216,6 +4372,8 @@ class BoardService:
             design_paths = [path for path in supplied if path.startswith("knowledge/wiki/design/")]
             if skill == "design-clarify" and len(design_paths) > 1:
                 raise BoardError("one_design_page_required", "Design clarify may update at most the one existing design page linked to its feature.", 409)
+            if skill == "design-clarify":
+                self._validate_track_page_writes(skill, changed_features, supplied, before)
         checks.append({"code": "skill-structure", "status": "pass", "message": f"The `{skill}` proposal matches its connected write scope and structural validator."})
         return {
             "action": None,
@@ -4415,6 +4573,21 @@ class BoardService:
         if design_statuses:
             # The design owner follows the scope: it is `designer` while an active app has a UI and `tech-lead` otherwise.
             allowed.add("owner")
+            allowed |= {"design-tracks", "design-reaffirm"}
+            old_tracks = self._tracks_of(old_fm, path)
+            wanted_tracks = initial_design_tracks(new_apps, self._model) if old_tracks is not None else None
+            if self._tracks_of(new_fm, path) != wanted_tracks:
+                raise BoardError(
+                    "track_reset_required",
+                    "A scope change in design sends every settled track back to `pending` with its reason removed, then applies the no-UI initialization: "
+                    + (
+                        f"`design-tracks` is {wanted_tracks.tracks_value()} and `design-reaffirm` is `[]`."
+                        if wanted_tracks is not None
+                        else "design has not started, so the feature has no `design-tracks` and gets none."
+                    ),
+                    409,
+                    {"path": path, "expected": wanted_tracks.tracks_value() if wanted_tracks is not None else None},
+                )
             owner = design_owner(new_apps, self._model)
             if new_fm.get("owner") != owner:
                 raise BoardError(
@@ -4699,16 +4872,18 @@ class BoardService:
             {"path": relative, "skill": skill, "from": [old.get("status"), old.get("owner")], "to": [new.get("status"), new.get("owner")]},
         )
 
-    def _action_from_feature_change(self, skill: str, old: Mapping[str, Any], new: Mapping[str, Any]) -> str | None:
+    def _action_from_feature_change(self, skill: str, old: Mapping[str, Any], new: Mapping[str, Any], old_body: str = "") -> str | None:
         """The enabled registry action of `skill` that moves a feature from `old` to `new`, or ``None``.
 
-        A `minimum` target (`dev-done`) accepts any app-stage status; the minimum itself is checked with the evidence.
+        A `minimum` target (`dev-done`) accepts any app-stage status; the minimum itself is checked with the evidence. A return
+        route applies by the app stages of the feature (`_route_stage_error`); when none applies, the error names the way out.
         """
 
         old_pair = (old.get("status"), old.get("owner"))
         new_pair = (new.get("status"), new.get("owner"))
         design_before = design_owner(_scope_of(old) or [], self._model)
         design_after = design_owner(_scope_of(new) or [], self._model)
+        refused: BoardError | None = None
         for spec in _REGISTERED_ACTION_SPECS:
             if spec.command != skill or spec.subject != "feature" or not spec.enabled:
                 continue
@@ -4720,7 +4895,58 @@ class BoardService:
                     return spec.action
                 continue
             if new_pair == target:
-                return spec.action
+                error = self._route_stage_error(spec.action, old, old_body)
+                if error is None:
+                    return spec.action
+                refused = refused or error
+        if refused is not None:
+            raise refused
+        return None
+
+    def _require_route_available(self, skill: str, old: Mapping[str, Any], new: Mapping[str, Any] | None) -> None:
+        """A route of `skill` from the state of `old` (to the state of `new`, when given) that no enabled row provides, whose package has not landed, answers `action_unavailable`."""
+
+        old_pair = (old.get("status"), old.get("owner"))
+        design_before = design_owner(_scope_of(old) or [], self._model)
+        candidates = [
+            spec
+            for spec in _REGISTERED_ACTION_SPECS
+            if spec.command == skill and spec.subject == "feature" and old_pair in spec.resolved_sources(design_before)
+        ]
+        if new is not None:
+            new_pair = (new.get("status"), new.get("owner"))
+            design_after = design_owner(_scope_of(new) or [], self._model)
+            candidates = [spec for spec in candidates if spec.resolved_target(design_after) == new_pair]
+        if candidates and not any(spec.enabled for spec in candidates):
+            self._require_action_available(candidates[0].action)
+
+    def _route_stage_error(self, action: str, old: Mapping[str, Any], old_body: str) -> BoardError | None:
+        """Why a return route does not apply to a feature in its app stages (CONTRACTS 2.3, 2.4), or ``None``.
+
+        A return from implementation applies while no app is in QA or beyond. Some apps released and others not sends a spec or
+        design change to a new feature; an app in QA goes back through the QA return.
+        """
+
+        if action not in _DEV_RETURN_ACTIONS or status_rank(old.get("status")) < status_rank("in-dev"):
+            return None
+        stages = app_stages(active_scope(_scope_of(old) or [], self._model), read_feature_evidence(old_body))
+        released = [app for app, stage in stages.items() if stage == "released"]
+        if released and len(released) < len(stages):
+            return BoardError(
+                "partial_release_requires_new_feature",
+                f"{_quoted(released)} is released and the other apps of {old.get('id')} are not, so a spec or design change cannot return the feature. "
+                "Put changed requirements or contracts in a new feature, and an implementation defect in a bug.",
+                409,
+                {"feature_id": old.get("id"), "released": released},
+            )
+        beyond = [app for app, stage in stages.items() if stage in {"in-qa", "ready-for-release", "released"}]
+        if beyond:
+            return BoardError(
+                "app_stage_mismatch",
+                f"{_quoted(beyond)} is in QA or later, so `{action}` does not apply to {old.get('id')}: use the QA return (`qa-return-spec` or `qa-return-design`) instead.",
+                409,
+                {"feature_id": old.get("id"), "apps": beyond, "stages": stages},
+            )
         return None
 
     def _validate_transition_source(
@@ -4861,7 +5087,16 @@ class BoardService:
         if not isinstance(old_domains, list) or not isinstance(new_domains, list) or any(not isinstance(item, str) for item in old_domains):
             raise BoardError("invalid_revalidation", "Revalidation fields must be lists of known domains.", 409)
         expected_domains = [item for item in old_domains if item not in scope.clears]
-        if new_domains != expected_domains:
+        if scope.sets:
+            expected_domains = merge_revalidation(expected_domains, scope.sets, FEATURE_REVALIDATION_DOMAINS)
+            if new_domains != expected_domains:
+                raise BoardError(
+                    "revalidation_required",
+                    f"Action `{action}` writes `revalidation` exactly: {expected_domains or 'no domain'}, in that order, merged with what is pending.",
+                    409,
+                    {"path": relative, "expected": expected_domains},
+                )
+        elif new_domains != expected_domains:
             raise BoardError("revalidation_scope", f"Action `{action}` may clear only its verified revalidation domains.", 409)
 
         if scope.sections:
@@ -4881,8 +5116,527 @@ class BoardService:
         if action == "po-specify":
             if old_fm.get("apps") != new_fm.get("apps") or old_fm.get("sources") != new_fm.get("sources"):
                 raise BoardError("specification_identity_change", "PO specify preserves source and app scope.", 409)
-        if action != "dev-done" and "app-revalidation" in changed:
+        if action != "dev-done" and not scope.sets_app and "app-revalidation" in changed:
             raise BoardError("revalidation_scope", f"Action `{action}` does not change `app-revalidation`.", 409)
+
+    # -- design tracks, technical design and the API contract (CONTRACTS 3) ------------------------------------------
+
+    def _tracks_of(self, frontmatter: Mapping[str, Any], relative: str, *, required: bool = False) -> DesignTracks | None:
+        """The design tracks a feature page declares, or ``None`` before design has started; malformed tracks are refused."""
+
+        tracks, problems = parse_design_tracks(frontmatter)
+        if problems:
+            raise BoardError(
+                "design_tracks_invalid",
+                f"`{relative}` has invalid design tracks: {' '.join(problems)} The format is in knowledge/wiki/features/_FORMAT.md.",
+                409,
+                {"path": relative, "problems": [_clip(item, 200) for item in problems[:6]]},
+            )
+        if tracks is None and required:
+            raise BoardError(
+                "design_tracks_missing",
+                f"`{relative}` needs `design-tracks` (`ui` and `technical`) and `design-reaffirm` in its front matter from the first design action on.",
+                409,
+                {"path": relative},
+            )
+        return tracks
+
+    @staticmethod
+    def _changed_track_pages(supplied: Mapping[str, str], before: Mapping[str, str | None]) -> dict[str, list[str]]:
+        """The track pages (design, technical design, API contract) a proposal writes with a text that differs from the current one."""
+
+        changed: dict[str, list[str]] = {}
+        for relative, content in supplied.items():
+            track = track_of_page(relative)
+            if track is not None and before.get(relative) != content:
+                changed.setdefault(track, []).append(relative)
+        return changed
+
+    def _validate_design_start_tracks(self, feature: Mapping[str, Any]) -> None:
+        """`design-start` writes the initial tracks and nothing else about them (CONTRACTS 3.1)."""
+
+        path = feature["path"]
+        apps = _scope_of(feature["after"]) or []
+        old_tracks = self._tracks_of(feature["before"], path)
+        wanted = old_tracks or initial_design_tracks(apps, self._model)
+        new_tracks = self._tracks_of(feature["after"], path)
+        if new_tracks is None:
+            raise BoardError(
+                "design_tracks_missing",
+                f"`design-start` starts design with the tracks {wanted.tracks_value()} and `design-reaffirm: []`; add `design-tracks` and `design-reaffirm` to `{path}`.",
+                409,
+                {"path": path, "expected": wanted.tracks_value()},
+            )
+        if new_tracks != wanted:
+            raise BoardError(
+                "track_scope",
+                f"`design-start` starts design with the tracks {wanted.tracks_value()} and `design-reaffirm: []`; `{path}` declares {new_tracks.tracks_value()} with `design-reaffirm: {new_tracks.reaffirm_value()}`.",
+                409,
+                {"path": path, "expected": wanted.tracks_value()},
+            )
+
+    def _validate_track_action(
+        self, action: str, feature: Mapping[str, Any], supplied: Mapping[str, str], before: Mapping[str, str | None]
+    ) -> None:
+        """`design-ui-done` and `tech-design-done` each set their own track and write only its pages (CONTRACTS 3.2, 3.3)."""
+
+        track = "ui" if action == "design-ui-done" else "technical"
+        other = "technical" if track == "ui" else "ui"
+        path = feature["path"]
+        old_fm, new_fm = feature["before"], feature["after"]
+        apps = _scope_of(new_fm) or []
+        old_tracks = self._tracks_of(old_fm, path)
+        if old_tracks is None and old_fm.get("status") != "ready-for-design":
+            self._tracks_of(old_fm, path, required=True)
+        base = old_tracks or initial_design_tracks(apps, self._model)
+        if base.state(track) != "pending" and track not in base.reaffirm:
+            raise BoardError(
+                "design_track_not_open",
+                f"The {track} track of `{path}` is `{base.state(track)}` and is not waiting for reaffirmation, so `{action}` has nothing to set. "
+                "Change its pages with `design-clarify`, which sets the track back to `pending`, or send the feature back with `dev-return-design`.",
+                409,
+                {"path": path, "track": track, "state": base.state(track)},
+            )
+        new_tracks = self._tracks_of(new_fm, path, required=True)
+        if (new_tracks.state(other), new_tracks.reason(other)) != (base.state(other), base.reason(other)):
+            raise BoardError(
+                "track_scope",
+                f"`{action}` sets the {track} track only; `{path}` changes the {other} track from `{base.state(other)}` to `{new_tracks.state(other)}`. Restore it.",
+                409,
+                {"path": path, "track": other},
+            )
+        changed = self._changed_track_pages(supplied, before)
+        if changed.get(other):
+            raise BoardError(
+                "lifecycle_write_scope",
+                f"`{action}` writes the pages of the {track} track only; {_quoted(sorted(changed[other]))} belong to the {other} track.",
+                409,
+                {"paths": _names(changed[other])},
+            )
+        expected = set(base.reaffirm) - {track}
+        if changed.get(track) and base.state(track) == "done" and new_tracks.state(other) == "done":
+            expected.add(other)
+        if set(new_tracks.reaffirm) != expected:
+            raise BoardError(
+                "track_reset_required" if changed.get(track) else "track_scope",
+                f"After `{action}` the tracks awaiting reaffirmation are {_quoted(sorted(expected)) or 'none'}: the track it sets leaves the list, and "
+                f"the other track joins it when the pages of a settled {track} track change. `{path}` has `design-reaffirm: {new_tracks.reaffirm_value()}`.",
+                409,
+                {"path": path, "expected": sorted(expected)},
+            )
+
+    def _validate_handoff_tracks(
+        self, feature: Mapping[str, Any], supplied: Mapping[str, str], before: Mapping[str, str | None]
+    ) -> list[str]:
+        """The tracks a handoff completes (it settles or reaffirms them), checked against what it writes (CONTRACTS 2.4, 3.2, 3.3).
+
+        A track it does not complete keeps its state and its pages; the completed ones are the ones whose role also approves the handoff.
+        """
+
+        path = feature["path"]
+        old_fm, new_fm = feature["before"], feature["after"]
+        apps = _scope_of(new_fm) or []
+        old_tracks = self._tracks_of(old_fm, path)
+        if old_tracks is None and old_fm.get("status") != "ready-for-design":
+            self._tracks_of(old_fm, path, required=True)
+        base = old_tracks or initial_design_tracks(apps, self._model)
+        new_tracks = self._tracks_of(new_fm, path, required=True)
+        completes = [
+            track
+            for track in DESIGN_TRACKS
+            if (not base.resolved(track) and new_tracks.resolved(track)) or (track in base.reaffirm and track not in new_tracks.reaffirm)
+        ]
+        changed = self._changed_track_pages(supplied, before)
+        for track in DESIGN_TRACKS:
+            if track in completes:
+                continue
+            if (new_tracks.state(track), new_tracks.reason(track)) != (base.state(track), base.reason(track)):
+                raise BoardError(
+                    "track_scope",
+                    f"`design-handoff` changes the {track} track from `{base.state(track)}` to `{new_tracks.state(track)}` without settling it. Restore it, or settle it with its reason.",
+                    409,
+                    {"path": path, "track": track},
+                )
+            if changed.get(track):
+                raise BoardError(
+                    "lifecycle_write_scope",
+                    f"`design-handoff` writes the pages of a track only when it completes that track; the {track} track is not completed, so {_quoted(sorted(changed[track]))} cannot be written.",
+                    403,
+                    {"paths": _names(changed[track])},
+                )
+        expected = set(base.reaffirm) - set(completes)
+        for track in completes:
+            other = "technical" if track == "ui" else "ui"
+            if changed.get(track) and base.state(track) == "done" and other not in completes and new_tracks.state(other) == "done":
+                expected.add(other)
+        if set(new_tracks.reaffirm) != expected:
+            raise BoardError(
+                "track_reset_required" if any(changed.get(track) for track in completes) else "track_scope",
+                f"After this handoff the tracks awaiting reaffirmation are {_quoted(sorted(expected)) or 'none'}; `{path}` has `design-reaffirm: {new_tracks.reaffirm_value()}`.",
+                409,
+                {"path": path, "expected": sorted(expected)},
+            )
+        return completes
+
+    def _validate_technical_track_pages(self, feature: Mapping[str, Any], supplied: Mapping[str, str], before: Mapping[str, str | None]) -> None:
+        """The pages of the technical track a settling action writes: the API contract (CONTRACTS 3.4) and the API work it needs."""
+
+        path = feature["path"]
+        new_tracks = self._tracks_of(feature["after"], path, required=True)
+        contract_pages = sorted(item for item in supplied if item.startswith(_API_CONTRACT_PREFIX))
+        technical_pages = sorted(item for item in supplied if item.startswith(_TECHNICAL_DESIGN_PREFIX))
+        if new_tracks.technical == "not-applicable" and (contract_pages or technical_pages):
+            raise BoardError(
+                "track_scope",
+                f"The technical track of `{path}` is `not-applicable`, so the proposal writes no technical design page or API contract.",
+                409,
+                {"paths": _names([*contract_pages, *technical_pages])},
+            )
+        for relative in contract_pages:
+            self._validate_contract_write(relative, before.get(relative), supplied[relative], supplied, feature)
+        if new_tracks.technical == "done":
+            self._require_handoff_api_contract(supplied, feature)
+
+    def _contract_consumers(self, contract_relative: str, feature_id: str) -> list[str]:
+        """The other features that link the contract and sit between `ready-for-dev` and `ready-for-release` (CONTRACTS 3.4)."""
+
+        from prism_cli.wiki_model import read_app_requirement_pages, read_feature_pages
+        from prism_cli.wiki_transitions import api_contract_link_targets
+
+        wiki_root = self.root / "knowledge" / "wiki"
+        target = (self.root / contract_relative).resolve()
+        requirements = read_app_requirement_pages(wiki_root)
+        consumers: set[str] = set()
+        for page in read_feature_pages(wiki_root):
+            if page.feature_id.casefold() == feature_id.casefold() or page.status not in _CONTRACT_CONSUMER_STATUSES:
+                continue
+            sources = [page.page, *(item.page for item in requirements if isinstance(item.feature_id, str) and item.feature_id.casefold() == page.feature_id.casefold())]
+            for source in sources:
+                if any(linked.resolve() == target for linked in api_contract_link_targets(source.body, source.path, wiki_root)):
+                    consumers.add(page.feature_id)
+                    break
+        return sorted(consumers)
+
+    def _validate_contract_write(
+        self,
+        relative: str,
+        original: str | None,
+        proposed: str,
+        supplied: Mapping[str, str],
+        feature: Mapping[str, Any],
+    ) -> None:
+        """The API contract is authored once at `agreed`, `version: 1`, and revised while the feature is in design (CONTRACTS 3.4).
+
+        A revision changes the body, raises `version` by one and stays `agreed`; it is refused while another feature that links the
+        contract is between `ready-for-dev` and `ready-for-release`. Nothing but a technical-track action writes a contract body.
+        """
+
+        feature_id = str(feature["id"])
+        new_fm, new_body = _parse_markdown(proposed, relative)
+        surface = section_text(_parse_markdown(supplied[feature["path"]], feature["path"])[1], "API surface")
+        if original is not None:
+            old_fm, old_body = _parse_markdown(original, relative)
+            if old_fm == new_fm and old_body == new_body:
+                return
+            if not api_surface_declared(surface):
+                raise BoardError(
+                    "api_contract_not_applicable",
+                    f"{feature_id} declares no API work in its `## API surface` section, so its contract `{relative}` cannot change. Leave the page out of the proposal.",
+                    409,
+                    {"path": relative, "feature_id": feature_id},
+                )
+            old_version, new_version = old_fm.get("version"), new_fm.get("version")
+            other_fields = sorted(key for key in set(old_fm) | set(new_fm) if key not in {"version", "status"} and old_fm.get(key) != new_fm.get(key))
+            if other_fields:
+                raise BoardError(
+                    "contract_revision_required",
+                    f"A contract revision changes the body, `version` and `status` only; `{relative}` also changes {_quoted(other_fields)}. Restore them.",
+                    409,
+                    {"path": relative, "fields": other_fields},
+                )
+            if old_body != new_body:
+                if not isinstance(old_version, int) or not isinstance(new_version, int) or new_version != old_version + 1:
+                    raise BoardError(
+                        "contract_revision_required",
+                        f"The body of `{relative}` changes, so its `version` rises from {old_version} to {old_version + 1 if isinstance(old_version, int) else 'the next number'}; it is {new_version}.",
+                        409,
+                        {"path": relative, "version": new_version, "expected": old_version + 1 if isinstance(old_version, int) else None},
+                    )
+                if new_fm.get("status") != "agreed":
+                    raise BoardError(
+                        "contract_revision_required",
+                        f"A contract revision is agreed in this confirmation: set `status: agreed` in `{relative}` (it is `{_clip(new_fm.get('status'), 40)}`).",
+                        409,
+                        {"path": relative, "status": _clip(new_fm.get("status"), 40), "expected_status": "agreed"},
+                    )
+                consumers = self._contract_consumers(relative, feature_id)
+                if consumers:
+                    raise BoardError(
+                        "shared_contract_in_use",
+                        f"{_quoted(consumers)} links `{relative}` and has an app between `ready-for-dev` and `ready-for-release`, so the contract cannot be revised now. "
+                        "Return that feature first with `dev-return-design` or `qa-return-design`.",
+                        409,
+                        {"path": relative, "consumers": consumers},
+                    )
+                error = _api_contract_scope_error(relative, feature_id, new_body, surface)
+                if error is not None:
+                    raise error
+                return
+            if new_version != old_version:
+                raise BoardError(
+                    "contract_revision_required",
+                    f"`version` of `{relative}` changes from {old_version} to {new_version} with no change to the body; a revision changes both.",
+                    409,
+                    {"path": relative},
+                )
+            if new_fm.get("status") != "agreed":
+                raise BoardError(
+                    "api_contract_initial_status",
+                    f"A technical-track action agrees an existing contract (`status: agreed`); `{relative}` has status `{_clip(new_fm.get('status'), 40)}`.",
+                    409,
+                    {"path": relative, "status": _clip(new_fm.get("status"), 40), "expected_status": "agreed"},
+                )
+            return
+        if not api_surface_declared(surface):
+            raise BoardError(
+                "api_contract_not_applicable",
+                f"{feature_id} declares no API work in its `## API surface` section, so `{relative}` may not be created. Leave the page out of the proposal.",
+                409,
+                {"path": relative, "feature_id": feature_id},
+            )
+        if new_fm.get("status") != "agreed" or new_fm.get("version") != 1:
+            raise BoardError(
+                "api_contract_initial_status",
+                f"A technical-track action creates a new API contract as `agreed`, `version: 1` (the human confirming the preview is the agreement), but `{relative}` has status `{_clip(new_fm.get('status'), 40)}` and version `{_clip(new_fm.get('version'), 20)}`.",
+                409,
+                {"path": relative, "status": _clip(new_fm.get("status"), 40), "expected_status": "agreed"},
+            )
+        others = self._feature_api_contract_paths(feature, supplied) - {relative}
+        if others:
+            raise BoardError(
+                "api_contract_exists",
+                f"{feature_id} already has an API contract at {_quoted(sorted(others)[:3])}; a feature has one. Leave `{relative}` out of the proposal.",
+                409,
+                {"path": relative, "feature_id": feature_id, "existing": sorted(others)[:3]},
+            )
+        error = _api_contract_scope_error(relative, feature_id, new_body, surface)
+        if error is not None:
+            raise error
+
+    def _validate_dev_return(
+        self, action: str, feature: Mapping[str, Any], supplied: Mapping[str, str], before: Mapping[str, str | None]
+    ) -> None:
+        """A return from implementation (CONTRACTS F10, F11): every evidence row is archived, the tracks and domains are reset."""
+
+        path = feature["path"]
+        old_fm, new_fm = feature["before"], feature["after"]
+        original, proposed = before[path] or "", supplied[path]
+        old_body = _parse_markdown(original, path)[1]
+        new_body = _parse_markdown(proposed, path)[1]
+        apps = _scope_of(old_fm) or []
+        evidence = read_feature_evidence(old_body)
+        archive = [
+            *(("Delivery evidence", row.cells) for row in evidence.delivery),
+            *(("QA verification", row.cells) for row in evidence.qa),
+            *(("Release", row.cells) for row in evidence.release),
+        ]
+        if read_feature_evidence(new_body).has_rows:
+            raise BoardError(
+                "evidence_still_active",
+                f"`{action}` archives the evidence of every app, so the Delivery evidence, QA verification and Release tables of `{path}` hold no row afterwards.",
+                409,
+                {"path": path},
+            )
+        self._validate_evidence_history(
+            action, original, proposed, old_fm, relative=path, expected_archive=archive, require_entry=True, related=(supplied, before)
+        )
+        entry = parse_evidence_history(new_body)[-1]
+        if set(entry.affected_apps) != set(apps):
+            raise BoardError(
+                "reopen_app_scope",
+                f"`{action}` affects every app of the feature; Evidence history lists as affected apps {_quoted(sorted(apps))}.",
+                409,
+                {"path": path, "expected": sorted(apps)},
+            )
+        if entry.participants:
+            raise BoardError(
+                "history_participants_mismatch",
+                f"`{action}` archives the rows of every app, so no app loses a Release row through another's integration row: write `none` under Participants.",
+                409,
+                {"path": path},
+            )
+        listed = [item for item in re.split(r"[\s,;]+", entry.fields.get("Affected tracks", "").strip().strip("[]").lower()) if item]
+        old_tracks = self._tracks_of(old_fm, path, required=True)
+        if action == "dev-return-spec":
+            if set(listed) != set(DESIGN_TRACKS):
+                raise BoardError(
+                    "impact_review_required",
+                    "A return to `specified` sends both tracks back: list `ui, technical` under Affected tracks.",
+                    409,
+                    {"label": "Affected tracks"},
+                )
+            if "design-tracks" in new_fm or "design-reaffirm" in new_fm:
+                raise BoardError(
+                    "track_scope",
+                    f"A return to `specified` removes `design-tracks` and `design-reaffirm` from `{path}`; the first design action writes them again.",
+                    409,
+                    {"path": path},
+                )
+        else:
+            affected = [item for item in DESIGN_TRACKS if item in listed]
+            if not affected or "none" in listed:
+                raise BoardError(
+                    "impact_review_required",
+                    "A return to design sends at least one track back: list `ui`, `technical` or both under Affected tracks.",
+                    409,
+                    {"label": "Affected tracks"},
+                )
+            expected = old_tracks
+            for track in affected:
+                expected = expected.with_track(track, "pending")
+            expected = normalize_ui_track(expected, apps, self._model)
+            expected = expected.with_reaffirm([track for track in DESIGN_TRACKS if track not in affected and expected.state(track) == "done"])
+            new_tracks = self._tracks_of(new_fm, path, required=True)
+            if new_tracks != expected:
+                raise BoardError(
+                    "track_reset_required",
+                    f"The affected tracks {_quoted(affected)} return to `pending` and each unaffected settled track awaits reaffirmation: "
+                    f"`design-tracks` is {expected.tracks_value()} and `design-reaffirm` is {expected.reaffirm_value()}; `{path}` has {new_tracks.tracks_value()} and {new_tracks.reaffirm_value()}.",
+                    409,
+                    {"path": path, "expected": expected.tracks_value(), "reaffirm": expected.reaffirm_value()},
+                )
+        old_domains, _errors = parse_app_revalidation(old_fm.get("app-revalidation"))
+        expected_domains = {app: merge_revalidation(old_domains.get(app, []), APP_REVALIDATION_DOMAINS, APP_REVALIDATION_DOMAINS) for app in apps}
+        new_domains, new_errors = parse_app_revalidation(new_fm.get("app-revalidation"))
+        if new_errors or new_domains != expected_domains:
+            raise BoardError(
+                "revalidation_required",
+                f"`{action}` writes `app-revalidation` exactly: every app of the feature gets {_quoted(APP_REVALIDATION_DOMAINS)}, merged with what is pending.",
+                409,
+                {"path": path},
+            )
+        for relative in sorted(item for item in supplied if item.startswith((_API_CONTRACT_PREFIX, "knowledge/wiki/app-requirements/"))):
+            prior = before.get(relative)
+            if prior is None:
+                raise BoardError("linked_page_not_found", f"`{action}` can only lower the status of an existing linked page; `{relative}` does not exist.", 409, {"path": relative})
+            old_page_fm, old_page_body = _parse_markdown(prior, relative)
+            new_page_fm, new_page_body = _parse_markdown(supplied[relative], relative)
+            if old_page_body != new_page_body or {k: v for k, v in old_page_fm.items() if k != "status"} != {k: v for k, v in new_page_fm.items() if k != "status"}:
+                raise BoardError(
+                    "linked_page_scope",
+                    f"`{action}` changes only the `status` of a linked requirement or API contract, but `{relative}` also changes its text or other fields. Restore everything except `status`.",
+                    409,
+                    {"path": relative},
+                )
+            ranks = _CONTRACT_RANK if relative.startswith(_API_CONTRACT_PREFIX) else _REQUIREMENT_RANK
+            old_rank, new_rank = ranks.get(old_page_fm.get("status")), ranks.get(new_page_fm.get("status"))
+            if old_rank is None or new_rank is None or new_rank >= old_rank:
+                raise BoardError(
+                    "linked_page_scope",
+                    f"`{action}` only lowers the status of a linked page ({' > '.join(reversed(list(ranks)))}); `{relative}` goes from `{_clip(old_page_fm.get('status'), 40)}` to `{_clip(new_page_fm.get('status'), 40)}`.",
+                    409,
+                    {"path": relative},
+                )
+
+    def _validate_track_page_writes(
+        self,
+        skill: str,
+        changed_features: list[dict[str, Any]],
+        supplied: Mapping[str, str],
+        before: Mapping[str, str | None],
+    ) -> None:
+        """The skills that write track pages without settling a track (`design-clarify`, `design-intake`, `ingest`) follow CONTRACTS 3.3.
+
+        Track pages are locked from `ready-for-dev` on. A change to the pages of a settled track sets that track back to `pending` in
+        the same proposal, and the other track joins `design-reaffirm` when it is `done`.
+        """
+
+        changed = self._changed_track_pages(supplied, before)
+        if skill == "ingest":
+            for relative in sorted(changed.get("technical", ())):
+                feature = self._resolve_feature(str(_parse_markdown(supplied[relative], relative)[0].get("feature-id", "")))
+                if status_rank(feature["frontmatter"].get("status")) >= status_rank("ready-for-dev"):
+                    raise BoardError(
+                        "track_page_locked",
+                        f"{feature['frontmatter'].get('id')} is `{feature['frontmatter'].get('status')}`, so its technical design page is locked. Send the feature back with `dev-return-design` first.",
+                        409,
+                        {"path": relative},
+                    )
+                tracks = self._tracks_of(feature["frontmatter"], feature["path"])
+                if tracks is not None and tracks.technical != "pending":
+                    raise BoardError(
+                        "track_reset_required",
+                        f"The technical track of {feature['frontmatter'].get('id')} is `{tracks.technical}`; ingest writes its page only while the track is `pending` or absent. "
+                        "Change the page with `design-clarify`, which sets the track back to `pending`.",
+                        409,
+                        {"path": relative, "track": "technical", "state": tracks.technical},
+                    )
+            return
+        if len(changed_features) != 1 or changed_features[0]["before"] is None:
+            return
+        feature = changed_features[0]
+        path = feature["path"]
+        old_fm, new_fm = feature["before"], feature["after"]
+        apps = _scope_of(new_fm) or []
+        if changed and status_rank(old_fm.get("status")) >= status_rank("ready-for-dev"):
+            raise BoardError(
+                "track_page_locked",
+                f"`{path}` is `{old_fm.get('status')}`, so its design and technical design pages are locked. Send the feature back with `dev-return-design` before changing them.",
+                409,
+                {"path": path, "paths": _names([item for items in changed.values() for item in items])},
+            )
+        old_tracks = self._tracks_of(old_fm, path)
+        new_tracks = self._tracks_of(new_fm, path)
+        if old_tracks is None:
+            if new_tracks is not None:
+                raise BoardError("track_scope", f"`{skill}` does not start the design tracks; the first design action writes them. Remove `design-tracks` and `design-reaffirm` from `{path}`.", 409, {"path": path})
+            return
+        expected = _tracks_after_page_changes(old_tracks, changed, apps, self._model)
+        if new_tracks != expected:
+            raise BoardError(
+                "track_reset_required" if changed else "track_scope",
+                (
+                    f"`{skill}` changes the pages of {_quoted(sorted(changed))}: a settled track returns to `pending` and the other settled track awaits reaffirmation. "
+                    f"`design-tracks` is then {expected.tracks_value()} and `design-reaffirm` {expected.reaffirm_value()}; `{path}` has {(new_tracks.tracks_value() if new_tracks else None)} and {(new_tracks.reaffirm_value() if new_tracks else None)}."
+                    if changed
+                    else f"`{skill}` changes no track page, so `design-tracks` and `design-reaffirm` of `{path}` stay as they are."
+                ),
+                409,
+                {"path": path, "expected": expected.tracks_value(), "reaffirm": expected.reaffirm_value()},
+            )
+
+    def _assert_contract_bindings(self, feature: Mapping[str, Any], supplied: Mapping[str, str], named_apps: tuple[str, ...]) -> None:
+        """The Contract cell of the delivery rows `dev-done` adds cites the contract as it is now, or `none` when the feature has none (CONTRACTS 3.4)."""
+
+        body = _parse_markdown(supplied[feature["path"]], feature["path"])[1]
+        rows = {row.app: row for row in read_feature_evidence(body).delivery}
+        citations: dict[str, str] = {}
+        for contract in sorted(self._feature_api_contract_paths(feature, supplied)):
+            text = supplied.get(contract) or self._optional_text(self._safe_path(contract, allow_missing=True))
+            if text is None:
+                continue
+            frontmatter, contract_body = _parse_markdown(text, contract)
+            citation = contract_page_citation(frontmatter, contract_body)
+            if citation is not None:
+                citations[citation] = contract
+        for app_id in named_apps:
+            row = rows.get(app_id)
+            if row is None:
+                continue
+            cited = clean_cell(row.contract)
+            if cited.lower() == "none":
+                stale = bool(citations)
+            else:
+                stale = cited not in citations
+            if stale:
+                current = ", ".join(f"`{item}`" for item in sorted(citations)) or "none (write `none`)"
+                raise BoardError(
+                    "contract_binding_stale",
+                    f"The Contract cell of `{app_id}` is `{_clip(cited, 120)}`, but the current contract of {feature['id']} is {current}. "
+                    "Cite the contract as it is now: `<feature ID>@v<version>:c1:<digest>`, the digest the contract page reports.",
+                    409,
+                    {"path": feature["path"], "app": app_id, "current": sorted(citations)},
+                )
 
     def _validate_dev_done_evidence(
         self,
@@ -4990,17 +5744,26 @@ class BoardService:
         before: Mapping[str, str | None],
         feature: Mapping[str, Any],
         named_apps: tuple[str, ...] = (),
+        completes: list[str] | None = None,
     ) -> None:
-        related = {
-            path for path in supplied
-            if path.startswith(("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/"))
-        }
+        related = {path for path in supplied if path.startswith(_LINKED_PAGE_PREFIXES)}
         scope = WRITE_SCOPES[action]
         if action in {"po-specify", "po-handoff", "design-start", "dev-start"} and related:
             raise BoardError("lifecycle_write_scope", f"Action `{action}` may change only its feature, managed index, and log.", 409)
         if related - {path for path in supplied if path.startswith(scope.pages)}:
             raise BoardError("lifecycle_write_scope", f"Action `{action}` cannot write those linked artifact types.", 403)
         feature_id = str(feature["id"])
+        if action == "design-handoff":
+            settled = set(completes or ())
+            for relative in sorted(related):
+                track = track_of_page(relative)
+                if track is not None and track not in settled:
+                    raise BoardError(
+                        "lifecycle_write_scope",
+                        f"`design-handoff` writes `{relative}` only when it completes the {track} track.",
+                        403,
+                        {"path": relative, "track": track},
+                    )
         for relative in related:
             original = before.get(relative)
             proposed = supplied[relative]
@@ -5011,13 +5774,9 @@ class BoardService:
             if not isinstance(new_fm.get("feature-id"), str) or new_fm["feature-id"].casefold() != feature_id.casefold():
                 raise BoardError("feature_context_mismatch", f"Linked artifact `{relative}` does not belong to {feature['id']}.", 409)
             if action == "design-handoff":
-                if relative.startswith("knowledge/wiki/api-contracts/"):
-                    self._validate_handoff_api_contract(relative, original, proposed, supplied, feature)
+                if not relative.startswith("knowledge/wiki/app-requirements/"):
                     continue
-                if original is None and new_fm.get("status") != "pending":
-                    raise BoardError("requirement_initial_status", "Design handoff creates new app requirements in pending status.", 409)
-                if original is not None and (old_fm != new_fm or old_body != new_body):
-                    raise BoardError("requirement_body_change", "Design handoff may not rewrite an existing app requirement.", 409)
+                self._validate_handoff_requirement(relative, original, old_fm, old_body, new_fm, new_body)
             elif action == "dev-done":
                 status = new_fm.get("status")
                 if relative.startswith("knowledge/wiki/app-requirements/"):
@@ -5036,12 +5795,92 @@ class BoardService:
                 if {key: val for key, val in old_fm.items() if key != "status"} != {key: val for key, val in new_fm.items() if key != "status"} or old_body != new_body:
                     raise BoardError(
                         "linked_page_scope",
-                        f"Dev done may change only the `status` of an existing linked requirement or API contract, but `{relative}` also changes its text or other fields. Restore everything except `status` to the current text.",
+                        f"Dev done may change only the `status` of an existing linked requirement or API contract, but `{relative}` also changes its text or other fields. Restore everything except `status`.",
                         409,
                         {"path": relative},
                     )
         if action == "dev-done":
             self._assert_delivered_pages_complete(supplied, feature, named_apps)
+
+    @staticmethod
+    def _validate_handoff_requirement(
+        relative: str,
+        original: str | None,
+        old_fm: Mapping[str, Any],
+        old_body: str,
+        new_fm: Mapping[str, Any],
+        new_body: str,
+    ) -> None:
+        """A requirement page at handoff (CONTRACTS 3.5): created `pending`, a `pending` or `in-progress` one may change its body and is set to `pending`, a `done` one stays."""
+
+        if original is None:
+            if new_fm.get("status") != "pending":
+                raise BoardError("requirement_initial_status", "Design handoff creates new app requirements in pending status.", 409)
+            return
+        if old_fm.get("status") == "done":
+            if old_fm != new_fm or old_body != new_body:
+                raise BoardError(
+                    "requirement_body_change",
+                    f"`{relative}` is `done`, so design handoff leaves it unchanged. Send the feature back with a return that lowers the page first, or leave the page out of the proposal.",
+                    409,
+                    {"path": relative},
+                )
+            return
+        if {key: value for key, value in old_fm.items() if key != "status"} != {key: value for key, value in new_fm.items() if key != "status"}:
+            raise BoardError("requirement_body_change", f"Design handoff changes the body sections of `{relative}`, not its identity fields.", 409, {"path": relative})
+        if new_fm.get("status") != "pending":
+            raise BoardError(
+                "requirement_initial_status",
+                f"Design handoff sets the requirement `{relative}` to `pending`; it is `{_clip(new_fm.get('status'), 40)}` in the proposal.",
+                409,
+                {"path": relative},
+            )
+        if old_body != new_body:
+            BoardService._assert_only_body_sections_changed(
+                old_body,
+                new_body,
+                {"What to build", "Technical constraints", "Design reference", "API contract reference", "Acceptance criteria", "Dependencies"},
+                "requirement_body_change",
+                "Design handoff may change the body sections of a pending requirement: What to build, Technical constraints, Design reference, API contract reference, Acceptance criteria and Dependencies.",
+            )
+
+    def _assert_requirement_pages_complete(self, supplied: Mapping[str, str], before: Mapping[str, str | None], feature: Mapping[str, Any]) -> None:
+        """After a handoff the feature has exactly one requirement page per app, and none of them is half-handed-off (CONTRACTS 3.5).
+
+        A page the proposal does not supply must exist and be `pending` or `done`; one that was lowered to `in-progress` is supplied
+        again with the status `pending`.
+        """
+
+        declared = _scope_of(feature["after"]) or []
+        found: dict[str, list[tuple[str, str | None]]] = {}
+        directory = self.root / "knowledge" / "wiki" / "app-requirements"
+        existing: dict[str, str] = {}
+        if directory.is_dir():
+            for page in sorted(directory.glob("*.md")):
+                relative = page.relative_to(self.root).as_posix()
+                if not page.name.startswith("_"):
+                    existing[relative] = self._read_text(page)
+        for relative, text in {**existing, **{path: content for path, content in supplied.items() if path.startswith("knowledge/wiki/app-requirements/")}}.items():
+            fm = _parse_markdown(text, relative)[0]
+            if isinstance(fm.get("feature-id"), str) and fm["feature-id"].casefold() == str(feature["id"]).casefold():
+                found.setdefault(str(fm.get("app")), []).append((relative, fm.get("status")))
+        problems: list[str] = []
+        for app_id in declared:
+            pages = found.get(app_id, [])
+            if len(pages) != 1:
+                problems.append(f"`{app_id}` has {len(pages)} requirement pages")
+            elif pages[0][1] == "in-progress":
+                problems.append(f"`{pages[0][0]}` is `in-progress`: include it with `status: pending`")
+        extra = sorted(app_id for app_id in found if app_id not in declared)
+        if extra:
+            problems.append(f"requirement pages exist for {_quoted(extra)}, which the feature does not list")
+        if problems:
+            raise BoardError(
+                "requirements_incomplete",
+                f"After design handoff {feature['id']} has exactly one requirement page for each of its apps ({_quoted(declared)}): " + "; ".join(problems) + ".",
+                409,
+                {"path": feature["path"], "apps": _names(declared)},
+            )
 
     def _assert_delivered_pages_complete(self, supplied: Mapping[str, str], feature: Mapping[str, Any], named_apps: tuple[str, ...]) -> None:
         """The requirement of each delivered app is `done`, and the API contracts are `implemented` once every app is delivered (CONTRACTS 2.5)."""
@@ -5075,55 +5914,6 @@ class BoardService:
                         409,
                         {"path": contract, "status": _clip(status, 40)},
                     )
-
-    def _validate_handoff_api_contract(
-        self,
-        relative: str,
-        original: str | None,
-        proposed: str,
-        supplied: Mapping[str, str],
-        feature: Mapping[str, Any],
-    ) -> None:
-        """Design handoff may create the feature's API contract once, as `agreed`, from the feature's API surface."""
-
-        feature_id = str(feature["id"])
-        new_fm, new_body = _parse_markdown(proposed, relative)
-        if original is not None:
-            old_fm, old_body = _parse_markdown(original, relative)
-            if old_fm != new_fm or old_body != new_body:
-                raise BoardError(
-                    "api_contract_exists",
-                    f"Design handoff creates an API contract only as a new page; `{relative}` already exists and may not be rewritten. Restore its current text or leave it out of the proposal.",
-                    409,
-                    {"path": relative, "feature_id": feature_id},
-                )
-            return
-        surface = section_text(_parse_markdown(supplied[feature["path"]], feature["path"])[1], "API surface")
-        if not api_surface_declared(surface):
-            raise BoardError(
-                "api_contract_not_applicable",
-                f"{feature_id} declares no API work in its `## API surface` section, so design handoff may not create `{relative}`. Leave the page out of the proposal.",
-                409,
-                {"path": relative, "feature_id": feature_id},
-            )
-        if new_fm.get("status") != "agreed":
-            raise BoardError(
-                "api_contract_initial_status",
-                f"Design handoff creates a new API contract as `agreed` (the human confirming the preview is the agreement), but `{relative}` has status `{_clip(new_fm.get('status'), 40)}`. Set `status: agreed`.",
-                409,
-                {"path": relative, "status": _clip(new_fm.get("status"), 40), "expected_status": "agreed"},
-            )
-        others = self._feature_api_contract_paths(feature, supplied) - {relative}
-        if others:
-            raise BoardError(
-                "api_contract_exists",
-                f"{feature_id} already has an API contract at {_quoted(sorted(others)[:3])}; design handoff creates no second one. Leave `{relative}` out of the proposal.",
-                409,
-                {"path": relative, "feature_id": feature_id, "existing": sorted(others)[:3]},
-            )
-        error = _api_contract_scope_error(relative, feature_id, new_body, surface)
-        if error is not None:
-            raise error
 
     def _require_no_retired_app_in_progress(self, feature_id: str, current: Mapping[str, Any]) -> None:
         """A feature in progress that lists a retired app takes no lifecycle transition until its scope is edited explicitly."""
@@ -5532,8 +6322,18 @@ class BoardService:
         new_frontmatter, new_body = _parse_markdown(after, relative)
         # `po-clarify` and `dev-clarify` may change criteria, and a new criterion raises `criteria-high-water` in the same write.
         mark_allowed = skill in {"po-clarify", "dev-clarify"}
-        compared_old = {key: value for key, value in old_frontmatter.items() if not (mark_allowed and key == "criteria-high-water")}
-        compared_new = {key: value for key, value in new_frontmatter.items() if not (mark_allowed and key == "criteria-high-water")}
+        # `design-clarify` resets the tracks when it changes the pages of a settled track; `_validate_track_page_writes` checks them.
+        tracks_allowed = skill == "design-clarify"
+        compared_old = {
+            key: value
+            for key, value in old_frontmatter.items()
+            if not (mark_allowed and key == "criteria-high-water") and not (tracks_allowed and key in {"design-tracks", "design-reaffirm"})
+        }
+        compared_new = {
+            key: value
+            for key, value in new_frontmatter.items()
+            if not (mark_allowed and key == "criteria-high-water") and not (tracks_allowed and key in {"design-tracks", "design-reaffirm"})
+        }
         if compared_old != compared_new:
             changed_fields = _names(
                 key for key in set(compared_old) | set(compared_new)
@@ -5567,7 +6367,7 @@ class BoardService:
             if row["status"] == "open" and updated["status"] != "open":
                 if skill == "ask":
                     raise BoardError("ask_scope_exceeded", "The ask skill may add questions but cannot answer existing questions.", 409)
-                if allowed_owner is not None and row["owner"] != allowed_owner:
+                if allowed_owner is not None and row["owner"] not in allowed_owner:
                     raise BoardError("question_owner_mismatch", f"Skill `{skill}` cannot resolve {row['owner']}-owned question {row['number']}.", 409)
                 if not updated["status"].startswith("resolved:") or not updated["status"][len("resolved:"):].strip():
                     raise BoardError("answer_required", f"Question {row['number']} needs a substantive resolved answer.", 409)
@@ -5891,12 +6691,41 @@ class BoardService:
 
     def _validate_design(self, relative: str, content: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
-        self._assert_frontmatter_fields(frontmatter, {"feature-id", "title", "designer", "figma"}, relative)
+        self._assert_frontmatter_fields(frontmatter, {"feature-id", "title", "apps", "figma"}, relative)
         if not isinstance(frontmatter.get("feature-id"), str):
             raise BoardError("invalid_design", f"Design page `{relative}` must identify its feature.", 409)
         if not isinstance(frontmatter.get("title"), str) or not frontmatter["title"].strip() or not isinstance(frontmatter.get("figma"), str) or not frontmatter["figma"].strip():
             raise BoardError("invalid_design", f"Design page `{relative}` requires a title and a Figma reference or `not applicable`.", 409)
+        apps = frontmatter.get("apps")
+        if not isinstance(apps, list) or not apps or any(not isinstance(item, str) or not item.strip() for item in apps) or len(set(apps)) != len(apps):
+            raise BoardError(
+                "invalid_design",
+                f"Design page `{relative}` lists the apps it designs under `apps`, each once: a nonempty list of the feature's apps.",
+                409,
+                {"path": relative},
+            )
         _require_headings(body, ("Summary", "Key design decisions", "States covered", "Component references", "Open design questions"), relative)
+        _validate_no_placeholders(body, relative)
+
+    def _validate_technical_design(self, relative: str, content: str) -> None:
+        """A technical design page (CONTRACTS 6.2): its fields, its sections and no placeholder text. Whether it is complete is the track's check."""
+
+        frontmatter, body = _parse_markdown(content, relative)
+        self._assert_frontmatter_fields(frontmatter, set(TECHNICAL_DESIGN_FIELDS), relative)
+        if not isinstance(frontmatter.get("feature-id"), str) or not isinstance(frontmatter.get("title"), str) or not frontmatter["title"].strip():
+            raise BoardError("invalid_technical_design", f"Technical design page `{relative}` requires `feature-id` and a nonblank `title`.", 409, {"path": relative})
+        apps = frontmatter.get("apps")
+        if not isinstance(apps, list) or not apps or any(not isinstance(item, str) or not item.strip() for item in apps):
+            raise BoardError("invalid_technical_design", f"Technical design page `{relative}` lists the apps it covers under `apps`.", 409, {"path": relative})
+        decisions = frontmatter.get("decisions")
+        if not isinstance(decisions, list) or any(not isinstance(item, str) for item in decisions):
+            raise BoardError(
+                "invalid_technical_design",
+                f"Technical design page `{relative}` lists its ADRs under `decisions` (an empty list when there are none).",
+                409,
+                {"path": relative},
+            )
+        _require_headings(body, TECHNICAL_DESIGN_SECTIONS, relative)
         _validate_no_placeholders(body, relative)
 
     @staticmethod
@@ -5926,8 +6755,9 @@ class BoardService:
     def _validate_api_contract(self, relative: str, content: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"feature-id", "version", "status"}, relative)
-        if frontmatter.get("version") != 1 or frontmatter.get("status") not in {"draft", "agreed", "implemented"}:
-            raise BoardError("invalid_api_contract", f"API contract `{relative}` has an invalid status.", 409)
+        version = frontmatter.get("version")
+        if isinstance(version, bool) or not isinstance(version, int) or version < 1 or frontmatter.get("status") not in {"draft", "agreed", "implemented"}:
+            raise BoardError("invalid_api_contract", f"API contract `{relative}` has an invalid version or status.", 409)
         _require_headings(body, ("Endpoints", "Data models", "Authentication requirements", "Notes"), relative)
         _validate_no_placeholders(body, relative)
 
@@ -5983,7 +6813,7 @@ class BoardService:
             from prism_cli.wiki_transitions import build_board_transition_preflight
 
             candidate = Path(temporary.name)
-            evaluated = build_board_transition_preflight(candidate, str(feature["id"]), action, named_apps=named_apps)
+            evaluated = build_board_transition_preflight(candidate, str(feature["id"]), action, named_apps=named_apps, proposal=True)
             # The scratch tree and the workspace are never part of a result.
             return relativize_paths(evaluated, [candidate, candidate.resolve(), self.root])
         finally:
@@ -7012,6 +7842,30 @@ def _require_headings(body: str, headings: Iterable[str], relative: str, hint: s
 
 _API_ENDPOINT = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b[\s`*|:()\[\]-]*(/[A-Za-z0-9_\-./{}:~%]*)")
 _API_SURFACE_PATH = re.compile(r"(?<![\w/.:])(/[A-Za-z0-9_\-./{}:~%]*[A-Za-z0-9_}])")
+
+
+def _tracks_after_page_changes(
+    old: DesignTracks, changed: Iterable[str], apps: Iterable[str], model: WorkspaceModel | None
+) -> DesignTracks:
+    """The tracks after the pages of the `changed` tracks changed (CONTRACTS 3.3).
+
+    A settled track whose pages change returns to `pending` (a UI track of a scope with no UI is `not-applicable` again), and the
+    other track joins `design-reaffirm` when it is `done` and keeps its pages.
+    """
+
+    changed = set(changed)
+    tracks = old
+    reaffirm = set(old.reaffirm)
+    for track in DESIGN_TRACKS:
+        if track in changed and old.resolved(track):
+            tracks = tracks.with_track(track, "pending")
+            reaffirm.discard(track)
+    tracks = normalize_ui_track(tracks, apps, model)
+    for track in DESIGN_TRACKS:
+        other = "technical" if track == "ui" else "ui"
+        if track in changed and old.resolved(track) and other not in changed and tracks.state(other) == "done":
+            reaffirm.add(other)
+    return tracks.with_reaffirm(item for item in reaffirm if tracks.state(item) == "done")
 
 
 def _api_path_key(path: str) -> str:

@@ -15,6 +15,7 @@ import unittest
 
 import yaml
 
+from prism_cli.wiki_model import NO_UI_TRACK_REASON, DesignTracks
 from tests.browser.board_page import REVIEWED_TEXT, BoardPage, expect
 from tests.browser.harness import FEATURES_BY_ID, BrowserCase, FixtureFeature, requires_browser_e2e
 from tests.test_core_workflow_fixture import CHECK_DATE
@@ -213,8 +214,12 @@ class ApplyScenarioTests(BrowserCase):
 
         old_meta, old_body = split_page(before[feature_path].decode("utf-8"))
         new_meta, new_body = split_page(after[feature_path].decode("utf-8"))
-        self.assertEqual(dict(old_meta, status=target_stage, owner=target_owner), new_meta)
-        self.assertEqual(list(old_meta), list(new_meta), "Frontmatter key order is preserved.")
+        expected_meta = dict(old_meta, status=target_stage, owner=target_owner)
+        if action == "design-start":
+            # Starting design initializes the tracks of a backend-only scope: no UI to design, the technical track pending.
+            expected_meta.update(DesignTracks("not-applicable", "pending", NO_UI_TRACK_REASON, None).frontmatter())
+        self.assertEqual(expected_meta, new_meta)
+        self.assertEqual(list(old_meta), list(new_meta)[: len(old_meta)], "Frontmatter key order is preserved.")
         self.assertNotIn("last-updated", new_meta, "A transition writes no date into the feature page.")
         self.assertEqual(old_body, new_body, "The page body is untouched.")
         run.effect(f"{feature.feature_id} {action}: frontmatter status {source_stage} -> {target_stage}, owner {target_owner}, body unchanged")

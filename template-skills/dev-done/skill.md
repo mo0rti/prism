@@ -64,7 +64,10 @@ proposed feature page's `## Delivery evidence` table, in the column order
 - **Artifact**: `version:<semver>`, `build:<name>#<number>`, `image:<name>@sha256:<64 hex digits>`,
   `package:<name>@<version>` or `commit:<7 to 40 hex digits>`. Anything else is rejected
   (`artifact_reference_invalid`); the board checks the form, never that the artifact exists.
-- **Contract**: `none`, or `F-XXX@v<version>:c1:<digest>` when the feature has an API contract.
+- **Contract**: `none` only when the feature has no API contract. Otherwise cite the contract as it is now,
+  `F-XXX@v<version>:c1:<digest>`, exactly as `read_workspace` reports it for the contract page in
+  `annotations.contract.citation`. A contract that was revised, or a row that cites `none` or another contract, is
+  `contract_binding_stale`. Marking the contract `implemented` does not change its digest.
 - **Implementation** and **Tests**: substantive references, such as a pull request link and a test command with its
   result. A placeholder is rejected.
 - **Basis**: `checked` when you verified the references, `attested` when you could not and the approving human

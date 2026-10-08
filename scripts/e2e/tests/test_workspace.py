@@ -62,6 +62,12 @@ class PageParsingTests(unittest.TestCase):
         question = ws.Question("1", "Q", "po", "resolved: open items remain elsewhere")
         self.assertFalse(question.is_open)
 
+    def test_design_tracks_are_read_from_the_front_matter(self):
+        tracks = "design-tracks:\n  ui: not-applicable\n  technical: done\n  ui-reason: No app in scope has a UI.\ndesign-reaffirm: []\n"
+        page = PAGE.replace("---\n\n", tracks + "---\n\n", 1)
+        self.assertEqual({"ui": "not-applicable", "technical": "done"}, ws.design_tracks(page))
+        self.assertEqual({}, ws.design_tracks(PAGE))
+
 
 class StatusBoardTests(unittest.TestCase):
     def test_rewrite_status_board_replaces_the_feature_rows_and_keeps_everything_else(self):
@@ -90,6 +96,24 @@ class FixtureTests(unittest.TestCase):
         for step in config.STEPS[:-1]:
             with self.subTest(step=step.id):
                 self.assertEqual(self.feature_status_after(step.id), (step.status, step.owner))
+
+    def test_the_design_tracks_follow_the_step(self):
+        expected = {
+            "po-handoff": {},
+            "design-start": {"ui": "not-applicable", "technical": "pending"},
+            "design-clarify": {"ui": "not-applicable", "technical": "pending"},
+            "design-handoff": {"ui": "not-applicable", "technical": "done"},
+            "dev-clarify": {"ui": "not-applicable", "technical": "done"},
+            "dev-start": {"ui": "not-applicable", "technical": "done"},
+            "dev-done": {"ui": "not-applicable", "technical": "done"},
+        }
+        for step, tracks in expected.items():
+            with self.subTest(step=step):
+                files = ws.fixture_files(ws.fixture_steps_through(step))
+                page = next(path for relative, path in files.items() if relative.startswith("knowledge/wiki/features/F-001-"))
+                self.assertEqual(tracks, ws.design_tracks(page.read_text(encoding="utf-8")))
+                has_technical = any(relative.startswith("knowledge/wiki/technical-design/") for relative in files)
+                self.assertEqual(tracks.get("technical") == "done", has_technical)
 
     def test_the_baseline_has_no_fixture_files(self):
         self.assertEqual(ws.fixture_files(ws.fixture_steps_through(None)), {})

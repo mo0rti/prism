@@ -14,9 +14,11 @@ import yaml
 
 from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.wiki_lint import lint_wiki
+from prism_cli.wiki_model import NO_UI_TRACK_REASON, DesignTracks, parse_criteria
 from prism_cli.wiki_transitions import build_board_transition_preflight, build_transition_preflight
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.board_approval import apply_preview, human_with_roles
+from tests.design_tracks import technical_design_page, with_tracks
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, create_core_workflow_fixture, write_processed_brief
 from tests.test_board_service import (
     _journey_business_rule_page,
@@ -625,9 +627,10 @@ class ApiSurfaceDeclarationTests(_DevDoneWorkspace):
 
 
 class HandoffApiContractTests(_BoardWorkspace):
-    """D16: design-handoff creates the feature's API contract at `agreed` when its API surface declares API work."""
+    """D16: design-handoff settles the technical track and creates the feature's API contract at `agreed` when its API surface declares API work."""
 
     CONTRACT = "knowledge/wiki/api-contracts/F-001.md"
+    TECHNICAL = "knowledge/wiki/technical-design/F-001-document-review.md"
     SURFACE = "A new endpoint `POST /api/v1/reviews/{id}/exports` returns the review summary as a PDF export for the signed-in reviewer."
 
     def setUp(self) -> None:
@@ -664,13 +667,22 @@ class HandoffApiContractTests(_BoardWorkspace):
         )
 
     def handoff(self, contract: str | None, *, path: str | None = None, link: str | None = None) -> list[dict[str, str]]:
-        feature = _set_feature_stage(self.read(FEATURE), "ready-for-dev", "dev", self.service)
+        """The handoff proposal: the feature at `ready-for-dev` with the technical track settled by its technical design page."""
+
+        current = self.read(FEATURE)
+        feature = _set_feature_stage(current, "ready-for-dev", "dev", self.service)
+        feature = with_tracks(feature, DesignTracks("not-applicable", "done", NO_UI_TRACK_REASON, None))
+        criteria = tuple(item.id for item in parse_criteria(_parse_markdown(current)[1], "F-001") if item.id)
         requirement = _journey_requirement_page("pending")
         if link is None and contract is not None:
             link = (path or self.CONTRACT).replace("knowledge/wiki/", "../")
         if link:
             requirement = _replace_body_section(self.service, requirement, "API contract reference", f"See [the API contract]({link}) for the export endpoint.")
-        changes = [{"path": FEATURE, "content": feature}, {"path": REQUIREMENT, "content": requirement}]
+        changes = [
+            {"path": FEATURE, "content": feature},
+            {"path": REQUIREMENT, "content": requirement},
+            {"path": self.TECHNICAL, "content": technical_design_page("F-001", ("backend",), criteria)},
+        ]
         if contract is not None:
             changes.append({"path": path or self.CONTRACT, "content": contract})
         return changes
@@ -737,18 +749,22 @@ class HandoffApiContractTests(_BoardWorkspace):
         error = self.rejection("design-handoff", self.handoff(self.contract(), path="knowledge/wiki/api-contracts/F-001-exports.md"))
         self.assertEqual(("api_contract_path_mismatch", 409), (error.code, error.status))
 
-    def test_an_existing_contract_is_never_rewritten_and_is_not_required_again(self) -> None:
+    def test_an_existing_contract_is_revised_only_with_a_version_and_is_not_required_again(self) -> None:
         existing = self.contract(status="agreed")
         self.write(self.CONTRACT, existing)
         # Present and untouched: the handoff needs no new page, and may repeat the current text.
         self.assertEqual("ready", self.preview("design-handoff", self.handoff(None, link="../api-contracts/F-001.md"))["classification"])
         self.assertEqual("ready", self.preview("design-handoff", self.handoff(existing))["classification"])
-        for rewritten in (existing.replace("status: agreed", "status: implemented"), existing.replace("Errors: 401, 404.", "Errors: 401.")):
-            with self.subTest(rewritten=rewritten[-60:]):
-                error = self.rejection("design-handoff", self.handoff(rewritten))
-                self.assertEqual(("api_contract_exists", 409), (error.code, error.status))
-                self.assertEqual({"path": self.CONTRACT, "feature_id": "F-001"}, error.details)
+        # A changed body keeps its `version`: the revision must raise it by one.
+        error = self.rejection("design-handoff", self.handoff(existing.replace("Errors: 401, 404.", "Errors: 401.")))
+        self.assertEqual(("contract_revision_required", 409), (error.code, error.status))
+        # An agreed page does not become `implemented` at the handoff.
+        error = self.rejection("design-handoff", self.handoff(existing.replace("status: agreed", "status: implemented")))
+        self.assertEqual(("api_contract_initial_status", 409), (error.code, error.status))
         self.assertEqual(existing, self.read(self.CONTRACT))
+        # A revision raises `version` by one and stays `agreed`.
+        revised = existing.replace("version: 1", "version: 2").replace("Errors: 401, 404.", "Errors: 401.")
+        self.assertEqual("ready", self.preview("design-handoff", self.handoff(revised))["classification"])
 
     def test_a_linked_shared_contract_covers_the_feature(self) -> None:
         self.write("knowledge/wiki/api-contracts/SHARED.md", self.contract())

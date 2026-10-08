@@ -11,7 +11,13 @@ from typing import Any, Callable, Iterable, Mapping
 from pathlib import Path
 
 from prism_cli.board_service import BoardError
-from prism_cli.wiki_model import VALID_FEATURE_OWNERS, parse_criteria, parse_markdown_text, within_wiki_read_scope
+from prism_cli.wiki_model import (
+    VALID_FEATURE_OWNERS,
+    contract_page_citation,
+    parse_criteria,
+    parse_markdown_text,
+    within_wiki_read_scope,
+)
 
 
 _PAGE_SIZE = 100
@@ -345,6 +351,7 @@ def _oversize_placeholder(item: Any) -> dict[str, Any]:
 
 
 _FEATURE_FILE = re.compile(r"^knowledge/wiki/features/F-\d+[^/]*\.md$")
+_CONTRACT_FILE = re.compile(r"^knowledge/wiki/api-contracts/[^/]+\.md$")
 
 
 def criteria_facts(feature_id: str, body: str) -> list[dict[str, Any]]:
@@ -361,8 +368,17 @@ def criteria_facts(feature_id: str, body: str) -> list[dict[str, Any]]:
 
 
 def read_annotations(relative: str, content: str) -> dict[str, Any] | None:
-    """Facts `read_workspace` returns beside a file: the criteria and their revisions for a feature page, otherwise none."""
+    """Facts `read_workspace` returns beside a file: the criteria and their revisions for a feature page, the version, digest and
+    citation (`F-XXX@v<version>:c1:<digest>`) for an API contract page, otherwise none."""
 
+    if _CONTRACT_FILE.match(relative):
+        page = parse_markdown_text(Path(relative), content)
+        if page.parse_errors:
+            return None
+        citation = contract_page_citation(page.frontmatter, page.body)
+        if citation is None:
+            return None
+        return {"contract": {"version": page.frontmatter["version"], "digest": citation.split(":", 1)[1], "citation": citation}}
     if not _FEATURE_FILE.match(relative):
         return None
     page = parse_markdown_text(Path(relative), content)

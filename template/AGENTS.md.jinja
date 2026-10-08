@@ -182,7 +182,7 @@ The fallback reads `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `i
 find pages), `status-board.md`, feature pages, app requirements, and only the relevant
 design, API, advisory, business-rule, persona, and decision pages. Keep malformed pages
 visible and compute only categories proved by files; the canonical blocker categories are
-`pending-board-review`, `missing-design`, `missing-app-requirements`,
+`pending-board-review`, `design-track-pending`, `missing-app-requirements`,
 `unresolved-open-questions`, `api-contract-not-ready`, and `cross-app-dependency`. Pages carry
 no date, so freshness comes from `log.md`: a current-state page's last verification is the latest
 `verify` entry that lists it, and it is stale when older than `wiki-stale-after-days` in
@@ -198,13 +198,15 @@ no date, so freshness comes from `log.md`: a current-state page's last verificat
 - `po-specify [F-XXX]` - author one raw page as a structured `specified` draft
 - `po-handoff [F-XXX]` - prepare the confirmed `specified` + `po` to `ready-for-design` + `designer` handoff
 - `design-intake [F-XXX] [folder]` - attach design artifacts to a feature
-- `design-clarify` - answer open questions assigned to Designer
-- `design-start [F-XXX]` - move confirmed `ready-for-design` work to `in-design`
-- `design-handoff [F-XXX]` - move feature to ready-for-dev
+- `design-clarify` - answer open questions assigned to the Designer or the Tech lead
+- `design-start [F-XXX]` - move confirmed `ready-for-design` work to `in-design` and write its design tracks
+- `design-ui-done [F-XXX]` - settle the UI design track (design pages that cover every app with a UI, or an exemption with a reason)
+- `tech-design-done [F-XXX] [not-applicable]` - settle the technical design track (technical design page, test strategy, API contract)
+- `design-handoff [F-XXX]` - move feature to ready-for-dev once both design tracks are settled
 - `dev-clarify` - answer open questions assigned to Dev
 - `dev-start [F-XXX]` - move confirmed `ready-for-dev` work to `in-dev`
-- `dev-done [F-XXX]` - mark a feature as shipped
-- `feature-reopen [F-XXX] [specified|in-design|in-dev]` - reopen one shipped feature after impact review
+- `dev-done [F-XXX] [app ...]` - record the delivery evidence of the named apps
+- `feature-reopen [F-XXX] [specified|in-design|in-dev]` - send a feature in development back to `specified` or `in-design`, or reopen one shipped feature, after impact review
 - `feature-scope [F-XXX]` - edit the app scope of one feature that is not `done`: its `apps`, its `## App scope` section and the requirement pages of the apps it gains (the way out of `app-retired-in-scope`)
 - `ask [F-XXX] "question" --to po|designer|dev` - route a question
 
@@ -213,11 +215,15 @@ no date, so freshness comes from `log.md`: a current-state page's last verificat
 The supported action mappings are exact: `po-specify` (`raw` + `po` to
 `specified` + `po`), `po-handoff` (`specified` + `po` to `ready-for-design` +
 `designer`), `design-start` (`ready-for-design` + `designer` to `in-design` +
-`designer`), `design-handoff` (`in-design` + `designer` to `ready-for-dev` +
-`dev`), `dev-start` (`ready-for-dev` + `dev` to `in-dev` + `dev`), and
-`dev-done` (`in-dev` + `dev` to `done` + `none`). Reopen uses the selected
-route in `feature-reopen` and the corresponding `reopen-spec`,
-`reopen-design`, or `reopen-dev` action. `po-specify` authors the structured
+`designer`), `design-ui-done` and `tech-design-done` (`ready-for-design` or
+`in-design` + the design owner to `in-design`; each settles one design track),
+`design-handoff` (`ready-for-design` or `in-design` + the design owner to
+`ready-for-dev` + `dev`, with both design tracks settled), `dev-start`
+(`ready-for-dev` + `dev` to `in-dev` + `dev`), and `dev-done` (`ready-for-dev` or
+`in-dev` + `dev` to the minimum of the app stages). A return from implementation
+uses the selected route in `feature-reopen` and the corresponding
+`dev-return-spec` or `dev-return-design` action; a reopen of shipped work uses
+`reopen-spec`, `reopen-design`, or `reopen-dev`. `po-specify` authors the structured
 body; no action is a generic status setter.
 
 Use the canonical selected-surface instructions and shared contract:
@@ -350,7 +356,8 @@ and adds only what is specific to Claude Code:
 2. If no feature page exists, run `po-intake [folder]` to create one from raw notes.
 3. For a raw feature page, run `po-specify [F-XXX]` to prepare the structured draft,
    then `po-handoff [F-XXX]` after PO completeness is verified.
-4. Start design with `design-start [F-XXX]`; after design is complete, run
+4. Start design with `design-start [F-XXX]`; settle the UI track with `design-ui-done [F-XXX]` and the technical
+   track with `tech-design-done [F-XXX]`; after both tracks are settled, run
    `design-handoff [F-XXX]` to generate app-requirements.
 5. Answer open dev questions with `dev-clarify`; they block `dev-start` until resolved.
    Start implementation with `dev-start [F-XXX]`, add endpoints to

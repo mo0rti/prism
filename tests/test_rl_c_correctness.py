@@ -22,6 +22,7 @@ from tests import test_feature_scope_apps as scope
 from tests.core_workflow_fixture import INTAKE_ITEM, create_core_workflow_fixture
 from tests.layered_support import generate_default_apps, no_background_gc
 from tests.test_board_service import _journey_feature_page, _read_revisions, _replace_body_section, _set_feature_stage, _write_index_rows
+from tests.test_feature_scope_apps import UI_DONE
 from tests.test_feature_scope_edit import NO_API, QUESTION, SOURCE, requirement, requirement_path, with_apps
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -99,13 +100,13 @@ class RetiredPathTests(unittest.TestCase):
 
 class LintAgreementTests(scope.WikiWorkspaceCase):
     def test_the_design_page_of_a_lower_case_feature_id_counts_as_the_design(self) -> None:
-        self.write_feature(["customer-android"])
+        self.write_feature(["customer-android"], extra=UI_DONE)
         self.write_requirement("customer-android")
-        self.assertEqual(1, len(self.with_code(self.lint(), "missing-design")))
+        self.assertEqual(1, len(self.with_code(self.lint(), "design-coverage-incomplete")))
         self.write_design()
         design = self.wiki / "design" / "F-001-payout-summary.md"
         design.write_text(design.read_text(encoding="utf-8").replace("feature-id: F-001", "feature-id: f-001"), encoding="utf-8")
-        self.assertEqual([], self.with_code(self.lint(), "missing-design"))
+        self.assertEqual([], self.with_code(self.lint(), "design-coverage-incomplete"))
 
     def test_the_advisory_board_and_the_project_foundation_are_current_state_pages(self) -> None:
         for name in ("BOARD.md", "PROJECT_FOUNDATION.md", "OTHER.md"):

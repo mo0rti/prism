@@ -83,6 +83,7 @@ class PageClassificationTests(unittest.TestCase):
             "personas/a.md": "personas",
             "business-rules/BR-001-a.md": "business-rules",
             "design/F-001-a.md": "design",
+            "technical-design/F-001-a.md": "technical-design",
             "app-requirements/F-001-backend.md": "app-requirements",
             "api-contracts/F-001.md": "api-contracts",
             "decisions/ADR-001-a.md": "decisions",

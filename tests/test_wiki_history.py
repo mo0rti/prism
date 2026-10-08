@@ -14,6 +14,7 @@ from prism_cli.workflow_install import apply_install, plan_install
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_model import HISTORY_DATE_FIELDS, load_markdown_page, parse_status_board_rows
 from tests import real_temp  # noqa: F401
+from tests.design_tracks import STARTED
 from tests.board_approval import approve
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 
@@ -305,7 +306,11 @@ class BoardHistoryTests(unittest.TestCase):
         self.assertEqual("applied", receipt["state"], receipt)
 
         after = load_markdown_page(self.root / self.feature)
-        self.assertEqual({**before_fields, "status": "in-design"}, dict(after.frontmatter))
+        # Starting design also writes the initial design tracks: a scope with no UI has its UI track not applicable.
+        self.assertEqual(
+            {**before_fields, "status": "in-design", **STARTED.frontmatter()},
+            dict(after.frontmatter),
+        )
         self.assertEqual(before_body, after.body)
         self.assertEqual([], [name for name in after.frontmatter if name in HISTORY_DATE_FIELDS])
         board = self.read("knowledge/wiki/status-board.md")

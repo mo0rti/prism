@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 from prism_cli import cli
+from tests.design_tracks import apply_tracks
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, PROCESSED_INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page
 from tests import real_temp  # noqa: F401
@@ -119,6 +120,7 @@ def _blocked_workspace(root: Path) -> Path:
         "owner": "dev",
         "advisory-review": "pending",
     })
+    apply_tracks(frontmatter, "in-dev")
     body = page.split("---", 2)[2]
     feature.write_text(
         "---\n" + yaml.safe_dump(frontmatter, sort_keys=False).rstrip() + "\n---" + body,

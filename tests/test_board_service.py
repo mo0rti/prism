@@ -22,9 +22,11 @@ import yaml
 
 from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE
+from prism_cli.wiki_model import parse_design_tracks
 from prism_cli.workflow_assets import asset_digest
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.board_approval import apply_preview, human_with_roles
+from tests.design_tracks import apply_tracks
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, PROCESSED_INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page, _write_index
 from tests.test_fs_safety import CLOUD_TAG, JUNCTION_TAG, fake_reparse
@@ -71,6 +73,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
                 "knowledge/wiki/features/*.md",
                 "knowledge/wiki/personas/*.md",
                 "knowledge/wiki/business-rules/*.md",
+                "knowledge/wiki/technical-design/*.md",
                 "knowledge/wiki/decisions/*.md",
                 "knowledge/wiki/topics/*.md",
                 "knowledge/wiki/research/*.md",
@@ -82,13 +85,17 @@ class BoardServiceValidatorTests(unittest.TestCase):
             ],
             "ask": ["knowledge/wiki/features/*.md"],
             "po-clarify": ["knowledge/wiki/features/*.md"],
-            "design-clarify": ["knowledge/wiki/features/*.md", "knowledge/wiki/design/*.md"],
+            "design-clarify": ["knowledge/wiki/features/*.md", "knowledge/wiki/design/*.md", "knowledge/wiki/technical-design/*.md"],
             "dev-clarify": ["knowledge/wiki/features/*.md", "knowledge/wiki/app-requirements/*.md"],
             "po-specify": ["knowledge/wiki/features/*.md"],
             "po-handoff": ["knowledge/wiki/features/*.md"],
             "design-start": ["knowledge/wiki/features/*.md"],
+            "design-ui-done": ["knowledge/wiki/features/*.md", "knowledge/wiki/design/*.md"],
+            "tech-design-done": ["knowledge/wiki/features/*.md", "knowledge/wiki/technical-design/*.md", "knowledge/wiki/api-contracts/*.md"],
             "design-handoff": [
                 "knowledge/wiki/features/*.md",
+                "knowledge/wiki/design/*.md",
+                "knowledge/wiki/technical-design/*.md",
                 "knowledge/wiki/app-requirements/*.md",
                 "knowledge/wiki/api-contracts/*.md",
             ],
@@ -549,7 +556,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
 
     def test_every_listed_reference_of_every_skill_resolves_through_get_skill_reference(self) -> None:
         names = [item["name"] for item in self.service.list_skills(self.actor)["skills"]]
-        self.assertEqual(27, len(names))
+        self.assertEqual(29, len(names))
         for name in names:
             with self.subTest(skill=name):
                 page = self.service.get_skill(self.actor, name)
@@ -995,7 +1002,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
             "| 1 | Which points should a review summary highlight? | designer | open |",
             "| 1 | Which points should a review summary highlight? | designer | resolved: Use a concise bulleted summary. |",
         )
-        proposed_design = self.service._read_text(design_path).replace("designer: Reviewer", "designer: Someone Else", 1)
+        proposed_design = self.service._read_text(design_path).replace("figma: reviewed-document-flow", "figma: another-flow", 1)
         changes = [
             {"path": FEATURE_PATH.as_posix(), "content": proposed_feature},
             {"path": design_relative, "content": proposed_design},
@@ -1007,7 +1014,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
 
         self.assertEqual(("design_frontmatter_change", 409), (error.code, error.status))
         self.assertIn(design_relative, error.message)
-        self.assertEqual({"path": design_relative, "fields": ["designer"]}, error.details)
+        self.assertEqual({"path": design_relative, "fields": ["figma"]}, error.details)
 
     def test_error_details_are_json_safe_and_small(self) -> None:
         self.assertIsNone(BoardError("x", "m", 400).details)
@@ -1516,9 +1523,9 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         stages = self.service.query(self.agent, "show", "F-001")["facts"]["feature"]["criteria"]
         self.assertEqual(["AC-1", "AC-2"], [item["id"] for item in stages])
 
-        # The routes of later work packages are registered and answer `action_unavailable`.
+        # The actions of later work packages are registered and answer `action_unavailable`.
         with self.assertRaises(BoardError) as unavailable:
-            self.service.preview_skill(self.agent, "feature-reopen", [{"path": feature_path, "content": self.service._read_text(self.root / feature_path)}], None, {})
+            self.service.query(self.agent, "transition-preflight", "F-001", "qa-pass")
         self.assertEqual(("action_unavailable", 409), (unavailable.exception.code, unavailable.exception.status))
 
     def _submit_skill(self, skill: str, changes: list[dict[str, str]], moves: list[dict[str, str]] | None = None) -> dict:
@@ -1696,11 +1703,16 @@ class EvidenceHistoryValidatorTests(unittest.TestCase):
         unlisted = self.error(self.after(self.entry(archive)), related=(supplied, before))
         self.assertEqual("reopen_invalidation_mismatch", unlisted.code)
 
-    def test_reopen_routes_answer_action_unavailable(self) -> None:
+    def test_the_routes_of_a_later_package_answer_action_unavailable(self) -> None:
+        # The QA returns and the reopen routes belong to a later package: the feature-reopen command is enabled for
+        # the returns from implementation, so a change from `ready-for-qa` to design names the unavailable route.
         agent = self.service.authenticate(self.service.create_participant("Workflow agent", "agent", True)["token"])
+        (self.root / self.FEATURE).write_text(self.before, encoding="utf-8")
+        changes = [{"path": self.FEATURE, "content": _set_feature_stage(self.before, "in-design", "tech-lead")}]
         with self.assertRaises(BoardError) as caught:
-            self.service.preview_skill(agent, "feature-reopen", [{"path": self.FEATURE, "content": self.before}], None, {})
+            self.service.preview_skill(agent, "feature-reopen", changes, None, _read_revisions(self.service, agent, "feature-reopen", changes))
         self.assertEqual(("action_unavailable", 409), (caught.exception.code, caught.exception.status))
+        self.assertEqual("qa-return-design", caught.exception.details["action"])
 
 
 def _read_revisions(
@@ -1741,6 +1753,7 @@ def _set_feature_stage(content: str, status: str, owner: str, service: BoardServ
     frontmatter, body = _parse_markdown(content)
     frontmatter["status"] = status
     frontmatter["owner"] = owner
+    apply_tracks(frontmatter, status, parse_design_tracks(frontmatter)[0])
     if service is not None:
         return service._replace_frontmatter(content, frontmatter)
     return f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---\n{body}"
@@ -1748,7 +1761,7 @@ def _set_feature_stage(content: str, status: str, owner: str, service: BoardServ
 
 def _design_page() -> str:
     return (
-        "---\nfeature-id: F-001\ntitle: Document review\ndesigner: Reviewer\n"
+        "---\nfeature-id: F-001\ntitle: Document review\napps: [backend]\n"
         "figma: reviewed-document-flow\n---\n\n"
         "## Summary\nThe reviewer sees the document title and review status.\n\n"
         "## Key design decisions\nKeep the review outcome beside the source document.\n\n"
@@ -1790,6 +1803,7 @@ def _journey_feature_page(
             "revalidation": [],
         }
     )
+    apply_tracks(frontmatter, status)
     question_table = (
         "| # | Question | Owner | Status |\n"
         "|---|----------|-------|--------|\n"
@@ -1865,6 +1879,7 @@ def _set_stage_and_revalidation(
     frontmatter["status"] = status
     frontmatter["owner"] = owner
     frontmatter["revalidation"] = domains
+    apply_tracks(frontmatter, status, parse_design_tracks(frontmatter)[0])
     return service._replace_frontmatter(content, frontmatter)
 
 
@@ -1894,7 +1909,7 @@ def _journey_business_rule_page() -> str:
 
 def _journey_design_page() -> str:
     return (
-        "---\nfeature-id: F-001\ntitle: Document review\ndesigner: Reviewer\n"
+        "---\nfeature-id: F-001\ntitle: Document review\napps: [backend]\n"
         "figma: reviewed-document-flow\n---\n\n"
         "## Summary\nThe reviewer sees the document title and review status.\n\n"
         "## Key design decisions\nKeep the review outcome beside the source document.\n\n"

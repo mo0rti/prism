@@ -59,36 +59,36 @@ METRICS = (
 # Ceilings per operation and metric as (slope, intercept): count(N) <= slope * N + intercept.
 # They sit just above what the code does today. Lower them when a change removes work.
 # The intercepts include the fixed pages and folders of every workspace: status-board.md, direction.md and
-# roadmap.md, and the topics, research and plans folders. No slope changed.
+# roadmap.md, the topics, research, plans and technical-design folders and their format pages. No slope changed.
 # A preview of a gated action (`po-handoff`) also returns the `review_revision` its human reads (CONTRACTS 1.3): the policy once more
 # and one more read of each source file. That is a fixed cost, so it raises the `preview_transition` file_opens intercept and no slope.
 CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
     "preview_transition": {
         "page_parses": (1, 11),
-        "file_opens": (1, 46),
+        "file_opens": (1, 47),
         "workspace_fingerprint": (0, 0),
         "validate_graph_inputs": (0, 2),
         "lint_wiki": (0, 1),
         "build_graph": (0, 0),
-        "scandir": (0, 93),
+        "scandir": (0, 100),
     },
     "query_blockers": {
         "page_parses": (1, 11),
-        "file_opens": (3, 91),
+        "file_opens": (3, 105),
         "workspace_fingerprint": (0, 2),
         "validate_graph_inputs": (0, 2),
         "lint_wiki": (0, 1),
         "build_graph": (0, 0),
-        "scandir": (0, 110),
+        "scandir": (0, 118),
     },
     "build_graph": {
         "page_parses": (1, 11),
-        "file_opens": (4, 149),
+        "file_opens": (4, 172),
         "workspace_fingerprint": (0, 3),
         "validate_graph_inputs": (0, 0),
         "lint_wiki": (0, 1),
         "build_graph": (0, 1),
-        "scandir": (0, 131),
+        "scandir": (0, 141),
     },
     # An unchanged workspace opens no file: the poller's stat gate trusts every old, unchanged file.
     "idle_scan": {
@@ -98,7 +98,7 @@ CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
         "validate_graph_inputs": (0, 1),
         "lint_wiki": (0, 0),
         "build_graph": (0, 0),
-        "scandir": (0, 42),
+        "scandir": (0, 45),
     },
     # A fresh apply no longer evaluates the same files a second time in its roll-forward (the recovery revalidation).
     # It binds the operation's dependency set (the relevant-source snapshot of a reviewed recovery) before it validates, compares it
@@ -106,12 +106,12 @@ CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
     # snapshots of a fixed cost each; no slope changed.
     "apply": {
         "page_parses": (1, 15),
-        "file_opens": (4, 330),
+        "file_opens": (4, 363),
         "workspace_fingerprint": (0, 4),
         "validate_graph_inputs": (0, 16),
         "lint_wiki": (0, 2),
         "build_graph": (0, 1),
-        "scandir": (0, 530),
+        "scandir": (0, 563),
     },
 }
 

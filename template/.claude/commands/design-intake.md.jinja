@@ -33,11 +33,19 @@ joined by hyphens, for example `2026-10-06-checkout-design`. The connected board
      summary together with the complete preview in one message and ask the human to confirm, correct,
      or cancel it. Call `apply` only after that confirmation; a correction is a new preview, and a
      cancel means no `apply`.
-7. Create `knowledge/wiki/design/[F-XXX]-[slug].md`. Mark each claim with an evidence label and link
+7. Create `knowledge/wiki/design/[F-XXX]-[slug].md` with the front matter `feature-id`, `title`, `apps`
+   (the feature's apps the design covers; each app with a UI needs a page that lists it before the UI
+   track can be settled) and `figma`. Mark each claim with an evidence label and link
    the processed path of the source file as the evidence of every Decided or Observed claim, for
    example `../../intake/processed/[folder-name]/notes.md`. When the new source changes a claim the
    page already makes, replace that claim in place
-8. Update the `## Design` section of the feature file
+8. Update the `## Design` section of the feature file. Design pages belong to the `ui` track and are
+   locked from `ready-for-dev` on (`track_page_locked`): intake attaches them while the feature is
+   `specified`, `ready-for-design` or `in-design`. When the feature's `ui` track is already settled
+   (`done` or `not-applicable`), attaching or changing a page sets it back to `pending`: change
+   `design-tracks.ui` to `pending` (without `ui-reason`), and add `technical` to `design-reaffirm` when that
+   track is `done`. The board rejects a proposal that leaves the track as it was (`track_reset_required`).
+   Write no other `design-tracks` or `design-reaffirm` change; `/design-ui-done` settles the track
 9. For any UI states not covered, add open questions with owner = `designer`
 10. Add or replace the design page's line in `index.md` and append a `log.md` entry in the log format that the wiki schema defines
 11. Move the intake folder, under the same name, to `processed/` with a `MANIFEST.md` that lists the

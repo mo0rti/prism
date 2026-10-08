@@ -111,7 +111,7 @@ No quarantined items.
 ## Blocker snapshot
 
 - pending-board-review: 1
-- missing-design: 1
+- design-track-pending: 1
 - missing-app-requirements: 2
 - unresolved-open-questions: 2
 
@@ -157,7 +157,7 @@ If this file disagrees with the underlying wiki files, the underlying wiki files
 
 ## Blocker snapshot
 - pending-board-review: 1
-- missing-design: 1
+- design-track-pending: 1
 - missing-app-requirements: 2
 - unresolved-open-questions: 2
 

@@ -33,6 +33,7 @@ JOURNEY_FOLDERS = (
     "knowledge/wiki/app-requirements",
     "knowledge/wiki/business-rules",
     "knowledge/wiki/design",
+    "knowledge/wiki/technical-design",
     "knowledge/wiki/api-contracts",
     "knowledge/wiki/decisions",
 )
@@ -441,6 +442,31 @@ def declares_api_work(text: str) -> bool:
 
     normalized = re.sub(r"\s+", " ", api_surface_section(text)).strip().lower().rstrip(".").strip()
     return bool(normalized) and normalized not in _NO_API_SURFACE
+
+
+def design_tracks(text: str) -> dict[str, str]:
+    """The `ui` and `technical` states of a feature page's `design-tracks` front matter (empty when it has none)."""
+
+    states: dict[str, str] = {}
+    lines = text.split(chr(10))
+    in_tracks = False
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if line.startswith("design-tracks:"):
+            in_tracks = True
+            continue
+        if in_tracks and line[:1] not in {" ", chr(9)}:
+            in_tracks = False
+        match = re.match(r"^\s+(ui|technical):\s*(.*)$", line) if in_tracks else None
+        if match:
+            states[match.group(1)] = match.group(2).strip()
+    return states
+
+
+def find_technical_design(workspace: Path, feature_id: str = config.FEATURE_ID) -> Path | None:
+    pages = sorted((workspace / "knowledge/wiki/technical-design").glob(f"{feature_id}-*.md"))
+    return pages[0] if pages else None
 
 
 API_CONTRACT = "knowledge/wiki/api-contracts/F-001.md"

@@ -23,6 +23,7 @@ from prism_cli.roles import RolePredicate
 from prism_cli.wiki_transitions import lookup_action
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.board_approval import give_apps_a_ui
+from tests.design_tracks import started
 from tests.test_board_service import _read_revisions
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 from tests import real_temp  # noqa: F401
@@ -106,7 +107,7 @@ class GatedBoardCase(unittest.TestCase):
 
     def agent_proposal(self, agent: Actor | None = None):
         agent = agent or self.agent
-        content = self.read(FEATURE).replace("status: ready-for-design", "status: in-design")
+        content = started(self.read(FEATURE))
         changes = [{"path": FEATURE, "content": content}]
         revisions = _read_revisions(self.service, agent, "design-start", changes)
         preview = self.service.preview_skill(agent, "design-start", changes, read_revisions=revisions)

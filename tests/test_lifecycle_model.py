@@ -426,10 +426,25 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(set(names), set(ACTION_BY_ID))
 
     def test_only_the_rows_of_enabled_packages_are_available(self) -> None:
-        self.assertEqual({"D1"}, set(ENABLED_PACKAGES))
+        self.assertEqual({"D1", "D2"}, set(ENABLED_PACKAGES))
         enabled = sorted(spec.action for spec in ACTION_SPECS if spec.enabled)
         self.assertEqual(
-            sorted(["po-specify", "po-handoff", "design-start", "design-handoff", "dev-start", "dev-done", "scope-edit", "operation-repair"]),
+            sorted(
+                [
+                    "po-specify",
+                    "po-handoff",
+                    "design-start",
+                    "design-ui-done",
+                    "tech-design-done",
+                    "design-handoff",
+                    "dev-start",
+                    "dev-done",
+                    "dev-return-spec",
+                    "dev-return-design",
+                    "scope-edit",
+                    "operation-repair",
+                ]
+            ),
             enabled,
         )
         for spec in ACTION_SPECS:
@@ -439,7 +454,7 @@ class RegistryTests(unittest.TestCase):
                     self.assertIsNone(spec.unavailable_reason)
                 else:
                     self.assertIn(spec.package, spec.unavailable_reason)
-                    self.assertNotEqual("D1", spec.package)
+                    self.assertNotIn(spec.package, {"D1", "D2"})
 
     def test_the_direct_human_actions_are_exactly_the_three_of_the_contract(self) -> None:
         human = sorted(spec.action for spec in ACTION_SPECS if MODE_HUMAN_DIRECT in spec.modes and spec.subject == "feature")
@@ -463,14 +478,38 @@ class RegistryTests(unittest.TestCase):
 
     def test_write_scopes_and_markers(self) -> None:
         self.assertEqual(
-            {"po-specify", "po-handoff", "design-start", "design-handoff", "dev-start", "dev-done", "scope-edit"},
+            {
+                "po-specify",
+                "po-handoff",
+                "design-start",
+                "design-ui-done",
+                "tech-design-done",
+                "design-handoff",
+                "dev-start",
+                "dev-done",
+                "dev-return-spec",
+                "dev-return-design",
+                "scope-edit",
+            },
             set(WRITE_SCOPES),
         )
         self.assertEqual(3, TRANSITION_CAPABILITY_VERSION)
         # A changed command is at contract v2; the marker is read by the skill layer and the template contract check.
-        for action, version in (("po-specify", 2), ("po-handoff", 2), ("design-start", 2), ("design-handoff", 2), ("dev-start", 2), ("dev-done", 2)):
+        for action, version in (
+            ("po-specify", 2),
+            ("po-handoff", 2),
+            ("design-start", 2),
+            ("design-handoff", 2),
+            ("dev-start", 2),
+            ("dev-done", 2),
+            ("dev-return-spec", 2),
+            ("dev-return-design", 2),
+            ("design-ui-done", 1),
+            ("tech-design-done", 1),
+        ):
             with self.subTest(action=action):
-                self.assertEqual(f"prism:{action}-contract:v{version}", capability_marker(lookup_action(action)))
+                command = lookup_action(action).command
+                self.assertEqual(f"prism:{command}-contract:v{version}", capability_marker(lookup_action(action)))
 
 
 class PolicyTests(unittest.TestCase):
@@ -925,12 +964,7 @@ class FlowTests(_Workspace):
 
     def test_actions_of_later_packages_answer_action_unavailable(self) -> None:
         self.walk_to_dev()
-        page = self.read(FEATURE)
-        for skill in ("feature-reopen",):
-            with self.subTest(skill=skill):
-                error = self.rejection(skill, [{"path": FEATURE, "content": page}])
-                self.assertEqual(("action_unavailable", 409), (error.code, error.status))
-        for action in ("qa-pass", "release-done", "dev-return-design", "reopen-dev"):
+        for action in ("qa-pass", "release-done", "qa-return-design", "reopen-dev"):
             with self.subTest(action=action), self.assertRaises(BoardError) as caught:
                 self.service.query(self.agent, "transition-preflight", "F-001", action)
             self.assertEqual("action_unavailable", caught.exception.code)

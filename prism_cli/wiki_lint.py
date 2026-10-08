@@ -13,7 +13,6 @@ from urllib.parse import unquote, urlsplit
 
 from prism_cli.app_model import (
     CAPABILITIES,
-    CAPABILITY_HAS_UI,
     UNKNOWN,
     WORKSPACE_REPOSITORY_ID,
     WorkspaceModel,
@@ -38,6 +37,7 @@ from prism_cli.wiki_model import (
     app_stages_text,
     candidate_relative_markdown_link as _candidate_relative_link,
     clean_cell,
+    contract_page_citation,
     criteria_high_water,
     expected_owner,
     extract_markdown_links,
@@ -45,6 +45,7 @@ from prism_cli.wiki_model import (
     minimum_stage,
     parse_app_revalidation,
     parse_criteria,
+    parse_design_tracks,
     parse_evidence_history,
     processed_source_path,
     qa_coverage,
@@ -67,6 +68,8 @@ from prism_cli.wiki_model import (
     section_text,
     stale_qa_rows,
     status_rank,
+    technical_design_problems,
+    ui_apps,
     within_wiki_read_scope,
 )
 from prism_cli.fs_safety import reparse_kind
@@ -100,7 +103,6 @@ from prism_cli.workspace import (
 
 DEFAULT_WIKI_STALE_AFTER_DAYS = 14
 PENDING_BOARD_REVIEW_STATUSES = set(FEATURE_STATUS_ORDER[2:-1])  # ready-for-design up to ready-for-release
-DESIGN_REQUIRED_STATUSES = set(FEATURE_STATUS_ORDER[4:])  # ready-for-dev and later
 APP_REQUIREMENTS_REQUIRED_STATUSES = set(FEATURE_STATUS_ORDER[4:-1])
 API_CONTRACT_DOWNSTREAM_STATUSES = set(FEATURE_STATUS_ORDER[4:-1])
 # The owners whose open questions block a feature that is ready for development or in development; `qa` and `release`
@@ -109,7 +111,7 @@ DEVELOPMENT_QUESTION_OWNERS = frozenset({"po", "designer", "tech-lead", "dev"})
 
 WIKI_BLOCKER_CODES = {
     "pending-board-review",
-    "missing-design",
+    "design-track-pending",
     "missing-app-requirements",
     "unresolved-open-questions",
     "api-contract-not-ready",
@@ -159,6 +161,7 @@ _FRONTMATTER_PAGE_DIRECTORIES = {
     "decisions",
     "design",
     "personas",
+    "technical-design",
     *GENERAL_PAGE_FOLDERS,
 }
 
@@ -390,14 +393,10 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
             continue
         diagnostics.extend(_lint_auxiliary_page(page, wiki_root))
 
-    diagnostics.extend(
-        _lint_feature_blockers(
-            feature_pages,
-            requirements_by_feature_app,
-            _design_pages_by_feature(all_pages, wiki_root),
-            model,
-        )
-    )
+    diagnostics.extend(_lint_feature_blockers(feature_pages, requirements_by_feature_app, model))
+    diagnostics.extend(_lint_design_tracks(feature_pages, requirement_pages, all_pages, wiki_root, model))
+    diagnostics.extend(_lint_technical_design_pages(all_pages, wiki_root, features_by_id))
+    diagnostics.extend(_lint_contract_bindings(feature_pages, requirement_pages, all_pages, wiki_root, model))
     diagnostics.extend(_lint_api_contract_blockers(feature_pages, requirement_pages, all_pages, wiki_root))
     diagnostics.extend(_lint_cross_app_dependencies(requirement_pages, feature_pages, wiki_root, model))
     diagnostics.extend(_lint_history_dates(all_pages, wiki_root))
@@ -712,7 +711,6 @@ def _is_under(path: Path, root: Path) -> bool:
 def _lint_feature_blockers(
     feature_pages: list[FeaturePage],
     requirements_by_feature_app: dict[tuple[str | None, str | None], AppRequirementPage],
-    designs_by_feature: dict[str, list[MarkdownPage]],
     model: WorkspaceModel,
 ) -> list[WikiDiagnostic]:
     diagnostics: list[WikiDiagnostic] = []
@@ -729,23 +727,6 @@ def _lint_feature_blockers(
                     feature_id,
                 )
             )
-
-        if feature.status in DESIGN_REQUIRED_STATUSES:
-            ui_apps = sorted(
-                {app_id for app_id in feature.apps if (app := model.app(app_id)) is not None and app.gate_capability(CAPABILITY_HAS_UI)}
-            )
-            if ui_apps and normalize_feature_id(feature_id) not in designs_by_feature:
-                apps = ", ".join(ui_apps)
-                message = f"Feature `{feature_id}` is {feature.status} for app(s) with a UI {apps} but has no matching design page."
-                diagnostics.append(
-                    _diag(
-                        "missing-design",
-                        "error",
-                        path,
-                        message,
-                        feature_id,
-                    )
-                )
 
         if feature.status in APP_REQUIREMENTS_REQUIRED_STATUSES:
             for app_id in sorted(set(feature.apps)):
@@ -776,6 +757,214 @@ def _lint_feature_blockers(
                             feature_id,
                         )
                     )
+    return diagnostics
+
+
+def _technical_pages_by_feature(pages: list[MarkdownPage], wiki_root: Path) -> dict[str, list[MarkdownPage]]:
+    technical: dict[str, list[MarkdownPage]] = {}
+    root = _resolve(wiki_root / "technical-design")
+    for page in pages:
+        if not _is_under(page.path, root):
+            continue
+        feature_id = page.frontmatter.get("feature-id")
+        if not isinstance(feature_id, str) or not feature_id:
+            feature_id = feature_id_from_path(page.path)
+        if feature_id:
+            technical.setdefault(normalize_feature_id(feature_id), []).append(page)
+    return technical
+
+
+def _lint_design_tracks(
+    feature_pages: list[FeaturePage],
+    requirement_pages: list[AppRequirementPage],
+    pages: list[MarkdownPage],
+    wiki_root: Path,
+    model: WorkspaceModel,
+) -> list[WikiDiagnostic]:
+    """CONTRACTS 3.1 to 3.4: the design tracks of a feature agree with its status, its design pages and its technical design page."""
+
+    designs = _design_pages_by_feature(pages, wiki_root)
+    technical = _technical_pages_by_feature(pages, wiki_root)
+    diagnostics: list[WikiDiagnostic] = []
+    for feature in feature_pages:
+        rank = status_rank(feature.status)
+        if rank < 0:
+            continue
+        path = feature.page.path
+        feature_id = feature.feature_id
+        frontmatter = feature.page.frontmatter
+        tracks, problems = parse_design_tracks(frontmatter)
+        for message in problems:
+            diagnostics.append(_diag("design-tracks-invalid", "error", path, message, feature_id))
+        present = "design-tracks" in frontmatter or "design-reaffirm" in frontmatter
+        if present and rank < status_rank("ready-for-design"):
+            diagnostics.append(
+                _diag("design-tracks-invalid", "error", path, f"`design-tracks` exists from design on, but the feature is `{feature.status}`; a route to `specified` removes it.", feature_id)
+            )
+        if not present and rank >= status_rank("in-design"):
+            diagnostics.append(
+                _diag("design-tracks-missing", "error", path, f"Feature `{feature_id}` is `{feature.status}` and needs `design-tracks` (`ui` and `technical`) in its front matter.", feature_id)
+            )
+        if tracks is None:
+            continue
+        active = active_scope(feature.apps, model)
+        if rank >= status_rank("ready-for-dev") and (tracks.unresolved or tracks.reaffirm):
+            pending = [*(f"`{track}` is `{tracks.state(track)}`" for track in tracks.unresolved), *(f"`{track}` awaits reaffirmation" for track in tracks.reaffirm)]
+            diagnostics.append(
+                _diag(
+                    "design-track-pending",
+                    "error",
+                    path,
+                    f"Feature `{feature_id}` is `{feature.status}` but its design tracks are not settled: {'; '.join(pending)}.",
+                    feature_id,
+                )
+            )
+        api_work = api_surface_declared(section_text(feature.page.body, "API surface"))
+        if tracks.ui == "not-applicable" and not (tracks.ui_reason or "").strip():
+            diagnostics.append(_diag("ui-exemption-reason-required", "error", path, "The UI track is `not-applicable` and needs a non-blank `ui-reason`.", feature_id))
+        if tracks.technical == "not-applicable":
+            if not (tracks.technical_reason or "").strip():
+                diagnostics.append(_diag("technical-track-required", "error", path, "The technical track is `not-applicable` and needs a non-blank `technical-reason`.", feature_id))
+            elif api_work:
+                diagnostics.append(_diag("technical-track-required", "error", path, "The technical track cannot be `not-applicable` while the API surface declares API work.", feature_id))
+        if tracks.ui == "done" and rank >= status_rank("in-design"):
+            wanted = ui_apps(active, model)
+            covered = {
+                app
+                for page in designs.get(normalize_feature_id(feature_id), [])
+                for app in (page.frontmatter.get("apps") if isinstance(page.frontmatter.get("apps"), list) else [])
+                if isinstance(app, str)
+            }
+            missing = [app for app in wanted if app not in covered]
+            if missing:
+                diagnostics.append(
+                    _diag(
+                        "design-coverage-incomplete",
+                        "error",
+                        path,
+                        f"The UI track of `{feature_id}` is `done` but no design page covers {', '.join(f'`{app}`' for app in missing)}; list each app with a UI in the `apps` of a design page.",
+                        feature_id,
+                    )
+                )
+        if tracks.technical == "done" and rank >= status_rank("in-design"):
+            candidates = technical.get(normalize_feature_id(feature_id), [])
+            if not candidates:
+                diagnostics.append(
+                    _diag("missing-technical-design", "error", path, f"The technical track of `{feature_id}` is `done` but the feature has no technical design page.", feature_id)
+                )
+            elif len(candidates) > 1:
+                diagnostics.append(
+                    _diag(
+                        "technical-design-feature-mismatch",
+                        "error",
+                        candidates[0].path,
+                        f"Feature `{feature_id}` has {len(candidates)} technical design pages; it has one.",
+                        feature_id,
+                    )
+                )
+            else:
+                page = candidates[0]
+                if not page.parse_errors:
+                    criteria = [item.id for item in parse_criteria(feature.page.body, feature_id) if item.id]
+                    # The strategy is written for the criteria of the design; a criterion added later (dev-clarify) is QA's to cover.
+                    check_strategy = feature.status == "in-design"
+                    for code, message in technical_design_problems(
+                        page.frontmatter, page.body, feature_id=feature_id, scope=active, criteria_ids=criteria, check_strategy=check_strategy
+                    ):
+                        diagnostics.append(_diag(code, "error", page.path, message, feature_id))
+            if api_work and not _api_contract_pages_for_feature(feature, requirement_pages, pages, wiki_root):
+                diagnostics.append(
+                    _diag(
+                        "api-contract-required",
+                        "error",
+                        path,
+                        f"The technical track of `{feature_id}` is `done` and its API surface declares API work, but the feature has no API contract.",
+                        feature_id,
+                    )
+                )
+    return diagnostics
+
+
+def _lint_technical_design_pages(
+    pages: list[MarkdownPage],
+    wiki_root: Path,
+    features_by_id: dict[str, FeaturePage],
+) -> list[WikiDiagnostic]:
+    """A technical design page names an existing feature and is named for it (CONTRACTS 6.2)."""
+
+    diagnostics: list[WikiDiagnostic] = []
+    root = _resolve(wiki_root / "technical-design")
+    for page in pages:
+        if not _is_under(page.path, root) or page.parse_errors:
+            continue
+        feature_id = page.frontmatter.get("feature-id")
+        if not isinstance(feature_id, str) or not feature_id.strip():
+            continue
+        if normalize_feature_id(feature_id) not in features_by_id:
+            diagnostics.append(
+                _diag("technical-design-feature-mismatch", "error", page.path, f"The technical design page names `{feature_id}`, which is not a feature of this wiki.", feature_id)
+            )
+            continue
+        stem = page.path.stem.lower()
+        wanted = normalize_feature_id(feature_id)
+        if stem != wanted and not stem.startswith(wanted + "-"):
+            diagnostics.append(
+                _diag("technical-design-feature-mismatch", "error", page.path, f"A technical design page is named `{feature_id}-<slug>.md`, but this one is `{page.path.name}`.", feature_id)
+            )
+    return diagnostics
+
+
+def _lint_contract_bindings(
+    feature_pages: list[FeaturePage],
+    requirement_pages: list[AppRequirementPage],
+    pages: list[MarkdownPage],
+    wiki_root: Path,
+    model: WorkspaceModel,
+) -> list[WikiDiagnostic]:
+    """CONTRACTS 3.4: the Contract cell of an active app's delivery row cites the contract as it is now, and `none` only when there is none.
+
+    A released app is checked against the snapshot of its release record, which belongs to the release package.
+    """
+
+    diagnostics: list[WikiDiagnostic] = []
+    for feature in feature_pages:
+        if status_rank(feature.status) < status_rank("in-dev"):
+            continue
+        evidence = read_feature_evidence(feature.page.body)
+        if not evidence.delivery:
+            continue
+        stages = app_stages(active_scope(feature.apps, model), evidence)
+        current = {
+            citation
+            for contract in _api_contract_pages_for_feature(feature, requirement_pages, pages, wiki_root)
+            if (citation := contract_page_citation(contract.frontmatter, contract.body)) is not None
+        }
+        for row in evidence.delivery:
+            if stages.get(row.app) in {None, "released"}:
+                continue
+            cited = clean_cell(row.contract)
+            if cited.lower() == "none":
+                if current:
+                    diagnostics.append(
+                        _diag(
+                            "stale-delivery-evidence",
+                            "error",
+                            feature.page.path,
+                            f"The delivery row of `{row.app}` cites no contract, but {feature.feature_id} has an API contract ({', '.join(f'`{item}`' for item in sorted(current))}).",
+                            feature.feature_id,
+                        )
+                    )
+            elif cited not in current:
+                diagnostics.append(
+                    _diag(
+                        "stale-delivery-evidence",
+                        "error",
+                        feature.page.path,
+                        f"The delivery row of `{row.app}` cites the contract `{cited}`, which is not the current contract of {feature.feature_id}"
+                        + (f" ({', '.join(f'`{item}`' for item in sorted(current))})." if current else " (it has none)."),
+                        feature.feature_id,
+                    )
+                )
     return diagnostics
 
 
@@ -1815,6 +2004,7 @@ def _is_non_source_page(path: Path, wiki_root: Path) -> bool:
         "features",
         "personas",
         "app-requirements",
+        "technical-design",
         *GENERAL_PAGE_FOLDERS,
         *ROOT_PAGE_KINDS,
     }
@@ -1860,6 +2050,8 @@ def _lint_auxiliary_page(page: MarkdownPage, wiki_root: Path) -> list[WikiDiagno
         return _lint_api_contract_page(page, feature_id)
     if directory == "design":
         return _lint_design_page(page, feature_id)
+    if directory == "technical-design":
+        return _lint_technical_design_page(page, feature_id)
     if directory == "advisory":
         return _lint_advisory_review_page(page, feature_id)
     if directory == "business-rules":
@@ -1894,12 +2086,35 @@ def _lint_api_contract_page(page: MarkdownPage, feature_id: str | None) -> list[
     return diagnostics
 
 
+_DESIGN_PAGE_FIELDS = ("feature-id", "title", "apps", "figma")
+
+
 def _lint_design_page(page: MarkdownPage, feature_id: str | None) -> list[WikiDiagnostic]:
     diagnostics = _lint_aux_required_string(page, "feature-id", "design", feature_id)
     diagnostics.extend(_lint_aux_required_string(page, "title", "design", feature_id))
+    diagnostics.extend(_lint_aux_required_string_list(page, "apps", "design", feature_id))
     diagnostics.extend(_lint_aux_required_string(page, "figma", "design", feature_id))
-    if "designer" in page.frontmatter and not isinstance(page.frontmatter["designer"], str):
-        diagnostics.append(_diag("invalid-design-designer", "error", page.path, "`designer` must be a string when present.", feature_id))
+    for key in page.frontmatter:
+        if key not in _DESIGN_PAGE_FIELDS:
+            diagnostics.append(
+                _diag(
+                    "unsupported-design-field",
+                    "error",
+                    page.path,
+                    f"`{key}` is not a design page field; a design page carries only {', '.join(f'`{name}`' for name in _DESIGN_PAGE_FIELDS)}.",
+                    feature_id,
+                )
+            )
+    return diagnostics
+
+
+def _lint_technical_design_page(page: MarkdownPage, feature_id: str | None) -> list[WikiDiagnostic]:
+    """The front matter of a technical design page (CONTRACTS 6.2); its completeness is judged with the feature's track."""
+
+    diagnostics = _lint_aux_required_string(page, "feature-id", "technical-design", feature_id)
+    diagnostics.extend(_lint_aux_required_string(page, "title", "technical-design", feature_id))
+    diagnostics.extend(_lint_aux_required_string_list(page, "apps", "technical-design", feature_id))
+    diagnostics.extend(_lint_aux_required_string_list(page, "decisions", "technical-design", feature_id))
     return diagnostics
 
 
@@ -2323,18 +2538,6 @@ def _lint_feature_evidence(feature: FeaturePage, model: WorkspaceModel) -> list[
     released_apps = [app_id for app_id, stage in stages.items() if stage == "released"]
     for row, reason in stale_qa_rows(criteria, evidence, history, skip_apps=released_apps):
         diagnostics.append(_diag("stale-qa-evidence", "error", path, f"The QA row `{row.key}` is stale: {reason}.", feature_id))
-    for row in evidence.delivery:
-        binding = row.contract_binding
-        if binding is not None and binding[0].casefold() != feature_id.casefold():
-            diagnostics.append(
-                _diag(
-                    "stale-delivery-evidence",
-                    "error",
-                    path,
-                    f"The delivery row of `{row.app}` cites the contract of `{binding[0]}`, not of `{feature_id}`.",
-                    feature_id,
-                )
-            )
     return diagnostics
 
 

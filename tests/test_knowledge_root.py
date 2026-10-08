@@ -439,14 +439,15 @@ class FeatureLaterTests(KnowledgeRootCase):
         )
         (self.wiki / "features" / "F-001-invoice-history.md").write_text(
             f"---\nid: F-001\ntitle: Invoice history\nstatus: {status}\nowner: {owner}\n"
-            f"apps: [{', '.join(apps)}]\nsources: []\nadvisory-review: not-needed\ncriteria-high-water: 1\n---\n\n"
+            f"apps: [{', '.join(apps)}]\nsources: []\nadvisory-review: not-needed\ncriteria-high-water: 1\n"
+            "design-tracks:\n  ui: done\n  technical: not-applicable\n  technical-reason: The feature changes no architecture.\ndesign-reaffirm: []\n---\n\n"
             + FEATURE_BODY.format(scope=scope, rows=rows, apps=", ".join(apps)),
             encoding="utf-8",
         )
         # An app with a UI needs its design page; the history reuses the existing list screen.
         (self.wiki / "design").mkdir(exist_ok=True)
         (self.wiki / "design" / "F-001-invoice-history.md").write_text(
-            "---\nfeature-id: F-001\ntitle: Invoice history design\nfigma: not applicable\n---\n\n"
+            f"---\nfeature-id: F-001\ntitle: Invoice history design\napps: [{', '.join(apps)}]\nfigma: not applicable\n---\n\n"
             "## Summary\nThe history reuses the existing list screen.\n\n"
             "## Key design decisions\nNo new screen is added.\n\n"
             "## States covered\nEmpty, loading, error and success.\n\n"

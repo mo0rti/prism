@@ -61,6 +61,7 @@ from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_query import wiki_blockers, wiki_owner, wiki_app, wiki_search, wiki_show
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.workspace import MANIFEST_FILE, load_workspace
+from tests.design_tracks import apply_tracks
 from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
 from tests.wiki_files import write_index as write_general_index
@@ -1206,7 +1207,7 @@ class GeneratedPromptContractTests(unittest.TestCase):
             ],
             ("commands", "wiki-blockers.md.jinja"): [
                 "Canonical blocker categories",
-                "missing-design",
+                "design-track-pending",
                 "api-contract-not-ready",
             ],
             ("commands", "wiki-query.md.jinja"): [
@@ -1226,7 +1227,7 @@ class GeneratedPromptContractTests(unittest.TestCase):
             ],
             ("skills/wiki-blockers", "SKILL.md.jinja"): [
                 "Canonical blocker categories",
-                "missing-design",
+                "design-track-pending",
                 "api-contract-not-ready",
             ],
             ("skills/wiki-query", "SKILL.md.jinja"): [
@@ -1276,7 +1277,7 @@ class GeneratedPromptContractTests(unittest.TestCase):
     def test_schema_defines_canonical_blocker_semantics(self) -> None:
         text = (cli_module.REPO_ROOT / "template" / "knowledge" / "wiki" / "SCHEMA.md").read_text(encoding="utf-8")
 
-        self.assertIn("`missing-design`: any feature from `ready-for-dev` on whose scope includes an app with a UI", text)
+        self.assertIn("`design-track-pending`: any feature from `ready-for-dev` on whose `design-tracks`", text)
         self.assertIn("`api-contract-not-ready`: any feature", text)
         self.assertIn("`cross-app-dependency`: any app-requirement page", text)
 
@@ -1793,6 +1794,9 @@ def write_feature(
 ) -> None:
     platforms = platforms or ["backend"]
     platform_yaml = "[" + ", ".join(platforms) + "]"
+    tracks: dict = {}
+    apply_tracks(tracks, status)
+    tracks_yaml = yaml.safe_dump(tracks, sort_keys=False) if tracks else ""
     (root / "knowledge" / "wiki" / "features" / "F-001-checkout.md").write_text(
         "---\n"
         "id: F-001\n"
@@ -1802,6 +1806,7 @@ def write_feature(
         f"apps: {platform_yaml}\n"
         "sources: []\n"
         f"advisory-review: {advisory_review}\n"
+        f"{tracks_yaml}"
         "---\n\n"
         f"{extra_body}\n",
         encoding="utf-8",

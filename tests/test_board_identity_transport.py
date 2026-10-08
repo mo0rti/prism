@@ -12,6 +12,7 @@ from starlette.testclient import TestClient
 
 from prism_cli.board_server import create_app
 from tests.test_board_identity import FEATURE, GatedBoardCase
+from tests.design_tracks import started
 from tests.test_board_service import _read_revisions
 
 ORIGIN = "http://127.0.0.1:8765"
@@ -22,7 +23,7 @@ class _Transport:
     """The two ways into one started service: a Bearer token and a browser session."""
 
     def agent_changes(self):
-        content = self.read(FEATURE).replace("status: ready-for-design", "status: in-design")
+        content = started(self.read(FEATURE))
         changes = [{"path": FEATURE, "content": content}]
         return changes, _read_revisions(self.service, self.agent, "design-start", changes)
 
