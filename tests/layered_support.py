@@ -38,6 +38,17 @@ def no_background_gc(repo: Path) -> None:
     git(repo, "config", "maintenance.auto", "false")
 
 
+def pack_objects(repo: Path) -> None:
+    """Pack a template repository's objects.
+
+    Copier clones a local template with hard links, so a clone of an unpacked repository starts with thousands of loose
+    objects and the clone's own git can start a background `gc` while Copier deletes the clone; its configuration is
+    not this repository's, so `no_background_gc` does not reach it. A packed repository leaves nothing to repack.
+    """
+
+    git(repo, "repack", "-adq")
+
+
 def build_template_repo(destination: Path, tag: str = "v1.0.0") -> Path:
     """A git repository holding this template's working tree as one commit, tagged ``tag``."""
 
@@ -53,6 +64,7 @@ def build_template_repo(destination: Path, tag: str = "v1.0.0") -> Path:
     git(destination, "add", "-A")
     git(destination, "commit", "-qm", f"Template {tag}")
     git(destination, "tag", tag)
+    pack_objects(destination)
     return destination
 
 
@@ -75,6 +87,7 @@ def tag_template_change(repo: Path, tag: str, *edits: tuple[str, str, str]) -> N
         path.write_bytes((content.replace("\n", "\r\n") if crlf else content).encode("utf-8"))
     git(repo, "commit", "-qam", f"Template {tag}")
     git(repo, "tag", tag)
+    pack_objects(repo)
 
 
 def template_url(repo: Path) -> str:
