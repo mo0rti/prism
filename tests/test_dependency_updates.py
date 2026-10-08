@@ -341,6 +341,19 @@ class AuditGateFailsClosedTests(unittest.TestCase):
         self.assertEqual(1, code, text)
         self.assertIn("exited with status 0", text)
 
+    def test_an_entry_vulnerable_through_a_package_the_report_does_not_list_fails(self) -> None:
+        # Astra's case: one allow-listed high advisory, and a critical entry whose only `via` names a package without an entry.
+        braces = NPM_REPORT["vulnerabilities"]["braces"]
+        chain = {"name": "evil", "severity": "critical", "via": ["missing"]}
+        report = {"auditReportVersion": 2, "vulnerabilities": {"braces": braces, "evil": chain}, "metadata": {"vulnerabilities": {"high": 1, "critical": 1, "total": 2}}}
+        code, text = self.run_gate("npm", json.dumps(report), 1)
+        self.assertEqual(1, code, text)
+        self.assertNotIn("No unlisted advisory", text)
+        self.assertIn("advisory chain is incomplete", text)
+        self.assertEqual(1, self.run_gate("npm", json.dumps(report), 0)[0], "a clean exit disagrees with the report too")
+        self.assertIsNone(audit_gate.npm_entries_problem({"braces": braces, "evil": {**chain, "via": ["braces"]}}, {"high": 1, "critical": 1, "total": 2}, 1, "high"), "a chain through a listed entry is followed")
+        self.assertIn("`missing`", audit_gate.npm_entries_problem({"braces": braces, "evil": chain}, {"high": 1, "critical": 1, "total": 2}, 1, "high"))
+
     def test_an_unlisted_finding_still_blocks(self) -> None:
         code, text = self.run_gate("npm", json.dumps(NPM_REPORT), 1)
         self.assertEqual(1, code)

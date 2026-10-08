@@ -32,7 +32,7 @@ from prism_cli.app_model import (
     resolve_local_repositories,
 )
 from prism_cli.wiki_model import request_fact
-from prism_cli.wiki_paths import REPARSE, resolve_confined
+from prism_cli.wiki_paths import REPARSE, RefusedPath, Resolution, read_confined_bytes
 
 
 MANIFEST_FILE = "prism.workspace.yml"
@@ -546,35 +546,54 @@ def _current_timestamp() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def confined_answers_file(path: Path) -> tuple[Path | None, str | None]:
-    """The checked path of an answers file as ``(path, None)``, or ``(None, message)`` when it must not be opened.
+class AnswersRefused(ValueError):
+    """An answers file that must not be opened: a link at its place, or one swapped in between the check and the open."""
 
-    The check is the one every other answers file goes through: the path must be a plain name in its own folder,
-    and a symlink, a junction or any other reparse point at its place is refused. It uses `lstat` on the path
-    itself and never follows a link, so a planted link to a file or a network share elsewhere is not touched.
-    The message names the way out.
-    """
 
-    folder = path.parent
-    resolution = resolve_confined(folder, folder, path.name, percent_encoded=False)
-    if resolution.ok and resolution.path is not None:
-        return resolution.path, None
+def _answers_refusal(name: str, resolution: Resolution) -> str:
     reason = "is a symlink or a reparse point" if resolution.kind == REPARSE else f"is refused ({str(resolution.problem).rstrip('.')})"
-    return None, (
-        f"`{path.name}` {reason}. Prism reads and writes answers only in a regular file in the workspace folder and never follows a link. "
+    return (
+        f"`{name}` {reason}. Prism reads and writes answers only in a regular file in the workspace folder and never follows a link. "
         "Replace it with the regular file that Copier wrote (restore it from git), then retry."
     )
 
 
+def _answers_location(path: Path, boundary: Path | None) -> tuple[Path, str]:
+    """The folder an answers file is confined to and its path below it: its own folder and name unless a ``boundary`` is given."""
+
+    if boundary is None:
+        return path.parent, path.name
+    return boundary, path.relative_to(boundary).as_posix()
+
+
+def read_answers_bytes(path: Path, boundary: Path | None = None) -> bytes | None:
+    """The bytes of an answers file, read once and never through a link; ``None`` when the file does not exist.
+
+    The check is the one every other answers file goes through: the path must be a plain name in its own folder (or
+    below ``boundary``), and a symlink, a junction or any other reparse point at its place is refused before anything
+    opens it. Whoever validates answers and whoever hands them to Copier works on these bytes, so the file is not
+    opened again between the two. `AnswersRefused` names the way out when a link sits at the place of the file, or was
+    swapped in between the check and the open; an unreadable file raises `OSError`.
+    """
+
+    folder, relative = _answers_location(path, boundary)
+    try:
+        return read_confined_bytes(folder, relative)
+    except RefusedPath as exc:
+        raise AnswersRefused(_answers_refusal(relative, exc.resolution)) from exc
+
+
 def _read_answers(path: Path) -> tuple[dict[str, Any], bool, list[WorkspaceDiagnostic]]:
-    checked, refusal = confined_answers_file(path)
-    if checked is None:
-        return {}, True, [_diag("unsafe-copier-answers", "error", path, refusal or f"{COPIER_ANSWERS_FILE} cannot be used.")]
-    path = checked
-    if not path.exists():
+    try:
+        raw = read_answers_bytes(path)
+    except AnswersRefused as exc:
+        return {}, True, [_diag("unsafe-copier-answers", "error", path, str(exc))]
+    except OSError as exc:
+        return {}, True, [_diag("unreadable-copier-answers", "error", path, f"Unable to read {COPIER_ANSWERS_FILE}: {exc}")]
+    if raw is None:
         return {}, False, []
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
+        data = yaml.safe_load(raw.decode("utf-8-sig")) or {}
     except (OSError, UnicodeError) as exc:
         return {}, True, [_diag("unreadable-copier-answers", "error", path, f"Unable to read {COPIER_ANSWERS_FILE}: {exc}")]
     except (yaml.YAMLError, ValueError, OverflowError) as exc:

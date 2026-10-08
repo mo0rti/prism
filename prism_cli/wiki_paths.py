@@ -19,7 +19,9 @@ the API-contract and requirement references, the graph and the transitions.
 
 from __future__ import annotations
 
+import errno
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote
@@ -142,6 +144,51 @@ def resolve_confined(boundary: Path, base: Path, raw: str, *, percent_encoded: b
     if linked:
         return Resolution(kind=REPARSE, problem="passes through a symlink or reparse point, which lint does not follow.")
     return Resolution(path=candidate, exists=exists)
+
+
+class RefusedPath(ValueError):
+    """A path `read_confined_bytes` refused; ``resolution`` says why."""
+
+    def __init__(self, resolution: Resolution) -> None:
+        super().__init__(resolution.problem or "The path is refused.")
+        self.resolution = resolution
+
+
+def read_confined_bytes(boundary: Path, raw: str, *, percent_encoded: bool = False) -> bytes | None:
+    """The bytes of the file `raw` names below `boundary`, read once and never through a link; ``None`` when it does not exist.
+
+    The path is checked by `resolve_confined` first. The file is then opened without following a link (`O_NOFOLLOW`
+    where the platform has it), and the open handle is compared with the path: the path must still be free of links
+    and must name the very file the handle holds. A link swapped in between the check and the open is refused as
+    `RefusedPath`, never read. A file that cannot be read, or is not a regular file, raises `OSError`.
+    """
+
+    resolution = resolve_confined(boundary, boundary, raw, percent_encoded=percent_encoded)
+    if not resolution.ok or resolution.path is None:
+        raise RefusedPath(resolution)
+    if not resolution.exists:
+        return None
+    swapped = Resolution(kind=REPARSE, problem="was replaced by a link while it was being opened.")
+    try:
+        descriptor = os.open(resolution.path, os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0))
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise RefusedPath(swapped) from exc
+        raise
+    with os.fdopen(descriptor, "rb") as handle:
+        opened = os.fstat(handle.fileno())
+        if not stat.S_ISREG(opened.st_mode):
+            raise OSError(errno.EINVAL, "not a regular file", str(resolution.path))
+        again = resolve_confined(boundary, boundary, raw, percent_encoded=percent_encoded)
+        try:
+            listed = os.lstat(again.path) if again.ok and again.path is not None else None
+        except OSError:
+            listed = None
+        if listed is None or reparse_kind(listed) != "none" or not os.path.samestat(opened, listed):
+            raise RefusedPath(again if not again.ok else swapped)
+        return handle.read()
 
 
 def resolve_to_path(boundary: Path, base: Path, raw: str, *, percent_encoded: bool = False) -> Path | None:

@@ -30,7 +30,7 @@ from prism_cli.app_model import (
     normalize_manifest,
 )
 from prism_cli.safe_values import DESCRIPTION_RULE, LABEL_RULE, description_problem, label_problem, path_segments_problem
-from prism_cli.wiki_paths import resolve_confined
+from prism_cli.wiki_paths import RefusedPath, read_confined_bytes
 
 
 PACKS_DIR = "packs"
@@ -255,16 +255,13 @@ def read_app_answers(root: Path, app_path: str) -> dict[str, Any] | None:
     """The remembered answers of a scaffolded app, or ``None`` when its answers file is missing, unreadable or behind a link.
 
     The path is confined to the workspace first: an answers file that is a symlink or a reparse point, or that sits
-    below one, is not read.
+    below one, is not read, and the file is opened without following a link.
     """
 
-    resolution = resolve_confined(root, root, app_answers_path(app_path), percent_encoded=False)
-    if not resolution.ok or resolution.path is None:
-        return None
-    path = resolution.path
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except (OSError, UnicodeError, yaml.YAMLError, ValueError, OverflowError):
+        raw = read_confined_bytes(root, app_answers_path(app_path))
+        data = (yaml.safe_load(raw) or {}) if raw is not None else None
+    except (RefusedPath, OSError, yaml.YAMLError, ValueError, OverflowError):
         return None
     return data if isinstance(data, dict) else None
 
