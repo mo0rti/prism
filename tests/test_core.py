@@ -880,7 +880,7 @@ class WorkspaceStatusTests(unittest.TestCase):
             create_wiki_skeleton(root)
             write_manifest(root, platforms=["backend"])
             (root / "backend").mkdir()
-            write_feature(root, status="unknown", owner="qa", advisory_review="pending", platforms=["ios"])
+            write_feature(root, status="unknown", owner="nobody", advisory_review="pending", platforms=["ios"])
 
             result = build_status(root)
             codes = {diagnostic["code"] for diagnostic in result.to_dict()["diagnostics"]}
@@ -974,7 +974,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root)
-            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed | — | — | — |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
             write_wiki_page(root, "design", "F-001-checkout.md", "feature-id: F-001\n", "## Summary\nCheckout design.\n")
 
@@ -996,7 +996,7 @@ class WikiQueryTests(unittest.TestCase):
             (root / ".copier-answers.yml").write_text("_src_path: test-template\nplatforms: [backend]\n", encoding="utf-8")
             (root / "backend").mkdir()
             write_feature(root)
-            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed | — | — | — |\n")
 
             data = wiki_show(root, "F-001")
 
@@ -1011,7 +1011,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="in-dev", owner="dev", advisory_review="pending", platforms=["backend"])
-            write_status_board(root, "| F-001 | Checkout | in-dev | dev | pending |\n")
+            write_status_board(root, "| F-001 | Checkout | in-dev | dev | pending | — | — | — |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
 
             data = wiki_blockers(root)
@@ -1034,7 +1034,7 @@ class WikiQueryTests(unittest.TestCase):
                     "| 1 | Who approves refunds? | po | open |\n"
                 ),
             )
-            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed | — | — | — |\n")
 
             data = wiki_owner(root, "po")
 
@@ -1046,7 +1046,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="ready-for-dev", owner="dev", advisory_review="done", platforms=["backend"])
-            write_status_board(root, "| F-001 | Checkout | ready-for-dev | dev | done |\n")
+            write_status_board(root, "| F-001 | Checkout | ready-for-dev | dev | done | — | — | — |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
 
             data = wiki_app(root, "backend")
@@ -1059,7 +1059,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="raw", owner="po", platforms=["backend"])
-            write_status_board(root, "| F-001 | Checkout | raw | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | raw | po | not-needed | — | — | — |\n")
 
             data = wiki_app(root, "backend")
 
@@ -1070,7 +1070,7 @@ class WikiQueryTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, extra_body="## Summary\nCheckout supports refunds.\n")
-            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed | — | — | — |\n")
 
             data = wiki_search(root, "refund")
 
@@ -1205,7 +1205,7 @@ class GeneratedPromptContractTests(unittest.TestCase):
     def test_schema_defines_canonical_blocker_semantics(self) -> None:
         text = (cli_module.REPO_ROOT / "template" / "knowledge" / "wiki" / "SCHEMA.md").read_text(encoding="utf-8")
 
-        self.assertIn("`missing-design`: any feature in `ready-for-dev`, `in-dev`, or `done` whose scope includes an app with a UI", text)
+        self.assertIn("`missing-design`: any feature from `ready-for-dev` on whose scope includes an app with a UI", text)
         self.assertIn("`api-contract-not-ready`: any feature", text)
         self.assertIn("`cross-app-dependency`: any app-requirement page", text)
 
@@ -1239,7 +1239,7 @@ class WikiLintTests(unittest.TestCase):
             create_wiki_skeleton(root)
             feature_path = root / "knowledge" / "wiki" / "features" / "F-001-broken.md"
             feature_path.write_text(
-                "---\nid: F-001\nstatus: unknown\nowner: qa\nadvisory-review: pending\napps: [ios]\n---\n\n## Summary\nBroken.\n",
+                "---\nid: F-001\nstatus: unknown\nowner: nobody\nadvisory-review: pending\napps: [ios]\n---\n\n## Summary\nBroken.\n",
                 encoding="utf-8",
             )
 
@@ -1303,7 +1303,7 @@ class WikiLintTests(unittest.TestCase):
             write_feature(root, status="ready-for-design", owner="designer", advisory_review="done")
             write_status_board(
                 root,
-                "| F-001 | Checkout | specified | po | pending |\n",
+                "| F-001 | Checkout | specified | po | pending | — | — | — |\n",
             )
 
             result = lint_wiki(root)
@@ -1321,7 +1321,7 @@ class WikiLintTests(unittest.TestCase):
             write_feature(root)
             write_status_board(
                 root,
-                "| F-001 | Checkout | specified | po | not-needed |\n",
+                "| F-001 | Checkout | specified | po | not-needed | — | — | — |\n",
                 separator="|:---|:---:|---:|:---|:---|:---|\n",
             )
 
@@ -1335,7 +1335,7 @@ class WikiLintTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
-            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed | — | — | — |\n")
             feature_path = root / "knowledge" / "wiki" / "features" / "F-001-checkout.md"
             feature_path.write_text(
                 "\ufeff---\n"
@@ -1391,7 +1391,7 @@ class WikiLintTests(unittest.TestCase):
                     "## Open questions\n"
                     "| # | Question | Owner | Status |\n"
                     "|---|----------|-------|--------|\n"
-                    "| 1 | What happens offline? | qa | maybe |\n"
+                    "| 1 | What happens offline? | nobody | maybe |\n"
                 ),
             )
 
@@ -1416,7 +1416,7 @@ class WikiLintTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             create_wiki_skeleton(root)
-            write_feature(root, status="done", owner="dev", advisory_review="done")
+            write_feature(root, status="released", owner="dev", advisory_review="done")
 
             result = lint_wiki(root)
             codes = {diagnostic.code for diagnostic in result.diagnostics}
@@ -1435,8 +1435,8 @@ class WikiGraphTests(unittest.TestCase):
         )
         write_status_board(
             root,
-            "| F-001 | Checkout | ready-for-dev | dev | not-needed |\n"
-            "| F-002 | Refunds | raw | po | not-needed |\n",
+            "| F-001 | Checkout | ready-for-dev | dev | not-needed | — | — | — |\n"
+            "| F-002 | Refunds | raw | po | not-needed | — | — | — |\n",
         )
         write_platform_requirement(root, feature_id="F-001", platform="backend")
         write_wiki_page(root, "design", "F-001-checkout.md", "feature-id: F-001\ntitle: Checkout design\n", "## Summary\nDesign.\n")
@@ -1530,7 +1530,7 @@ class WikiGraphTests(unittest.TestCase):
             root = Path(temp_dir)
             create_wiki_skeleton(root)
             write_feature(root, status="in-dev", owner="dev", advisory_review="pending", platforms=["backend"])
-            write_status_board(root, "| F-001 | Checkout | in-dev | dev | pending |\n")
+            write_status_board(root, "| F-001 | Checkout | in-dev | dev | pending | — | — | — |\n")
             write_platform_requirement(root, feature_id="F-001", platform="backend")
             data = build_graph(root)
             mermaid = render_mermaid(data, "lifecycle")
@@ -1573,7 +1573,7 @@ class WikiGraphTests(unittest.TestCase):
                 "| 1 | What is the offline story? | po | open |\n"
                 "| 2 | Empty state? | designer | resolved: minimal |\n",
             )
-            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed |\n")
+            write_status_board(root, "| F-001 | Checkout | specified | po | not-needed | — | — | — |\n")
             data = build_graph(root)
 
         feature = next(node for node in data["facts"]["nodes"] if node["id"] == "F-001")
@@ -1592,7 +1592,7 @@ class WikiGraphHtmlTests(unittest.TestCase):
     def _graph_envelope(self, root: Path) -> dict:
         create_wiki_skeleton(root)
         write_feature(root, status="in-dev", owner="dev", platforms=["backend"])
-        write_status_board(root, "| F-001 | Checkout | in-dev | dev | not-needed |\n")
+        write_status_board(root, "| F-001 | Checkout | in-dev | dev | not-needed | — | — | — |\n")
         write_platform_requirement(root, feature_id="F-001", platform="backend")
         return build_graph(root)
 
@@ -1702,10 +1702,10 @@ def write_board_placeholder(root: Path) -> None:
     write_general_index(root)
 
 
-def write_status_board(root: Path, rows: str = "", separator: str = "|----|---------|--------|-------|--------------|\n") -> None:
+def write_status_board(root: Path, rows: str = "", separator: str = "|----|---------|--------|-------|--------------|---------------|------------|-----------|\n") -> None:
     (root / "knowledge" / "wiki" / "status-board.md").write_text(
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
+        "| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |\n"
         f"{separator}"
         f"{rows}",
         encoding="utf-8",

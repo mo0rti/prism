@@ -26,7 +26,8 @@ Use this skill to work through open PO-owned questions one feature at a time.
 ## Rules
 
 - write-capable skill
-- answers only questions owned by `po`; leave designer and dev questions open
+- answers only questions owned by `po`; leave every other owner's questions open
+- a change to an acceptance criterion keeps its ID and `applies-to`; a new criterion takes the next number after `criteria-high-water` and raises the mark in the same proposal; no criterion changes while an app it names is `ready-for-release` or `released` (`clarify_stage_unavailable`), and the App scope section does not change from `ready-for-dev` on (use `/feature-scope`)
 - does not change a feature's `status` or `owner` (`/po-specify` completes a `raw` feature)
 - resolve a question by changing only its Status cell to `resolved: [answer]`; keep its
   number, text and owner, and add no row except a new open question

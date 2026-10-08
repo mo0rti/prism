@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 from prism_cli.board_service import BoardError, BoardService
 from prism_cli.workflow_install import apply_install, plan_install
+from tests.board_approval import apply_preview, human_with_roles
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 from tests import real_temp  # noqa: F401
 
@@ -29,12 +30,14 @@ class BoardOperationTests(unittest.TestCase):
         source = self.root / "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
         source.parent.mkdir(parents=True)
         source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
-        self.put(self.feature, _feature_page().replace("status: raw", "status: ready-for-design").replace("owner: po", "owner: designer").replace("| po | open |", "| po | resolved: Summarize key points. |"))
-        _write_index(self.root, "ready-for-design", "designer")
+        self.put(self.feature, _feature_page().replace("status: raw", "status: ready-for-design").replace("owner: po", "owner: tech-lead").replace("| po | open |", "| po | resolved: Summarize key points. |"))
+        _write_index(self.root, "ready-for-design", "tech-lead")
         self.service = BoardService(self.root).start()
         self.addCleanup(lambda: self.service.close())
-        self.grant = self.service.create_participant("Reviewer", "human", True)
-        self.actor = self.service.authenticate(self.grant["token"])
+        # `design-start` is a gated action: a human who holds the design owner's role (the tech lead of a scope with no UI)
+        # approves it in a browser session.
+        self.grant = self.service.create_participant("Reviewer", "human", True, roles="tech-lead")
+        self.actor = self.service.authenticate(self.grant["token"], via_session=True)
 
     def put(self, relative, content):
         path = self.root / relative
@@ -50,12 +53,12 @@ class BoardOperationTests(unittest.TestCase):
         return result
 
     def apply(self, preview, operation="test-operation"):
-        return self.service.apply(self.actor, preview["preview_id"], operation)
+        return apply_preview(self.service, self.actor, preview, operation)
 
-    def partial(self, preview, operation="test-operation", crash=False):
+    def partial(self, preview, operation="test-operation", crash=False, at="status-board"):
         original = self.service._apply_write
         def interrupted(write, **kwargs):
-            if write["role"] == "status-board":
+            if write["role"] == at:
                 if crash:
                     raise SimulatedCrash()
                 raise OSError("synthetic write failure")
@@ -71,16 +74,22 @@ class BoardOperationTests(unittest.TestCase):
     def interrupted_agent_operation(self, operation="agent-operation"):
         from tests.test_board_service import _read_revisions
 
+        # An agent applies only its own ungated previews, so its operation is an ungated write: `ask` adds an open question.
+        # The feature page is written first and the log entry last, where the process stops.
         grant = self.service.create_participant("Coding agent", "agent", True)
         agent = self.service.authenticate(grant["token"])
-        content = self.read(self.feature).replace("status: ready-for-design", "status: in-design")
+        content = self.read(self.feature).replace(
+            "| 1 | Which points should a review summary highlight? | po | resolved: Summarize key points. |",
+            "| 1 | Which points should a review summary highlight? | po | resolved: Summarize key points. |\n| 2 | Who verifies the summary? | qa | open |",
+        )
         changes = [{"path": self.feature, "content": content}]
-        preview = self.service.preview_skill(agent, "design-start", changes, read_revisions=_read_revisions(self.service, agent, "design-start", changes))
+        preview = self.service.preview_skill(agent, "ask", changes, read_revisions=_read_revisions(self.service, agent, "ask", changes))
         self.assertTrue(preview["applicable"], preview)
+        self.assertNotIn("approval", preview)
         human = self.actor
         try:
             self.actor = agent
-            self.partial(preview, operation, crash=True)
+            self.partial(preview, operation, crash=True, at="log")
         finally:
             self.actor = human
         return grant, agent, preview
@@ -91,14 +100,14 @@ class BoardOperationTests(unittest.TestCase):
         self.assertIn("agent-operation", [item["operation_id"] for item in self.service.discover(self.actor)["pending_operations"]])
         inspected = self.service.operation(self.actor, "agent-operation")
         self.assertEqual(agent.participant_id, inspected["actor"]["participant_id"])
-        self.assertEqual(["applied", "pending", "pending"], [item["state"] for item in inspected["remaining_changes"]])
+        self.assertEqual(["applied", "pending"], [item["state"] for item in inspected["remaining_changes"]])
         for revision, acknowledged in [(None, False), (inspected["recovery_review_revision"], False)]:
             with self.assertRaises(BoardError) as error:
                 self.service.recover(self.actor, "agent-operation", revision, acknowledged)
             self.assertEqual("recovery_review_required", error.exception.code)
         # Preserve unrelated work that arrives while the human reviews the
         # target row and remaining writes.
-        extra = "| F-002 | Keep unrelated work | raw | po | not-needed |\n"
+        extra = "| F-002 | Keep unrelated work | raw | po | not-needed | — | — | — |\n"
         self.put(self.board, self.read(self.board) + extra)
         self.put(self.log, self.read(self.log) + "\nExternal note during recovery review.\n")
         receipt = self.service.recover(self.actor, "agent-operation", inspected["recovery_review_revision"], True)
@@ -127,7 +136,7 @@ class BoardOperationTests(unittest.TestCase):
         self.put(self.feature, self.read(self.feature).replace("status: in-design", "status: ready-for-design"))
         # Use a distinct feature so unresolved agent work cannot overlap.
         self.put("knowledge/wiki/features/F-002-second-review.md", self.read(self.feature).replace("F-001", "F-002"))
-        self.put(self.board, self.read(self.board) + "| F-002 | Second review | ready-for-design | designer | not-needed |\n")
+        self.put(self.board, self.read(self.board) + "| F-002 | Second review | ready-for-design | tech-lead | not-needed | — | — | — |\n")
         preview = self.preview("F-002")
         self.partial(preview, "human-operation", crash=True)
         other_grant = self.service.create_participant("Other human", "human", True)
@@ -173,7 +182,7 @@ class BoardOperationTests(unittest.TestCase):
         other_grant = self.service.create_participant("Recovery reviewer", "human", True)
         other = self.service.authenticate(other_grant["token"])
         latest = self.service.operation(other, "agent-operation")
-        self.assertEqual(["applied", "applied", "pending"], [item["state"] for item in latest["remaining_changes"]])
+        self.assertEqual(["applied", "pending"], [item["state"] for item in latest["remaining_changes"]])
         receipt = self.service.recover(other, "agent-operation", latest["recovery_review_revision"], True)
         self.assertEqual("applied", receipt["state"], receipt)
         self.assertEqual(agent.participant_id, receipt["actor"]["participant_id"])
@@ -201,7 +210,7 @@ class BoardOperationTests(unittest.TestCase):
 
     def test_unrelated_status_board_bytes_and_log_append_are_preserved(self):
         preview = self.preview()
-        extra = "| F-002 | Keep  exact spacing | raw | po | not-needed |\r\n"
+        extra = "| F-002 | Keep  exact spacing | raw | po | not-needed | — | — | — |\r\n"
         self.put(self.board, self.read(self.board).replace("\r\n", "\n").replace("\n", "\r\n") + extra)
         old_log = self.read(self.log) + "\r\nExternal human note: preserve these bytes.\r\n"
         self.put(self.log, old_log)
@@ -217,7 +226,7 @@ class BoardOperationTests(unittest.TestCase):
         self.assertEqual("stale_preview", error.exception.code)
         self.assertEqual(0, self.service.store.connection.execute("SELECT COUNT(*) FROM operations").fetchone()[0])
         fresh = self.preview()
-        self.put(self.board, self.read(self.board).replace("| designer |", "| po |"))
+        self.put(self.board, self.read(self.board).replace("| tech-lead |", "| po |"))
         with self.assertRaises(BoardError) as error:
             self.apply(fresh)
         self.assertEqual("stale_status_row", error.exception.code)
@@ -239,7 +248,7 @@ class BoardOperationTests(unittest.TestCase):
             retried = self.apply(preview)
         self.assertEqual("applied", retried["state"], retried)
         self.assertEqual(1, revalidation.call_count, "an apply that finds its operation pending revalidates it")
-        self.assertIn("| in-design | designer |", self.read(self.board))
+        self.assertIn("| in-design | tech-lead |", self.read(self.board))
 
     def test_a_source_edited_after_the_validation_still_stops_the_roll_forward_before_any_write(self):
         preview = self.preview()
@@ -264,13 +273,13 @@ class BoardOperationTests(unittest.TestCase):
         self.assertIn("status: in-design", self.read(self.feature))
         self.service.close()
         self.service = BoardService(self.root).start()
-        self.actor = self.service.authenticate(self.grant["token"])
+        self.actor = self.service.authenticate(self.grant["token"], via_session=True)
         pending = self.service.operation(self.actor, "test-operation")
         self.assertEqual("pending", pending["state"])
         self.assertEqual(["applied", "pending", "pending"], [item["state"] for item in pending["remaining_changes"]])
         receipt = self.service.recover(self.actor, "test-operation")
         self.assertEqual("applied", receipt["state"], receipt)
-        self.assertIn("| in-design | designer |", self.read(self.board))
+        self.assertIn("| in-design | tech-lead |", self.read(self.board))
         self.assertEqual(receipt, self.apply(preview))
 
     def test_partial_recovery_rejects_changed_relevant_source_without_more_writes(self):
@@ -311,7 +320,7 @@ class BoardOperationTests(unittest.TestCase):
     def test_unrelated_operation_can_finish_while_first_is_pending(self):
         feature2 = "knowledge/wiki/features/F-002-another-review.md"
         self.put(feature2, self.read(self.feature).replace("F-001", "F-002"))
-        self.put(self.board, self.read(self.board) + "| F-002 | Document review | ready-for-design | designer | not-needed |\n")
+        self.put(self.board, self.read(self.board) + "| F-002 | Document review | ready-for-design | tech-lead | not-needed | — | — | — |\n")
         first, second = self.preview(), self.preview("F-002")
         self.partial(first, "first")
         receipt = self.apply(second, "second")
@@ -355,9 +364,14 @@ class BoardOperationTests(unittest.TestCase):
 
     def test_revoked_actor_cannot_apply_or_recover_and_other_actor_cannot_use_preview(self):
         preview = self.preview()
+        # A gated preview is open to the humans who could approve it: another human without the role is refused for it.
         other = self.service.create_participant("Other reviewer", "human", True)
         with self.assertRaises(BoardError) as error:
-            self.service.apply(self.service.authenticate(other["token"]), preview["preview_id"], "other")
+            self.service.apply(self.service.authenticate(other["token"], via_session=True), preview["preview_id"], "other")
+        self.assertEqual("role_required", error.exception.code)
+        agent = self.service.authenticate(self.service.create_participant("Other agent", "agent", True)["token"])
+        with self.assertRaises(BoardError) as error:
+            self.service.apply(agent, preview["preview_id"], "agent")
         self.assertEqual("preview_not_found", error.exception.code)
         self.partial(preview)
         self.service.revoke_participant(self.actor.participant_id)

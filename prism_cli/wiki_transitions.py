@@ -19,7 +19,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 from threading import Lock, RLock
-from typing import Any, Callable, Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator, Mapping
 from urllib.parse import unquote, urlsplit
 
 from prism_cli.app_model import (
@@ -31,28 +31,39 @@ from prism_cli.app_model import (
     retired_in_scope_message,
 )
 from prism_cli.fs_safety import reparse_kind
+from prism_cli.roles import RolePredicate
 from prism_cli.status import IGNORED_INTAKE_FILES
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, _wiki_path_references, lint_wiki
 from prism_cli.wiki_model import (
+    DESIGN_OWNERS,
+    FEATURE_STATUS_ORDER,
+    OWNER_BY_STATUS,
     VALID_ADVISORY_REVIEW_STATES,
     VALID_FEATURE_OWNERS,
     VALID_FEATURE_STATUSES,
-    RELEASE_EVIDENCE_REQUIRED,
     VALID_OPEN_QUESTION_OWNERS,
     FeaturePage,
+    active_scope,
+    api_surface_declared,
+    app_stages,
+    design_owner,
     extract_markdown_links,
     feature_id_from_path,
+    minimum_stage,
     normalize_feature_id,
-    parse_open_question_rows,
-    api_surface_declared,
-    parse_delivery_evidence,
     parse_advisory_required_actions,
+    parse_app_revalidation,
+    parse_criteria,
+    parse_delivery_rows,
+    parse_open_question_rows,
     parse_revalidation,
-    read_feature_pages,
     read_app_requirement_pages,
+    read_feature_evidence,
+    read_feature_pages,
     read_wiki_pages,
     resolve_relative_markdown_link,
     section_text,
+    status_rank,
     within_wiki_read_scope,
 )
 from prism_cli.wiki_paths import decoded_link_path, resolve_to_path
@@ -66,39 +77,298 @@ from prism_cli.workspace import (
 )
 
 
-TRANSITION_SCHEMA_VERSION = 1
-TRANSITION_CAPABILITY_VERSION = 2
+TRANSITION_SCHEMA_VERSION = 2
+TRANSITION_CAPABILITY_VERSION = 3
 SUPPORTED_ACTION = "po-handoff"
 SUPPORTED_SOURCE_STATUS = "specified"  # the po-handoff action's source and target
 SUPPORTED_SOURCE_OWNER = "po"
 SUPPORTED_TARGET_STATUS = "ready-for-design"
 
+# The packages whose actions are enabled. A row of another package is registered but answers `action_unavailable` in the
+# service and in discovery until its package lands and adds its ID here.
+ENABLED_PACKAGES = frozenset({"D1"})
+
+DESIGN_OWNER = "D"  # the owner symbol that resolves to `designer` or `tech-lead` from the feature's scope
+MINIMUM = "minimum"  # the status or owner is the minimum over the app stages after the action
+UNCHANGED = "unchanged"
+
+MODE_HUMAN_DIRECT = "HD"
+MODE_AGENT_PROPOSED = "AP"
+
 
 @dataclass(frozen=True)
 class ActionSpec:
-    """One named, copy-only lifecycle mapping."""
+    """One lifecycle action of the registry (CONTRACTS 2.3 and 2.8).
+
+    `sources` are the (status, owner) pairs the action starts from; the owner `D` resolves from the feature's scope.
+    `target_status` and `target_owner` are concrete values, or `minimum` (the minimum over the app stages after the
+    action) or `unchanged`. `rows` are the contract rows the action covers; an action with two rows (`dev-done` is F8
+    and F9) picks its row from the target it computes. `roles_all` and `roles_any` are the role predicate, in which `D` is
+    the design owner. `package` is the work package that enables the action.
+    """
 
     action: str
-    source_status: str
-    source_owner: str
-    target_status: str
-    target_owner: str
     command: str
+    sources: tuple[tuple[str, str], ...]
+    target_status: str | None
+    target_owner: str | None
+    roles_all: tuple[str, ...]
+    modes: tuple[str, ...]
+    package: str
+    rows: tuple[str, ...]
+    per_app: bool = False
+    subject: str = "feature"  # feature | bug | operation
+    roles_any: tuple[str, ...] = ()
+    # Extra arguments the command takes for this action, as discovery shows them.
+    arguments: str = ""
+    # Whether the copy-only transition preflight lists the action (it needs generated command files).
+    copy: bool = False
 
+    @property
+    def enabled(self) -> bool:
+        return self.package in ENABLED_PACKAGES
+
+    @property
+    def available(self) -> bool:
+        """Whether the work package that owns the action has landed; an unavailable action answers `action_unavailable`."""
+
+        return self.enabled
+
+    @property
+    def unavailable_reason(self) -> str | None:
+        if self.available:
+            return None
+        return f"The action `{self.action}` belongs to work package {self.package}, which has not landed in this Prism version."
+
+    @property
+    def source_pairs(self) -> tuple[tuple[str, str], ...]:
+        return self.sources
+
+    @property
+    def human_direct(self) -> bool:
+        return MODE_HUMAN_DIRECT in self.modes
+
+    def resolved_sources(self, design_owner: str) -> tuple[tuple[str, str], ...]:
+        return tuple((status, design_owner if owner == DESIGN_OWNER else owner) for status, owner in self.sources)
+
+    def resolved_target(self, design_owner: str) -> tuple[str | None, str | None]:
+        owner = design_owner if self.target_owner == DESIGN_OWNER else self.target_owner
+        return self.target_status, owner
+
+    def role_predicate(self, context: Mapping[str, Any] | None = None) -> RolePredicate | None:
+        """The roles that approve this action in `context`, or ``None`` when the action is not gated there.
+
+        See `prism_cli.roles.required_roles` for the context keys.
+        """
+
+        ctx = dict(context or {})
+        if self.action == "scope-edit":
+            # Ungated before `ready-for-dev`; gated for `po` from there on.
+            status = ctx.get("status")
+            if isinstance(status, str) and status in FEATURE_STATUS_ORDER and status_rank(status) < status_rank("ready-for-dev"):
+                return None
+        if self.action == "operation-repair":
+            original = ctx.get("original_action")
+            if not isinstance(original, str) or original == self.action:
+                return None
+            spec = ACTION_BY_ID.get(original)
+            return spec.role_predicate({**ctx, "action": original}) if spec is not None else None
+        if self.action == "bug-close" and ctx.get("disposition") == "duplicate":
+            return RolePredicate(all_of=("qa",))
+        owner = _design_owner_from_context(ctx)
+        if owner is None:
+            # The scope is not known (no model, root or resolved owner): either design role may approve, and the write itself
+            # still has to hand the feature to the design owner of its scope (`design_owner_mismatch`).
+            roles_all = [role for role in self.roles_all if role != DESIGN_OWNER]
+            roles_any = list(DESIGN_OWNERS) if DESIGN_OWNER in self.roles_all else [role for role in self.roles_any]
+            return RolePredicate(all_of=tuple(roles_all), any_of=tuple(roles_any))
+        roles_all = [owner if role == DESIGN_OWNER else role for role in self.roles_all]
+        completes = ctx.get("completes")
+        if self.action == "design-handoff" and completes:
+            # A track the handoff completes needs the role of that track on top of the design owner (D2 supplies `completes`).
+            for track, role in (("ui", "designer"), ("technical", "tech-lead")):
+                if track in completes and role not in roles_all:
+                    roles_all.append(role)
+        roles_any = [owner if role == DESIGN_OWNER else role for role in self.roles_any]
+        return RolePredicate(all_of=tuple(roles_all), any_of=tuple(roles_any))
+
+
+def _design_owner_from_context(context: Mapping[str, Any]) -> str | None:
+    """The design owner the context resolves, or ``None`` when it names no model, root or resolved owner."""
+
+    explicit = context.get("design_owner")
+    if explicit in DESIGN_OWNERS:
+        return str(explicit)
+    model = context.get("model")
+    if model is None and context.get("root") is not None:
+        try:
+            model = inspect_workspace(Path(context["root"])).model
+        except (OSError, ValueError, TypeError):
+            model = None
+    if model is None:
+        return None
+    apps = context.get("apps")
+    return design_owner(apps if isinstance(apps, (list, tuple, set, frozenset)) else (), model)
+
+
+def _spec(
+    action: str,
+    command: str,
+    sources: tuple[tuple[str, str], ...],
+    target: tuple[str | None, str | None],
+    roles: tuple[str, ...],
+    modes: tuple[str, ...],
+    package: str,
+    rows: tuple[str, ...],
+    **extra: Any,
+) -> ActionSpec:
+    return ActionSpec(action, command, sources, target[0], target[1], roles, modes, package, rows, **extra)
+
+
+_D = DESIGN_OWNER
+_AP = (MODE_AGENT_PROPOSED,)
+_HD_AP = (MODE_HUMAN_DIRECT, MODE_AGENT_PROPOSED)
+_DESIGN_SOURCES = (("ready-for-design", _D), ("in-design", _D))
+_DEV_SOURCES = (("ready-for-dev", "dev"), ("in-dev", "dev"))
+_QA_SOURCES = (("in-dev", "dev"), ("ready-for-qa", "qa"), ("in-qa", "qa"))
+_RELEASE_SOURCES = (("in-dev", "dev"), ("ready-for-qa", "qa"), ("in-qa", "qa"), ("ready-for-release", "release"))
+_BUG_ACTIVE = (("open", "dev"), ("in-fix", "dev"), ("fixed", "qa"), ("verified", "release"))
 
 ACTION_SPECS: tuple[ActionSpec, ...] = (
-    ActionSpec("po-specify", "raw", "po", "specified", "po", "po-specify"),
-    ActionSpec("po-handoff", "specified", "po", "ready-for-design", "designer", "po-handoff"),
-    ActionSpec("design-start", "ready-for-design", "designer", "in-design", "designer", "design-start"),
-    ActionSpec("design-handoff", "in-design", "designer", "ready-for-dev", "dev", "design-handoff"),
-    ActionSpec("dev-start", "ready-for-dev", "dev", "in-dev", "dev", "dev-start"),
-    ActionSpec("dev-done", "in-dev", "dev", "done", "none", "dev-done"),
-    ActionSpec("reopen-spec", "done", "none", "specified", "po", "feature-reopen"),
-    ActionSpec("reopen-design", "done", "none", "in-design", "designer", "feature-reopen"),
-    ActionSpec("reopen-dev", "done", "none", "in-dev", "dev", "feature-reopen"),
+    # Feature transitions (CONTRACTS 2.3).
+    _spec("po-specify", "po-specify", (("raw", "po"),), ("specified", "po"), ("po",), _AP, "D1", ("F1",), copy=True),
+    _spec("po-handoff", "po-handoff", (("specified", "po"),), ("ready-for-design", _D), ("po",), _HD_AP, "D1", ("F2",), copy=True),
+    _spec("design-start", "design-start", (("ready-for-design", _D),), ("in-design", _D), (_D,), _HD_AP, "D1", ("F3",), copy=True),
+    _spec("design-ui-done", "design-ui-done", _DESIGN_SOURCES, ("in-design", _D), ("designer",), _AP, "D2", ("F4",)),
+    _spec("tech-design-done", "tech-design-done", _DESIGN_SOURCES, ("in-design", _D), ("tech-lead",), _AP, "D2", ("F5",)),
+    _spec("design-handoff", "design-handoff", _DESIGN_SOURCES, ("ready-for-dev", "dev"), (_D,), _AP, "D1", ("F6",), copy=True),
+    _spec("dev-start", "dev-start", (("ready-for-dev", "dev"),), ("in-dev", "dev"), ("dev",), _HD_AP, "D1", ("F7",), copy=True),
+    _spec("dev-done", "dev-done", _DEV_SOURCES, (MINIMUM, MINIMUM), ("dev",), _AP, "D1", ("F8", "F9"), per_app=True, copy=True),
+    _spec("dev-return-spec", "feature-reopen", _DEV_SOURCES, ("specified", "po"), ("dev",), _AP, "D2", ("F10",), arguments="specified"),
+    _spec("dev-return-design", "feature-reopen", _DEV_SOURCES, ("in-design", _D), ("dev",), _AP, "D2", ("F11",), arguments="in-design"),
+    _spec("qa-verify", "qa-verify", _QA_SOURCES, (MINIMUM, MINIMUM), ("qa",), _AP, "D3", ("F12",), per_app=True),
+    _spec("qa-pass", "qa-pass", _QA_SOURCES, (MINIMUM, MINIMUM), ("qa",), _AP, "D3", ("F13", "F14"), per_app=True),
+    _spec("qa-fail", "qa-fail", (*_QA_SOURCES, ("ready-for-release", "release")), ("in-dev", "dev"), ("qa",), _AP, "D3", ("F15",), per_app=True),
+    _spec("qa-return-spec", "feature-reopen", _RELEASE_SOURCES, ("specified", "po"), ("qa",), _AP, "D3", ("F16",), arguments="specified"),
+    _spec("qa-return-design", "feature-reopen", _RELEASE_SOURCES, ("in-design", _D), ("qa",), _AP, "D3", ("F17",), arguments="in-design"),
+    _spec("release-done", "release-done", _RELEASE_SOURCES, (MINIMUM, MINIMUM), ("release",), _AP, "D4", ("F18", "F19"), per_app=True),
+    _spec("release-return-dev", "release-done", _RELEASE_SOURCES, ("in-dev", "dev"), ("release",), _AP, "D4", ("F20",), per_app=True, arguments="--return in-dev"),
+    _spec("release-rollback", "release-done", (*_RELEASE_SOURCES, ("released", "none")), (UNCHANGED, UNCHANGED), ("release",), _AP, "D4", ("F21",), per_app=True, arguments="--rollback REL-XXX"),
+    _spec("release-redeploy", "release-done", (*_RELEASE_SOURCES, ("released", "none")), (UNCHANGED, UNCHANGED), ("release",), _AP, "D4", ("F22",), per_app=True, arguments="--redeploy REL-XXX"),
+    _spec("reopen-spec", "feature-reopen", (("released", "none"),), ("specified", "po"), ("po",), _AP, "D4", ("F23",), arguments="specified"),
+    _spec("reopen-design", "feature-reopen", (("released", "none"),), ("in-design", _D), (_D,), _AP, "D4", ("F24",), arguments="in-design"),
+    _spec("reopen-dev", "feature-reopen", (("released", "none"),), ("in-dev", "dev"), ("dev",), _AP, "D4", ("F25",), arguments="in-dev"),
+    _spec(
+        "scope-edit",
+        "feature-scope",
+        (("ready-for-dev", "dev"), ("in-dev", "dev"), ("ready-for-qa", "qa"), ("in-qa", "qa"), ("ready-for-release", "release"), ("released", "none")),
+        (MINIMUM, MINIMUM),
+        ("po",),
+        _AP,
+        "D1",
+        ("F26",),
+    ),
+    _spec("operation-repair", "operation-repair", (), (UNCHANGED, UNCHANGED), (), (MODE_HUMAN_DIRECT,), "D1", ("F27",), subject="operation"),
+    # Bug transitions (CONTRACTS 2.8). A bug has no feature-style source pair for creation.
+    _spec("bug-open", "bug-update", (), ("open", "dev"), ("qa",), _AP, "D3", ("B1",), subject="bug"),
+    _spec("bug-triage", "bug-update", (("open", "dev"),), (UNCHANGED, UNCHANGED), (), _AP, "D3", ("B2",), subject="bug", roles_any=("dev", "qa"), arguments="triage"),
+    _spec("bug-scope", "bug-update", (("open", "dev"), ("in-fix", "dev"), ("fixed", "qa"), ("verified", "release")), (UNCHANGED, UNCHANGED), ("qa",), _AP, "D3", ("B3",), subject="bug", arguments="scope"),
+    _spec("bug-start", "bug-update", (("open", "dev"),), ("in-fix", "dev"), ("dev",), _AP, "D3", ("B4",), subject="bug", arguments="in-fix"),
+    _spec("bug-fixed", "bug-update", (("in-fix", "dev"),), ("fixed", "qa"), ("dev",), _AP, "D3", ("B5",), subject="bug", arguments="fixed"),
+    _spec("bug-verify", "bug-update", (("fixed", "qa"),), ("verified", "release"), ("qa",), _AP, "D3", ("B6",), subject="bug", arguments="verified"),
+    _spec("bug-reverify", "bug-update", (("verified", "release"),), (UNCHANGED, UNCHANGED), ("qa",), _AP, "D3", ("B7",), subject="bug", arguments="reverify"),
+    _spec("bug-reject", "bug-update", (("fixed", "qa"), ("verified", "release")), ("in-fix", "dev"), ("qa",), _AP, "D3", ("B8",), subject="bug", arguments="reject"),
+    _spec("bug-close", "bug-update", _BUG_ACTIVE, ("closed", "none"), ("po",), _AP, "D3", ("B9", "B10", "B11"), subject="bug", arguments="closed"),
+    _spec("bug-defer", "bug-update", _BUG_ACTIVE[:3], (UNCHANGED, UNCHANGED), ("po",), _AP, "D3", ("B12",), subject="bug", arguments="defer"),
+    _spec("bug-reopen", "bug-update", (("closed", "none"),), ("open", "dev"), ("po",), _AP, "D3", ("B13",), subject="bug", arguments="open"),
+    _spec("bug-release", "bug-update", (("verified", "release"),), ("released", "none"), ("release",), _AP, "D4", ("B14",), subject="bug"),
 )
 ACTION_BY_ID = {spec.action: spec for spec in ACTION_SPECS}
-SUPPORTED_ACTIONS = tuple(spec.action for spec in ACTION_SPECS)
+FEATURE_ACTIONS = tuple(spec.action for spec in ACTION_SPECS if spec.subject == "feature")
+# The actions the copy-only transition preflight lists: enabled actions that have generated command files.
+SUPPORTED_ACTIONS = tuple(spec.action for spec in ACTION_SPECS if spec.enabled and spec.copy)
+
+
+@dataclass(frozen=True)
+class WriteScope:
+    """What a lifecycle action may change on the feature page and elsewhere (CONTRACTS 2.5).
+
+    This is the one table the board's front matter, body and revalidation allowlists read. A key or section outside it is
+    refused with `lifecycle_frontmatter_scope` or `lifecycle_body_scope`, a page folder outside it with `lifecycle_write_scope`.
+    """
+
+    # Feature front matter keys the action may change.
+    frontmatter: frozenset[str]
+    # Feature body sections (`## heading`) the action may change.
+    sections: frozenset[str]
+    # Wiki folders of other pages the action may write (linked requirement and API contract pages).
+    pages: tuple[str, ...] = ()
+    # Feature revalidation domains the action may clear when its checks pass.
+    clears: frozenset[str] = frozenset()
+    # Per-app revalidation domains the action clears for the apps it names.
+    clears_app: frozenset[str] = frozenset()
+
+
+_BASE_KEYS = frozenset({"status", "owner"})
+_PAGE_SECTIONS = frozenset({"Summary", "User story", "Acceptance criteria", "Open questions", "App scope", "Design", "Related features", "API surface", "Board review summary"})
+_EVIDENCE_PAGE_SECTIONS = frozenset({"Delivery evidence", "QA verification", "Release", "Evidence history"})
+_LINKED_PAGES = ("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/")
+
+WRITE_SCOPES: dict[str, WriteScope] = {
+    # `po-specify` writes the page body but no evidence: the evidence sections exist and stay empty (checked separately).
+    "po-specify": WriteScope(_BASE_KEYS | {"criteria-high-water"}, _PAGE_SECTIONS | _EVIDENCE_PAGE_SECTIONS),
+    "po-handoff": WriteScope(_BASE_KEYS | {"advisory-review", "advisory-skip-reason", "revalidation"}, frozenset(), clears=frozenset({"specification"})),
+    "design-start": WriteScope(_BASE_KEYS, frozenset()),
+    "design-handoff": WriteScope(
+        _BASE_KEYS | {"revalidation"}, frozenset(), _LINKED_PAGES, clears=frozenset({"design", "technical-design"})
+    ),
+    "dev-start": WriteScope(_BASE_KEYS, frozenset()),
+    "dev-done": WriteScope(
+        _BASE_KEYS | {"app-revalidation"},
+        frozenset({"Delivery evidence"}),
+        _LINKED_PAGES,
+        clears_app=frozenset({"implementation", "tests"}),
+    ),
+    "scope-edit": WriteScope(
+        _BASE_KEYS | {"apps", "app-revalidation", "criteria-high-water"},
+        frozenset({"App scope", "Acceptance criteria", "Delivery evidence", "QA verification", "Release", "Evidence history"}),
+    ),
+}
+
+
+def lookup_action(action: str) -> ActionSpec | None:
+    """The registry row for a lifecycle action name, or ``None`` when the name is not registered.
+
+    This is the one lookup the board and discovery use: it returns the same `ActionSpec` whether or not the action is enabled
+    (`spec.enabled`); a disabled action is refused with `action_unavailable`.
+    """
+
+    return ACTION_BY_ID.get(action)
+
+
+def actions_of_command(command: str) -> tuple[ActionSpec, ...]:
+    """Every registry row of a command (`feature-reopen` maps to several actions)."""
+
+    return tuple(spec for spec in ACTION_SPECS if spec.command == command)
+
+
+def capability_marker(spec: ActionSpec) -> str:
+    """The generated-instruction marker of the command of `spec`: `v2` for a command that existed before the full lifecycle, `v1` for a new one."""
+
+    return f"prism:{spec.command}-contract:v{_COMMAND_CONTRACT_VERSION.get(spec.command, 1)}"
+
+
+# The commands of the 0.6 workflow carry contract version 2; commands the full lifecycle adds start at version 1.
+_COMMAND_CONTRACT_VERSION = {
+    "po-specify": 2,
+    "po-handoff": 2,
+    "design-start": 2,
+    "design-handoff": 2,
+    "dev-start": 2,
+    "dev-done": 2,
+    "feature-reopen": 2,
+    "feature-scope": 2,
+}
 
 # The PO-handoff surface files; every other action's surfaces are declared below.
 
@@ -113,38 +383,44 @@ _ACTION_SURFACE_PATHS: dict[str, dict[str, Path]] = {
         "claude": Path(f".claude/commands/{spec.command}.md"),
     }
     for spec in ACTION_SPECS
+    if spec.subject == "feature"
 }
 _ACTION_SURFACE_PATHS[SUPPORTED_ACTION] = CAPABILITY_FILES
 
 _ACTION_INVOCATIONS = {
     spec.action: {
         "codex": (
-            f"$feature-reopen F-XXX {spec.target_status}"
+            f"$feature-reopen F-XXX {spec.arguments}"
             if spec.command == "feature-reopen"
             else f"${spec.command} F-XXX"
         ),
         "claude": (
-            f"/feature-reopen F-XXX {spec.target_status}"
+            f"/feature-reopen F-XXX {spec.arguments}"
             if spec.command == "feature-reopen"
             else f"/{spec.command} F-XXX"
         ),
     }
     for spec in ACTION_SPECS
+    if spec.subject == "feature"
 }
 _ACTION_MARKERS = {
     spec.action: {
-        "codex": ("$" + spec.command, "F-XXX", f"prism:{spec.command}-contract:v1"),
-        "claude": ("/" + spec.command, "F-XXX", f"prism:{spec.command}-contract:v1"),
+        "codex": ("$" + spec.command, "F-XXX", capability_marker(spec)),
+        "claude": ("/" + spec.command, "F-XXX", capability_marker(spec)),
     }
     for spec in ACTION_SPECS
+    if spec.subject == "feature"
 }
-
 
 def _capability_paths() -> tuple[Path, ...]:
     """Return every generated instruction path that can affect capabilities."""
 
     paths: set[Path] = set()
-    for surface_paths in _ACTION_SURFACE_PATHS.values():
+    for action, surface_paths in _ACTION_SURFACE_PATHS.items():
+        # A registered action whose work package has not landed is unavailable whatever its command files say.
+        spec = ACTION_BY_ID.get(action)
+        if spec is not None and not spec.enabled:
+            continue
         paths.update(surface_paths.values())
     return tuple(sorted(paths, key=lambda path: path.as_posix()))
 
@@ -475,7 +751,7 @@ def build_transition_preflight(
         feature_summary = _feature_summary(feature)
         sources.append(str(feature.page.path))
 
-    if requested and requested not in ACTION_BY_ID:
+    if requested and requested not in SUPPORTED_ACTIONS:
         diagnostics.append(
             _diag(
                 "unsupported-transition-action",
@@ -517,6 +793,7 @@ def build_board_transition_preflight(
     *,
     advisory_override: tuple[str, str | None] | None = None,
     frontmatter_overrides: dict[str, Any] | None = None,
+    named_apps: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """Evaluate one named action for an explicitly adopted connected board.
 
@@ -524,6 +801,8 @@ def build_board_transition_preflight(
     require copied Codex/Claude command files or a generated application
     directory.  The legacy ``build_transition_preflight`` contract remains
     copy-only and unchanged.
+
+    `named_apps` are the apps a per-app proposal names (see ``_evaluate_action``).
     """
 
     workspace_root = root.expanduser().resolve()
@@ -538,13 +817,21 @@ def build_board_transition_preflight(
     requirement_pages = read_app_requirement_pages(wiki_root)
     wiki_pages = read_wiki_pages(wiki_root)
 
-    if requested not in ACTION_BY_ID:
+    if requested not in ACTION_BY_ID or ACTION_BY_ID[requested].subject != "feature":
         return _unknown_transition(
             str(feature_id),
             f"Action `{requested}` is not registered for the Prism workflow.",
             sources=[str(wiki_root)],
             action=None,
             checks=[_check("unsupported-action", "unknown", f"Action `{requested}` is not registered for the Prism workflow.", wiki_root)],
+        )
+    if not ACTION_BY_ID[requested].enabled:
+        return _unknown_transition(
+            str(feature_id),
+            f"Action `{requested}` is registered but not available yet.",
+            sources=[str(wiki_root)],
+            action=requested,
+            checks=[_check("action-unavailable", "unknown", f"Action `{requested}` is registered but its work package has not landed.", wiki_root)],
         )
     if len(matches) != 1:
         status = "unknown" if matches else "error"
@@ -602,6 +889,7 @@ def build_board_transition_preflight(
             _duplicate_feature_ids(features),
             requirement_pages,
             wiki_pages,
+            named_apps,
         )
     # A service capability is an explicitly adopted workflow record, not an
     # installed vendor command. Keep the action's status/source checks intact.
@@ -877,10 +1165,11 @@ def _evaluate_feature(
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Return the primary and all currently mapped actions for one feature."""
 
+    owner_of_design = design_owner(feature.apps, inspection.model)
     matching_specs = [
         spec
         for spec in ACTION_SPECS
-        if feature.status == spec.source_status and feature.owner == spec.source_owner
+        if spec.enabled and spec.copy and (feature.status, feature.owner) in spec.resolved_sources(owner_of_design)
     ]
 
     # po-handoff has its own evaluator with the detailed completeness checks
@@ -918,8 +1207,8 @@ def _evaluate_feature(
             )
             for spec in matching_specs
         ]
-        if feature.status == "done" and feature.owner == "none":
-            return _done_primary_transition(feature, records), records
+        if feature.status == "released" and feature.owner == "none":
+            return _released_primary_transition(feature, records), records
         return records[0], records
 
     return _unsupported_source_transition(feature, identity_checks), []
@@ -1014,6 +1303,7 @@ def _evaluate_po_handoff(
         checks.append(_open_questions_check(feature))
         checks.append(_advisory_check(feature))
         checks.append(_revalidation_check(feature, {"specification"}, {"specification"}))
+        checks.append(_design_owner_check(feature, inspection.model))
         checks.extend(capability_checks)
         checks.extend(_relevant_integrity_checks(feature, lint_result))
 
@@ -1036,7 +1326,7 @@ def _evaluate_po_handoff(
         "source_owner": owner,
         "source_path": str(path),
         "target_status": target_status,
-        "target_owner": "designer" if target_status == SUPPORTED_TARGET_STATUS else None,
+        "target_owner": design_owner(feature.apps, inspection.model) if target_status == SUPPORTED_TARGET_STATUS else None,
         "action": action,
         "classification": classification,
         "supported": supported,
@@ -1065,121 +1355,50 @@ def _evaluate_action(
     duplicate_ids: set[str],
     requirement_pages: list[Any],
     wiki_pages: list[Any],
+    named_apps: Iterable[str] | None = None,
 ) -> dict[str, Any]:
-    """Evaluate one action mapping without performing the lifecycle write."""
+    """Evaluate one action mapping without performing the lifecycle write.
+
+    `named_apps` are the apps a per-app action's proposal names (for `dev-done` the apps whose delivery evidence it adds);
+    the copy-only preflight has no proposal and passes ``None``.
+    """
 
     path = feature.page.path
     feature_id = feature.feature_id
-    source_pair_known = feature.status == spec.source_status and feature.owner == spec.source_owner
-    checks = _base_action_checks(feature, spec, duplicate_ids)
+    model = inspection.model
+    design = design_owner(feature.apps, model)
+    source_pair_known = (feature.status, feature.owner) in spec.resolved_sources(design)
+    checks = _base_action_checks(feature, spec, duplicate_ids, design)
     checks.extend(identity_checks)
     sources = _transition_sources(workspace_root, feature, spec, requirement_pages, wiki_pages)
+    named = None if named_apps is None else tuple(named_apps)
 
     if source_pair_known:
-        checks.append(_scope_check(feature, inspection, workspace_root))
-        if spec.action == "design-start":
-            checks.extend(
-                [
-                    _advisory_check(feature),
-                    _revalidation_check(feature, {"specification"}, set()),
-                    _open_questions_check_for_action(feature, {"po"}),
-                ]
-            )
-        elif spec.action == "design-handoff":
-            checks.extend(
-                [
-                    _design_completion_check(feature, wiki_pages, inspection.model),
-                    _api_surface_app_check(feature, inspection.model),
-                    _advisory_check(feature),
-                    _advisory_actions_check(feature, wiki_pages),
-                    _open_questions_check_for_action(feature, {"po", "designer"}),
-                    _revalidation_check(feature, {"specification", "design"}, {"design"}),
-                ]
-            )
-        elif spec.action == "dev-start":
-            checks.extend(
-                [
-                    _requirements_check(feature, requirement_pages, require_done=False),
-                    _api_surface_app_check(feature, inspection.model),
-                    _api_contract_check(feature, wiki_pages, require_implemented=False),
-                    _advisory_check(feature),
-                    _advisory_actions_check(feature, wiki_pages),
-                    _open_questions_check_for_action(feature, {"po", "designer", "dev"}),
-                    _revalidation_check(feature, {"specification", "design"}, set()),
-                ]
-            )
-        elif spec.action == "dev-done":
-            checks.extend(
-                [
-                    _design_completion_check(feature, wiki_pages, inspection.model),
-                    _requirements_check(feature, requirement_pages, require_done=False),
-                    _api_surface_app_check(feature, inspection.model),
-                    _api_contract_check(feature, wiki_pages, require_implemented=False),
-                    _revalidation_check(
-                        feature,
-                        {"specification", "design", "implementation", "tests", "release"},
-                        {"implementation", "tests", "release"},
-                    ),
-                    *_delivery_evidence_checks(feature),
-                    _advisory_check(feature),
-                    _advisory_actions_check(feature, wiki_pages),
-                    _open_questions_check_for_action(feature, {"po", "designer", "dev"}),
-                ]
-            )
-        elif spec.action.startswith("reopen-"):
-            _, revalidation_errors = parse_revalidation(
-                feature.page.frontmatter.get("revalidation")
-            )
-            impact_review_message = (
-                "Copy-only preparation includes an explicit impact review step; "
-                "no write is authorized until it is completed and confirmed."
-            )
-            if revalidation_errors:
-                impact_review_message += (
-                    " Existing revalidation metadata is malformed and must be "
-                    "repaired before downstream readiness can be trusted: "
-                    + "; ".join(revalidation_errors)
-                )
-            checks.append(
-                _check(
-                    "reopen-impact-review",
-                    "pass",
-                    impact_review_message,
-                    path,
-                )
-            )
+        checks.append(_scope_check(feature, inspection, workspace_root, allow_retired=spec.action == "scope-edit"))
+        checks.extend(_action_specific_checks(spec, feature, wiki_pages, requirement_pages, model, named))
 
         # Canonical workflow blockers are intentionally scoped to the selected
         # feature.  A blocker on another feature remains visible in the
         # envelope, but cannot become a false prerequisite for this action.
-        if not spec.action.startswith("reopen-"):
-            checks.extend(_feature_workflow_checks(feature, lint_result, spec.action, requirement_pages, inspection.model))
-        ignored_integrity = {
-            "done-delivery-evidence",
-            RELEASE_EVIDENCE_REQUIRED,
-            "done-app-requirement",
-            "done-api-contract",
-            "done-advisory-actions",
-            "invalid-revalidation",
-            "pending-revalidation",
-        } if spec.action in {"reopen-spec", "reopen-design", "reopen-dev", "dev-done"} else set()
-        checks.extend(_relevant_integrity_checks(feature, lint_result, ignore_codes=ignored_integrity))
+        checks.extend(_feature_workflow_checks(feature, lint_result, spec.action, requirement_pages, model))
+        checks.extend(_relevant_integrity_checks(feature, lint_result, ignore_codes=set(_IGNORED_INTEGRITY.get(spec.action, ()))))
         checks.extend(capability_checks)
 
     classification = _classify_checks(checks, capability_available=capability_available)
     if not source_pair_known:
-        return _unsupported_source_transition(feature, identity_checks, spec=spec)
+        return _unsupported_source_transition(feature, identity_checks, spec=spec, design=design)
 
     supported = capability_available and classification != "unknown"
     reason = _action_transition_reason(spec, classification, checks)
+    target_status, target_owner = _planned_target(spec, feature, model, named)
     transition: dict[str, Any] = {
         "version": TRANSITION_SCHEMA_VERSION,
         "feature_id": feature_id,
         "source_status": feature.status,
         "source_owner": feature.owner,
         "source_path": str(path),
-        "target_status": spec.target_status,
-        "target_owner": spec.target_owner,
+        "target_status": target_status,
+        "target_owner": target_owner,
         "action": spec.action,
         "classification": classification,
         "supported": supported,
@@ -1195,10 +1414,171 @@ def _evaluate_action(
     return transition
 
 
+# The lint codes a gate ignores because the evaluated page is a candidate: the proposal's pages at the source status.
+_IGNORED_INTEGRITY: dict[str, tuple[str, ...]] = {
+    "dev-done": ("app-row-ahead-of-status", "feature-status-not-minimum", "app-row-missing", "status-board-frontmatter-drift"),
+    "scope-edit": ("app-row-ahead-of-status", "feature-status-not-minimum", "app-row-missing", "status-board-frontmatter-drift"),
+}
+# The workflow blockers of the 0.6 gates; the evidence-staleness blockers do not gate these actions.
+LEGACY_BLOCKER_CODES = frozenset(
+    {
+        "pending-board-review",
+        "missing-design",
+        "missing-app-requirements",
+        "unresolved-open-questions",
+        "api-contract-not-ready",
+        "cross-app-dependency",
+    }
+)
+
+
+def _action_specific_checks(
+    spec: ActionSpec,
+    feature: FeaturePage,
+    wiki_pages: list[Any],
+    requirement_pages: list[Any],
+    model: WorkspaceModel,
+    named_apps: tuple[str, ...] | None,
+) -> list[dict[str, Any]]:
+    action = spec.action
+    if action == "po-specify":
+        return _specification_checks(feature, model)
+    if action == "design-start":
+        return [
+            _advisory_check(feature),
+            _revalidation_check(feature, {"specification"}, set()),
+            _open_questions_check_for_action(feature, {"po"}),
+        ]
+    if action == "design-handoff":
+        return [
+            _design_completion_check(feature, wiki_pages, model),
+            _api_surface_app_check(feature, model),
+            _advisory_check(feature),
+            _advisory_actions_check(feature, wiki_pages),
+            _open_questions_check_for_action(feature, {"po", "designer", "tech-lead"}),
+            _revalidation_check(feature, {"specification", "design", "technical-design"}, {"design", "technical-design"}),
+        ]
+    if action == "dev-start":
+        return [
+            _requirements_check(feature, requirement_pages, require_done=False),
+            _api_surface_app_check(feature, model),
+            _api_contract_check(feature, wiki_pages, require_implemented=False),
+            _advisory_check(feature),
+            _advisory_actions_check(feature, wiki_pages),
+            _open_questions_check_for_action(feature, {"po", "designer", "tech-lead", "dev"}),
+            _revalidation_check(feature, {"specification", "design", "technical-design"}, set()),
+        ]
+    if action == "dev-done":
+        return [
+            _requirements_check(feature, requirement_pages, require_done=False),
+            _api_surface_app_check(feature, model),
+            _api_contract_check(feature, wiki_pages, require_implemented=False),
+            _revalidation_check(feature, {"specification", "design", "technical-design"}, set()),
+            _app_revalidation_check(feature, named_apps or (), {"implementation", "tests"}),
+            *_delivery_evidence_checks(feature, named_apps),
+            _advisory_check(feature),
+            _advisory_actions_check(feature, wiki_pages),
+            _open_questions_check_for_action(feature, {"po", "designer", "tech-lead", "dev"}),
+        ]
+    if action == "scope-edit":
+        return [
+            _scope_not_empty_check(feature, model),
+            _open_questions_check_for_action(feature, {"po"}),
+        ]
+    return []
+
+
+def _planned_target(
+    spec: ActionSpec,
+    feature: FeaturePage,
+    model: WorkspaceModel,
+    named_apps: tuple[str, ...] | None,
+) -> tuple[str | None, str | None]:
+    """The status and owner the action leaves the feature in, resolved from the feature (CONTRACTS 2.3).
+
+    A `minimum` target is the lowest app stage after the action: with the proposal's `named_apps` the page already carries the
+    new rows; without a proposal (the copy-only preflight) every active app without delivery evidence is taken as delivered.
+    """
+
+    status, owner = spec.resolved_target(design_owner(feature.apps, model))
+    if status == UNCHANGED:
+        return feature.status, feature.owner
+    if status != MINIMUM:
+        return status, owner
+    evidence = read_feature_evidence(feature.page.body)
+    stages = app_stages(active_scope(feature.apps, model), evidence)
+    if spec.action == "dev-done" and named_apps is None:
+        stages = {app: ("ready-for-qa" if stage == "in-dev" else stage) for app, stage in stages.items()}
+    minimum = minimum_stage(stages.values())
+    if minimum is None:
+        return feature.status, feature.owner
+    return minimum, OWNER_BY_STATUS[minimum]
+
+
+def _specification_checks(feature: FeaturePage, model: WorkspaceModel) -> list[dict[str, Any]]:
+    """The checks `po-specify` adds to the generic ones: criterion IDs and scope, and empty evidence sections (CONTRACTS 2.4)."""
+
+    path = feature.page.path
+    criteria = parse_criteria(feature.page.body, feature.feature_id)
+    checks: list[dict[str, Any]] = []
+    for code, label in (
+        ("criterion-id-required", "Every acceptance criterion needs an ID"),
+        ("invalid-applies-to", "Every acceptance criterion needs a valid `applies-to`"),
+    ):
+        problems = [f"{item.id or item.raw[:40]}: {message}" for item in criteria for problem_code, message in item.problems if problem_code == code]
+        if not criteria:
+            checks.append(_check(code, "blocked", "Acceptance criteria must contain at least one criterion.", path))
+        elif problems:
+            checks.append(_check(code, "blocked", f"{label}: " + "; ".join(problems[:4]), path))
+        else:
+            checks.append(_check(code, "pass", f"{label}.", path))
+    duplicates = sorted({item.id for item in criteria if item.id and sum(1 for other in criteria if other.id == item.id) > 1})
+    if duplicates:
+        checks.append(_check("duplicate-criterion-id", "blocked", "Criterion IDs must be unique: " + ", ".join(duplicates) + ".", path))
+    else:
+        checks.append(_check("duplicate-criterion-id", "pass", "Criterion IDs are unique.", path))
+    checks.append(_app_without_criteria_check(feature, criteria, model))
+    evidence = read_feature_evidence(feature.page.body)
+    populated = [name for name, rows in (("Delivery evidence", evidence.delivery), ("QA verification", evidence.qa), ("Release", evidence.release)) if rows]
+    if populated:
+        checks.append(_check("evidence-sections-empty", "blocked", "A specified feature has no evidence yet: " + ", ".join(populated) + " already hold rows.", path))
+    else:
+        checks.append(_check("evidence-sections-empty", "pass", "The evidence sections are empty.", path))
+    return checks
+
+
+def _app_without_criteria_check(feature: FeaturePage, criteria: list[Any], model: WorkspaceModel) -> dict[str, Any]:
+    path = feature.page.path
+    named = {app for item in criteria for app in item.applies_to}
+    missing = [app for app in active_scope(feature.apps, model) if app not in named]
+    if missing:
+        return _check("app-without-criteria", "blocked", "Every scoped app must be named by at least one criterion; none names " + ", ".join(f"`{app}`" for app in missing) + ".", path)
+    return _check("app-without-criteria", "pass", "Every scoped app is named by at least one criterion.", path)
+
+
+def _scope_not_empty_check(feature: FeaturePage, model: WorkspaceModel) -> dict[str, Any]:
+    path = feature.page.path
+    if not feature.apps:
+        return _check("scope-empty", "blocked", "A feature keeps at least one app in scope.", path)
+    return _check("scope-empty", "pass", "The feature keeps at least one app in scope.", path)
+
+
+def _design_owner_check(feature: FeaturePage, model: WorkspaceModel) -> dict[str, Any]:
+    owner = design_owner(feature.apps, model)
+    return _check(
+        "design-owner",
+        "pass",
+        f"The design owner of this scope is `{owner}`: "
+        + ("an active app has a UI (or its UI is unknown)." if owner == "designer" else "no active app in scope has a UI."),
+        feature.page.path,
+    )
+
+
 def _base_action_checks(
     feature: FeaturePage,
     spec: ActionSpec,
     duplicate_ids: set[str],
+    design: str,
 ) -> list[dict[str, Any]]:
     path = feature.page.path
     normalized_feature_id = normalize_feature_id(feature.feature_id)
@@ -1216,40 +1596,48 @@ def _base_action_checks(
                 f"Feature ID `{feature.feature_id}` is not a unique canonical ID/path pair.",
                 path,
             ),
-            _source_status_check(feature, spec),
-            _source_owner_check(feature, spec),
+            _source_status_check(feature, spec, design),
+            _source_owner_check(feature, spec, design),
         ]
     return [
         _check("feature-id", "pass", "Feature ID and path identify one canonical feature page.", path),
-        _source_status_check(feature, spec),
-        _source_owner_check(feature, spec),
+        _source_status_check(feature, spec, design),
+        _source_owner_check(feature, spec, design),
     ]
 
 
-def _source_status_check(feature: FeaturePage, spec: ActionSpec) -> dict[str, Any]:
+def _source_statuses(spec: ActionSpec) -> list[str]:
+    return list(dict.fromkeys(status for status, _owner in spec.sources))
+
+
+def _source_status_check(feature: FeaturePage, spec: ActionSpec, design: str = "designer") -> dict[str, Any]:
     path = feature.page.path
+    statuses = _source_statuses(spec)
+    wanted = " or ".join(f"`{status}`" for status in statuses)
     if feature.status not in VALID_FEATURE_STATUSES:
         return _check("source-status", "unknown", f"Source status `{feature.status}` is missing or unsupported.", path)
-    if feature.status == spec.source_status:
-        return _check("source-status", "pass", f"Source status is `{spec.source_status}`.", path)
+    if feature.status in statuses:
+        return _check("source-status", "pass", f"Source status is `{feature.status}`.", path)
     return _check(
         "unsupported-source-stage",
         "unknown",
-        f"Action `{spec.action}` requires source status `{spec.source_status}`, observed `{feature.status}`.",
+        f"Action `{spec.action}` requires source status {wanted}, observed `{feature.status}`.",
         path,
     )
 
 
-def _source_owner_check(feature: FeaturePage, spec: ActionSpec) -> dict[str, Any]:
+def _source_owner_check(feature: FeaturePage, spec: ActionSpec, design: str = "designer") -> dict[str, Any]:
     path = feature.page.path
     if feature.owner not in VALID_FEATURE_OWNERS:
         return _check("source-owner", "unknown", f"Source owner `{feature.owner}` is missing or unsupported.", path)
-    if feature.owner == spec.source_owner:
-        return _check("source-owner", "pass", f"Source owner is `{spec.source_owner}`.", path)
+    owners = [owner for status, owner in spec.resolved_sources(design) if status == feature.status] or [owner for _status, owner in spec.resolved_sources(design)]
+    if feature.owner in owners:
+        return _check("source-owner", "pass", f"Source owner is `{feature.owner}`.", path)
+    wanted = " or ".join(f"`{owner}`" for owner in dict.fromkeys(owners))
     return _check(
         "source-owner",
         "unknown",
-        f"Action `{spec.action}` requires source owner `{spec.source_owner}`, observed `{feature.owner}`.",
+        f"Action `{spec.action}` requires source owner {wanted}, observed `{feature.owner}`.",
         path,
     )
 
@@ -1259,6 +1647,7 @@ def _unsupported_source_transition(
     identity_checks: list[dict[str, Any]],
     *,
     spec: ActionSpec | None = None,
+    design: str = "designer",
 ) -> tuple[dict[str, Any], list[dict[str, Any]]] | dict[str, Any]:
     """Describe a feature whose current status/owner has no requested mapping."""
 
@@ -1293,8 +1682,8 @@ def _unsupported_source_transition(
         *identity_checks,
     ]
     if spec is not None:
-        checks[1] = _source_status_check(feature, spec)
-        checks[2] = _source_owner_check(feature, spec)
+        checks[1] = _source_status_check(feature, spec, design)
+        checks[2] = _source_owner_check(feature, spec, design)
         reason = f"Action `{spec.action}` is not mapped from source status `{status}` and owner `{owner}`."
     else:
         reason = f"No supported lifecycle action is mapped from source status `{status}` and owner `{owner}`."
@@ -1315,7 +1704,7 @@ def _unsupported_source_transition(
     }
 
 
-def _done_primary_transition(feature: FeaturePage, records: list[dict[str, Any]]) -> dict[str, Any]:
+def _released_primary_transition(feature: FeaturePage, records: list[dict[str, Any]]) -> dict[str, Any]:
     path = feature.page.path
     return {
         "version": TRANSITION_SCHEMA_VERSION,
@@ -1329,8 +1718,8 @@ def _done_primary_transition(feature: FeaturePage, records: list[dict[str, Any]]
         "classification": "unknown",
         "supported": False,
         "checks": [
-            _check("done-source", "pass", "Feature is recorded as done; choose an explicit reopen route to continue work.", path),
-            _check("reopen-route", "review", "Done has three explicit reopen routes; choose one after impact review.", path),
+            _check("released-source", "pass", "Feature is recorded as released; choose an explicit reopen route to continue work.", path),
+            _check("reopen-route", "review", "Released has three explicit reopen routes; choose one after impact review.", path),
         ],
         "sources": _unique_strings(
             source
@@ -1338,7 +1727,7 @@ def _done_primary_transition(feature: FeaturePage, records: list[dict[str, Any]]
             for source in record.get("sources", [])
             if isinstance(source, str)
         ),
-        "reason": "Done has no primary forward action; choose reopen-spec, reopen-design, or reopen-dev after impact review.",
+        "reason": "Released has no primary forward action; choose reopen-spec, reopen-design, or reopen-dev after impact review.",
     }
 
 
@@ -1440,9 +1829,12 @@ def _feature_workflow_checks(
         "po-handoff": {"pending-board-review"},
         "design-start": {"pending-board-review"},
         "design-handoff": {"pending-board-review"},
-        "dev-start": WIKI_BLOCKER_CODES,
-        "dev-done": WIKI_BLOCKER_CODES,
+        "dev-start": LEGACY_BLOCKER_CODES,
+        "dev-done": LEGACY_BLOCKER_CODES,
+        "scope-edit": LEGACY_BLOCKER_CODES,
     }.get(action, WIKI_BLOCKER_CODES)
+    # An unreleased dependency warns while work starts and is delivered; `release-done` blocks on it (CONTRACTS 8.1).
+    warns = {"cross-app-dependency"} if action in {"dev-start", "dev-done"} else set()
     normalized_id = normalize_feature_id(feature.feature_id)
     path = feature.page.path.resolve()
     requirements_by_path: dict[Path, Any] = {}
@@ -1467,7 +1859,7 @@ def _feature_workflow_checks(
             same_path = False
         if diagnostic_feature_id != normalized_id and not same_path:
             continue
-        status = "review" if diagnostic.code == "pending-board-review" else "blocked"
+        status = "review" if diagnostic.code == "pending-board-review" else "warning" if diagnostic.code in warns else "blocked"
         checks.append(
             _check(
                 f"workflow:{diagnostic.code}",
@@ -1552,16 +1944,8 @@ def _open_questions_check_for_action(feature: FeaturePage, owners: set[str]) -> 
 
 def _design_completion_check(feature: FeaturePage, wiki_pages: list[Any], model: WorkspaceModel) -> dict[str, Any]:
     path = feature.page.path
-    if not any((app := model.app(app_id)) is not None and app.gate_capability(CAPABILITY_HAS_UI) for app_id in feature.apps):
+    if design_owner(feature.apps, model) != "designer":
         return _check("design", "pass", "No app with a UI is in scope; visual design is not applicable.", path)
-    design_value = feature.page.frontmatter.get("design")
-    if design_value == "not-applicable":
-        reason = feature.page.frontmatter.get("design-exemption-reason")
-        if isinstance(reason, str) and reason.strip():
-            return _check("design", "pass", "An explicit design exemption is recorded; the agent must verify confirmation.", path)
-        return _check("design", "blocked", "`design: not-applicable` requires a non-empty design-exemption-reason.", path)
-    if design_value is not None and not isinstance(design_value, str):
-        return _check("design", "unknown", "Feature `design` must be a string when present.", path)
     feature_id = normalize_feature_id(feature.feature_id)
     matching: list[Any] = []
     design_root = path.parent.parent / "design"
@@ -1576,7 +1960,7 @@ def _design_completion_check(feature: FeaturePage, wiki_pages: list[Any], model:
         if isinstance(page_feature_id, str) and normalize_feature_id(page_feature_id) == feature_id:
             matching.append(page)
     if not matching:
-        return _check("design", "blocked", "An app with a UI in scope requires a matching design page or an explicit confirmed exemption.", path)
+        return _check("design", "blocked", "An app with a UI in scope requires a matching design page.", path)
     malformed = [page for page in matching if getattr(page, "parse_errors", [])]
     if malformed:
         return _check("design", "unknown", "A matching design page has malformed frontmatter.", malformed[0].path)
@@ -1756,25 +2140,47 @@ def _revalidation_check(
     return _check("revalidation", "pass", "No pending revalidation domains remain.", path)
 
 
-def _delivery_evidence_checks(feature: FeaturePage) -> list[dict[str, Any]]:
-    rows, problems = parse_delivery_evidence(feature.page.body, feature.apps)
+def _app_revalidation_check(feature: FeaturePage, apps: Iterable[str], owned_domains: set[str]) -> dict[str, Any]:
+    """The per-app revalidation of the named apps: the domains this action clears must be verified; the others do not gate it."""
+
     path = feature.page.path
-    release = [problem.message for problem in problems if problem.code == RELEASE_EVIDENCE_REQUIRED]
-    other = [problem.message for problem in problems if problem.code != RELEASE_EVIDENCE_REQUIRED]
-    checks: list[dict[str, Any]] = []
-    if other:
-        checks.append(_check("delivery-evidence", "blocked", "; ".join(other), path))
-    if release:
-        checks.append(_check(RELEASE_EVIDENCE_REQUIRED, "blocked", " ".join(release), path))
-    if checks:
-        return checks
-    if not rows:
-        return [_check("delivery-evidence", "blocked", "No per-app delivery evidence was supplied.", path)]
+    domains, errors = parse_app_revalidation(feature.page.frontmatter.get("app-revalidation"))
+    if errors:
+        return _check("app-revalidation", "unknown", "; ".join(errors), path)
+    owned = {app: [domain for domain in domains.get(app, []) if domain in owned_domains] for app in apps}
+    owned = {app: items for app, items in owned.items() if items}
+    if owned:
+        listed = "; ".join(f"`{app}`: {', '.join(items)}" for app, items in owned.items())
+        return _check("app-revalidation", "pass", f"The current workflow must verify and clear pending app revalidation domains: {listed}.", path)
+    return _check("app-revalidation", "pass", "No pending app revalidation domains remain for the apps this action delivers.", path)
+
+
+def _delivery_evidence_checks(feature: FeaturePage, named_apps: Iterable[str] | None = None) -> list[dict[str, Any]]:
+    """The delivery evidence rows of the apps an action delivers (CONTRACTS 2.4, 5.1).
+
+    `named_apps` are the apps the proposal delivers. ``None`` is the copy-only preflight, which has no proposal: the rows
+    arrive with the proposal, so the evidence is reported as not yet supplied.
+    """
+
+    rows, problems = parse_delivery_rows(feature.page.body)
+    path = feature.page.path
+    if named_apps is None:
+        return [_check("delivery-evidence", "blocked", "No delivery evidence was supplied: the proposal adds one valid row for each app it delivers.", path)]
+    named = list(dict.fromkeys(named_apps))
+    if not named:
+        return [_check("delivery-evidence", "blocked", "The proposal names no app: add one delivery evidence row for each app it delivers.", path)]
+    present = {row.app for row in rows}
+    missing = [app for app in named if app not in present]
+    invalid = [problem.message for problem in problems if problem.subject is None or problem.subject in named]
+    if missing:
+        return [_check("delivery-evidence", "blocked", "Delivery evidence is missing for: " + ", ".join(f"`{app}`" for app in missing) + ".", path)]
+    if invalid:
+        return [_check("delivery-evidence", "blocked", "; ".join(invalid), path)]
     return [
         _check(
             "delivery-evidence",
             "pass",
-            f"Delivery evidence has substantive implementation and test cells and release evidence or a delivery attestation for {len(rows)} declared app(s); an agent must verify the references.",
+            f"Delivery evidence has a valid artifact, contract, implementation, tests and basis for {len(named)} app(s); an agent must verify the references.",
             path,
         )
     ]
@@ -1794,10 +2200,10 @@ def _api_surface_app_check(feature: FeaturePage, model: WorkspaceModel) -> dict[
 def _action_transition_reason(spec: ActionSpec, classification: str, checks: list[dict[str, Any]]) -> str:
     if classification == "ready":
         if spec.action.startswith("reopen-"):
-            return "Action mapping and observable source checks pass; explicit impact review and user confirmation remain outstanding."
+            return "Action mapping and observable source checks pass; explicit impact review and user confirmation remain outstanding." + _warning_note(checks)
         if spec.action == "dev-done":
-            return "Observable Done evidence checks pass; an agent must verify artifacts and obtain final confirmation."
-        return f"Observable {spec.action} checks pass; semantic review and user confirmation remain outstanding."
+            return "Observable delivery evidence checks pass; an agent must verify artifacts and obtain final confirmation." + _warning_note(checks)
+        return f"Observable {spec.action} checks pass; semantic review and user confirmation remain outstanding." + _warning_note(checks)
     if classification == "blocked":
         messages = [check["message"] for check in checks if check["status"] in {"blocked", "review"}]
         return "; ".join(messages) or f"A known {spec.action} prerequisite is unmet."
@@ -1894,7 +2300,7 @@ def _workspace_identity_checks(root: Path, inspection: WorkspaceInspection) -> l
     return checks
 
 
-def _scope_check(feature: FeaturePage, inspection: WorkspaceInspection, root: Path) -> dict[str, Any]:
+def _scope_check(feature: FeaturePage, inspection: WorkspaceInspection, root: Path, *, allow_retired: bool = False) -> dict[str, Any]:
     path = feature.page.path
     value = feature.page.frontmatter.get("apps")
     if not isinstance(value, list):
@@ -1906,8 +2312,9 @@ def _scope_check(feature: FeaturePage, inspection: WorkspaceInspection, root: Pa
         return _check("app-scope", "unknown", f"Feature app scope contains values that are not app IDs: {invalid!r}.", path)
     available = set(inspection.app_ids)
     retired = inspection.model.retired_apps(value)
-    if retired and feature.status != "done":
-        # A retired app stays valid on a feature that is done, as history; in progress it is flagged until the scope is edited.
+    if retired and feature.status != "released" and not allow_retired:
+        # A retired app stays valid on a feature that is released, as history; in progress it is flagged until the scope is edited
+        # (the scope edit itself is how it is removed, so it is not blocked).
         return _check("app-retired-in-scope", "blocked", retired_in_scope_message(feature.feature_id, retired), path)
     available |= set(retired)
     missing = sorted(set(value) - available)
@@ -2222,12 +2629,18 @@ def _classify_checks(checks: list[dict[str, Any]], *, capability_available: bool
         return "unknown"
     if any(check["status"] in {"blocked", "review"} for check in checks):
         return "blocked"
+    # A `warning` check is non-blocking: it names something the approver should know and never gates the action.
     return "ready"
+
+
+def _warning_note(checks: list[dict[str, Any]]) -> str:
+    warnings = [check["message"] for check in checks if check["status"] == "warning"]
+    return (" Warnings: " + "; ".join(warnings)) if warnings else ""
 
 
 def _transition_reason(classification: str, checks: list[dict[str, Any]]) -> str:
     if classification == "ready":
-        return "Observable po-handoff checks pass; semantic completeness and user confirmation remain outstanding."
+        return "Observable po-handoff checks pass; semantic completeness and user confirmation remain outstanding." + _warning_note(checks)
     if classification == "blocked":
         messages = [check["message"] for check in checks if check["status"] in {"blocked", "review"}]
         return "; ".join(messages) or "A known po-handoff prerequisite is unmet."

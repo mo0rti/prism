@@ -75,10 +75,10 @@ class JsonContractTests(unittest.TestCase):
                 self.assertIn(expected_supported, definitions["transition"]["properties"]["supported"]["description"])
                 self.assertIn(expected_observed, definitions["transition_snapshot"]["properties"]["observed_at"]["description"])
 
-    def test_lifecycle_transition_schema_exposes_v2_actions_and_graph_routes(self) -> None:
+    def test_lifecycle_transition_schema_exposes_v3_actions_and_graph_routes(self) -> None:
         graph = build_graph(FIXTURE_ROOT)
         capability = graph["facts"]["transition_capability"]
-        self.assertEqual(2, capability["version"])
+        self.assertEqual(3, capability["version"])
         self.assertEqual(
             {
                 "po-specify",
@@ -87,35 +87,29 @@ class JsonContractTests(unittest.TestCase):
                 "design-handoff",
                 "dev-start",
                 "dev-done",
-                "reopen-spec",
-                "reopen-design",
-                "reopen-dev",
             },
             {surface["action"] for surface in capability["surfaces"]},
         )
         feature = next(node for node in graph["facts"]["nodes"] if node["type"] == "feature")
         self.assertNotIn("transition", feature)
         po_handoff = next(record for record in feature["transitions"] if record["action"] == "po-handoff")
-        self.assertEqual("designer", po_handoff["target_owner"])
+        self.assertEqual("tech-lead", po_handoff["target_owner"])
         Draft202012Validator(self.load_schema("wiki-graph-v1.json")).validate(graph)
 
-    def test_graph_schema_covers_done_and_unmapped_feature_routes(self) -> None:
+    def test_graph_schema_covers_released_and_unmapped_feature_routes(self) -> None:
         graph_schema = self.load_schema("wiki-graph-v1.json")
         partial_root = FIXTURE_ROOT.parent / "partial"
         partial_graph = build_graph(partial_root)
         Draft202012Validator(graph_schema).validate(partial_graph)
 
-        done_node = next(
+        released_node = next(
             node
             for node in partial_graph["facts"]["nodes"]
             if node["type"] == "feature" and node["id"] == "F-005"
         )
-        self.assertNotIn("transition", done_node)
-        self.assertEqual({"reopen-spec", "reopen-design", "reopen-dev"}, {record["action"] for record in done_node["transitions"]})
-        for record in done_node["transitions"]:
-            self.assertEqual("done", record["source_status"])
-            self.assertIsNotNone(record["target_status"])
-            self.assertIsNotNone(record["target_owner"])
+        self.assertNotIn("transition", released_node)
+        # The reopen routes of a released feature belong to a later work package, so the node offers none.
+        self.assertEqual([], released_node["transitions"])
 
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)

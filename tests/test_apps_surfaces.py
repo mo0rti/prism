@@ -754,9 +754,9 @@ class ZeroAppWorkspaceTests(unittest.TestCase):
         (self.root / relative).parent.mkdir(parents=True, exist_ok=True)
         (self.root / relative).write_text(page, encoding="utf-8")
         (self.root / "knowledge" / "wiki" / "index.md").write_text(
-            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review |\n"
-            "|----|---------|--------|-------|--------------|\n"
-            "| F-001 | Outcome capture | specified | po | not-needed |\n",
+            "# Feature Status Board\n\n| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |\n"
+            "|----|---------|--------|-------|--------------|---------------|------------|-----------|\n"
+            "| F-001 | Outcome capture | specified | po | not-needed | — | — | — |\n",
             encoding="utf-8",
         )
 
@@ -764,7 +764,7 @@ class ZeroAppWorkspaceTests(unittest.TestCase):
         self.write_specified_feature()
         service = BoardService(self.root).start()
         self.addCleanup(service.close)
-        actor = service.authenticate(service.create_participant("Writer", "human", writable=True)["token"])
+        actor = service.authenticate(service.create_participant("Writer", "human", writable=True, roles="po")["token"], via_session=True)
         facts = query(service, actor, "transition-preflight", "F-001", "po-handoff")["facts"]["transition"]
         checks = {check["code"]: check for check in facts["checks"]}
         self.assertEqual("pass", checks["workspace-identity"]["status"], "the identity gate no longer needs an app")

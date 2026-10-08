@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from prism_cli.wiki_transitions import ACTION_SPECS
+from prism_cli.wiki_transitions import ACTION_SPECS, capability_marker
 from tests.manifest_fixtures import manifest_text
 from tests.wiki_files import write_index, write_status_board
 
@@ -85,10 +85,10 @@ def _write_action_surfaces(root: Path) -> None:
 
     written_commands: set[str] = set()
     for spec in ACTION_SPECS:
-        if spec.command in written_commands:
+        if spec.subject != "feature" or spec.command in written_commands:
             continue
         written_commands.add(spec.command)
-        marker = f"prism:{spec.command}-contract:v1"
+        marker = capability_marker(spec)
         for role, relative in (
             ("codex", Path(f".agents/skills/{spec.command}/SKILL.md")),
             ("claude", Path(f".claude/commands/{spec.command}.md")),

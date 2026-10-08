@@ -71,7 +71,31 @@ def parse_roles(text: str | Iterable[str] | None, *, kind: str, writable: bool) 
 def required_roles(action: str, context: Mapping[str, Any] | None = None) -> RolePredicate | None:
     """The roles a human must hold to approve ``action`` in ``context``, or ``None`` when the action is not gated.
 
-    The lifecycle registry implements this; until it does, no action is gated.
+    The lifecycle registry (``prism_cli.wiki_transitions.ACTION_SPECS``) answers it, for every registered action whether or
+    not its work package has landed; availability is ``ActionSpec.enabled``, not a role matter. An action the registry does
+    not know returns ``None``.
+
+    The design owner ``D`` of a predicate (``designer`` when an active scoped app has a UI or an unknown one, otherwise
+    ``tech-lead``) resolves from the scope the context names. The context keys, all optional:
+
+    * ``design_owner``: ``"designer"`` or ``"tech-lead"``, already resolved; it wins over the keys below.
+    * ``model``: the ``WorkspaceModel`` of the board, or ``root``: the workspace path, from which the model is read.
+    * ``apps``: the app IDs of the feature's scope, as the preview sees them. The design owner needs the app model on top
+      of them (``model``, ``root`` or ``design_owner``); a context with only ``action``, ``feature_path`` and ``apps``
+      cannot resolve it, and a predicate that names the design owner then accepts either design role (``any_of``
+      ``designer``, ``tech-lead``). The write still hands the feature to the design owner of its scope.
+    * ``status``: the feature's current status. ``scope-edit`` is ``None`` (ungated) below ``ready-for-dev`` and gated for
+      ``po`` from there on; without it the action is gated.
+    * ``completes``: the design tracks a ``design-handoff`` completes (``ui``, ``technical``); each adds its role.
+    * ``disposition``: ``duplicate`` makes ``bug-close`` need ``qa`` instead of ``po``.
+    * ``original_action``: for ``operation-repair``, the action of the abandoned operation, whose predicate then applies.
+
+    Keys the lookup does not use (``action``, ``feature_path``) are ignored.
     """
 
-    return None
+    from prism_cli.wiki_transitions import lookup_action
+
+    spec = lookup_action(action) if isinstance(action, str) else None
+    if spec is None:
+        return None
+    return spec.role_predicate(context)

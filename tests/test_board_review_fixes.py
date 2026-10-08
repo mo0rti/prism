@@ -18,6 +18,7 @@ from prism_cli import board_service
 from prism_cli.board_service import BoardError, BoardService
 from prism_cli.board_store import unresolved_board_operations
 from prism_cli.workflow_assets import asset_digest
+from tests.board_approval import approve, human_with_roles
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, create_core_workflow_fixture
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.test_board_service import (
@@ -636,7 +637,8 @@ class RetryDependencyBindingTests(unittest.TestCase):
         _write_index_rows(self.root, [("F-001", "Document review", "ready-for-dev", "dev")])
         self.service = BoardService(self.root).start()
         self.addCleanup(self.service.close)
-        self.human = self.service.authenticate(self.service.create_participant("Owner", "human", writable=True)["token"])
+        # `dev-start` is gated: a human who holds the `dev` role approves it in a browser session.
+        self.human = human_with_roles(self.service, "Owner", "dev")
 
     def dev_start_preview(self) -> dict:
         preview = self.service.preview_transition(self.human, "F-001", "dev-start", {"semantic_review_acknowledged": True})
@@ -665,7 +667,7 @@ class RetryDependencyBindingTests(unittest.TestCase):
             return real(source, destination, *args, **kwargs)
 
         with patch.object(board_service.os, "replace", side_effect=replace), patch.object(board_service, "_REPLACE_WAIT_SECONDS", 0):
-            receipt = self.service.apply(self.human, preview["preview_id"], "op-dev-start")
+            receipt = approve(self.service, self.human, preview, "op-dev-start")
         return receipt, refused
 
     def status_of_the_feature(self) -> str:

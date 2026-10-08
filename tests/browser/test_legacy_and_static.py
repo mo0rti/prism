@@ -25,8 +25,9 @@ from tests.browser.scenario_support import workspace_tree
 
 PREPARE_BUTTONS = {
     "F-001": "Prepare handoff for F-001",
-    "F-002": "Prepare design start for F-002",
-    "F-003": "Prepare development start for F-003",
+    # A feature in ready-for-design or ready-for-dev offers two routes (its start and the action that completes the stage), so its button asks for a route first.
+    "F-002": "Prepare request for F-002",
+    "F-003": "Prepare request for F-003",
     "F-004": "Prepare handoff for F-004",
 }
 

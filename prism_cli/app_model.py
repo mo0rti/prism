@@ -95,6 +95,14 @@ class Stack:
     default_path: str | None = None
     # The ports an app of this stack listens on, as the first and the last. ``None`` for a stack with no server.
     port_range: tuple[int, int] | None = None
+    # How an app of this stack is delivered when `SETTINGS.md` declares no delivery target for it: a kind
+    # (`deployment`, `store`, `artifact` or `other`) and the target it names. ``None`` for a stack with no default, which
+    # must declare one before a release.
+    delivery_kind: str | None = None
+    delivery_target: str | None = None
+
+
+DELIVERY_KINDS = ("deployment", "store", "artifact", "other")
 
 
 def _stack(
@@ -103,17 +111,19 @@ def _stack(
     capabilities: Mapping[str, bool],
     default_path: str | None = None,
     port_range: tuple[int, int] | None = None,
+    delivery: tuple[str, str] | None = None,
 ) -> Stack:
-    return Stack(stack_id, generated, MappingProxyType(dict(capabilities)), default_path, port_range)
+    kind, target = delivery if delivery is not None else (None, None)
+    return Stack(stack_id, generated, MappingProxyType(dict(capabilities)), default_path, port_range, kind, target)
 
 
 STACKS: Mapping[str, Stack] = MappingProxyType(
     {
-        "spring-backend": _stack("spring-backend", True, {CAPABILITY_HAS_UI: False, CAPABILITY_SERVES_API: True}, "backend", (8080, 8179)),
-        "nextjs-web": _stack("nextjs-web", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, None, (3000, 3099)),
-        "android-compose": _stack("android-compose", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, "mobile-android"),
-        "ios-swiftui": _stack("ios-swiftui", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, "mobile-ios"),
-        "python-agent-service": _stack("python-agent-service", True, {CAPABILITY_HAS_UI: False, CAPABILITY_SERVES_API: True}, "agent-service", (8200, 8299)),
+        "spring-backend": _stack("spring-backend", True, {CAPABILITY_HAS_UI: False, CAPABILITY_SERVES_API: True}, "backend", (8080, 8179), ("deployment", "production")),
+        "nextjs-web": _stack("nextjs-web", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, None, (3000, 3099), ("deployment", "production")),
+        "android-compose": _stack("android-compose", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, "mobile-android", None, ("store", "play-store")),
+        "ios-swiftui": _stack("ios-swiftui", True, {CAPABILITY_HAS_UI: True, CAPABILITY_SERVES_API: False}, "mobile-ios", None, ("store", "app-store")),
+        "python-agent-service": _stack("python-agent-service", True, {CAPABILITY_HAS_UI: False, CAPABILITY_SERVES_API: True}, "agent-service", (8200, 8299), ("deployment", "production")),
         # An app of an unlisted kind declares both capabilities itself.
         "other": _stack("other", False, {}),
     }
@@ -315,7 +325,7 @@ def retired_in_scope_message(feature_id: str, retired: Iterable[str]) -> str:
 def app_retired_message(retired: Iterable[str]) -> str:
     """The rejection for a new feature, or an edit, that adds a retired app to a feature's scope."""
 
-    return f"App(s) {_quoted_ids(retired)} are retired and cannot be added to a feature's scope; a retired app stays only on features that are done."
+    return f"App(s) {_quoted_ids(retired)} are retired and cannot be added to a feature's scope; a retired app stays only on features that are released."
 
 
 def api_surface_without_api_app_message(model: "WorkspaceModel", feature_id: str, app_ids: Iterable[str]) -> str:

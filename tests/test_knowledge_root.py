@@ -16,7 +16,7 @@ import yaml
 
 from prism_cli import cli
 from prism_cli.app_model import PURPOSE_KNOWLEDGE_ROOT, normalize_manifest
-from prism_cli.board_reads import query
+from prism_cli.wiki_transitions import build_board_transition_preflight
 from prism_cli.board_service import BoardError, BoardService
 from prism_cli.presets import PRESETS, WORKFLOW_PRESETS
 from prism_cli.status import build_status
@@ -391,7 +391,7 @@ Show the invoice history.
 As a customer, I want to see my invoices, so that I can check what I paid.
 
 ## Acceptance criteria
-- [ ] The history lists every invoice.
+- [ ] AC-1 [{apps}] The history lists every invoice.
 
 ## Open questions
 
@@ -402,9 +402,19 @@ As a customer, I want to see my invoices, so that I can check what I paid.
 None.
 
 ## Delivery evidence
-| App | Implementation | Tests | Release |
-|---|---|---|---|
+| App | Artifact | Contract | Implementation | Tests | Basis |
+|---|---|---|---|---|---|
 {rows}
+
+## QA verification
+| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |
+|---|---|---|---|---|---|---|---|---|
+
+## Release
+| App | Target | Version | Attempt | Outcome | Record | Basis |
+|---|---|---|---|---|---|---|
+
+## Evidence history
 """
 
 
@@ -419,17 +429,29 @@ class FeatureLaterTests(KnowledgeRootCase):
         self.wiki = self.root / "knowledge" / "wiki"
         (self.wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 36500\n---\n", encoding="utf-8")
 
-    def write_in_dev_feature(self, apps: list[str]) -> None:
+    def write_in_dev_feature(self, apps: list[str], status: str = "in-dev", owner: str = "dev") -> None:
+        """F-001 for `apps`, each with its delivery row by URL; `in-dev` is the page a `dev-done` proposal starts from."""
+
         scope = "\n".join(f"- **{app}**: Deliver the history in {app}." for app in apps)
         rows = "\n".join(
-            f"| {app} | https://example.com/acme/{app}/pull/42 | https://example.com/acme/{app}/actions/runs/1187 | release: https://example.com/acme/{app}/releases/tag/v1.4.0 |"
+            f"| {app} | `build:{app}#1` | none | https://example.com/acme/{app}/pull/42 | https://example.com/acme/{app}/actions/runs/1187 | checked |"
             for app in apps
         )
         (self.wiki / "features" / "F-001-invoice-history.md").write_text(
-            "---\nid: F-001\ntitle: Invoice history\nstatus: in-dev\nowner: dev\n"
-            f"apps: [{', '.join(apps)}]\nsources: []\nadvisory-review: not-needed\ndesign: not-applicable\n"
-            "design-exemption-reason: The history reuses the existing list screen.\n---\n\n"
-            + FEATURE_BODY.format(scope=scope, rows=rows),
+            f"---\nid: F-001\ntitle: Invoice history\nstatus: {status}\nowner: {owner}\n"
+            f"apps: [{', '.join(apps)}]\nsources: []\nadvisory-review: not-needed\ncriteria-high-water: 1\n---\n\n"
+            + FEATURE_BODY.format(scope=scope, rows=rows, apps=", ".join(apps)),
+            encoding="utf-8",
+        )
+        # An app with a UI needs its design page; the history reuses the existing list screen.
+        (self.wiki / "design").mkdir(exist_ok=True)
+        (self.wiki / "design" / "F-001-invoice-history.md").write_text(
+            "---\nfeature-id: F-001\ntitle: Invoice history design\nfigma: not applicable\n---\n\n"
+            "## Summary\nThe history reuses the existing list screen.\n\n"
+            "## Key design decisions\nNo new screen is added.\n\n"
+            "## States covered\nEmpty, loading, error and success.\n\n"
+            "## Component references\nThe existing list component.\n\n"
+            "## Open design questions\nNone.\n",
             encoding="utf-8",
         )
         for app in apps:
@@ -437,17 +459,16 @@ class FeatureLaterTests(KnowledgeRootCase):
                 f"---\nfeature-id: F-001\napp: {app}\nstatus: done\n---\n\n## Acceptance criteria\n- The history is shown.\n",
                 encoding="utf-8",
             )
-        write_status_board(self.root, "| F-001 | Invoice history | in-dev | dev | not-needed |\n")
+        write_status_board(self.root, f"| F-001 | Invoice history | {status} | {owner} | not-needed |\n")
         write_index(self.root)
 
-    def dev_done_checks(self) -> dict[str, dict]:
-        """The dev-done checks as the connected board evaluates them for a human writer."""
+    def dev_done_checks(self, apps: list[str]) -> dict[str, dict]:
+        """The dev-done checks as the connected board evaluates them for a proposal that delivers `apps`."""
 
         if self.board is None:
             self.board = BoardService(self.root).start()
             self.addCleanup(self.board.close)
-            self.writer = self.board.authenticate(self.board.create_participant("Writer", "human", writable=True)["token"])
-        transition = query(self.board, self.writer, "transition-preflight", "F-001", "dev-done")["facts"]["transition"]
+        transition = build_board_transition_preflight(self.root, "F-001", "dev-done", named_apps=apps)
         return {check["code"]: check for check in transition["checks"]}
 
     def test_delivery_evidence_by_url_passes_dev_done_for_a_resolved_and_an_unresolved_app(self) -> None:
@@ -455,10 +476,12 @@ class FeatureLaterTests(KnowledgeRootCase):
             with self.subTest(apps=apps):
                 self.write_in_dev_feature(apps)
 
-                checks = self.dev_done_checks()
+                checks = self.dev_done_checks(apps)
 
                 self.assertEqual("pass", checks["delivery-evidence"]["status"], checks["delivery-evidence"])
                 self.assertEqual([], [code for code, check in checks.items() if check["status"] in {"blocked", "unknown"}], checks)
+                # The delivered page, at the minimum of its app stages, lints clean.
+                self.write_in_dev_feature(apps, "ready-for-qa", "qa")
                 result = lint_wiki(self.root)
                 self.assertEqual(0, result.error_count, [item.to_dict() for item in result.diagnostics])
                 status = build_status(self.root)
@@ -468,9 +491,9 @@ class FeatureLaterTests(KnowledgeRootCase):
     def test_the_unresolved_checkout_does_not_block_the_evidence_of_a_missing_app(self) -> None:
         self.write_in_dev_feature(["customer-android", "billing-api"])
         page = self.wiki / "features" / "F-001-invoice-history.md"
-        page.write_text(page.read_text(encoding="utf-8").replace("| billing-api | https://example.com/acme/billing-api/pull/42 | https://example.com/acme/billing-api/actions/runs/1187 | release: https://example.com/acme/billing-api/releases/tag/v1.4.0 |\n", ""), encoding="utf-8")
+        page.write_text(page.read_text(encoding="utf-8").replace("| billing-api | `build:billing-api#1` | none | https://example.com/acme/billing-api/pull/42 | https://example.com/acme/billing-api/actions/runs/1187 | checked |\n", ""), encoding="utf-8")
 
-        blocked = self.dev_done_checks()["delivery-evidence"]
+        blocked = self.dev_done_checks(["customer-android", "billing-api"])["delivery-evidence"]
 
         self.assertEqual("blocked", blocked["status"])
         self.assertIn("billing-api", blocked["message"])

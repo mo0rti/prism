@@ -13,6 +13,8 @@ from tests import real_temp  # noqa: F401
 
 FIXTURES = Path(__file__).parent / "fixtures" / "wiki_contract"
 CHECK_DATE = date(2026, 9, 8)
+# The blockers of the evidence tables (CONTRACTS 4.5); the fixtures carry no evidence, so the seeded lifecycle fixtures cover them.
+EVIDENCE_BLOCKER_CODES = {"feature-status-not-minimum", "app-row-missing", "stale-qa-evidence", "stale-delivery-evidence"}
 
 
 class WikiContractLintTests(unittest.TestCase):
@@ -27,7 +29,7 @@ class WikiContractLintTests(unittest.TestCase):
     def diagnostics_for(result, code: str):
         return [diagnostic for diagnostic in result.diagnostics if diagnostic.code == code]
 
-    def test_blocker_vocabulary_is_the_six_canonical_codes(self) -> None:
+    def test_blocker_vocabulary_is_the_canonical_codes(self) -> None:
         self.assertEqual(
             {
                 "pending-board-review",
@@ -36,7 +38,8 @@ class WikiContractLintTests(unittest.TestCase):
                 "unresolved-open-questions",
                 "api-contract-not-ready",
                 "cross-app-dependency",
-            },
+            }
+            | EVIDENCE_BLOCKER_CODES,
             WIKI_BLOCKER_CODES,
         )
 
@@ -53,7 +56,8 @@ class WikiContractLintTests(unittest.TestCase):
         result = self.lint_fixture("partial")
         blockers = self.codes(result) & WIKI_BLOCKER_CODES
 
-        self.assertEqual(WIKI_BLOCKER_CODES, blockers)
+        # The released F-005 carries no evidence rows (status not the minimum, rows missing); no row is stale because there are none.
+        self.assertEqual(WIKI_BLOCKER_CODES - {"stale-qa-evidence", "stale-delivery-evidence"}, blockers)
 
         pending = self.diagnostics_for(result, "pending-board-review")
         self.assertEqual({"F-001", "F-002", "F-005"}, {diagnostic.feature_id for diagnostic in pending})
@@ -114,69 +118,39 @@ class WikiContractLintTests(unittest.TestCase):
         self.assertEqual(1, len(nodes))
         self.assertEqual("error", nodes[0]["health"])
 
-    def test_design_exemption_is_required_and_applies_to_downstream_stages(self) -> None:
-        for status, owner in (("ready-for-dev", "dev"), ("in-dev", "dev"), ("done", "none")):
-            with self.subTest(status=status):
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    workspace = Path(temp_dir)
-                    target_wiki = workspace / "knowledge" / "wiki"
-                    target_wiki.parent.mkdir(parents=True)
-                    shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
-                    shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
-                    feature = target_wiki / "features" / "F-001-checkout.md"
-                    body = feature.read_text(encoding="utf-8")
-                    body = body.replace(
-                        "status: specified\nowner: po\n",
-                        f"status: {status}\nowner: {owner}\n",
-                    ).replace(
-                        "apps: [backend]\n",
-                        "apps: [mobile-ios]\n",
-                    ).replace(
-                        "advisory-review: not-needed\n",
-                        "advisory-review: not-needed\n"
-                        "design: not-applicable\n"
-                        "design-exemption-reason: Confirmed backend-only workflow with no visual surface.\n",
-                    )
-                    feature.write_text(body, encoding="utf-8")
-                    result = lint_wiki(workspace, today=CHECK_DATE)
-                    self.assertFalse(
-                        any(
-                            diagnostic.code == "missing-design" and diagnostic.feature_id == "F-001"
-                            for diagnostic in result.diagnostics
-                        )
-                    )
+    def test_a_design_page_is_required_only_for_a_scope_with_a_ui_app(self) -> None:
+        def lint_with(status: str, owner: str, apps: str, extra: str = "") -> bool:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                workspace = Path(temp_dir)
+                target_wiki = workspace / "knowledge" / "wiki"
+                target_wiki.parent.mkdir(parents=True)
+                shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
+                shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
+                feature = target_wiki / "features" / "F-001-checkout.md"
+                body = feature.read_text(encoding="utf-8").replace(
+                    "status: specified\nowner: po\n",
+                    f"status: {status}\nowner: {owner}\n",
+                ).replace(
+                    "apps: [backend]\n",
+                    f"apps: [{apps}]\n",
+                ).replace(
+                    "advisory-review: not-needed\n",
+                    f"advisory-review: not-needed\n{extra}",
+                )
+                feature.write_text(body, encoding="utf-8")
+                result = lint_wiki(workspace, today=CHECK_DATE)
+                return any(diagnostic.code == "missing-design" and diagnostic.feature_id == "F-001" for diagnostic in result.diagnostics)
 
-        for reason_line in ("", "design-exemption-reason:   "):
-            with self.subTest(reason_line=reason_line):
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    workspace = Path(temp_dir)
-                    target_wiki = workspace / "knowledge" / "wiki"
-                    target_wiki.parent.mkdir(parents=True)
-                    shutil.copytree(FIXTURES / "healthy" / "knowledge" / "wiki", target_wiki)
-                    shutil.copyfile(FIXTURES / "healthy" / "prism.workspace.yml", target_wiki.parents[1] / "prism.workspace.yml")
-                    feature = target_wiki / "features" / "F-001-checkout.md"
-                    body = feature.read_text(encoding="utf-8").replace(
-                        "status: specified\nowner: po\n",
-                        "status: ready-for-dev\nowner: dev\n",
-                    ).replace(
-                        "apps: [backend]\n",
-                        "apps: [mobile-ios]\n",
-                    ).replace(
-                        "advisory-review: not-needed\n",
-                        "advisory-review: not-needed\n"
-                        "design: not-applicable\n"
-                        f"{reason_line}\n",
-                    )
-                    feature.write_text(body, encoding="utf-8")
-                    result = lint_wiki(workspace, today=CHECK_DATE)
-                    self.assertTrue(
-                        any(
-                            diagnostic.code == "missing-design" and diagnostic.feature_id == "F-001"
-                            for diagnostic in result.diagnostics
-                        )
-                    )
+        for status, owner in (("ready-for-dev", "dev"), ("in-dev", "dev")):
+            with self.subTest(status=status, apps="backend"):
+                self.assertFalse(lint_with(status, owner, "backend"))
+            with self.subTest(status=status, apps="mobile-ios"):
+                self.assertTrue(lint_with(status, owner, "mobile-ios"))
+        # The old exemption fields are not feature fields: they exempt nothing and are reported.
+        exemption = "design: not-applicable\ndesign-exemption-reason: Confirmed backend-only workflow with no visual surface.\n"
+        self.assertTrue(lint_with("ready-for-dev", "dev", "mobile-ios", exemption))
 
-    def test_done_requires_resolved_advisory_and_open_questions(self) -> None:
+    def test_a_released_feature_requires_resolved_advisory_and_open_questions(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             target_wiki = workspace / "knowledge" / "wiki"
@@ -186,7 +160,7 @@ class WikiContractLintTests(unittest.TestCase):
             feature = target_wiki / "features" / "F-001-checkout.md"
             body = feature.read_text(encoding="utf-8").replace(
                 "status: specified\nowner: po\n",
-                "status: done\nowner: none\n",
+                "status: released\nowner: none\n",
             ).replace(
                 "advisory-review: not-needed\n",
                 "advisory-review: pending\n",
@@ -198,9 +172,9 @@ class WikiContractLintTests(unittest.TestCase):
                 "|---|----------|-------|--------|\n"
                 "| 1 | Which settlement rule applies? | po | open |\n\n"
                 "## Delivery evidence\n"
-                "| App | Implementation | Tests | Release |\n"
-                "|---|---|---|---|\n"
-                "| backend | Synthetic implementation evidence | Synthetic test evidence | release: https://example.test/releases/synthetic |\n",
+                "| App | Artifact | Contract | Implementation | Tests | Basis |\n"
+                "|---|---|---|---|---|---|\n"
+                "| backend | `build:backend#1` | none | Synthetic implementation evidence | Synthetic test evidence | checked |\n",
             )
             feature.write_text(body, encoding="utf-8")
             requirement = target_wiki / "app-requirements" / "F-001-backend.md"

@@ -1,7 +1,7 @@
 ---
 id: F-005
 title: Archived
-status: done
+status: released
 owner: none
 apps: [backend]
 sources: []

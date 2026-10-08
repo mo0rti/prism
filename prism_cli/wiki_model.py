@@ -5,35 +5,99 @@ from __future__ import annotations
 import copy
 import functools
 import hashlib
+import json
 import re
 import time
+import unicodedata
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import date, datetime
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterable, Iterator, Mapping
 from urllib.parse import unquote, urlsplit
 
 import yaml
 
+from prism_cli.app_model import CAPABILITY_HAS_UI, DELIVERY_KINDS, STACKS, WorkspaceModel
 from prism_cli.wiki_paths import resolve_to_path
 
 
-VALID_FEATURE_STATUSES = {"raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done"}
-VALID_FEATURE_OWNERS = {"po", "designer", "dev", "none"}
-VALID_OPEN_QUESTION_OWNERS = {"po", "designer", "dev"}
+# The feature lifecycle in order (CONTRACTS 2.1). A feature before `in-dev` is moved by the actions; from `in-dev` on its
+# status is the minimum of its app stages.
+FEATURE_STATUS_ORDER = (
+    "raw",
+    "specified",
+    "ready-for-design",
+    "in-design",
+    "ready-for-dev",
+    "in-dev",
+    "ready-for-qa",
+    "in-qa",
+    "ready-for-release",
+    "released",
+)
+VALID_FEATURE_STATUSES = set(FEATURE_STATUS_ORDER)
+VALID_FEATURE_OWNERS = {"po", "designer", "tech-lead", "dev", "qa", "release", "none"}
+VALID_OPEN_QUESTION_OWNERS = {"po", "designer", "tech-lead", "dev", "qa", "release"}
 VALID_ADVISORY_REVIEW_STATES = {"not-needed", "pending", "done", "skipped"}
 VALID_APP_REQUIREMENT_STATUSES = {"pending", "in-progress", "done"}
 DEFAULT_WIKI_STALE_AFTER_DAYS = 14
-REVALIDATION_DOMAINS = {
-    "specification",
-    "design",
-    "implementation",
-    "tests",
-    "release",
+# The app stages, in order, and the owner of a feature at each status that has one owner.
+APP_STAGE_ORDER = ("in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released")
+DESIGN_STATUSES = ("ready-for-design", "in-design")
+DESIGN_OWNERS = ("designer", "tech-lead")
+OWNER_BY_STATUS = {
+    "raw": "po",
+    "specified": "po",
+    "ready-for-dev": "dev",
+    "in-dev": "dev",
+    "ready-for-qa": "qa",
+    "in-qa": "qa",
+    "ready-for-release": "release",
+    "released": "none",
 }
-DELIVERY_EVIDENCE_COLUMNS = ("app", "implementation", "tests", "release")
+# The feature-level revalidation domains and the per-app ones (CONTRACTS 2.6), each in canonical order.
+FEATURE_REVALIDATION_DOMAINS = ("specification", "design", "technical-design")
+APP_REVALIDATION_DOMAINS = ("implementation", "tests", "qa", "release")
+REVALIDATION_DOMAINS = set(FEATURE_REVALIDATION_DOMAINS)
+# The front matter keys a feature page may carry (CONTRACTS 6.1). Any other key is `unsupported-feature-field`.
+FEATURE_FRONTMATTER_FIELDS = (
+    "id",
+    "title",
+    "status",
+    "owner",
+    "apps",
+    "sources",
+    "advisory-review",
+    "advisory-skip-reason",
+    "criteria-high-water",
+    "design-tracks",
+    "design-reaffirm",
+    "revalidation",
+    "app-revalidation",
+)
+FEATURE_SECTIONS = (
+    "Summary",
+    "User story",
+    "Acceptance criteria",
+    "Open questions",
+    "App scope",
+    "Design",
+    "Related features",
+    "API surface",
+    "Board review summary",
+    "Delivery evidence",
+    "QA verification",
+    "Release",
+    "Evidence history",
+)
+# The five sections `po-intake` writes; `po-specify` adds the rest.
+INTAKE_SECTIONS = ("Summary", "User story", "Acceptance criteria", "Open questions", "App scope")
+EVIDENCE_SECTIONS = ("Delivery evidence", "QA verification", "Release")
+DELIVERY_EVIDENCE_COLUMNS = ("app", "artifact", "contract", "implementation", "tests", "basis")
+QA_VERIFICATION_COLUMNS = ("row", "criteria", "method", "artifact", "environment", "attempt", "result", "evidence", "basis")
+RELEASE_COLUMNS = ("app", "target", "version", "attempt", "outcome", "record", "basis")
 
 
 def _refuse_change(self: Any, *args: Any, **kwargs: Any) -> Any:
@@ -139,12 +203,68 @@ class MarkdownPage:
 
 @dataclass(frozen=True)
 class WikiSettings:
-    """Read-only settings shared by wiki lint and other read surfaces."""
+    """Read-only settings shared by wiki lint and other read surfaces.
+
+    Besides the staleness setting it carries the workflow policy: `qa_separate_from_dev` and the resolved delivery
+    targets (CONTRACTS 1.6 and 7). A malformed policy value is reported in `policy_errors` and is never read as the
+    default; a gated action that reads the policy is refused while `policy_errors` is not empty.
+    """
 
     stale_after_days: int
     path: Path
     used_fallback: bool = False
     diagnostics: tuple[tuple[str, str], ...] = ()
+    qa_separate_from_dev: bool = False
+    # app ID -> {"kind", "target", "environments"}; an app with no declared target and no stack default is absent.
+    delivery_targets: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    # (code, message) pairs: `invalid-workflow-policy` and `invalid-delivery-target`, each an error.
+    policy_errors: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def policy_valid(self) -> bool:
+        return not self.policy_errors
+
+    @property
+    def policy(self) -> dict[str, Any]:
+        """The workflow policy as plain JSON values: the separation key and the resolved delivery targets."""
+
+        return {
+            "qa_separate_from_dev": self.qa_separate_from_dev,
+            "delivery_targets": {
+                app_id: {"kind": entry["kind"], "target": entry["target"], "environments": list(entry["environments"])}
+                for app_id, entry in sorted(self.delivery_targets.items())
+            },
+        }
+
+    @property
+    def policy_revision(self) -> str:
+        """`sha256` of the canonical JSON of the policy."""
+
+        return hashlib.sha256(canonical_json(self.policy).encode("utf-8")).hexdigest()
+
+
+def workflow_policy(wiki_root: Path, model: "WorkspaceModel | None" = None) -> dict[str, Any]:
+    """The workflow policy of a workspace and the resolution of its delivery targets, in one call (CONTRACTS 1.6, 7).
+
+    Returns `qa_separate_from_dev` (``False`` when the key is absent or malformed), `delivery_targets` (app ID -> kind, target,
+    environments), `revision` (the SHA-256 of the canonical JSON of the policy), `valid` and `errors`, a list of
+    `{code, message}` for a malformed value. A caller that gates an action refuses it with `invalid_policy` while `valid`
+    is false: a malformed value is never read as `false`.
+    """
+
+    settings = read_wiki_settings(wiki_root, model)
+    return {
+        **settings.policy,
+        "revision": settings.policy_revision,
+        "valid": settings.policy_valid,
+        "errors": [{"code": code, "message": message} for code, message in settings.policy_errors],
+    }
+
+
+def canonical_json(value: Any) -> str:
+    """The canonical JSON text of a value: sorted keys, no spaces, non-ASCII escaped."""
+
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
 @dataclass(frozen=True)
@@ -215,6 +335,14 @@ class StatusBoardRow:
     owner: str
     advisory_review: str
     path: Path
+    # The columns D5 fills in (`Design tracks`, `Open bugs`) carry `—` until then and are not compared with the pages.
+    design_tracks: str = "—"
+    app_stages: str = "—"
+    open_bugs: str = "—"
+
+
+# The header of the feature table of `status-board.md` (CONTRACTS 8.2), exact and in this order.
+STATUS_BOARD_COLUMNS = ("ID", "Feature", "Status", "Owner", "Board Review", "Design tracks", "App stages", "Open bugs")
 
 
 FRONTMATTER_PATTERN = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
@@ -363,8 +491,92 @@ def load_markdown_page(path: Path) -> MarkdownPage:
     return scope.load(path)
 
 
-def read_wiki_settings(wiki_root: Path) -> WikiSettings:
-    """Read the canonical `wiki-stale-after-days` setting with its documented fallback."""
+_DELIVERY_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+_DELIVERY_ENTRY_KEYS = frozenset({"kind", "target", "environments"})
+
+
+def resolve_delivery_targets(
+    declared: Any,
+    model: "WorkspaceModel | None",
+) -> tuple[dict[str, dict[str, Any]], list[tuple[str, str]]]:
+    """The delivery target of each app of the workspace, and the problems with the declared ones (CONTRACTS 7).
+
+    `declared` is the `delivery-targets` mapping of `SETTINGS.md`, or ``None``. An entry may name a `kind`, a `target` and
+    `environments`; what it leaves out comes from the app's stack default. An app with neither a declared nor a default
+    kind and target has no entry (an app of the `other` stack must declare one before a release). Without a model only the
+    declared entries are checked and resolved.
+    """
+
+    problems: list[tuple[str, str]] = []
+    entries: dict[str, Mapping[str, Any]] = {}
+    if declared is None:
+        pass
+    elif not isinstance(declared, Mapping):
+        problems.append(("invalid-delivery-target", "`delivery-targets` must map app IDs to {kind, target, environments}."))
+    else:
+        for app_id, entry in declared.items():
+            if not isinstance(app_id, str) or (model is not None and model.app(app_id) is None):
+                problems.append(("invalid-delivery-target", f"`delivery-targets` names `{app_id}`, which is not an app of this workspace."))
+                continue
+            if not isinstance(entry, Mapping) or set(entry) - _DELIVERY_ENTRY_KEYS:
+                problems.append(("invalid-delivery-target", f"The delivery target of `{app_id}` must be a mapping with only `kind`, `target` and `environments`."))
+                continue
+            kind = entry.get("kind")
+            if kind is not None and kind not in DELIVERY_KINDS:
+                problems.append(("invalid-delivery-target", f"The delivery kind of `{app_id}` must be one of {', '.join(DELIVERY_KINDS)}."))
+                continue
+            target = entry.get("target")
+            if target is not None and (not isinstance(target, str) or not _DELIVERY_NAME.match(target)):
+                problems.append(("invalid-delivery-target", f"The delivery target of `{app_id}` must be a short name such as `production`."))
+                continue
+            environments = entry.get("environments", [])
+            if (
+                not isinstance(environments, list)
+                or any(not isinstance(item, str) or not _DELIVERY_NAME.match(item) for item in environments)
+                or len(set(environments)) != len(environments)
+            ):
+                problems.append(("invalid-delivery-target", f"The environments of `{app_id}` must be a list of distinct short names."))
+                continue
+            entries[app_id] = entry
+    resolved: dict[str, dict[str, Any]] = {}
+    app_ids = [app.id for app in model.apps] if model is not None else list(entries)
+    for app_id in app_ids:
+        entry = entries.get(app_id, {})
+        app = model.app(app_id) if model is not None else None
+        stack = STACKS.get(app.stack) if app is not None else None
+        kind = entry.get("kind") or (stack.delivery_kind if stack is not None else None)
+        target = entry.get("target") or (stack.delivery_target if stack is not None else None)
+        if kind is None or target is None:
+            continue
+        resolved[app_id] = {"kind": kind, "target": target, "environments": list(entry.get("environments", []))}
+    return resolved, problems
+
+
+def _workflow_policy(
+    frontmatter: Mapping[str, Any],
+    model: "WorkspaceModel | None",
+) -> dict[str, Any]:
+    """The policy keyword arguments of `WikiSettings` for a SETTINGS front matter."""
+
+    errors: list[tuple[str, str]] = []
+    separate = False
+    if "qa-separate-from-dev" in frontmatter:
+        value = frontmatter["qa-separate-from-dev"]
+        if isinstance(value, bool):
+            separate = value
+        else:
+            errors.append(("invalid-workflow-policy", "`qa-separate-from-dev` must be `true` or `false`."))
+    targets, problems = resolve_delivery_targets(frontmatter.get("delivery-targets"), model)
+    errors.extend(problems)
+    return {"qa_separate_from_dev": separate, "delivery_targets": targets, "policy_errors": tuple(errors)}
+
+
+def read_wiki_settings(wiki_root: Path, model: "WorkspaceModel | None" = None) -> WikiSettings:
+    """Read the canonical `wiki-stale-after-days` setting with its documented fallback, and the workflow policy.
+
+    `model` is the workspace model: with it the delivery targets resolve to the stack defaults of every app. A malformed
+    policy value is returned in `policy_errors`; it is never read as `false`.
+    """
 
     settings_path = wiki_root / "SETTINGS.md"
     if not settings_path.exists():
@@ -378,6 +590,7 @@ def read_wiki_settings(wiki_root: Path) -> WikiSettings:
                     f"Missing SETTINGS.md; using wiki-stale-after-days: {DEFAULT_WIKI_STALE_AFTER_DAYS}.",
                 ),
             ),
+            **_workflow_policy({}, model),
         )
 
     page = load_markdown_page(settings_path)
@@ -387,8 +600,10 @@ def read_wiki_settings(wiki_root: Path) -> WikiSettings:
             path=settings_path,
             used_fallback=True,
             diagnostics=tuple(("invalid-wiki-settings", message) for message in page.parse_errors),
+            **_workflow_policy({}, model),
         )
 
+    policy = _workflow_policy(page.frontmatter, model)
     if "wiki-stale-after-days" not in page.frontmatter:
         return WikiSettings(
             stale_after_days=DEFAULT_WIKI_STALE_AFTER_DAYS,
@@ -400,6 +615,7 @@ def read_wiki_settings(wiki_root: Path) -> WikiSettings:
                     f"SETTINGS.md is missing `wiki-stale-after-days`; using {DEFAULT_WIKI_STALE_AFTER_DAYS}.",
                 ),
             ),
+            **policy,
         )
 
     value = page.frontmatter["wiki-stale-after-days"]
@@ -419,8 +635,9 @@ def read_wiki_settings(wiki_root: Path) -> WikiSettings:
                     f"`wiki-stale-after-days` must be a non-negative integer; using {DEFAULT_WIKI_STALE_AFTER_DAYS}.",
                 ),
             ),
+            **policy,
         )
-    return WikiSettings(stale_after_days=parsed, path=settings_path)
+    return WikiSettings(stale_after_days=parsed, path=settings_path, **policy)
 
 
 def read_feature_pages(wiki_root: Path) -> list[FeaturePage]:
@@ -578,20 +795,6 @@ def parse_revalidation(value: Any) -> tuple[list[str], list[str]]:
     return domains, errors
 
 
-@dataclass(frozen=True)
-class DeliveryProblem:
-    """One reason a feature's delivery evidence is not acceptable.
-
-    ``code`` is ``release-evidence-required`` for a ``Release`` cell that is
-    neither release evidence nor a delivery attestation, and ``delivery-evidence``
-    for every other problem with the table.
-    """
-
-    code: str
-    message: str
-
-
-DELIVERY_EVIDENCE_PROBLEM = "delivery-evidence"
 RELEASE_EVIDENCE_REQUIRED = "release-evidence-required"
 
 _RELEASE_EVIDENCE_FORM = re.compile(r"^(release|tag|deployment)\s*:\s*(.*)$", re.IGNORECASE)
@@ -671,108 +874,980 @@ def _release_reference_problem(reference: str, *, allow_code_change: bool) -> st
     return None
 
 
-def parse_delivery_evidence(
-    body: str,
-    declared_apps: list[str],
-) -> tuple[dict[str, dict[str, str]], list[DeliveryProblem]]:
-    """Parse the canonical per-app delivery evidence table.
+def parse_app_revalidation(value: Any) -> tuple[dict[str, list[str]], list[str]]:
+    """Parse the optional per-app revalidation mapping: app ID -> domains in `APP_REVALIDATION_DOMAINS`.
 
-    This validates only observable structure and substantive cells, and that
-    each ``Release`` cell is release evidence or a delivery attestation (see
-    ``release_evidence_problem``).  It does not claim that referenced
-    implementation, test, or release artifacts exist; the responsible agent
-    must verify those references before writing Done.
+    Like `parse_revalidation` it is strict, so an unknown domain never makes an app look current.
     """
 
-    rows, _cells, problems = parse_delivery_evidence_cells(body, declared_apps)
-    return rows, problems
+    if value is None:
+        return {}, []
+    if not isinstance(value, Mapping):
+        return {}, ["`app-revalidation` must map app IDs to lists of lifecycle domains."]
+    result: dict[str, list[str]] = {}
+    errors: list[str] = []
+    for app_id, domains in value.items():
+        if not isinstance(app_id, str) or not app_id.strip():
+            errors.append("Every `app-revalidation` key must be an app ID.")
+            continue
+        if not isinstance(domains, list):
+            errors.append(f"`app-revalidation` for `{app_id}` must be a list of lifecycle domains.")
+            continue
+        seen: list[str] = []
+        for item in domains:
+            domain = item.strip().lower() if isinstance(item, str) else ""
+            if domain not in APP_REVALIDATION_DOMAINS:
+                errors.append(
+                    f"`app-revalidation` for `{app_id}` contains unsupported domain `{item}`; expected one of {list(APP_REVALIDATION_DOMAINS)}."
+                )
+            elif domain in seen:
+                errors.append(f"`app-revalidation` for `{app_id}` contains duplicate domain `{domain}`.")
+            else:
+                seen.append(domain)
+        if seen:
+            result[app_id] = seen
+    return result, errors
 
 
-def parse_delivery_evidence_cells(
-    body: str,
-    declared_apps: list[str],
-) -> tuple[dict[str, dict[str, str]], dict[str, list[str]], list[DeliveryProblem]]:
-    """Parse the delivery evidence table like ``parse_delivery_evidence``.
+def merge_revalidation(current: Iterable[str], added: Iterable[str], order: tuple[str, ...]) -> list[str]:
+    """The domains of `current` and `added` together, in the canonical `order`."""
 
-    The second mapping holds each app's cells exactly as written, in the
-    table's own column order, so a caller can archive a row verbatim whatever
-    column order the table uses.  App keys are lower case in both mappings.
+    wanted = {*current, *added}
+    return [domain for domain in order if domain in wanted]
+
+
+def design_owner(apps: Iterable[str], model: WorkspaceModel | None) -> str:
+    """The design owner `D` of a scope (CONTRACTS 0): `designer` when an active app has `has-ui` true or `unknown`, otherwise `tech-lead`.
+
+    Without a model every app counts as `unknown`, which is the stricter side, so the owner is `designer`.
     """
 
-    def problem(message: str) -> DeliveryProblem:
-        return DeliveryProblem(DELIVERY_EVIDENCE_PROBLEM, message)
+    if model is None:
+        return "designer"
+    for app_id in apps:
+        app = model.app(app_id)
+        if app is not None and app.active and app.gate_capability(CAPABILITY_HAS_UI):
+            return "designer"
+    return "tech-lead"
 
-    section = section_text(body, "Delivery evidence")
+
+def expected_owner(status: str | None, apps: Iterable[str], model: WorkspaceModel | None) -> str | None:
+    """The owner a feature has at `status` (CONTRACTS 2.1), or ``None`` for an unknown status."""
+
+    if status in DESIGN_STATUSES:
+        return design_owner(apps, model)
+    return OWNER_BY_STATUS.get(status or "")
+
+
+def status_rank(status: str | None) -> int:
+    """The position of a feature status in the lifecycle, or -1 for an unknown one."""
+
+    try:
+        return FEATURE_STATUS_ORDER.index(status or "")
+    except ValueError:
+        return -1
+
+
+# --- Evidence tables ---------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EvidenceProblem:
+    """One reason an evidence table or row is not acceptable. `code` is the board error code of the problem."""
+
+    code: str
+    message: str
+    # The app (or QA row key) the problem names, when it names one.
+    subject: str | None = None
+
+
+def _split_table_row(line: str) -> list[str]:
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def _plain_header(cell: str) -> str:
+    return re.sub(r"[*_`]+", "", cell).strip().lower()
+
+
+def _row_text(cells: Iterable[str]) -> str:
+    return "| " + " | ".join(cells) + " |"
+
+
+def parse_evidence_table(
+    body: str,
+    heading: str,
+    columns: tuple[str, ...],
+    code: str,
+) -> tuple[list[tuple[str, ...]], list[EvidenceProblem]]:
+    """The data rows of the table under `## heading`, as cell tuples, and the problems with its shape.
+
+    A section with no text, or with text and no table, has no rows and no problem: an empty section is the state before
+    the evidence exists. A table must start with the header `columns` (case, bold and backticks are ignored) and every
+    row must have one cell per column. Lines inside code fences and HTML comments are not read.
+    """
+
+    section = section_text(body, heading)
     if not section.strip():
-        return {}, {}, [problem("Required `Delivery evidence` section is missing or empty.")]
-
-    table_lines = _visible_evidence_table_lines(section)
-    if not table_lines:
-        return {}, {}, [problem("Delivery evidence must contain a markdown table.")]
-
-    header: list[str] | None = None
-    header_indexes: dict[str, int] = {}
-    rows: dict[str, dict[str, str]] = {}
-    written: dict[str, list[str]] = {}
-    problems: list[DeliveryProblem] = []
-    for line in table_lines:
-        cells = [cell.strip() for cell in line.strip("|").split("|")]
-        normalized = [re.sub(r"[*_`]+", "", cell).strip().lower() for cell in cells]
-        if header is None:
-            if len(normalized) == len(DELIVERY_EVIDENCE_COLUMNS) and set(normalized) == set(DELIVERY_EVIDENCE_COLUMNS):
-                header = cells
-                header_indexes = {column: normalized.index(column) for column in DELIVERY_EVIDENCE_COLUMNS}
-                continue
+        return [], []
+    lines = _visible_evidence_table_lines(section)
+    if not lines:
+        return [], []
+    rows: list[tuple[str, ...]] = []
+    problems: list[EvidenceProblem] = []
+    header_seen = False
+    for line in lines:
+        cells = _split_table_row(line)
+        if not header_seen:
             if _is_separator_row(cells):
                 continue
-            problems.append(problem("Delivery evidence table is missing the App/Implementation/Tests/Release header."))
-            continue
-        if len(normalized) == len(DELIVERY_EVIDENCE_COLUMNS) and set(normalized) == set(DELIVERY_EVIDENCE_COLUMNS):
-            problems.append(problem("Delivery evidence contains more than one header/table."))
+            if tuple(_plain_header(cell) for cell in cells) != columns:
+                names = " | ".join(column.capitalize() for column in columns)
+                problems.append(EvidenceProblem(code, f"The `{heading}` table must start with the header `| {names} |`."))
+                return [], problems
+            header_seen = True
             continue
         if _is_separator_row(cells):
             continue
-        if len(cells) != len(DELIVERY_EVIDENCE_COLUMNS):
-            problems.append(problem("Delivery evidence table rows must contain exactly App, Implementation, Tests, and Release cells."))
+        if tuple(_plain_header(cell) for cell in cells) == columns:
+            problems.append(EvidenceProblem(code, f"The `{heading}` section has more than one table header."))
             continue
-        app_id = cells[header_indexes["app"]].strip().lower()
-        if not app_id:
-            problems.append(problem("Every delivery evidence row must name an app."))
+        if len(cells) != len(columns):
+            problems.append(EvidenceProblem(code, f"A row of the `{heading}` table must have exactly {len(columns)} cells: {_clip_text(_row_text(cells))}"))
             continue
-        if app_id in rows:
-            problems.append(problem(f"Delivery evidence contains duplicate app `{app_id}` rows."))
-            continue
-        row = {
-            column: cells[index].strip()
-            for column, index in header_indexes.items()
+        rows.append(tuple(cells))
+    return rows, problems
+
+
+def _clip_text(value: str, limit: int = 160) -> str:
+    text = re.sub(r"\s+", " ", value).strip()
+    return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
+
+
+_ARTIFACT_VERSION = r"[0-9]+(?:\.[0-9]+)*(?:[-+][0-9A-Za-z.-]+)?"
+_ARTIFACT_GRAMMARS = {
+    "version": re.compile(rf"^version:{_ARTIFACT_VERSION}$"),
+    "build": re.compile(r"^build:[a-z0-9][a-z0-9._-]*#[0-9]+$"),
+    "image": re.compile(r"^image:[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$"),
+    "package": re.compile(rf"^package:@?[A-Za-z0-9][A-Za-z0-9._/-]*@{_ARTIFACT_VERSION}$"),
+    "commit": re.compile(r"^commit:[0-9a-fA-F]{7,40}$"),
+}
+ARTIFACT_KINDS = tuple(_ARTIFACT_GRAMMARS)
+_CONTRACT_BINDING = re.compile(r"^(F-\d+)@v([0-9]+):(c1:[0-9a-f]{64})$")
+CHECKED_BASES = ("checked", "attested")
+QA_METHODS = ("automated", "manual", "exploratory")
+QA_RESULTS = ("pass", "fail", "blocked")
+RELEASE_OUTCOMES = ("pending", "released", "failed")
+_NO_VALUE = {"", "-", "—", "–"}
+_APP_ID_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_ENVIRONMENT_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def clean_cell(value: str) -> str:
+    """A table cell without the backticks that wrap an artifact or identifier."""
+
+    return value.strip().strip("`").strip()
+
+
+def artifact_reference_problem(value: str) -> str | None:
+    """Why `value` is not an artifact reference of CONTRACTS 5.1, or ``None`` when it is one.
+
+    An artifact is `version:`, `build:`, `image:`, `package:` or `commit:` followed by the grammar of its kind. The board
+    checks the grammar only, never that the artifact exists.
+    """
+
+    text = clean_cell(value)
+    kind = text.split(":", 1)[0]
+    grammar = _ARTIFACT_GRAMMARS.get(kind)
+    if grammar is None:
+        return f"must start with one of {', '.join(f'`{item}:`' for item in ARTIFACT_KINDS)}"
+    if not grammar.match(text):
+        examples = {
+            "version": "`version:1.4.0`",
+            "build": "`build:catalog-api#412`",
+            "image": "`image:registry/app@sha256:<64 hex digits>`",
+            "package": "`package:name@1.4.0`",
+            "commit": "`commit:<7 to 40 hex digits>`",
         }
-        rows[app_id] = row
-        written[app_id] = list(cells)
-        for column in DELIVERY_EVIDENCE_COLUMNS[1:]:
-            if column == "release":
-                reason = release_evidence_problem(row[column])
-                if reason is not None:
+        return f"does not match the `{kind}:` form, for example {examples[kind]}"
+    return None
+
+
+@dataclass(frozen=True)
+class DeliveryRow:
+    """One row of `## Delivery evidence`: the artifact an app delivered, bound to a contract version and its proof."""
+
+    app: str
+    artifact: str
+    contract: str
+    implementation: str
+    tests: str
+    basis: str
+    cells: tuple[str, ...]
+
+    @property
+    def text(self) -> str:
+        return _row_text(self.cells)
+
+    @property
+    def contract_binding(self) -> tuple[str, int, str] | None:
+        """(feature ID, version, digest) of the contract cited, or ``None`` for `none`."""
+
+        match = _CONTRACT_BINDING.match(clean_cell(self.contract))
+        return (match.group(1), int(match.group(2)), match.group(3)) if match else None
+
+
+def parse_delivery_rows(body: str) -> tuple[list[DeliveryRow], list[EvidenceProblem]]:
+    """The rows of `## Delivery evidence` (CONTRACTS 5.1) and the problems with them."""
+
+    cell_rows, problems = parse_evidence_table(body, "Delivery evidence", DELIVERY_EVIDENCE_COLUMNS, "delivery_evidence_invalid")
+    rows: list[DeliveryRow] = []
+    for cells in cell_rows:
+        app, artifact, contract, implementation, tests, basis = cells
+        subject = app.strip() or None
+        if not _APP_ID_TOKEN.match(app.strip()):
+            problems.append(EvidenceProblem("delivery_evidence_invalid", "Every delivery evidence row must name an app.", subject))
+            continue
+        row = DeliveryRow(app.strip(), clean_cell(artifact), clean_cell(contract), implementation, tests, clean_cell(basis).lower(), cells)
+        rows.append(row)
+        reason = artifact_reference_problem(artifact)
+        if reason is not None:
+            problems.append(EvidenceProblem("artifact_reference_invalid", f"The artifact of `{row.app}` {reason}.", row.app))
+        if row.contract.lower() != "none" and row.contract_binding is None:
+            problems.append(
+                EvidenceProblem(
+                    "delivery_evidence_invalid",
+                    f"The contract of `{row.app}` must be `none` or `<feature ID>@v<version>:c1:<64 hex digits>`.",
+                    row.app,
+                )
+            )
+        for column, value in (("Implementation", implementation), ("Tests", tests)):
+            if not _substantive_evidence_cell(value):
+                problems.append(EvidenceProblem("delivery_evidence_invalid", f"The {column} cell of `{row.app}` is empty or still a placeholder.", row.app))
+        if row.basis not in CHECKED_BASES:
+            problems.append(EvidenceProblem("basis_invalid", f"The basis of `{row.app}` must be `checked` or `attested`.", row.app))
+    return rows, problems
+
+
+@dataclass(frozen=True)
+class CriterionRef:
+    """A criterion cited by a QA row: its number and the revision (`v1:<hex>`) the verification covers."""
+
+    number: int
+    revision: str
+
+    @property
+    def text(self) -> str:
+        return f"AC-{self.number}@{self.revision}"
+
+
+_CRITERION_REF = re.compile(r"^AC-([0-9]+)@(v1:[0-9a-f]{64})$")
+
+
+@dataclass(frozen=True)
+class QaRow:
+    """One row of `## QA verification` (CONTRACTS 5.2): an app row, or an integration row of two or more participants."""
+
+    key: str
+    apps: tuple[str, ...]
+    integration: bool
+    criteria: tuple[CriterionRef, ...]
+    method: str
+    artifacts: Mapping[str, str]
+    environment: str
+    attempt: int | None
+    result: str
+    evidence: str
+    basis: str
+    cells: tuple[str, ...]
+
+    @property
+    def text(self) -> str:
+        return _row_text(self.cells)
+
+
+def parse_qa_rows(body: str) -> tuple[list[QaRow], list[EvidenceProblem]]:
+    """The rows of `## QA verification` and the problems with them."""
+
+    cell_rows, problems = parse_evidence_table(body, "QA verification", QA_VERIFICATION_COLUMNS, "qa_row_invalid")
+    rows: list[QaRow] = []
+
+    def problem(message: str, subject: str | None) -> None:
+        problems.append(EvidenceProblem("qa_row_invalid", message, subject))
+
+    for cells in cell_rows:
+        key_cell, criteria_cell, method, artifact_cell, environment, attempt_cell, result, evidence, basis = cells
+        key = clean_cell(key_cell)
+        integration = key.startswith("integration:")
+        if integration:
+            apps = tuple(part.strip() for part in key[len("integration:"):].split("+"))
+            if len(apps) < 2 or any(not _APP_ID_TOKEN.match(app) for app in apps) or list(apps) != sorted(set(apps)):
+                problem(f"The row `{key}` must name two or more participants, sorted and joined by `+`.", key)
+                continue
+        elif _APP_ID_TOKEN.match(key):
+            apps = (key,)
+        else:
+            problem("Every QA verification row must name an app or `integration:` and its participants.", key or None)
+            continue
+        refs: list[CriterionRef] = []
+        bad_refs = False
+        for item in criteria_cell.split(","):
+            match = _CRITERION_REF.match(clean_cell(item))
+            if match is None:
+                bad_refs = True
+                break
+            refs.append(CriterionRef(int(match.group(1)), match.group(2)))
+        if bad_refs or not refs or len({ref.number for ref in refs}) != len(refs):
+            problem(f"The criteria of `{key}` must be distinct `AC-<n>@v1:<64 hex digits>` references joined by commas.", key)
+            continue
+        artifacts: dict[str, str] = {}
+        artifact_problem: str | None = None
+        if integration:
+            for part in artifact_cell.split(";"):
+                app, _, artifact = part.partition("=")
+                app = app.strip()
+                if app in artifacts or app not in apps or artifact_reference_problem(artifact) is not None:
+                    artifact_problem = f"The artifacts of `{key}` must be one `app=artifact` entry per participant, joined by `;`."
+                    break
+                artifacts[app] = clean_cell(artifact)
+            if artifact_problem is None and set(artifacts) != set(apps):
+                artifact_problem = f"The artifacts of `{key}` must be one `app=artifact` entry per participant, joined by `;`."
+        else:
+            reason = artifact_reference_problem(artifact_cell)
+            if reason is not None:
+                artifact_problem = f"The artifact of `{key}` {reason}."
+            else:
+                artifacts[apps[0]] = clean_cell(artifact_cell)
+        if artifact_problem is not None:
+            problems.append(EvidenceProblem("artifact_reference_invalid", artifact_problem, key))
+            continue
+        attempt_match = re.fullmatch(r"qa-([1-9][0-9]*)", clean_cell(attempt_cell))
+        row = QaRow(
+            key,
+            apps,
+            integration,
+            tuple(refs),
+            clean_cell(method).lower(),
+            artifacts,
+            clean_cell(environment),
+            int(attempt_match.group(1)) if attempt_match else None,
+            clean_cell(result).lower(),
+            evidence,
+            clean_cell(basis).lower(),
+            cells,
+        )
+        rows.append(row)
+        if row.method not in QA_METHODS:
+            problem(f"The method of `{key}` must be one of {', '.join(QA_METHODS)}.", key)
+        if not _ENVIRONMENT_TOKEN.match(row.environment):
+            problem(f"The environment of `{key}` must be a short name such as `staging`.", key)
+        if row.attempt is None:
+            problem(f"The attempt of `{key}` must be `qa-<n>`.", key)
+        if row.result not in QA_RESULTS:
+            problem(f"The result of `{key}` must be one of {', '.join(QA_RESULTS)}.", key)
+        if not _substantive_evidence_cell(evidence):
+            problem(f"The evidence of `{key}` is empty or still a placeholder.", key)
+        if row.basis not in CHECKED_BASES:
+            problems.append(EvidenceProblem("basis_invalid", f"The basis of `{key}` must be `checked` or `attested`.", key))
+    return rows, problems
+
+
+@dataclass(frozen=True)
+class ReleaseRow:
+    """One row of `## Release` (CONTRACTS 5.3). A row with an attempt `release-<n>` is the authoritative row of its app."""
+
+    app: str
+    target: str
+    version: str
+    attempt: int | None
+    outcome: str
+    record: str
+    basis: str
+    cells: tuple[str, ...]
+
+    @property
+    def authoritative(self) -> bool:
+        return self.attempt is not None
+
+    @property
+    def text(self) -> str:
+        return _row_text(self.cells)
+
+
+def parse_release_rows(body: str) -> tuple[list[ReleaseRow], list[EvidenceProblem]]:
+    """The rows of `## Release` and the problems with them."""
+
+    cell_rows, problems = parse_evidence_table(body, "Release", RELEASE_COLUMNS, "release_row_invalid")
+    rows: list[ReleaseRow] = []
+    for cells in cell_rows:
+        app, target, version, attempt_cell, outcome, record, basis = cells
+        app = app.strip()
+        if not _APP_ID_TOKEN.match(app):
+            problems.append(EvidenceProblem("release_row_invalid", "Every Release row must name an app.", app or None))
+            continue
+        attempt_text = clean_cell(attempt_cell)
+        attempt_match = re.fullmatch(r"release-([1-9][0-9]*)", attempt_text)
+        row = ReleaseRow(
+            app,
+            clean_cell(target),
+            clean_cell(version),
+            int(attempt_match.group(1)) if attempt_match else None,
+            clean_cell(outcome).lower(),
+            record.strip(),
+            clean_cell(basis).lower(),
+            cells,
+        )
+        rows.append(row)
+
+        def bad(message: str) -> None:
+            problems.append(EvidenceProblem("release_row_invalid", message, app))
+
+        if attempt_match is None and attempt_text not in _NO_VALUE:
+            bad(f"The attempt of `{app}` must be `release-<n>`, or `—` for a staging row.")
+        if row.outcome not in RELEASE_OUTCOMES:
+            bad(f"The outcome of `{app}` must be one of {', '.join(RELEASE_OUTCOMES)}.")
+        reason = artifact_reference_problem(version)
+        if reason is not None:
+            problems.append(EvidenceProblem("artifact_reference_invalid", f"The version of `{app}` {reason}.", app))
+        if row.authoritative and row.outcome in {"released", "failed"}:
+            if row.target in _NO_VALUE or record.strip() in _NO_VALUE or row.basis not in CHECKED_BASES:
+                bad(f"A `{row.outcome}` Release row of `{app}` needs a target, a record and a `checked` or `attested` basis.")
+        elif row.authoritative and row.outcome == "pending" and (row.target not in _NO_VALUE or record.strip() not in _NO_VALUE or row.basis not in _NO_VALUE):
+            bad(f"A `pending` Release row of `{app}` has target `—`, record `—` and basis `—`.")
+        elif not row.authoritative and row.target in _NO_VALUE:
+            bad(f"A staging Release row of `{app}` names its environment as the target.")
+    return rows, problems
+
+
+@dataclass(frozen=True)
+class FeatureEvidence:
+    """The three evidence tables of a feature page and the problems found while reading them."""
+
+    delivery: tuple[DeliveryRow, ...] = ()
+    qa: tuple[QaRow, ...] = ()
+    release: tuple[ReleaseRow, ...] = ()
+    problems: tuple[EvidenceProblem, ...] = ()
+
+    @property
+    def has_rows(self) -> bool:
+        return bool(self.delivery or self.qa or self.release)
+
+    def delivery_row(self, app: str) -> DeliveryRow | None:
+        return next((row for row in self.delivery if row.app == app), None)
+
+    def authoritative_release(self, app: str) -> ReleaseRow | None:
+        return next((row for row in self.release if row.app == app and row.authoritative), None)
+
+    def qa_rows_naming(self, app: str) -> list[QaRow]:
+        return [row for row in self.qa if app in row.apps]
+
+
+def read_feature_evidence(body: str) -> FeatureEvidence:
+    """Parse `## Delivery evidence`, `## QA verification` and `## Release` of a feature page body."""
+
+    delivery, delivery_problems = parse_delivery_rows(body)
+    qa, qa_problems = parse_qa_rows(body)
+    release, release_problems = parse_release_rows(body)
+    return FeatureEvidence(tuple(delivery), tuple(qa), tuple(release), tuple([*delivery_problems, *qa_problems, *release_problems]))
+
+
+# --- Evidence history ----------------------------------------------------------------------------------------------
+
+HISTORY_HEADING = re.compile(r"^###\s+(\d{4}-\d{2}-\d{2})\s+-\s+([a-z][a-z0-9-]*)\s*$")
+HISTORY_LABELS = (
+    "Reason",
+    "Affected apps",
+    "Participants",
+    "Affected tracks",
+    "Archived evidence",
+    "Reaffirmed evidence",
+    "Requirement/API invalidations",
+    "Linked bugs",
+)
+ARCHIVED_SECTIONS = ("Delivery evidence", "QA verification", "Release", "Fix", "Verification")
+_HEADING_ANY = re.compile(r"^\s{0,3}#{1,6}\s")
+
+
+@dataclass(frozen=True)
+class HistoryEntry:
+    """One entry of `## Evidence history` (CONTRACTS 2.7)."""
+
+    date: str
+    action: str
+    heading: str
+    text: str
+    fields: Mapping[str, str]
+
+    def names(self, label: str) -> list[str]:
+        """The identifiers a labelled field lists (`none` and brackets are ignored)."""
+
+        value = self.fields.get(label, "").splitlines()[0] if self.fields.get(label) else ""
+        items = [part.strip().strip("`[]").strip() for part in re.split(r"[,;]", value)]
+        return [item for item in items if item and item.lower() != "none"]
+
+    @property
+    def affected_apps(self) -> list[str]:
+        return self.names("Affected apps")
+
+    @property
+    def participants(self) -> list[str]:
+        return self.names("Participants")
+
+    def rows(self, label: str) -> list[tuple[str, tuple[str, ...]]]:
+        """The table rows of a block field as (section name, the row's own cells)."""
+
+        found: list[tuple[str, tuple[str, ...]]] = []
+        for line in self.fields.get(label, "").splitlines():
+            stripped = re.sub(r"^[-*+]\s+", "", line.strip())
+            if not stripped.startswith("|"):
+                continue
+            cells = _split_table_row(stripped)
+            if _is_separator_row(cells) or not cells or cells[0] not in ARCHIVED_SECTIONS:
+                continue
+            found.append((cells[0], tuple(cells[1:])))
+        return found
+
+    @property
+    def archived_rows(self) -> list[tuple[str, tuple[str, ...]]]:
+        return self.rows("Archived evidence")
+
+    @property
+    def reaffirmed_rows(self) -> list[tuple[str, tuple[str, ...]]]:
+        return self.rows("Reaffirmed evidence")
+
+
+def _label_blocks(text: str) -> dict[str, str]:
+    """The labelled bullets (`- Label: text`) of an entry, each with the lines below it up to the next label or heading."""
+
+    labels = "|".join(re.escape(item) for item in HISTORY_LABELS)
+    head = re.compile(rf"^\s*-\s*({labels}):[ \t]*(.*)$")
+    fields: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in text.splitlines():
+        match = head.match(line)
+        if match:
+            current = match.group(1)
+            fields[current] = [match.group(2).strip()]
+        elif _HEADING_ANY.match(line):
+            current = None
+        elif current is not None:
+            fields[current].append(line)
+    return {label: "\n".join(lines).strip() for label, lines in fields.items()}
+
+
+def parse_evidence_history(body: str) -> list[HistoryEntry]:
+    """The entries of `## Evidence history` in the order written."""
+
+    section = section_text(body, "Evidence history")
+    entries: list[HistoryEntry] = []
+    block: list[str] = []
+    heading: tuple[str, str, str] | None = None
+
+    def close() -> None:
+        if heading is not None:
+            text = "\n".join(block)
+            entries.append(HistoryEntry(heading[0], heading[1], heading[2], text, _label_blocks(text)))
+
+    for line in section.splitlines():
+        match = HISTORY_HEADING.match(line.strip())
+        if match:
+            close()
+            heading = (match.group(1), match.group(2), line.strip())
+            block = []
+        elif heading is not None:
+            block.append(line)
+    close()
+    return entries
+
+
+# --- Acceptance criteria -------------------------------------------------------------------------------------------
+
+_CRITERION_ITEM = re.compile(r"^(?P<indent>[ \t]*)(?:[-*+]|\d+[.)])[ \t]+(?:\[(?P<check>[ xX])\][ \t]+)?(?P<rest>.*)$")
+_CRITERION_LABEL = re.compile(r"^\*\*(?P<label>Decided|Observed|Proposed|Assumed|Unknown):\*\*[ \t]*(?P<rest>.*)$")
+_CRITERION_ID = re.compile(r"^AC-(?P<number>[0-9]+)(?:[ \t]+(?P<rest>.*))?$")
+_CRITERION_SCOPE = re.compile(r"^\[(?P<scope>[^\]]*)\][ \t]*(?P<text>.*)$")
+_LINK_IN_TEXT = re.compile(r"(?<!!)\[([^\]]*)\]\(\s*<?([^)\s>]+)>?[^)]*\)")
+
+
+@dataclass(frozen=True)
+class Criterion:
+    """One acceptance criterion of a feature page (CONTRACTS 4.1).
+
+    `number` and `applies_to` are ``None``/empty when the entry has no valid ID or no valid `applies-to`; `problems` lists
+    why. `revision` is `v1:<64 hex>` once the entry is complete.
+    """
+
+    line: int
+    raw: str
+    checked: bool
+    label: str
+    number: int | None
+    applies_to: tuple[str, ...]
+    integration: bool
+    text: str
+    revision: str | None
+    problems: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def id(self) -> str | None:
+        return f"AC-{self.number}" if self.number is not None else None
+
+    @property
+    def ref(self) -> str | None:
+        return f"AC-{self.number}@{self.revision}" if self.number is not None and self.revision else None
+
+    @property
+    def participants(self) -> tuple[str, ...]:
+        return self.applies_to
+
+    def names(self, app: str) -> bool:
+        return app in self.applies_to
+
+
+def criterion_text(value: str) -> str:
+    """The text of a criterion as its revision reads it: NFC, links as `text <destination>`, whitespace collapsed."""
+
+    rendered = _LINK_IN_TEXT.sub(lambda match: f"{match.group(1)} <{match.group(2)}>", value)
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFC", rendered)).strip()
+
+
+def criterion_revision(feature_id: str, number: int, applies_to: Iterable[str], integration: bool, label: str, text: str) -> str:
+    """`v1:` and the SHA-256 of the canonical JSON `[1, feature_id, criterion_id, applies_to, label, text]` (CONTRACTS 4.1)."""
+
+    apps = sorted(set(applies_to))
+    payload = [1, feature_id, f"AC-{number}", {"integration": apps} if integration else apps, label, text]
+    return "v1:" + hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def _raw_visible_lines(text: str) -> list[tuple[int, str]]:
+    """The lines of `text` outside code fences and HTML comments as (index, raw line), indentation kept."""
+
+    visible: list[tuple[int, str]] = []
+    fenced = False
+    in_comment = False
+    for index, raw in enumerate(text.splitlines()):
+        line = raw.strip()
+        if line.startswith("```") or line.startswith("~~~"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if in_comment:
+            if "-->" in line:
+                in_comment = False
+            continue
+        if line.startswith("<!--"):
+            if "-->" not in line:
+                in_comment = True
+            continue
+        visible.append((index, raw))
+    return visible
+
+
+def parse_criteria(body: str, feature_id: str) -> list[Criterion]:
+    """The acceptance criteria of a feature page body, with their IDs, `applies-to`, text and revisions.
+
+    Every list item of `## Acceptance criteria` is one criterion; an indented line below it continues it.
+    """
+
+    section = section_text(body, "Acceptance criteria")
+    items: list[tuple[int, str, bool, str]] = []  # (line, raw first line, checked, text so far)
+    for index, raw in _raw_visible_lines(section):
+        match = _CRITERION_ITEM.match(raw)
+        if match:
+            items.append((index, raw.strip(), (match.group("check") or " ").lower() == "x", match.group("rest").strip()))
+        elif items and raw.strip() and raw[:1] in {" ", "\t"}:
+            line, first, checked, text = items[-1]
+            items[-1] = (line, first, checked, f"{text} {raw.strip()}".strip())
+    criteria: list[Criterion] = []
+    for line, first, checked, rest in items:
+        label = ""
+        label_match = _CRITERION_LABEL.match(rest)
+        if label_match:
+            label = label_match.group("label")
+            rest = label_match.group("rest").strip()
+        problems: list[tuple[str, str]] = []
+        number: int | None = None
+        applies: tuple[str, ...] = ()
+        integration = False
+        text = ""
+        id_match = _CRITERION_ID.match(rest)
+        if id_match is None:
+            problems.append(("criterion-id-required", "A criterion starts with its ID, such as `AC-1 [app] text`."))
+        else:
+            number = int(id_match.group("number"))
+            scope_match = _CRITERION_SCOPE.match((id_match.group("rest") or "").strip())
+            if scope_match is None:
+                problems.append(("invalid-applies-to", f"`AC-{number}` needs an `applies-to` after its ID: `[app, ...]` or `[integration: app, app, ...]`."))
+            else:
+                scope = scope_match.group("scope").strip()
+                text = scope_match.group("text").strip()
+                if scope.lower().startswith("integration:"):
+                    integration = True
+                    scope = scope[len("integration:"):]
+                names = [part.strip() for part in scope.split(",")]
+                valid = bool(names) and all(_APP_ID_TOKEN.match(name) for name in names) and len(set(names)) == len(names)
+                if integration and len(names) < 2:
+                    valid = False
+                if not valid:
                     problems.append(
-                        DeliveryProblem(
-                            RELEASE_EVIDENCE_REQUIRED,
-                            f"Delivery evidence `Release` for `{app_id}` is not release evidence or a delivery attestation: it {reason}. "
-                            f"{_SHIPPED_NOTICE} {_RELEASE_FORMS_HINT}",
+                        (
+                            "invalid-applies-to",
+                            f"`AC-{number}` has an invalid `applies-to`: use `[app, ...]` for per-app criteria or `[integration: app, app, ...]` with two or more distinct apps.",
                         )
                     )
-            elif not _substantive_evidence_cell(row[column]):
-                problems.append(problem(f"Delivery evidence `{column}` for `{app_id}` is empty or still a placeholder."))
+                    integration = False
+                else:
+                    applies = tuple(sorted(names))
+        normalized = criterion_text(text)
+        revision = (
+            criterion_revision(feature_id, number, applies, integration, label, normalized)
+            if number is not None and applies and not problems
+            else None
+        )
+        criteria.append(Criterion(line, first, checked, label, number, applies, integration, normalized, revision, tuple(problems)))
+    return criteria
 
-    if header is None:
-        problems.append(problem("Delivery evidence table has no usable header row."))
 
-    declared = {item.strip().lower() for item in declared_apps if isinstance(item, str) and item.strip()}
-    missing = sorted(declared - set(rows))
-    extra = sorted(set(rows) - declared)
-    if missing:
-        problems.append(problem("Delivery evidence is missing declared app(s): " + ", ".join(missing) + "."))
-    if extra:
-        problems.append(problem("Delivery evidence contains undeclared app(s): " + ", ".join(extra) + "."))
-    return rows, written, problems
+def criteria_high_water(frontmatter: Mapping[str, Any]) -> tuple[int | None, str | None]:
+    """The `criteria-high-water` mark of a feature (``None`` when absent) and the problem with it, if any."""
+
+    if "criteria-high-water" not in frontmatter:
+        return None, None
+    value = frontmatter["criteria-high-water"]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None, "`criteria-high-water` must be a non-negative integer, the highest criterion number ever assigned."
+    return value, None
+
+
+# --- Attempts ------------------------------------------------------------------------------------------------------
+
+
+def qa_attempt(app: str, history: Iterable[HistoryEntry]) -> int:
+    """The current QA attempt of an app (CONTRACTS 5.4): 1 plus the entries that list it under Affected apps and archived
+    a QA row naming it. An entry that lists the app only as a participant does not count."""
+
+    count = 0
+    for entry in history:
+        if app not in entry.affected_apps:
+            continue
+        if any(section == "QA verification" and _qa_row_names(cells, app) for section, cells in entry.archived_rows):
+            count += 1
+    return 1 + count
+
+
+def _qa_row_names(cells: tuple[str, ...], app: str) -> bool:
+    key = clean_cell(cells[0]) if cells else ""
+    if key.startswith("integration:"):
+        return app in [part.strip() for part in key[len("integration:"):].split("+")]
+    return key == app
+
+
+def evidence_generation(history: Iterable[HistoryEntry], section: str, app: str) -> int:
+    """The generation of an app's active Delivery evidence (or Fix) row (CONTRACTS 1.6): 1 plus the Evidence history entries that archived that app's row of `section`."""
+
+    return 1 + sum(
+        1
+        for entry in history
+        if any(name == section and cells and cells[0].strip() == app for name, cells in entry.archived_rows)
+    )
+
+
+def row_digest(cells: Iterable[str]) -> str:
+    """The row digest of an evidence row: `sha256` of its cells, trimmed and joined with `|`."""
+
+    return hashlib.sha256("|".join(cell.strip() for cell in cells).encode("utf-8")).hexdigest()
+
+
+def bug_qa_attempt(history: Iterable[HistoryEntry]) -> int:
+    """The current verification attempt of a bug: 1 plus the entries that archived a Verification row."""
+
+    return 1 + sum(1 for entry in history if any(section == "Verification" for section, _cells in entry.archived_rows))
+
+
+def release_attempt(records: Iterable[Mapping[str, Any]], item: str, app: str) -> int:
+    """The next release attempt of an (item, app): 1 plus the records with a delivery row for it, rollback and redeploy records excluded.
+
+    A record is a mapping with `kind` (`release`, `rollback` or `redeploy`) and `delivery`, the (item, app) pairs it delivers.
+    """
+
+    return 1 + sum(
+        1
+        for record in records
+        if record.get("kind", "release") == "release" and (item, app) in {tuple(pair) for pair in record.get("delivery", ())}
+    )
+
+
+# --- App stages and QA coverage ------------------------------------------------------------------------------------
+
+
+def app_stage(app: str, evidence: FeatureEvidence) -> str:
+    """The stage of an active app in a feature at `in-dev` or later (CONTRACTS 4.2): the first rule that matches."""
+
+    release = evidence.authoritative_release(app)
+    if release is not None and release.outcome == "released":
+        return "released"
+    if evidence.delivery_row(app) is None:
+        return "in-dev"
+    if not evidence.qa_rows_naming(app):
+        return "ready-for-qa"
+    if release is None:
+        return "in-qa"
+    if release.outcome in {"pending", "failed"}:
+        return "ready-for-release"
+    return "in-qa"
+
+
+def app_stages(apps: Iterable[str], evidence: FeatureEvidence) -> dict[str, str]:
+    """The stage of each of `apps`, in the order given."""
+
+    return {app: app_stage(app, evidence) for app in apps}
+
+
+def minimum_stage(stages: Iterable[str]) -> str | None:
+    """The lowest of `stages` in `APP_STAGE_ORDER`, or ``None`` when there are none."""
+
+    ranks = [APP_STAGE_ORDER.index(stage) for stage in stages]
+    return APP_STAGE_ORDER[min(ranks)] if ranks else None
+
+
+def app_stages_text(status: str | None, apps: Iterable[str], body: str, model: WorkspaceModel | None) -> str:
+    """The `App stages` cell of the status board (CONTRACTS 8.2): `app: stage; ...` for the active apps, or `—` before `in-dev`."""
+
+    if status_rank(status) < status_rank("in-dev"):
+        return "—"
+    # A released feature keeps its whole scope as history, so a later retirement does not change its cell.
+    scoped = list(apps) if status == "released" else active_scope(apps, model)
+    stages = app_stages(scoped, read_feature_evidence(body))
+    return "; ".join(f"{app}: {stage}" for app, stage in stages.items()) or "—"
+
+
+def active_scope(apps: Iterable[str], model: WorkspaceModel | None) -> list[str]:
+    """The apps of a scope that are active: a retired app is excluded from stages until it leaves the scope."""
+
+    if model is None:
+        return list(apps)
+    return [app for app in apps if (item := model.app(app)) is not None and item.active]
+
+
+@dataclass(frozen=True)
+class CoverageGap:
+    """One way an app's QA evidence falls short of CONTRACTS 4.4."""
+
+    code: str
+    message: str
+    criterion: str | None = None
+
+
+def qa_coverage(
+    app: str,
+    criteria: Iterable[Criterion],
+    evidence: FeatureEvidence,
+    history: Iterable[HistoryEntry],
+) -> list[CoverageGap]:
+    """The gaps in the QA coverage of `app` (CONTRACTS 4.4); an empty list means it is covered.
+
+    1. every criterion listing the app has a passing app row of the app at its current revision, on the app's current
+       artifact, in the app's current attempt;
+    2. every integration criterion naming the app has a passing integration row of exactly its participants, with every
+       participant's artifact current, in the highest attempt of its participants;
+    3. no row of the app's current attempt is `fail` or `blocked`.
+    """
+
+    entries = list(history)
+    gaps: list[CoverageGap] = []
+    artifacts = {row.app: clean_cell(row.artifact) for row in evidence.delivery}
+    attempt = qa_attempt(app, entries)
+    for criterion in criteria:
+        if criterion.revision is None or not criterion.names(app) or criterion.id is None:
+            continue
+        ref = CriterionRef(criterion.number or 0, criterion.revision)
+        if criterion.integration:
+            expected_attempt = max(qa_attempt(participant, entries) for participant in criterion.applies_to)
+            covered = any(
+                row.integration
+                and set(row.apps) == set(criterion.applies_to)
+                and ref in row.criteria
+                and row.result == "pass"
+                and row.attempt == expected_attempt
+                and all(row.artifacts.get(participant) == artifacts.get(participant) for participant in row.apps)
+                for row in evidence.qa
+            )
+            if not covered:
+                gaps.append(
+                    CoverageGap(
+                        "integration_not_covered",
+                        f"Integration criterion `{criterion.id}` has no passing row of {', '.join(f'`{item}`' for item in criterion.applies_to)} "
+                        "at its current revision on every participant's current artifact.",
+                        criterion.id,
+                    )
+                )
+        else:
+            covered = any(
+                not row.integration
+                and row.apps == (app,)
+                and ref in row.criteria
+                and row.result == "pass"
+                and row.attempt == attempt
+                and row.artifacts.get(app) == artifacts.get(app)
+                for row in evidence.qa
+            )
+            if not covered:
+                gaps.append(
+                    CoverageGap(
+                        "criterion_not_covered",
+                        f"Criterion `{criterion.id}` has no passing row of `{app}` at its current revision on its current artifact in attempt qa-{attempt}.",
+                        criterion.id,
+                    )
+                )
+    failing = [row for row in evidence.qa_rows_naming(app) if row.attempt == (max(qa_attempt(item, entries) for item in row.apps) if row.integration else attempt) and row.result in {"fail", "blocked"}]
+    if failing:
+        gaps.append(CoverageGap("qa_result_failed", f"`{app}` has a `{failing[0].result}` result in its current attempt (row `{failing[0].key}`)."))
+    return gaps
+
+
+def stale_qa_rows(
+    criteria: Iterable[Criterion],
+    evidence: FeatureEvidence,
+    history: Iterable[HistoryEntry],
+    *,
+    skip_apps: Iterable[str] = (),
+) -> list[tuple[QaRow, str]]:
+    """The QA rows whose evidence is no longer current, with the reason: a criterion revision, an artifact or an attempt that changed.
+
+    Rows that name only apps in `skip_apps` (released apps keep their rows as history) are left out.
+    """
+
+    entries = list(history)
+    skipped = set(skip_apps)
+    current = {criterion.number: criterion for criterion in criteria if criterion.number is not None}
+    artifacts = {row.app: clean_cell(row.artifact) for row in evidence.delivery}
+    stale: list[tuple[QaRow, str]] = []
+    for row in evidence.qa:
+        if all(app in skipped for app in row.apps):
+            continue
+        reason: str | None = None
+        for ref in row.criteria:
+            criterion = current.get(ref.number)
+            if criterion is None or criterion.revision is None:
+                reason = f"it cites `AC-{ref.number}`, which is no longer a criterion"
+            elif criterion.revision != ref.revision:
+                reason = f"it cites `AC-{ref.number}` at a revision that has changed"
+            elif row.integration != criterion.integration or (criterion.applies_to and not set(row.apps) <= set(criterion.applies_to)):
+                reason = f"`AC-{ref.number}` does not apply to this row"
+            if reason:
+                break
+        if reason is None:
+            for app, artifact in row.artifacts.items():
+                if app in artifacts and artifacts[app] != artifact:
+                    reason = f"it verified `{artifact}` of `{app}`, which is no longer its delivered artifact"
+                    break
+        if reason is None:
+            expected = max(qa_attempt(app, entries) for app in row.apps)
+            if row.attempt is not None and row.attempt != expected:
+                reason = f"its attempt qa-{row.attempt} is not the current attempt qa-{expected}"
+        if reason:
+            stale.append((row, reason))
+    return stale
 
 
 def parse_advisory_required_actions(body: str) -> tuple[list[str], list[str]]:
@@ -1026,7 +2101,11 @@ def history_date_fields(page: MarkdownPage) -> list[str]:
 
 
 def parse_status_board_rows(board_path: Path) -> tuple[list[StatusBoardRow], list[str]]:
-    """The feature rows of `status-board.md` and the problems that keep the table from being read."""
+    """The feature rows of `status-board.md` and the problems that keep the table from being read.
+
+    The feature table ends at the first line that is not a table row; a table below it (the bugs and operations tables)
+    is not read here.
+    """
 
     try:
         text = board_path.read_text(encoding="utf-8")
@@ -1040,11 +2119,11 @@ def parse_status_board_rows(board_path: Path) -> tuple[list[StatusBoardRow], lis
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line.startswith("|"):
+            if in_feature_table:
+                in_feature_table = False
             continue
         cells = [cell.strip() for cell in line.strip("|").split("|")]
-        if len(cells) < 5:
-            continue
-        if cells == ["ID", "Feature", "Status", "Owner", "Board Review"]:
+        if cells == list(STATUS_BOARD_COLUMNS):
             in_feature_table = True
             header_seen = True
             continue
@@ -1052,7 +2131,10 @@ def parse_status_board_rows(board_path: Path) -> tuple[list[StatusBoardRow], lis
             continue
         if _is_separator_row(cells):
             continue
-        feature_id, title, status, owner, advisory_review = cells[:5]
+        if len(cells) != len(STATUS_BOARD_COLUMNS):
+            errors.append(f"status-board.md contains a feature row with {len(cells)} cells; the table has {len(STATUS_BOARD_COLUMNS)} columns.")
+            continue
+        feature_id, title, status, owner, advisory_review, design_tracks, app_stages, open_bugs = cells
         if not feature_id:
             errors.append("status-board.md contains a feature row with an empty ID.")
             continue
@@ -1064,6 +2146,9 @@ def parse_status_board_rows(board_path: Path) -> tuple[list[StatusBoardRow], lis
                 owner=owner,
                 advisory_review=advisory_review,
                 path=board_path,
+                design_tracks=design_tracks,
+                app_stages=app_stages,
+                open_bugs=open_bugs,
             )
         )
 

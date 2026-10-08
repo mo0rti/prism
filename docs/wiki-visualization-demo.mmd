@@ -5,7 +5,7 @@ flowchart LR
   subgraph s_in_dev["in-dev"]
     n_F_002["F-002<br/>Approve or reject payout"]
   end
-  subgraph s_done["done"]
+  subgraph s_released["released"]
     n_F_003["F-003<br/>Settle payout and review history"]
   end
   n_F_001 ~~~ n_F_002
@@ -16,6 +16,8 @@ flowchart LR
   classDef po fill:#9ec5f4,stroke:#256abf,color:#0b0b0b
   classDef design fill:#f5cf7e,stroke:#8a5c00,color:#0b0b0b
   classDef dev fill:#7cd7b2,stroke:#0f7a55,color:#0b0b0b
+  classDef qa fill:#c9b6f0,stroke:#5b3cb3,color:#0b0b0b
+  classDef release fill:#f2a7c3,stroke:#a8325f,color:#0b0b0b
   classDef done fill:#8fd08f,stroke:#008300,color:#0b0b0b
   classDef blocked fill:#fcfcfb,stroke:#d03b3b,stroke-width:3px,color:#0b0b0b
   classDef broken fill:#fcfcfb,stroke:#898781,stroke-dasharray:6 4,color:#52514e

@@ -26,8 +26,8 @@ FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n(.*)\Z", re.DOTALL)
 
 # action -> (card button label, source stage, target stage, target owner)
 ACTIONS = {
-    "po-handoff": ("handoff", "specified", "ready-for-design", "designer"),
-    "design-start": ("design start", "ready-for-design", "in-design", "designer"),
+    "po-handoff": ("handoff", "specified", "ready-for-design", "tech-lead"),
+    "design-start": ("design start", "ready-for-design", "in-design", "tech-lead"),
     "dev-start": ("development start", "ready-for-dev", "in-dev", "dev"),
 }
 
@@ -221,7 +221,8 @@ class ApplyScenarioTests(BrowserCase):
 
         old_rows = before[BOARD_PATH].decode("utf-8").splitlines()
         new_rows = after[BOARD_PATH].decode("utf-8").splitlines()
-        expected_row = f"| {feature.feature_id} | {feature.title} | {target_stage} | {target_owner} | not-needed |"
+        stages = "backend: in-dev" if target_stage == "in-dev" else "\u2014"
+        expected_row = f"| {feature.feature_id} | {feature.title} | {target_stage} | {target_owner} | not-needed | \u2014 | {stages} | \u2014 |"
         self.assertEqual([expected_row], [row for row in new_rows if row.startswith(f"| {feature.feature_id} ")])
         self.assertEqual(
             [row for row in old_rows if not row.startswith(f"| {feature.feature_id} ")],
@@ -233,12 +234,14 @@ class ApplyScenarioTests(BrowserCase):
         self.assertTrue(new_log.startswith(old_log), "The log is append-only.")
         entry = new_log[len(old_log):]
         actor = harness.actor("human")
+        # A gated action is recorded under its approving human: their roles on the `by:` line, both IDs in the actor comment.
+        roles = ", ".join(actor.roles)
         match = re.fullmatch(
             r"\n?<!-- prism:board-history:v1 preview=(?P<preview>" + UUID.pattern + r") -->\n"
             rf"## {CHECK_DATE.isoformat()} board-{action} \| {feature.feature_id}\n"
             rf"- paths: {re.escape(feature_path)}, {re.escape(BOARD_PATH)}\n"
             r"- evidence: board preview (?P<evidence>" + UUID.pattern + r")\n"
-            r"- by: Browser human \(human\)\n"
+            rf"- by: Browser human \(human; roles {re.escape(roles)}\)\n"
             r"<!-- prism:board-actor:v1 (?P<actor>\{[^\n]*\}) -->\n",
             entry,
         )
@@ -246,7 +249,16 @@ class ApplyScenarioTests(BrowserCase):
         self.assertEqual(match.group("preview"), match.group("evidence"), "The entry's evidence is the preview that produced it.")
         actor_comment = yaml.safe_load(match.group("actor"))
         self.assertEqual(
-            {"action": action, "kind": "human", "name": "Browser human", "participant_id": actor.participant_id, "preview_id": match.group("preview")},
+            {
+                "action": action,
+                "kind": "human",
+                "name": "Browser human",
+                "participant_id": actor.participant_id,
+                "preview_id": match.group("preview"),
+                "approver_id": actor.participant_id,
+                "proposer_id": actor.participant_id,
+                "roles": list(actor.roles),
+            },
             actor_comment,
         )
         run.effect(f"{feature.feature_id} {action}: log entry appended with the human actor comment")

@@ -410,7 +410,7 @@ if (checkTransitions) {
     const feature = {
       id: "F-001", type: "feature", title: "Ready handoff", path: sourcePath, health: "ok", status: "specified", owner: "po", open_questions: [],
       transitions: [{
-        version: 1, feature_id: "F-001", source_status: "specified", source_owner: "po", source_path: sourcePath,
+        version: 2, feature_id: "F-001", source_status: "specified", source_owner: "po", source_path: sourcePath,
         target_status: "ready-for-design", target_owner: "designer", action: "po-handoff", classification: "ready", supported: true,
         checks: [{ code: "source-readable", status: "pass", message: "Feature source is readable.", path: sourcePath }],
         sources: [sourcePath, "knowledge/wiki/SCHEMA.md", "knowledge/wiki/status-board.md"],
@@ -425,7 +425,7 @@ if (checkTransitions) {
     payload.facts.edge_count = 0;
     payload.facts.intake = { pending: ["first-brief.md"], quarantined: ["CONFLICT.md"] };
     payload.facts.transition_capability = {
-      version: 2, mode: "copy-only", supported_actions: ["po-handoff"],
+      version: 3, mode: "copy-only", supported_actions: ["po-handoff"],
       snapshot: { fingerprint: "fp-1", observed_at: "2026-09-08T12:00:00+02:00", consistent: true },
       sources: [sourcePath, "knowledge/wiki/SCHEMA.md", "knowledge/wiki/status-board.md"],
       surfaces: [
@@ -727,16 +727,13 @@ if (checkTransitions) {
     "design-start": { source_status: "ready-for-design", source_owner: "designer", target_status: "in-design", target_owner: "designer", command: "design-start" },
     "design-handoff": { source_status: "in-design", source_owner: "designer", target_status: "ready-for-dev", target_owner: "dev", command: "design-handoff" },
     "dev-start": { source_status: "ready-for-dev", source_owner: "dev", target_status: "in-dev", target_owner: "dev", command: "dev-start" },
-    "dev-done": { source_status: "in-dev", source_owner: "dev", target_status: "done", target_owner: "none", command: "dev-done" },
-    "reopen-spec": { source_status: "done", source_owner: "none", target_status: "specified", target_owner: "po", command: "feature-reopen" },
-    "reopen-design": { source_status: "done", source_owner: "none", target_status: "in-design", target_owner: "designer", command: "feature-reopen" },
-    "reopen-dev": { source_status: "done", source_owner: "none", target_status: "in-dev", target_owner: "dev", command: "feature-reopen" },
+    "dev-done": { source_status: "in-dev", source_owner: "dev", target_status: "ready-for-qa", target_owner: "qa", command: "dev-done" },
   };
   const makeLifecycleAction = (id, path, action) => {
     const spec = actionSpecs[action];
     const suffix = spec.command === "feature-reopen" ? " " + spec.target_status : "";
     return {
-      version: 1, feature_id: id, source_status: spec.source_status, source_owner: spec.source_owner, source_path: path,
+      version: 2, feature_id: id, source_status: spec.source_status, source_owner: spec.source_owner, source_path: path,
       target_status: spec.target_status, target_owner: spec.target_owner, action, classification: "ready", supported: true,
       checks: [{ code: "source-readable", status: "pass", message: "Feature source is readable.", path }],
       sources: [path, "knowledge/wiki/SCHEMA.md", "knowledge/wiki/status-board.md"],
@@ -748,11 +745,14 @@ if (checkTransitions) {
     const primary = makeLifecycleAction(id, path, action);
     return { id, type: "feature", title, path, health: "ok", status: primary.source_status, owner: primary.source_owner, open_questions: [], transitions: [primary] };
   };
-  const makeDoneFeature = id => {
+  // A feature in ready-for-design offers two routes: its design start and the development handoff.
+  const makeRoutesFeature = id => {
     const path = "knowledge/wiki/features/" + id + ".md";
-    const transitions = ["reopen-spec", "reopen-design", "reopen-dev"].map(action => makeLifecycleAction(id, path, action));
+    const transitions = ["design-start", "design-handoff"].map(action => makeLifecycleAction(id, path, action));
+    transitions[1].source_status = "ready-for-design";
+    transitions[1].source_owner = "designer";
     return {
-      id, type: "feature", title: "Done feature", path, health: "ok", status: "done", owner: "none", open_questions: [],
+      id, type: "feature", title: "Feature with two routes", path, health: "ok", status: "ready-for-design", owner: "designer", open_questions: [],
       transitions,
     };
   };
@@ -765,7 +765,7 @@ if (checkTransitions) {
       makeLifecycleFeature("F-in-design", "In design", "design-handoff"),
       makeLifecycleFeature("F-ready-dev", "Ready for development", "dev-start"),
       makeLifecycleFeature("F-in-dev", "In development", "dev-done"),
-      makeDoneFeature("F-done"),
+      makeRoutesFeature("F-routes"),
     ];
     const supportedActions = Object.keys(actionSpecs);
     const surfaces = [];
@@ -781,7 +781,7 @@ if (checkTransitions) {
     payload.facts.edge_count = 0;
     payload.facts.intake = { pending: ["first-brief.md"], quarantined: ["CONFLICT.md"] };
     payload.facts.transition_capability = {
-      version: 2, mode: "copy-only", supported_actions: supportedActions, surfaces,
+      version: 3, mode: "copy-only", supported_actions: supportedActions, surfaces,
       snapshot: { fingerprint: "fp-v2", observed_at: "2026-09-08T12:00:00+02:00", consistent: true },
       sources: ["knowledge/wiki/SCHEMA.md", "knowledge/wiki/status-board.md"],
     };
@@ -802,25 +802,25 @@ if (checkTransitions) {
     ["F-ready-design", "Prepare design start", "in-design"],
     ["F-in-design", "Prepare development handoff", "ready-for-dev"],
     ["F-ready-dev", "Prepare development start", "in-dev"],
-    ["F-in-dev", "Prepare completion", "done"],
+    ["F-in-dev", "Prepare delivery", "ready-for-qa"],
   ].forEach(([id, label, target]) => {
     const control = lifecycleAction(id);
     assert(control && control.textContent.includes(label) && lifecycle.facts.nodes.find(node => node.id === id).status !== target, "lifecycle action was not rendered or changed source state: " + id);
   });
-  const doneNode = lifecycle.facts.nodes.find(node => node.id === "F-done");
-  const doneCard = lifecycleCard("F-done");
-  const doneAction = lifecycleAction("F-done");
-  const doneSelect = lifecycleBoard.querySelectorAll("[data-transition-select]").find(item => item.dataset.transitionSelectId === "F-done");
-  assert(doneCard && doneCard.hasAttribute("draggable") && doneSelect && doneAction && doneAction.hasAttribute("aria-disabled") && doneAction.dataset.transitionIndex === "", "Done did not require an explicit reopen route");
+  const doneNode = lifecycle.facts.nodes.find(node => node.id === "F-routes");
+  const doneCard = lifecycleCard("F-routes");
+  const doneAction = lifecycleAction("F-routes");
+  const doneSelect = lifecycleBoard.querySelectorAll("[data-transition-select]").find(item => item.dataset.transitionSelectId === "F-routes");
+  assert(doneCard && doneCard.hasAttribute("draggable") && doneSelect && doneAction && doneAction.hasAttribute("aria-disabled") && doneAction.dataset.transitionIndex === "", "A feature with two routes did not require an explicit route");
   const selectedBeforePickerClick = state.selected;
   doneSelect.closest = selector => selector === "button, select, label" ? doneSelect : null;
   doneCard.__listeners.click[0]({ target: doneSelect });
-  assert(state.selected === selectedBeforePickerClick, "pointer click on the Done route picker opened the feature inspector");
-  showTransitionPreview("F-done", doneAction);
-  assert(!state.transitionPreview && document.getElementById("transition-dialog").hidden && document.getElementById("sr-status").textContent.includes("Choose a workflow destination"), "Done preview silently selected a reopen route");
+  assert(state.selected === selectedBeforePickerClick, "pointer click on the route picker opened the feature inspector");
+  showTransitionPreview("F-routes", doneAction);
+  assert(!state.transitionPreview && document.getElementById("transition-dialog").hidden && document.getElementById("sr-status").textContent.includes("Choose a workflow destination"), "a preview silently selected one of two routes");
   doneSelect.value = "1";
   doneSelect.__listeners.change[0]({ target: doneSelect });
-  assert(doneAction.dataset.transitionIndex === "1" && doneAction.textContent.includes("reopen for design") && !doneAction.hasAttribute("aria-disabled"), "Done route selection did not enable the selected action");
+  assert(doneAction.dataset.transitionIndex === "1" && doneAction.textContent.includes("development handoff") && !doneAction.hasAttribute("aria-disabled"), "route selection did not enable the selected action");
   const doneBefore = JSON.stringify(doneNode);
   doneAction.__listeners.click[0]({ stopPropagation() {}, preventDefault() {} });
   let lifecycleCopied = "";
@@ -830,54 +830,54 @@ if (checkTransitions) {
   assert(codexSurface && !codexSurface.hasAttribute("aria-disabled"), "available v2 Codex surface was not exposed");
   codexSurface.__listeners.click[0]({ preventDefault() {} });
   lifecycleDialog.querySelector("[data-transition-copy]").__listeners.click[0]({ preventDefault() {} });
-  assert(lifecycleCopied.includes("Exact invocation: " + JSON.stringify("$feature-reopen F-done in-design")) && JSON.stringify(doneNode) === doneBefore, "selected Done request copied the wrong invocation or changed source state");
+  assert(lifecycleCopied.includes("Exact invocation: " + JSON.stringify("$design-handoff F-routes")) && JSON.stringify(doneNode) === doneBefore, "the selected request copied the wrong invocation or changed source state");
   lifecycleDialog.querySelector("[data-transition-cancel]").__listeners.click[0]();
-  selectNode("F-done");
+  selectNode("F-routes");
   const donePanel = document.getElementById("panel");
-  const donePanelSelect = donePanel.querySelectorAll("[data-transition-select]").find(item => item.dataset.transitionSelectId === "F-done");
-  const donePanelAction = donePanel.querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-done");
-  assert(donePanelSelect && donePanelAction && donePanelAction.hasAttribute("aria-disabled"), "inspector omitted explicit Done route selection");
-  donePanelSelect.value = "2";
+  const donePanelSelect = donePanel.querySelectorAll("[data-transition-select]").find(item => item.dataset.transitionSelectId === "F-routes");
+  const donePanelAction = donePanel.querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-routes");
+  assert(donePanelSelect && donePanelAction && donePanelAction.hasAttribute("aria-disabled"), "inspector omitted explicit route selection");
+  donePanelSelect.value = "1";
   donePanelSelect.__listeners.change[0]({ target: donePanelSelect });
-  assert(donePanelAction.dataset.transitionIndex === "2" && donePanelAction.textContent.includes("reopen for development"), "inspector Done route selection did not update the action");
+  assert(donePanelAction.dataset.transitionIndex === "1" && donePanelAction.textContent.includes("development handoff"), "inspector route selection did not update the action");
   donePanelAction.__listeners.click[0]({ stopPropagation() {}, preventDefault() {} });
-  assert(state.transitionPreview && doneNode.status === "done" && document.getElementById("transition-dialog").innerHTML.includes("reopen-dev"), "inspector selected route did not open a source-preserving preview");
+  assert(state.transitionPreview && doneNode.status === "ready-for-design" && document.getElementById("transition-dialog").innerHTML.includes("design-handoff"), "inspector selected route did not open a source-preserving preview");
   document.getElementById("transition-dialog").querySelector("[data-transition-cancel]").__listeners.click[0]();
   closePanel();
 
-  const targetDrops = [["specified", "reopen-spec"], ["in-design", "reopen-design"], ["in-dev", "reopen-dev"]];
+  const targetDrops = [["in-design", "design-start"], ["ready-for-dev", "design-handoff"]];
   const dataTransferV2 = { setData() {}, effectAllowed: "", dropEffect: "" };
   for (const [stage, action] of targetDrops) {
     const target = lifecycleBoard.querySelectorAll(".column[data-stage]").find(column => column.dataset.stage === stage);
     doneCard.__listeners.dragstart[0]({ currentTarget: doneCard, dataTransfer: dataTransferV2 });
     target.__listeners.drop[0]({ currentTarget: target, preventDefault() {} });
-    assert(state.transitionPreview && document.getElementById("transition-dialog").innerHTML.includes(action) && doneNode.status === "done", "drop did not select source-preserving route " + action);
+    assert(state.transitionPreview && document.getElementById("transition-dialog").innerHTML.includes(action) && doneNode.status === "ready-for-design", "drop did not select source-preserving route " + action);
     document.getElementById("transition-dialog").querySelector("[data-transition-cancel]").__listeners.click[0]();
   }
-  const doneColumn = lifecycleBoard.querySelectorAll(".column[data-stage]").find(column => column.dataset.stage === "done");
+  const doneColumn = lifecycleBoard.querySelectorAll(".column[data-stage]").find(column => column.dataset.stage === "ready-for-design");
   doneCard.__listeners.dragstart[0]({ currentTarget: doneCard, dataTransfer: dataTransferV2 });
   doneColumn.__listeners.drop[0]({ currentTarget: doneColumn, preventDefault() {} });
-  assert(!state.transitionPreview && doneNode.status === "done", "same-column Done drop created a transition");
-  const unsupportedColumn = lifecycleBoard.querySelectorAll(".column[data-stage]").find(column => column.dataset.stage === "ready-for-design");
+  assert(!state.transitionPreview && doneNode.status === "ready-for-design", "same-column drop created a transition");
+  const unsupportedColumn = lifecycleBoard.querySelectorAll(".column[data-stage]").find(column => column.dataset.stage === "specified");
   doneCard.__listeners.dragstart[0]({ currentTarget: doneCard, dataTransfer: dataTransferV2 });
   unsupportedColumn.__listeners.drop[0]({ currentTarget: unsupportedColumn, preventDefault() {} });
-  assert(!state.transitionPreview && doneNode.status === "done", "unsupported Done drop moved or previewed a route");
+  assert(!state.transitionPreview && doneNode.status === "ready-for-design", "unsupported drop moved or previewed a route");
 
   const changedStart = makeV2Payload();
   adoptData(changedStart); switchView("board"); renderBoard();
-  const changedAction = document.getElementById("board-view").querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-done");
-  showTransitionPreview("F-done", changedAction, 1);
+  const changedAction = document.getElementById("board-view").querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-routes");
+  showTransitionPreview("F-routes", changedAction, 1);
   const changedTarget = clone(changedStart);
-  changedTarget.facts.nodes.find(node => node.id === "F-done").transitions[1].target_status = "specified";
+  changedTarget.facts.nodes.find(node => node.id === "F-routes").transitions[1].target_status = "specified";
   adoptData(changedTarget);
   assert(state.transitionPreview && document.getElementById("transition-dialog").innerHTML.includes("capability changed") && document.getElementById("transition-dialog").querySelector("[data-transition-copy]").hasAttribute("aria-disabled"), "changed target did not stale an open route preview");
   document.getElementById("transition-dialog").querySelector("[data-transition-cancel]").__listeners.click[0]();
   const removedTarget = makeV2Payload();
   adoptData(removedTarget); switchView("board"); renderBoard();
-  const removedAction = document.getElementById("board-view").querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-done");
-  showTransitionPreview("F-done", removedAction, 1);
+  const removedAction = document.getElementById("board-view").querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-routes");
+  showTransitionPreview("F-routes", removedAction, 1);
   const removedRoute = clone(removedTarget);
-  removedRoute.facts.nodes.find(node => node.id === "F-done").transitions.splice(1, 2);
+  removedRoute.facts.nodes.find(node => node.id === "F-routes").transitions.splice(1, 1);
   adoptData(removedRoute);
   assert(!state.transitionPreview && document.getElementById("transition-dialog").hidden && !document.getElementById("app-shell").hasAttribute("inert"), "removed selected route left a modal state active");
 
@@ -911,14 +911,14 @@ if (checkTransitions) {
   assert(!capabilityV1Card.hasAttribute("draggable") && document.getElementById("board-view").innerHTML.includes("inspect-only"), "a version 1 transition capability was accepted");
 
   const mismatchId = makeV2Payload();
-  mismatchId.facts.nodes.find(node => node.id === "F-done").transitions[1].feature_id = "F-other";
+  mismatchId.facts.nodes.find(node => node.id === "F-routes").transitions[1].feature_id = "F-other";
   adoptData(mismatchId); switchView("board"); renderBoard();
-  const mismatchIdCard = document.getElementById("board-view").querySelectorAll(".card[data-id]").find(item => item.dataset.id === "F-done");
-  const mismatchIdSelect = document.getElementById("board-view").querySelectorAll("[data-transition-select]").find(item => item.dataset.transitionSelectId === "F-done");
-  const mismatchIdAction = document.getElementById("board-view").querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-done");
+  const mismatchIdCard = document.getElementById("board-view").querySelectorAll(".card[data-id]").find(item => item.dataset.id === "F-routes");
+  const mismatchIdSelect = document.getElementById("board-view").querySelectorAll("[data-transition-select]").find(item => item.dataset.transitionSelectId === "F-routes");
+  const mismatchIdAction = document.getElementById("board-view").querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-routes");
   mismatchIdSelect.value = "1";
   mismatchIdSelect.__listeners.change[0]({ target: mismatchIdSelect });
-  assert(mismatchIdCard.hasAttribute("draggable") && mismatchIdAction.hasAttribute("aria-disabled") && mismatchIdAction.textContent.includes("reopen for design") && mismatchIdAction.getAttribute("title").includes("feature ID does not match"), "mismatched transition feature ID was offered as runnable: drag=" + mismatchIdCard.hasAttribute("draggable") + ", disabled=" + mismatchIdAction.hasAttribute("aria-disabled") + ", value=" + mismatchIdSelect.value + ", listeners=" + ((mismatchIdSelect.__listeners.change || []).length) + ", id=" + mismatchIdSelect.dataset.transitionSelectId + ", text=" + mismatchIdAction.textContent + ", title=" + mismatchIdAction.getAttribute("title"));
+  assert(mismatchIdCard.hasAttribute("draggable") && mismatchIdAction.hasAttribute("aria-disabled") && mismatchIdAction.textContent.includes("development handoff") && mismatchIdAction.getAttribute("title").includes("feature ID does not match"), "mismatched transition feature ID was offered as runnable: drag=" + mismatchIdCard.hasAttribute("draggable") + ", disabled=" + mismatchIdAction.hasAttribute("aria-disabled") + ", value=" + mismatchIdSelect.value + ", listeners=" + ((mismatchIdSelect.__listeners.change || []).length) + ", id=" + mismatchIdSelect.dataset.transitionSelectId + ", text=" + mismatchIdAction.textContent + ", title=" + mismatchIdAction.getAttribute("title"));
 
   const ambiguous = makeV2Payload();
   const ambiguousFeature = ambiguous.facts.nodes.find(node => node.id === "F-raw");
@@ -972,15 +972,15 @@ if (checkTransitions) {
   wrongInvocationDialog.querySelector("[data-transition-cancel]").__listeners.click[0]();
 
   const wrongReopenInvocation = makeV2Payload();
-  wrongReopenInvocation.facts.nodes.find(node => node.id === "F-done").transitions[1].invocations.codex = "$feature-reopen F-done";
+  wrongReopenInvocation.facts.nodes.find(node => node.id === "F-routes").transitions[1].invocations.codex = "$design-start F-routes";
   adoptData(wrongReopenInvocation); switchView("board"); renderBoard();
-  const wrongReopenSelect = document.getElementById("board-view").querySelectorAll("[data-transition-select]").find(item => item.dataset.transitionSelectId === "F-done");
+  const wrongReopenSelect = document.getElementById("board-view").querySelectorAll("[data-transition-select]").find(item => item.dataset.transitionSelectId === "F-routes");
   wrongReopenSelect.value = "1";
   wrongReopenSelect.__listeners.change[0]({ target: wrongReopenSelect });
-  const wrongReopenAction = document.getElementById("board-view").querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-done");
+  const wrongReopenAction = document.getElementById("board-view").querySelectorAll("[data-transition-id]").find(item => item.dataset.transitionId === "F-routes");
   wrongReopenAction.__listeners.click[0]({ stopPropagation() {}, preventDefault() {} });
   const wrongReopenDialog = document.getElementById("transition-dialog");
-  assert(wrongReopenDialog.querySelector("[data-transition-copy]").hasAttribute("aria-disabled") && wrongReopenDialog.innerHTML.includes("No generated Codex invocation"), "reopen invocation without its concrete target was copied");
+  assert(wrongReopenDialog.querySelector("[data-transition-copy]").hasAttribute("aria-disabled") && wrongReopenDialog.innerHTML.includes("No generated Codex invocation"), "an invocation of another action was copied for the selected route");
   wrongReopenDialog.querySelector("[data-transition-cancel]").__listeners.click[0]();
   state.surface = priorSurface;
 })();`);
@@ -998,7 +998,7 @@ if (checkConnectedBoard) {
     payload.root = "C:\\\\demo\\\\board";
     payload.workspace = { kind: "generated-project", project_name: "Connected board fixture", apps: [{ id: "backend" }] };
     const agentPath = "knowledge/wiki/features/F-agent.md";
-    const agentAction = { version: 1, feature_id: "F-agent", source_status: "in-design", source_owner: "designer", source_path: agentPath, target_status: "ready-for-dev", target_owner: "dev", action: "design-handoff", classification: "ready", supported: true, checks: [{ code: "source-readable", status: "pass", message: "Connected source is readable.", path: agentPath }], sources: [agentPath] };
+    const agentAction = { version: 2, feature_id: "F-agent", source_status: "in-design", source_owner: "designer", source_path: agentPath, target_status: "ready-for-dev", target_owner: "dev", action: "design-handoff", classification: "ready", supported: true, checks: [{ code: "source-readable", status: "pass", message: "Connected source is readable.", path: agentPath }], sources: [agentPath] };
     payload.facts.nodes = [
       { id: "F-blocked", type: "feature", title: "Blocked mapped action", path: "knowledge/wiki/features/F-blocked.md", health: "warning", status: "specified", owner: "wrong-owner", open_questions: [] },
       { id: "F-apply", type: "feature", title: "PO handoff", path: "knowledge/wiki/features/F-apply.md", health: "ok", status: "specified", owner: "po", advisory_review: "pending", open_questions: [] },
@@ -1010,7 +1010,7 @@ if (checkConnectedBoard) {
     payload.facts.edges = [];
     payload.facts.edge_count = 0;
     payload.facts.intake = { pending: [], quarantined: [] };
-    payload.facts.transition_capability = { version: 2, mode: "copy-only", supported_actions: [], snapshot: { consistent: true, fingerprint: "fp-no-vendor", observed_at: "2026-09-22T12:00:00Z" }, surfaces: [] };
+    payload.facts.transition_capability = { version: 3, mode: "copy-only", supported_actions: [], snapshot: { consistent: true, fingerprint: "fp-no-vendor", observed_at: "2026-09-22T12:00:00Z" }, surfaces: [] };
     payload.blocker_facts = [];
     return payload;
   };
@@ -1041,7 +1041,7 @@ if (checkConnectedBoard) {
     const url = String(path);
     calls.push({ path: url, options });
     if (url === "/api/board/v1/auth/session") return reply({ actor: { participant_id: "human-7", name: "Safe Human", kind: "human", writable: true, board_id: "board-7", workflow_version: "1", scopes: ["read", "write"] }, csrf_token: "csrf-only-in-memory" });
-    if (url === "/api/board/v1/discover") return reply({ schema_version: 1, capability: { workflow_eligible: true, human_actions: ["po-handoff", "design-start", "dev-start"], supported_actions: ["po-specify", "po-handoff", "design-start", "design-handoff", "dev-start", "dev-done", "reopen-spec", "reopen-design", "reopen-dev"], supported_write_skills: ["po-specify", "design-handoff", "dev-done", "feature-reopen"] }, pending_operations: discoveredPendingOperations, participant: { name: "Safe Human", kind: "human", writable: true } });
+    if (url === "/api/board/v1/discover") return reply({ schema_version: 1, capability: { workflow_eligible: true, human_actions: ["po-handoff", "design-start", "dev-start"], supported_actions: ["po-specify", "po-handoff", "design-start", "design-handoff", "dev-start", "dev-done"], supported_write_skills: ["po-specify", "design-handoff", "dev-done"] }, pending_operations: discoveredPendingOperations, participant: { name: "Safe Human", kind: "human", writable: true } });
     if (url === "/api/board/v1/previews/transition") {
       if (rejectPreview) return reply({ error: { code: "unauthorized", message: "The participant grant was revoked." } }, 401);
       const body = JSON.parse(options.body || "{}");
@@ -1059,7 +1059,7 @@ if (checkConnectedBoard) {
     if (url === "/api/board/v1/query") {
       const body = JSON.parse(options.body || "{}");
       if (body.kind === "transition-preflight" && body.value === "F-agent" && body.action === "design-handoff") {
-        return reply({ schema_version: 1, command: "wiki transition-preflight", facts: { transition: { version: 1, feature_id: "F-agent", source_status: "in-design", source_owner: "designer", source_path: "knowledge/wiki/features/F-agent.md", target_status: "ready-for-dev", target_owner: "dev", action: "design-handoff", classification: "ready", supported: true, checks: [{ code: "source-readable", status: "pass", message: "Connected source is current." }], reason: "ready" } }, snapshot: { consistent: true, revision: "sha256:agent-preflight" }, provenance: "fixture" });
+        return reply({ schema_version: 1, command: "wiki transition-preflight", facts: { transition: { version: 2, feature_id: "F-agent", source_status: "in-design", source_owner: "designer", source_path: "knowledge/wiki/features/F-agent.md", target_status: "ready-for-dev", target_owner: "dev", action: "design-handoff", classification: "ready", supported: true, checks: [{ code: "source-readable", status: "pass", message: "Connected source is current." }], reason: "ready" } }, snapshot: { consistent: true, revision: "sha256:agent-preflight" }, provenance: "fixture" });
       }
       return reply({ error: { code: "not_found", message: "Fixture query is unavailable." } }, 404);
     }
@@ -1317,10 +1317,10 @@ if (checkConnectedBoard) {
 
   const legacyEnvelope = JSON.parse(JSON.stringify(beforeEnvelope));
   const legacyPath = "knowledge/wiki/features/F-legacy.md";
-  const legacyAction = { version: 1, feature_id: "F-legacy", source_status: "in-design", source_owner: "designer", source_path: legacyPath, target_status: "ready-for-dev", target_owner: "dev", action: "design-handoff", classification: "ready", supported: true, checks: [{ code: "source-readable", status: "pass", message: "Feature source is readable.", path: legacyPath }], sources: [legacyPath], invocations: { codex: "$design-handoff F-legacy", claude: "/design-handoff F-legacy" } };
+  const legacyAction = { version: 2, feature_id: "F-legacy", source_status: "in-design", source_owner: "designer", source_path: legacyPath, target_status: "ready-for-dev", target_owner: "dev", action: "design-handoff", classification: "ready", supported: true, checks: [{ code: "source-readable", status: "pass", message: "Feature source is readable.", path: legacyPath }], sources: [legacyPath], invocations: { codex: "$design-handoff F-legacy", claude: "/design-handoff F-legacy" } };
   legacyEnvelope.facts.nodes.push({ id: "F-legacy", type: "feature", title: "Legacy agent guidance", path: legacyPath, health: "ok", status: "in-design", owner: "designer", open_questions: [], transitions: [legacyAction] });
   legacyEnvelope.facts.node_count += 1;
-  legacyEnvelope.facts.transition_capability = { version: 2, mode: "copy-only", supported_actions: ["design-handoff"], snapshot: { consistent: true, fingerprint: "fp-legacy", observed_at: "2026-09-22T12:00:00Z" }, surfaces: [{ role: "codex", action: "design-handoff", available: true, check: "pass" }, { role: "claude", action: "design-handoff", available: true, check: "pass" }] };
+  legacyEnvelope.facts.transition_capability = { version: 3, mode: "copy-only", supported_actions: ["design-handoff"], snapshot: { consistent: true, fingerprint: "fp-legacy", observed_at: "2026-09-22T12:00:00Z" }, surfaces: [{ role: "codex", action: "design-handoff", available: true, check: "pass" }, { role: "claude", action: "design-handoff", available: true, check: "pass" }] };
   const connectedStateBeforeLegacy = state.boardConnection;
   state.boardConnection = "unsupported";
   adoptData(legacyEnvelope);
@@ -1452,7 +1452,7 @@ if (checkBoardDefects) {
     payload.facts.edges = [];
     payload.facts.edge_count = 0;
     payload.facts.intake = { pending: [], quarantined: [] };
-    payload.facts.transition_capability = { version: 2, mode: "copy-only", supported_actions: [], snapshot: { consistent: true, fingerprint: "fp-defects", observed_at: "2026-09-22T12:00:00Z" }, surfaces: [] };
+    payload.facts.transition_capability = { version: 3, mode: "copy-only", supported_actions: [], snapshot: { consistent: true, fingerprint: "fp-defects", observed_at: "2026-09-22T12:00:00Z" }, surfaces: [] };
     payload.blocker_facts = [];
     return payload;
   };

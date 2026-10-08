@@ -21,19 +21,34 @@ from prism_cli.app_model import (
     retired_in_scope_message,
 )
 from prism_cli.wiki_model import (
+    APP_STAGE_ORDER,
+    FEATURE_FRONTMATTER_FIELDS,
+    FEATURE_STATUS_ORDER,
     VALID_ADVISORY_REVIEW_STATES,
     VALID_APP_REQUIREMENT_STATUSES,
     VALID_FEATURE_OWNERS,
     VALID_FEATURE_STATUSES,
-    RELEASE_EVIDENCE_REQUIRED,
     VALID_OPEN_QUESTION_OWNERS,
     AppRequirementPage,
     FeaturePage,
     MarkdownPage,
+    active_scope,
+    app_stage,
+    app_stages,
+    app_stages_text,
     candidate_relative_markdown_link as _candidate_relative_link,
+    clean_cell,
+    criteria_high_water,
+    expected_owner,
     extract_markdown_links,
     is_pending_intake_source,
+    minimum_stage,
+    parse_app_revalidation,
+    parse_criteria,
+    parse_evidence_history,
     processed_source_path,
+    qa_coverage,
+    read_feature_evidence,
     source_link_parts,
     normalize_feature_id,
     feature_id_from_path,
@@ -42,7 +57,6 @@ from prism_cli.wiki_model import (
     parse_status_board_rows,
     parse_iso_date,
     parse_open_question_rows,
-    parse_delivery_evidence,
     api_surface_declared,
     parse_advisory_required_actions,
     parse_revalidation,
@@ -51,6 +65,8 @@ from prism_cli.wiki_model import (
     read_wiki_settings,
     read_wiki_pages,
     section_text,
+    stale_qa_rows,
+    status_rank,
     within_wiki_read_scope,
 )
 from prism_cli.fs_safety import reparse_kind
@@ -83,10 +99,13 @@ from prism_cli.workspace import (
 
 
 DEFAULT_WIKI_STALE_AFTER_DAYS = 14
-PENDING_BOARD_REVIEW_STATUSES = {"ready-for-design", "in-design", "ready-for-dev", "in-dev"}
-DESIGN_REQUIRED_STATUSES = {"ready-for-dev", "in-dev", "done"}
-APP_REQUIREMENTS_REQUIRED_STATUSES = {"ready-for-dev", "in-dev"}
-API_CONTRACT_DOWNSTREAM_STATUSES = {"ready-for-dev", "in-dev"}
+PENDING_BOARD_REVIEW_STATUSES = set(FEATURE_STATUS_ORDER[2:-1])  # ready-for-design up to ready-for-release
+DESIGN_REQUIRED_STATUSES = set(FEATURE_STATUS_ORDER[4:])  # ready-for-dev and later
+APP_REQUIREMENTS_REQUIRED_STATUSES = set(FEATURE_STATUS_ORDER[4:-1])
+API_CONTRACT_DOWNSTREAM_STATUSES = set(FEATURE_STATUS_ORDER[4:-1])
+# The owners whose open questions block a feature that is ready for development or in development; `qa` and `release`
+# questions are resolved by the QA and release actions.
+DEVELOPMENT_QUESTION_OWNERS = frozenset({"po", "designer", "tech-lead", "dev"})
 
 WIKI_BLOCKER_CODES = {
     "pending-board-review",
@@ -95,15 +114,10 @@ WIKI_BLOCKER_CODES = {
     "unresolved-open-questions",
     "api-contract-not-ready",
     "cross-app-dependency",
-}
-EXPECTED_OWNER_BY_STATUS = {
-    "raw": "po",
-    "specified": "po",
-    "ready-for-design": "designer",
-    "in-design": "designer",
-    "ready-for-dev": "dev",
-    "in-dev": "dev",
-    "done": "none",
+    "feature-status-not-minimum",
+    "app-row-missing",
+    "stale-qa-evidence",
+    "stale-delivery-evidence",
 }
 
 _FEATURE_ID_PATTERN = re.compile(r"\bF-\d+\b")
@@ -316,11 +330,11 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                 )
             )
 
-    settings = read_wiki_settings(wiki_root)
-    diagnostics.extend(_diag(code, "warning", settings.path, message) for code, message in settings.diagnostics)
-
     load = load_resolved_workspace(root)
     model = load.manifest.model if load.manifest is not None else WorkspaceModel(schema_version=0)
+    settings = read_wiki_settings(wiki_root, model)
+    diagnostics.extend(_diag(code, "warning", settings.path, message) for code, message in settings.diagnostics)
+    diagnostics.extend(_diag(code, "error", settings.path, message) for code, message in settings.policy_errors)
     diagnostics.extend(_lint_unknown_app_capabilities(model, root / MANIFEST_FILE))
 
     feature_pages = read_feature_pages(wiki_root)
@@ -360,8 +374,10 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                 f"Requirement refers to missing feature `{requirement.feature_id}`.", requirement.feature_id))
 
     for feature in feature_pages:
-        if feature.status == "done":
-            diagnostics.extend(_lint_done_completion(feature, requirement_pages, all_pages, wiki_root))
+        if feature.status == "released":
+            diagnostics.extend(_lint_released_completion(feature, requirement_pages, all_pages, wiki_root))
+        elif status_rank(feature.status) >= status_rank("ready-for-qa"):
+            diagnostics.extend(_lint_delivered_apps(feature, requirement_pages, all_pages, wiki_root, model))
 
     # Auxiliary pages have their own frontmatter formats. Surface parse errors
     # so a malformed design, contract, or decision cannot silently disappear
@@ -383,7 +399,7 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
         )
     )
     diagnostics.extend(_lint_api_contract_blockers(feature_pages, requirement_pages, all_pages, wiki_root))
-    diagnostics.extend(_lint_cross_app_dependencies(requirement_pages, feature_pages, wiki_root))
+    diagnostics.extend(_lint_cross_app_dependencies(requirement_pages, feature_pages, wiki_root, model))
     diagnostics.extend(_lint_history_dates(all_pages, wiki_root))
     diagnostics.extend(_lint_schema_versions(all_pages, wiki_root))
     log = _read_log(wiki_root / "log.md")
@@ -459,18 +475,47 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                         row.feature_id,
                     )
                 )
+            # `Design tracks` and `Open bugs` are not compared with the pages until their packages fill them in.
+            expected_stages = app_stages_text(feature.status, feature.apps, feature.page.body, model)
+            if row.app_stages != expected_stages:
+                diagnostics.append(
+                    _diag(
+                        "status-board-frontmatter-drift",
+                        "error",
+                        board_path,
+                        f"status-board.md app stages for `{row.feature_id}` are `{row.app_stages}` but the feature's evidence says `{expected_stages}`.",
+                        row.feature_id,
+                    )
+                )
 
     diagnostics.sort(key=_diagnostic_order)
     return WikiLintResult(root=root, diagnostics=diagnostics, feature_count=len(feature_pages), information=sorted(information, key=_diagnostic_order))
 
 
-def _lint_done_completion(
+def _lint_open_questions_closed(feature: FeaturePage) -> list[WikiDiagnostic]:
+    diagnostics: list[WikiDiagnostic] = []
+    open_questions, _question_errors = parse_open_question_rows(feature.page.body)
+    for row in open_questions:
+        if row["status"] == "open" and row["owner"] in VALID_OPEN_QUESTION_OWNERS:
+            diagnostics.append(
+                _diag(
+                    "unresolved-open-questions",
+                    "error",
+                    feature.page.path,
+                    f"Released feature `{feature.feature_id}` has an open question assigned to `{row['owner']}` (#{row['number']}).",
+                    feature.feature_id,
+                )
+            )
+    return diagnostics
+
+
+def _lint_released_completion(
     feature: FeaturePage,
     requirement_pages: list[AppRequirementPage],
     pages: list[MarkdownPage],
     wiki_root: Path,
 ) -> list[WikiDiagnostic]:
-    """Apply the post-write Done invariants to a completed feature."""
+    """Apply the post-write invariants of a released feature."""
 
     diagnostics: list[WikiDiagnostic] = []
     feature_id = normalize_feature_id(feature.feature_id)
@@ -480,22 +525,11 @@ def _lint_done_completion(
                 "pending-board-review",
                 "error",
                 feature.page.path,
-                f"Done feature `{feature.feature_id}` cannot retain `advisory-review: pending`.",
+                f"Released feature `{feature.feature_id}` cannot retain `advisory-review: pending`.",
                 feature.feature_id,
             )
         )
-    open_questions, _question_errors = parse_open_question_rows(feature.page.body)
-    for row in open_questions:
-        if row["status"] == "open" and row["owner"] in VALID_OPEN_QUESTION_OWNERS:
-            diagnostics.append(
-                _diag(
-                    "unresolved-open-questions",
-                    "error",
-                    feature.page.path,
-                    f"Done feature `{feature.feature_id}` has an open question assigned to `{row['owner']}` (#{row['number']}).",
-                    feature.feature_id,
-                )
-            )
+    diagnostics.extend(_lint_open_questions_closed(feature))
     requirements = {
         (normalize_feature_id(requirement.feature_id), requirement.app.strip().lower()): requirement
         for requirement in requirement_pages
@@ -509,7 +543,7 @@ def _lint_done_completion(
                     "done-app-requirement",
                     "error",
                     feature.page.path,
-                    f"Done feature `{feature.feature_id}` requires a completed app requirement for `{app_id}`.",
+                    f"Released feature `{feature.feature_id}` requires a completed app requirement for `{app_id}`.",
                     feature.feature_id,
                 )
             )
@@ -519,34 +553,12 @@ def _lint_done_completion(
                     "done-app-requirement",
                     "error",
                     requirement.page.path,
-                    f"Done feature `{feature.feature_id}` has `{app_id}` requirement status `{requirement.status}`; expected `done`.",
+                    f"Released feature `{feature.feature_id}` has `{app_id}` requirement status `{requirement.status}`; expected `done`.",
                     feature.feature_id,
                 )
             )
 
-    api_pages = _api_contract_pages_for_feature(feature, requirement_pages, pages, wiki_root)
-    api_applicable = api_surface_declared(section_text(feature.page.body, "API surface"))
-    if api_applicable and not api_pages:
-        diagnostics.append(
-            _diag(
-                "done-api-contract",
-                "error",
-                feature.page.path,
-                f"Done feature `{feature.feature_id}` declares an API surface but has no applicable API contract.",
-                feature.feature_id,
-            )
-        )
-    for page in api_pages:
-        if page.frontmatter.get("status") != "implemented":
-            diagnostics.append(
-                _diag(
-                    "done-api-contract",
-                    "error",
-                    page.path,
-                    f"Done feature `{feature.feature_id}` requires applicable API contract `{page.path.name}` to be `implemented`.",
-                    feature.feature_id,
-                )
-            )
+    diagnostics.extend(_lint_api_contracts_implemented(feature, requirement_pages, pages, wiki_root, "Released"))
     if feature.advisory_review == "done":
         advisory_root = _resolve(wiki_root / "advisory")
         reviews: list[MarkdownPage] = []
@@ -564,7 +576,7 @@ def _lint_done_completion(
                     "done-advisory-actions",
                     "error",
                     feature.page.path,
-                    f"Done feature `{feature.feature_id}` requires one advisory review page with a checkable required-action section.",
+                    f"Released feature `{feature.feature_id}` requires one advisory review page with a checkable required-action section.",
                     feature.feature_id,
                 )
             )
@@ -578,10 +590,79 @@ def _lint_done_completion(
                         "done-advisory-actions",
                         "error",
                         reviews[0].path,
-                        f"Done feature `{feature.feature_id}` retains unchecked advisory actions: " + "; ".join(pending) + ".",
+                        f"Released feature `{feature.feature_id}` retains unchecked advisory actions: " + "; ".join(pending) + ".",
                         feature.feature_id,
                     )
                 )
+    return diagnostics
+
+
+def _lint_api_contracts_implemented(
+    feature: FeaturePage,
+    requirement_pages: list[AppRequirementPage],
+    pages: list[MarkdownPage],
+    wiki_root: Path,
+    label: str,
+) -> list[WikiDiagnostic]:
+    diagnostics: list[WikiDiagnostic] = []
+    api_pages = _api_contract_pages_for_feature(feature, requirement_pages, pages, wiki_root)
+    api_applicable = api_surface_declared(section_text(feature.page.body, "API surface"))
+    if api_applicable and not api_pages:
+        diagnostics.append(
+            _diag(
+                "delivered-api-contract",
+                "error",
+                feature.page.path,
+                f"{label} feature `{feature.feature_id}` declares an API surface but has no applicable API contract.",
+                feature.feature_id,
+            )
+        )
+    for page in api_pages:
+        if page.frontmatter.get("status") != "implemented":
+            diagnostics.append(
+                _diag(
+                    "delivered-api-contract",
+                    "error",
+                    page.path,
+                    f"{label} feature `{feature.feature_id}` requires applicable API contract `{page.path.name}` to be `implemented`.",
+                    feature.feature_id,
+                )
+            )
+    return diagnostics
+
+
+def _lint_delivered_apps(
+    feature: FeaturePage,
+    requirement_pages: list[AppRequirementPage],
+    pages: list[MarkdownPage],
+    wiki_root: Path,
+    model: WorkspaceModel,
+) -> list[WikiDiagnostic]:
+    """A feature in QA or release: each delivered app has a completed requirement, and the contract is implemented once every app is delivered."""
+
+    diagnostics: list[WikiDiagnostic] = []
+    feature_id = normalize_feature_id(feature.feature_id)
+    evidence = read_feature_evidence(feature.page.body)
+    requirements = {
+        (normalize_feature_id(requirement.feature_id), requirement.app.strip().lower()): requirement
+        for requirement in requirement_pages
+        if isinstance(requirement.feature_id, str) and isinstance(requirement.app, str)
+    }
+    for app_id in active_scope(feature.apps, model):
+        if evidence.delivery_row(app_id) is None:
+            continue
+        requirement = requirements.get((feature_id, app_id.strip().lower()))
+        if requirement is not None and requirement.status != "done":
+            diagnostics.append(
+                _diag(
+                    "done-app-requirement",
+                    "error",
+                    requirement.page.path,
+                    f"Feature `{feature.feature_id}` delivered `{app_id}` but its requirement status is `{requirement.status}`; expected `done`.",
+                    feature.feature_id,
+                )
+            )
+    diagnostics.extend(_lint_api_contracts_implemented(feature, requirement_pages, pages, wiki_root, "Delivered"))
     return diagnostics
 
 
@@ -653,22 +734,9 @@ def _lint_feature_blockers(
             ui_apps = sorted(
                 {app_id for app_id in feature.apps if (app := model.app(app_id)) is not None and app.gate_capability(CAPABILITY_HAS_UI)}
             )
-            if (
-                ui_apps
-                and normalize_feature_id(feature_id) not in designs_by_feature
-                and not _has_valid_design_exemption(feature)
-            ):
+            if ui_apps and normalize_feature_id(feature_id) not in designs_by_feature:
                 apps = ", ".join(ui_apps)
-                if feature.page.frontmatter.get("design") == "not-applicable":
-                    message = (
-                        f"Feature `{feature_id}` declares `design: not-applicable` for app(s) with a UI "
-                        f"{apps}, but `design-exemption-reason` is missing or blank."
-                    )
-                else:
-                    message = (
-                        f"Feature `{feature_id}` is {feature.status} for app(s) with a UI {apps} "
-                        "but has no matching design page or valid confirmed design exemption."
-                    )
+                message = f"Feature `{feature_id}` is {feature.status} for app(s) with a UI {apps} but has no matching design page."
                 diagnostics.append(
                     _diag(
                         "missing-design",
@@ -695,10 +763,10 @@ def _lint_feature_blockers(
                         )
                     )
 
-        if feature.status in APP_REQUIREMENTS_REQUIRED_STATUSES:
+        if feature.status in {"ready-for-dev", "in-dev"}:
             open_questions, _ = parse_open_question_rows(feature.page.body)
             for row in open_questions:
-                if row["status"] == "open" and row["owner"] in VALID_OPEN_QUESTION_OWNERS:
+                if row["status"] == "open" and row["owner"] in DEVELOPMENT_QUESTION_OWNERS:
                     diagnostics.append(
                         _diag(
                             "unresolved-open-questions",
@@ -709,15 +777,6 @@ def _lint_feature_blockers(
                         )
                     )
     return diagnostics
-
-
-def _has_valid_design_exemption(feature: FeaturePage) -> bool:
-    """Return whether the feature records the documented design exemption."""
-
-    if feature.page.frontmatter.get("design") != "not-applicable":
-        return False
-    reason = feature.page.frontmatter.get("design-exemption-reason")
-    return isinstance(reason, str) and bool(reason.strip())
 
 
 def _design_pages_by_feature(pages: list[MarkdownPage], wiki_root: Path) -> dict[str, list[MarkdownPage]]:
@@ -809,6 +868,7 @@ def _lint_cross_app_dependencies(
     requirement_pages: list[AppRequirementPage],
     feature_pages: list[FeaturePage],
     wiki_root: Path,
+    model: WorkspaceModel | None = None,
 ) -> list[WikiDiagnostic]:
     features_by_path = {_resolve(feature.page.path): feature for feature in feature_pages}
     features_by_id = {normalize_feature_id(feature.feature_id): feature for feature in feature_pages}
@@ -829,7 +889,7 @@ def _lint_cross_app_dependencies(
             if target_feature is not None and _is_unfinished_feature(target_feature):
                 unfinished.add(("feature", target_feature.feature_id))
             target_requirement = requirements_by_path.get(target)
-            if target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id):
+            if target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id, model):
                 unfinished.add(("app requirement", _requirement_label(target_requirement)))
 
         for directory, kind in (("features", "feature"), ("app-requirements", "app requirement")):
@@ -841,7 +901,7 @@ def _lint_cross_app_dependencies(
                 if kind == "feature" and target_feature is not None and _is_unfinished_feature(target_feature):
                     unfinished.add(("feature", target_feature.feature_id))
                 target_requirement = requirements_by_path.get(target)
-                if kind == "app requirement" and target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id):
+                if kind == "app requirement" and target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id, model):
                     unfinished.add(("app requirement", _requirement_label(target_requirement)))
 
         feature_by_name = {feature.page.path.name: feature for feature in feature_pages}
@@ -851,7 +911,7 @@ def _lint_cross_app_dependencies(
             if target_feature is not None and _is_unfinished_feature(target_feature):
                 unfinished.add(("feature", target_feature.feature_id))
             target_requirement = requirement_by_name.get(filename)
-            if target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id):
+            if target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id, model):
                 unfinished.add(("app requirement", _requirement_label(target_requirement)))
 
         plain_body = _MARKDOWN_LINK_PATTERN.sub(" ", dependency_body)
@@ -886,13 +946,18 @@ def _lint_cross_app_dependencies(
 
 
 def _is_unfinished_feature(feature: FeaturePage) -> bool:
-    return feature.status in VALID_FEATURE_STATUSES and feature.status != "done"
+    """A feature dependency is satisfied when the feature is `released` (CONTRACTS 8.1)."""
+
+    return feature.status in VALID_FEATURE_STATUSES and feature.status != "released"
 
 
 def _is_unfinished_requirement(
     requirement: AppRequirementPage,
     features_by_id: dict[str, FeaturePage] | None = None,
+    model: WorkspaceModel | None = None,
 ) -> bool:
+    """A requirement dependency is satisfied when the app's stage in its feature is `released` (CONTRACTS 8.1)."""
+
     if requirement.status in VALID_APP_REQUIREMENT_STATUSES and requirement.status != "done":
         return True
     if requirement.status != "done" or features_by_id is None or not isinstance(requirement.feature_id, str):
@@ -901,7 +966,13 @@ def _is_unfinished_requirement(
     if parent is None:
         return False
     domains, errors = parse_revalidation(parent.page.frontmatter.get("revalidation"))
-    return bool(errors or domains)
+    if errors or domains:
+        return True
+    if parent.status == "released":
+        return False
+    if not isinstance(requirement.app, str) or status_rank(parent.status) < status_rank("in-dev"):
+        return True
+    return app_stage(requirement.app, read_feature_evidence(parent.page.body)) != "released"
 
 
 def _requirement_label(requirement: AppRequirementPage) -> str:
@@ -1963,9 +2034,25 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
     if "title" in frontmatter and (not isinstance(frontmatter["title"], str) or not frontmatter["title"].strip()):
         diagnostics.append(_diag("invalid-feature-title", "error", path, "`title` must be a non-empty string.", feature_id))
 
+    for key in frontmatter:
+        if key not in FEATURE_FRONTMATTER_FIELDS:
+            diagnostics.append(
+                _diag(
+                    "unsupported-feature-field",
+                    "error",
+                    path,
+                    (
+                        "`platforms` is not a valid feature field; list the feature's apps in `apps:`."
+                        if key == "platforms"
+                        else f"`{key}` is not a feature field; a feature page carries only {', '.join(f'`{name}`' for name in FEATURE_FRONTMATTER_FIELDS)}."
+                    ),
+                    feature_id,
+                )
+            )
+
     status_value = frontmatter.get("status")
     if "status" in frontmatter and (not isinstance(status_value, str) or status_value not in VALID_FEATURE_STATUSES):
-        diagnostics.append(_diag("invalid-feature-status", "error", path, f"`status` must be one of {sorted(VALID_FEATURE_STATUSES)}.", feature_id))
+        diagnostics.append(_diag("invalid-feature-status", "error", path, f"`status` must be one of {list(FEATURE_STATUS_ORDER)}.", feature_id))
     owner_value = frontmatter.get("owner")
     if "owner" in frontmatter and (not isinstance(owner_value, str) or owner_value not in VALID_FEATURE_OWNERS):
         diagnostics.append(_diag("invalid-feature-owner", "error", path, f"`owner` must be one of {sorted(VALID_FEATURE_OWNERS)}.", feature_id))
@@ -1976,13 +2063,14 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
         diagnostics.append(
             _diag("invalid-advisory-review", "error", path, f"`advisory-review` must be one of {sorted(VALID_ADVISORY_REVIEW_STATES)}.", feature_id)
         )
-    if feature.status in EXPECTED_OWNER_BY_STATUS and feature.owner != EXPECTED_OWNER_BY_STATUS[feature.status]:
+    wanted_owner = expected_owner(feature.status, feature.apps, model)
+    if wanted_owner is not None and feature.owner != wanted_owner:
         diagnostics.append(
             _diag(
                 "invalid-status-owner-pairing",
                 "error",
                 path,
-                f"`status: {feature.status}` must pair with `owner: {EXPECTED_OWNER_BY_STATUS[feature.status]}`.",
+                f"`status: {feature.status}` must pair with `owner: {wanted_owner}`.",
                 feature_id,
             )
         )
@@ -2000,27 +2088,27 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
     _revalidation, revalidation_errors = parse_revalidation(frontmatter.get("revalidation"))
     for message in revalidation_errors:
         diagnostics.append(_diag("invalid-revalidation", "error", path, message, feature_id))
-    if feature.status == "done" and _revalidation:
+    app_domains, app_revalidation_errors = parse_app_revalidation(frontmatter.get("app-revalidation"))
+    for message in app_revalidation_errors:
+        diagnostics.append(_diag("invalid-revalidation", "error", path, message, feature_id))
+    for app_id in app_domains:
+        if app_id not in feature.apps:
+            diagnostics.append(_diag("invalid-revalidation", "error", path, f"`app-revalidation` names `{app_id}`, which is not in the feature's `apps`.", feature_id))
+    if feature.status == "released" and (_revalidation or app_domains):
+        pending = [*_revalidation, *(f"{app}: {', '.join(domains)}" for app, domains in app_domains.items())]
         diagnostics.append(
             _diag(
                 "pending-revalidation",
                 "error",
                 path,
-                "A Done feature cannot retain pending revalidation domains: " + ", ".join(_revalidation) + ".",
+                "A released feature cannot retain pending revalidation domains: " + "; ".join(pending) + ".",
                 feature_id,
             )
         )
 
-    if feature.status == "done":
-        _delivery_evidence, delivery_problems = parse_delivery_evidence(feature.page.body, feature.apps)
-        for problem in delivery_problems:
-            code = RELEASE_EVIDENCE_REQUIRED if problem.code == RELEASE_EVIDENCE_REQUIRED else "done-delivery-evidence"
-            diagnostics.append(_diag(code, "error", path, problem.message, feature_id))
+    diagnostics.extend(_lint_feature_criteria(feature, model))
+    diagnostics.extend(_lint_feature_evidence(feature, model))
 
-    if "platforms" in frontmatter:
-        diagnostics.append(
-            _diag("unknown-feature-field", "error", path, "`platforms` is not a valid feature field; list the feature's apps in `apps:`.", feature_id)
-        )
     apps_value = frontmatter.get("apps")
     if "apps" in frontmatter and not isinstance(apps_value, list):
         diagnostics.append(_diag("invalid-feature-apps", "error", path, "`apps` must be a list.", feature_id))
@@ -2034,7 +2122,7 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
             if model.app(app_value) is None:
                 diagnostics.append(_diag("unknown-app-id", "error", path, _unknown_app_message(app_value, model), feature_id))
 
-    if feature.status in VALID_FEATURE_STATUSES and feature.status != "done":
+    if feature.status in VALID_FEATURE_STATUSES and feature.status != "released":
         retired = model.retired_apps(feature.apps)
         if retired:
             diagnostics.append(_diag("app-retired-in-scope", "error", path, retired_in_scope_message(feature_id, retired), feature_id))
@@ -2060,6 +2148,193 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
         if status != "open" and not status.startswith("resolved:"):
             diagnostics.append(_diag("invalid-open-question-status", "error", path, f"Open question status `{status}` is invalid.", feature_id))
 
+    return diagnostics
+
+
+def _lint_feature_criteria(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagnostic]:
+    """CONTRACTS 4.1: from `specified` on every criterion has an ID and an `applies-to`, the IDs are unique and at most the high-water mark."""
+
+    path = feature.page.path
+    feature_id = feature.feature_id
+    if status_rank(feature.status) < status_rank("specified"):
+        return []
+    diagnostics: list[WikiDiagnostic] = []
+    criteria = parse_criteria(feature.page.body, feature_id)
+    seen: dict[int, int] = {}
+    for criterion in criteria:
+        for code, message in criterion.problems:
+            diagnostics.append(_diag(code, "error", path, message, feature_id))
+        if criterion.number is not None:
+            seen[criterion.number] = seen.get(criterion.number, 0) + 1
+    for number, count in sorted(seen.items()):
+        if count > 1:
+            diagnostics.append(_diag("duplicate-criterion-id", "error", path, f"Criterion `AC-{number}` appears {count} times; each ID is used once.", feature_id))
+    mark, mark_problem = criteria_high_water(feature.page.frontmatter)
+    highest = max(seen, default=0)
+    if mark_problem is not None:
+        diagnostics.append(_diag("criterion-high-water-invalid", "error", path, mark_problem, feature_id))
+    elif mark is None:
+        if seen:
+            diagnostics.append(
+                _diag("criterion-high-water-invalid", "error", path, "`criteria-high-water` is missing; set it to the highest criterion number ever assigned.", feature_id)
+            )
+    elif highest > mark:
+        diagnostics.append(
+            _diag(
+                "criterion-high-water-invalid",
+                "error",
+                path,
+                f"`AC-{highest}` is above `criteria-high-water: {mark}`; the mark is the highest criterion number ever assigned.",
+                feature_id,
+            )
+        )
+    named = {app for criterion in criteria for app in criterion.applies_to}
+    active = active_scope(feature.apps, model)
+    if criteria and not any(criterion.problems for criterion in criteria):
+        for app_id in active:
+            if app_id not in named:
+                diagnostics.append(
+                    _diag("app-without-criteria", "error", path, f"App `{app_id}` is in scope but no acceptance criterion names it.", feature_id)
+                )
+    for criterion in criteria:
+        for app_id in criterion.applies_to:
+            if app_id not in feature.apps:
+                diagnostics.append(
+                    _diag("invalid-applies-to", "error", path, f"`{criterion.id}` applies to `{app_id}`, which is not in the feature's `apps`.", feature_id)
+                )
+    return diagnostics
+
+
+def _lint_feature_evidence(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagnostic]:
+    """CONTRACTS 4.5: the evidence tables agree with the app stages, the status and the current criteria."""
+
+    path = feature.page.path
+    feature_id = feature.feature_id
+    status = feature.status
+    if status not in VALID_FEATURE_STATUSES:
+        return []
+    evidence = read_feature_evidence(feature.page.body)
+    diagnostics: list[WikiDiagnostic] = [
+        _diag("invalid-evidence-row", "error", path, problem.message, feature_id) for problem in evidence.problems
+    ]
+    if status_rank(status) < status_rank("in-dev"):
+        if evidence.has_rows:
+            sections = [
+                name
+                for name, rows in (("Delivery evidence", evidence.delivery), ("QA verification", evidence.qa), ("Release", evidence.release))
+                if rows
+            ]
+            diagnostics.append(
+                _diag(
+                    "app-row-ahead-of-status",
+                    "error",
+                    path,
+                    f"Feature `{feature_id}` is `{status}` but {', '.join(sections)} already hold rows; evidence starts at `in-dev`.",
+                    feature_id,
+                )
+            )
+        return diagnostics
+
+    scoped = set(feature.apps)
+    for table, rows, key in (
+        ("Delivery evidence", evidence.delivery, lambda row: [row.app]),
+        ("QA verification", evidence.qa, lambda row: list(row.apps)),
+        ("Release", evidence.release, lambda row: [row.app]),
+    ):
+        for row in rows:
+            for app_id in key(row):
+                if app_id not in scoped:
+                    diagnostics.append(
+                        _diag("undeclared-app-row", "error", path, f"A `{table}` row names `{app_id}`, which is not in the feature's `apps`.", feature_id)
+                    )
+    delivered: dict[str, int] = {}
+    for row in evidence.delivery:
+        delivered[row.app] = delivered.get(row.app, 0) + 1
+    for app_id, count in sorted(delivered.items()):
+        if count > 1:
+            diagnostics.append(_diag("duplicate-app-row", "error", path, f"`Delivery evidence` has {count} rows for `{app_id}`; an app has one.", feature_id))
+    authoritative: dict[str, int] = {}
+    for row in evidence.release:
+        if row.authoritative:
+            authoritative[row.app] = authoritative.get(row.app, 0) + 1
+    for app_id, count in sorted(authoritative.items()):
+        if count > 1:
+            diagnostics.append(_diag("duplicate-app-row", "error", path, f"`Release` has {count} authoritative rows for `{app_id}`; an app has one.", feature_id))
+
+    active = active_scope(feature.apps, model)
+    if not active and status != "released":
+        diagnostics.append(
+            _diag(
+                "no-active-app-in-scope",
+                "error",
+                path,
+                f"Feature `{feature_id}` has no active app in scope; every app it lists is retired. Return it through a design route and edit its scope.",
+                feature_id,
+            )
+        )
+        return diagnostics
+    stages = app_stages(active, evidence)
+    minimum = minimum_stage(stages.values())
+    if minimum is not None and status in APP_STAGE_ORDER and minimum != status:
+        diagnostics.append(
+            _diag(
+                "feature-status-not-minimum",
+                "error",
+                path,
+                f"Feature `{feature_id}` is `{status}` but its lowest app stage is `{minimum}` ({'; '.join(f'{app}: {stage}' for app, stage in stages.items())}).",
+                feature_id,
+            )
+        )
+        if status in APP_STAGE_ORDER:
+            for app_id, stage in stages.items():
+                if APP_STAGE_ORDER.index(stage) < APP_STAGE_ORDER.index(status):
+                    diagnostics.append(
+                        _diag(
+                            "app-row-missing",
+                            "error",
+                            path,
+                            f"Feature `{feature_id}` is `{status}` but `{app_id}` is only `{stage}`: its evidence rows are missing.",
+                            feature_id,
+                        )
+                    )
+
+    for row in evidence.qa:
+        for app_id in row.apps:
+            if app_id in scoped and evidence.delivery_row(app_id) is None:
+                diagnostics.append(
+                    _diag("app-row-out-of-order", "error", path, f"A QA row `{row.key}` names `{app_id}`, which has no delivery evidence.", feature_id)
+                )
+    criteria = parse_criteria(feature.page.body, feature_id)
+    history = parse_evidence_history(feature.page.body)
+    for app_id in active:
+        release = evidence.authoritative_release(app_id)
+        if release is not None and release.outcome in {"pending", "failed"}:
+            gaps = qa_coverage(app_id, criteria, evidence, history)
+            if gaps:
+                diagnostics.append(
+                    _diag(
+                        "app-row-out-of-order",
+                        "error",
+                        path,
+                        f"`{app_id}` has a `{release.outcome}` Release row without QA coverage: {gaps[0].message}",
+                        feature_id,
+                    )
+                )
+    released_apps = [app_id for app_id, stage in stages.items() if stage == "released"]
+    for row, reason in stale_qa_rows(criteria, evidence, history, skip_apps=released_apps):
+        diagnostics.append(_diag("stale-qa-evidence", "error", path, f"The QA row `{row.key}` is stale: {reason}.", feature_id))
+    for row in evidence.delivery:
+        binding = row.contract_binding
+        if binding is not None and binding[0].casefold() != feature_id.casefold():
+            diagnostics.append(
+                _diag(
+                    "stale-delivery-evidence",
+                    "error",
+                    path,
+                    f"The delivery row of `{row.app}` cites the contract of `{binding[0]}`, not of `{feature_id}`.",
+                    feature_id,
+                )
+            )
     return diagnostics
 
 

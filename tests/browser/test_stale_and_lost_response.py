@@ -73,9 +73,11 @@ class StalePreviewTests(ScenarioCase):
     def assert_rejected_as_stale(self, run: Any, response: Any, source_path: str) -> str:
         self.assertEqual(409, response.status)
         error = response.json()["error"]
-        self.assertEqual("stale_preview", error["code"])
+        # The human read this preview and the apply carries that review: a changed source is a stale review (CONTRACTS 1.4), and
+        # the message names the source.
+        self.assertEqual("stale_approval_review", error["code"])
         self.assertIn(source_path, error["message"])
-        run.effect(f"the service rejected the apply as stale_preview (HTTP 409) and named `{source_path}`")
+        run.effect(f"the service rejected the apply as stale_approval_review (HTTP 409) and named `{source_path}`")
         return response.request.post_data_json["operation_id"]
 
     def assert_no_operation_recorded(self, run: Any, operation_id: str) -> None:

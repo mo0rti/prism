@@ -214,6 +214,11 @@ class BoardPage:
     def operations_button(self) -> Locator:
         return self.page.get_by_role("button", name=re.compile(r"^Review \d+ pending board operations$"))
 
+    def proposals_button(self) -> Locator:
+        """The session-bar button that opens the proposals waiting for approval (a human who may write sees it)."""
+
+        return self.page.get_by_role("button", name="Review the proposals that wait for approval")
+
     def agent_request_button(self, feature_id: str, label: str) -> Locator:
         """The card button that opens a provider-neutral MCP request for an agent-only action."""
 

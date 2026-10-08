@@ -60,10 +60,12 @@ METRICS = (
 # They sit just above what the code does today. Lower them when a change removes work.
 # The intercepts include the fixed pages and folders of every workspace: status-board.md, direction.md and
 # roadmap.md, and the topics, research and plans folders. No slope changed.
+# A preview of a gated action (`po-handoff`) also returns the `review_revision` its human reads (CONTRACTS 1.3): the policy once more
+# and one more read of each source file. That is a fixed cost, so it raises the `preview_transition` file_opens intercept and no slope.
 CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
     "preview_transition": {
         "page_parses": (1, 11),
-        "file_opens": (1, 38),
+        "file_opens": (1, 46),
         "workspace_fingerprint": (0, 0),
         "validate_graph_inputs": (0, 2),
         "lint_wiki": (0, 1),
@@ -209,7 +211,7 @@ class _Workspaces:
             seed = base / f"seed-{size}"
             build_workspace(seed, size)
             with BoardService(seed) as service:
-                token = service.create_participant(f"Counts {size}", "human", writable=True)["token"]
+                token = service.create_participant(f"Counts {size}", "human", writable=True, roles="po")["token"]
             self._seeds[size] = (seed, token)
 
     def fresh(self, size: int) -> tuple[Path, BoardService, Any]:
@@ -218,7 +220,8 @@ class _Workspaces:
         shutil.copytree(seed, destination)
         _age_files(destination)
         service = BoardService(destination).start()
-        return destination, service, service.authenticate(token)
+        # `po-handoff` is gated: the human holds the `po` role and approves in a browser session.
+        return destination, service, service.authenticate(token, via_session=True)
 
 
 def _measure(counters: _Counters, run: Callable[[], Any]) -> dict[str, int]:
@@ -268,10 +271,11 @@ def collect_counts(workspaces: _Workspaces, counters: _Counters, size: int) -> d
         preview = api.preview_transition(actor, **PREVIEW_ARGUMENTS)
         if preview["applicable"] is not True:
             raise AssertionError(f"The po-handoff preview for {READY_FEATURE} is not applicable: {preview['classification']}")
+        review = api.get_preview(actor, preview["preview_id"])["approval"]["review_revision"]
         receipt: dict[str, Any] = {}
 
         def apply() -> None:
-            receipt.update(api.apply(actor, preview["preview_id"], "count-" + uuid.uuid4().hex))
+            receipt.update(api.apply(actor, preview["preview_id"], "count-" + uuid.uuid4().hex, review, True))
 
         results["apply"] = _measure(counters, apply)
         if receipt.get("state") != "applied":

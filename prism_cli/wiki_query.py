@@ -11,6 +11,7 @@ from prism_cli.wiki_model import (
     AppRequirementPage,
     FeaturePage,
     load_markdown_page,
+    parse_criteria,
     parse_open_question_rows,
     read_feature_pages,
     read_app_requirement_pages,
@@ -19,7 +20,7 @@ from prism_cli.wiki_model import (
 from prism_cli.workspace import detect_workspace_kind, inspect_workspace
 
 
-ACTIVE_APP_STATUSES = {"ready-for-design", "in-design", "ready-for-dev", "in-dev"}
+ACTIVE_APP_STATUSES = {"ready-for-design", "in-design", "ready-for-dev", "in-dev", "ready-for-qa", "in-qa", "ready-for-release"}
 SEARCH_DIRECTORIES = {
     "feature": "features",
     "persona": "personas",
@@ -246,6 +247,11 @@ def _feature_to_dict(
         "frontmatter": _json_safe(dict(feature.page.frontmatter)),
         "open_questions": rows,
         "open_question_parse_errors": errors,
+        "criteria": [
+            {"id": item.id, "revision": item.revision, "applies_to": list(item.applies_to), "integration": item.integration}
+            for item in parse_criteria(feature.page.body, feature.feature_id)
+            if item.id is not None and item.revision is not None
+        ],
         "linked_context": linked_context,
         "app_requirements": [_requirement_to_dict(requirement) for requirement in requirements],
     }

@@ -6,18 +6,20 @@ Use this format for every file in `wiki/features/`. Filename: `F-XXX-[slug].md`.
 ---
 id: F-XXX
 title: [Feature name]
-status: raw | specified | ready-for-design | in-design | ready-for-dev | in-dev | done
-owner: po | designer | dev | none
+status: raw | specified | ready-for-design | in-design | ready-for-dev | in-dev | ready-for-qa | in-qa | ready-for-release | released
+owner: po | designer | tech-lead | dev | qa | release | none
 apps: [list of app IDs this feature affects]
 sources: [paths to intake/processed/ items that produced this page]
 advisory-review: not-needed | pending | done | skipped
 # Required and non-blank when advisory-review is skipped:
 advisory-skip-reason: [reason]
-# Optional only when the user explicitly confirms that UI design is not applicable:
-design: not-applicable
-design-exemption-reason: [non-blank reason]
-# Omit or use [] until a confirmed reopen marks domains for fresh evidence:
-revalidation: [specification | design | implementation | tests | release]
+# The highest acceptance-criterion number ever assigned; required from `specified` on:
+criteria-high-water: 3
+# Omit or use [] until a return or reopen marks domains for fresh evidence:
+revalidation: [specification | design | technical-design]
+# Per app, the domains that need fresh evidence:
+app-revalidation:
+  backend: [implementation | tests | qa | release]
 ---
 
 ## Summary
@@ -30,15 +32,15 @@ Written in business language, not technical language.
 As a [persona from personas/], I want to [action], so that [business outcome].
 
 ## Acceptance criteria
-- [ ] **Decided:** Condition 1 (testable, unambiguous) ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
-- [ ] **Proposed:** Condition 2
+- [ ] **Decided:** AC-1 [backend] Condition 1 (testable, unambiguous) ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
+- [ ] **Proposed:** AC-2 [integration: backend, web] Condition 2 that two apps verify together
 
 ## Open questions
 | # | Question | Owner | Status |
 |---|----------|-------|--------|
 | 1 | What is the fallback when the user is offline? | po | open |
 
-Owner must be one of: po | designer | dev
+Owner must be one of: po | designer | tech-lead | dev | qa | release
 Status must be one of: open | resolved: [answer]
 This table is the Unknown form of the evidence labels in SCHEMA.md: write a gap here, not
 as an `**Unknown:**` item.
@@ -50,11 +52,6 @@ as an `**Unknown:**` item.
 - **web**: [what the web app must implement, or "not in scope"]
 
 Only list apps that `prism.workspace.yml` declares.
-
-For UI work, `design: not-applicable` and a nonblank
-`design-exemption-reason` are allowed only when the user explicitly confirms
-that the visual design is not applicable. Ordinary non-UI features omit both
-fields.
 
 ## Design
 Link to design artifacts. Empty until /design-intake is run.
@@ -68,38 +65,32 @@ High-level description of API changes required. Empty if no API changes.
 ## Board review summary
 Populated by /board-review. Empty until then.
 
-## Post-ship notes
-Populated by /dev-done. Empty until then. Record a delivery reference the agent could
-not check as the developer's attestation.
-
 ## Delivery evidence
-| App | Implementation | Tests | Release |
-|---|---|---|---|
-| [declared app] | [verified artifact or source reference] | [test command and result] | release: [URL of the release, tag or deployment record] |
+| App | Artifact | Contract | Implementation | Tests | Basis |
+|---|---|---|---|---|---|
+| [declared app] | `build:backend#412` | none | [PR or source reference](https://example.com) | `./gradlew test`: 214 passed | checked |
 
-Include exactly one substantive row per declared app in the `dev-done`
-proposal; the developer supplies the references.
-Agents must verify the referenced artifacts and results; file presence or lint
-alone is not shipment evidence. Partial delivery stays `in-dev`.
+## QA verification
+| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |
+|---|---|---|---|---|---|---|---|---|
 
-The `Release` cell is release evidence (`release: <reference>`, `tag: <reference>` or
-`deployment: <reference>`, the reference being the URL of, or a workspace path to, a
-release, tag or deployment record) or a delivery attestation (`attested by <Name>:
-<reference>`, the reference being a URL or a workspace path to what that person
-checked). A commit or pull request proves which code changed, not that it shipped, so
-any other cell is rejected with `release-evidence-required`.
+## Release
+| App | Target | Version | Attempt | Outcome | Record | Basis |
+|---|---|---|---|---|---|---|
 
-## Reopen history
-Append-only records for confirmed reopen actions. Archive the prior active
-Delivery evidence here and remove it from the active table on confirmation.
+## Evidence history
+Append-only dated entries; empty until evidence is archived.
 
-### YYYY-MM-DD - reopen-[spec|design|dev]
-- Reason: [why the feature was reopened]
-- Impact review: [what changed and what was assessed]
-- Affected apps: [declared app IDs]
-- Affected artifacts: [paths or named artifacts]
-- Prior completion/release evidence: [archived evidence]
-- Requirement/API invalidations: [exact affected pages and proposed statuses]
+### YYYY-MM-DD - [action]
+- Reason: [why]
+- Affected apps: [app IDs]
+- Participants: [apps that lost a Release row through a removed integration row, or none]
+- Affected tracks: [ui, technical, or none]
+- Archived evidence:
+  | Delivery evidence | backend | `build:backend#412` | none | [PR](https://example.com) | `./gradlew test`: 214 passed | checked |
+- Reaffirmed evidence: [rows kept active, verbatim, or none]
+- Requirement/API invalidations: [path: done -> in-progress, or a sentence that none are invalidated]
+- Linked bugs: [BUG-XXX, or none]
 ```
 
 ## Evidence labels
@@ -109,43 +100,71 @@ that `SCHEMA.md` defines (Decided, Observed, Proposed, Assumed, Unknown) as a bo
 label. A Decided or Observed claim links its evidence: the processed intake item, a record
 or a URL. A later source that changes a claim replaces the item in place.
 
+## Acceptance criteria
+
+Each criterion has an ID and says which apps verify it:
+
+- `AC-<n> [app, app]`: each listed app verifies it in its own QA row.
+- `AC-<n> [integration: app, app]`: two or more apps verify it together in one integration row.
+
+The ID is unique and never reused: `criteria-high-water` holds the highest number ever
+assigned, a new criterion takes that number plus 1, and the same write raises the mark. Every
+app in `apps` is named by at least one criterion. A criterion has a revision, `v1:` and a
+SHA-256 over its feature, ID, `applies-to`, evidence label and text (links as `text <url>`,
+whitespace collapsed); QA rows cite `AC-<n>@v1:<64 hex digits>`, and a changed criterion makes
+the rows that cite its old revision stale. The board shows each criterion's current revision
+when it reads a feature.
+
 ## Raw and specified pages
 
 `/po-intake` creates every new feature as `status: raw`, `owner: po`. Its page has
 substantive Summary, User story, Acceptance criteria, Open questions and App
-scope sections; Design, Related features, API surface, Board review summary and
-Post-ship notes stay empty. `/po-specify` completes the page and sets
-`status: specified`: each of those five sections gets one line of supported content
-or an explicit statement that nothing exists yet (`Not started.`, `None identified.`,
-`None.` under API surface, `Not reviewed yet.`, `Not shipped yet.`). API surface text
-other than `None.` declares API work and needs an API contract page before
-`/dev-start`, so write `None.` unless the intake material or an answered question
-states an API change. Keep open questions in the Open questions table, never in these
-sections. A later action replaces that line with its real content.
+scope sections; the other sections stay empty. `/po-specify` completes the page and sets
+`status: specified`: each of Design, Related features, API surface and Board review summary
+gets one line of supported content or an explicit statement that nothing exists yet
+(`Not started.`, `None identified.`, `None.` under API surface, `Not reviewed yet.`), the four
+evidence sections exist and stay empty, and every criterion gets its ID and `applies-to`. API
+surface text other than `None.` declares API work and needs an API contract page before
+`/dev-start`, so write `None.` unless the intake material or an answered question states an API
+change. Keep open questions in the Open questions table, never in these sections. A later
+action replaces that line with its real content.
 
-## Reopen record layout
+## Evidence tables
 
-Each reopen record has one `###` heading and the six bullets above, with the label
-text unchanged. Under `- Prior completion/release evidence:` keep every prior
-Delivery evidence row verbatim, one row per declared app, in the same
-`| App | Implementation | Tests | Release |` cell order. Put the rows on that
-line, or on the lines directly below it as a table or a list, indented or not.
-They must come before the next `- Label:` bullet or heading. Rows after the next
-bullet or under another heading are not found, and the connected board rejects the
-record with `delivery_evidence_not_archived` and the first missing row. Letter case
-and spaces around `|` do not matter; the cell text does.
+A feature at `in-dev` or later carries its evidence in three tables. Each app has its own rows,
+so one app can be in QA while another is still in development.
 
-```markdown
-- Prior completion/release evidence: Archived unchanged from the active table.
+- **Delivery evidence**: one row per app that delivered. `Artifact` is `version:1.4.0`,
+  `build:backend#412`, `image:registry/app@sha256:<64 hex digits>`, `package:name@1.4.0` or
+  `commit:<7 to 40 hex digits>`; the board checks the form, never that the artifact exists.
+  `Contract` is `none` or `F-XXX@v<version>:c1:<digest>` once the feature has an API contract.
+  `Implementation` and `Tests` are substantive references. `Basis` is `checked` (the proposer
+  verified the references) or `attested` (the approving human vouches for them).
+- **QA verification**: one row per app, or an `integration:app+app` row for criteria that two
+  apps verify together. It records the criteria and their revisions, the method (`automated`,
+  `manual` or `exploratory`), the verified artifact, the environment, the attempt `qa-<n>`, the
+  result (`pass`, `fail` or `blocked`), the evidence and the basis.
+- **Release**: one row per app and delivery, with the target, the version, the attempt
+  `release-<n>`, the outcome (`pending`, `released` or `failed`), the record and the basis.
 
-  | App | Implementation | Tests | Release |
-  |---|---|---|---|
-  | backend | PR #42 merged as 3f9c2ab | CI run 1187: 31 passed | release: https://example.com/releases/v1.4.0 |
-- Requirement/API invalidations: knowledge/wiki/app-requirements/F-001-backend.md: done -> in-progress
-```
+An app's stage follows its rows: `in-dev` without a delivery row, `ready-for-qa` with one,
+`in-qa` once a QA row names it, `ready-for-release` with a pending or failed Release row, and
+`released` when its Release row is `released`. The feature's status is the lowest stage of its
+active apps.
 
-Under `- Requirement/API invalidations:` write each invalidated requirement or API page as
-its full relative path, a colon, its current status, `->` and its new status, and name
-the same path under `- Affected artifacts:`. When no page is invalidated, write a
-sentence such as `No requirement or API page is invalidated.`; a bare `None` is too short
-and the connected board rejects it with `impact_review_required`.
+## Evidence history
+
+Each action that removes evidence from the active tables (a return, a reopen, a failed QA or a
+scope edit that drops an app) appends one entry, headed `### YYYY-MM-DD - action` with the
+preview day, and keeps the earlier entries as they are. Under `- Archived evidence:` keep every
+removed row verbatim, one row per line, as a table row that starts with its section name
+(`Delivery evidence`, `QA verification`, `Release`) and then the row's own cells. Put the rows on
+the lines directly below the label, before the next `- Label:` bullet. Letter case and spaces
+around `|` do not matter; the cell text does. A row that is both archived and still in its
+active table is rejected with `evidence_still_active`, and a removed row that is not archived
+with `evidence_not_archived`.
+
+Under `- Requirement/API invalidations:` write each invalidated requirement or API page as its
+full relative path, a colon, its current status, `->` and its new status. When no page is
+invalidated, write a sentence such as `No requirement or API page is invalidated.`; a bare `None`
+is too short and the connected board rejects it with `impact_review_required`.

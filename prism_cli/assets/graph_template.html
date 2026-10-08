@@ -12,7 +12,7 @@
    dot-grid paper, terminal-file cards, and the spectral
    hairline (light through the prism). Palette validated
    (dataviz six-checks, both themes, all 10 pairs).
-   Phases: PO=blue · Design=amber · Dev=aqua · Done=green ·
+   Phases: PO=blue · Design=amber · Dev=aqua · QA=violet · Release=rose · Released=green ·
    App=orange · context=recessive neutral.
    ============================================================ */
 :root, html[data-theme="dark"] {
@@ -28,6 +28,8 @@
   --po: #3987e5;
   --design: #c98500;
   --dev: #199e70;
+  --qa: #8f6fe0;
+  --release: #d9628f;
   --done: #008300;
   --app: #d95926;
   --context: #898781;
@@ -50,6 +52,8 @@ html[data-theme="light"] {
   --po: #2a78d6;
   --design: #eda100;
   --dev: #1baf7a;
+  --qa: #6b45c9;
+  --release: #c23d73;
   --done: #008300;
   --app: #eb6834;
   --context: #898781;
@@ -445,7 +449,7 @@ main { position: relative; flex: 1; overflow: hidden; }
 .transition-check { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; border-top: 1px solid var(--hairline); font-size: 11.5px; line-height: 1.45; }
 .transition-check .check-status { flex: none; min-width: 58px; color: var(--good); font: 700 8.5px ui-monospace, Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
 .transition-check.blocked .check-status { color: var(--critical); }
-.transition-check.unknown .check-status, .transition-check.review .check-status { color: var(--warning); }
+.transition-check.unknown .check-status, .transition-check.review .check-status, .transition-check.warning .check-status { color: var(--warning); }
 .transition-check .check-copy { min-width: 0; color: var(--ink-2); overflow-wrap: anywhere; }
 .transition-check code { color: var(--muted); font-size: 10px; }
 .transition-request { border: 1px solid var(--hairline); border-radius: 8px; background: var(--page); padding: 10px; }
@@ -613,9 +617,9 @@ const ENVELOPE = JSON.parse(document.getElementById("prism-data").textContent);
 const CONFIG = JSON.parse(document.getElementById("prism-config").textContent);
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const STAGES = ["raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done"];
-const STAGE_PHASE = { raw: "po", specified: "po", "ready-for-design": "design", "in-design": "design", "ready-for-dev": "dev", "in-dev": "dev", done: "done" };
-const READY_STAGES = new Set(["ready-for-design", "ready-for-dev"]);
+const STAGES = ["raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released"];
+const STAGE_PHASE = { raw: "po", specified: "po", "ready-for-design": "design", "in-design": "design", "ready-for-dev": "dev", "in-dev": "dev", "ready-for-qa": "qa", "in-qa": "qa", "ready-for-release": "release", released: "done" };
+const READY_STAGES = new Set(["ready-for-design", "ready-for-dev", "ready-for-qa", "ready-for-release"]);
 const CONTEXT_TYPES = ["design", "app-requirement", "api-contract", "business-rule", "persona", "decision", "advisory-review"];
 const TYPE_LABELS = {
   feature: "Features", app: "Apps", design: "Design", "app-requirement": "Requirements",
@@ -634,7 +638,7 @@ const PIPE_STAGES = [
   { n: "04", name: "DESIGN", who: "DESIGNER", color: "design", cmd: "design-intake", desc: "Design artifacts attach to the feature; UI states and interactions get covered before development starts." },
   { n: "05", name: "BOARD", who: "ADVISORY", color: "design", cmd: "board-review", desc: "Domain-sensitive features pass the advisory board — project-specific expert personas reviewing conflicts, gaps, and risk before a line of code." },
   { n: "06", name: "BUILD", who: "DEV", color: "dev", cmd: "prep-sprint", desc: "Review app requirements and source evidence before development; the dashboard prepares a request but never starts a host job." },
-  { n: "07", name: "SHIP", who: "TEAM", color: "done", cmd: "dev-done", desc: "Shipped evidence is reviewed before the wiki records completion. Reopen requests keep the next destination explicit." },
+  { n: "07", name: "DELIVER", who: "TEAM", color: "done", cmd: "dev-done", desc: "Each app's delivery evidence names the artifact it built. The feature is ready for QA once every app has delivered." },
 ];
 
 const state = {
@@ -709,7 +713,7 @@ function transitionCapability() {
 }
 function capabilityReady() {
   const cap = transitionCapability();
-  if (!cap || cap.version !== 2 || cap.mode !== "copy-only" || !cap.snapshot || cap.snapshot.consistent !== true) return false;
+  if (!cap || cap.version !== 3 || cap.mode !== "copy-only" || !cap.snapshot || cap.snapshot.consistent !== true) return false;
   return typeof cap.snapshot.fingerprint === "string" && cap.snapshot.fingerprint.trim().length > 0 &&
     typeof cap.snapshot.observed_at === "string" && cap.snapshot.observed_at.trim().length > 0;
 }
@@ -719,10 +723,7 @@ const ACTION_LABELS = {
   "design-start": "design start",
   "design-handoff": "development handoff",
   "dev-start": "development start",
-  "dev-done": "completion",
-  "reopen-spec": "reopen for specification",
-  "reopen-design": "reopen for design",
-  "reopen-dev": "reopen for development",
+  "dev-done": "delivery",
 };
 function transitionRecords(node) {
   if (!node || !Array.isArray(node.transitions)) return [];
@@ -759,27 +760,32 @@ function transitionOptionLabel(t) {
   const classification = t && typeof t.classification === "string" ? t.classification : "unknown";
   return `${transitionActionLabel(t)} -> ${target} (${classification})`;
 }
+// Each field lists the values a transition record may carry. The design owner is `designer` or `tech-lead` by the
+// feature's scope, and a delivery moves the feature to the minimum of its app stages (`in-dev` or `ready-for-qa`).
+const DESIGN_OWNERS = ["designer", "tech-lead"];
 const ACTION_CONTRACTS = {
-  "po-specify": { source_status: "raw", source_owner: "po", target_status: "specified", target_owner: "po" },
-  "po-handoff": { source_status: "specified", source_owner: "po", target_status: "ready-for-design", target_owner: "designer" },
-  "design-start": { source_status: "ready-for-design", source_owner: "designer", target_status: "in-design", target_owner: "designer" },
-  "design-handoff": { source_status: "in-design", source_owner: "designer", target_status: "ready-for-dev", target_owner: "dev" },
-  "dev-start": { source_status: "ready-for-dev", source_owner: "dev", target_status: "in-dev", target_owner: "dev" },
-  "dev-done": { source_status: "in-dev", source_owner: "dev", target_status: "done", target_owner: "none" },
-  "reopen-spec": { source_status: "done", source_owner: "none", target_status: "specified", target_owner: "po" },
-  "reopen-design": { source_status: "done", source_owner: "none", target_status: "in-design", target_owner: "designer" },
-  "reopen-dev": { source_status: "done", source_owner: "none", target_status: "in-dev", target_owner: "dev" },
+  "po-specify": { source_status: ["raw"], source_owner: ["po"], target_status: ["specified"], target_owner: ["po"] },
+  "po-handoff": { source_status: ["specified"], source_owner: ["po"], target_status: ["ready-for-design"], target_owner: DESIGN_OWNERS },
+  "design-start": { source_status: ["ready-for-design"], source_owner: DESIGN_OWNERS, target_status: ["in-design"], target_owner: DESIGN_OWNERS },
+  "design-handoff": { source_status: ["ready-for-design", "in-design"], source_owner: DESIGN_OWNERS, target_status: ["ready-for-dev"], target_owner: ["dev"] },
+  "dev-start": { source_status: ["ready-for-dev"], source_owner: ["dev"], target_status: ["in-dev"], target_owner: ["dev"] },
+  "dev-done": { source_status: ["ready-for-dev", "in-dev"], source_owner: ["dev"], target_status: ["in-dev", "ready-for-qa"], target_owner: ["dev", "qa"] },
 };
+// The column a card is dropped on to request the action.
+const ACTION_DROP_STAGE = {
+  "po-specify": "specified", "po-handoff": "ready-for-design", "design-start": "in-design",
+  "design-handoff": "ready-for-dev", "dev-start": "in-dev", "dev-done": "ready-for-qa",
+};
+function contractMatches(contract, record) {
+  return !!contract && Object.keys(contract).every(key => contract[key].includes(String(record[key] === undefined || record[key] === null ? "" : record[key])));
+}
 const BOARD_SESSION_EXPIRED = "The board session has expired. Reconnect to continue this connected action.";
 const CONNECTED_HUMAN_ACTIONS = new Set(["po-handoff", "design-start", "dev-start"]);
-const CONNECTED_AGENT_ACTIONS = new Set(["po-specify", "design-handoff", "dev-done", "reopen-spec", "reopen-design", "reopen-dev"]);
+const CONNECTED_AGENT_ACTIONS = new Set(["po-specify", "design-handoff", "dev-done"]);
 const CONNECTED_AGENT_SKILLS = {
   "po-specify": "po-specify",
   "design-handoff": "design-handoff",
   "dev-done": "dev-done",
-  "reopen-spec": "feature-reopen",
-  "reopen-design": "feature-reopen",
-  "reopen-dev": "feature-reopen",
 };
 const CONNECTED_ACTION_BY_STAGE = {
   specified: "po-handoff",
@@ -843,8 +849,8 @@ function connectedAgentActionReason(action) {
 function connectedAgentTransitionOpenable(node, index) {
   const t = transitionRecord(node, index), action = t && t.action;
   return !!(connectedAgentActionReady(action) && node && node.type === "feature" && !duplicateNodeIds.has(node.id) &&
-    !duplicateFeatureIds.has(canonicalFeatureId(node)) && t && t.version === 1 && Object.prototype.hasOwnProperty.call(ACTION_CONTRACTS, action) &&
-    Object.keys(ACTION_CONTRACTS[action]).every(key => String(t[key] === undefined || t[key] === null ? "" : t[key]) === ACTION_CONTRACTS[action][key]) &&
+    !duplicateFeatureIds.has(canonicalFeatureId(node)) && t && t.version === 2 && Object.prototype.hasOwnProperty.call(ACTION_CONTRACTS, action) &&
+    contractMatches(ACTION_CONTRACTS[action], t) &&
     String(t.feature_id === undefined || t.feature_id === null ? "" : t.feature_id) === String(canonicalFeatureId(node)) &&
     transitionSourceMatches(node, t));
 }
@@ -884,16 +890,12 @@ const ACTION_COMMANDS = {
   "design-handoff": "design-handoff",
   "dev-start": "dev-start",
   "dev-done": "dev-done",
-  "reopen-spec": "feature-reopen",
-  "reopen-design": "feature-reopen",
-  "reopen-dev": "feature-reopen",
 };
 function capabilityActionKnown(t) {
   const cap = transitionCapability(), action = t && t.action;
-  if (!cap || !t || typeof action !== "string" || !Object.prototype.hasOwnProperty.call(ACTION_CONTRACTS, action) || t.version !== 1) return false;
-  const contract = ACTION_CONTRACTS[action];
-  if (cap.version !== 2) return false;
-  return Object.keys(contract).every(key => String(t[key] === undefined || t[key] === null ? "" : t[key]) === contract[key]);
+  if (!cap || !t || typeof action !== "string" || !Object.prototype.hasOwnProperty.call(ACTION_CONTRACTS, action) || t.version !== 2) return false;
+  if (cap.version !== 3) return false;
+  return contractMatches(ACTION_CONTRACTS[action], t);
 }
 function capabilityActionAdvertised(t) {
   const cap = transitionCapability();
@@ -932,8 +934,7 @@ function expectedTransitionInvocation(node, t, surface) {
   const featureId = canonicalFeatureId(node);
   if (!featureId || String(t.feature_id === undefined || t.feature_id === null ? "" : t.feature_id) !== featureId) return "";
   const command = ACTION_COMMANDS[action];
-  const target = action.indexOf("reopen-") === 0 ? ACTION_CONTRACTS[action].target_status : "";
-  return (surface === "codex" ? "$" : "/") + command + " " + featureId + (target ? " " + target : "");
+  return (surface === "codex" ? "$" : "/") + command + " " + featureId;
 }
 function transitionInvocationFor(node, surface, index) {
   const t = transitionRecord(node, index);
@@ -955,7 +956,7 @@ function transitionSurfaceAvailable(node, index, surface) {
   const t = transitionRecord(node, index);
   if (!t || !transitionInvocationFor(node, surface, index)) return false;
   const cap = transitionCapability();
-  if (!cap || cap.version !== 2) return false;
+  if (!cap || cap.version !== 3) return false;
   const entry = transitionSurfaceEntry(t, surface);
   return !!(entry && entry.available === true && entry.check === "pass");
 }
@@ -968,7 +969,7 @@ function boundedText(value, limit) {
 }
 function transitionCheckReason(t) {
   const checks = Array.isArray(t && t.checks) ? t.checks : [];
-  const issue = checks.find(c => c && c.status && c.status !== "pass");
+  const issue = checks.find(c => c && c.status && c.status !== "pass" && c.status !== "warning");
   return issue && issue.message ? boundedText(issue.message, 180) : "Observable checks need review before this request can be copied.";
 }
 function transitionReason(node, index) {
@@ -1165,7 +1166,8 @@ function compactTransitionPath(value) {
   return boundedText(normalized, 180);
 }
 function transitionCheckHtml(check) {
-  const allowed = new Set(["pass", "blocked", "unknown", "review"]);
+  // A `warning` check names something the approver should know and never blocks (CONTRACTS 2.2).
+  const allowed = new Set(["pass", "warning", "blocked", "unknown", "review"]);
   const status = allowed.has(check && check.status) ? check.status : "unknown";
   const rawPath = check && check.path !== undefined && check.path !== null ? String(check.path) : "";
   const path = rawPath ? ` <code title="${escapeHtml(rawPath)}">${escapeHtml(compactTransitionPath(rawPath))}</code>` : "";
@@ -1513,12 +1515,12 @@ function connectedAgentPayloadMatchesCurrent(preview, transition) {
   const current = connectedAgentCurrent(preview);
   const contract = transition && ACTION_CONTRACTS[transition.action];
   return !!(current.node && current.node.type === "feature" && current.current &&
-    current.current.action === preview.action && transition && transition.version === 1 && transition.action === preview.action &&
+    current.current.action === preview.action && transition && transition.version === 2 && transition.action === preview.action &&
     String(transition.feature_id || "") === String(current.canonicalId || "") &&
     String(transition.source_status || "") === String(current.node.status || "") &&
     String(transition.source_owner || "") === String(current.node.owner || "") &&
     connectedSourcePathMatches(current.node, transition.source_path) && contract &&
-    Object.keys(contract).every(key => String(transition[key] === undefined || transition[key] === null ? "" : transition[key]) === contract[key]));
+    contractMatches(contract, transition));
 }
 function connectedAgentRequestReady(preview) {
   const transition = connectedAgentTransitionPayload(preview);
@@ -1918,7 +1920,7 @@ function appliedStageExpectation(preview) {
   const featureId = preview.kind === "connected" ? preview.featureId : receipt.feature_id;
   const action = preview.kind === "connected" ? preview.action : receipt.action;
   if (typeof featureId !== "string" || !featureId || typeof action !== "string" || !Object.prototype.hasOwnProperty.call(ACTION_CONTRACTS, action)) return null;
-  return { featureId, status: ACTION_CONTRACTS[action].target_status };
+  return { featureId, status: ACTION_DROP_STAGE[action] };
 }
 function envelopeShowsStage(envelope, expectation) {
   const nodes = envelope && envelope.facts && Array.isArray(envelope.facts.nodes) ? envelope.facts.nodes : [];
@@ -1996,7 +1998,10 @@ function acceptBoardOperationReceipt(preview, receipt) {
 // a network failure, a 5xx or any other answer leaves the outcome unknown.
 const APPLY_REJECTED_CODES = new Set(["stale_preview", "stale_move", "stale_write", "stale_index_row", "checks_changed", "preview_blocked", "preview_not_found",
   "preview_already_submitted", "operation_id_reused", "invalid_preview", "invalid_operation", "invalid_identifier", "write_scope_required",
-  "participant_kind_required", "same_origin_required", "csrf_failed", "csrf_required"]);
+  "participant_kind_required", "same_origin_required", "csrf_failed", "csrf_required",
+  // The approval step of a gated apply (CONTRACTS 1.9): refused before an operation is recorded.
+  "approval_required", "approval_requires_board_session", "role_required", "approval_review_required", "stale_approval_review", "proposer_revoked",
+  "proposal_declined", "invalid_policy", "stale_policy", "separation_required", "separation_unverifiable", "action_unavailable"]);
 function connectedApplyRejected(error) {
   const status = error && error.status;
   return typeof status === "number" && status >= 400 && status < 500 && typeof error.code === "string" && APPLY_REJECTED_CODES.has(error.code);
@@ -2044,7 +2049,14 @@ function applyConnectedPreview(preview) {
   preview.error = "";
   preview.operationMessage = "Submitting the reviewed write set…";
   renderTransitionDialog(false);
-  boardJsonRequest("/api/board/v1/apply", "POST", { preview_id: preview.previewId, operation_id: preview.operationId }).then(receipt => {
+  const applyBody = { preview_id: preview.previewId, operation_id: preview.operationId };
+  const approval = preview.payload && preview.payload.approval;
+  // A gated action is applied against the revision the human reviewed, with an explicit acknowledgement (CONTRACTS 1.3).
+  if (approval && typeof approval.review_revision === "string") {
+    applyBody.review_revision = approval.review_revision;
+    applyBody.semantic_review_acknowledged = true;
+  }
+  boardJsonRequest("/api/board/v1/apply", "POST", applyBody).then(receipt => {
     acceptBoardOperationReceipt(preview, receipt);
   }).catch(error => {
     if (error && error.status === 401) { settleRejectedApply(preview, ""); return; }
@@ -2456,7 +2468,7 @@ function onBoardDragOver(e) {
   e.preventDefault();
   const stage = e.currentTarget.dataset.stage;
   const node = nodesById[state.drag.featureId];
-  const connectedDrop = !!(state.drag.connectedAction && ACTION_CONTRACTS[state.drag.connectedAction] && ACTION_CONTRACTS[state.drag.connectedAction].target_status === stage);
+  const connectedDrop = !!(state.drag.connectedAction && ACTION_DROP_STAGE[state.drag.connectedAction] === stage);
   const targetIndex = connectedDrop ? -1 : transitionIndexForTarget(node, stage);
   const valid = !!(node && stage !== state.drag.sourceStatus && (connectedDrop || (targetIndex >= 0 && transitionDragOpenable(node, targetIndex))));
   state.drag.hover = { stage, valid };
@@ -2481,7 +2493,7 @@ function onBoardDrop(e) {
     return;
   }
   if (drag.connectedAction) {
-    if (ACTION_CONTRACTS[drag.connectedAction] && ACTION_CONTRACTS[drag.connectedAction].target_status === stage) {
+    if (ACTION_DROP_STAGE[drag.connectedAction] === stage) {
       showConnectedTransitionPreview(drag.featureId, drag.element, drag.connectedAction);
     } else {
       announce("No connected human action targets this destination; the card stayed in its source stage.");
@@ -2549,7 +2561,7 @@ const css = name => getComputedStyle(document.documentElement).getPropertyValue(
 let C = {};
 function refreshColors() {
   C = {
-    po: css("--po"), design: css("--design"), dev: css("--dev"), done: css("--done"),
+    po: css("--po"), design: css("--design"), dev: css("--dev"), qa: css("--qa"), release: css("--release"), done: css("--done"),
     app: css("--app"), context: css("--context"), warning: css("--warning"),
     critical: css("--critical"), ink: css("--ink"), ink2: css("--ink-2"), muted: css("--muted"),
     surface: css("--surface"), grid: css("--grid"), glow: css("--glow") === "1",
@@ -2616,7 +2628,8 @@ function renderBoardSession() {
     const actor = state.boardActor;
     const pending = Array.isArray(state.boardPendingOperations) ? state.boardPendingOperations : [];
     const actorText = `${boundedText(actor.name || actor.participant_id || "Human participant", 80)} · ${actor.kind === "human" ? "human" : "participant"}${actor.writable === true ? " · writable" : " · read only"}`;
-    el.innerHTML = `<span class="actor" title="${escapeHtml(actorText)}">${escapeHtml(actorText)}</span>${pending.length ? `<button type="button" data-board-operations aria-label="Review ${pending.length} pending board operations">Operations ${pending.length}</button>` : ""}<button type="button" data-board-logout>Sign out</button>`;
+    const proposalsButton = connectedHumanWriter() ? `<button type="button" data-board-proposals aria-label="Review the proposals that wait for approval">Proposals</button>` : "";
+    el.innerHTML = `<span class="actor" title="${escapeHtml(actorText)}">${escapeHtml(actorText)}</span>${proposalsButton}${pending.length ? `<button type="button" data-board-operations aria-label="Review ${pending.length} pending board operations">Operations ${pending.length}</button>` : ""}<button type="button" data-board-logout>Sign out</button>`;
   } else if (state.boardConnection === "unauthenticated") {
     el.innerHTML = `<span>Board session expired</span><button type="button" data-board-retry>Reconnect</button>`;
   } else if (state.boardConnection === "error") {
@@ -2626,7 +2639,93 @@ function renderBoardSession() {
   }
   el.querySelectorAll("[data-board-retry]").forEach(button => button.addEventListener("click", () => retryBoardSession()));
   el.querySelectorAll("[data-board-operations]").forEach(button => button.addEventListener("click", () => openBoardOperations(button)));
+  el.querySelectorAll("[data-board-proposals]").forEach(button => button.addEventListener("click", () => openBoardProposals(button)));
   el.querySelectorAll("[data-board-logout]").forEach(button => button.addEventListener("click", () => logoutBoardSession()));
+}
+/* ==================== proposals waiting for approval ==================== */
+// A gated proposal is an agent's preview that a human with the right role approves or declines here. The list is the
+// board's own (`GET /proposals`); approving applies the reviewed revision of the preview, declining records a reason.
+function openBoardProposals(returnFocus) {
+  const wrap = document.getElementById("transition-dialog");
+  if (!wrap) return;
+  const view = { items: [], loading: true, error: "", message: "", reviewing: null, acknowledged: false, busy: false };
+  const close = () => {
+    wrap.hidden = true; wrap.setAttribute("aria-hidden", "true"); wrap.innerHTML = "";
+    if (returnFocus && returnFocus.focus) returnFocus.focus();
+  };
+  const reload = () => {
+    view.loading = true; view.error = ""; render();
+    boardJsonRequest("/api/board/v1/proposals", "GET").then(result => {
+      view.items = Array.isArray(result.proposals) ? result.proposals : [];
+      view.loading = false; render();
+    }).catch(error => { view.loading = false; view.error = error && error.message || "The proposals could not be loaded."; render(); });
+  };
+  const roles = item => {
+    const required = item.required_roles || {};
+    return [...(required.all_of || []), ...(required.any_of || []).length ? ["one of " + required.any_of.join(", ")] : []].join(" + ") || "any writable human";
+  };
+  function render() {
+    const rows = view.items.map((item, index) => `<div class="transition-check ${item.stale ? "review" : "pass"}" data-proposal="${index}">
+      <span class="check-status">${item.stale ? "stale" : "waiting"}</span>
+      <span class="check-copy"><b>${escapeHtml(boundedText(String(item.action || ""), 60))}</b> for ${escapeHtml(boundedText(String(item.item_id || "?"), 60))} · roles: ${escapeHtml(boundedText(roles(item), 120))} · proposed by ${escapeHtml(boundedText(String(item.proposer && item.proposer.name || "an agent"), 80))}</span>
+      <button type="button" class="copy-btn" data-proposal-review="${index}"${view.busy ? " disabled" : ""}>Review</button>
+      <input type="text" data-proposal-reason="${index}" aria-label="Reason to decline" placeholder="Reason to decline" maxlength="400">
+      <button type="button" class="cancel-btn" data-proposal-decline="${index}"${view.busy ? " disabled" : ""}>Decline</button>
+    </div>`).join("");
+    const reviewing = view.reviewing;
+    const detail = reviewing ? `<div class="transition-section"><h4>Approve ${escapeHtml(boundedText(String(reviewing.preview.action || ""), 60))}</h4>
+      ${(reviewing.preview.checks || []).map(transitionCheckHtml).join("")}
+      <p>Writes: ${escapeHtml((reviewing.preview.writes || []).map(write => write.path).join(", ") || "none")}</p>
+      <label><input type="checkbox" data-proposal-ack${view.acknowledged ? " checked" : ""}> I reviewed this change and approve it.</label>
+      <button type="button" class="copy-btn" data-proposal-apply${view.acknowledged && !view.busy && reviewing.preview.approval && reviewing.preview.approval.review_revision ? "" : " disabled"}>Approve and apply</button></div>` : "";
+    wrap.hidden = false; wrap.setAttribute("aria-hidden", "false");
+    wrap.innerHTML = `<div class="transition-dialog" role="dialog" aria-modal="true" aria-labelledby="proposals-title" tabindex="-1">
+      <div class="transition-head"><div class="eyebrow">CONNECTED BOARD · PROPOSALS</div><h2 id="proposals-title" tabindex="-1">Proposals waiting for approval</h2>
+        <p>An agent proposes a gated change; a person who holds the required role approves or declines it here.</p></div>
+      <div class="transition-body">${view.loading ? "<p>Loading…</p>" : rows || "<p>No proposal is waiting for you.</p>"}${detail}
+        ${view.error ? `<p role="alert">${escapeHtml(view.error)}</p>` : ""}${view.message ? `<p role="status">${escapeHtml(view.message)}</p>` : ""}</div>
+      <div class="transition-actions"><button type="button" class="cancel-btn" data-proposals-close>Close</button></div></div>`;
+    const dialog = wrap.querySelector(".transition-dialog");
+    bindDialogKeyboard(dialog, "Proposals closed.");
+    wrap.querySelector("[data-proposals-close]").addEventListener("click", close);
+    wrap.querySelectorAll("[data-proposal-review]").forEach(button => button.addEventListener("click", () => {
+      const item = view.items[Number(button.dataset.proposalReview)];
+      if (!item) return;
+      view.busy = true; view.error = ""; view.message = ""; render();
+      boardJsonRequest("/api/board/v1/previews/" + encodeURIComponent(item.preview_id), "GET").then(preview => {
+        view.busy = false; view.reviewing = { item, preview }; view.acknowledged = false; render();
+      }).catch(error => { view.busy = false; view.error = error && error.message || "The proposal could not be loaded."; render(); });
+    }));
+    wrap.querySelectorAll("[data-proposal-decline]").forEach(button => button.addEventListener("click", () => {
+      const index = Number(button.dataset.proposalDecline), item = view.items[index];
+      const reason = wrap.querySelector(`[data-proposal-reason="${index}"]`);
+      if (!item || !reason || !reason.value.trim()) { view.error = "Give a reason to decline."; render(); return; }
+      view.busy = true; view.error = ""; render();
+      boardJsonRequest("/api/board/v1/proposals/" + encodeURIComponent(item.preview_id) + "/decline", "POST", { reason: reason.value.trim() }).then(() => {
+        view.busy = false; view.message = "Proposal declined."; view.reviewing = null; reload();
+      }).catch(error => { view.busy = false; view.error = error && error.message || "The proposal could not be declined."; render(); });
+    }));
+    const ack = wrap.querySelector("[data-proposal-ack]");
+    if (ack) ack.addEventListener("change", () => { view.acknowledged = ack.checked; render(); });
+    const apply = wrap.querySelector("[data-proposal-apply]");
+    if (apply) apply.addEventListener("click", () => {
+      const current = view.reviewing;
+      if (!current || !view.acknowledged) return;
+      view.busy = true; view.error = ""; render();
+      boardJsonRequest("/api/board/v1/apply", "POST", {
+        preview_id: current.item.preview_id,
+        operation_id: createBoardOperationId(),
+        review_revision: current.preview.approval.review_revision,
+        semantic_review_acknowledged: true,
+      }).then(() => {
+        view.busy = false; view.message = "Proposal approved and applied."; view.reviewing = null; reload();
+      }).catch(error => { view.busy = false; view.error = error && error.message || "The proposal could not be applied."; render(); });
+    });
+    const heading = wrap.querySelector("#proposals-title");
+    if (heading && heading.focus) heading.focus();
+  }
+  render();
+  reload();
 }
 let boardSessionSequence = 0;
 function invalidateBoardSession() {
@@ -2911,8 +3010,8 @@ function tickValue(el, target) {
 }
 function renderStats() {
   const feats = featureNodes();
-  const inFlight = feats.filter(f => ["ready-for-design", "in-design", "ready-for-dev", "in-dev"].includes(f.status)).length;
-  const done = feats.filter(f => f.status === "done").length;
+  const inFlight = feats.filter(f => ["ready-for-design", "in-design", "ready-for-dev", "in-dev", "ready-for-qa", "in-qa", "ready-for-release"].includes(f.status)).length;
+  const done = feats.filter(f => f.status === "released").length;
   const malformedCount = state.data.facts.nodes.filter(n => n.health === "error").length;
   const warningCount = state.data.facts.nodes.filter(n => n.health === "warning").length;
   const intake = intakeFacts();
@@ -2922,16 +3021,16 @@ function renderStats() {
   html += stat("Intake", intake.pending.length + intake.quarantined.length,
     intake.quarantined.length ? `${intake.quarantined.length} quarantined` : "ideas waiting", intake.quarantined.length > 0);
   html += stat("Features", feats.length, `${state.data.facts.edge_count} connections`);
-  html += stat("In flight", inFlight, "design + dev");
+  html += stat("In flight", inFlight, "design to release");
   html += stat("Blocked", blockedIds.size, blockedIds.size ? "needs attention" : "clear", blockedIds.size > 0);
-  html += stat("Done", done, done ? "shipped" : "");
+  html += stat("Released", done, done ? "delivered" : "");
   if (malformedCount) html += stat("Integrity", malformedCount, "malformed pages", true);
   if (warningCount) html += stat("Warnings", warningCount, "needs review");
   const counts = STAGES.map(s => feats.filter(f => f.status === s).length);
   const total = counts.reduce((a, b) => a + b, 0);
   const denominator = Math.max(1, total);
   const segs = STAGES.map((s, i) => counts[i] ? `<div class="seg" style="flex-grow:${counts[i] / denominator};background:${C[STAGE_PHASE[s]]};opacity:${READY_STAGES.has(s) ? .55 : 1}" title="${s}: ${counts[i]}"></div>` : "").join("");
-  const legend = ["po", "design", "dev", "done"].map(p => `<span><i style="background:${C[p]}"></i>${{ po: "PO", design: "Design", dev: "Dev", done: "Done" }[p]}</span>`).join("");
+  const legend = ["po", "design", "dev", "qa", "release", "done"].map(p => `<span><i style="background:${C[p]}"></i>${{ po: "PO", design: "Design", dev: "Dev", qa: "QA", release: "Release", done: "Released" }[p]}</span>`).join("");
   html += `<div class="stagebar"><div class="bars">${segs}</div><div class="legendline">${legend}<span style="margin-left:auto">${total} FEATURE${total === 1 ? "" : "S"} ACROSS THE LIFECYCLE</span></div></div>`;
   const row = document.getElementById("statrow");
   row.innerHTML = html;
@@ -3403,7 +3502,9 @@ function renderLegend() {
       <span class="lg"><i style="background:${C.po}"></i>PO — raw / specified</span>
       <span class="lg"><i style="background:${C.design}"></i>Design phase</span>
       <span class="lg"><i style="background:${C.dev}"></i>Dev phase</span>
-      <span class="lg"><i style="background:${C.done}"></i>Done</span>
+      <span class="lg"><i style="background:${C.qa}"></i>QA phase</span>
+      <span class="lg"><i style="background:${C.release}"></i>Release phase</span>
+      <span class="lg"><i style="background:${C.done}"></i>Released</span>
       <b>Marks</b>
       <span class="lg"><i class="hex" style="background:${C.app}"></i>App</span>
       <span class="lg"><i style="background:${C.context}"></i>Context page</span>

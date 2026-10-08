@@ -26,10 +26,12 @@ from tests import real_temp  # noqa: F401
 
 ORIGIN = "http://127.0.0.1:8765"
 ACTIONS = (
-    ("po-handoff", "specified", "po", "ready-for-design", "designer"),
-    ("design-start", "ready-for-design", "designer", "in-design", "designer"),
+    ("po-handoff", "specified", "po", "ready-for-design", "tech-lead"),
+    ("design-start", "ready-for-design", "tech-lead", "in-design", "tech-lead"),
     ("dev-start", "ready-for-dev", "dev", "in-dev", "dev"),
 )
+# The role that approves each action: the design owner of a scope with no UI is the tech lead.
+ROLE_OF = {"po-handoff": "po", "design-start": "tech-lead", "dev-start": "dev"}
 
 
 class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
@@ -59,6 +61,24 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
     @staticmethod
     def snapshot(root: Path) -> dict[str, bytes]:
         return {path.relative_to(root).as_posix(): path.read_bytes() for path in (root / "knowledge").rglob("*") if path.is_file()}
+
+    @staticmethod
+    async def approve_in_a_session(transport, token: str, preview_id: str, operation_id: str):
+        """What the board page does: sign in with the human token, read the proposal, then apply its review revision."""
+
+        async with httpx2.AsyncClient(transport=transport, base_url=ORIGIN) as http:
+            login = await http.post("/api/board/v1/auth/exchange", json={"token": token}, headers={"Origin": ORIGIN})
+            assert login.status_code == 200, login.text
+            headers = {"Origin": ORIGIN, "X-Prism-CSRF": login.json()["csrf_token"]}
+            reviewed = await http.get(f"/api/board/v1/previews/{preview_id}")
+            assert reviewed.status_code == 200, reviewed.text
+            body = {
+                "preview_id": preview_id,
+                "operation_id": operation_id,
+                "review_revision": reviewed.json()["approval"]["review_revision"],
+                "semantic_review_acknowledged": True,
+            }
+            return await http.post("/api/board/v1/apply", json=body, headers=headers)
 
     def tool_data(self, result) -> dict:
         self.assertFalse(result.is_error, result)
@@ -96,11 +116,30 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
         proposal = proposal.replace(f"status: {action[1]}\n", f"status: {action[3]}\n", 1)
         proposal = proposal.replace(f"owner: {action[2]}\n", f"owner: {action[4]}\n", 1)
         service = BoardService(root)
-        grant = service.create_participant(f"Parity {kind}", kind, writable=True)
+        # The action is gated: the human who approves it holds its role and signs in to the board. A human run previews and
+        # approves it directly; an agent run proposes it over MCP and the same kind of human approves it (the intended difference).
+        approver = service.create_participant("Parity approver", "human", writable=True, roles=ROLE_OF[action[0]])
+        grant = approver if kind == "human" else service.create_participant(f"Parity {kind}", kind, writable=True)
         app = create_app(root, port=8765, service=service)
         try:
             async with app.router.lifespan_context(app):
                 transport = httpx2.ASGITransport(app=app)
+
+                async def approve_over_http(preview: dict, operation_id: str):
+                    async with httpx2.AsyncClient(transport=transport, base_url=ORIGIN) as http:
+                        login = await http.post("/api/board/v1/auth/exchange", json={"token": approver["token"]}, headers={"Origin": ORIGIN})
+                        self.assertEqual(200, login.status_code, login.text)
+                        headers = {"Origin": ORIGIN, "X-Prism-CSRF": login.json()["csrf_token"]}
+                        reviewed = await http.get(f"/api/board/v1/previews/{preview['preview_id']}")
+                        self.assertEqual(200, reviewed.status_code, reviewed.text)
+                        body = {
+                            "preview_id": preview["preview_id"],
+                            "operation_id": operation_id,
+                            "review_revision": reviewed.json()["approval"]["review_revision"],
+                            "semantic_review_acknowledged": True,
+                        }
+                        return await http.post("/api/board/v1/apply", json=body, headers=headers)
+
                 if kind == "human":
                     async with httpx2.AsyncClient(transport=transport, base_url=ORIGIN) as http:
                         login = await http.post("/api/board/v1/auth/exchange", json={"token": grant["token"]}, headers={"Origin": ORIGIN})
@@ -112,7 +151,9 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(not blocked, preview["applicable"])
                         self.assertEqual("blocked" if blocked else "ready", preview["classification"])
                         self.assertEqual(before, self.snapshot(root))
-                        response = await http.post("/api/board/v1/apply", json={"preview_id": preview["preview_id"], "operation_id": "human-parity"}, headers=headers)
+                        # A gated apply is made against the revision the human read, with the acknowledgement.
+                        approval = {"review_revision": preview["approval"]["review_revision"], "semantic_review_acknowledged": True}
+                        response = await http.post("/api/board/v1/apply", json={"preview_id": preview["preview_id"], "operation_id": "human-parity", **approval}, headers=headers)
                         if blocked:
                             self.assertEqual(409, response.status_code, response.text)
                             self.assertEqual("preview_blocked", response.json()["error"]["code"])
@@ -137,12 +178,18 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                                 self.assertEqual(not blocked, preview["applicable"])
                                 self.assertEqual("blocked" if blocked else "ready", preview["classification"])
                                 self.assertEqual(before, self.snapshot(root))
+                                # The agent never applies a gated proposal; a human approves it in the board.
                                 result = await client.call_tool("apply", {"preview_id": preview["preview_id"], "operation_id": "agent-parity"})
-                                if blocked:
-                                    self.assertTrue(result.is_error, result)
-                                    self.assertIn("preview_blocked", " ".join(part.text for part in result.content if getattr(part, "type", None) == "text"))
-                                else:
-                                    self.assertEqual("applied", self.tool_data(result)["state"])
+                                self.assertTrue(result.is_error, result)
+                                self.assertIn("approval_required", " ".join(part.text for part in result.content if getattr(part, "type", None) == "text"))
+                                self.assertEqual(before, self.snapshot(root))
+                        response = await approve_over_http(preview, "agent-parity-approved")
+                        if blocked:
+                            self.assertEqual(409, response.status_code, response.text)
+                            self.assertEqual("preview_blocked", response.json()["error"]["code"])
+                        else:
+                            self.assertEqual(200, response.status_code, response.text)
+                            self.assertEqual("applied", response.json()["state"])
         finally:
             service.close()
         after = self.snapshot(root)
@@ -161,16 +208,19 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             return None
         text = raw.decode("utf-8")
         def actor(match):
+            # A gated action is always recorded under its approving human, with the proposer's ID beside it.
             value = json.loads(match.group(1))
-            self.assertEqual({"action", "participant_id", "kind", "name", "preview_id"}, set(value))
+            self.assertEqual({"action", "participant_id", "kind", "name", "preview_id", "approver_id", "proposer_id", "roles"}, set(value))
             self.assertEqual(action, value["action"])
-            self.assertEqual(kind, value["kind"])
-            self.assertEqual(f"Parity {kind}", value["name"])
-            for key in ("participant_id", "kind", "name", "preview_id"):
+            self.assertEqual(("human", "Parity approver", [ROLE_OF[action]]), (value["kind"], value["name"], value["roles"]))
+            self.assertEqual(value["participant_id"], value["approver_id"])
+            for key in ("participant_id", "kind", "name", "preview_id", "approver_id", "proposer_id", "roles"):
                 value[key] = "<actor-metadata>"
             return "<!-- prism:board-actor:v1 " + json.dumps(value, sort_keys=True) + " -->"
         def by_line(match):
-            self.assertEqual(f"Parity {kind} ({kind})", match.group(1))
+            # The approver holds the role; an agent's proposal is named after it.
+            proposed = " approving Parity agent (agent)" if kind == "agent" else ""
+            self.assertEqual(f"Parity approver (human; roles {ROLE_OF[action]}){proposed}", match.group(1))
             return "- by: <actor>"
         text = re.sub(r"<!-- prism:board-actor:v1 (\{[^\n]*\}) -->", actor, text)
         text = re.sub(r"(?m)^- by: (.*)$", by_line, text)
@@ -214,8 +264,8 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
         question = "| 2 | Is there a limit on the number of comments in one summary? | dev | open |"
         answer = "At most 200 comments are exported; the rest are summarized as a count."
         evidence = (
-            "| App | Implementation | Tests | Release |\n|---|---|---|---|\n"
-            "| backend | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | release: https://example.test/releases/1.4.0 |"
+            "| App | Artifact | Contract | Implementation | Tests | Basis |\n|---|---|---|---|---|---|\n"
+            "| backend | `build:backend#42` | none | Pull request 42 merged as 3f9c2ab | CI run 1187: 31 tests passed | checked |"
         )
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "workspace"
@@ -230,7 +280,7 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
             _write_index_rows(root, [("F-001", "Document review", "in-dev", "dev")])
 
             service = BoardService(root)
-            human = service.create_participant("Parity human", "human", writable=True)
+            human = service.create_participant("Parity human", "human", writable=True, roles="dev")
             agent = service.create_participant("Parity agent", "agent", writable=True)
             app = create_app(root, port=8765, service=service)
             try:
@@ -252,8 +302,12 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                             async with ClientSession(reader, writer) as client:
                                 await client.initialize()
                                 listed = {item["name"]: item for item in self.tool_data(await client.call_tool("list_skills", {}))["skills"]}
-                                for name in ("dev-clarify", "dev-done"):
-                                    self.assertEqual((True, ["agent"], {"preview_skill": ["agent"]}), (listed[name]["write_supported"], listed[name]["participant_kinds"], listed[name]["write_tools"]))
+                                # `dev-clarify` is an ungated write the agent applies itself; `dev-done` is gated, so a human applies it.
+                                self.assertEqual((True, ["agent"], {"preview_skill": ["agent"]}), (listed["dev-clarify"]["write_supported"], listed["dev-clarify"]["participant_kinds"], listed["dev-clarify"]["write_tools"]))
+                                self.assertEqual(
+                                    (True, ["agent", "human"], {"preview_skill": ["agent"], "apply": ["human"]}),
+                                    (listed["dev-done"]["write_supported"], listed["dev-done"]["participant_kinds"], listed["dev-done"]["write_tools"]),
+                                )
                                 transition = await client.call_tool("preview_transition", {"feature_id": "F-001", "action": "dev-done", "inputs": {"semantic_review_acknowledged": True}})
                                 self.assertTrue(transition.is_error)
                                 self.assertIn("participant_kind_required", " ".join(part.text for part in transition.content if getattr(part, "type", None) == "text"))
@@ -269,7 +323,13 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                                     return await client.call_tool("preview_skill", {"skill": skill, "changes": changes, "read_revisions": revisions})
 
                                 clarified = page.replace(question, f"| 2 | Is there a limit on the number of comments in one summary? | dev | resolved: {answer} |")
-                                clarified = _replace_body_section(service, clarified, "App scope", f"- **backend**: Store the review summary and recorded outcome. {answer}")
+                                clarified = _replace_body_section(
+                                    service,
+                                    clarified,
+                                    "Acceptance criteria",
+                                    "- [ ] AC-1 [backend] A review summary records the document's key points.\n"
+                                    f"- [ ] AC-2 [backend] A reviewer can record the outcome and requested follow-up. {answer}",
+                                )
                                 requirement = _replace_body_section(service, _journey_requirement_page("in-progress"), "Technical constraints", f"Use the existing workspace storage. {answer}")
                                 preview = self.tool_data(await propose("dev-clarify", [{"path": feature_relative, "content": clarified}, {"path": requirement_relative, "content": requirement}]))
                                 self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]))
@@ -277,24 +337,26 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                                 self.assertEqual("applied", self.tool_data(applied)["state"])
                                 self.assertIn(answer, (root / requirement_relative).read_text(encoding="utf-8"))
 
-                                done = _set_feature_stage(clarified, "done", "none", service)
-                                missing = _replace_body_section(service, done, "Post-ship notes", "Shipped.")
+                                missing = _set_feature_stage(clarified, "ready-for-qa", "qa", service)
                                 requirement_done = _set_requirement_status(requirement, "done")
                                 rejected = await propose("dev-done", [{"path": feature_relative, "content": missing}, {"path": requirement_relative, "content": requirement_done}])
                                 self.assertTrue(rejected.is_error)
                                 text = " ".join(part.text for part in rejected.content if getattr(part, "type", None) == "text")
                                 self.assertIn("delivery_evidence_required", text)
-                                self.assertIn('"missing_apps":["backend"]', text)
+                                self.assertIn('"apps":["backend"]', text)
 
                                 complete = _replace_body_section(service, missing, "Delivery evidence", evidence)
                                 preview = self.tool_data(await propose("dev-done", [{"path": feature_relative, "content": complete}, {"path": requirement_relative, "content": requirement_done}]))
                                 self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]))
-                                applied = await client.call_tool("apply", {"preview_id": preview["preview_id"], "operation_id": "agent-dev-done"})
-                                self.assertEqual("applied", self.tool_data(applied)["state"])
+                                refused = await client.call_tool("apply", {"preview_id": preview["preview_id"], "operation_id": "agent-dev-done"})
+                                self.assertTrue(refused.is_error, refused)
+                                self.assertIn("approval_required", " ".join(part.text for part in refused.content if getattr(part, "type", None) == "text"))
+                                approved = await self.approve_in_a_session(transport, human["token"], preview["preview_id"], "human-dev-done")
+                                self.assertEqual("applied", approved.json()["state"], approved.text)
             finally:
                 service.close()
             final = yaml.safe_load((root / feature_relative).read_text(encoding="utf-8").split("---", 2)[1])
-            self.assertEqual(("done", "none"), (final["status"], final["owner"]))
+            self.assertEqual(("ready-for-qa", "qa"), (final["status"], final["owner"]))
             self.assertIn("Pull request 42 merged as 3f9c2ab", (root / feature_relative).read_text(encoding="utf-8"))
 
     async def test_design_handoff_creates_the_agreed_api_contract_the_same_way_over_http_and_mcp(self) -> None:
@@ -328,13 +390,13 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                 create_core_workflow_fixture(root)
                 self.assertEqual("applied", apply_install(root, plan_install(root, name="Document review", apps=["backend"]))["status"])
                 (root / INTAKE_ITEM.parent).rename(root / "knowledge/intake/processed/2026-10-06-document-review-brief")
-                page = _journey_feature_page("F-001", "Document review", "in-design", "designer", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [question])
+                page = _journey_feature_page("F-001", "Document review", "in-design", "tech-lead", ["knowledge/intake/processed/2026-10-06-document-review-brief"], [question])
                 page = _replace_body_section(None, page, "API surface", surface)
                 (root / feature_relative).write_bytes(page.encode("utf-8"))
-                _write_index_rows(root, [("F-001", "Document review", "in-design", "designer")])
+                _write_index_rows(root, [("F-001", "Document review", "in-design", "tech-lead")])
 
                 service = BoardService(root)
-                human = service.create_participant("Parity human", "human", writable=True)
+                human = service.create_participant("Parity human", "human", writable=True, roles="tech-lead,dev")
                 agent = service.create_participant("Parity agent", "agent", writable=True)
                 app = create_app(root, port=8765, service=service)
                 handoff = _set_feature_stage(page, "ready-for-dev", "dev", service)
@@ -362,7 +424,9 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                                 self.assertEqual(200, response.status_code, response.text)
                                 preview = response.json()
                                 self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]))
-                                applied = await http.post("/api/board/v1/apply", json={"preview_id": preview["preview_id"], "operation_id": "agent-http-handoff"})
+                                refused = await http.post("/api/board/v1/apply", json={"preview_id": preview["preview_id"], "operation_id": "agent-http-handoff"})
+                                self.assertEqual((403, "approval_required"), (refused.status_code, refused.json()["error"]["code"]))
+                                applied = await self.approve_in_a_session(asgi, human["token"], preview["preview_id"], "human-http-handoff")
                                 self.assertEqual("applied", applied.json()["state"], applied.text)
                         else:
                             async with httpx2.AsyncClient(transport=asgi, base_url=ORIGIN, headers={"Authorization": "Bearer " + agent["token"]}) as http:
@@ -386,8 +450,11 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                                         self.assertNotIn(contract_relative, self.snapshot(root))
                                         preview = self.tool_data(await propose(with_contract))
                                         self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]))
-                                        applied = await client.call_tool("apply", {"preview_id": preview["preview_id"], "operation_id": "agent-mcp-handoff"})
-                                        self.assertEqual("applied", self.tool_data(applied)["state"])
+                                        refused = await client.call_tool("apply", {"preview_id": preview["preview_id"], "operation_id": "agent-mcp-handoff"})
+                                        self.assertTrue(refused.is_error, refused)
+                                        self.assertIn("approval_required", " ".join(part.text for part in refused.content if getattr(part, "type", None) == "text"))
+                                        applied = await self.approve_in_a_session(asgi, human["token"], preview["preview_id"], "human-mcp-handoff")
+                                        self.assertEqual("applied", applied.json()["state"], applied.text)
 
                         async with httpx2.AsyncClient(transport=asgi, base_url=ORIGIN) as http:
                             login = await http.post("/api/board/v1/auth/exchange", json={"token": human["token"]}, headers={"Origin": ORIGIN})
@@ -400,7 +467,8 @@ class BoardTransportParityTests(unittest.IsolatedAsyncioTestCase):
                             self.assertEqual(("ready", True), (start.json()["classification"], start.json()["applicable"]))
                             check = next(item for item in start.json()["checks"] if item["code"] == "api-contract")
                             self.assertEqual("pass", check["status"])
-                            applied = await http.post("/api/board/v1/apply", json={"preview_id": start.json()["preview_id"], "operation_id": "human-http-dev-start"}, headers=headers)
+                            approval = {"review_revision": start.json()["approval"]["review_revision"], "semantic_review_acknowledged": True}
+                            applied = await http.post("/api/board/v1/apply", json={"preview_id": start.json()["preview_id"], "operation_id": "human-http-dev-start", **approval}, headers=headers)
                             self.assertEqual("applied", applied.json()["state"], applied.text)
                 finally:
                     service.close()

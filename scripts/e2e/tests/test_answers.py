@@ -145,7 +145,7 @@ class PreviewPromptTests(unittest.TestCase):
 
     def test_a_step_that_is_not_a_clarify_step_is_unchanged(self):
         feature = feature_with(LIVE_TABLE)
-        for step_id in ("po-intake", "ask", "po-specify", "design-handoff", "dev-done", "feature-reopen"):
+        for step_id in ("po-intake", "ask", "po-specify", "design-handoff", "dev-done"):
             with self.subTest(step=step_id):
                 self.assertEqual(build_preview_prompt(step_id, None, feature), load_prompt(step_id))
 

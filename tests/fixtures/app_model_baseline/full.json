@@ -176,7 +176,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -201,7 +201,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -371,7 +371,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -396,7 +396,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -558,7 +558,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -583,7 +583,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -732,7 +732,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -757,7 +757,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -906,7 +906,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -931,7 +931,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -957,7 +957,7 @@
           {
             "code": "missing-design",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
             "path": "knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
@@ -1082,7 +1082,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -1131,7 +1131,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -1304,7 +1304,7 @@
             },
             {
               "code": "design",
-              "message": "An app with a UI in scope requires a matching design page or an explicit confirmed exemption.",
+              "message": "An app with a UI in scope requires a matching design page.",
               "path": "knowledge/wiki/features/F-002-outcome-review.md",
               "status": "blocked"
             },
@@ -1347,7 +1347,7 @@
           ],
           "classification": "blocked",
           "feature_id": "F-002",
-          "reason": "An app with a UI in scope requires a matching design page or an explicit confirmed exemption.; 1 open action-relevant question remains: question 1.",
+          "reason": "An app with a UI in scope requires a matching design page.; 1 open action-relevant question remains: question 1.",
           "source_owner": "designer",
           "source_path": "knowledge/wiki/features/F-002-outcome-review.md",
           "source_status": "in-design",
@@ -1365,7 +1365,7 @@
           "supported": true,
           "target_owner": "dev",
           "target_status": "ready-for-dev",
-          "version": 1
+          "version": 2
         }
       },
       "next_cursor": null,
@@ -1417,12 +1417,6 @@
               "status": "pass"
             },
             {
-              "code": "design",
-              "message": "An app with a UI in scope requires a matching design page or an explicit confirmed exemption.",
-              "path": "knowledge/wiki/features/F-003-outcome-export.md",
-              "status": "blocked"
-            },
-            {
               "code": "app-requirements",
               "message": "missing requirement for `mobile-android`.",
               "path": "knowledge/wiki/features/F-003-outcome-export.md",
@@ -1447,8 +1441,14 @@
               "status": "pass"
             },
             {
+              "code": "app-revalidation",
+              "message": "No pending app revalidation domains remain for the apps this action delivers.",
+              "path": "knowledge/wiki/features/F-003-outcome-export.md",
+              "status": "pass"
+            },
+            {
               "code": "delivery-evidence",
-              "message": "Required `Delivery evidence` section is missing or empty.",
+              "message": "No delivery evidence was supplied: the proposal adds one valid row for each app it delivers.",
               "path": "knowledge/wiki/features/F-003-outcome-export.md",
               "status": "blocked"
             },
@@ -1478,7 +1478,7 @@
             },
             {
               "code": "workflow:missing-design",
-              "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+              "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
               "path": "knowledge/wiki/features/F-003-outcome-export.md",
               "status": "blocked"
             },
@@ -1497,7 +1497,7 @@
           ],
           "classification": "blocked",
           "feature_id": "F-003",
-          "reason": "An app with a UI in scope requires a matching design page or an explicit confirmed exemption.; missing requirement for `mobile-android`.; Required `Delivery evidence` section is missing or empty.; 1 open action-relevant question remains: question 1.; Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.; Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.; Feature `F-003` has an open question assigned to `po` (#1).",
+          "reason": "missing requirement for `mobile-android`.; No delivery evidence was supplied: the proposal adds one valid row for each app it delivers.; 1 open action-relevant question remains: question 1.; Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.; Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.; Feature `F-003` has an open question assigned to `po` (#1).",
           "source_owner": "dev",
           "source_path": "knowledge/wiki/features/F-003-outcome-export.md",
           "source_status": "in-dev",
@@ -1514,9 +1514,9 @@
             "knowledge/wiki/app-requirements/F-003-backend.md"
           ],
           "supported": true,
-          "target_owner": "none",
-          "target_status": "done",
-          "version": 1
+          "target_owner": "qa",
+          "target_status": "ready-for-qa",
+          "version": 2
         }
       },
       "next_cursor": null,
@@ -1582,7 +1582,7 @@
           "supported": false,
           "target_owner": null,
           "target_status": null,
-          "version": 1
+          "version": 2
         }
       },
       "next_cursor": null,
@@ -1605,7 +1605,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -1630,7 +1630,7 @@
         {
           "code": "missing-design",
           "feature_id": "F-003",
-          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+          "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
           "path": "knowledge/wiki/features/F-003-outcome-export.md",
           "severity": "error"
         },
@@ -1650,11 +1650,30 @@
           "apps": [
             "backend"
           ],
+          "criteria": [
+            {
+              "applies_to": [
+                "backend"
+              ],
+              "id": "AC-1",
+              "integration": false,
+              "revision": "v1:a9d508d5c19bb74c8bd052b6a546304e9d2414f5845d5a02fbad541c1bc2e091"
+            },
+            {
+              "applies_to": [
+                "backend"
+              ],
+              "id": "AC-2",
+              "integration": false,
+              "revision": "v1:c073f1d60428c2aca857df26a20789cd2a1e689cd9656b2edf50ffd0f4b34729"
+            }
+          ],
           "frontmatter": {
             "advisory-review": "not-needed",
             "apps": [
               "backend"
             ],
+            "criteria-high-water": 2,
             "id": "F-001",
             "owner": "po",
             "sources": [],
@@ -1790,7 +1809,7 @@
   "cli": {
     "doctor-workspace": {
       "exit": 3,
-      "output": "+ Workspace -------------------------------------------------------------------------+\n|Project: Baseline Full |\n|Kind: generated-project |\n|Apps: backend, web, mobile-android, mobile-ios |\n|Setup: not initialized |\n|Confidence: error |\n+------------------------------------------------------------------------------------+\n\nApps\nID Name Stack Repository Path Status Maturity\nbackend Spring Boot Backend spring-backend workspace backend active baseline\nweb Web App nextjs-web workspace web active provisional\nmobile-android Android (Kotlin/Compose) android-compose workspace mobile-android active baseline\nmobile-ios iOS (Swift/SwiftUI) ios-swiftui workspace mobile-ios active experimental\n\n+ Queues and wiki -------------------------------------------------------------------+\n|Pending intake: 0 |\n|Quarantined intake: 0 |\n|Features: 3 |\n|Blockers: 3 |\n|Wiki errors: 3 |\n|Wiki warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nsetup-project has not initialized the wiki yet.\n\nApp maturity\n- web: Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.\n- mobile-ios: The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.\n\nFeature lifecycle\n- in-design: 1\n- in-dev: 1\n- raw: 1\n\nAttention\n- missing-app-requirements: Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- missing-design: Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n\nShared board\n[ok] Workspace is outside cloud-synced folders\n[ok] Workflow pin is compatible with this Prism installation\n Workflow version 1 matches this installation.\n[warn] At least one active board grant exists\n No grants yet.\n[skip] `.prism/state` is ignored by git\n This folder is not a git repository, so this check was skipped.\n"
+      "output": "+ Workspace -------------------------------------------------------------------------+\n|Project: Baseline Full |\n|Kind: generated-project |\n|Apps: backend, web, mobile-android, mobile-ios |\n|Setup: not initialized |\n|Confidence: error |\n+------------------------------------------------------------------------------------+\n\nApps\nID Name Stack Repository Path Status Maturity\nbackend Spring Boot Backend spring-backend workspace backend active baseline\nweb Web App nextjs-web workspace web active provisional\nmobile-android Android (Kotlin/Compose) android-compose workspace mobile-android active baseline\nmobile-ios iOS (Swift/SwiftUI) ios-swiftui workspace mobile-ios active experimental\n\n+ Queues and wiki -------------------------------------------------------------------+\n|Pending intake: 0 |\n|Quarantined intake: 0 |\n|Features: 3 |\n|Blockers: 3 |\n|Wiki errors: 3 |\n|Wiki warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nsetup-project has not initialized the wiki yet.\n\nApp maturity\n- web: Generated web deployment requires live Cloudflare validation before treating it as deployment-proven.\n- mobile-ios: The macOS CI job builds and tests the generated iOS app; no local macOS build is part of the evidence.\n\nFeature lifecycle\n- in-design: 1\n- in-dev: 1\n- raw: 1\n\nAttention\n- missing-app-requirements: Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- missing-design: Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md\n\nShared board\n[ok] Workspace is outside cloud-synced folders\n[ok] Workflow pin is compatible with this Prism installation\n Workflow version 1 matches this installation.\n[warn] At least one active board grant exists\n No grants yet.\n[skip] `.prism/state` is ignored by git\n This folder is not a git repository, so this check was skipped.\n"
     },
     "status-json": {
       "exit": 0,
@@ -1806,7 +1825,7 @@
           {
             "code": "missing-design",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
@@ -1831,7 +1850,7 @@
           {
             "code": "missing-design",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
@@ -1920,6 +1939,12 @@
             "blocker_count": 3,
             "clean": false,
             "error_count": 3,
+            "feature_app_stages": {
+              "F-003": {
+                "backend": "in-dev",
+                "mobile-android": "in-dev"
+              }
+            },
             "feature_count": 3,
             "feature_owner_counts": {
               "designer": 1,
@@ -1927,12 +1952,15 @@
               "po": 1
             },
             "feature_status_counts": {
-              "done": 0,
               "in-design": 1,
               "in-dev": 1,
+              "in-qa": 0,
               "raw": 1,
               "ready-for-design": 0,
               "ready-for-dev": 0,
+              "ready-for-qa": 0,
+              "ready-for-release": 0,
+              "released": 0,
               "specified": 0
             },
             "open_questions_by_owner": {
@@ -2054,7 +2082,7 @@
     },
     "validate": {
       "exit": 0,
-      "output": " ____ ____ ___ ____ __ __\n| _ /| _ /|_ _/ ___|| // |\n| |_) | |_) || |/___ /| |//| |\n| __/| _ < | | ___) | | | |\n|_| |_| /_/___|____/|_| |_|\n----------------------------------------------------------------------------------------\nValidate template integrity or generated project structure\n\n+ Target ----------------------------------------------------------------------------+\n|Path: <ROOT> |\n|Kind: generated-project |\n+------------------------------------------------------------------------------------+\n\nWarnings\n- No scaffolded apps are declared in prism.workspace.yml.\n\n+ Wiki readiness --------------------------------------------------------------------+\n|Workspace: <ROOT> |\n|Features: 3 |\n|Integrity errors: 0 |\n|Readiness blockers: 3 |\n|Warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nWorkflow readiness\n- missing-app-requirements: Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n- missing-design: Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n\nWiki integrity checks passed.\n+ Validation passed -----------------------------------------------------------------+\n|README.md present |\n|AGENTS.md present |\n|knowledge/wiki/SCHEMA.md present |\n|knowledge/wiki/LIFECYCLE.md present |\n|Taskfile.yml present |\n|wiki contract checks passed |\n|scaffolded apps, their answers files and workflows present |\n+------------------------------------------------------------------------------------+\nValidation passed with 3 workflow readiness blocker(s) reported above.\n"
+      "output": " ____ ____ ___ ____ __ __\n| _ /| _ /|_ _/ ___|| // |\n| |_) | |_) || |/___ /| |//| |\n| __/| _ < | | ___) | | | |\n|_| |_| /_/___|____/|_| |_|\n----------------------------------------------------------------------------------------\nValidate template integrity or generated project structure\n\n+ Target ----------------------------------------------------------------------------+\n|Path: <ROOT> |\n|Kind: generated-project |\n+------------------------------------------------------------------------------------+\n\nWarnings\n- No scaffolded apps are declared in prism.workspace.yml.\n\n+ Wiki readiness --------------------------------------------------------------------+\n|Workspace: <ROOT> |\n|Features: 3 |\n|Integrity errors: 0 |\n|Readiness blockers: 3 |\n|Warnings: 0 |\n+------------------------------------------------------------------------------------+\n\nWorkflow readiness\n- missing-app-requirements: Feature `F-003` is in-dev but no app requirement exists for `mobile-android`.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n- missing-design: Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n- unresolved-open-questions: Feature `F-003` has an open question assigned to `po` (#1).\n <ROOT>/knowledge/wiki/features/F-003-outcome-export.md [F-003]\n\nWiki integrity checks passed.\n+ Validation passed -----------------------------------------------------------------+\n|README.md present |\n|AGENTS.md present |\n|knowledge/wiki/SCHEMA.md present |\n|knowledge/wiki/LIFECYCLE.md present |\n|Taskfile.yml present |\n|wiki contract checks passed |\n|scaffolded apps, their answers files and workflows present |\n+------------------------------------------------------------------------------------+\nValidation passed with 3 workflow readiness blocker(s) reported above.\n"
     },
     "wiki-lint-json": {
       "exit": 3,
@@ -2070,7 +2098,7 @@
           {
             "code": "missing-design",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
@@ -2119,7 +2147,7 @@
           {
             "code": "missing-design",
             "feature_id": "F-003",
-            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+            "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
             "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
             "severity": "error"
           },
@@ -2297,7 +2325,7 @@
       {
         "code": "missing-design",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
@@ -2346,7 +2374,7 @@
       {
         "code": "missing-design",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
@@ -2483,7 +2511,7 @@
       {
         "code": "missing-design",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
@@ -2508,7 +2536,7 @@
       {
         "code": "missing-design",
         "feature_id": "F-003",
-        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page or valid confirmed design exemption.",
+        "message": "Feature `F-003` is in-dev for app(s) with a UI mobile-android but has no matching design page.",
         "path": "<ROOT>/knowledge/wiki/features/F-003-outcome-export.md",
         "severity": "error"
       },
@@ -2597,6 +2625,12 @@
         "blocker_count": 3,
         "clean": false,
         "error_count": 3,
+        "feature_app_stages": {
+          "F-003": {
+            "backend": "in-dev",
+            "mobile-android": "in-dev"
+          }
+        },
         "feature_count": 3,
         "feature_owner_counts": {
           "designer": 1,
@@ -2604,12 +2638,15 @@
           "po": 1
         },
         "feature_status_counts": {
-          "done": 0,
           "in-design": 1,
           "in-dev": 1,
+          "in-qa": 0,
           "raw": 1,
           "ready-for-design": 0,
           "ready-for-dev": 0,
+          "ready-for-qa": 0,
+          "ready-for-release": 0,
+          "released": 0,
           "specified": 0
         },
         "open_questions_by_owner": {

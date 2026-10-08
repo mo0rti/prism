@@ -23,6 +23,8 @@ from tests.browser.harness import STEP_TIMEOUT_MS, BrowserCase, FixtureFeature
 
 BOARD_PATH = "knowledge/wiki/status-board.md"
 LOG_PATH = "knowledge/wiki/log.md"
+# The one question every fixture feature resolves; an agent's `ask` adds a row after it.
+RESOLVED_ROW = "| 1 | Which points should a review summary highlight? | po | resolved: Capture key points and requested follow-up. |"
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 # The journal is the board service's own state. Previews legitimately add rows
 # to it, so the "nothing is written" comparison covers every other workspace file.
@@ -162,24 +164,22 @@ class ScenarioCase(BrowserCase):
     def seed_interrupted_agent_operation(self, feature: FixtureFeature, operation_id: str) -> dict[str, Any]:
         """Leave a pending operation from an agent whose grant is then revoked (test-only setup).
 
-        The agent proposes ``design-start`` through the real MCP client. Its apply
-        is interrupted in the service after the feature page is written and
-        before the status board and log, exactly as a crash would leave it, then the
-        agent's grant is revoked. Nothing in the product is changed or hooked:
-        the interruption patches one method of the in-process service for the
-        duration of one call.
+        An agent applies only its own ungated previews, so the agent proposes ``ask`` (one new open question) through
+        the real MCP client. Its apply is interrupted in the service after the feature page is written and before
+        the log, exactly as a crash would leave it, then the agent's grant is revoked. Nothing in the product is
+        changed or hooked: the interruption patches one method of the in-process service for the duration of one call.
         """
 
         harness = self.harness
         service = harness.service
         path = feature.path.as_posix()
         with AgentClient(harness.url, harness.token("agent")) as agent:
-            preview = agent.propose("design-start", path, lambda text: text.replace("status: ready-for-design\n", "status: in-design\n", 1))
+            preview = agent.propose("ask", path, lambda text: text.replace(RESOLVED_ROW, RESOLVED_ROW + "\n| 2 | Who verifies the summary? | qa | open |", 1))
         self.assertTrue(preview["applicable"], preview)
         original = service._apply_write
 
         def interrupted(write: Any, **kwargs: Any) -> Any:
-            if write["role"] == "status-board":
+            if write["role"] == "log":
                 raise SimulatedCrash()
             return original(write, **kwargs)
 

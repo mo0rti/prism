@@ -447,15 +447,16 @@ class BoardServerTests(unittest.TestCase):
             feature.write_bytes(
                 _feature_page()
                 .replace("status: raw", "status: ready-for-design")
-                .replace("owner: po", "owner: designer")
+                .replace("owner: po", "owner: tech-lead")
                 .replace("| po | open |", "| po | resolved: Summarize key points. |")
                 .encode("utf-8")
             )
-            _write_index(root, "ready-for-design", "designer")
+            _write_index(root, "ready-for-design", "tech-lead")
 
             service = BoardService(root)
             self.addCleanup(service.close)
-            grant = service.create_participant("Refresh test human", "human", True)
+            # `design-start` is gated: the human holds the design owner's role and approves in a browser session.
+            grant = service.create_participant("Refresh test human", "human", True, roles="tech-lead")
             app = create_app(root, port=8767, service=service)
             with TestClient(app, base_url="http://127.0.0.1:8767") as client:
                 headers = {"Authorization": f"Bearer {grant['token']}"}
@@ -478,13 +479,25 @@ class BoardServerTests(unittest.TestCase):
                 self.assertTrue(preview.json()["applicable"], preview.text)
                 self.assertEqual((version_before, status_before), stage(), "Previewing must not change the snapshot.")
 
+                origin = "http://127.0.0.1:8767"
+                exchanged = client.post("/api/board/v1/auth/exchange", json={"token": grant["token"]}, headers={"Origin": origin})
+                self.assertEqual(200, exchanged.status_code, exchanged.text)
+                session = {"Origin": origin, "X-Prism-CSRF": exchanged.json()["csrf_token"]}
+                reviewed = client.get(f"/api/board/v1/previews/{preview.json()['preview_id']}")
+                self.assertEqual(200, reviewed.status_code, reviewed.text)
                 applied = client.post(
                     "/api/board/v1/apply",
-                    json={"preview_id": preview.json()["preview_id"], "operation_id": "refresh-operation"},
-                    headers=headers,
+                    json={
+                        "preview_id": preview.json()["preview_id"],
+                        "operation_id": "refresh-operation",
+                        "review_revision": reviewed.json()["approval"]["review_revision"],
+                        "semantic_review_acknowledged": True,
+                    },
+                    headers=session,
                 )
                 self.assertEqual(200, applied.status_code, applied.text)
                 self.assertEqual("applied", applied.json()["state"])
+                client.cookies.clear()  # the reads below go back to the Bearer token
                 # No sleep: the very next read already reflects the applied write.
                 version_after, status_after = stage()
                 self.assertEqual("in-design", status_after)
@@ -502,11 +515,11 @@ class BoardServerTests(unittest.TestCase):
             feature.write_bytes(
                 _feature_page()
                 .replace("status: raw", "status: ready-for-design")
-                .replace("owner: po", "owner: designer")
+                .replace("owner: po", "owner: tech-lead")
                 .replace("| po | open |", "| po | resolved: Summarize key points. |")
                 .encode("utf-8")
             )
-            _write_index(root, "ready-for-design", "designer")
+            _write_index(root, "ready-for-design", "tech-lead")
 
             service = BoardService(root).start()
             try:
@@ -515,8 +528,8 @@ class BoardServerTests(unittest.TestCase):
                 service.close()
 
     def assert_poller_alone_reuses_file_hashes(self, root: Path, service: BoardService) -> None:
-        grant = service.create_participant("Cache test human", "human", True)
-        actor = service.authenticate(grant["token"])
+        grant = service.create_participant("Cache test human", "human", True, roles="tech-lead")
+        actor = service.authenticate(grant["token"], via_session=True)
         scans: list[FingerprintCache] = []
         real_scan = FingerprintCache.scan
 
@@ -537,7 +550,8 @@ class BoardServerTests(unittest.TestCase):
             preview = service.preview_transition(actor, feature_id="F-001", action="design-start", inputs={"semantic_review_acknowledged": True})
             self.assertTrue(preview["applicable"], preview)
             service.query(actor, "blockers")
-            receipt = service.apply(actor, preview["preview_id"], "cache-operation")
+            review = service.get_preview(actor, preview["preview_id"])["approval"]["review_revision"]
+            receipt = service.apply(actor, preview["preview_id"], "cache-operation", review, True)
             self.assertEqual("applied", receipt["state"])
             self.assertEqual([], scans, "Preview, query and apply hash every file themselves.")
 

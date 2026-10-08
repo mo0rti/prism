@@ -16,11 +16,13 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from prism_cli import board_service
+from prism_cli import board_service, wiki_transitions
 from prism_cli.board_service import Actor, BoardError, BoardService
 from prism_cli.board_store import BoardStore
 from prism_cli.roles import RolePredicate
+from prism_cli.wiki_transitions import lookup_action
 from prism_cli.workflow_install import apply_install, plan_install
+from tests.board_approval import give_apps_a_ui
 from tests.test_board_service import _read_revisions
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 from tests import real_temp  # noqa: F401
@@ -55,6 +57,7 @@ class GatedBoardCase(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))
+        give_apps_a_ui(self.root)  # the design owner of a scope with a UI is the designer
         source = self.root / "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
         source.parent.mkdir(parents=True)
         source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
@@ -211,7 +214,7 @@ class ApprovalFlowTests(GatedBoardCase):
         self.assertNotIn("review_revision", approval, "the proposing agent does not review")
         # The predicate is asked of the registry once per preview, with what the preview knows.
         context = [call.args[1] for call in self.required_roles.call_args_list if call.args[0] == "design-start"][-1]
-        self.assertEqual({"action": "design-start", "feature_path": FEATURE, "apps": ["backend"]}, context)
+        self.assertEqual({"action": "design-start", "feature_path": FEATURE, "apps": ["backend"], "status": "ready-for-design", "root": self.root}, context)
 
     def test_an_ungated_action_keeps_the_creator_flow(self) -> None:
         with patch("prism_cli.roles.required_roles", return_value=None):
@@ -553,13 +556,9 @@ class PendingRetryAndRecoveryTests(GatedBoardCase):
 
 class ActionAvailabilityTests(GatedBoardCase):
     def test_an_action_whose_package_has_not_landed_is_refused_and_discovered_as_unavailable(self) -> None:
-        @dataclasses.dataclass(frozen=True)
-        class Unlanded(board_service._ACTION_SPEC_BY_NAME["design-start"].__class__):
-            available: bool = False
-            unavailable_reason: str = "Package D2 has not landed."
-
-        spec = Unlanded(**dataclasses.asdict(board_service._ACTION_SPEC_BY_NAME["design-start"]))
-        with patch.dict(board_service._ACTION_SPEC_BY_NAME, {"design-start": spec}), patch.object(
+        # One registry answers availability: an action whose package is not enabled is unavailable everywhere.
+        spec = dataclasses.replace(lookup_action("design-start"), package="D9")
+        with patch.dict(wiki_transitions.ACTION_BY_ID, {"design-start": spec}), patch.object(
             board_service, "_REGISTERED_ACTION_SPECS", tuple(spec if item.action == "design-start" else item for item in board_service._REGISTERED_ACTION_SPECS)
         ):
             with self.assertRaises(BoardError) as raised:
@@ -567,7 +566,8 @@ class ActionAvailabilityTests(GatedBoardCase):
             self.assertEqual(("action_unavailable", 409), (raised.exception.code, raised.exception.status))
             self.assertEqual("action_unavailable", self.code(lambda: self.agent_proposal()))
             entry = next(item for item in self.service.discover(self.designer)["capability"]["actions"] if item["action"] == "design-start")
-            self.assertEqual((False, "Package D2 has not landed.", False), (entry["available"], entry["unavailable_reason"], entry["available_to_participant"]))
+            self.assertEqual((False, spec.unavailable_reason, False), (entry["available"], entry["unavailable_reason"], entry["available_to_participant"]))
+            self.assertIn("work package D9", entry["unavailable_reason"])
 
     def test_discovery_lists_each_action_with_its_roles_modes_and_who_may_take_part(self) -> None:
         actions = {item["action"]: item for item in self.service.discover(self.designer)["capability"]["actions"]}
@@ -576,7 +576,8 @@ class ActionAvailabilityTests(GatedBoardCase):
         self.assertEqual({"action", "command", "sources", "target", "required_roles", "modes", "available", "available_to_participant"}, set(entry))
         self.assertEqual({"all_of": ["designer"], "any_of": []}, entry["required_roles"])
         self.assertEqual(["HD", "AP"], entry["modes"])
-        self.assertEqual([{"status": "ready-for-design", "owner": "designer"}], entry["sources"])
+        # The owner `D` is the design owner of the feature's scope; discovery names the symbol, a preview the concrete owner.
+        self.assertEqual([{"status": "ready-for-design", "owner": "D"}], entry["sources"])
         self.assertTrue(entry["available_to_participant"])
         for actor, expected in ((self.po, False), (self.agent, True)):
             seen = {item["action"]: item for item in self.service.discover(actor)["capability"]["actions"]}["design-start"]

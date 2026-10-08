@@ -27,6 +27,7 @@ from prism_cli import __version__  # noqa: E402
 from prism_cli.wiki_index import build_index  # noqa: E402
 from prism_cli.app_model import apps_from_platforms  # noqa: E402
 from prism_cli.workspace import write_workspace_manifest  # noqa: E402
+from prism_cli.wiki_model import criterion_revision  # noqa: E402
 from prism_cli.wiki_transitions import ACTION_SPECS  # noqa: E402
 
 
@@ -86,7 +87,7 @@ FEATURES: tuple[dict[str, Any], ...] = (
         "id": "F-003",
         "slug": "settle-payout-and-review-history",
         "title": "Settle payout and review history",
-        "status": "done",
+        "status": "released",
         "owner": "none",
         "advisory": "done",
         "summary": "Finance admins settle an approved payout and can review the resulting transaction history.",
@@ -176,7 +177,7 @@ Inspect `knowledge/wiki` and `knowledge/intake` as synthetic source material for
     for relative in (".agents/skills", ".claude/commands", ".cursor/rules"):
         (destination / relative).mkdir(parents=True, exist_ok=True)
     template_root = Path(__file__).resolve().parents[1] / "template"
-    for command in {spec.command for spec in ACTION_SPECS}:
+    for command in sorted({spec.command for spec in ACTION_SPECS if spec.enabled and spec.subject == "feature"}):
         for relative in (f".agents/skills/{command}/SKILL.md", f".claude/commands/{command}.md"):
             source = template_root / f"{relative}.jinja"
             # Lifecycle instructions have no project substitutions; capability
@@ -370,13 +371,50 @@ def _feature_frontmatter(feature: dict[str, Any], today: date) -> dict[str, Any]
         "apps": list(PLATFORMS),
         "sources": [PROCESSED_BRIEF],
         "advisory-review": feature["advisory"],
+        "criteria-high-water": len(feature["criteria"]),
     }
+
+
+def _evidence_sections(feature: dict[str, Any]) -> str:
+    """The evidence tables of a feature: empty until `in-dev`, a delivered, verified and released row per app when released."""
+
+    delivery: list[str] = []
+    qa: list[str] = []
+    release: list[str] = []
+    if feature["status"] == "released":
+        references = ", ".join(
+            f"AC-{number}@{criterion_revision(feature['id'], number, PLATFORMS, False, '', text)}"
+            for number, text in enumerate(feature["criteria"], start=1)
+        )
+        for platform in PLATFORMS:
+            artifact = f"build:{platform}#1"
+            delivery.append(
+                f"| {platform} | `{artifact}` | none | Synthetic local demo {platform} surface for {feature['id']} (no production implementation claim) "
+                f"| Synthetic local graph fixture checks for {platform} (no production test claim) | attested |"
+            )
+            qa.append(
+                f"| {platform} | {references} | manual | `{artifact}` | demo | qa-1 | pass "
+                f"| Synthetic local demo check of {platform} (no production test claim) | attested |"
+            )
+            release.append(
+                f"| {platform} | production | `{artifact}` | release-1 | released "
+                f"| [REL-{PLATFORMS.index(platform) + 1:03d}](https://example.test/demo/releases/{platform}) | attested |"
+            )
+    rows = lambda items: "".join(f"{item}\n" for item in items)  # noqa: E731
+    return (
+        "\n## Delivery evidence\n| App | Artifact | Contract | Implementation | Tests | Basis |\n|---|---|---|---|---|---|\n" + rows(delivery)
+        + "\n## QA verification\n| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |\n|---|---|---|---|---|---|---|---|---|\n" + rows(qa)
+        + "\n## Release\n| App | Target | Version | Attempt | Outcome | Record | Basis |\n|---|---|---|---|---|---|---|\n" + rows(release)
+        + "\n## Evidence history\n"
+    )
 
 
 def _write_feature_pages(destination: Path, today: date) -> None:
     features_root = destination / "knowledge" / "wiki" / "features"
     for feature in FEATURES:
-        criteria = "\n".join(f"- [ ] {criterion}" for criterion in feature["criteria"])
+        criteria = "\n".join(
+            f"- [ ] AC-{number} [{', '.join(PLATFORMS)}] {criterion}" for number, criterion in enumerate(feature["criteria"], start=1)
+        )
         question = ""
         if feature["question"]:
             item = feature["question"]
@@ -411,19 +449,9 @@ def _write_feature_pages(destination: Path, today: date) -> None:
 
 ## Board review summary
 Synthetic review state is visible in the linked advisory page.
-
-## Post-ship notes
-No observed post-ship history is recorded in this synthetic fixture.
 """
-        if feature["status"] == "done":
-            body += f"""
-## Delivery evidence
-| App | Implementation | Tests | Release |
-|---|---|---|---|
-| backend | Synthetic local demo backend surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for backend (no production test claim) | release: https://example.test/demo/releases/backend (synthetic local demo marker for backend; no production release claim) |
-| mobile-android | Synthetic local demo Android surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for Android (no production test claim) | release: https://example.test/demo/releases/android (synthetic local demo marker for Android; no production release claim) |
-| mobile-ios | Synthetic local demo iOS surface for {feature['id']} (no production implementation claim) | Synthetic local graph fixture checks for iOS (no production test claim) | release: https://example.test/demo/releases/ios (synthetic local demo marker for iOS; no production release claim) |
-"""
+        if feature["status"] != "raw":
+            body += _evidence_sections(feature)
         _write_page(features_root / f"{feature['id']}-{feature['slug']}.md", _feature_frontmatter(feature, today), body)
 
 
@@ -432,9 +460,9 @@ def _write_linked_context(destination: Path, today: date) -> None:
     for feature in FEATURES:
         feature_id = feature["id"]
         slug = feature["slug"]
-        status = "implemented" if feature["status"] == "done" else "agreed"
+        status = "implemented" if feature["status"] == "released" else "agreed"
         for platform in PLATFORMS:
-            requirement_status = "done" if feature["status"] == "done" else "in-progress"
+            requirement_status = "done" if feature["status"] == "released" else "in-progress"
             _write_page(
                 wiki_root / "app-requirements" / f"{feature_id}-{platform}.md",
                 {"feature-id": feature_id, "app": platform, "status": requirement_status},
@@ -499,7 +527,7 @@ Require the role appropriate to the operation: operator, manager, or finance adm
 This is a synthetic contract summary for graph relationships; it is not an implementation promise.
 """,
         )
-        required_action = "- [x] Review the threshold question with the product owner." if feature["status"] == "done" else "- [ ] Review the threshold question with the product owner."
+        required_action = "- [x] Review the threshold question with the product owner." if feature["status"] == "released" else "- [ ] Review the threshold question with the product owner."
         _write_page(
             wiki_root / "advisory" / f"{feature_id}-review.md",
             {
@@ -612,8 +640,16 @@ Clients must render each state, while audits can follow one stable request ident
 
 
 def _write_populated_index(destination: Path, today: date) -> None:
+    def stages(feature: dict[str, Any]) -> str:
+        if feature["status"] == "in-dev":
+            return "; ".join(f"{platform}: in-dev" for platform in PLATFORMS)
+        if feature["status"] == "released":
+            return "; ".join(f"{platform}: released" for platform in PLATFORMS)
+        return "\u2014"
+
     rows = [
-        f"| {feature['id']} | [{feature['title']}](features/{feature['id']}-{feature['slug']}.md) | {feature['status']} | {feature['owner']} | {feature['advisory']} |"
+        f"| {feature['id']} | [{feature['title']}](features/{feature['id']}-{feature['slug']}.md) | {feature['status']} | {feature['owner']} | {feature['advisory']} "
+        f"| \u2014 | {stages(feature)} | \u2014 |"
         for feature in FEATURES
     ]
     wiki_root = destination / "knowledge" / "wiki"
@@ -623,8 +659,8 @@ def _write_populated_index(destination: Path, today: date) -> None:
 
 This file is maintained by the AI agent. Do not edit directly.
 
-| ID | Feature | Status | Owner | Board Review |
-|----|---------|--------|-------|--------------|
+| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |
+|----|---------|--------|-------|--------------|---------------|------------|-----------|
 """
         + "\n".join(rows)
         + "\n",

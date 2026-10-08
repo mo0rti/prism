@@ -189,10 +189,11 @@ section or to the text it touches. A feature's `apps` must be among the apps
 
 A lifecycle skill changes the feature page narrowly. `po-handoff`, `design-start`,
 `design-handoff` and `dev-start` change frontmatter only: every body line, including a
-table's separator row, stays exactly as it was. `dev-done` also changes only the
-`## Delivery evidence` and `## Post-ship notes` sections, and adds no other section
-heading, not even an empty `## Reopen history`. In a linked requirement or API contract
-page, `dev-done` changes only `status`. The rejection quotes the first line that differs.
+table's separator row, stays exactly as it was. `po-specify` changes the page body and `criteria-high-water`, and
+leaves the evidence sections empty. `dev-done` also changes only `app-revalidation` and the
+`## Delivery evidence` section (it adds one row for each app it delivers), and adds no other
+section heading. In a linked requirement or API contract page, `dev-done` changes only
+`status`. The rejection quotes the first line that differs.
 
 A question skill changes the Open questions table in a fixed way. `ask` adds exactly
 one new row with the next number and status `open`. `po-clarify`, `design-clarify` and

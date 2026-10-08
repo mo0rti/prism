@@ -60,8 +60,9 @@ joined by hyphens. The connected board rejects any other name.
      `**Decided:**` for what the user confirmed in step 7, `**Proposed:**`, `**Assumed:**`)
      and link the processed path of the source file as the evidence of every Decided or
      Observed claim, for example `../../intake/processed/[folder-name]/notes.md`. Gaps stay
-     in the Open questions table. Leave Design, Related features, API surface, Board review
-     summary and Post-ship notes empty; `$po-specify` completes them.
+     in the Open questions table. Leave Design, Related features, API surface and Board review
+     summary empty, and give no criterion an ID; `$po-specify` completes them, assigns
+     the criterion IDs and adds the empty evidence sections.
    - Set `advisory-review` field based on team confirmation:
      `pending` if domain complexity confirmed, `not-needed` if confirmed simple feature
    - Populate open questions for anything missing from the input

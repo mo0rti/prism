@@ -46,5 +46,3 @@ As a [Legal operations document reviewer](../personas/legal-operations-reviewer.
 ## API surface
 
 ## Board review summary
-
-## Post-ship notes

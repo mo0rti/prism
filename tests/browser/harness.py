@@ -48,6 +48,7 @@ from tests.wiki_files import write_index
 
 
 ENABLE_VARIABLE = "PRISM_BROWSER_E2E"
+HUMAN_ROLES = "po,designer,tech-lead,dev,qa,release"
 DIRECTORY_VARIABLE = "PRISM_BROWSER_E2E_DIR"
 EXECUTABLE_VARIABLE = "PRISM_BROWSER_E2E_EXECUTABLE"
 STEP_TIMEOUT_MS = 20_000
@@ -95,7 +96,7 @@ class FixtureFeature:
 # so one session can compare a pointer-driven and a keyboard-driven po-handoff.
 FEATURES = (
     FixtureFeature("F-001", "Document review", "specified", "po"),
-    FixtureFeature("F-002", "Document summary", "ready-for-design", "designer"),
+    FixtureFeature("F-002", "Document summary", "ready-for-design", "tech-lead"),
     FixtureFeature("F-003", "Review follow-up", "ready-for-dev", "dev"),
     FixtureFeature("F-004", "Document review", "specified", "po"),
 )
@@ -109,7 +110,7 @@ EXTRA_FEATURES = {
     # A pending advisory review adds the skip proposal and its reason textarea.
     "advisory": FixtureFeature("F-006", "Advisory handoff", "specified", "po", advisory="pending"),
     # Agent-only lifecycle actions: the board offers a request, not a human apply.
-    "in-design": FixtureFeature("F-007", "Design in progress", "in-design", "designer"),
+    "in-design": FixtureFeature("F-007", "Design in progress", "in-design", "tech-lead"),
     "raw": FixtureFeature("F-008", "Raw idea", "raw", "po", question_open=True),
     "in-dev": FixtureFeature("F-009", "Development in progress", "in-dev", "dev"),
 }
@@ -140,14 +141,16 @@ def _feature_page_for(feature: FixtureFeature) -> str:
 
 
 def _board_text(features: tuple[FixtureFeature, ...]) -> str:
+    # The one app of the fixture workspace is in-dev from that status on; before it the cell is empty.
     rows = "".join(
-        f"| {feature.feature_id} | {feature.title} | {feature.status} | {feature.owner} | {feature.advisory} |\n"
+        f"| {feature.feature_id} | {feature.title} | {feature.status} | {feature.owner} | {feature.advisory} | \u2014 | "
+        f"{'backend: in-dev' if feature.status == 'in-dev' else chr(0x2014)} | \u2014 |\n"
         for feature in features
     )
     return (
         "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review |\n"
-        "|----|---------|--------|-------|--------------|\n" + rows
+        "| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |\n"
+        "|----|---------|--------|-------|--------------|---------------|------------|-----------|\n" + rows
     )
 
 
@@ -342,11 +345,14 @@ class BoardHarness:
 
     # -- participants -------------------------------------------------------------
 
-    def add_participant(self, label: str, kind: str, *, writable: bool = True) -> Any:
-        """Issue a grant through the service. The token stays in memory under ``label``."""
+    def add_participant(self, label: str, kind: str, *, writable: bool = True, roles: str | None = None) -> Any:
+        """Issue a grant through the service. The token stays in memory under ``label``.
+
+        ``roles`` are the workflow roles of a human grant (comma-separated); a gated action is approved by a human who holds them.
+        """
 
         assert self.service is not None
-        grant = self.service.create_participant(f"Browser {label}", kind, writable=writable)
+        grant = self.service.create_participant(f"Browser {label}", kind, writable=writable, roles=roles)
         self._tokens[label] = grant["token"]
         self._actors[label] = self.service.authenticate(grant["token"])
         return self._actors[label]
@@ -391,8 +397,9 @@ class BoardHarness:
                 self.relay = DropProxy(self.port, self.backend_port).start()
             # The first launch builds the journal; participants are issued after it.
             self._launch()
-            for kind in ("human", "agent"):
-                self.add_participant(kind, kind)
+            # The human holds every role, so each gated fixture action (`po-handoff`, `design-start`, `dev-start`) is theirs to approve.
+            self.add_participant("human", "human", roles=HUMAN_ROLES)
+            self.add_participant("agent", "agent")
         except BaseException:
             self.stop()
             raise

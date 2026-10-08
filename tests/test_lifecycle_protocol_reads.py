@@ -30,8 +30,8 @@ class LifecycleProtocolReadTests(unittest.TestCase):
         self.addCleanup(self.service.close)
         grant = self.service.create_participant("Reader", "agent")
         self.actor = self.service.authenticate(grant["token"])
-        human = self.service.create_participant("Human", "human", writable=True)
-        self.human = self.service.authenticate(human["token"])
+        human = self.service.create_participant("Human", "human", writable=True, roles="po")
+        self.human = self.service.authenticate(human["token"], via_session=True)
 
     def test_the_installer_places_the_lifecycle_file_beside_the_schema(self) -> None:
         self.assertTrue((self.root / LIFECYCLE).is_file())

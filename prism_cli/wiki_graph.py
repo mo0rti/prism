@@ -13,13 +13,18 @@ from prism_cli.wiki_lint import FRESHNESS_CODES, WIKI_BLOCKER_CODES, lint_wiki
 from prism_cli.wiki_index import general_page_kind
 from prism_cli.wiki_links import NON_PAGE_FILENAMES, markdown_files, page_references_feature
 from prism_cli.wiki_model import (
+    FEATURE_STATUS_ORDER,
+    active_scope,
+    app_stages,
     extract_markdown_links,
     load_markdown_page,
     resolve_relative_markdown_link,
     parse_open_question_rows,
+    read_feature_evidence,
     read_feature_pages,
     read_app_requirement_pages,
     read_wiki_pages,
+    status_rank,
     within_wiki_read_scope,
 )
 from prism_cli.wiki_query import build_envelope
@@ -31,7 +36,7 @@ from prism_cli.wiki_transitions import (
 from prism_cli.workspace import inspect_workspace
 
 
-LIFECYCLE_STAGES = ["raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "done"]
+LIFECYCLE_STAGES = list(FEATURE_STATUS_ORDER)
 
 NODE_TYPES = {
     "feature",
@@ -84,6 +89,8 @@ class GraphNode:
     health: str = "ok"
     open_questions: tuple[tuple[str, str, str, str], ...] | None = None  # (number, question, owner, status)
     transitions: tuple[dict[str, Any], ...] | None = None
+    # app ID -> app stage for a feature at `in-dev` or later (CONTRACTS 4.2); the feature's status is the minimum.
+    app_stages: tuple[tuple[str, str], ...] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {"id": self.id, "type": self.type, "title": self.title, "path": self.path, "health": self.health}
@@ -100,6 +107,8 @@ class GraphNode:
             ]
         if self.transitions is not None:
             data["transitions"] = list(self.transitions)
+        if self.app_stages is not None:
+            data["app_stages"] = [{"app": app, "stage": stage} for app, stage in self.app_stages]
         return data
 
 
@@ -168,6 +177,7 @@ def build_graph(root: Path) -> dict[str, Any]:
             advisory_review=node.advisory_review,
             health=health_by_path.get(node.path or "", "ok"),
             open_questions=node.open_questions,
+            app_stages=node.app_stages,
             transitions=(
                 tuple(transition_evaluation.transitions_list_by_path.get(node.path or "", []))
                 if node.path in transition_evaluation.transitions_list_by_path
@@ -231,6 +241,11 @@ def _collect_nodes(
             advisory_review=feature.advisory_review,
             open_questions=tuple(
                 (row["number"], row["question"], row["owner"], row["status"]) for row in question_rows
+            ),
+            app_stages=(
+                tuple(app_stages(active_scope(feature.apps, model), read_feature_evidence(feature.page.body)).items())
+                if status_rank(feature.status) >= status_rank("in-dev")
+                else None
             ),
         )
         nodes[node.id] = node
@@ -461,7 +476,10 @@ _STAGE_CLASS = {
     "in-design": "design",
     "ready-for-dev": "dev",
     "in-dev": "dev",
-    "done": "done",
+    "ready-for-qa": "qa",
+    "in-qa": "qa",
+    "ready-for-release": "release",
+    "released": "done",
 }
 
 
@@ -516,6 +534,8 @@ def _mermaid_lifecycle(nodes: list[dict[str, Any]], blocked_ids: set[str]) -> st
             "  classDef po fill:#9ec5f4,stroke:#256abf,color:#0b0b0b",
             "  classDef design fill:#f5cf7e,stroke:#8a5c00,color:#0b0b0b",
             "  classDef dev fill:#7cd7b2,stroke:#0f7a55,color:#0b0b0b",
+            "  classDef qa fill:#c9b6f0,stroke:#5b3cb3,color:#0b0b0b",
+            "  classDef release fill:#f2a7c3,stroke:#a8325f,color:#0b0b0b",
             "  classDef done fill:#8fd08f,stroke:#008300,color:#0b0b0b",
             "  classDef blocked fill:#fcfcfb,stroke:#d03b3b,stroke-width:3px,color:#0b0b0b",
             "  classDef broken fill:#fcfcfb,stroke:#898781,stroke-dasharray:6 4,color:#52514e",

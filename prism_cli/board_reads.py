@@ -8,8 +8,10 @@ import json
 import re
 from typing import Any, Callable, Iterable, Mapping
 
+from pathlib import Path
+
 from prism_cli.board_service import BoardError
-from prism_cli.wiki_model import within_wiki_read_scope
+from prism_cli.wiki_model import VALID_FEATURE_OWNERS, parse_criteria, parse_markdown_text, within_wiki_read_scope
 
 
 _PAGE_SIZE = 100
@@ -215,12 +217,18 @@ def query(service: Any, actor: Any, kind: str, value: str | None = None, action:
         raise BoardError("invalid_query", "This query requires a nonblank value of at most 500 characters.", 400)
     if kind != "transition-preflight" and action is not None:
         raise BoardError("invalid_query", "Only transition-preflight takes an action.", 400)
-    if kind == "owner" and value not in {"po", "designer", "dev", "none"}:
-        raise BoardError("invalid_query", "Owner must be po, designer, dev, or none.", 400)
+    if kind == "owner" and value not in VALID_FEATURE_OWNERS:
+        raise BoardError("invalid_query", "Owner must be " + ", ".join(sorted(VALID_FEATURE_OWNERS)) + ".", 400)
     if kind == "app" and (service._model is None or service._model.app(value) is None):
         raise BoardError("invalid_query", "The app is outside this workspace's declared scope.", 400)
-    if kind == "transition-preflight" and action not in ACTION_BY_ID:
+    if kind == "transition-preflight" and (action not in ACTION_BY_ID or ACTION_BY_ID[action].subject != "feature"):
         raise BoardError("invalid_query", "Choose a registered lifecycle action.", 400)
+    if kind == "transition-preflight" and not ACTION_BY_ID[action].enabled:
+        raise BoardError(
+            "action_unavailable",
+            f"Action `{action}` is registered but this Prism version does not provide it yet (work package {ACTION_BY_ID[action].package}).",
+            409,
+        )
     position: dict[str, Any] | None = None
     if cursor is not None:
         if kind not in _PAGED_QUERY_LISTS:
@@ -334,6 +342,36 @@ def _oversize_placeholder(item: Any) -> dict[str, Any]:
     return placeholder
 
 
+_FEATURE_FILE = re.compile(r"^knowledge/wiki/features/F-\d+[^/]*\.md$")
+
+
+def criteria_facts(feature_id: str, body: str) -> list[dict[str, Any]]:
+    """The acceptance criteria of a feature page with their revisions: `id`, `revision`, `applies_to` and `integration` (CONTRACTS 4.1).
+
+    A criterion that has no valid ID or `applies-to` yet has no revision and is left out.
+    """
+
+    return [
+        {"id": item.id, "revision": item.revision, "applies_to": list(item.applies_to), "integration": item.integration}
+        for item in parse_criteria(body, feature_id)
+        if item.id is not None and item.revision is not None
+    ]
+
+
+def read_annotations(relative: str, content: str) -> dict[str, Any] | None:
+    """Facts `read_workspace` returns beside a file: the criteria and their revisions for a feature page, otherwise none."""
+
+    if not _FEATURE_FILE.match(relative):
+        return None
+    page = parse_markdown_text(Path(relative), content)
+    if page.parse_errors:
+        return None
+    feature_id = page.frontmatter.get("id")
+    if not isinstance(feature_id, str):
+        return None
+    return {"criteria": criteria_facts(feature_id, page.body)}
+
+
 def read_files_page(files: list[dict[str, Any]], paths: list[str], cursor: str | None) -> dict[str, Any]:
     """Return the next budget-sized page of already validated workspace reads.
 
@@ -369,7 +407,7 @@ def read_files_page(files: list[dict[str, Any]], paths: list[str], cursor: str |
         return {"schema_version": 1, "files": records, "next_cursor": next_cursor}
 
     def record(item: dict[str, Any], start: int, content: str) -> dict[str, Any]:
-        return {
+        result = {
             "path": item["path"],
             "content": content,
             "offset": start,
@@ -377,6 +415,10 @@ def read_files_page(files: list[dict[str, Any]], paths: list[str], cursor: str |
             "digest": item["digest"],
             "provenance": item["provenance"],
         }
+        # The annotations describe the whole file, so they ride on its first piece.
+        if start == 0 and item.get("annotations"):
+            result["annotations"] = item["annotations"]
+        return result
 
     records: list[dict[str, Any]] = []
     while index < len(files):

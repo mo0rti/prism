@@ -20,6 +20,7 @@ from prism_cli.board_service import BoardService  # noqa: E402
 from prism_cli.wiki_lint import lint_wiki  # noqa: E402
 from prism_cli.wiki_transitions import build_transition_preflight  # noqa: E402
 from prism_cli.workflow_install import apply_install, plan_install  # noqa: E402
+from tests.board_approval import apply_preview, human_with_roles  # noqa: E402
 from tests.core_workflow_fixture import create_core_workflow_fixture  # noqa: E402
 from tests import real_temp  # noqa: F401
 
@@ -45,7 +46,7 @@ class JourneyFixtureTests(unittest.TestCase):
         self.service = BoardService(self.root).start()
         self.addCleanup(self.service.close)
         self.agent = self.service.authenticate(self.service.create_participant("Fixture agent", "agent", True)["token"])
-        self.human = self.service.authenticate(self.service.create_participant("Fixture owner", "human", True)["token"])
+        self.human = human_with_roles(self.service, "Fixture owner")  # every role, in a board session
 
     def proposal(self, step: str, fixture_set: Path | None) -> list[dict[str, str]]:
         """What the step's agent proposes: the files its fixture folders write, byte for byte (no newline translation)."""
@@ -74,7 +75,7 @@ class JourneyFixtureTests(unittest.TestCase):
         self.assertIn(CONTRACT, [item["path"] for item in changes])
         preview = self.service.preview_skill(self.agent, "design-handoff", changes, None, _revisions(self.service, self.agent, "design-handoff", changes))
         self.assertEqual(("design-handoff", "ready", True), (preview["action"], preview["classification"], preview["applicable"]), preview["checks"])
-        self.assertEqual("applied", self.service.apply(self.agent, preview["preview_id"], str(uuid4()))["state"])
+        self.assertEqual("applied", apply_preview(self.service, self.agent, preview, str(uuid4()), approver=self.human)["state"])
 
         transition = build_transition_preflight(self.root, "F-001", action="dev-start")["facts"]["transition"]
         self.assertEqual("pass", next(item for item in transition["checks"] if item["code"] == "api-contract")["status"])

@@ -1,11 +1,11 @@
 ---
 name: ask
-description: "Route a question to PO, designer, or dev by adding it to a feature's open questions table and appending the change to the wiki log."
+description: "Route a question to PO, designer, tech lead, dev, QA, or release by adding it to a feature's open questions table and appending the change to the wiki log."
 layers: [codex, command]
 codex:
   display_name: "Ask"
-  short_description: "Route a feature question to PO, designer, or dev"
-  default_prompt: "Use @@invoke:ask@@ F-XXX \"question\" --to po|designer|dev to add a new open question to the feature."
+  short_description: "Route a feature question to PO, designer, tech lead, dev, QA, or release"
+  default_prompt: "Use @@invoke:ask@@ F-XXX \"question\" --to po|designer|tech-lead|dev|qa|release to add a new open question to the feature."
   implicit: false
 ---
 
@@ -15,7 +15,7 @@ Use this skill to record and route one explicit open question for a feature.
 
 ## Usage
 
-`@@invoke:ask@@ [F-XXX] "[question text]" --to po|designer|dev`
+`@@invoke:ask@@ [F-XXX] "[question text]" --to po|designer|tech-lead|dev|qa|release`
 
 Examples:
 
@@ -38,7 +38,7 @@ Examples:
 ## Rules
 
 - write-capable skill
-- supported owner values are exactly `po`, `designer`, and `dev`
+- supported owner values are exactly `po`, `designer`, `tech-lead`, `dev`, `qa`, and `release`
 - do not infer the owner automatically
 - change only the Open questions table, by one new row; change nothing else on the page: copy every other line and section exactly as `read_workspace` returned it, including the file's final newline
 - do not write the updated question table until the user confirms it

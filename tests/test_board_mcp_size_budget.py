@@ -165,13 +165,33 @@ def build_workspace(root: Path, feature_count: int) -> None:
 class _Client:
     """One MCP session whose every tool result is checked against the budget."""
 
-    def __init__(self, case: unittest.TestCase, session: Any, capture: _CapturingTransport, service: BoardService, actor: Any, roots: list[str]) -> None:
+    def __init__(
+        self,
+        case: unittest.TestCase,
+        session: Any,
+        capture: _CapturingTransport,
+        service: BoardService,
+        actor: Any,
+        roots: list[str],
+        approver: Any = None,
+    ) -> None:
         self.case = case
         self.session = session
         self.capture = capture
         self.service = service
         self.actor = actor
         self.roots = roots
+        # The same grant as `actor` in a browser session: the one that may approve a gated action, which MCP never does.
+        self.approver = approver
+
+    def approve(self, preview_id: str, operation_id: str, roles: str = "dev") -> dict[str, Any]:
+        """What the board page does for a gated proposal: a human who holds ``roles`` reads it and applies its review revision."""
+
+        approver = self.approver
+        if approver is None:
+            approver = self.service.authenticate(self.service.create_participant("Approver", "human", True, roles=roles)["token"], via_session=True)
+        review = self.service.get_preview(approver, preview_id)["approval"]["review_revision"]
+        return self.service.apply(approver, preview_id, operation_id, review, True)
 
     async def call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Call a tool, check its wire size and text summary, and return its structured content."""
@@ -211,7 +231,7 @@ class _Client:
 
 
 @contextlib.asynccontextmanager
-async def connected(case: unittest.TestCase, root: Path, *, kind: str = "agent", writable: bool = False):
+async def connected(case: unittest.TestCase, root: Path, *, kind: str = "agent", writable: bool = False, roles: str | None = None):
     """Serve `root` over the real MCP transport and yield a checked client.
 
     Every result the client returns is also checked for workspace and
@@ -220,7 +240,7 @@ async def connected(case: unittest.TestCase, root: Path, *, kind: str = "agent",
 
     service = BoardService(root)
     try:
-        grant = service.create_participant("Size budget", kind, writable=writable)
+        grant = service.create_participant("Size budget", kind, writable=writable, roles=roles)
         roots = sorted({str(root), str(root.resolve()), tempfile.gettempdir(), str(Path(tempfile.gettempdir()).resolve())})
         app = create_app(root, port=8765, service=service)
         capture = _CapturingTransport(httpx2.ASGITransport(app=app))
@@ -229,7 +249,8 @@ async def connected(case: unittest.TestCase, root: Path, *, kind: str = "agent",
                 async with streamable_http_client(ORIGIN + "/mcp", http_client=http) as (reader, writer):
                     async with ClientSession(reader, writer) as session:
                         await session.initialize()
-                        yield _Client(case, session, capture, service, service.authenticate(grant["token"]), roots)
+                        approver = service.authenticate(grant["token"], via_session=True) if roles else None
+                        yield _Client(case, session, capture, service, service.authenticate(grant["token"]), roots, approver)
     finally:
         service.close()
 
@@ -411,10 +432,11 @@ def _dev_feature_page(status: str, owner: str, platforms: list[str], evidence_ro
         "apps": platforms,
         "sources": [PROCESSED_SOURCE.rsplit("/", 1)[0]],
         "advisory-review": "not-needed",
+        "criteria-high-water": 12,
         "revalidation": [],
     }
     scope = "\n".join(f"- **{platform}**: Store and show the review summary on {platform}. {bulk}" for platform in platforms)
-    criteria = "\n".join(f"- [ ] Criterion {number}: {bulk}" for number in range(12))
+    criteria = "\n".join(f"- [ ] AC-{number} [{', '.join(platforms)}] Criterion {number}: {bulk}" for number in range(1, 13))
     body = f"""## Summary
 Review a document, summarize its key points, and record the review outcome. {bulk}
 
@@ -445,14 +467,19 @@ No related feature is required for this workflow.
 The existing acceptance checks cover the scoped review workflow.
 
 ## Delivery evidence
-| App | Implementation | Tests | Release |
-|---|---|---|---|
+| App | Artifact | Contract | Implementation | Tests | Basis |
+|---|---|---|---|---|---|
 {evidence_rows}
 
-## Reopen history
+## QA verification
+| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |
+|---|---|---|---|---|---|---|---|---|
 
-## Post-ship notes
-The fixture has no post-ship deviations.
+## Release
+| App | Target | Version | Attempt | Outcome | Record | Basis |
+|---|---|---|---|---|---|---|
+
+## Evidence history
 """
     return f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---\n\n{body}"
 
@@ -517,11 +544,11 @@ def build_dev_done_workspace(root: Path, platforms: list[str], bulk: str, large_
     write_status_board(root, "| F-001 | Document review | in-dev | dev | not-needed |\n")
     write_index(root)
     evidence = "\n".join(
-        f"| {platform} | Pull request for {platform} merged as commit abc123. {bulk} | CI run on {platform}: 120 tests passed. {bulk} | release: https://example.test/releases/{platform}-1.4.0 {bulk} |"
+        f"| {platform} | `build:{platform}#1` | none | Pull request for {platform} merged as commit abc123. {bulk} | CI run on {platform}: 120 tests passed. {bulk} | checked |"
         for platform in platforms
     )
     return [
-        {"path": FEATURE_FILE, "content": _dev_feature_page("done", "none", platforms, evidence, bulk)},
+        {"path": FEATURE_FILE, "content": _dev_feature_page("ready-for-qa", "qa", platforms, evidence, bulk)},
         *(
             {"path": f"knowledge/wiki/app-requirements/F-001-{platform}.md", "content": _dev_requirement_page(platform, "done", requirement_bulk(platform))}
             for platform in platforms
@@ -601,11 +628,13 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
             chunked = [entry for page in pages for entry in page["writes"] if "after_chunk" in entry or "before_chunk" in entry]
             self.assertTrue(chunked, "one write is larger than a page and must arrive in chunks")
 
-            receipt = await client.call("apply", {"preview_id": first["preview_id"], "operation_id": "dev-done-every"})
+            # `dev-done` is gated: the agent proposes over MCP and a human who holds `dev` applies it in the board.
+            refused = await client.session.call_tool("apply", {"preview_id": first["preview_id"], "operation_id": "dev-done-agent"})
+            self.assertTrue(refused.is_error)
+            self.assertIn("approval_required", " ".join(block.text for block in refused.content if hasattr(block, "text")))
+            receipt = client.approve(first["preview_id"], "dev-done-every")
             self.assertEqual("applied", receipt["state"])
             self.assertEqual(sorted([*expected, "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"]), sorted(receipt["applied_paths"]))
-            again = await client.call("operation", {"operation_id": "dev-done-every"})
-            self.assertEqual(receipt, again["receipt"])
             feed = await client.call("changes", {})
             self.assertEqual("operation-applied", feed["changes"][-1]["event"]["type"])
         for path, content in expected.items():
@@ -621,7 +650,7 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
         )
         feature_path.write_bytes(asked.encode("utf-8"))
         answered = asked.replace("| dev | open |", f"| dev | resolved: {answer} |").replace(
-            "- **backend**: Store and show the review summary on backend.", f"- **backend**: Store and show the review summary on backend. {answer}", 1
+            "## API surface\nNone", f"## API surface\nThe export limit is part of the interface. {answer}", 1
         )
         changes = [{"path": FEATURE_FILE, "content": answered}]
         for platform in PLATFORMS:
@@ -688,7 +717,7 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_preview_transition_checks_use_workspace_relative_paths(self) -> None:
         root, _changes = self.dev_done("transition", ["backend"], "", None)
-        async with connected(self, root, kind="human", writable=True) as client:
+        async with connected(self, root, kind="human", writable=True, roles="dev") as client:
             preview = await client.call("preview_transition", {"feature_id": "F-001", "action": "dev-start", "inputs": {"semantic_review_acknowledged": True}})
             paths = [check["path"] for check in preview["checks"] if "path" in check]
             self.assertTrue(paths)
@@ -710,9 +739,11 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_an_interrupted_operation_pages_its_remaining_changes_and_recovers_within_budget(self) -> None:
         root, changes = self.dev_done("interrupted", PLATFORMS, BULK, "web")
-        async with connected(self, root, writable=True) as client:
-            revisions = _read_revisions(client.service, client.actor, "dev-done", changes)
-            first = await client.call("preview_skill", {"skill": "dev-done", "changes": changes, "read_revisions": revisions})
+        # The agent proposes through the service; the human whose MCP session pages the operation is the one who approves it.
+        async with connected(self, root, kind="human", writable=True, roles="dev") as client:
+            agent = client.service.authenticate(client.service.create_participant("Proposing agent", "agent", True)["token"])
+            revisions = _read_revisions(client.service, agent, "dev-done", changes)
+            first = client.service.preview_skill(agent, "dev-done", changes, None, revisions)
             truth = client.service.get_preview(client.actor, first["preview_id"])
             original = client.service._apply_write
 
@@ -722,7 +753,7 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
                 return original(write, **kwargs)
 
             with patch.object(client.service, "_apply_write", side_effect=interrupted):
-                receipt = await client.call("apply", {"preview_id": first["preview_id"], "operation_id": "interrupted-every"})
+                receipt = client.approve(first["preview_id"], "interrupted-every")
             self.assertEqual("conflict", receipt["state"])
             pages = await client.paged("operation", {"operation_id": "interrupted-every"})
             self.assertGreater(len(pages), 1)
@@ -733,14 +764,20 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("source_files", json.dumps(page["moves"]))
             joined = self.reassemble(pages, "remaining_changes")
             self.assertEqual([item["path"] for item in truth["writes"]], list(joined))
-            for write in truth["writes"]:
+            # The log entry of a gated operation names the approver and the agent it approves (CONTRACTS 1.3).
+            recorded = BoardService._attribute_writes(truth["writes"], client.approver, first["approval"]["proposer"])
+            for write in recorded:
                 self.assertEqual(write["before"], joined[write["path"]]["before"], write["path"])
                 self.assertEqual(write["after"], joined[write["path"]]["after"], write["path"])
             self.assertEqual({"applied", "pending"}, {record["meta"]["state"] for record in joined.values()})
             invalid = await client.session.call_tool("operation", {"operation_id": "interrupted-every", "cursor": pages[0]["next_cursor"][:-4] + "AAAA"})
             self.assertTrue(invalid.is_error)
             self.assertIn("invalid_cursor", " ".join(block.text for block in invalid.content if hasattr(block, "text")))
-            recovered = await client.call("recover", {"operation_id": "interrupted-every"})
+            # Recovering a gated operation is an approval: MCP never does it, a board session does.
+            refused = await client.session.call_tool("recover", {"operation_id": "interrupted-every"})
+            self.assertTrue(refused.is_error)
+            self.assertIn("approval_requires_board_session", " ".join(block.text for block in refused.content if hasattr(block, "text")))
+            recovered = client.service.recover(client.approver, "interrupted-every")
             self.assertEqual("applied", recovered["state"])
             done = await client.call("operation", {"operation_id": "interrupted-every"})
             self.assertEqual("applied", done["state"])
@@ -830,14 +867,19 @@ class McpPreviewBudgetTests(unittest.IsolatedAsyncioTestCase):
                     skill = skills[name]
                     self.assertTrue(skill["write_supported"])
                     self.assertEqual(["agent", "human"], skill["participant_kinds"])
-                    self.assertEqual({"preview_skill": ["agent"], "preview_transition": ["human"]}, skill["write_tools"])
+                    self.assertEqual({"preview_skill": ["agent"], "preview_transition": ["human"], "apply": ["human"]}, skill["write_tools"])
                     line = next(text for text in skill["limitations"] if text.startswith("Direct human action"))
                     self.assertIn("participant_kind_required", line)
-            for name in ("po-intake", "dev-done", "dev-clarify", "feature-reopen", "ask"):
+            for name in ("po-intake", "dev-clarify", "feature-reopen", "ask"):
                 with self.subTest(skill=name):
                     self.assertEqual(["agent"], skills[name]["participant_kinds"])
                     self.assertEqual({"preview_skill": ["agent"]}, skills[name]["write_tools"])
                     self.assertFalse(any(text.startswith("Direct human action") for text in skills[name]["limitations"]))
+            # `dev-done` is gated: an agent proposes it, a human who holds `dev` applies it, and no human previews it directly.
+            with self.subTest(skill="dev-done"):
+                self.assertEqual(["agent", "human"], skills["dev-done"]["participant_kinds"])
+                self.assertEqual({"preview_skill": ["agent"], "apply": ["human"]}, skills["dev-done"]["write_tools"])
+                self.assertFalse(any(text.startswith("Direct human action") for text in skills["dev-done"]["limitations"]))
             for name, skill in skills.items():
                 if not skill["write_supported"]:
                     self.assertEqual([], skill["participant_kinds"], name)

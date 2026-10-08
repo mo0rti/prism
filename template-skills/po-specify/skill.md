@@ -11,7 +11,7 @@ codex:
 
 # PO specify - structure one raw feature page
 
-<!-- prism:po-specify-contract:v1 -->
+<!-- prism:po-specify-contract:v2 -->
 
 Read one raw feature page, prepare a canonical structured specification draft,
 and, after explicit confirmation, write one feature-only transition:
@@ -50,8 +50,8 @@ prism wiki transition-preflight F-XXX [path] --action po-specify --json
 ```
 
 Accept a preflight only when it reports envelope schema 1, command facts,
-capability version 2 with an action-specific `po-specify` surface, transition
-version 1, the exact source pair, and a consistent current snapshot. A Prism
+capability version 3 with an action-specific `po-specify` surface, transition
+version 2, the exact source pair, and a consistent current snapshot. A Prism
 version alone is insufficient. If the probe is missing, old, unsupported, or fails, state the direct-file
 fallback and follow `LIFECYCLE.md`. The preflight is copy-only and never
 authorizes a write.
@@ -83,21 +83,30 @@ required feature sections, including:
 - `## Related features`
 - `## API surface`
 - `## Board review summary`
-- `## Post-ship notes`
+- `## Delivery evidence`, `## QA verification`, `## Release` and `## Evidence history`: the evidence sections exist as headings and stay empty; the evidence arrives with later work
 
 A raw page written by `po-intake` already carries Summary, User story, Acceptance
-criteria, Open questions, and App scope, and leaves Design, Related features,
-API surface, Board review summary, and Post-ship notes empty. Complete those five with
-one line each: supported content, or an explicit statement that nothing exists yet
-(for example `Not started.`, `None identified.`, `None.` under API surface,
-`Not reviewed yet.`, `Not shipped yet.`). Any API surface text other than `None.`
+criteria, Open questions, and App scope, and leaves the other sections empty. Complete Design,
+Related features, API surface and Board review summary with one line each: supported content, or
+an explicit statement that nothing exists yet (for example `Not started.`, `None identified.`,
+`None.` under API surface, `Not reviewed yet.`). Add the four evidence sections as empty headings.
+
+Give every acceptance criterion an ID and the apps that verify it: `- [ ] **Decided:** AC-1 [app] text`
+for a criterion each listed app verifies in its own QA row, or `AC-2 [integration: app-a, app-b] text`
+for one that two or more apps verify together. Number from 1, name every app of the scope in at least
+one criterion, and set `criteria-high-water` in the front matter to the highest number used. A missing
+ID, an invalid `applies-to`, a duplicate ID, an app named by no criterion or a wrong mark is rejected
+(`criterion_id_required`, `invalid_applies_to`, `duplicate_criterion_id`, `app_without_criteria`,
+`criteria_high_water_invalid`).
+
+Any API surface text other than `None.`
 declares API work and needs an API contract page before `dev-start`, so write `None.`
 unless the intake material or an answered question states an API change. Keep open
-questions in the Open questions table, never in these five sections. The connected
+questions in the Open questions table, never in these sections. The connected
 board rejects an empty required section with `required_section_missing` and names
 the section.
 
-Unknown facts remain explicit owned questions for `po`, `designer`, or `dev`.
+Unknown facts remain explicit owned questions for `po`, `designer`, `tech-lead` or `dev`.
 An open question is valid structured output; `TODO`, `TBD`, copied template
 filler, and empty placeholder requirements are not. Show the complete proposed
 body diff together with the frontmatter, status board, and log metadata before asking
@@ -117,7 +126,7 @@ updates. In both cases, never perform an unverified status-only write.
   complete) supplies every required section with either supported content or an
   explicit owned question.
 - Missing product facts are represented as explicit open questions owned by
-  `po`, `designer`, or `dev`; do not invent requirements or silently delete
+  `po`, `designer`, `tech-lead` or `dev`; do not invent requirements or silently delete
   questions. Tracked questions, including open PO questions, are allowed at
   `specified`.
 - Preserve the existing advisory state. A pending review remains pending and is

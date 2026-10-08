@@ -16,14 +16,15 @@ from unittest.mock import Mock, patch
 
 from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_lint import lint_wiki
-from prism_cli.wiki_transitions import ACTION_SPECS, build_transition_preflight
+from prism_cli.wiki_transitions import ACTION_SPECS, build_board_transition_preflight, build_transition_preflight
 from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
-from tests.wiki_files import write_index, write_status_board
+from tests.wiki_files import evidence_tables, write_index, write_status_board
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CHECK_DATE = date(2026, 9, 8)
+CRITERION = "The summary includes the selected payout period."
 
 
 class LifecycleRegressionTests(unittest.TestCase):
@@ -36,6 +37,10 @@ class LifecycleRegressionTests(unittest.TestCase):
             date_patch = patch(f"prism_cli.{module}.date", self.clock)
             date_patch.start()
             self.addCleanup(date_patch.stop)
+        # The board evaluation also checks the identity of a connected board; these tests read the lifecycle rules only.
+        identity = patch("prism_cli.wiki_transitions._board_workspace_identity_checks", return_value=[])
+        identity.start()
+        self.addCleanup(identity.stop)
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
         self._create_workspace()
@@ -84,7 +89,8 @@ class LifecycleRegressionTests(unittest.TestCase):
         extra_frontmatter: str = "",
         questions: tuple[tuple[str, str, str, str], ...] = (),
         api_section: str = "",
-        delivery_rows: tuple[tuple[str, str, str, str], ...] = (),
+        delivery_rows: tuple[tuple[str, str, str], ...] = (),
+        evidence_stage: str | None = None,
         extra_body: str = "",
     ) -> Path:
         if filename is None:
@@ -103,17 +109,26 @@ class LifecycleRegressionTests(unittest.TestCase):
         api_block = ""
         if api_section:
             api_block = f"\n## API surface\n{api_section.rstrip()}\n"
-        delivery_block = ""
-        if delivery_rows:
-            rows = "\n".join(
-                f"| {platform} | {implementation} | {tests} | {release} |"
-                for platform, implementation, tests, release in delivery_rows
+        if evidence_stage:
+            delivery_block = "\n" + evidence_tables(list(platforms), stage=evidence_stage, feature_id=feature_id, criterion=CRITERION)
+            delivery_block += "\n## Evidence history\n"
+        else:
+            rows = "".join(
+                f"| {platform} | `build:{platform}#1` | none | {implementation} | {tests} | checked |\n"
+                for platform, implementation, tests in delivery_rows
             )
             delivery_block = (
                 "\n## Delivery evidence\n"
-                "| App | Implementation | Tests | Release |\n"
-                "|---|---|---|---|\n"
-                f"{rows}\n"
+                "| App | Artifact | Contract | Implementation | Tests | Basis |\n"
+                "|---|---|---|---|---|---|\n"
+                f"{rows}"
+                "\n## QA verification\n"
+                "| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |\n"
+                "|---|---|---|---|---|---|---|---|---|\n"
+                "\n## Release\n"
+                "| App | Target | Version | Attempt | Outcome | Record | Basis |\n"
+                "|---|---|---|---|---|---|---|\n"
+                "\n## Evidence history\n"
             )
         frontmatter_extra = f"{extra_frontmatter.rstrip()}\n" if extra_frontmatter.strip() else ""
         body = (
@@ -125,6 +140,7 @@ class LifecycleRegressionTests(unittest.TestCase):
             f"apps: [{', '.join(platforms)}]\n"
             "sources: []\n"
             f"advisory-review: {advisory}\n"
+            "criteria-high-water: 1\n"
             f"{frontmatter_extra}"
             "---\n\n"
             "## Summary\n"
@@ -132,8 +148,7 @@ class LifecycleRegressionTests(unittest.TestCase):
             "## User story\n"
             "As a finance operator, I want a payout summary, so that I can review it before handoff.\n\n"
             "## Acceptance criteria\n"
-            "- [ ] The summary includes the selected payout period.\n"
-            "- [ ] The summary can be reviewed before it is handed off.\n\n"
+            f"- [ ] AC-1 [{', '.join(platforms)}] {CRITERION}\n\n"
             "## Open questions\n\n"
             "| # | Question | Owner | Status |\n"
             "|---|----------|-------|--------|\n"
@@ -152,6 +167,7 @@ class LifecycleRegressionTests(unittest.TestCase):
         index_path = self.wiki_root / "status-board.md"
         lines = index_path.read_text(encoding="utf-8").splitlines()
         row = f"| {feature_id} | {title} | {status} | {owner} | {advisory} |"
+        rows = [line for line in lines if line.startswith("| F-") and not line.startswith(f"| {feature_id} |")]
         replaced = False
         updated: list[str] = []
         for line in lines:
@@ -163,6 +179,8 @@ class LifecycleRegressionTests(unittest.TestCase):
         if not replaced:
             updated.append(row)
         index_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+        # The app stages of the row follow the pages on disk.
+        write_status_board(self.root, "".join(line + "\n" for line in updated if line.startswith("| F-")))
 
     def _write_manifest_platforms(self, platforms: tuple[str, ...]) -> None:
         (self.root / "prism.workspace.yml").write_text(manifest_text("Lifecycle regression", platforms, slug="lifecycle-regression"), encoding="utf-8")
@@ -176,7 +194,7 @@ class LifecycleRegressionTests(unittest.TestCase):
             path.mkdir(parents=True, exist_ok=True)
 
     def _write_all_capabilities(self) -> None:
-        for spec in ACTION_SPECS:
+        for spec in (item for item in ACTION_SPECS if item.enabled and item.subject == "feature"):
             for relative in (
                 Path(f".agents/skills/{spec.command}/SKILL.md"),
                 Path(f".claude/commands/{spec.command}.md"),
@@ -277,7 +295,11 @@ class LifecycleRegressionTests(unittest.TestCase):
         )
         return path
 
-    def _transition(self, action: str) -> dict:
+    def _transition(self, action: str, named: tuple[str, ...] = ("backend",)) -> dict:
+        """The preflight of an action; `dev-done` is evaluated the way the board does, for the apps the proposal delivers."""
+
+        if action == "dev-done":
+            return build_board_transition_preflight(self.root, "F-001", action, named_apps=named)
         return build_transition_preflight(self.root, "F-001", action=action)["facts"]["transition"]
 
     @staticmethod
@@ -294,21 +316,12 @@ class LifecycleRegressionTests(unittest.TestCase):
         cases = (
             ("po-specify", "raw", "po"),
             ("po-handoff", "specified", "po"),
-            ("design-start", "ready-for-design", "designer"),
-            ("design-handoff", "in-design", "designer"),
+            ("design-start", "ready-for-design", "tech-lead"),
+            ("design-handoff", "in-design", "tech-lead"),
             ("dev-start", "ready-for-dev", "dev"),
-            ("dev-done", "in-dev", "dev"),
-            ("reopen-spec", "done", "none"),
-            ("reopen-design", "done", "none"),
-            ("reopen-dev", "done", "none"),
         )
         for action, status, owner in cases:
-            self._write_feature(
-                status=status,
-                owner=owner,
-                advisory="done",
-                delivery_rows=(("backend", "backend/src/payouts.py", "tests/payouts passed", "release: https://example.test/releases/2026-09-08"),),
-            )
+            self._write_feature(status=status, owner=owner, advisory="done")
             before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
             for age in (0, 14, 15, 365):
                 with self.subTest(action=action, age_days=age):
@@ -326,6 +339,21 @@ class LifecycleRegressionTests(unittest.TestCase):
                     self.assertEqual("ok", node["health"])
             after = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
             self.assertEqual(before, after)
+
+        # The delivery of an app is judged on the proposal's rows, never on the age of the page.
+        self._write_feature(
+            status="in-dev",
+            owner="dev",
+            advisory="done",
+            delivery_rows=(("backend", "backend/src/payouts.py implemented", "tests/payouts passed"),),
+        )
+        for age in (0, 14, 15, 365):
+            with self.subTest(action="dev-done", age_days=age):
+                self.clock.today.return_value = CHECK_DATE + timedelta(days=age)
+                transition = self._transition("dev-done")
+                self.assertEqual("ready", transition["classification"], transition["checks"])
+                self.assertTrue(transition["supported"])
+                self.assertEqual("ready-for-qa", transition["target_status"])
 
     def test_page_age_does_not_hide_source_integrity_errors(self) -> None:
         self.clock.today.return_value = CHECK_DATE + timedelta(days=365)
@@ -374,10 +402,10 @@ class LifecycleRegressionTests(unittest.TestCase):
         self.assertEqual("pass", self._check(transition, "api-contract")["status"])
         self.assertEqual("ready", transition["classification"])
 
-    def test_shared_api_links_from_feature_or_scoped_requirement_gate_done(self) -> None:
-        """Draft shared APIs block; agreed APIs remain requestable with evidence."""
+    def test_shared_api_links_from_feature_or_scoped_requirement_gate_delivery(self) -> None:
+        """Draft shared APIs block the delivery; agreed APIs remain requestable with evidence."""
 
-        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release: https://example.test/releases/2026-09-08"),)
+        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed"),)
         for source in ("feature", "requirement"):
             with self.subTest(source=source):
                 link = "See [shared contract](../api-contracts/SHARED.md)."
@@ -399,9 +427,9 @@ class LifecycleRegressionTests(unittest.TestCase):
                 self.assertEqual("ready", agreed["classification"])
                 self.assertTrue(agreed["supported"])
 
-    def test_out_of_scope_requirement_api_reference_does_not_block_done(self) -> None:
+    def test_out_of_scope_requirement_api_reference_does_not_block_delivery(self) -> None:
         self._write_manifest_platforms(("backend", "mobile-ios"))
-        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release: https://example.test/releases/2026-09-08"),)
+        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed"),)
         self._write_feature(status="in-dev", owner="dev", delivery_rows=evidence)
         self._write_requirement(platform="backend", status="pending")
         self._write_requirement(
@@ -427,11 +455,8 @@ class LifecycleRegressionTests(unittest.TestCase):
             owner="dev",
             platforms=("mobile-ios",),
             advisory="done",
-            extra_frontmatter=(
-                "design: not-applicable\n"
-                "design-exemption-reason: This service flow has no visual UI."
-            ),
         )
+        self._write_design()
         self._write_requirement(platform="mobile-ios", status="pending")
         self._write_requirement(platform="backend", status="pending", dependencies="F-002")
         self._write_feature(
@@ -475,7 +500,7 @@ class LifecycleRegressionTests(unittest.TestCase):
             )
         )
 
-    def test_declared_requirement_dependency_still_blocks_selected_action(self) -> None:
+    def test_declared_requirement_dependency_warns_on_the_selected_action(self) -> None:
         self._write_manifest_platforms(("backend", "mobile-ios"))
         self._write_review(required_action=False, deferred_action=False)
         self._write_feature(
@@ -483,11 +508,8 @@ class LifecycleRegressionTests(unittest.TestCase):
             owner="dev",
             platforms=("mobile-ios",),
             advisory="done",
-            extra_frontmatter=(
-                "design: not-applicable\n"
-                "design-exemption-reason: This service flow has no visual UI."
-            ),
         )
+        self._write_design()
         self._write_requirement(platform="mobile-ios", status="pending", dependencies="F-002")
         self._write_feature(
             feature_id="F-002",
@@ -500,12 +522,13 @@ class LifecycleRegressionTests(unittest.TestCase):
 
         transition = self._transition("dev-start")
 
-        self.assertEqual("blocked", transition["classification"])
+        # An unreleased dependency warns and never blocks the start (CONTRACTS 8.1).
+        self.assertEqual("ready", transition["classification"], transition["checks"])
         dependency_check = self._check(transition, "workflow:cross-app-dependency")
-        self.assertEqual("blocked", dependency_check["status"])
+        self.assertEqual("warning", dependency_check["status"])
         self.assertIn("F-002", dependency_check["message"])
 
-    def test_unknown_requirement_scope_keeps_dependency_gate_fail_closed(self) -> None:
+    def test_unknown_requirement_scope_keeps_the_dependency_warning(self) -> None:
         self._write_manifest_platforms(("backend", "mobile-ios"))
         self._write_review(required_action=False, deferred_action=False)
         self._write_feature(
@@ -513,11 +536,8 @@ class LifecycleRegressionTests(unittest.TestCase):
             owner="dev",
             platforms=("mobile-ios",),
             advisory="done",
-            extra_frontmatter=(
-                "design: not-applicable\n"
-                "design-exemption-reason: This service flow has no visual UI."
-            ),
         )
+        self._write_design()
         self._write_requirement(platform="mobile-ios", status="pending")
         requirement = self._write_requirement(platform="backend", status="pending", dependencies="F-002")
         valid_requirement = requirement.read_text(encoding="utf-8")
@@ -541,99 +561,73 @@ class LifecycleRegressionTests(unittest.TestCase):
 
                 self.assertNotEqual("ready", transition["classification"])
                 dependency_check = self._check(transition, "workflow:cross-app-dependency")
-                self.assertEqual("blocked", dependency_check["status"])
+                self.assertEqual("warning", dependency_check["status"])
 
-    def test_malformed_revalidation_is_visible_but_reopen_routes_remain_requestable(self) -> None:
+    def test_a_malformed_revalidation_value_is_a_lint_error_and_blocks_the_gate(self) -> None:
         self._write_review(required_action=False, deferred_action=False)
+        self._write_requirement(status="pending")
         self._write_feature(
-            status="done",
-            owner="none",
+            status="ready-for-dev",
+            owner="dev",
             advisory="done",
             extra_frontmatter="revalidation: [unrecognized-domain]",
         )
+        codes = {item.code for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.feature_id == "F-001"}
+        self.assertIn("invalid-revalidation", codes)
+        transition = self._transition("dev-start")
+        self.assertNotEqual("ready", transition["classification"])
+        self.assertIn("unrecognized-domain", self._check(transition, "revalidation")["message"])
 
-        for action in ("reopen-spec", "reopen-design", "reopen-dev"):
-            with self.subTest(action=action):
-                transition = self._transition(action)
-                self.assertEqual("ready", transition["classification"])
-                impact_review = self._check(transition, "reopen-impact-review")
-                self.assertEqual("pass", impact_review["status"])
-                self.assertIn("malformed", impact_review["message"].lower())
-                self.assertIn("unrecognized-domain", impact_review["message"])
-
-    def test_ui_design_exemption_requires_recorded_reason_and_unblocks_ready_state(self) -> None:
-        """A recorded exemption covers every downstream lifecycle stage."""
+    def test_a_scope_without_a_ui_app_needs_no_design_page_and_a_ui_app_needs_one(self) -> None:
+        """The design owner follows the scope: only an app with a UI (or an unknown one) needs a design page."""
 
         self._write_manifest_platforms(("backend", "mobile-ios"))
         self._write_review(required_action=False, deferred_action=False)
+        self._write_requirement(platform="backend", status="done")
         self._write_requirement(platform="mobile-ios", status="done")
-        evidence = (
-            (
-                "mobile-ios",
-                "mobile-ios/Summary.swift implemented",
-                "tests/SummaryTests passed",
-                "release: https://example.test/releases/ios-2026-09-08",
-            ),
-        )
-        exemption = (
-            "design: not-applicable\n"
-            "design-exemption-reason: This backend-facing flow has no visual UI."
-        )
-        self.assertFalse((self.wiki_root / "design").exists(), "the exemption scenario must not have a design page")
+        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed"),)
+        self.assertFalse((self.wiki_root / "design").exists())
 
-        for status, owner, action in (
-            ("ready-for-dev", "dev", "dev-start"),
-            ("in-dev", "dev", "dev-done"),
-            ("done", "none", "reopen-dev"),
-        ):
-            with self.subTest(status=status, action=action):
+        for status, owner, action in (("ready-for-dev", "dev", "dev-start"), ("in-dev", "dev", "dev-done")):
+            with self.subTest(scope="backend", action=action):
+                self._write_feature(status=status, owner=owner, platforms=("backend",), advisory="done", delivery_rows=evidence if action == "dev-done" else ())
+                lint_result = lint_wiki(self.root, today=CHECK_DATE)
+                self.assertFalse(any(item.code == "missing-design" and item.feature_id == "F-001" for item in lint_result.diagnostics), lint_result.diagnostics)
+                transition = self._transition(action)
+                self.assertEqual("ready", transition["classification"], transition["checks"])
+
+        for status, owner, action in (("ready-for-dev", "dev", "dev-start"), ("in-dev", "dev", "dev-done")):
+            with self.subTest(scope="mobile-ios", action=action):
                 self._write_feature(
                     status=status,
                     owner=owner,
                     platforms=("mobile-ios",),
                     advisory="done",
-                    extra_frontmatter=exemption,
-                    delivery_rows=evidence,
+                    delivery_rows=(("mobile-ios", "mobile-ios/Summary.swift implemented", "tests/SummaryTests passed"),) if action == "dev-done" else (),
                 )
                 lint_result = lint_wiki(self.root, today=CHECK_DATE)
-                self.assertFalse(
-                    any(
-                        diagnostic.code == "missing-design" and diagnostic.feature_id == "F-001"
-                        for diagnostic in lint_result.diagnostics
-                    ),
-                    lint_result.diagnostics,
-                )
-                transition = self._transition(action)
-                self.assertEqual("ready", transition["classification"])
+                self.assertTrue(any(item.code == "missing-design" and item.feature_id == "F-001" for item in lint_result.diagnostics), lint_result.diagnostics)
                 if action == "dev-done":
-                    self.assertEqual("pass", self._check(transition, "design")["status"])
-                    self.assertEqual("pass", self._check(transition, "app-requirements")["status"])
-                    self.assertEqual("pass", self._check(transition, "delivery-evidence")["status"])
+                    transition = self._transition(action, ("mobile-ios",))
+                    self.assertEqual("blocked", transition["classification"])
+                    self.assertEqual("blocked", self._check(transition, "workflow:missing-design")["status"])
+        # A recorded design page clears it.
+        self._write_design()
+        self._write_feature(status="in-dev", owner="dev", platforms=("mobile-ios",), advisory="done", delivery_rows=(("mobile-ios", "mobile-ios/Summary.swift implemented", "tests/SummaryTests passed"),))
+        self.assertFalse(any(item.code == "missing-design" for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics))
+        recorded = self._transition("dev-done", ("mobile-ios",))
+        self.assertEqual("ready", recorded["classification"], recorded["checks"])
+        self.assertNotIn("workflow:missing-design", {check["code"] for check in recorded["checks"]})
 
-        for missing_reason in (True, False):
-            with self.subTest(missing_reason=missing_reason):
-                invalid_exemption = "design: not-applicable\n"
-                if not missing_reason:
-                    invalid_exemption += "design-exemption-reason: "
-                self._write_feature(
-                    status="in-dev",
-                    owner="dev",
-                    platforms=("mobile-ios",),
-                    advisory="done",
-                    extra_frontmatter=invalid_exemption,
-                    delivery_rows=evidence,
-                )
-                lint_result = lint_wiki(self.root, today=CHECK_DATE)
-                self.assertTrue(
-                    any(
-                        diagnostic.code == "missing-design" and diagnostic.feature_id == "F-001"
-                        for diagnostic in lint_result.diagnostics
-                    ),
-                    lint_result.diagnostics,
-                )
-                transition = self._transition("dev-done")
-                self.assertEqual("blocked", transition["classification"])
-                self.assertEqual("blocked", self._check(transition, "design")["status"])
+    def test_the_design_exemption_fields_are_no_longer_feature_fields(self) -> None:
+        self._write_feature(
+            status="ready-for-dev",
+            owner="dev",
+            advisory="done",
+            extra_frontmatter="design: not-applicable\ndesign-exemption-reason: This service flow has no visual UI.",
+        )
+        codes = [item.code for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.feature_id == "F-001" or item.feature_id is None]
+        self.assertIn("unsupported-feature-field", codes)
 
     def test_open_question_checks_name_question_numbers_and_count_them_separately(self) -> None:
         cases = (
@@ -686,7 +680,7 @@ class LifecycleRegressionTests(unittest.TestCase):
     def test_design_start_allows_designer_owned_questions(self) -> None:
         self._write_feature(
             status="ready-for-design",
-            owner="designer",
+            owner="tech-lead",
             advisory="done",
             questions=(("1", "Which interaction needs review?", "designer", "open"),),
         )
@@ -696,31 +690,28 @@ class LifecycleRegressionTests(unittest.TestCase):
         self.assertEqual("pass", self._check(transition, "open-questions")["status"])
         self.assertEqual("ready", transition["classification"])
 
-    def test_done_feature_without_old_evidence_still_exposes_all_reopen_routes(self) -> None:
+    def test_the_reopen_routes_of_a_released_feature_are_registered_and_unavailable(self) -> None:
         self._write_review(required_action=False, deferred_action=False)
-        self._write_feature(status="done", owner="none", advisory="done")
-        expected = {
-            "reopen-spec": "specified",
-            "reopen-design": "in-design",
-            "reopen-dev": "in-dev",
-        }
-
-        for action, target_status in expected.items():
+        self._write_requirement(status="done")
+        self._write_feature(status="released", owner="none", advisory="done", evidence_stage="released")
+        self.assertEqual([], [item.code for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.severity == "error" and item.feature_id == "F-001"])
+        for action in ("reopen-spec", "reopen-design", "reopen-dev"):
             with self.subTest(action=action):
-                transition = self._transition(action)
-                self.assertEqual("ready", transition["classification"])
-                self.assertTrue(transition["supported"])
-                self.assertEqual(target_status, transition["target_status"])
-                self.assertEqual("pass", self._check(transition, "reopen-impact-review")["status"])
-                self.assertNotIn("done-delivery-evidence", {check["code"] for check in transition["checks"]})
+                transition = build_board_transition_preflight(self.root, "F-001", action)
+                self.assertEqual("unknown", transition["classification"])
+                self.assertFalse(transition["supported"])
+                self.assertEqual("unknown", self._check(transition, "action-unavailable")["status"])
+                copy_only = self._transition(action)
+                self.assertEqual("unknown", copy_only["classification"])
+                self.assertFalse(copy_only["supported"])
 
-    def test_done_requires_fresh_evidence_for_every_platform_and_earlier_revalidation_blocks(self) -> None:
+    def test_delivery_needs_evidence_for_every_named_app_and_earlier_revalidation_blocks(self) -> None:
         self._write_manifest_platforms(("backend", "mobile-ios"))
         self._write_requirement(platform="backend", status="pending")
         self._write_requirement(platform="mobile-ios", status="in-progress")
         self._write_design()
         self._write_review(required_action=False, deferred_action=False)
-        backend_evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release: https://example.test/releases/backend-2026-09-08"),)
+        backend_evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed"),)
         self._write_feature(
             status="in-dev",
             owner="dev",
@@ -729,23 +720,23 @@ class LifecycleRegressionTests(unittest.TestCase):
             delivery_rows=backend_evidence,
         )
 
-        missing_platform = self._transition("dev-done")
+        missing_platform = self._transition("dev-done", ("backend", "mobile-ios"))
         self.assertEqual("blocked", self._check(missing_platform, "delivery-evidence")["status"])
 
         complete_evidence = backend_evidence + (
-            ("mobile-ios", "mobile-ios/Summary.swift implemented", "tests/SummaryTests passed", "release: https://example.test/releases/ios-2026-09-08"),
+            ("mobile-ios", "mobile-ios/Summary.swift implemented", "tests/SummaryTests passed"),
         )
         self._write_feature(
             status="in-dev",
             owner="dev",
             platforms=("backend", "mobile-ios"),
             advisory="done",
-            extra_frontmatter="revalidation: [implementation, tests, release]",
+            extra_frontmatter="app-revalidation:\n  backend: [implementation, tests]\n  mobile-ios: [implementation, tests]",
             delivery_rows=complete_evidence,
         )
-        owned_revalidation = self._transition("dev-done")
+        owned_revalidation = self._transition("dev-done", ("backend", "mobile-ios"))
         self.assertEqual("pass", self._check(owned_revalidation, "delivery-evidence")["status"])
-        self.assertEqual("pass", self._check(owned_revalidation, "revalidation")["status"])
+        self.assertEqual("pass", self._check(owned_revalidation, "app-revalidation")["status"])
         self.assertEqual("ready", owned_revalidation["classification"])
 
         self._write_feature(
@@ -756,12 +747,12 @@ class LifecycleRegressionTests(unittest.TestCase):
             extra_frontmatter="revalidation: [specification, design]",
             delivery_rows=complete_evidence,
         )
-        earlier_revalidation = self._transition("dev-done")
+        earlier_revalidation = self._transition("dev-done", ("backend", "mobile-ios"))
         self.assertEqual("blocked", self._check(earlier_revalidation, "revalidation")["status"])
         self.assertEqual("blocked", earlier_revalidation["classification"])
 
-    def test_pending_requirement_and_agreed_api_can_be_proposed_done_but_lint_requires_completion(self) -> None:
-        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release: https://example.test/releases/2026-09-08"),)
+    def test_pending_requirement_and_agreed_api_can_be_proposed_for_delivery_but_lint_requires_completion(self) -> None:
+        evidence = (("backend", "backend/src/payouts.py implemented", "tests/payouts passed"),)
         self._write_feature(
             status="in-dev",
             owner="dev",
@@ -779,8 +770,8 @@ class LifecycleRegressionTests(unittest.TestCase):
         self.assertEqual("ready", request["classification"])
 
         self._write_feature(
-            status="done",
-            owner="none",
+            status="ready-for-qa",
+            owner="qa",
             advisory="done",
             api_section="See [shared contract](../api-contracts/SHARED.md).",
             delivery_rows=evidence,
@@ -788,16 +779,16 @@ class LifecycleRegressionTests(unittest.TestCase):
         lint_before_completion = lint_wiki(self.root, today=CHECK_DATE)
         before_codes = {diagnostic.code for diagnostic in lint_before_completion.diagnostics}
         self.assertIn("done-app-requirement", before_codes)
-        self.assertIn("done-api-contract", before_codes)
+        self.assertIn("delivered-api-contract", before_codes)
 
         requirement.write_text(requirement.read_text(encoding="utf-8").replace("status: in-progress", "status: done"), encoding="utf-8")
         api.write_text(api.read_text(encoding="utf-8").replace("status: agreed", "status: implemented"), encoding="utf-8")
         lint_after_completion = lint_wiki(self.root, today=CHECK_DATE)
         after_codes = {diagnostic.code for diagnostic in lint_after_completion.diagnostics}
         self.assertNotIn("done-app-requirement", after_codes)
-        self.assertNotIn("done-api-contract", after_codes)
+        self.assertNotIn("delivered-api-contract", after_codes)
 
-    def test_reopened_parent_invalidates_downstream_done_requirement_even_when_status_is_done(self) -> None:
+    def test_a_dependency_is_satisfied_only_by_a_released_parent_without_a_revalidation_domain(self) -> None:
         self._write_feature(
             status="in-dev",
             owner="dev",
@@ -826,7 +817,13 @@ class LifecycleRegressionTests(unittest.TestCase):
         self.assertTrue(dependency_diagnostics)
         self.assertTrue(any("F-001-backend" in diagnostic.message for diagnostic in dependency_diagnostics))
 
+        # A dependency is satisfied only when the app of the parent is released.
         self._write_feature(status="in-dev", owner="dev", extra_frontmatter="revalidation: []")
+        still_unreleased = lint_wiki(self.root, today=CHECK_DATE)
+        self.assertTrue(
+            any(diagnostic.code == "cross-app-dependency" and diagnostic.feature_id == "F-002" for diagnostic in still_unreleased.diagnostics)
+        )
+        self._write_feature(status="released", owner="none", evidence_stage="released")
         restored = lint_wiki(self.root, today=CHECK_DATE)
         self.assertFalse(
             any(
@@ -838,7 +835,7 @@ class LifecycleRegressionTests(unittest.TestCase):
     def test_required_advisory_actions_block_active_handoffs_but_deferred_actions_do_not(self) -> None:
         self._write_review(required_action=True)
         for action, status, owner in (
-            ("design-handoff", "in-design", "designer"),
+            ("design-handoff", "in-design", "tech-lead"),
             ("dev-start", "ready-for-dev", "dev"),
             ("dev-done", "in-dev", "dev"),
         ):
@@ -851,7 +848,7 @@ class LifecycleRegressionTests(unittest.TestCase):
                         status=status,
                         owner=owner,
                         advisory="done",
-                        delivery_rows=(("backend", "backend/src/payouts.py implemented", "tests/payouts passed", "release: https://example.test/releases/2026-09-08"),),
+                        delivery_rows=(("backend", "backend/src/payouts.py implemented", "tests/payouts passed"),),
                     )
                 transition = self._transition(action)
                 advisory_action_checks = [check for check in transition["checks"] if check.get("code") == "advisory-actions"]

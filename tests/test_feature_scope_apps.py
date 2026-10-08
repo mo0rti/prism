@@ -21,7 +21,8 @@ from prism_cli.workflow_assets import list_skills
 from prism_cli.workflow_assets import _load as load_workflow_asset
 from tests import app_model_baseline
 from tests import real_temp  # noqa: F401
-from tests.wiki_files import write_index, write_status_board
+from prism_cli.wiki_model import app_stages_text
+from tests.wiki_files import evidence_tables, write_index, write_status_board
 from tests.test_app_model_workspace import declare_two_apps, install_workflow
 
 
@@ -60,7 +61,7 @@ Prepare a payout summary.
 As an operator, I want a payout summary, so that I can review it.
 
 ## Acceptance criteria
-- [ ] The summary includes the payout period.
+- [ ] AC-1 [{criterion_apps}] The summary includes the payout period.
 
 ## Open questions
 
@@ -107,8 +108,8 @@ class WikiWorkspaceCase(unittest.TestCase):
         scope = "\n".join(f"- **{app}**: Deliver the summary in {app}." for app in apps)
         text = (
             f"---\nid: F-001\ntitle: Payout summary\nstatus: {status}\nowner: {owner}\n"
-            f"apps: [{', '.join(apps)}]\nsources: []\nadvisory-review: not-needed\n{extra}---\n\n"
-            + FEATURE_BODY.format(scope=scope, api=api)
+            f"apps: [{', '.join(apps)}]\nsources: []\nadvisory-review: not-needed\ncriteria-high-water: 1\n{extra}---\n\n"
+            + FEATURE_BODY.format(scope=scope, api=api, criterion_apps=", ".join(apps))
         )
         path = self.wiki / "features" / "F-001-payout-summary.md"
         path.write_text(text, encoding="utf-8")
@@ -237,7 +238,7 @@ class CapabilityGateTests(WikiWorkspaceCase):
         result = self.lint()
 
         self.assertEqual([], self.with_code(result, "missing-design"))
-        self.write_feature(["batch"], status="in-design", owner="designer")
+        self.write_feature(["batch"], status="in-design", owner="tech-lead")
         self.assertEqual("pass", self.check("design-handoff", "design")["status"])
         self.assertEqual([], self.with_code(result, "app-capability-unknown"))
 
@@ -267,11 +268,17 @@ class CapabilityGateTests(WikiWorkspaceCase):
         self.assertEqual({"info"}, {item.severity for item in findings})
         self.assertTrue(self.lint().is_clean, "information findings do not make the wiki unclean")
 
-    def test_a_ui_exemption_covers_an_app_with_an_unknown_ui(self) -> None:
+    def test_an_app_with_an_unknown_ui_needs_a_design_page_and_no_exemption_exists(self) -> None:
         self.declare([other_app("batch", **{"has-ui": "unknown", "serves-api": False})])
         self.write_feature(["batch"], extra="design: not-applicable\ndesign-exemption-reason: The tool has no screens.\n")
         self.write_requirement("batch")
 
+        result = self.lint()
+
+        self.assertEqual(1, len(self.with_code(result, "missing-design")))
+        self.assertEqual(2, len(self.with_code(result, "unsupported-feature-field")))
+        self.write_feature(["batch"])
+        self.write_design()
         self.assertEqual([], self.with_code(self.lint(), "missing-design"))
 
     def test_the_api_contract_check_follows_the_api_surface_for_every_app(self) -> None:
@@ -345,7 +352,7 @@ class RenamedFieldTests(WikiWorkspaceCase):
 
         result = self.lint()
 
-        unknown = self.with_code(result, "unknown-feature-field")
+        unknown = self.with_code(result, "unsupported-feature-field")
         self.assertEqual(1, len(unknown))
         self.assertIn("`apps:`", unknown[0].message)
         self.assertEqual("error", unknown[0].severity)
@@ -371,24 +378,26 @@ class RenamedFieldTests(WikiWorkspaceCase):
         self.assertEqual(1, len(self.with_code(self.lint(), "missing-app-requirements")))
 
     def test_the_delivery_evidence_table_is_keyed_by_app(self) -> None:
-        rows = (
-            "| {key} | Pull request 42 merged | CI run 1187 passed | release: https://example.test/releases/1.4.0 |\n"
-        )
-        done = self.write_feature(["customer-android", "partner-android"], status="done", owner="none")
+        released = self.write_feature(["customer-android", "partner-android"], status="released", owner="none")
         self.write_requirement("customer-android", "done")
         self.write_requirement("partner-android", "done")
-        text = done.read_text(encoding="utf-8")
+        text = released.read_text(encoding="utf-8")
+        both = ["customer-android", "partner-android"]
+        self.assertEqual("customer-android: released; partner-android: released", app_stages_text("released", both, text + "\n" + evidence_tables(both), None))
 
-        done.write_text(text + "\n## Delivery evidence\n| App | Implementation | Tests | Release |\n|---|---|---|---|\n" + rows.format(key="customer-android") + rows.format(key="partner-android"), encoding="utf-8")
-        self.assertEqual([], self.with_code(self.lint(), "done-delivery-evidence"))
+        released.write_text(text + "\n" + evidence_tables(both), encoding="utf-8")
+        write_status_board(self.root, "| F-001 | Payout summary | released | none | not-needed |\n")
+        self.assertEqual([], self.with_code(self.lint(), "app-row-missing"))
 
-        done.write_text(text + "\n## Delivery evidence\n| App | Implementation | Tests | Release |\n|---|---|---|---|\n" + rows.format(key="customer-android"), encoding="utf-8")
-        missing = self.with_code(self.lint(), "done-delivery-evidence")
+        released.write_text(text + "\n" + evidence_tables(both, skip=("partner-android",)), encoding="utf-8")
+        missing = self.with_code(self.lint(), "app-row-missing")
         self.assertEqual(1, len(missing))
-        self.assertIn("missing declared app(s): partner-android", missing[0].message)
+        self.assertIn("`partner-android`", missing[0].message)
+        self.assertEqual(1, len(self.with_code(self.lint(), "feature-status-not-minimum")))
 
-        done.write_text(text + "\n## Delivery evidence\n| Platform | Implementation | Tests | Release |\n|---|---|---|---|\n" + rows.format(key="customer-android") + rows.format(key="partner-android"), encoding="utf-8")
-        self.assertTrue(any("App/Implementation/Tests/Release header" in item.message for item in self.with_code(self.lint(), "done-delivery-evidence")))
+        wrong_header = evidence_tables(both).replace("| App | Artifact |", "| Platform | Artifact |", 1)
+        released.write_text(text + "\n" + wrong_header, encoding="utf-8")
+        self.assertTrue(any("must start with the header" in item.message for item in self.with_code(self.lint(), "invalid-evidence-row")))
 
 
 class QuerySurfaceTests(unittest.TestCase):

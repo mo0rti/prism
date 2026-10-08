@@ -1,6 +1,6 @@
 # Feature reopen - reopen one shipped feature through an impact-reviewed route
 
-<!-- prism:feature-reopen-contract:v1 -->
+<!-- prism:feature-reopen-contract:v2 -->
 
 ## Usage
 

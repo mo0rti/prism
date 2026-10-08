@@ -19,6 +19,7 @@ from prism_cli.board_service import BoardError, BoardService
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.workflow_install import apply_install, plan_install
 from tests import real_temp  # noqa: F401
+from tests.board_approval import apply_preview, human_with_roles
 from tests.wiki_files import write_index
 from tests.core_workflow_fixture import INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_board_service import (
@@ -45,8 +46,8 @@ SUMMARY = (
     "- **Assumed:** A review covers exactly one document.\n"
 )
 CRITERIA = (
-    f"- [ ] **Decided:** A reviewer can record the outcome and the requested follow-up ([review brief](../../intake/processed/{ITEM}/brief.md)).\n"
-    "- [ ] **Proposed:** The summary lists the key points.\n"
+    f"- [ ] **Decided:** AC-1 [backend] A reviewer can record the outcome and the requested follow-up ([review brief](../../intake/processed/{ITEM}/brief.md)).\n"
+    "- [ ] **Proposed:** AC-2 [backend] The summary lists the key points.\n"
 )
 
 CONFLICT = """---
@@ -93,6 +94,8 @@ class BoardWorkspaceCase(unittest.TestCase):
         self.service = BoardService(self.root).start()
         self.addCleanup(self.service.close)
         self.agent = self.service.authenticate(self.service.create_participant("Workflow agent", "agent", True)["token"])
+        # A gated lifecycle step an agent proposes is approved by this human, who holds every role and signs in to the board.
+        self.human = human_with_roles(self.service, "Workflow owner")
 
     # -- helpers -------------------------------------------------------------------------------------
 
@@ -109,7 +112,7 @@ class BoardWorkspaceCase(unittest.TestCase):
         )
         self.assertEqual("ready", preview["classification"], f"{skill}: {preview['checks']}")
         self.assertTrue(preview["applicable"], f"{skill}: {preview['blockers']}")
-        receipt = self.service.apply(self.agent, preview["preview_id"], str(uuid4()))
+        receipt = apply_preview(self.service, self.agent, preview, str(uuid4()), approver=self.human)
         self.assertEqual("applied", receipt["state"], f"{skill}: {receipt}")
         return receipt
 

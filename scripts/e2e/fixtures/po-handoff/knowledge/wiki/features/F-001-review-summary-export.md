@@ -2,12 +2,13 @@
 id: F-001
 title: Review summary export
 status: ready-for-design
-owner: designer
+owner: tech-lead
 apps:
 - backend
 sources:
 - knowledge/intake/processed/2026-09-30-review-summary
 advisory-review: not-needed
+criteria-high-water: 9
 ---
 
 ## Summary
@@ -17,16 +18,16 @@ A reviewer who has finished reviewing a document can export a one-page summary o
 As a [Legal operations document reviewer](../personas/legal-operations-reviewer.md), I want to export a summary of my finished review, so that I can send it on without editing and without copying my comments by hand.
 
 ## Acceptance criteria
-- [ ] A reviewer who has finished a review can choose export on that review and receive a summary.
-- [ ] The summary contains the document title, the reviewer, the decision (approved, changes requested or rejected) and the comments the reviewer left, subject to the one-page limit below.
-- [ ] The summary is one page.
-- [ ] The summary can be sent on without editing.
-- [ ] The summary never includes comments from other reviewers.
-- [ ] Export is not available while the review is still in progress.
+- [ ] AC-1 [backend] A reviewer who has finished a review can choose export on that review and receive a summary.
+- [ ] AC-2 [backend] The summary contains the document title, the reviewer, the decision (approved, changes requested or rejected) and the comments the reviewer left, subject to the one-page limit below.
+- [ ] AC-3 [backend] The summary is one page.
+- [ ] AC-4 [backend] The summary can be sent on without editing.
+- [ ] AC-5 [backend] The summary never includes comments from other reviewers.
+- [ ] AC-6 [backend] Export is not available while the review is still in progress.
 
-- [ ] A downloaded PDF file. The system only produces it; the reviewer sends it on themselves.
-- [ ] One page stays the limit. Show as many whole comments as fit and end with a line saying how many more comments are not shown.
-- [ ] The header shows the date the review was finished. It does not show a document version.
+- [ ] AC-7 [backend] A downloaded PDF file. The system only produces it; the reviewer sends it on themselves.
+- [ ] AC-8 [backend] One page stays the limit. Show as many whole comments as fit and end with a line saying how many more comments are not shown.
+- [ ] AC-9 [backend] The header shows the date the review was finished. It does not show a document version.
 
 ## Open questions
 | # | Question | Owner | Status |
@@ -53,5 +54,16 @@ None.
 ## Board review summary
 Not needed.
 
-## Post-ship notes
-Not shipped yet.
+## Delivery evidence
+| App | Artifact | Contract | Implementation | Tests | Basis |
+|---|---|---|---|---|---|
+
+## QA verification
+| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |
+|---|---|---|---|---|---|---|---|---|
+
+## Release
+| App | Target | Version | Attempt | Outcome | Record | Basis |
+|---|---|---|---|---|---|---|
+
+## Evidence history
