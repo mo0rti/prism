@@ -95,7 +95,8 @@ Invoke a workflow operation by name:
 - **Codex:** `$operation`, for example `$po-intake [folder]`
 - **Cursor:** ask the agent to "run operation", for example "run po-intake on the folder
   2026-04-07-client-call". The agent follows `.claude/commands/[command].md` and
-  `knowledge/wiki/SCHEMA.md`, plus `knowledge/wiki/LIFECYCLE.md` for lifecycle operations.
+  `knowledge/wiki/SCHEMA.md`, plus `knowledge/wiki/LIFECYCLE.md` for lifecycle operations and
+  `knowledge/wiki/ACTIONS.md` for lifecycle actions.
 
 | Category | Operations |
 |----------|------------|
@@ -149,6 +150,7 @@ task generate-clients
 - [Agent Instructions](AGENTS.md) for the single source of rules that every AI agent follows
 - [Product Wiki Schema](knowledge/wiki/SCHEMA.md) for the structure and rules of the living product wiki
 - [Product Wiki Lifecycle](knowledge/wiki/LIFECYCLE.md) for the feature, board and advisory protocol
+- [Product Wiki Actions](knowledge/wiki/ACTIONS.md) for the lifecycle action registry, approver roles and write scopes
 - [AI Agents](docs/ai-agents.md) for the command layer, skill map, and platform guidance structure
 - [Architecture Overview](docs/architecture.md) for system boundaries, platform map, and auth flow
 - [API Conventions](docs/api/conventions.md) for URL structure, versioning, auth headers, and error responses

@@ -105,6 +105,7 @@ knowledge/
     log.md          # append-only log, the only home for history
     SCHEMA.md       # core wiki conventions, read before every wiki operation
     LIFECYCLE.md    # feature, board and advisory protocol, read for lifecycle operations
+    ACTIONS.md      # lifecycle action registry and write scopes, read for lifecycle actions
     SETTINGS.md
     WIKI_REPORT.md    # generated on demand by feature-status; gitignored
 ```
@@ -117,7 +118,7 @@ Important meanings:
 - pages state the current state and carry no date about themselves; superseded content is replaced in place and rationale is a current fact; when something was written, decided, verified or amended is a `log.md` entry (`## YYYY-MM-DD <operation> | <subject>` with `paths`, `evidence` and `by` lines), while an ADR, an advisory review, each reopen-history entry and a processed intake item keep their own date as dated records, which are never rewritten
 - claims on current-state pages carry one of five evidence labels (`**Decided:**`, `**Observed:**`, `**Proposed:**`, `**Assumed:**`, `**Unknown:**`), and a Decided or Observed claim links its evidence
 - a decision is replaced by a new ADR with `supersedes: ADR-NNN`; the old ADR gets `status: superseded` and `superseded-by: ADR-MMM`
-- `SCHEMA.md` and `LIFECYCLE.md` start with front matter `schema-version: 1`
+- `SCHEMA.md`, `LIFECYCLE.md` and `ACTIONS.md` start with front matter `schema-version: 1`
 - `WIKI_REPORT.md` is a generated orientation artifact, not a source-of-truth document
 
 ## Source Of Truth
@@ -206,7 +207,8 @@ shared API contracts.
 Every write-capable lifecycle action is confirmation-gated and source-backed.
 `po-specify` authors the required structured body from raw facts; `dev-done`
 requires verifiable implementation and test references and release evidence or a
-delivery attestation for every app in the feature's scope. The canonical action table, UI design exemption, active
+delivery attestation for every app in the feature's scope. The canonical action table lives in
+`template/knowledge/wiki/ACTIONS.md`; the UI design exemption, active
 revalidation, delivery evidence, and reopen history formats live in
 `template/knowledge/wiki/LIFECYCLE.md`.
 

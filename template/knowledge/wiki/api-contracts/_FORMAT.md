@@ -26,7 +26,7 @@ Design decisions, backwards-compatibility concerns.
 `tech-design-done` creates this page at `status: agreed`, `version: 1` when the feature's API surface
 declares API work (`design-handoff` does too when it settles the technical track with the `tech-lead` role);
 no other action writes a contract body, and the human confirming the preview is the agreement. List each
-endpoint as `METHOD /path` and define only data models that the API surface or an endpoint names.
+endpoint as `METHOD /path` and define only data models that the API surface or an endpoint names. See `LIFECYCLE.md` (API contract).
 
 ## Revisions and the digest
 

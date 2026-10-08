@@ -243,10 +243,11 @@ class TransitionTemplateContractTests(unittest.TestCase):
                     "Archived evidence",
                 ):
                     self.assertIn(fragment, text)
-        self.assertIn("After confirmation, reread", schema)
-        self.assertIn("`version: 3`", schema)
-        self.assertIn("`version: 2`", schema)
-        self.assertIn("target_owner", schema)
+        actions = (REPO_ROOT / "template" / "knowledge" / "wiki" / "ACTIONS.md").read_text(encoding="utf-8")
+        self.assertIn("After confirmation, reread", actions)
+        self.assertIn("`version: 3`", actions)
+        self.assertIn("`version: 2`", actions)
+        self.assertIn("target_owner", actions)
 
     def test_context_surfaces_list_new_actions_without_cross_surface_requirement(self) -> None:
         for path in CONTEXT_PATHS:
@@ -317,6 +318,7 @@ class TransitionTemplateContractTests(unittest.TestCase):
                         self.assertIn("confirmation", rendered)
             for path in (
                 destination / "knowledge" / "wiki" / "LIFECYCLE.md",
+                destination / "knowledge" / "wiki" / "ACTIONS.md",
                 destination / "knowledge" / "wiki" / "features" / "_FORMAT.md",
                 destination / "AGENTS.md",
             ):

@@ -267,10 +267,10 @@ class TemplateDefinitionTests(unittest.TestCase):
 
     def test_schema_defines_every_new_kind_the_index_and_the_status_board(self) -> None:
         schema = (TEMPLATE_WIKI / "SCHEMA.md").read_text(encoding="utf-8")
+        for folder, heading in (("topics", "# Topic page format"), ("research", "# Research page format"), ("plans", "# Plan page format")):
+            self.assertIn(heading, (TEMPLATE_WIKI / folder / "_FORMAT.md").read_text(encoding="utf-8"))
+            self.assertIn(f"[`{folder}/_FORMAT.md`]({folder}/_FORMAT.md)", schema)
         for heading in (
-            "## Topic page format",
-            "## Research page format",
-            "## Plan page format",
             "## Direction page format",
             "## Roadmap page format",
             "## Ingest: any role, any page kind",
@@ -279,7 +279,7 @@ class TemplateDefinitionTests(unittest.TestCase):
         ):
             self.assertIn(heading, schema)
         for name in ("topics/", "research/", "plans/", "direction.md", "roadmap.md", "status-board.md"):
-            self.assertIn(name, schema.split("## Persona page format")[0])
+            self.assertIn(name, schema.split("## Page kinds")[0])
         for code in ("missing-index-entry", "orphan-index-entry", "duplicate-index-entry"):
             self.assertIn(code, schema)
         self.assertEqual({"topic", "research", "plan", "direction", "roadmap"}, set(GENERAL_PAGE_KINDS))

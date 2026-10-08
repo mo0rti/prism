@@ -186,7 +186,7 @@ class SetupIsNotAPreconditionTests(unittest.TestCase):
                 self.assertNotIn("setup-required", text)
 
     def test_the_connected_guide_and_the_lifecycle_protocol_make_no_action_wait_for_setup(self) -> None:
-        for relative in ("CONNECTED.md", "LIFECYCLE.md"):
+        for relative in ("CONNECTED.md", "LIFECYCLE.md", "ACTIONS.md"):
             with self.subTest(file=relative):
                 text = read("template", "knowledge", "wiki", relative)
                 self.assertIsNone(self.PRECONDITION.search(text), relative)

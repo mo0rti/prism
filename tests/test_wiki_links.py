@@ -120,7 +120,8 @@ class RelativeLinkTests(LinkCase):
 
     def test_the_format_and_schema_files_are_not_checked_for_links(self) -> None:
         # SCHEMA.md and every _FORMAT.md show example links that do not resolve.
-        self.assertIn("(../../intake/processed/YYYY-MM-DD-slug/notes.md)", (self.wiki / "SCHEMA.md").read_text(encoding="utf-8"))
+        self.assertIn("(../../../wiki/features/F-001-slug.md)", (self.wiki / "SCHEMA.md").read_text(encoding="utf-8"))
+        self.assertIn("(../../intake/processed/YYYY-MM-DD-slug/notes.md)", (self.wiki / "personas" / "_FORMAT.md").read_text(encoding="utf-8"))
         self.assertEqual([], self.found("broken-link"))
 
     def test_a_link_to_a_wiki_page_that_exists_is_clean(self) -> None:

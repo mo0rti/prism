@@ -29,7 +29,7 @@ Do not put architecture guides in `knowledge/`. They belong in `docs/`.
 
 ## What is in knowledge/
 
-See `knowledge/wiki/SCHEMA.md` for the complete wiki structure and operational rules, and `knowledge/wiki/LIFECYCLE.md` for the feature, board and advisory protocol.
+See `knowledge/wiki/SCHEMA.md` for the complete wiki structure and operational rules, `knowledge/wiki/LIFECYCLE.md` for the feature, board and advisory protocol, and `knowledge/wiki/ACTIONS.md` for the lifecycle action registry.
 
 The quick summary:
 - `knowledge/wiki/features/` - one page per feature with spec, acceptance criteria, open questions

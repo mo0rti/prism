@@ -153,6 +153,7 @@ def build_workspace(root: Path, feature_count: int) -> None:
     # A generated project ships the real wiki schema; the fixture has a placeholder.
     shutil.copyfile(REPO_ROOT / "template/knowledge/wiki/SCHEMA.md", root / "knowledge/wiki/SCHEMA.md")
     shutil.copyfile(REPO_ROOT / "template/knowledge/wiki/LIFECYCLE.md", root / "knowledge/wiki/LIFECYCLE.md")
+    shutil.copyfile(REPO_ROOT / "template/knowledge/wiki/ACTIONS.md", root / "knowledge/wiki/ACTIONS.md")
     features = root / "knowledge/wiki/features"
     rows = []
     for number in range(1, feature_count + 1):

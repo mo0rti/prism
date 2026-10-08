@@ -43,7 +43,7 @@ and never authorizes a write.
 1. Resolve exactly one `knowledge/wiki/features/[F-XXX]-[slug].md` source file
    and require `status: ready-for-design` or `in-design` with `owner` the design owner of the scope (`designer` while an active
    app has a UI, otherwise `tech-lead`).
-2. Read SCHEMA, LIFECYCLE, `status-board.md`, the complete feature, linked design and technical design pages,
+2. Read SCHEMA, LIFECYCLE, ACTIONS, `status-board.md`, the complete feature, linked design and technical design pages,
    workspace identity, current requirements/API/advisory evidence, and active revalidation.
 3. Read the feature's `design-tracks` and `design-reaffirm`. Each track is one of:
    - settled (`done`, or `not-applicable` with its reason) and not listed in `design-reaffirm`: nothing to do;

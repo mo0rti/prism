@@ -10,6 +10,10 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 - **Separation at the service level.** With `qa-separate-from-dev: true`, `qa-pass` refuses the grant that produced, recovered or repaired the Delivery evidence of an app it passes, and `bug-update` refuses the same for the Fix evidence of a bug it verifies (`separation_required`, `separation_unverifiable`). `bug-update` to `fixed` records the Fix rows it produces in the provenance journal.
 - **`prism wiki owner`** lists the bugs an owner holds, and `wiki search` finds bug pages. Wiki lint reports the bug page findings (`bug-page-invalid`, `invalid-bug-status-owner`, `bug-close-reason-required`, `duplicate-target-invalid`, `promoted-bug-unreopened`, `bug-feature-missing`) and the blocker `open-bug-blocks-qa`.
 
+### Changed
+
+- **The standard instruction files are split by topic so each stays on one page.** The action registry (the table of actions with their sources, destinations, approver roles and write scopes, the common action protocol and the contracts of the specification and PO handoff actions) moves from `LIFECYCLE.md` to the new standard file `knowledge/wiki/ACTIONS.md`, which the skills that run a lifecycle action read after `LIFECYCLE.md`. The format and rules of each page kind (personas, business rules, design pages, technical design pages, app requirements, API contracts, decisions, topics, research pages and plans) move from `SCHEMA.md` to the `_FORMAT.md` of the kind's folder, and `SCHEMA.md` lists each kind with a link to its format. `ACTIONS.md` is a required wiki file like `LIFECYCLE.md` (`missing-required-wiki-file`, `missing-schema-version`), and a test fails when a rule heading or an error code of the earlier two files appears in no standard file. The workflow asset is rebuilt, so existing board grants are reissued.
+
 ## [0.6.1]
 
 Release date: 2026-10-08

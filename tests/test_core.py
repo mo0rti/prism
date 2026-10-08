@@ -374,6 +374,7 @@ class HomeLauncherTests(unittest.TestCase):
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
+            (root / "knowledge" / "wiki" / "ACTIONS.md").write_text("", encoding="utf-8")
             self.assertEqual(("generated-project", "generated project"), detect_launch_context(root))
 
     def test_build_home_actions_includes_update_only_for_generated_projects(self) -> None:
@@ -458,6 +459,7 @@ class DestinationPreparationTests(unittest.TestCase):
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
+            (root / "knowledge" / "wiki" / "ACTIONS.md").write_text("", encoding="utf-8")
 
             with patch("sys.stderr"):
                 result = prepare_generation_destination(root)
@@ -742,6 +744,7 @@ class ValidationTargetDetectionTests(unittest.TestCase):
             (root / "knowledge" / "wiki").mkdir(parents=True)
             (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
             (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
+            (root / "knowledge" / "wiki" / "ACTIONS.md").write_text("", encoding="utf-8")
             self.assertEqual("generated-project", detect_validation_target(root))
 
     def test_returns_unknown_for_unrecognized_directory(self) -> None:
@@ -761,6 +764,7 @@ class GeneratedProjectStructureTests(unittest.TestCase):
         (root / "knowledge" / "wiki").mkdir(parents=True)
         (root / "knowledge" / "wiki" / "SCHEMA.md").write_text("", encoding="utf-8")
         (root / "knowledge" / "wiki" / "LIFECYCLE.md").write_text("", encoding="utf-8")
+        (root / "knowledge" / "wiki" / "ACTIONS.md").write_text("", encoding="utf-8")
         entries = [{"repository": "workspace", "generation": "scaffolded", **app} for app in apps or []]
         data = {"schema_version": 2, "project": {"name": "Prism App"}, "apps": entries}
         (root / MANIFEST_FILE).write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
@@ -1754,6 +1758,7 @@ def create_wiki_skeleton(root: Path) -> None:
     (root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
     (wiki / "SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Schema\n", encoding="utf-8")
     (wiki / "LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Lifecycle\n", encoding="utf-8")
+    (wiki / "ACTIONS.md").write_text("---\nschema-version: 1\n---\n# Actions\n", encoding="utf-8")
     (wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 14\n---\n", encoding="utf-8")
     write_status_board(root)
     write_general_index(root)

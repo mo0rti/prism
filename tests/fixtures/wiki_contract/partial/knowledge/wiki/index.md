@@ -18,6 +18,7 @@ board service. Do not edit it directly.
 - [F-003 API contract](api-contracts/F-003.md): API contract of F-003.
 
 ## Meta
+- [ACTIONS.md](ACTIONS.md): Lifecycle action registry, write scopes and action contracts.
 - [LIFECYCLE.md](LIFECYCLE.md): Feature, board and advisory protocol.
 - [SCHEMA.md](SCHEMA.md): Wiki conventions and operational rules.
 - [SETTINGS.md](SETTINGS.md): Project-level settings for wiki read and query behavior.

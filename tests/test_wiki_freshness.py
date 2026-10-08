@@ -160,7 +160,7 @@ class FreshnessTests(FreshnessCase):
         (self.wiki / "WIKI_REPORT.md").write_text("# Report\n", encoding="utf-8")
         (self.wiki / "advisory").mkdir(exist_ok=True)
         (self.wiki / "advisory" / "F-001-review.md").write_text("---\nfeature-id: F-001\nreviewed: 2026-10-01\n---\n\n# Review\n", encoding="utf-8")
-        exempt = {"decisions/ADR-001-sessions.md", "advisory/F-001-review.md", "advisory/BOARD.md", "log.md", "index.md", "status-board.md", "WIKI_REPORT.md", "SCHEMA.md", "LIFECYCLE.md", "SETTINGS.md", "CONNECTED.md"}
+        exempt = {"decisions/ADR-001-sessions.md", "advisory/F-001-review.md", "advisory/BOARD.md", "log.md", "index.md", "status-board.md", "WIKI_REPORT.md", "SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "SETTINGS.md", "CONNECTED.md"}
         self.assertEqual(set(), exempt & set(self.freshness()))
         self.append_log(entry(TODAY - timedelta(days=99), "verify", [f"{WIKI}/{page}" for page in exempt]))
         self.assertEqual(set(), exempt & set(self.freshness()))

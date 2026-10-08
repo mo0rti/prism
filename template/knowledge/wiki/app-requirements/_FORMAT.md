@@ -31,3 +31,6 @@ App-specific done conditions.
 Other feature IDs or app-requirement files that must complete first, or `None.`
 Open questions never go here; they stay in the feature's Open questions table.
 ```
+
+`ACTIONS.md` and `LIFECYCLE.md` (Delivery and revalidation) define how the lifecycle actions create,
+invalidate and complete these pages.

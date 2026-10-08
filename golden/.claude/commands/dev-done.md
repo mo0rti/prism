@@ -40,7 +40,7 @@ explicit edit of the feature's `apps` first. From `ready-for-dev` this action al
 
 ## Evidence and confirmation
 
-Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md`, the complete feature, every declared
+Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/ACTIONS.md`, `status-board.md`, the complete feature, every declared
 app-requirement page, any applicable API contract, linked context, workspace
 identity, advisory state, the delivery evidence already recorded, and active `revalidation` and
 `app-revalidation` domains.

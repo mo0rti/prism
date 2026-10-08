@@ -93,4 +93,4 @@ workflow:
   version: '1'
   mode: generated
   board_id: 00000000-0000-4000-8000-000000000000
-  asset_digest: 691cac37a0473a31139059ff98d5aa69d65e54b10585fedfb172258d377ec19c
+  asset_digest: 6d4d48bc7829a2b716160920dc176b5375d3d621cb2b40c8b932e1e61e95e8d3

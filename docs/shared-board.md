@@ -218,7 +218,7 @@ key: a row or line that changed after the preview is a conflict (`stale_status_r
 and an interrupted operation rolls forward from the recorded rows and lines. The index changes with
 every page the board writes, and a preview requires the participant's read of `index.md`, so an agent
 reads it again before each preview. A workspace needs
-both files, besides `SCHEMA.md` and `LIFECYCLE.md`, or the board stays read-only.
+both files, besides `SCHEMA.md`, `LIFECYCLE.md` and `ACTIONS.md`, or the board stays read-only.
 
 ### Intake, dev answers and delivery evidence
 

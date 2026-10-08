@@ -122,6 +122,8 @@ class WorkflowAssetsTests(unittest.TestCase):
         files = bootstrap_files()
         paths = {item["path"] for item in files}
         self.assertIn("knowledge/wiki/SCHEMA.md", paths)
+        self.assertIn("knowledge/wiki/LIFECYCLE.md", paths)
+        self.assertIn("knowledge/wiki/ACTIONS.md", paths)
         self.assertIn("knowledge/wiki/CONNECTED.md", paths)
         self.assertIn("knowledge/wiki/index.md", paths)
         self.assertIn("knowledge/wiki/status-board.md", paths)

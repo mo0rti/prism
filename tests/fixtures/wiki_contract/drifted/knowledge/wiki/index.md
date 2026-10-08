@@ -7,6 +7,7 @@ board service. Do not edit it directly.
 - [F-001 Checkout](features/F-001-checkout.md): Customers can complete a checkout.
 
 ## Meta
+- [ACTIONS.md](ACTIONS.md): Lifecycle action registry, write scopes and action contracts.
 - [LIFECYCLE.md](LIFECYCLE.md): Feature, board and advisory protocol.
 - [SCHEMA.md](SCHEMA.md): Wiki conventions and operational rules.
 - [SETTINGS.md](SETTINGS.md): Project-level settings for wiki read and query behavior.

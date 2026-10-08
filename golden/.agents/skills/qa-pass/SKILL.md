@@ -39,7 +39,7 @@ Resolve exactly one feature page and require one of those source pairs. Each nam
 
 ## Evidence and confirmation
 
-Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md`, the complete feature (criteria with
+Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/ACTIONS.md`, `status-board.md`, the complete feature (criteria with
 their revisions, Delivery evidence, QA verification, Release, Evidence history), every bug page of the feature,
 `knowledge/wiki/SETTINGS.md` and the active `revalidation` and `app-revalidation` domains.
 

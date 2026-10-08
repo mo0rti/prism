@@ -1524,6 +1524,7 @@ def validate_generated_project(path: Path) -> int:
         "AGENTS.md present",
         "knowledge/wiki/SCHEMA.md present",
         "knowledge/wiki/LIFECYCLE.md present",
+        "knowledge/wiki/ACTIONS.md present",
         "Taskfile.yml present",
         "wiki contract checks passed",
         "scaffolded apps, their answers files and workflows present",
@@ -1551,6 +1552,7 @@ def validate_generated_project_structure(path: Path) -> tuple[list[str], list[st
         (MANIFEST_FILE, path / MANIFEST_FILE),
         ("knowledge/wiki/SCHEMA.md", path / "knowledge" / "wiki" / "SCHEMA.md"),
         ("knowledge/wiki/LIFECYCLE.md", path / "knowledge" / "wiki" / "LIFECYCLE.md"),
+        ("knowledge/wiki/ACTIONS.md", path / "knowledge" / "wiki" / "ACTIONS.md"),
         ("Taskfile.yml", path / "Taskfile.yml"),
     ]
     for label, required_path in required_paths:

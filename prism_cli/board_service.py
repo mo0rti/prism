@@ -193,6 +193,7 @@ _WIKI_DIRS = (
 _INDEX_PATH = "knowledge/wiki/index.md"
 _STATUS_BOARD_PATH = "knowledge/wiki/status-board.md"
 _SETTINGS_PATH = "knowledge/wiki/SETTINGS.md"
+_ACTIONS_PATH = "knowledge/wiki/ACTIONS.md"
 _LOG_PATH = "knowledge/wiki/log.md"
 _WIKI_PREFIX = "knowledge/wiki/"
 # A direct append is retried this many times when the log changes between the read and the swap.
@@ -216,7 +217,7 @@ _REQUIREMENT_RANK = {"pending": 0, "in-progress": 1, "done": 2}
 _CONTRACT_RANK = {"draft": 0, "agreed": 1, "implemented": 2}
 # The feature statuses in which a feature that links a contract is a consumer of it (CONTRACTS 3.4).
 _CONTRACT_CONSUMER_STATUSES = frozenset({"ready-for-dev", "in-dev", "ready-for-qa", "in-qa", "ready-for-release"})
-_WIKI_ROOT_PAGES = frozenset({"SCHEMA.md", "LIFECYCLE.md", "SETTINGS.md", "CONNECTED.md", "index.md", "status-board.md", "log.md", *ROOT_PAGE_KINDS})
+_WIKI_ROOT_PAGES = frozenset({"SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "SETTINGS.md", "CONNECTED.md", "index.md", "status-board.md", "log.md", *ROOT_PAGE_KINDS})
 # The page folders where an ingest only creates pages and never rewrites one; a decision changes only by supersession.
 _INGEST_CREATE_ONLY = ("features", "personas", "business-rules", "decisions", "bugs")
 _ADR_FIELDS = {"id", "title", "date", "status", "supersedes", "superseded-by"}
@@ -914,7 +915,7 @@ class BoardService(QaActionsMixin, BugActionsMixin):
                 # The human who previews a gated action is the one who approves it, so the log entry shown here is the one written:
                 # it names the approver with their roles (`_attribute_writes` leaves it unchanged when the same human applies).
                 writes = self._attribute_writes(writes, actor, self._actor_ref(actor))
-        source_paths = self._feature_context_paths(feature["path"], feature["frontmatter"])
+        source_paths = self._transition_context_paths(feature["path"], feature["frontmatter"])
         source_map = self._fingerprint_paths(source_paths)
         applicable = classification == "ready" and transition.get("action") == action and transition.get("supported") is True
         payload = {
@@ -1065,7 +1066,7 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         try:
             if intent.get("kind") == "transition":
                 feature = self._resolve_feature(intent["feature_id"])
-                paths |= self._feature_context_paths(feature["path"], feature["frontmatter"])
+                paths |= self._transition_context_paths(feature["path"], feature["frontmatter"])
             elif intent.get("kind") == "repair":
                 paths |= set(intent.get("source_map", {}))
             elif intent.get("skill") == VERIFY_SKILL:
@@ -2121,8 +2122,8 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         if not isinstance(manifest_digest, str) or manifest_digest != expected_digest:
             self._read_only_reason = "The workspace workflow assets do not match the installed canonical version; run the explicit workflow upgrade."
             return
-        if not all((self.root / "knowledge" / "wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "index.md", "status-board.md")):
-            self._read_only_reason = "The workspace is missing the canonical wiki schema, lifecycle protocol, index or status board."
+        if not all((self.root / "knowledge" / "wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "index.md", "status-board.md")):
+            self._read_only_reason = "The workspace is missing the canonical wiki schema, lifecycle protocol, action registry, index or status board."
             return
         self._board_id = parsed_id
         self._workflow_version = "1"
@@ -2672,6 +2673,11 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         content = self._read_text(path)
         parsed = _parse_markdown(content, relative)
         return {"path": relative, "content": content, "frontmatter": parsed[0], "body": parsed[1], "feature": matches[0]}
+
+    def _transition_context_paths(self, feature_path: str, frontmatter: Mapping[str, Any]) -> set[str]:
+        """The context of a transition: the feature context and the action registry that defines what the action may write."""
+
+        return self._feature_context_paths(feature_path, frontmatter) | {_ACTIONS_PATH}
 
     def _feature_context_paths(self, feature_path: str, frontmatter: Mapping[str, Any]) -> set[str]:
         paths = {"prism.workspace.yml", "knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", "knowledge/wiki/SETTINGS.md", feature_path}
@@ -7055,7 +7061,7 @@ class BoardService(QaActionsMixin, BugActionsMixin):
 
             feature = self._resolve_feature(payload["feature_id"])
             expected_paths = set(payload.get("source_map", {}))
-            if not reviewed and self._feature_context_paths(feature["path"], feature["frontmatter"]) - expected_paths:
+            if not reviewed and self._transition_context_paths(feature["path"], feature["frontmatter"]) - expected_paths:
                 raise BoardError("stale_preview", "New relevant feature context appeared after this preview; review it before applying.", 409)
             inputs = payload.get("inputs", {})
             overrides = {}
@@ -7700,9 +7706,9 @@ def BoardServiceIdentity(root: Path) -> tuple[Any, ...] | None:
         workspace_root = Path(root).expanduser().absolute()
         manifest_path = workspace_root / "prism.workspace.yml"
         BoardService._reject_reparse(manifest_path, include_leaf=True)
-        for relative in ("knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", _INDEX_PATH, _STATUS_BOARD_PATH):
+        for relative in ("knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", _ACTIONS_PATH, _INDEX_PATH, _STATUS_BOARD_PATH):
             BoardService._reject_reparse(workspace_root / relative, include_leaf=True)
-        if not all((workspace_root / "knowledge/wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "index.md", "status-board.md")):
+        if not all((workspace_root / "knowledge/wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "index.md", "status-board.md")):
             return None
         data = yaml.safe_load(manifest_path.read_text(encoding="utf-8-sig")) or {}
         workflow = data.get("workflow") if isinstance(data, dict) else None

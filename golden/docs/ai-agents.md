@@ -18,7 +18,7 @@ The agent system in this workspace does four jobs:
 |------|-------|---------|
 | Root agent instructions | [`AGENTS.md`](../AGENTS.md), [`CLAUDE.md`](../CLAUDE.md) | `AGENTS.md` is the single source of workspace rules and the first file an agent reads; `CLAUDE.md` imports it |
 | Human overview | [`README.md`](../README.md) | Setup, repository layout and the operation names by tool |
-| Product wiki | [`knowledge/wiki/SCHEMA.md`](../knowledge/wiki/SCHEMA.md), [`knowledge/wiki/LIFECYCLE.md`](../knowledge/wiki/LIFECYCLE.md) | Source of truth for features, app requirements, contracts, rules, and advisory reviews |
+| Product wiki | [`knowledge/wiki/SCHEMA.md`](../knowledge/wiki/SCHEMA.md), [`knowledge/wiki/LIFECYCLE.md`](../knowledge/wiki/LIFECYCLE.md), [`knowledge/wiki/ACTIONS.md`](../knowledge/wiki/ACTIONS.md) | Source of truth for features, app requirements, contracts, rules, and advisory reviews |
 | Claude commands | [`.claude/commands/`](../.claude/commands/) | Structured project operations such as setup, PO intake, review, handoff, and wiki maintenance |
 | Claude skills | [`.claude/skills/`](../.claude/skills/) | Reusable Claude Code guidance for implementation, conventions, testing, and platform work |
 | Codex skills | [`.agents/skills/`](../.agents/skills/) | Reusable Codex guidance for shared workflows and supported platform work |
@@ -42,6 +42,7 @@ prism-golden/
 │   └── wiki/
 │       ├── SCHEMA.md
 │       ├── LIFECYCLE.md
+│       ├── ACTIONS.md
 │       ├── index.md
 │       ├── status-board.md
 │       └── advisory/BOARD.md
@@ -167,7 +168,7 @@ canonical structured body from one raw page, so no action is a generic status
 setter.
 
 Detailed behavior is canonical in the selected `.agents/skills/<action>/SKILL.md`
-or `.claude/commands/<action>.md` plus `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`. The selected
+or `.claude/commands/<action>.md` plus `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md` and `knowledge/wiki/ACTIONS.md`. The selected
 surface is independent; its matching `prism:<command>-contract:v1` marker is
 required, while the other surface is optional. Every write action rereads one
 feature and linked evidence, shows the complete proposed write set, and waits
@@ -336,3 +337,4 @@ This document is especially useful for:
 - [docs/architecture.md](architecture.md) for platform boundaries and system design
 - [knowledge/wiki/SCHEMA.md](../knowledge/wiki/SCHEMA.md) for wiki structure and operational rules
 - [knowledge/wiki/LIFECYCLE.md](../knowledge/wiki/LIFECYCLE.md) for the feature, board and advisory protocol
+- [knowledge/wiki/ACTIONS.md](../knowledge/wiki/ACTIONS.md) for the lifecycle action registry, approver roles and write scopes

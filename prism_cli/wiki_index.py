@@ -108,6 +108,7 @@ _SECTION_BY_GROUP = {"personas": "Who they are", "business-rules": "Rule", "deci
 _FIXED_LINES = {
     "SCHEMA.md": ("SCHEMA.md", "Wiki conventions and operational rules."),
     "LIFECYCLE.md": ("LIFECYCLE.md", "Feature, board and advisory protocol."),
+    "ACTIONS.md": ("ACTIONS.md", "Lifecycle action registry, write scopes and action contracts."),
     "CONNECTED.md": ("CONNECTED.md", "How agents use the connected board and MCP service."),
     "SETTINGS.md": ("SETTINGS.md", "Project-level settings for wiki read and query behavior."),
     "status-board.md": ("Status board", "The status, owner and board review of every feature."),

@@ -1,7 +1,7 @@
 # Connected Prism workflow
 
 This guide binds the canonical Prism workflow to the local Board and MCP service.
-The wiki remains the workspace's source of truth. `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md` and
+The wiki remains the workspace's source of truth. `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/ACTIONS.md` (for a lifecycle action) and
 the selected workflow skill define what an action means and what it must verify;
 this file defines how to read and submit that same work through the connected
 service.
@@ -41,7 +41,7 @@ original proposal did not need, and do not change the skill name or write files
 directly. When the error names no fix, needs a decision from the human, or the
 third preview is rejected, stop and report the error codes and messages. Direct-file
 use of a standard skill remains a separate, explicit human-directed compatibility
-choice and must follow that skill, SCHEMA and LIFECYCLE in full.
+choice and must follow that skill, SCHEMA, LIFECYCLE and, for a lifecycle action, ACTIONS in full.
 
 ## Read the current workspace state
 
@@ -49,7 +49,7 @@ Use `list_workspace(prefix, cursor)` to discover approved wiki and intake source
 paths. Continue with each `next_cursor` until it is null; if a cursor is stale,
 restart discovery. Then use `read_workspace(paths)` to read only the relative
 paths needed by the selected skill, such as `knowledge/wiki/SCHEMA.md`,
-`knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/index.md`, the exact feature page, linked design or requirement
+`knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/ACTIONS.md` (for a lifecycle action), `knowledge/wiki/index.md`, the exact feature page, linked design or requirement
 pages, and applicable API contracts. The service returns each path with its text,
 digest, and provenance. A path outside the approved wiki and intake folders, such as
 `prism.workspace.yml` or `.copier-answers.yml`, fails the whole call with

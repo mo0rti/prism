@@ -25,8 +25,8 @@ _MAX_QUERY_BYTES = 4 * 1024 * 1024
 # One MCP tool result, measured as the compact JSON of the JSON-RPC result
 # object, never exceeds RESULT_BUDGET_CHARS. The structured payload is cut to
 # STRUCTURED_BUDGET_CHARS so the short text summary and the result wrapper fit.
-# The largest standard instruction file, knowledge/wiki/SCHEMA.md (about 39,000
-# characters, about 40,200 as a read_workspace page), fits one page with headroom.
+# The largest standard instruction file, knowledge/wiki/SCHEMA.md (about 34,700
+# characters, about 35,700 as a read_workspace page), fits one page with headroom.
 RESULT_BUDGET_CHARS = 48000
 STRUCTURED_BUDGET_CHARS = 46000
 _MAX_CURSOR_CHARS = 4096

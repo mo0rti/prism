@@ -27,7 +27,8 @@ Why this option over alternatives.
 What becomes easier, what becomes harder.
 ```
 
-An ADR is a dated record. It is never rewritten; only its status fields change.
+An ADR is a dated record (see Records and decision supersession in `SCHEMA.md`). It is never rewritten;
+only its status fields change.
 
 ## Superseding a decision
 

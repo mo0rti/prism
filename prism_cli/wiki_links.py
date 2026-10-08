@@ -26,6 +26,7 @@ NON_PAGE_FILENAMES = {
     "_FORMAT.md",
     "SCHEMA.md",
     "LIFECYCLE.md",
+    "ACTIONS.md",
     "SETTINGS.md",
     "index.md",
     "status-board.md",

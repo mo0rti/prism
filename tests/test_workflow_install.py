@@ -149,7 +149,7 @@ class WorkflowInstallTests(unittest.TestCase):
             self.assertIn("- [Handbook](topics/handbook.md): Written by the team.\n", index)
             self.assertEqual(1, index.count("(SCHEMA.md)"), "an existing line is never replaced or repeated")
             # Each page the install created gets one line, in its own group.
-            for page in ("CONNECTED.md", "LIFECYCLE.md", "SETTINGS.md", "status-board.md", "direction.md", "roadmap.md", "advisory/BOARD.md"):
+            for page in ("ACTIONS.md", "CONNECTED.md", "LIFECYCLE.md", "SETTINGS.md", "status-board.md", "direction.md", "roadmap.md", "advisory/BOARD.md"):
                 self.assertEqual(1, index.count(f"]({page})"), page)
             self.assertIn("## Advisory\n- [Advisory board](advisory/BOARD.md)", index)
 

@@ -31,6 +31,7 @@ def _create_workspace(root: Path) -> None:
     (root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
     (wiki / "SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Schema\n", encoding="utf-8")
     (wiki / "LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Lifecycle\n", encoding="utf-8")
+    (wiki / "ACTIONS.md").write_text("---\nschema-version: 1\n---\n# Actions\n", encoding="utf-8")
     (wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 14\n---\n", encoding="utf-8")
     write_status_board(root)
     write_index(root)

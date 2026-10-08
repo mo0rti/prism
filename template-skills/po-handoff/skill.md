@@ -84,7 +84,7 @@ current template. Do not infer this from the Prism version.
 
 Before using a dashboard or clipboard request, reread this current skill or command, the
 `po-handoff` instructions of the other agent surface when available, `knowledge/wiki/SCHEMA.md`,
-`knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/status-board.md`, the feature page, and linked source/context. Compare
+`knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/ACTIONS.md`, `knowledge/wiki/status-board.md`, the feature page, and linked source/context. Compare
 the current unique path, workspace identity, feature ID, status, owner, advisory
 state, and available source fingerprint with the copied snapshot. Stop and ask for
 a fresh preview if any value differs or is unavailable for comparison.

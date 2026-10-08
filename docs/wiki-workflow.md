@@ -30,7 +30,7 @@ read/query operations help agents and humans navigate it.
 ## Page Kinds
 
 The wiki has homes for general knowledge beside the feature pipeline. Each kind has a
-format that `SCHEMA.md` defines, and the three folders also carry a `_FORMAT.md`.
+format in the `_FORMAT.md` of its folder; `SCHEMA.md` lists them and defines the formats of `direction.md` and `roadmap.md`.
 
 | Kind | Where | Holds |
 |---|---|---|
@@ -119,7 +119,7 @@ comments inside the entry. `SCHEMA.md` defines the format.
 |---|---|---|
 | `history-date-on-page` | error | A history-date field (`introduced`, `last-updated`, `created`, `updated`, `date-updated` and similar) in the front matter of a current-state page. The message points to `log.md`. |
 | `malformed-log-entry` | warning | A `log.md` entry that is not in the format. Lint reports it and never rewrites the log. |
-| `missing-schema-version` | error | `SCHEMA.md` or `LIFECYCLE.md` without the front matter `schema-version: 1`. |
+| `missing-schema-version` | error | `SCHEMA.md`, `LIFECYCLE.md` or `ACTIONS.md` without the front matter `schema-version: 1`. |
 | `unlinked-claim` | warning | A `**Decided:**` or `**Observed:**` item that links no evidence. |
 | `unknown-evidence-label` | warning | A bold run-in label such as `**Note:**` that is none of the five evidence labels. |
 | `supersession-mismatch` | error | The `supersedes` and `superseded-by` links of two ADRs disagree, or one is missing, or `status: superseded` and `superseded-by` do not go together. |
@@ -345,7 +345,8 @@ a future Done check, sets route-specific revalidation domains, and names exact
 affected requirement/API status invalidations. Unaffected evidence is preserved
 only when explicitly reaffirmed. Shared API contracts are never reset in bulk.
 The complete protocol and formats are in
-[`knowledge/wiki/LIFECYCLE.md`](../template/knowledge/wiki/LIFECYCLE.md).
+[`knowledge/wiki/LIFECYCLE.md`](../template/knowledge/wiki/LIFECYCLE.md), and the action registry in
+[`knowledge/wiki/ACTIONS.md`](../template/knowledge/wiki/ACTIONS.md).
 
 ## `WIKI_REPORT.md`
 

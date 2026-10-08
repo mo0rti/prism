@@ -196,11 +196,11 @@ class LogFormatTests(WorkspaceCase):
 
 
 class SchemaVersionTests(WorkspaceCase):
-    def test_both_files_declare_the_version(self) -> None:
+    def test_the_three_files_declare_the_version(self) -> None:
         self.assertEqual([], self.diagnostics("missing-schema-version"))
 
     def test_each_file_without_the_version_is_an_error(self) -> None:
-        for name in ("SCHEMA.md", "LIFECYCLE.md"):
+        for name in ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md"):
             with self.subTest(file=name):
                 original = (self.wiki / name).read_text(encoding="utf-8")
                 for text in ("# Fixture\n", "---\nother: 1\n---\n\n# Fixture\n", "---\nschema-version: 2\n---\n\n# Fixture\n", "---\nschema-version: '1'\n---\n\n# Fixture\n"):
@@ -218,8 +218,13 @@ class SchemaVersionTests(WorkspaceCase):
         self.assertEqual([], self.diagnostics("missing-schema-version"))
         self.assertEqual(1, len(self.diagnostics("missing-required-wiki-file")))
 
+    def test_an_absent_action_registry_is_the_missing_file_error_only(self) -> None:
+        (self.wiki / "ACTIONS.md").unlink()
+        self.assertEqual([], self.diagnostics("missing-schema-version"))
+        self.assertEqual(1, len(self.diagnostics("missing-required-wiki-file")))
+
     def test_the_template_files_start_with_the_version(self) -> None:
-        for name in ("SCHEMA.md", "LIFECYCLE.md"):
+        for name in ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md"):
             with self.subTest(file=name):
                 page = load_markdown_page(TEMPLATE_WIKI / name)
                 self.assertEqual({"schema-version": 1}, dict(page.frontmatter))
@@ -237,7 +242,7 @@ class StatusBoardColumnsTests(unittest.TestCase):
             self.assertIsNone(re.search(r"\d{4}-\d{2}-\d{2}", text))
 
     def test_the_template_formats_carry_no_history_dates_outside_records(self) -> None:
-        for relative in ("features/_FORMAT.md", "personas/_FORMAT.md", "business-rules/_FORMAT.md", "design/_FORMAT.md", "LIFECYCLE.md", "SCHEMA.md"):
+        for relative in ("features/_FORMAT.md", "personas/_FORMAT.md", "business-rules/_FORMAT.md", "design/_FORMAT.md", "LIFECYCLE.md", "ACTIONS.md", "SCHEMA.md"):
             text = (TEMPLATE_WIKI / relative).read_text(encoding="utf-8")
             for match in re.finditer(r"^---\n(.*?)\n---$", text.replace("\r\n", "\n"), re.S | re.M):
                 for line in match.group(1).splitlines():

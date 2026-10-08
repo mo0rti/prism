@@ -1,4 +1,4 @@
-# Business rule format
+# Business rule page format
 
 Use this format for business rule pages in `wiki/business-rules/`.
 Filename: `BR-XXX-[slug].md`.

@@ -10,12 +10,16 @@ from unittest.mock import patch
 from prism_cli import board_reads
 from prism_cli.board_reads import chunk_text, compact_size, list_workspace, query
 from prism_cli.board_service import BoardError, BoardService
+from prism_cli.workflow_assets import get_skill, list_skills
 from prism_cli.workflow_install import apply_install, plan_install
 from prism_cli.wiki_query import wiki_show
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 from tests import real_temp  # noqa: F401
 from tests.core_workflow_fixture import write_processed_brief
 from tests.wiki_files import write_index, write_status_board
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class BoardReadTests(unittest.TestCase):
@@ -427,10 +431,20 @@ class PagedReadTests(unittest.TestCase):
         self.assertEqual("duplicate_path", duplicate.exception.code)
 
 
-class StandardInstructionFilePageTests(unittest.TestCase):
-    """SCHEMA.md, LIFECYCLE.md and CONNECTED.md each arrive in one read_workspace page, so a host that never follows a cursor still reads them whole."""
+def _required_format_files() -> tuple[str, ...]:
+    """Every `_FORMAT.md` that a packaged skill reads as a required source."""
 
-    FILES = ("knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", "knowledge/wiki/CONNECTED.md")
+    paths: set[str] = set()
+    for listed in list_skills():
+        paths.update(item["path"] for item in get_skill(listed["name"])["references"] if item["path"].endswith("/_FORMAT.md"))
+    return tuple(sorted(paths))
+
+
+class StandardInstructionFilePageTests(unittest.TestCase):
+    """SCHEMA.md, LIFECYCLE.md, ACTIONS.md, CONNECTED.md and every _FORMAT.md that a skill reads each arrive in one read_workspace page, so a host that never follows a cursor still reads them whole."""
+
+    FORMAT_FILES = _required_format_files()
+    FILES = ("knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", "knowledge/wiki/ACTIONS.md", "knowledge/wiki/CONNECTED.md", *FORMAT_FILES)
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -453,7 +467,11 @@ class StandardInstructionFilePageTests(unittest.TestCase):
                 self.assertEqual(len(on_disk), record["total_chars"])
                 self.assertLessEqual(compact_size(page), board_reads.STRUCTURED_BUDGET_CHARS)
 
-    def test_the_three_files_together_never_split_a_file_across_pages(self):
+    def test_every_skill_format_file_is_among_the_checked_files(self):
+        template_formats = sorted(path.relative_to(REPO_ROOT / "template").as_posix() for path in (REPO_ROOT / "template" / "knowledge").rglob("_FORMAT.md"))
+        self.assertEqual(template_formats, list(self.FORMAT_FILES))
+
+    def test_the_files_together_never_split_a_file_across_pages(self):
         pages, cursor = [], None
         while True:
             page = self.service.read_workspace(self.actor, list(self.FILES), cursor)

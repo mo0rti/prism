@@ -41,7 +41,7 @@ changes through a bug fix or a reopen, never through `qa-fail`.
 
 ## Evidence and confirmation
 
-Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md`, the complete feature, its requirement
+Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/ACTIONS.md`, `status-board.md`, the complete feature, its requirement
 pages and API contract, and every bug page of the feature.
 
 Each named app needs a failure on record (`qa_failure_unsupported`): a `fail` or `blocked` QA row in its current attempt, or a

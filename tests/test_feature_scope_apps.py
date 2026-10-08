@@ -90,7 +90,7 @@ class WikiWorkspaceCase(unittest.TestCase):
             (self.wiki / directory).mkdir(parents=True)
         (self.root / "knowledge" / "intake" / "pending").mkdir(parents=True)
         (self.root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
-        for name in ("SCHEMA.md", "LIFECYCLE.md"):
+        for name in ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md"):
             (self.wiki / name).write_text("---\nschema-version: 1\n---\n# Wiki\n", encoding="utf-8")
         (self.wiki / "SETTINGS.md").write_text("---\nwiki-stale-after-days: 36500\n---\n", encoding="utf-8")
         self.declare([CUSTOMER, PARTNER, BACKEND])

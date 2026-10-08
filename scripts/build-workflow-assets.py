@@ -100,6 +100,26 @@ LIFECYCLE_SKILLS = frozenset(
         "wiki-blockers",
     }
 )
+# Skills that run a lifecycle action of the registry also read the action registry; the other
+# skills, including the read-only and the intake skills, do not apply it.
+ACTIONS_REFERENCE = "knowledge/wiki/ACTIONS.md"
+ACTIONS_SKILLS = frozenset(
+    {
+        "design-handoff",
+        "design-start",
+        "design-ui-done",
+        "dev-done",
+        "dev-start",
+        "feature-reopen",
+        "feature-scope",
+        "po-handoff",
+        "po-specify",
+        "qa-fail",
+        "qa-pass",
+        "qa-verify",
+        "tech-design-done",
+    }
+)
 REFERENCE_GROUPS = {
     "intake": (
         "knowledge/intake/README.md",
@@ -265,7 +285,12 @@ def build_asset() -> dict[str, Any]:
         add_file(codex_path, codex_content)
         add_file(claude_path, claude_content)
 
-        reference_paths = [*COMMON_REFERENCES, *((LIFECYCLE_REFERENCE,) if name in LIFECYCLE_SKILLS else ()), claude_path]
+        reference_paths = [
+            *COMMON_REFERENCES,
+            *((LIFECYCLE_REFERENCE,) if name in LIFECYCLE_SKILLS else ()),
+            *((ACTIONS_REFERENCE,) if name in ACTIONS_SKILLS else ()),
+            claude_path,
+        ]
         for group in SKILL_REFERENCE_GROUPS[name]:
             reference_paths.extend(REFERENCE_GROUPS[group])
         reference_paths = list(dict.fromkeys(reference_paths))

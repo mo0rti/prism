@@ -115,7 +115,7 @@ class LintAgreementTests(scope.WikiWorkspaceCase):
         self.assertEqual(["BOARD.md", "OTHER.md", "PROJECT_FOUNDATION.md"], flagged)
 
     def test_the_other_exempt_files_stay_exempt(self) -> None:
-        for name in ("SCHEMA.md", "LIFECYCLE.md", "SETTINGS.md"):
+        for name in ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "SETTINGS.md"):
             page = self.wiki / name
             page.write_text(page.read_text(encoding="utf-8").replace("---\n", "---\nlast-updated: 2026-01-01\n", 1), encoding="utf-8")
         self.assertEqual([], [item for item in lint_wiki(self.root).diagnostics if item.code == "history-date-on-page"])

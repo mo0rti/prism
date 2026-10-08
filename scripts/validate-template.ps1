@@ -311,6 +311,7 @@ function Validate-WikiStructure {
     # Knowledge wiki directories
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Message "Generated project missing knowledge/wiki/SCHEMA.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\LIFECYCLE.md") -Message "Generated project missing knowledge/wiki/LIFECYCLE.md."
+    Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\ACTIONS.md") -Message "Generated project missing knowledge/wiki/ACTIONS.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\index.md") -Message "Generated project missing knowledge/wiki/index.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\status-board.md") -Message "Generated project missing knowledge/wiki/status-board.md."
     Assert-PathExists -Path (Join-Path $Root "knowledge\wiki\direction.md") -Message "Generated project missing knowledge/wiki/direction.md."
@@ -422,9 +423,10 @@ function Validate-WikiStructure {
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "(direction.md)" -Message "wiki/index.md must list direction.md."
     Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\index.md") -Needle "Board Review" -Message "wiki/index.md must not carry the status board."
 
-    # SCHEMA.md and LIFECYCLE.md carry a schema version; SCHEMA.md defines the log format, and pages carry no history dates
+    # SCHEMA.md, LIFECYCLE.md and ACTIONS.md carry a schema version; SCHEMA.md defines the log format, and pages carry no history dates
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "schema-version: 1" -Message "SCHEMA.md must declare schema-version: 1."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\LIFECYCLE.md") -Needle "schema-version: 1" -Message "LIFECYCLE.md must declare schema-version: 1."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\ACTIONS.md") -Needle "schema-version: 1" -Message "ACTIONS.md must declare schema-version: 1."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## YYYY-MM-DD <operation> | <subject>" -Message "SCHEMA.md must define the log entry format."
     Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\features\_FORMAT.md") -Needle "last-updated" -Message "The feature format must not carry a history date."
     Assert-FileNotContains -Path (Join-Path $Root "knowledge\wiki\LIFECYCLE.md") -Needle "last-updated: YYYY-MM-DD" -Message "The feature page format must not carry a history date."
@@ -433,7 +435,8 @@ function Validate-WikiStructure {
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Evidence labels" -Message "SCHEMA.md must define the evidence labels."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Records and decision supersession" -Message "SCHEMA.md must define records and decision supersession."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Conflict quarantine" -Message "SCHEMA.md must define the conflict quarantine format."
-    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Topic page format" -Message "SCHEMA.md must define the topic page format."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "topics/_FORMAT.md" -Message "SCHEMA.md must list the topic page format."
+    Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\topics\_FORMAT.md") -Needle "# Topic page format" -Message "topics/_FORMAT.md must define the topic page format."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## Ingest: any role, any page kind" -Message "SCHEMA.md must define generic ingest."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "## index.md conventions" -Message "SCHEMA.md must define the index conventions."
     Assert-FileContains -Path (Join-Path $Root "knowledge\wiki\SCHEMA.md") -Needle "Write the current state." -Message "SCHEMA.md must state the current-state operational rule."

@@ -44,7 +44,7 @@ condition.
 
 ## Evidence and confirmation
 
-Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md`, the complete feature (its acceptance
+Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/ACTIONS.md`, `status-board.md`, the complete feature (its acceptance
 criteria with their `AC-n@v1:<hex>` revisions, its Delivery evidence and the QA rows already recorded), every bug page of the
 feature, `knowledge/wiki/SETTINGS.md` (the delivery targets name the environments an app can be tested in) and the
 workspace identity.

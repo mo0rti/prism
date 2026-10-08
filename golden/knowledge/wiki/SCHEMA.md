@@ -8,7 +8,8 @@ This is the most important file in the wiki. Every AI agent reads this before pe
 any wiki operation. It defines what lives where, what formats to use, and how to behave.
 
 `LIFECYCLE.md` holds the feature, board and advisory protocol and is read, after this
-file, for lifecycle operations.
+file, for lifecycle operations. `ACTIONS.md` holds the lifecycle action registry and is
+read, after both, for lifecycle actions.
 
 ---
 
@@ -44,6 +45,7 @@ knowledge/
     ├── log.md            # Append-only log: the only home for history (LLM-maintained)
     ├── SCHEMA.md         # This file
     ├── LIFECYCLE.md      # Feature, board and advisory protocol, read for lifecycle operations
+    ├── ACTIONS.md        # Lifecycle action registry and write scopes, read for lifecycle actions
     ├── SETTINGS.md       # Project-level settings for wiki read/query behavior
     └── WIKI_REPORT.md    # Generated orientation summary; not source of truth
 ```
@@ -56,324 +58,25 @@ After `setup-project`, `wiki/advisory/` holds `BOARD.md` and `PROJECT_FOUNDATION
 
 ---
 
-## Persona page format
-
-Every file in `wiki/personas/` must follow this format:
-
-```markdown
----
-id: P-XXX
-name: [Persona name, e.g. "Restaurant Manager"]
-sources: [intake sources that established this persona]
----
-
-## Who they are
-A paragraph describing this type of user: their role, context, and relationship to the product.
-- **Observed:** [what the intake shows about this user type] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
-- **Assumed:** [what is taken as true without evidence]
-
-## Goals
-What they are trying to accomplish. Bulleted list.
-
-## Pain points
-What currently frustrates them or slows them down. Label each one **Observed** (with its
-link) or **Assumed**.
-
-## Features that serve this persona
-Links to feature IDs tagged for this persona.
-```
-
----
-
-## Business rule page format
-
-Every file in `wiki/business-rules/` must follow this format:
-
-```markdown
----
-id: BR-XXX
-title: [Rule name]
-source: [intake source or board review that established this rule]
----
-
-## Rule
-One unambiguous statement of the rule.
-- **Decided:** [the rule as confirmed] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
-
-## Rationale
-Why this rule exists (legal, business, product decision, board recommendation).
-
-## Affected features
-Feature IDs that must comply with this rule.
-
-## Exceptions
-Any explicitly agreed exceptions with source reference.
-```
-
----
-
-## Design page format
-
-Every file in `wiki/design/` must follow this format:
-
-```markdown
----
-feature-id: F-XXX
-title: [Design title]
-apps: [the apps of the feature this design covers, each with a UI]
-figma: [Figma URL or "not applicable"]
----
-
-## Summary
-What this design covers and what decisions were made.
-
-## Key design decisions
-Decisions that affect implementation (not just aesthetics).
-- **Decided:** [a decision that affects implementation] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
-
-## States covered
-List all UI states designed: empty, loading, error, success, edge cases.
-Flag any states not designed that the developer will need to handle.
-
-## Component references
-Links to relevant entries in design/ for reused components or patterns.
-
-## Open design questions
-Questions for the Designer that affect implementation. This section is the Unknown form of
-the evidence labels.
-```
-
-Together the design pages of a feature list, under `apps`, every active app with a UI. They belong to the `ui`
-design track (see `LIFECYCLE.md`, Design owner and design tracks).
-
----
-
-## Technical design page format
-
-Every file in `wiki/technical-design/` must follow this format. It is a current-state page, one per feature,
-and belongs to the `technical` design track:
-
-```markdown
----
-feature-id: F-XXX
-title: [Technical design title]
-apps: [every app of the feature]
-decisions: [ADR-001]
----
-
-## Summary
-## Architecture impact
-| App | Modules | Change |
-|---|---|---|
-## Data model and migrations
-## Security and privacy
-## Non-functional requirements
-## Risks
-## Decisions
-## API contract
-## Test strategy
-| Criterion | Applies to | Method | Level | Notes |
-|---|---|---|---|---|
-```
-
-Each section has content of its own, the Architecture impact table names every app, and the Test strategy names
-every acceptance criterion ID of the feature (`technical-design-incomplete`, `test-strategy-incomplete`). The
-filename names the feature (`technical-design-feature-mismatch`). The index line of a technical design page is its
-title and the first sentence of its Summary. See `technical-design/_FORMAT.md`.
-
----
-
-## App requirements page format
-
-Every file in `wiki/app-requirements/` must follow this format:
-
-```markdown
----
-feature-id: F-XXX
-app: [an app ID from the feature's `apps` list]
-status: pending | in-progress | done
----
-
-## What to build
-Specific, actionable description of what this app must implement.
-Written for the AI agent working in this app's code.
-
-## Technical constraints
-App-specific constraints, existing patterns to follow, library choices.
-- **Observed:** [an existing pattern or constraint] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
-- **Assumed:** [what is taken as true without evidence]
-
-## Design reference
-Link to design/F-XXX-[slug].md for an app with a UI. Not applicable to an app without a UI.
-
-## API contract reference
-Link to api-contracts/F-XXX.md. List endpoints or data shapes this app consumes/produces.
-
-## Acceptance criteria
-App-specific done conditions.
-
-## Dependencies
-Other feature IDs or app-requirement files that must complete first, or `None.`
-Open questions never go here; they stay in the feature's Open questions table.
-```
-
-`LIFECYCLE.md` (Lifecycle action registry, Delivery and revalidation) defines how the
-lifecycle actions create, invalidate and complete these pages.
-
----
-
-## API contract page format
-
-Every file in `wiki/api-contracts/` must follow this format:
-
-```markdown
----
-feature-id: F-XXX
-version: 1
-status: draft | agreed | implemented
----
-
-## Endpoints
-For each endpoint: method, path, request body, response body, error codes.
-
-## Data models
-Shared data shapes that backend produces and clients consume.
-
-## Authentication requirements
-Auth method, required scopes or roles.
-
-## Notes
-Design decisions, backwards-compatibility concerns.
-- **Decided:** [a decision about this contract] ([ADR-001](../decisions/ADR-001-slug.md))
-```
-
-`tech-design-done` (or a `design-handoff` that settles the technical track) creates the page at
-`status: agreed`, `version: 1` when the feature's API surface declares API work; `dev-done` moves it to
-`implemented`. List each endpoint as `METHOD /path` and define only data models that the API surface or an endpoint
-names. A revision raises `version` by one while the feature is in design. See `LIFECYCLE.md` (API contract).
-
----
-
-## Architecture Decision Record (ADR) format
-
-Every file in `wiki/decisions/` must follow this format:
-
-```markdown
----
-id: ADR-XXX
-title: [Decision title]
-date: YYYY-MM-DD
-status: proposed | accepted | deprecated | superseded
-# Only on an ADR that replaces an earlier decision:
-supersedes: ADR-NNN
-# Only on an ADR that a later decision replaced (its status is `superseded`):
-superseded-by: ADR-MMM
----
-
-## Context
-What situation forced this decision.
-
-## Decision
-What we decided.
-
-## Rationale
-Why this option over alternatives.
-
-## Consequences
-What becomes easier, what becomes harder.
-```
-
-An ADR is a dated record (see "Records and decision supersession" below).
-
----
-
-## Topic page format
-
-Every file in `wiki/topics/` must follow this format. A topic is a synthesis page: it
-combines what several sources and pages say about one subject into the current
-understanding. Use a typed folder when one fits and a topic when several pages would
-otherwise repeat the same background.
-
-```markdown
----
-kind: topic
-title: [Topic title]
-status: draft | current
-sources: [processed intake items, records or URLs the page rests on]
----
-
-## Summary
-One paragraph with the current understanding. Its first sentence is the page's line in
-`index.md`, so write it in the present tense.
-
-## Key points
-- **Observed:** [what a source shows] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
-- **Assumed:** [what is taken as true without evidence]
-
-## Related pages
-Links to the pages this page relies on or explains.
-```
-
----
-
-## Research page format
-
-Every file in `wiki/research/` must follow this format. A research page answers one
-question from the sources gathered for it and holds the current answer and the gaps that
-remain.
-
-```markdown
----
-kind: research
-title: [Research title]
-status: open | concluded
-sources: [processed intake items, records or URLs the findings rest on]
----
-
-## Question
-The one question this page answers.
-
-## Summary
-One paragraph with the current answer, in the present tense.
-
-## Findings
-- **Observed:** [what a source shows] ([source](../../intake/processed/YYYY-MM-DD-slug/notes.md))
-
-## Gaps
-- **Unknown:** [what the sources do not answer]
-```
-
----
-
-## Plan page format
-
-Every file in `wiki/plans/` must follow this format. A plan page holds the current status of
-one plan, not its history: finished steps leave the page, and `log.md` records when they
-happened.
-
-```markdown
----
-kind: plan
-title: [Plan title]
-status: proposed | active | paused | done | dropped
-sources: [processed intake items, records or URLs the plan rests on]
----
-
-## Summary
-One paragraph on what the plan is and where it stands, in the present tense.
-
-## Goal
-What the plan achieves and how anyone can tell it is achieved.
-
-## Current status
-Where the plan stands now.
-
-## Next steps
-What comes next and who takes it.
-
-## Blockers
-What blocks the plan, or "No blockers."
-```
+## Page kinds
+
+Each page kind has a `_FORMAT.md` in its folder with the front matter, the sections and the rules of the
+kind. Read it before you create or change a page of that kind.
+
+- **Feature** (`features/`): [`features/_FORMAT.md`](features/_FORMAT.md); the lifecycle fields, the evidence tables and their rules are in `LIFECYCLE.md`.
+- **Persona** (`personas/`): [`personas/_FORMAT.md`](personas/_FORMAT.md)
+- **Business rule** (`business-rules/`): [`business-rules/_FORMAT.md`](business-rules/_FORMAT.md)
+- **Design page** (`design/`): [`design/_FORMAT.md`](design/_FORMAT.md)
+- **Technical design page** (`technical-design/`): [`technical-design/_FORMAT.md`](technical-design/_FORMAT.md)
+- **App requirements page** (`app-requirements/`): [`app-requirements/_FORMAT.md`](app-requirements/_FORMAT.md)
+- **API contract page** (`api-contracts/`): [`api-contracts/_FORMAT.md`](api-contracts/_FORMAT.md)
+- **Bug** (`bugs/`): [`bugs/_FORMAT.md`](bugs/_FORMAT.md)
+- **Architecture Decision Record, ADR** (`decisions/`): [`decisions/_FORMAT.md`](decisions/_FORMAT.md)
+- **Topic** (`topics/`): [`topics/_FORMAT.md`](topics/_FORMAT.md)
+- **Research page** (`research/`): [`research/_FORMAT.md`](research/_FORMAT.md)
+- **Plan page** (`plans/`): [`plans/_FORMAT.md`](plans/_FORMAT.md)
+- **Advisory files** (`advisory/`): [`advisory/_FORMAT.md`](advisory/_FORMAT.md)
+- **Direction** (`direction.md`) and **Roadmap** (`roadmap.md`): single pages whose formats follow.
 
 ---
 
@@ -422,8 +125,9 @@ What is planned next, one item each, linked to its plan or feature page.
 What follows, one item each.
 ```
 
-`prism wiki lint` checks the front matter of these five kinds: `kind` equal to the page's
-kind, `title` and `status` (one of the values above) on a topic, research page or plan, and
+`prism wiki lint` checks the front matter of the five kinds that carry a `kind` field (topic,
+research page, plan, direction and roadmap): `kind` equal to the page's kind, `title` and
+`status` (one of the values in the kind's `_FORMAT.md`) on a topic, research page or plan, and
 `sources` as a list on every one. Whether a page says something true is never judged.
 
 ---

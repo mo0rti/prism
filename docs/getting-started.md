@@ -259,7 +259,7 @@ Then move into the generated project workflow:
    - Claude Code: `/setup-project`
    - Codex: `$setup-project`
    - Cursor: ask the agent to run `setup-project`
-3. inspect `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md`
+3. inspect `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md` and `knowledge/wiki/ACTIONS.md`
 4. run `feature-status` if you want an orientation report
 5. add a first feature: create a dated folder such as
    `knowledge/intake/pending/2026-10-06-my-first-feature/`, put your brief in it as a

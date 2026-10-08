@@ -46,7 +46,7 @@ is copy-only and never authorizes a write.
 
 ## The track
 
-Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md`, the complete
+Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/ACTIONS.md`, `status-board.md`, the complete
 feature, its design pages, linked context, the apps in `prism.workspace.yml` and their `has-ui`
 capability (`unknown` counts as a UI), and the active `revalidation` domains.
 

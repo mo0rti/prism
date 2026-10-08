@@ -50,7 +50,7 @@ Agents connect to a Prism board through one shared, provider-neutral interface. 
 | Updates | `prism update` works on a branch with one commit per layer: the workspace layer, then each scaffolded app from its own answers file. It checks every layer's saved answers before Copier runs, merges the workspace manifest field by field, reports conflicts per layer and stops before merging when a layer conflicted. |
 | Live state | The board derives its live indicator from state, fetches again after a reconnect, disables copying while stale, and shows "Board session expired" with **Reconnect** after a service restart or an expired session. |
 
-Source anchors: [workflow model](prism-model.md), [lifecycle contract](../template/knowledge/wiki/LIFECYCLE.md), [workspace inspection](../prism_cli/workspace.py), [transition evaluator](../prism_cli/wiki_transitions.py), [board service](../prism_cli/board_service.py), [MCP adapter](../prism_cli/board_mcp.py) and [board server](../prism_cli/board_server.py).
+Source anchors: [workflow model](prism-model.md), [lifecycle contract](../template/knowledge/wiki/LIFECYCLE.md), [action registry](../template/knowledge/wiki/ACTIONS.md), [workspace inspection](../prism_cli/workspace.py), [transition evaluator](../prism_cli/wiki_transitions.py), [board service](../prism_cli/board_service.py), [MCP adapter](../prism_cli/board_mcp.py) and [board server](../prism_cli/board_server.py).
 
 ## Contracts
 

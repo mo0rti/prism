@@ -127,6 +127,7 @@ class WikiTransitionTests(unittest.TestCase):
         (self.root / "knowledge" / "intake" / "quarantined").mkdir(parents=True)
         (self.wiki_root / "SCHEMA.md").write_text("---\nschema-version: 1\n---\n# Wiki schema\n", encoding="utf-8")
         (self.wiki_root / "LIFECYCLE.md").write_text("---\nschema-version: 1\n---\n# Wiki lifecycle\n", encoding="utf-8")
+        (self.wiki_root / "ACTIONS.md").write_text("---\nschema-version: 1\n---\n# Wiki actions\n", encoding="utf-8")
         (self.wiki_root / "SETTINGS.md").write_text(
             "---\nwiki-stale-after-days: 14\n---\n",
             encoding="utf-8",
@@ -931,7 +932,7 @@ class WikiTransitionTests(unittest.TestCase):
         reads: Counter[str] = Counter()
 
         def counting_read_text(path: Path, *args: object, **kwargs: object) -> str:
-            if path.name in {"SCHEMA.md", "LIFECYCLE.md", "index.md", "status-board.md"} and kwargs.get("encoding") == "utf-8-sig":
+            if path.name in {"SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "index.md", "status-board.md"} and kwargs.get("encoding") == "utf-8-sig":
                 reads[path.name] += 1
             return real_read_text(path, *args, **kwargs)
 
@@ -945,7 +946,7 @@ class WikiTransitionTests(unittest.TestCase):
         six_features, count_six = self._count_required_file_reads()
 
         self.assertEqual((1, 6), (count_one, count_six))
-        self.assertEqual(one_feature, six_features, "Reads of SCHEMA.md, LIFECYCLE.md, index.md and status-board.md must not grow with the feature count.")
+        self.assertEqual(one_feature, six_features, "Reads of SCHEMA.md, LIFECYCLE.md, ACTIONS.md, index.md and status-board.md must not grow with the feature count.")
 
     def test_unreadable_required_wiki_file_still_blocks_every_feature(self) -> None:
         self._add_features(2)

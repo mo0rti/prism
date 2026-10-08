@@ -134,12 +134,13 @@ _NON_SOURCE_FILENAMES = {
     "PROJECT_FOUNDATION.md",
     "SCHEMA.md",
     "LIFECYCLE.md",
+    "ACTIONS.md",
     "SETTINGS.md",
     "WIKI_REPORT.md",
     "log.md",
     "status-board.md",
 }
-_SCHEMA_VERSION_FILES = ("SCHEMA.md", "LIFECYCLE.md")
+_SCHEMA_VERSION_FILES = ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md")
 SUPPORTED_SCHEMA_VERSION = 1
 # A dated record keeps its own date field; every other page kind carries none.
 _RECORD_DATE_FIELDS = {"decisions": "date"}
@@ -322,9 +323,9 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
         diagnostics.append(_diag("missing-wiki-root", "error", wiki_root, "Missing knowledge/wiki directory."))
         return WikiLintResult(root=root, diagnostics=diagnostics)
 
-    # SETTINGS.md is optional by contract. SCHEMA.md, LIFECYCLE.md, the index and the status
+    # SETTINGS.md is optional by contract. SCHEMA.md, LIFECYCLE.md, ACTIONS.md, the index and the status
     # board remain the structural files that lint requires before it can reason about the wiki.
-    for required in ("SCHEMA.md", "LIFECYCLE.md", "index.md", "status-board.md"):
+    for required in ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "index.md", "status-board.md"):
         required_path = wiki_root / required
         if not required_path.exists():
             diagnostics.append(
@@ -1268,7 +1269,7 @@ def _record_date_field(path: Path, wiki_root: Path) -> str | None:
 
 
 def _lint_schema_versions(pages: list[MarkdownPage], wiki_root: Path) -> list[WikiDiagnostic]:
-    """SCHEMA.md and LIFECYCLE.md each start with front matter `schema-version: 1`."""
+    """SCHEMA.md, LIFECYCLE.md and ACTIONS.md each start with front matter `schema-version: 1`."""
 
     diagnostics: list[WikiDiagnostic] = []
     by_name = {page.path.name: page for page in pages if page.path.parent == wiki_root}

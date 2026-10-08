@@ -15,7 +15,8 @@ This file names an operation without a prefix, for example `po-intake`. Invoke i
 - Claude Code: `/po-intake` (`.claude/commands/<operation>.md`)
 - Codex: `$po-intake` (`.agents/skills/<operation>/SKILL.md`)
 - Cursor: ask the agent to "run po-intake"; it follows `.claude/commands/<operation>.md`,
-  `knowledge/wiki/SCHEMA.md` and, for lifecycle operations, `knowledge/wiki/LIFECYCLE.md`
+  `knowledge/wiki/SCHEMA.md`, for lifecycle operations `knowledge/wiki/LIFECYCLE.md`, and for lifecycle
+  actions `knowledge/wiki/ACTIONS.md`
 
 ## First-time setup
 
@@ -27,7 +28,7 @@ direct-file workflow), never through a connected board.
 Lifecycle work does not wait for setup. Until setup runs, the advisory board is not set up, so
 `board-review` is unavailable, and a feature that needs a review keeps `advisory-review: pending`.
 
-See `knowledge/wiki/SCHEMA.md` and `knowledge/wiki/LIFECYCLE.md` for the full cross-tool workflow.
+See `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md` and `knowledge/wiki/ACTIONS.md` for the full cross-tool workflow.
 
 ## Connected board workflow
 
@@ -227,6 +228,7 @@ Use the canonical selected-surface instructions and shared contract:
 - Codex: `.agents/skills/<action>/SKILL.md`
 - Claude: `.claude/commands/<action>.md`
 - Shared protocol, evidence, exemptions, and reopen rules: `knowledge/wiki/LIFECYCLE.md`, read after `knowledge/wiki/SCHEMA.md`
+- Action registry, approver roles, write scopes and action contracts: `knowledge/wiki/ACTIONS.md`, read after `knowledge/wiki/LIFECYCLE.md`
 
 Each action resolves one feature, rereads its source and context, shows a
 complete proposed write set, and waits for final confirmation. In the board that
@@ -252,7 +254,7 @@ refreshed. Copy only a ready result; blocked or unknown results require review
 or repair.
 
 Before copying or acting on a request, reread the selected instructions,
-`knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `status-board.md`, the feature,
+`knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/ACTIONS.md`, `status-board.md`, the feature,
 linked context, and workspace identity. Compare the path, identity, feature ID, status,
 owner, advisory state, and fingerprint with current files. Use **Copy request** only for a
 ready result on the selected invocation. The preview is not an "Approve move" action, does
@@ -281,6 +283,7 @@ An agent service accepts the backend's bearer tokens with no shared secret: unde
 
 - `knowledge/wiki/SCHEMA.md` - wiki conventions and operational rules
 - `knowledge/wiki/LIFECYCLE.md` - feature, board and advisory protocol, read after `SCHEMA.md` for lifecycle operations
+- `knowledge/wiki/ACTIONS.md` - lifecycle action registry, approver roles and write scopes, read after `LIFECYCLE.md` for lifecycle actions
 - `knowledge/wiki/index.md` - one line per wiki page, grouped by kind; read it first
 - `knowledge/wiki/status-board.md` - feature status board
 - `knowledge/wiki/WIKI_REPORT.md` - generated orientation summary when present
