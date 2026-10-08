@@ -167,11 +167,12 @@ does not move an intake folder. In particular, a move uses `source` and
 `destination`, not `from` and `to`.
 
 The `ingest` skill writes any page kind from one intake folder: a topic, research page, plan,
-`direction.md`, `roadmap.md`, persona, business rule, decision or new feature. Its manifest
+`direction.md`, `roadmap.md`, persona, business rule, decision, bug or new feature. Its manifest
 lists every page it writes by full relative path and canonical ID, and a new feature meets the
 `po-intake` rules. A topic, research page, plan, direction or roadmap page that exists is
 replaced in place, so read it before you propose its new text; a persona, business rule,
-decision or feature is created and never rewritten.
+decision, bug or feature is created and never rewritten. A new bug is `open` + `dev` with empty
+Fix, Verification, Release and Evidence history sections.
 
 The `verify-pages` skill records that current-state pages were checked against their sources.
 It changes no page: send an empty `changes` list and no `moves`, and name each verified page in
@@ -198,6 +199,16 @@ leaves the evidence sections empty. `dev-done` also changes only `app-revalidati
 `## Delivery evidence` section (it adds one row for each app it delivers), and adds no other
 section heading. In a linked requirement or API contract page, `dev-done` changes only
 `status`. The rejection quotes the first line that differs.
+
+`qa-verify` and `qa-pass` change the feature's `## QA verification` section (and `qa-pass` its
+`## Release` section and `app-revalidation`), may resolve `qa`-owned open questions, and create a new
+bug page for each defect found; they never rewrite a bug. `qa-fail` moves the evidence of the apps it
+fails to `## Evidence history` and sets the status of their requirement pages and API contract.
+`bug-update` changes one existing bug page and nothing else: the change selects the action, and
+each action changes only its own front matter keys and sections (`bug_frontmatter_scope`). Read
+`knowledge/wiki/bugs/_FORMAT.md`, every bug page and the linked feature before you propose one.
+Read the bug pages before a QA proposal too: a bug created between your preview and the apply makes
+the preview stale (`stale_preview`).
 
 A question skill changes the Open questions table in a fixed way. `ask` adds exactly
 one new row with the next number and status `open`. `po-clarify`, `design-clarify` and

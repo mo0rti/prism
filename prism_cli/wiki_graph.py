@@ -28,13 +28,24 @@ from prism_cli.wiki_model import (
     within_wiki_read_scope,
 )
 from prism_cli.wiki_query import build_envelope
+from prism_cli.qa_rules import QA_STAGES
 from prism_cli.wiki_transitions import (
+    ACTION_BY_ID,
     evaluate_transition_summaries,
     finalize_transition_envelope,
     workspace_fingerprint,
 )
 from prism_cli.workspace import inspect_workspace
 
+
+
+def _offered_transitions(node: GraphNode, records: list[dict[str, Any]]) -> tuple[dict[str, Any], ...]:
+    """The actions a card offers: a feature in development has the QA actions only once one of its apps reached QA."""
+
+    in_qa = any(stage in QA_STAGES for _app, stage in node.app_stages or ())
+    if node.status != "in-dev" or in_qa:
+        return tuple(records)
+    return tuple(record for record in records if getattr(ACTION_BY_ID.get(str(record.get("action"))), "package", None) != "D3")
 
 LIFECYCLE_STAGES = list(FEATURE_STATUS_ORDER)
 
@@ -179,7 +190,7 @@ def build_graph(root: Path) -> dict[str, Any]:
             open_questions=node.open_questions,
             app_stages=node.app_stages,
             transitions=(
-                tuple(transition_evaluation.transitions_list_by_path.get(node.path or "", []))
+                _offered_transitions(node, transition_evaluation.transitions_list_by_path.get(node.path or "", []))
                 if node.path in transition_evaluation.transitions_list_by_path
                 else None
             ),

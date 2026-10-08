@@ -20,6 +20,34 @@ Resolve exactly one source file at
 non-`done`/`none` source is a stop condition. Do not invent another route or a
 generic status setter.
 
+### Routes back from QA
+
+While an app has reached QA, the same `specified` and `in-design` arguments select the QA return routes. They send the
+whole feature back before anything shipped:
+
+| Route | Action | Source | Destination | Pending revalidation |
+|---|---|---|---|---|
+| `specified` | `qa-return-spec` | `in-dev` + `dev` (an app at `ready-for-qa` or later), `ready-for-qa` + `qa`, `in-qa` + `qa`, `ready-for-release` + `release` | `specified` + `po` | specification, design, technical-design; every app: implementation, tests, qa, release |
+| `in-design` | `qa-return-design` | the same | `in-design` + the design owner of the scope | design, technical-design; every app: implementation, tests, qa, release |
+
+A feature in which some but not all apps are released cannot return to specification or design
+(`partial_release_requires_new_feature`): put changed requirements or contracts in a new feature, and an implementation defect
+in a bug. An implementation defect of one app is a `qa-fail`, not a return.
+
+The proposal, in one write, moves every Delivery evidence, QA verification and Release row of every app to
+`## Evidence history` in one `### <today> - qa-return-spec` (or `qa-return-design`) entry, copying each row verbatim under
+`- Archived evidence:` with its section name in front. The entry fills `- Reason:`, `- Affected apps:` (every app of the scope),
+`- Participants: none`, `- Affected tracks:` (`ui`, `technical`; `qa-return-design` names the tracks it sends back),
+`- Reaffirmed evidence: none`, `- Requirement/API invalidations:` and `- Linked bugs:`. It sets the status and owner, adds the
+revalidation domains above, and:
+
+- `qa-return-spec` removes `design-tracks` and `design-reaffirm` (the design starts again) and sets a requirement page that was
+  `done` to `in-progress` and an API contract that was `agreed` or `implemented` to `draft`;
+- `qa-return-design` sets each affected track in `design-tracks` to `pending` (its reason removed), lists every other `done` track
+  in `design-reaffirm`, sets a requirement page that was `done` to `in-progress` and an `implemented` API contract to `agreed`.
+
+Change only `status` in a requirement page or API contract.
+
 ## Read-only preflight and impact review
 
 Read SCHEMA, LIFECYCLE, status board, the complete feature, linked design, app requirements,

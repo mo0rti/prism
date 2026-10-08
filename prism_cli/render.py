@@ -206,7 +206,7 @@ def render_wiki_blocker_facts(facts: dict[str, Any]) -> None:
 
 
 def render_wiki_owner_facts(facts: dict[str, Any]) -> None:
-    print(panel("Owner", [f"Owner: {facts.get('owner')}", f"Features: {facts.get('feature_count', 0)}", f"Open questions: {facts.get('open_question_count', 0)}"]))
+    print(panel("Owner", [f"Owner: {facts.get('owner')}", f"Features: {facts.get('feature_count', 0)}", f"Open questions: {facts.get('open_question_count', 0)}", f"Bugs: {facts.get('bug_count', 0)}"]))
     print()
     print(section("Features"))
     render_feature_summaries(facts.get("features", []))
@@ -216,6 +216,14 @@ def render_wiki_owner_facts(facts: dict[str, Any]) -> None:
     if questions:
         for question in questions:
             print(f"- {question.get('feature_id')} #{question.get('number')}: {question.get('question')}")
+    else:
+        print("- none")
+    print()
+    print(section("Bugs"))
+    bugs = facts.get("bugs", [])
+    if bugs:
+        for bug in bugs:
+            print(f"- {bug.get('id')}: {bug.get('title')} [{bug.get('status')}, {bug.get('severity')}]")
     else:
         print("- none")
 

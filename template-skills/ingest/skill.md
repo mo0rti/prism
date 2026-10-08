@@ -1,11 +1,11 @@
 ---
 name: ingest
-description: "Process one pending intake folder into wiki pages of any kind, for any role. Use when turning files from `knowledge/intake/pending/` into a topic, research page, plan, direction, roadmap, persona, business rule, decision or new feature, with index lines and an intake manifest."
+description: "Process one pending intake folder into wiki pages of any kind, for any role. Use when turning files from `knowledge/intake/pending/` into a topic, research page, plan, direction, roadmap, persona, business rule, decision, bug or new feature, with index lines and an intake manifest."
 layers: [codex, command]
 codex:
   display_name: "Ingest"
   short_description: "Process a pending intake folder into wiki pages of any kind"
-  default_prompt: "Use @@invoke:ingest@@ [folder-name] to turn a pending intake folder into topics, research, plans, direction, roadmap, personas, business rules, decisions or features, with index lines and an intake manifest."
+  default_prompt: "Use @@invoke:ingest@@ [folder-name] to turn a pending intake folder into topics, research, plans, direction, roadmap, personas, business rules, decisions, bugs or features, with index lines and an intake manifest."
   implicit: false
 ---
 
@@ -51,7 +51,7 @@ joined by hyphens. The connected board rejects any other name.
 6. **Summarize your interpretation:**
    - Which pages does this input create? List each by kind and proposed title.
    - Which existing topic, research, plan, direction or roadmap pages does it replace in place?
-   - Which new features, personas, business rules or decisions does it introduce?
+   - Which new features, bugs, personas, business rules or decisions does it introduce?
    - What is ambiguous or unclear that you could not resolve?
    - For each new feature: does it appear to need an advisory board review?
 
@@ -74,6 +74,11 @@ joined by hyphens. The connected board rejects any other name.
    - A persona, business rule or decision: create it; never rewrite an existing one. A new
      decision replaces an older one only through the decision-supersession workflow in
      `SCHEMA.md`.
+   - A defect report: assign the next free bug number and create `knowledge/wiki/bugs/[BUG-XXX]-[slug].md`
+     in the format of `knowledge/wiki/bugs/_FORMAT.md`: `status: open` and `owner: dev`, none of `deferred-reason`,
+     `close-reason`, `duplicate-of` and `promoted-to`, empty Fix, Verification, Release and Evidence history sections
+     (`bug_creation_invalid`), `feature` an existing feature or `none`, and `apps` apps of that feature. A bug is
+     created and never rewritten here; `@@invoke:bug-update@@` changes it.
    - A feature: assign the next available feature ID and create
      `knowledge/wiki/features/[F-XXX]-[slug].md` with `status: raw` and `owner: po`, under
      the `@@invoke:po-intake@@` rules: the Summary, User story, Acceptance criteria, Open questions
@@ -101,6 +106,7 @@ joined by hyphens. The connected board rejects any other name.
 
 - write-capable skill
 - never rewrite an existing feature, persona, business rule or decision, and never edit a processed intake item; corrected material is a new dated pending folder
+- never rewrite an existing bug page; a bug in the material is created as a new bug page
 - Do not invent requirements not present in the input. Mark gaps as open questions on a
   feature and as `**Unknown:**` items on other pages.
 - Update or conflict: a source that refines a claim, or replaces an Observed claim with a newer
@@ -108,7 +114,7 @@ joined by hyphens. The connected board rejects any other name.
   contradicts a Decided claim, a business rule or an ADR is a conflict. When unsure, quarantine.
 - If the input mentions an existing page by name or description, check whether it updates that
   page rather than creating a duplicate. An existing feature, persona, business rule or decision
-  is never rewritten by ingest; say so and point to the operation that changes it.
+  is never rewritten by ingest, and neither is a bug; say so and point to the operation that changes it.
 - A single input folder may produce several pages of different kinds.
 - Never set a new feature to `specified`. Ingest writes `raw` + `po` only.
 - write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table of a feature) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)

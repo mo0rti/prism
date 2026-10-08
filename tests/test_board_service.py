@@ -22,9 +22,11 @@ import yaml
 
 from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE
+from prism_cli.wiki_model import parse_criteria, read_feature_evidence
 from prism_cli.workflow_assets import asset_digest
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.board_approval import apply_preview, human_with_roles
+from tests.qa_pages import append_history, bug_page, fix_row, history_entry, verification_row
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, PROCESSED_INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page, _write_index
 from tests.test_fs_safety import CLOUD_TAG, JUNCTION_TAG, fake_reparse
@@ -72,6 +74,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
                 "knowledge/wiki/personas/*.md",
                 "knowledge/wiki/business-rules/*.md",
                 "knowledge/wiki/decisions/*.md",
+                "knowledge/wiki/bugs/*.md",
                 "knowledge/wiki/topics/*.md",
                 "knowledge/wiki/research/*.md",
                 "knowledge/wiki/plans/*.md",
@@ -103,6 +106,16 @@ class BoardServiceValidatorTests(unittest.TestCase):
                 "knowledge/wiki/app-requirements/*.md",
                 "knowledge/wiki/api-contracts/*.md",
             ],
+            # QA records rows on the feature page and creates bug pages; qa-fail also changes the linked requirement and contract pages.
+            "qa-verify": ["knowledge/wiki/features/*.md", "knowledge/wiki/bugs/*.md"],
+            "qa-pass": ["knowledge/wiki/features/*.md", "knowledge/wiki/bugs/*.md"],
+            "qa-fail": [
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/app-requirements/*.md",
+                "knowledge/wiki/api-contracts/*.md",
+                "knowledge/wiki/bugs/*.md",
+            ],
+            "bug-update": ["knowledge/wiki/bugs/*.md"],
             # The explicit scope edit of one feature: its page and the requirement pages of the apps it gains.
             "feature-scope": ["knowledge/wiki/features/*.md", "knowledge/wiki/app-requirements/*.md"],
             # It supplies no file: the verified pages are named in `read_revisions` and the log entry is service-managed.
@@ -137,6 +150,11 @@ class BoardServiceValidatorTests(unittest.TestCase):
             ("feature-reopen", "knowledge/wiki/app-requirements/backend.md"),
             ("feature-scope", "knowledge/wiki/app-requirements/F-002-backend.md"),
             ("feature-scope", "knowledge/wiki/features/F-002-review.md"),
+            ("ingest", "knowledge/wiki/bugs/BUG-001-review.md"),
+            ("qa-verify", "knowledge/wiki/bugs/BUG-001-review.md"),
+            ("qa-pass", "knowledge/wiki/features/F-002-review.md"),
+            ("qa-fail", "knowledge/wiki/app-requirements/F-002-backend.md"),
+            ("bug-update", "knowledge/wiki/bugs/BUG-001-review.md"),
         )
         for skill, path in accepted:
             with self.subTest(skill=skill, accepted_path=path):
@@ -168,6 +186,11 @@ class BoardServiceValidatorTests(unittest.TestCase):
             ("feature-reopen", "knowledge/wiki/design/F-002-review.md"),
             ("feature-scope", "knowledge/wiki/design/F-002-review.md"),
             ("feature-scope", "knowledge/wiki/api-contracts/F-002-review.md"),
+            ("qa-verify", "knowledge/wiki/app-requirements/F-002-backend.md"),
+            ("qa-pass", "knowledge/wiki/api-contracts/F-002-review.md"),
+            ("qa-fail", "knowledge/wiki/design/F-002-review.md"),
+            ("bug-update", "knowledge/wiki/features/F-002-review.md"),
+            ("dev-done", "knowledge/wiki/bugs/BUG-001-review.md"),
         )
         for skill, path in rejected:
             with self.subTest(skill=skill, rejected_path=path), self.assertRaises(BoardError) as error:
@@ -549,7 +572,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
 
     def test_every_listed_reference_of_every_skill_resolves_through_get_skill_reference(self) -> None:
         names = [item["name"] for item in self.service.list_skills(self.actor)["skills"]]
-        self.assertEqual(27, len(names))
+        self.assertEqual(31, len(names))
         for name in names:
             with self.subTest(skill=name):
                 page = self.service.get_skill(self.actor, name)
@@ -1516,10 +1539,81 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         stages = self.service.query(self.agent, "show", "F-001")["facts"]["feature"]["criteria"]
         self.assertEqual(["AC-1", "AC-2"], [item["id"] for item in stages])
 
-        # The routes of later work packages are registered and answer `action_unavailable`.
+        # QA: one failure with a bug, the fix, a second delivery and a pass. The journey stops at ready-for-release.
+        self._qa_to_ready_for_release()
+        final = self.service.query(self.agent, "show", "F-001")
+        self.assertEqual(("ready-for-release", "release"), (final["facts"]["feature"]["status"], final["facts"]["feature"]["owner"]))
+        self.assertIn("backend: ready-for-release", self.service._read_text(self.root / "knowledge/wiki/status-board.md"))
+        # The release actions belong to a later work package.
         with self.assertRaises(BoardError) as unavailable:
-            self.service.preview_skill(self.agent, "feature-reopen", [{"path": feature_path, "content": self.service._read_text(self.root / feature_path)}], None, {})
+            self.service.query(self.agent, "transition-preflight", "F-001", "release-done")
         self.assertEqual(("action_unavailable", 409), (unavailable.exception.code, unavailable.exception.status))
+
+    def _qa_to_ready_for_release(self) -> None:
+        feature_path = "knowledge/wiki/features/F-001-document-review.md"
+        requirement_path = "knowledge/wiki/app-requirements/F-001-backend.md"
+        bug_path = "knowledge/wiki/bugs/BUG-001-outcome-not-read-back.md"
+        qa_header = "| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |"
+        delivery_header = "| App | Artifact | Contract | Implementation | Tests | Basis |"
+
+        def delivery_row(artifact: str) -> str:
+            return f"| backend | `{artifact}` | none | Synthetic review record `tests/fixtures/review.md` | Acceptance check `document-review` passed | checked |"
+
+        def read(path: str) -> str:
+            return self.service._read_text(self.root / path)
+
+        def table(header: str, rows: list[str]) -> str:
+            return "\n".join([header, "|" + "|".join("---" for _ in header.strip("|").split("|")) + "|", *rows])
+
+        def qa(criterion: str, result: str, artifact: str, attempt: int) -> str:
+            return f"| backend | {criterion} | automated | `{artifact}` | ci | qa-{attempt} | {result} | [run](https://ci.example/qa) | checked |"
+
+        def bug(status: str, **sections: str) -> str:
+            return bug_page("BUG-001", status=status, apps=["backend"], title="Outcome not read back", **sections)
+
+        def with_domains(page: str, domains: dict[str, list[str]]) -> str:
+            frontmatter, _body = _parse_markdown(page)
+            frontmatter["app-revalidation"] = domains
+            return self.service._replace_frontmatter(page, frontmatter)
+
+        first, second = [item.ref for item in parse_criteria(_parse_markdown(read(feature_path))[1], "F-001")]
+        # qa-verify: AC-1 passes, AC-2 fails, and the defect is a new bug page.
+        page = _set_feature_stage(read(feature_path), "in-qa", "qa", self.service)
+        page = _replace_body_section(self.service, page, "QA verification", table(qa_header, [qa(first, "pass", "build:backend#1", 1), qa(second, "fail", "build:backend#1", 1)]))
+        self._submit_skill("qa-verify", [{"path": feature_path, "content": page}, {"path": bug_path, "content": bug("open")}])
+        self.assertEqual(("in-qa", "qa"), self._stage_of(feature_path))
+        # qa-fail: the app goes back to development with its delivery and QA rows archived, citing the bug.
+        evidence = read_feature_evidence(_parse_markdown(read(feature_path))[1])
+        archived = [("Delivery evidence", "| " + " | ".join(evidence.delivery[0].cells) + " |")]
+        archived += [("QA verification", "| " + " | ".join(row.cells) + " |") for row in evidence.qa]
+        entry = history_entry("qa-fail", affected="backend", archived=archived, invalidations=f"{requirement_path}: done -> in-progress", linked="BUG-001")
+        page = _replace_body_section(self.service, read(feature_path), "Delivery evidence", table(delivery_header, []))
+        page = _replace_body_section(self.service, page, "QA verification", table(qa_header, []))
+        page = with_domains(_set_feature_stage(append_history(page, entry), "in-dev", "dev", self.service), {"backend": ["implementation", "tests", "qa", "release"]})
+        requirement = _set_requirement_status(read(requirement_path), "in-progress")
+        self._submit_skill("qa-fail", [{"path": feature_path, "content": page}, {"path": requirement_path, "content": requirement}])
+        self.assertEqual(("in-dev", "dev"), self._stage_of(feature_path))
+        # The bug is started and fixed; the app is delivered again on the new artifact.
+        self._submit_skill("bug-update", [{"path": bug_path, "content": bug("in-fix")}])
+        fix = table("| App | Artifact | Implementation | Tests | Basis |", [fix_row("backend", "build:backend#2")])
+        self._submit_skill("bug-update", [{"path": bug_path, "content": bug("fixed", fix=fix)}])
+        page = _set_feature_stage(read(feature_path), "ready-for-qa", "qa", self.service)
+        page = _replace_body_section(self.service, page, "Delivery evidence", table(delivery_header, [delivery_row("build:backend#2")]))
+        page = with_domains(page, {"backend": ["qa", "release"]})
+        self._submit_skill("dev-done", [{"path": feature_path, "content": page}, {"path": requirement_path, "content": _set_requirement_status(read(requirement_path), "done")}])
+        self.assertEqual(("ready-for-qa", "qa"), self._stage_of(feature_path))
+        # QA verifies the bug on the delivered artifact and passes the app in the second attempt.
+        verification = table("| App | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |", [verification_row("backend", "build:backend#2")])
+        self._submit_skill("bug-update", [{"path": bug_path, "content": bug("verified", fix=fix, verification=verification)}])
+        page = _set_feature_stage(read(feature_path), "ready-for-release", "release", self.service)
+        page = _replace_body_section(self.service, page, "QA verification", table(qa_header, [qa(first, "pass", "build:backend#2", 2), qa(second, "pass", "build:backend#2", 2)]))
+        release = table("| App | Target | Version | Attempt | Outcome | Record | Basis |", ["| backend | — | `build:backend#2` | release-1 | pending | — | — |"])
+        page = with_domains(_replace_body_section(self.service, page, "Release", release), {"backend": ["release"]})
+        self._submit_skill("qa-pass", [{"path": feature_path, "content": page}])
+
+    def _stage_of(self, feature_path: str) -> tuple[str, str]:
+        frontmatter = _parse_markdown(self.service._read_text(self.root / feature_path))[0]
+        return frontmatter["status"], frontmatter["owner"]
 
     def _submit_skill(self, skill: str, changes: list[dict[str, str]], moves: list[dict[str, str]] | None = None) -> dict:
         preview = self.service.preview_skill(
@@ -1696,10 +1790,45 @@ class EvidenceHistoryValidatorTests(unittest.TestCase):
         unlisted = self.error(self.after(self.entry(archive)), related=(supplied, before))
         self.assertEqual("reopen_invalidation_mismatch", unlisted.code)
 
-    def test_reopen_routes_answer_action_unavailable(self) -> None:
+    def test_the_routes_back_from_qa_work_and_the_reopen_routes_of_released_work_answer_action_unavailable(self) -> None:
         agent = self.service.authenticate(self.service.create_participant("Workflow agent", "agent", True)["token"])
+        qa = human_with_roles(self.service, "Quinn", "qa")
+        (self.root / self.FEATURE).write_bytes(self.before.encode("utf-8"))
+        requirement = self.root / self.REQUIREMENT
+        requirement.parent.mkdir(parents=True, exist_ok=True)
+        requirement.write_bytes(_journey_requirement_page("done").encode("utf-8"))
+        write_status_board(self.root, "| F-001 | Document review | ready-for-qa | qa | not-needed |\n")
+        write_index(self.root)
+
+        def propose(page: str, extra: list[dict[str, str]] | None = None) -> dict:
+            changes = [{"path": self.FEATURE, "content": page}, *(extra or [])]
+            return self.service.preview_skill(agent, "feature-reopen", changes, None, _read_revisions(self.service, agent, "feature-reopen", changes))
+
+        # A page that names no route is not a reopen route.
+        with self.assertRaises(BoardError) as none:
+            propose(self.before)
+        self.assertEqual("reopen_route_required", none.exception.code)
+        # qa-return-spec: every row is archived, the feature goes back to the product owner, the requirement page back to in-progress.
+        entry = history_entry("qa-return-spec", affected="backend", archived=[("Delivery evidence", self.ROW)], tracks="ui, technical", invalidations=f"{self.REQUIREMENT}: done -> in-progress", day=CHECK_DATE.isoformat())
+        page = _replace_body_section(self.service, self.before, "Delivery evidence", "\n".join(self.TABLE[:2]))
+        page = _set_feature_stage(append_history(page, entry), "specified", "po", self.service)
+        frontmatter, _body = _parse_markdown(page)
+        frontmatter["revalidation"] = ["specification", "design", "technical-design"]
+        frontmatter["app-revalidation"] = {"backend": ["implementation", "tests", "qa", "release"]}
+        page = self.service._replace_frontmatter(page, frontmatter)
+        requirement_page = _set_requirement_status(_journey_requirement_page("done"), "in-progress")
+        preview = propose(page, [{"path": self.REQUIREMENT, "content": requirement_page}])
+        self.assertEqual(("qa-return-spec", "ready"), (preview["action"], preview["classification"]))
+        self.assertEqual({"all_of": ["qa"], "any_of": []}, preview["approval"]["required_roles"])
+        self.assertEqual("applied", apply_preview(self.service, agent, preview, str(uuid4()), approver=qa)["state"])
+        self.assertEqual("specified", _parse_markdown((self.root / self.FEATURE).read_text(encoding="utf-8"))[0]["status"])
+        # A route that a later package owns is registered and answers `action_unavailable`.
+        released = _set_feature_stage(self.before, "released", "none", self.service)
+        (self.root / self.FEATURE).write_bytes(released.encode("utf-8"))
+        write_status_board(self.root, "| F-001 | Document review | released | none | not-needed |\n")
+        reopened = _set_feature_stage(released, "in-dev", "dev", self.service)
         with self.assertRaises(BoardError) as caught:
-            self.service.preview_skill(agent, "feature-reopen", [{"path": self.FEATURE, "content": self.before}], None, {})
+            propose(reopened)
         self.assertEqual(("action_unavailable", 409), (caught.exception.code, caught.exception.status))
 
 

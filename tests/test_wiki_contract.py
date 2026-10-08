@@ -14,7 +14,7 @@ from tests import real_temp  # noqa: F401
 FIXTURES = Path(__file__).parent / "fixtures" / "wiki_contract"
 CHECK_DATE = date(2026, 9, 8)
 # The blockers of the evidence tables (CONTRACTS 4.5); the fixtures carry no evidence, so the seeded lifecycle fixtures cover them.
-EVIDENCE_BLOCKER_CODES = {"feature-status-not-minimum", "app-row-missing", "stale-qa-evidence", "stale-delivery-evidence"}
+EVIDENCE_BLOCKER_CODES = {"feature-status-not-minimum", "app-row-missing", "stale-qa-evidence", "stale-delivery-evidence", "open-bug-blocks-qa"}
 
 
 class WikiContractLintTests(unittest.TestCase):
@@ -57,7 +57,7 @@ class WikiContractLintTests(unittest.TestCase):
         blockers = self.codes(result) & WIKI_BLOCKER_CODES
 
         # The released F-005 carries no evidence rows (status not the minimum, rows missing); no row is stale because there are none.
-        self.assertEqual(WIKI_BLOCKER_CODES - {"stale-qa-evidence", "stale-delivery-evidence"}, blockers)
+        self.assertEqual(WIKI_BLOCKER_CODES - {"stale-qa-evidence", "stale-delivery-evidence", "open-bug-blocks-qa"}, blockers)
 
         pending = self.diagnostics_for(result, "pending-board-review")
         self.assertEqual({"F-001", "F-002", "F-005"}, {diagnostic.feature_id for diagnostic in pending})

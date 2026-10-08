@@ -1,0 +1,6 @@
+interface:
+  display_name: "QA Fail"
+  short_description: "Send apps back to development after a QA failure"
+  default_prompt: "Use $qa-fail F-XXX app ... to archive the delivery and QA evidence of the named apps and send them back to development."
+policy:
+  allow_implicit_invocation: false

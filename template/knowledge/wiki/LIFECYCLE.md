@@ -289,6 +289,10 @@ confirmation. `D` is the design owner of the feature's scope.
 | `design-handoff` | `ready-for-design` or `in-design` + `D` | `ready-for-dev` + `dev` | Verify design evidence, prepare app requirements and, when the API surface declares API work, create the agreed API contract. |
 | `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` | Start implementation after rereading requirements and applicable API contracts. |
 | `dev-done` | `ready-for-dev` or `in-dev` + `dev` | the minimum of the app stages: `in-dev` + `dev`, or `ready-for-qa` + `qa` once every app has delivered | Record the delivery evidence of the apps it names: the artifact, tests and implementation for each. |
+| `qa-verify` | `in-dev` + `dev`, `ready-for-qa` + `qa` or `in-qa` + `qa` | the minimum of the app stages | Record QA rows for apps or integrations; the first row of an app opens its QA stage. |
+| `qa-pass` | as `qa-verify` | the minimum of the app stages: `ready-for-release` + `release` once every app has passed | Pass the apps it names: a `pending` Release row for each, with the QA rows still missing in the same proposal. |
+| `qa-fail` | as `qa-verify`, or `ready-for-release` + `release` | `in-dev` + `dev` | Send the apps it names back to development; their delivery, QA and Release rows move to Evidence history. |
+| `qa-return-spec`, `qa-return-design` | as `qa-fail` | `specified` + `po`, or `in-design` + the design owner | Send the whole feature back to specification or design from QA (`feature-reopen`); refused when an app is released. |
 | `scope-edit` | `ready-for-dev` up to `released` | the minimum of the app stages after the edit | Remove an app from the scope (the `feature-scope` skill from `ready-for-dev` on). |
 
 `/dev-start` and `/dev-done` also start development: `/dev-done` from `ready-for-dev` moves the
@@ -296,13 +300,14 @@ feature into development and records the delivery in the same write. Before `rea
 `/feature-scope` is an ordinary write that edits `apps`, the App scope section and, at
 `ready-for-design` or `in-design`, sets the owner to the design owner of the new scope.
 
-The QA, release and return actions of the full lifecycle (QA verification, release, bug
-handling, and the routes back from development, QA and release) are registered but answer
-`action_unavailable` in this version of the board; a feature in `ready-for-qa` stays there.
+Bug handling is the `bug-update` skill, which selects one of the bug actions below. The release
+actions and the routes back from development and from released work are registered but answer
+`action_unavailable` in this version of the board; a feature in `ready-for-release` stays there.
 
 Each gated action needs a human who holds the role that approves it: `po` for `po-specify`,
 `po-handoff` and `scope-edit`; the design owner role for `design-start` and `design-handoff`;
-`dev` for `dev-start` and `dev-done`. The board checks the role when it applies the action.
+`dev` for `dev-start` and `dev-done`; `qa` for `qa-verify`, `qa-pass`, `qa-fail` and the routes
+back from QA. The board checks the role when it applies the action.
 
 #### Common action protocol
 
@@ -346,6 +351,10 @@ refuses any other change (`lifecycle_frontmatter_scope`, `lifecycle_body_scope`,
 | `design-handoff` | `status`, `owner`, `revalidation` | none | requirement pages, the API contract |
 | `dev-start` | `status`, `owner` | none | none |
 | `dev-done` | `status`, `owner`, `app-revalidation` | Delivery evidence (add rows) | the named apps' requirement pages (`status` to `done`), the API contract (`status` to `implemented` once every app has delivered) |
+| `qa-verify` | `status`, `owner` | QA verification (add or replace rows); Open questions (`qa` rows) | new bug pages |
+| `qa-pass` | `status`, `owner`, `app-revalidation` | QA verification; Release (a `pending` row for each app passed); Open questions (`qa` rows) | new bug pages |
+| `qa-fail` | `status`, `owner`, `app-revalidation` | Delivery evidence, QA verification and Release (remove rows); Evidence history | the named apps' requirement pages (`done` to `in-progress`), the API contract (`implemented` to `agreed`), new bug pages |
+| `qa-return-spec`, `qa-return-design` | `status`, `owner`, `revalidation`, `app-revalidation`, `design-tracks`, `design-reaffirm` | the three evidence sections (remove every row); Evidence history | requirement pages (`done` to `in-progress`), the API contract (`draft` or `agreed`) |
 | `scope-edit` | `apps`, `status`, `owner`, `app-revalidation`, `criteria-high-water` | App scope; Acceptance criteria (three edits); the evidence tables and Evidence history | none |
 
 #### Specification and handoff boundaries
@@ -446,6 +455,43 @@ and `technical-design`, each only after fresh evidence and in the same write.
 A dependency on another feature is satisfied when that feature is `released`; a dependency on a
 requirement page is satisfied when the app's stage in its feature is `released`. An unmet
 dependency is shown as a `warning` at `dev-start` and `dev-done`.
+
+#### QA verification, QA outcomes and bugs
+
+`qa-verify` records what QA ran. A row names an app, or an integration of two or more apps
+(`integration:app+app`), and cites the criteria it covered with their revisions; it is checked
+against the delivered artifact (`qa_artifact_mismatch`), the criterion's revision and applicability
+(`criterion_revision_stale`, `criterion_not_applicable`), the attempt (`qa_attempt_mismatch`) and the
+environment (`environment_unknown`). The app's stage becomes `in-qa` with its first row, and the
+feature's status is the minimum of the app stages. An app can only be tested while it is
+`ready-for-qa` or `in-qa` (`app_stage_mismatch`); an integration row also needs every participant
+delivered.
+
+`qa-pass` passes the apps it names: each needs coverage (every criterion that lists it has a passing
+row on its current artifact in its current attempt; every integration criterion naming it has a
+passing integration row; no `fail` or `blocked` row in the attempt), and no bug of the feature may
+block it. A bug blocks an app when it names the feature and the app, is not `verified`, `released` or
+`closed`, and is not deferred; a blocking bug cannot be deferred. A verified bug must be verified on
+the current verification artifact (`bug_verified_on_other_artifact`). The proposal may carry the QA
+rows that are still missing, so a clean run is one approval. When `qa-separate-from-dev` is on, the
+approving human is not the grant that produced, recovered or repaired the app's Delivery evidence
+(`separation_required`).
+
+`qa-fail` sends the apps it names back to development and archives their evidence (see Evidence
+history below). It needs a failure on record for each app: a `fail` or `blocked` QA row in its
+current attempt, or a linked, non-deferred bug that is `open`, `in-fix` or `fixed`. Archiving a QA
+row advances the app's attempt, so the next round of QA starts at `qa-<n+1>`. `qa-return-spec` and
+`qa-return-design` (through `feature-reopen`) send the whole feature back from QA before anything
+shipped; they are refused when an app is released (`partial_release_requires_new_feature`).
+
+A bug page (`wiki/bugs/`, format in `bugs/_FORMAT.md`) moves `open`, `in-fix`, `fixed`, `verified`,
+and from there to `released` inside `release-done`. `bug-update` performs the bug actions: triage
+and scope, start, fixed, verified, reverify, reject, close (`wont-fix`, `duplicate`, `promoted`),
+defer and reopen. A fix is recorded against the apps of the bug and cannot be recorded while an app
+of the bug's feature is in its QA cycle (`feature_in_qa_cycle`): the app returns first with
+`qa-fail`, citing the bug. Rejecting a bug archives the failing verification with the Fix and
+Verification rows, and a reopened bug archives its Fix, Verification and Release rows; either one
+advances the generation of the Fix rows and the attempt of the verification.
 
 #### Evidence history and scope edits
 

@@ -1,0 +1,6 @@
+interface:
+  display_name: "QA Pass"
+  short_description: "Pass apps of a feature through QA to release"
+  default_prompt: "Use $qa-pass F-XXX [app ...] to pass the named apps through QA, with any QA rows still missing, in one confirmation."
+policy:
+  allow_implicit_invocation: false

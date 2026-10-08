@@ -4,7 +4,7 @@ Report facts for one explicit owner value.
 
 ## Usage
 
-`/wiki-owner po|designer|dev|none`
+`/wiki-owner po|designer|tech-lead|dev|qa|release|none`
 
 ## Primary path: Prism CLI
 
@@ -21,7 +21,7 @@ and the command response has `"schema_version": 1`:
 prism wiki owner <owner> --json
 ```
 
-Render `facts.owner`, `facts.features`, `facts.open_questions`, `diagnostics`,
+Render `facts.owner`, `facts.features`, `facts.open_questions`, `facts.bugs`, `diagnostics`,
 and `sources` exactly as returned. A stale item is a `stale-page` diagnostic: a
 current-state page whose last `verify` entry in `log.md` is older than `wiki-stale-after-days`.
 Do not compute additional waiting or stale state manually on this path. Treat returned
@@ -33,13 +33,16 @@ optimistic manual state.
 If the version probe or schema check fails, or `prism` is missing, too old,
 fails, or lacks `wiki owner`, say:
 `Prism CLI read surface unavailable; falling back to direct wiki reads.` Then read
-`knowledge/wiki/SETTINGS.md` if present, all feature and app-requirement
+`knowledge/wiki/SETTINGS.md` if present, all feature, app-requirement and bug
 files, and `knowledge/wiki/status-board.md` when lifecycle grouping needs confirmation.
 Collect matching owner features and open questions. Waiting work is:
 
 - `po`: PO-owned open questions or intake conflicts needing clarification
-- `designer`: `ready-for-design` or `in-design`, plus designer questions
-- `dev`: `ready-for-dev` or `in-dev`, plus dev questions
+- `designer`: `ready-for-design` or `in-design` while an active app has a UI, plus designer questions
+- `tech-lead`: `ready-for-design` or `in-design` when no active app has a UI, plus tech-lead questions
+- `dev`: `ready-for-dev` or `in-dev`, plus dev questions and the bugs that are `open` or `in-fix`
+- `qa`: `ready-for-qa` or `in-qa`, plus qa questions and the bugs that are `fixed`
+- `release`: `ready-for-release`, plus release questions and the bugs that are `verified`
 
 A stale item is a current-state page of those features whose last `verify` entry in
 `knowledge/wiki/log.md` (the latest `## YYYY-MM-DD verify | ...` entry whose `paths` line lists
@@ -50,9 +53,9 @@ the files.
 ## Rules and output
 
 - Keep the operation read-only. Do not write wiki files or refresh `WIKI_REPORT.md`.
-- Accept only `po`, `designer`, `dev`, and `none`; do not infer a caller role.
+- Accept only `po`, `designer`, `tech-lead`, `dev`, `qa`, `release`, and `none`; do not infer a caller role.
 - separate facts from advice and label optional suggested next steps.
 
-Return the owner heading, matching features, assigned open questions, waiting or
+Return the owner heading, matching features, assigned open questions, bugs the owner holds, waiting or
 stale items, diagnostics, and source paths. Use a clean empty state for no matches
 and a clean invalid-owner response for unsupported values.

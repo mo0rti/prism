@@ -28,6 +28,7 @@ knowledge/
     ├── design/           # Component specs and interaction patterns: F-XXX-[slug].md
     ├── app-requirements/  # Per-app implementation specs: F-XXX-[app-id].md
     ├── api-contracts/    # API shapes and endpoint contracts: F-XXX.md
+    ├── bugs/             # One file per bug: BUG-XXX-[slug].md
     ├── decisions/        # Architecture Decision Records: ADR-XXX-[slug].md
     ├── topics/           # Synthesis pages: [slug].md
     ├── research/         # Research pages: [slug].md
@@ -592,6 +593,7 @@ for feature and design pages; `ingest` is the general operation.
 | An invariant or constraint | `business-rules/BR-XXX-[slug].md` |
 | A decision with consequences | `decisions/ADR-XXX-[slug].md` |
 | A feature request | `features/F-XXX-[slug].md`, written as `raw` + `po` |
+| A defect report | `bugs/BUG-XXX-[slug].md`, written `open` + `dev` with empty evidence sections |
 
 1. Read `index.md`, find the pages the source touches and read them.
 2. Compare every claim in the source with those pages. A contradiction is quarantined and
@@ -599,8 +601,8 @@ for feature and design pages; `ingest` is the general operation.
 3. Show the user an interpretation summary: the pages to create, the pages to replace and
    the open questions. Wait for confirmation (operational rule 9).
 4. Write the pages. A topic, research page, plan, `direction.md` and `roadmap.md` are
-   created, or replaced in place when they exist. A persona, business rule, decision or
-   feature is created and never rewritten: a changed fact about one of them goes through
+   created, or replaced in place when they exist. A persona, business rule, decision,
+   bug or feature is created and never rewritten: a changed fact about one of them goes through
    its own operation (a new decision supersedes an older one, see "Records and decision
    supersession"). A new feature follows the `po-intake` rules: `status: raw`,
    `owner: po`, and the five required sections.
@@ -638,7 +640,7 @@ operation reads it first to find the pages it needs, then reads those pages.
   `## Decision`).
 - **Groups.** Lines sit under a `##` heading for their kind: Direction and roadmap, Plans,
   Topics, Research, Features, Personas, Business rules, Design, App requirements, API
-  contracts, Decisions, Advisory and Meta.
+  contracts, Bugs, Decisions, Advisory and Meta.
 - **Replaced in place.** When a page changes, its line is rewritten where it stands, never
   appended. The index has no dates, no narrative and no "was" or "now" wording; history lives
   in `log.md`.
@@ -824,6 +826,8 @@ Use this blocker vocabulary consistently in `lint-wiki`, `wiki-blockers`, and
 - `stale-qa-evidence`: a QA verification row that cites a criterion revision, an artifact or an
   attempt that is no longer current.
 - `stale-delivery-evidence`: a delivery evidence row whose contract citation is no longer current.
+- `open-bug-blocks-qa`: a bug of a feature that blocks an app with a `pending` or `failed` Release row (the bug is
+  not `verified`, `released` or `closed`, and it is not deferred).
 
 If a command cannot prove a category from current wiki files, it must not invent it.
 Report the category as unchecked or absent rather than guessing.

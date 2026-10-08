@@ -22,7 +22,7 @@ prism wiki blockers --json
 ```
 
 Render `facts.blockers`, `blocker_facts`, `required_obligations`, `diagnostics`,
-and `sources` exactly as returned. The compatible CLI covers all six canonical
+and `sources` exactly as returned. The compatible CLI covers all canonical
 blocker categories; do not duplicate blocker parsing or add categories on this
 path. Treat returned diagnostics, including errors, as facts to surface rather
 than replacing them with optimistic manual state.
@@ -37,14 +37,18 @@ fails, or lacks `wiki blockers`, say:
 `Prism CLI read surface unavailable; falling back to direct wiki reads.` Then read:
 
 - `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md` and `knowledge/wiki/status-board.md`
-- all files in `knowledge/wiki/features/`, `design/`, `app-requirements/`, and `api-contracts/`
+- all files in `knowledge/wiki/features/`, `design/`, `app-requirements/`, `api-contracts/` and `bugs/`
 - files in `knowledge/wiki/advisory/` except `BOARD.md` and `PROJECT_FOUNDATION.md`
 
 ## Canonical blocker categories
 
 Compute only these canonical facts: `pending-board-review`, `missing-design`,
 `missing-app-requirements`, `unresolved-open-questions`,
-`api-contract-not-ready`, and `cross-app-dependency`. Include malformed
+`api-contract-not-ready`, `cross-app-dependency`, `feature-status-not-minimum`,
+`app-row-missing`, `stale-qa-evidence`, `stale-delivery-evidence` and
+`open-bug-blocks-qa` (a bug of a feature that blocks an app which already has a `pending` or
+`failed` Release row: it is not `verified`, `released` or `closed`, and not deferred; the way
+out is `qa-fail` citing the bug, or resolving it). Include malformed
 pages as diagnostics rather than silently skipping them.
 
 ## Rules and output

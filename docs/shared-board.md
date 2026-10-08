@@ -187,10 +187,10 @@ Claude instruction folders are not required. Copying dispatches no agent and
 writes no lifecycle state. A stale or unavailable connection disables copying;
 static and legacy boards retain their existing tool-specific copy behavior.
 
-Skill discovery exposes 27 complete canonical skills. Connected writes are
+Skill discovery exposes 31 complete canonical skills. Connected writes are
 available for `po-intake`, `design-intake`, `ingest`, `ask`, `po-clarify`, `design-clarify`,
 `dev-clarify`, `po-specify`, `po-handoff`, `design-start`, `design-handoff`,
-`dev-start`, `dev-done`, `feature-reopen`, `feature-scope` and `verify-pages`. The three reopen routes are actions
+`dev-start`, `dev-done`, `qa-verify`, `qa-pass`, `qa-fail`, `bug-update`, `feature-reopen`, `feature-scope` and `verify-pages`. The three reopen routes are actions
 of `feature-reopen`. `feature-scope` is the explicit scope edit of one feature that is not `done`: it changes the `apps` list and the `## App scope` section together and may add `pending` requirement pages for the apps the scope gains, and nothing else; it is the way out of `app_retired_in_scope`, and it never adds a retired app. `verify-pages` records that current-state pages were checked against their
 sources and changes no page: its `preview_skill` call has an empty `changes` list and names each
 verified page in `read_revisions` with the digest `read_workspace` returned for it, and the preview
