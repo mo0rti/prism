@@ -49,7 +49,7 @@ class _Service:
     def validate_graph_inputs(self) -> None:
         return None
 
-    def authenticate(self, token: str) -> _Actor:
+    def authenticate(self, token: str, *, via_session: bool = False) -> _Actor:
         self.auth_calls += 1
         if token != self.auth_token or self.revoked or self.auth_calls == self.fail_on_auth_call:
             raise _BoardError("invalid_token", f"invalid credential {token}", 401)
@@ -165,6 +165,8 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                         "preview_skill",
                         "get_preview",
                         "apply",
+                        "list_proposals",
+                        "decline_proposal",
                         "operation",
                         "recover",
                         "changes",
@@ -297,10 +299,12 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
             "list_skills": (set(), set()),
             "get_skill": ({"name", "cursor"}, {"name"}),
             "get_skill_reference": ({"name", "path", "cursor"}, {"name", "path"}),
-            "preview_transition": ({"feature_id", "action", "inputs"}, {"feature_id", "action"}),
+            "preview_transition": ({"feature_id", "action", "inputs", "operation_id"}, {"action"}),
             "preview_skill": ({"skill", "changes", "moves", "read_revisions"}, {"skill", "changes"}),
             "get_preview": ({"preview_id", "cursor"}, {"preview_id"}),
-            "apply": ({"preview_id", "operation_id"}, {"preview_id", "operation_id"}),
+            "apply": ({"preview_id", "operation_id", "review_revision", "semantic_review_acknowledged"}, {"preview_id", "operation_id"}),
+            "list_proposals": (set(), set()),
+            "decline_proposal": ({"preview_id", "reason"}, {"preview_id", "reason"}),
             "operation": ({"operation_id", "cursor"}, {"operation_id"}),
             "recover": ({"operation_id", "review_revision", "semantic_review_acknowledged", "abandon"}, {"operation_id"}),
             "changes": ({"cursor"}, set()),

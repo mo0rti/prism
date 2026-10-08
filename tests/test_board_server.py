@@ -64,7 +64,7 @@ class _Service:
     def validate_graph_inputs(self) -> None:
         self.graph_checks += 1
 
-    def authenticate(self, token: str) -> _Actor:
+    def authenticate(self, token: str, *, via_session: bool = False) -> _Actor:
         if token in self.revoked or token not in {"human-token", "agent-token", "secret-token"}:
             raise _BoardError("invalid_token", f"invalid token {token}", 401)
         actor = _Actor("agent" if token == "agent-token" else "human")

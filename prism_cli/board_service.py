@@ -10,11 +10,13 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import getpass
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import secrets
+import sqlite3
 import stat
 import tempfile
 import threading
@@ -33,8 +35,10 @@ from prism_cli.app_model import (
     normalize_manifest,
     retired_in_scope_message,
 )
-from prism_cli.board_store import BoardLockError, BoardStore
+from prism_cli import roles as _roles
+from prism_cli.board_store import BoardLockError, BoardStore, UnsupportedBoardState
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError, reparse_kind
+from prism_cli.roles import ROLES, RoleError, RolePredicate, parse_roles
 from prism_cli.wiki_index import (
     GENERAL_PAGE_FOLDERS,
     GENERAL_PAGE_SECTIONS,
@@ -66,7 +70,7 @@ from prism_cli.wiki_model import (
 _MAX_TEXT_FILE = 512 * 1024
 _MAX_READ_TOTAL = 2 * 1024 * 1024
 _MAX_READ_PATHS = 64
-_MCP_CONTRACT = 3
+_MCP_CONTRACT = 4
 # Operation states that never run again: `applied` finished its writes and `abandoned` was closed by a human.
 _TERMINAL_OPERATION_STATES = frozenset({"applied", "abandoned"})
 # Windows refuses to replace a file that another handle holds open without delete sharing, which includes a reader in this
@@ -81,7 +85,11 @@ _WINDOWS_INVALID_CHARACTERS = re.compile(r'[:<>"|?*\x00-\x1f\x7f]')
 _WINDOWS_DEVICE_NAMES = frozenset({"CON", "PRN", "AUX", "NUL", *(f"COM{number}" for number in range(1, 10)), *(f"LPT{number}" for number in range(1, 10))})
 _TEXT_FILE_SUFFIXES = (".md", ".txt", ".yaml", ".yml")
 _MAX_PREVIEW_CHANGES = 128
-_HUMAN_ACTIONS = {"po-handoff", "design-start", "dev-start"}
+_HUMAN_ACTIONS = {"po-handoff", "design-start", "dev-start", "operation-repair"}
+# The action that adopts the writes an abandoned operation already made (CONTRACTS F27). A human previews it with an operation ID.
+REPAIR_ACTION = "operation-repair"
+# The state a gated preview is in until a human approves or declines it.
+_AWAITING_APPROVAL = "awaiting-approval"
 _CANONICAL_MANIFEST_PATHS = {
     "wiki_root": "knowledge/wiki",
     "intake_root": "knowledge/intake",
@@ -253,6 +261,10 @@ class Actor:
     board_id: str
     workflow_version: str
     scopes: tuple[str, ...]
+    # The workflow roles of the grant (empty for an agent) and whether the request came through a browser board session.
+    # `session` is set only by `authenticate(..., via_session=True)`; a Bearer token and MCP never carry it.
+    roles: tuple[str, ...]
+    session: bool
     _token_hash: str
     _service_proof: str
 
@@ -265,6 +277,8 @@ class Actor:
             "board_id": self.board_id,
             "workflow_version": self.workflow_version,
             "scopes": list(self.scopes),
+            "roles": list(self.roles),
+            "session": self.session,
         }
 
 
@@ -325,6 +339,9 @@ class BoardService:
         except CloudSyncPathError as exc:
             self.store = None
             raise BoardError("cloud_sync_path", CLOUD_SYNC_MESSAGE, 403) from exc
+        except UnsupportedBoardState as exc:
+            self.store = None
+            raise BoardError("unsupported_board_state", str(exc), 409) from exc
         except (OSError, ValueError) as exc:
             self.store = None
             raise BoardError("unsafe_state_path", str(exc), 409) from exc
@@ -347,32 +364,37 @@ class BoardService:
     def __exit__(self, *_exc: Any) -> None:
         self.close()
 
-    def create_participant(self, name: str, kind: str, writable: bool = False) -> dict[str, Any]:
+    def create_participant(self, name: str, kind: str, writable: bool = False, roles: Iterable[str] | str | None = None) -> dict[str, Any]:
         store = self._require_store()
         safe_name = self._clean_text(name, "name", max_length=120)
         if kind not in {"human", "agent"}:
             raise BoardError("invalid_participant_kind", "Participant kind must be `human` or `agent`.", 400)
         if not isinstance(writable, bool):
             raise BoardError("invalid_scope", "Participant writable scope must be a boolean.", 400)
+        try:
+            held = parse_roles(roles, kind=kind, writable=writable)
+        except RoleError as exc:
+            raise BoardError(exc.code, str(exc), 400) from exc
         token = secrets.token_urlsafe(32)
         participant_id = str(uuid4())
         now = _now()
         with self._lock, store.transaction() as db:
             db.execute(
-                "INSERT INTO grants(participant_id, token_hash, name, kind, writable, active, board_id, workflow_version, asset_digest, created_at, revoked_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL)",
+                "INSERT INTO grants(participant_id, token_hash, name, kind, writable, roles, active, board_id, workflow_version, asset_digest, created_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL)",
                 (
                     participant_id,
                     _sha256(token.encode("utf-8")),
                     safe_name,
                     kind,
                     int(writable),
+                    ",".join(held),
                     self._board_id,
                     self._workflow_version,
                     self._asset_digest_value,
                     now,
                 ),
             )
-        actor = self._actor_from_values(participant_id, safe_name, kind, writable, _sha256(token.encode("utf-8")))
+        actor = self._actor_from_values(participant_id, safe_name, kind, writable, _sha256(token.encode("utf-8")), held)
         return {"schema_version": 1, "participant": actor.to_dict(), "token": token}
 
     def revoke_participant(self, participant_id: str) -> dict[str, Any]:
@@ -386,14 +408,16 @@ class BoardService:
                 raise BoardError("participant_not_found", "No active participant grant has that ID.", 404)
         return {"schema_version": 1, "participant_id": participant_id, "revoked": True}
 
-    def authenticate(self, token: str) -> Actor:
+    def authenticate(self, token: str, *, via_session: bool = False) -> Actor:
+        """The actor a token identifies. ``via_session`` is true only for the HTTP transport's cookie branch."""
+
         store = self._require_store()
         if not isinstance(token, str) or len(token) < 32 or len(token) > 256:
             raise BoardError("unauthorized", "A valid participant token is required.", 401)
         token_hash = _sha256(token.encode("utf-8"))
         with store.read() as db:
             row = db.execute(
-                "SELECT participant_id, name, kind, writable, active, board_id, workflow_version, asset_digest FROM grants WHERE token_hash = ?",
+                "SELECT participant_id, name, kind, writable, active, board_id, workflow_version, asset_digest, roles FROM grants WHERE token_hash = ?",
                 (token_hash,),
             ).fetchone()
         if row is None or row[4] != 1:
@@ -401,19 +425,23 @@ class BoardService:
         if row[5] != self._board_id or row[6] != self._workflow_version or row[7] != self._asset_digest_value:
             raise BoardError("grant_identity_changed", "The workspace workflow identity changed after this grant was created.", 409)
         self._assert_current_identity()
-        return self._actor_from_values(row[0], row[1], row[2], bool(row[3]), token_hash)
+        return self._actor_from_values(row[0], row[1], row[2], bool(row[3]), token_hash, _split_roles(row[8]), session=via_session is True)
 
     def discover(self, actor: Actor) -> dict[str, Any]:
         self._require_actor(actor)
         store = self._require_store()
         with store.read() as db:
             pending = db.execute(
-                "SELECT o.operation_id, o.state, o.created_at, o.participant_id FROM operations o "
-                "JOIN grants g ON g.participant_id = o.participant_id "
-                "WHERE o.state NOT IN ('applied', 'abandoned') AND (o.participant_id = ? OR (? = 1 AND g.kind = 'agent')) ORDER BY o.created_at",
-                (actor.participant_id, int(actor.kind == "human" and actor.writable)),
+                "SELECT operation_id, state, created_at, participant_id, intent_json FROM operations "
+                "WHERE state NOT IN ('applied', 'abandoned') ORDER BY created_at, operation_id"
             ).fetchall()
+        visible = [row for row in pending if self._can_inspect_operation(actor, row[3], _loads(row[4]) or {})]
         skills = self._skill_summaries()
+        try:
+            policy = self._read_policy()
+            policy_fact: dict[str, Any] = {"qa_separate_from_dev": policy["qa_separate_from_dev"], "revision": self._policy_revision(policy)}
+        except BoardError as exc:
+            policy_fact = {"qa_separate_from_dev": None, "revision": None, "error": exc.code}
         return {
             "schema_version": 1,
             "mcp_contract": _MCP_CONTRACT,
@@ -432,16 +460,69 @@ class BoardService:
                 "supported_write_skills": sorted(_WRITE_SKILLS),
                 "workflow_eligible": True,
                 "read_support": self._read_support_capability(),
+                "role_model": {"version": 1, "roles": list(ROLES)},
+                "actions": self._action_capabilities(actor),
+                "policy": policy_fact,
             },
             "participant": actor.to_dict(),
+            "pending_proposals": self._proposal_entries(actor)[:20],
             "pending_operations": [
                 {"operation_id": row[0], "state": row[1], "created_at": row[2], "requires_human_recovery_review": row[3] != actor.participant_id}
-                for row in pending
+                for row in visible
             ],
             "skills": skills,
             "skills_detail": "Call list_skills for write scopes and limitations, and get_skill(name) for instructions and the references index.",
             "compatibility": self.compatibility(),
         }
+
+    def _action_capabilities(self, actor: Actor) -> list[dict[str, Any]]:
+        """One entry per registered action: its command, sources, target, role predicate, modes and availability."""
+
+        entries: list[dict[str, Any]] = []
+        for spec in _REGISTERED_ACTION_SPECS:
+            predicate = self._predicate_for(spec.action)
+            modes = list(getattr(spec, "modes", None) or (("HD", "AP") if spec.action in _HUMAN_ACTIONS else ("AP",)))
+            sources = getattr(spec, "sources", None) or ((spec.source_status, spec.source_owner),)
+            available, reason = self._action_availability(spec.action)
+            entry: dict[str, Any] = {
+                "action": spec.action,
+                "command": spec.command,
+                "sources": [{"status": status, "owner": owner} for status, owner in sources],
+                "target": {"status": spec.target_status, "owner": spec.target_owner},
+                "required_roles": predicate.as_json() if predicate is not None else None,
+                "modes": modes,
+                "available": available,
+            }
+            if not available:
+                entry["unavailable_reason"] = reason
+            entry["available_to_participant"] = available and self._available_to(actor, predicate, modes)
+            entries.append(entry)
+        if REPAIR_ACTION not in _ACTION_SPEC_BY_NAME:
+            entries.append(
+                {
+                    "action": REPAIR_ACTION,
+                    "command": 'preview_transition(action="operation-repair", operation_id)',
+                    "sources": [],
+                    "target": None,
+                    "required_roles": None,
+                    "modes": ["HD"],
+                    "available": True,
+                    "available_to_participant": actor.kind == "human" and actor.writable,
+                }
+            )
+        return entries
+
+    @staticmethod
+    def _available_to(actor: Actor, predicate: RolePredicate | None, modes: Iterable[str]) -> bool:
+        """Whether this participant can take part in the action: an agent proposes an agent-proposed action, and a human who
+        satisfies the predicate approves it or takes it directly."""
+
+        if not actor.writable:
+            return False
+        modes = set(modes)
+        if actor.kind == "agent":
+            return "AP" in modes
+        return predicate is None or predicate.holds(actor.roles)
 
     def read_workspace(self, actor: Actor, paths: list[str], cursor: str | None = None) -> dict[str, Any]:
         self._require_actor(actor)
@@ -642,20 +723,31 @@ class BoardService:
     def preview_transition(
         self,
         actor: Actor,
-        feature_id: str,
+        feature_id: str | None,
         action: str,
         inputs: Mapping[str, Any] | None = None,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         self._require_running()
         self._require_actor(actor, write=True, kind="human")
         self.validate_graph_inputs()
         if action not in _HUMAN_ACTIONS:
-            raise BoardError("human_action_unavailable", "Direct human completion is limited to po-handoff, design-start, and dev-start.", 403)
+            raise BoardError(
+                "human_action_unavailable",
+                "Direct human completion is limited to po-handoff, design-start, dev-start and operation-repair.",
+                403,
+            )
         supplied = dict(inputs or {})
+        if action == REPAIR_ACTION:
+            return self._preview_repair(actor, operation_id, supplied)
+        self._require_action_available(action)
         allowed = {"semantic_review_acknowledged", "skip_advisory_review", "advisory_skip_reason", "verified_revalidation"}
         if set(supplied) - allowed:
             raise BoardError("invalid_inputs", "The transition contains unsupported input fields.", 400)
         feature = self._resolve_feature(feature_id)
+        predicate = self._predicate_for(action, feature["path"], feature["frontmatter"].get("apps"))
+        if predicate is not None and not predicate.holds(actor.roles):
+            raise self._role_required(predicate, actor)
         advisory_override = None
         advisory_state = feature["frontmatter"].get("advisory-review")
         if supplied.get("skip_advisory_review") is True:
@@ -747,20 +839,33 @@ class BoardService:
             "created_at": _now(),
             "inputs": supplied,
         }
+        if predicate is not None:
+            payload["approval"] = self._approval_block(actor, predicate, feature["path"], feature["frontmatter"].get("apps"))
+            separation = transition.get("separation_subjects")
+            if separation:
+                payload["separation_subjects"] = list(separation)
+                self._assert_separation(payload, self._trusted_facts(actor, payload))
         self._save_preview(payload)
-        return self._preview_envelope(payload)
+        return self._review_envelope(actor, payload, payload["_payload_hash"])
 
     def get_preview(self, actor: Actor, preview_id: str) -> dict[str, Any]:
-        """Return a stored preview as it was first returned, for the participant that created it."""
+        """Return a stored preview as it was first returned, for the participant that created it.
+
+        A gated preview is also served to a writable human who satisfies its role predicate, with the `review_revision`
+        that human applies it with.
+        """
 
         self._require_actor(actor)
         preview_id = _safe_id(preview_id, "preview_id")
         store = self._require_store()
         with store.read() as db:
-            row = db.execute("SELECT participant_id, payload_json FROM previews WHERE preview_id = ?", (preview_id,)).fetchone()
-        if row is None or row[0] != actor.participant_id:
+            row = db.execute(
+                "SELECT participant_id, payload_json, payload_hash, consumed_by, declined_at FROM previews WHERE preview_id = ?", (preview_id,)
+            ).fetchone()
+        payload = _loads(row[1]) if row is not None else None
+        if row is None or (row[0] != actor.participant_id and not self._may_review(actor, payload)):
             raise BoardError("preview_not_found", "No preview with that ID is available to this participant.", 404)
-        return self._preview_envelope(_loads(row[1]))
+        return self._review_envelope(actor, payload, row[2], consumed_by=row[3], declined=row[4] is not None)
 
     def preview_skill(
         self,
@@ -797,18 +902,22 @@ class BoardService:
             "created_at": row[3],
             "updated_at": row[4],
         }
+        if isinstance(intent.get("approval"), Mapping):
+            approval = intent["approval"]
+            result["approval"] = {
+                "required_roles": approval.get("required_roles"),
+                "proposer": approval.get("proposer"),
+                "approver": approval.get("approver"),
+                "policy_revision": approval.get("policy_revision"),
+            }
+        if intent.get("repair_of"):
+            result["repair_of"] = intent["repair_of"]
         if row[1] not in _TERMINAL_OPERATION_STATES:
             result["actor"] = intent.get("actor")
             result["remaining_changes"] = self._operation_file_states(intent)
             result["moves"] = intent.get("moves", [])
             result["recovery_review_revision"] = self._recovery_review_revision(actor, operation_id, intent, result["remaining_changes"])
         return result
-
-    @staticmethod
-    def _can_inspect_operation(actor: Actor, participant_id: str, intent: Mapping[str, Any]) -> bool:
-        return participant_id == actor.participant_id or (
-            actor.kind == "human" and actor.writable and intent.get("actor", {}).get("kind") == "agent"
-        )
 
     def _recovery_review_revision(
         self,
@@ -857,6 +966,8 @@ class BoardService:
             if intent.get("kind") == "transition":
                 feature = self._resolve_feature(intent["feature_id"])
                 paths |= self._feature_context_paths(feature["path"], feature["frontmatter"])
+            elif intent.get("kind") == "repair":
+                paths |= set(intent.get("source_map", {}))
             elif intent.get("skill") == VERIFY_SKILL:
                 paths |= set(intent.get("read_revisions", {}))
             else:
@@ -918,15 +1029,31 @@ class BoardService:
                     (operation_id,),
                 ).fetchone()
             intent = _loads(row[2]) if row is not None else {}
+            gated = isinstance(intent.get("approval"), Mapping)
+            if row is not None and gated and actor.kind == "agent" and (intent["approval"].get("proposer") or {}).get("participant_id") == actor.participant_id:
+                raise BoardError("approval_required", "A gated operation is recovered by a human in the board; an agent proposes it with preview_skill.", 403)
             if row is None or not self._can_inspect_operation(actor, row[0], intent):
                 raise BoardError("operation_not_found", "No operation with that ID is available to this participant.", 404)
             if row[1] == "applied" and abandon:
                 raise BoardError("operation_already_applied", "This operation was applied; it cannot be abandoned.", 409)
             if row[1] in _TERMINAL_OPERATION_STATES:
                 return _loads(row[3])
+            trusted_facts: dict[str, Any] | None = None
+            policy_changed = False
+            if gated and not abandon:
+                self._require_approver(actor, self._payload_predicate(intent))
+                policy = self._read_policy()
+                policy_changed = self._policy_revision(policy) != intent["approval"].get("policy_revision")
+                trusted_facts = self._trusted_facts(actor, intent, policy=policy)
             cross_participant = row[0] != actor.participant_id
             reviewed: dict[str, str | None] | None = None
-            if cross_participant or review_revision is not None or abandon:
+            if cross_participant or review_revision is not None or abandon or policy_changed:
+                if policy_changed and review_revision is None:
+                    raise BoardError(
+                        "stale_recovery_review",
+                        "The workspace policy changed since this operation was approved; inspect the operation and confirm its remaining changes again.",
+                        409,
+                    )
                 if semantic_review_acknowledged is not True or not isinstance(review_revision, str):
                     raise BoardError("recovery_review_required", "Inspect and explicitly acknowledge the remaining changes before recovering this operation.", 409)
                 # The snapshot is captured once: the review is verified against this object, and the same object is what the
@@ -947,10 +1074,20 @@ class BoardService:
                         "INSERT INTO events(operation_id, participant_id, event_json, created_at) VALUES (?, ?, ?, ?)",
                         (operation_id, actor.participant_id, _json({"type": "operation-recovery-started", "actor": actor.to_dict(), "operation_id": operation_id}), recovery_attempt["started_at"]),
                     )
-            return self._roll_forward(actor, operation_id, intent, reviewed=reviewed)
+            return self._roll_forward(actor, operation_id, intent, reviewed=reviewed, trusted_facts=trusted_facts)
 
     @within_wiki_read_scope
-    def apply(self, actor: Actor, preview_id: str, operation_id: str) -> dict[str, Any]:
+    def apply(
+        self,
+        actor: Actor,
+        preview_id: str,
+        operation_id: str,
+        review_revision: str | None = None,
+        semantic_review_acknowledged: bool = False,
+    ) -> dict[str, Any]:
+        """Apply a preview. An ungated preview is applied by its creator. A gated preview is approved by a human who
+        satisfies its role predicate, in a browser board session, with the `review_revision` of what they read."""
+
         self._require_running()
         preview_id = _safe_id(preview_id, "preview_id")
         operation_id = _safe_id(operation_id, "operation_id")
@@ -959,16 +1096,19 @@ class BoardService:
             self._require_actor(actor, write=True)
             with store.read() as db:
                 preview_row = db.execute(
-                    "SELECT participant_id, payload_hash, payload_json, consumed_by FROM previews WHERE preview_id = ?",
+                    "SELECT participant_id, payload_hash, payload_json, consumed_by, declined_at FROM previews WHERE preview_id = ?",
                     (preview_id,),
                 ).fetchone()
                 existing = db.execute(
                     "SELECT participant_id, preview_id, payload_hash, state, receipt_json, intent_json FROM operations WHERE operation_id = ?",
                     (operation_id,),
                 ).fetchone()
-            if preview_row is None or preview_row[0] != actor.participant_id:
+            payload = _loads(preview_row[2]) if preview_row is not None else None
+            gated = isinstance(payload, Mapping) and isinstance(payload.get("approval"), Mapping)
+            if preview_row is None or (preview_row[0] != actor.participant_id and not (gated and actor.kind == "human")):
                 raise BoardError("preview_not_found", "No preview with that ID is available to this participant.", 404)
-            payload = _loads(preview_row[2])
+            if gated:
+                return self._apply_gated(actor, preview_id, operation_id, preview_row, existing, payload, review_revision, semantic_review_acknowledged)
             payload_hash = preview_row[1]
             if existing is not None:
                 if existing[0] != actor.participant_id or existing[1] != preview_id or existing[2] != payload_hash:
@@ -980,43 +1120,9 @@ class BoardService:
                 raise BoardError("preview_already_submitted", f"This preview was already submitted as operation `{preview_row[3]}`; retrieve that receipt.", 409)
             if not payload.get("applicable"):
                 raise BoardError("preview_blocked", "This preview is blocked, unknown, or missing required confirmation.", 409)
+            self._require_action_available(payload.get("action"))
             self._assert_preview_fresh(payload)
-            # The dependency set (membership and digests) is bound before the validation reads it, so a dependency that appears
-            # while the operation validates, or while a write waits to be retried, is a change against this baseline.
-            bound_sources = self._recovery_snapshot(payload)
-            try:
-                self._revalidate_operation(actor, payload)
-            except BoardError as exc:
-                if exc.code != "missing_read_revisions":
-                    raise
-                # The reads were complete at preview time, so a path missing now is a
-                # source that became required afterwards: a stale preview, not a client mistake.
-                raise BoardError(
-                    "stale_preview",
-                    "A source this skill must read changed or appeared after the preview; preview again.",
-                    409,
-                    exc.details,
-                ) from None
-            # Validation can read several files. Recheck them after it finishes
-            # and before recording an intent that may be recovered after a crash.
-            self._assert_preview_fresh(payload)
-            if self._recovery_snapshot(payload) != bound_sources:
-                raise BoardError("stale_preview", "A relevant source or dependency changed while the operation was validated; preview again.", 409)
-            intent = {**payload, "operation_id": operation_id, "actor": actor.to_dict(), "bound_sources": bound_sources}
-            self._assert_unresolved_writes_safe(operation_id, intent)
-            now = _now()
-            with store.transaction() as db:
-                self._require_actor(actor, write=True)
-                db.execute(
-                    "INSERT INTO operations(operation_id, participant_id, preview_id, payload_hash, intent_json, receipt_json, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NULL, 'pending', ?, ?)",
-                    (operation_id, actor.participant_id, preview_id, payload_hash, _json(intent), now, now),
-                )
-                db.execute("UPDATE previews SET consumed_by = ? WHERE preview_id = ?", (operation_id, preview_id))
-            # This call has just revalidated the whole operation against the live files and rechecked the preview's sources, both
-            # under this lock, so the roll-forward does not evaluate the same files a second time. Every write still checks the
-            # recorded before-state first, and a recovery of this operation (after a crash, or an apply that finds it pending)
-            # revalidates in full.
-            return self._roll_forward(actor, operation_id, intent, validated_just_now=True)
+            return self._record_and_apply(actor, preview_id, operation_id, payload, payload_hash)
 
     def changes(self, actor: Actor, cursor: str | None = None) -> dict[str, Any]:
         self._require_actor(actor)
@@ -1051,6 +1157,711 @@ class BoardService:
         if skipped:
             result["skipped_paths"] = self._skipped_paths_report(skipped)
         return result
+
+    # -- Identity, roles and approval (CONTRACTS section 1) --------------------------------------------------------------
+    #
+    # An action is gated when `prism_cli.roles.required_roles` returns a predicate for it. A gated preview carries an
+    # `approval` block; a human who satisfies the predicate applies it in a browser board session with the
+    # `review_revision` of what they read. Every other action keeps the creator-applies flow.
+
+    def _predicate_for(self, action: Any, feature_path: str | None = None, apps: Iterable[Any] | None = None) -> RolePredicate | None:
+        """The role predicate of ``action`` from the lifecycle registry, or ``None`` when the action is not gated."""
+
+        if not isinstance(action, str) or not action:
+            return None
+        context = {"action": action, "feature_path": feature_path, "apps": list(apps) if apps is not None else None}
+        return _roles.required_roles(action, context)
+
+    @staticmethod
+    def _payload_predicate(source: Mapping[str, Any] | None) -> RolePredicate | None:
+        """The predicate a stored preview or operation recorded in its `approval` block, or ``None`` for an ungated one."""
+
+        approval = source.get("approval") if isinstance(source, Mapping) else None
+        if not isinstance(approval, Mapping) or not isinstance(approval.get("required_roles"), Mapping):
+            return None
+        return RolePredicate.from_json(approval["required_roles"])
+
+    @staticmethod
+    def _describe_predicate(predicate: RolePredicate) -> str:
+        parts = []
+        if predicate.all_of:
+            parts.append("every one of " + ", ".join(predicate.all_of))
+        if predicate.any_of:
+            parts.append("at least one of " + ", ".join(predicate.any_of))
+        return " and ".join(parts) or "no role"
+
+    def _role_required(self, predicate: RolePredicate, actor: Actor) -> BoardError:
+        return BoardError(
+            "role_required",
+            f"This action needs a participant who holds {self._describe_predicate(predicate)}; this grant holds {', '.join(actor.roles) or 'no role'}.",
+            403,
+            {"required_roles": predicate.as_json(), "roles": list(actor.roles)},
+        )
+
+    def _read_policy(self) -> dict[str, Any]:
+        """The workspace policy: `qa-separate-from-dev` in the front matter of SETTINGS.md (absent means false).
+
+        A value that is not a boolean is never read as false: every gated action that reads the policy is refused.
+        """
+
+        relative = "knowledge/wiki/SETTINGS.md"
+        path = self._safe_path(relative, allow_missing=True)
+        value: Any = False
+        if path.is_file():
+            try:
+                value = _parse_markdown(self._read_text(path), relative)[0].get("qa-separate-from-dev", False)
+            except BoardError as exc:
+                raise BoardError("invalid_policy", "The front matter of SETTINGS.md cannot be read, so the workspace policy is unknown.", 409) from exc
+        if not isinstance(value, bool):
+            raise BoardError("invalid_policy", "`qa-separate-from-dev` in SETTINGS.md must be true or false.", 409)
+        return {"qa_separate_from_dev": value}
+
+    @staticmethod
+    def _policy_revision(policy: Mapping[str, Any]) -> str:
+        return _sha256(_json(dict(policy)).encode("utf-8"))
+
+    @staticmethod
+    def _actor_ref(actor: Actor) -> dict[str, Any]:
+        return {"participant_id": actor.participant_id, "name": actor.name, "kind": actor.kind}
+
+    def _approval_block(self, actor: Actor, predicate: RolePredicate, feature_path: str | None = None, apps: Iterable[Any] | None = None) -> dict[str, Any]:
+        """The `approval` block a gated preview records: who proposed it, who may approve it and under which policy.
+
+        ``context`` is what the registry was asked about, so the apply can ask again and refuse a preview whose roles changed.
+        """
+
+        return {
+            "required_roles": predicate.as_json(),
+            "state": _AWAITING_APPROVAL,
+            "proposer": self._actor_ref(actor),
+            "policy_revision": self._policy_revision(self._read_policy()),
+            "context": {"feature_path": feature_path, "apps": list(apps) if apps is not None else None},
+        }
+
+    def _assert_roles_current(self, payload: Mapping[str, Any]) -> None:
+        """The design owner resolves again at apply: a preview whose predicate is not the registry's answer now is stale."""
+
+        approval = payload["approval"]
+        context = approval.get("context")
+        action = payload.get("action")
+        if not isinstance(context, Mapping) or action == REPAIR_ACTION:
+            return
+        current = self._predicate_for(action, context.get("feature_path"), context.get("apps"))
+        if current is None or current.as_json() != approval.get("required_roles"):
+            raise BoardError("stale_preview", "The roles this action needs changed after the preview; preview again.", 409)
+
+    def _may_review(self, actor: Actor, source: Mapping[str, Any]) -> bool:
+        """Whether ``actor`` may read and approve a gated preview or operation: a writable human who satisfies its predicate."""
+
+        predicate = self._payload_predicate(source)
+        return predicate is not None and actor.kind == "human" and actor.writable and predicate.holds(actor.roles)
+
+    def _require_approver(self, actor: Actor, predicate: RolePredicate | None) -> None:
+        """The checks that precede every gated apply, recovery and repair, in the contract's order of precedence."""
+
+        if actor.kind != "human":
+            raise BoardError("approval_required", "A gated action is approved by a human in the board; an agent proposes it with preview_skill.", 403)
+        if actor.session is not True:
+            raise BoardError(
+                "approval_requires_board_session",
+                "A gated action is approved only in a browser board session; sign in to the board with a human token.",
+                403,
+            )
+        if predicate is not None and not predicate.holds(actor.roles):
+            raise self._role_required(predicate, actor)
+
+    def _require_proposer_active(self, payload: Mapping[str, Any]) -> None:
+        proposer = (payload.get("approval") or {}).get("proposer") or {}
+        store = self._require_store()
+        with store.read() as db:
+            row = db.execute("SELECT active FROM grants WHERE participant_id = ?", (proposer.get("participant_id"),)).fetchone()
+        if row is None or row[0] != 1:
+            raise BoardError("proposer_revoked", "The participant who proposed this action no longer has an active grant; ask for a new proposal.", 409)
+
+    def _current_source_revision(self, payload: Mapping[str, Any]) -> str:
+        """A digest of the sources and write targets of a preview as they are now."""
+
+        paths = set(payload.get("source_map", {}))
+        paths |= {write["path"] for write in payload.get("writes", []) if write.get("role") not in {*_ROW_ROLES, "log"}}
+        return _revision(self._fingerprint_paths(paths))
+
+    def _review_revision(self, actor: Actor, payload: Mapping[str, Any], payload_hash: str) -> str:
+        """What a reviewer confirms: this preview, this reviewer and roles, the current policy and the current sources."""
+
+        return _sha256(
+            _json(
+                {
+                    "preview_id": payload["preview_id"],
+                    "payload_hash": payload_hash,
+                    "reviewer": actor.participant_id,
+                    "roles": sorted(actor.roles),
+                    "policy_revision": self._policy_revision(self._read_policy()),
+                    "source_revision": self._current_source_revision(payload),
+                }
+            ).encode("utf-8")
+        )
+
+    def _review_envelope(
+        self,
+        actor: Actor,
+        payload: Mapping[str, Any],
+        payload_hash: str,
+        *,
+        consumed_by: str | None = None,
+        declined: bool = False,
+    ) -> dict[str, Any]:
+        """A stored preview as the reader sees it: for a gated preview its approval state and, for a reviewer, the revision to approve."""
+
+        envelope = self._preview_envelope(payload)
+        envelope.pop("repair_basis", None)
+        approval = payload.get("approval")
+        if isinstance(approval, Mapping):
+            block = dict(approval)
+            block["state"] = "declined" if declined else "submitted" if consumed_by else _AWAITING_APPROVAL
+            if not declined and not consumed_by and self._may_review(actor, payload):
+                block["review_revision"] = self._review_revision(actor, payload, payload_hash)
+            envelope["approval"] = block
+        return envelope
+
+    # -- Separation and evidence provenance (CONTRACTS 1.6) ----------------------------------------------------------
+
+    @staticmethod
+    def _subject_key(subject: Mapping[str, Any]) -> str:
+        return "|".join(str(subject.get(name)) for name in ("kind", "item_id", "app", "generation"))
+
+    def _producing_operation(self, kind: str, item_id: str, app: str, generation: int, row_digest: str) -> dict[str, Any]:
+        """The operation the journal binds to an evidence row, found by its whole key and never by the digest alone.
+
+        ``status`` is ``match`` when the journal's entry for ``(board, item, app, generation, kind)`` holds this row digest,
+        ``mismatch`` when it holds another digest (the row was written some other way), and ``missing`` when it has no entry.
+        """
+
+        store = self._require_store()
+        with store.read() as db:
+            row = db.execute(
+                "SELECT operation_id, row_digest FROM provenance WHERE board_id = ? AND item_id = ? AND app = ? AND generation = ? AND kind = ?",
+                (self._board_id, item_id, app, generation, kind),
+            ).fetchone()
+        if row is None:
+            return {"status": "missing", "operation_id": None}
+        return {"status": "match" if row[1] == row_digest else "mismatch", "operation_id": row[0]}
+
+    def _excluded_approvers(self, operation_id: str) -> set[str]:
+        """The grants separation excludes for the evidence an operation produced: its approver, every human who recovered
+        it, and the approver of any `operation-repair` linked to it."""
+
+        store = self._require_store()
+        with store.read() as db:
+            row = db.execute("SELECT participant_id, intent_json FROM operations WHERE operation_id = ?", (operation_id,)).fetchone()
+            repairs = db.execute("SELECT participant_id FROM operations WHERE repair_of = ?", (operation_id,)).fetchall()
+        if row is None:
+            return set()
+        excluded = {row[0]}
+        for attempt in (_loads(row[1]) or {}).get("recovery_attempts", []):
+            participant = (attempt.get("actor") or {}).get("participant_id")
+            if isinstance(participant, str):
+                excluded.add(participant)
+        excluded.update(item[0] for item in repairs)
+        return excluded
+
+    def _separation_lookup(self, subject: Mapping[str, Any]) -> dict[str, Any]:
+        found = self._producing_operation(
+            str(subject.get("kind")), str(subject.get("item_id")), str(subject.get("app")), int(subject.get("generation", 0)), str(subject.get("row_digest"))
+        )
+        excluded = sorted(self._excluded_approvers(found["operation_id"])) if found["status"] == "match" else []
+        return {**found, "excluded": excluded}
+
+    def _trusted_facts(self, actor: Actor, source: Mapping[str, Any], *, policy: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """The facts only the live service can resolve: the approver's roles, the policy and, for each evidence row the
+        action's approval must be separated from, the journal's producing operation and its excluded approvers.
+
+        They are passed to `_revalidate_operation`. The candidate service that `_revalidate_recovery` rebuilds has no
+        journal and never resolves them itself.
+        """
+
+        basis = source.get("repair_basis") or source
+        current = dict(policy) if policy is not None else self._read_policy()
+        facts: dict[str, Any] = {
+            "approver": {"participant_id": actor.participant_id, "kind": actor.kind, "roles": sorted(actor.roles)},
+            "policy": current,
+            "policy_revision": self._policy_revision(current),
+            "separation": {},
+        }
+        if current.get("qa_separate_from_dev"):
+            for subject in basis.get("separation_subjects") or []:
+                facts["separation"][self._subject_key(subject)] = self._separation_lookup(subject)
+        return facts
+
+    def _assert_trusted_facts(self, payload: Mapping[str, Any], facts: Mapping[str, Any] | None) -> None:
+        """Refuse a gated payload whose approver lacks the predicate or breaks the separation the policy asks for."""
+
+        if facts is None:
+            raise BoardError("trusted_facts_required", "A gated action is revalidated with the facts the live board resolved.", 409)
+        predicate = self._payload_predicate(payload)
+        roles = facts["approver"]["roles"]
+        if predicate is not None and not predicate.holds(roles):
+            raise BoardError(
+                "role_required",
+                f"This action needs a participant who holds {self._describe_predicate(predicate)}.",
+                403,
+                {"required_roles": predicate.as_json(), "roles": list(roles)},
+            )
+        self._assert_separation(payload, facts)
+
+    def _assert_separation(self, payload: Mapping[str, Any], facts: Mapping[str, Any]) -> None:
+        """With `qa-separate-from-dev` on, the approver is not one of the excluded approvers of the evidence being verified."""
+
+        if not facts["policy"].get("qa_separate_from_dev"):
+            return
+        approver = facts["approver"]["participant_id"]
+        for subject in (payload.get("repair_basis") or payload).get("separation_subjects") or []:
+            found = facts["separation"].get(self._subject_key(subject)) or {"status": "missing"}
+            if found["status"] != "match":
+                raise BoardError(
+                    "separation_unverifiable",
+                    f"The journal has no producing operation that matches the {subject.get('kind')} evidence row of {subject.get('item_id')} for {subject.get('app')}, so separation cannot be verified.",
+                    409,
+                    {"item_id": subject.get("item_id"), "app": subject.get("app")},
+                )
+            if approver in found.get("excluded", []):
+                raise BoardError(
+                    "separation_required",
+                    f"`qa-separate-from-dev` is on: the grant that produced, recovered or repaired the {subject.get('kind')} evidence of {subject.get('item_id')} for {subject.get('app')} cannot approve its verification.",
+                    403,
+                    {"item_id": subject.get("item_id"), "app": subject.get("app")},
+                )
+
+    def _record_provenance(self, db: Any, payload: Mapping[str, Any], operation_id: str, now: str) -> None:
+        """Bind each evidence row an operation produces to the operation, inside the transaction that records its intent."""
+
+        for produced in payload.get("produces_evidence") or []:
+            try:
+                db.execute(
+                    "INSERT INTO provenance(board_id, item_id, app, generation, kind, operation_id, row_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        self._board_id,
+                        produced["item_id"],
+                        produced["app"],
+                        int(produced["generation"]),
+                        produced["kind"],
+                        operation_id,
+                        produced["row_digest"],
+                        now,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                raise BoardError(
+                    "evidence_generation_conflict",
+                    f"Another operation already produced the {produced['kind']} evidence of {produced['item_id']} for {produced['app']} in this generation; archive it first.",
+                    409,
+                    {"item_id": produced["item_id"], "app": produced["app"], "generation": int(produced["generation"])},
+                ) from None
+
+    # -- Actions that an unlanded package owns ------------------------------------------------------------------------
+
+    @staticmethod
+    def _action_availability(action: str) -> tuple[bool, str | None]:
+        spec = _ACTION_SPEC_BY_NAME.get(action)
+        if spec is None or getattr(spec, "available", True):
+            return True, None
+        return False, getattr(spec, "unavailable_reason", None) or "The package that owns this action has not landed."
+
+    def _require_action_available(self, action: Any) -> None:
+        if not isinstance(action, str):
+            return
+        available, reason = self._action_availability(action)
+        if not available:
+            raise BoardError("action_unavailable", f"Action `{action}` is not available yet: {reason}", 409, {"action": action})
+
+    # -- Proposals ----------------------------------------------------------------------------------------------------
+
+    def _proposal_entries(self, actor: Actor) -> list[dict[str, Any]]:
+        store = self._require_store()
+        with store.read() as db:
+            rows = db.execute(
+                "SELECT p.preview_id, p.participant_id, p.payload_json, p.created_at FROM previews p "
+                "JOIN grants g ON g.participant_id = p.participant_id "
+                "WHERE p.gated = 1 AND p.consumed_by IS NULL AND p.declined_at IS NULL AND g.active = 1 ORDER BY p.created_at, p.preview_id"
+            ).fetchall()
+        entries: list[dict[str, Any]] = []
+        for preview_id, participant_id, raw, created_at in rows:
+            payload = _loads(raw)
+            if not isinstance(payload, Mapping) or not isinstance(payload.get("approval"), Mapping):
+                continue
+            if participant_id != actor.participant_id and not self._may_review(actor, payload):
+                continue
+            try:
+                self._assert_preview_fresh(payload)
+                stale = False
+            except (BoardError, OSError, ValueError):
+                stale = True
+            entries.append(
+                {
+                    "preview_id": preview_id,
+                    "action": payload.get("action"),
+                    "item_id": payload.get("feature_id"),
+                    "required_roles": payload["approval"].get("required_roles"),
+                    "proposer": payload["approval"].get("proposer"),
+                    "created_at": created_at,
+                    "stale": stale,
+                }
+            )
+        return entries
+
+    def list_proposals(self, actor: Actor) -> dict[str, Any]:
+        """The gated previews that wait for approval: a human sees those whose predicate they satisfy, an agent its own."""
+
+        self._require_actor(actor)
+        entries = self._proposal_entries(actor)
+        return {"schema_version": 1, "proposals": entries, "total": len(entries)}
+
+    def decline_proposal(self, actor: Actor, preview_id: str, reason: str) -> dict[str, Any]:
+        """Mark a gated preview declined, without any other write. A human who satisfies the predicate, on a session."""
+
+        self._require_running()
+        preview_id = _safe_id(preview_id, "preview_id")
+        store = self._require_store()
+        with self._lock:
+            self._require_actor(actor, write=True)
+            with store.read() as db:
+                row = db.execute("SELECT participant_id, payload_json, consumed_by, declined_at FROM previews WHERE preview_id = ?", (preview_id,)).fetchone()
+            payload = _loads(row[1]) if row is not None else None
+            gated = isinstance(payload, Mapping) and isinstance(payload.get("approval"), Mapping)
+            if not gated or (actor.kind != "human" and row[0] != actor.participant_id):
+                raise BoardError("preview_not_found", "No gated proposal with that ID is available to this participant.", 404)
+            self._require_approver(actor, self._payload_predicate(payload))
+            clean_reason = self._clean_text(reason, "reason", max_length=400)
+            if row[3] is not None:
+                raise BoardError("proposal_declined", "This proposal was already declined.", 409)
+            if row[2] is not None:
+                raise BoardError("preview_already_submitted", f"This preview was already submitted as operation `{row[2]}`; it cannot be declined.", 409)
+            now = _now()
+            with store.transaction() as db:
+                self._require_actor(actor, write=True)
+                changed = db.execute(
+                    "UPDATE previews SET declined_by = ?, declined_at = ?, decline_reason = ? WHERE preview_id = ? AND consumed_by IS NULL AND declined_at IS NULL",
+                    (actor.participant_id, now, clean_reason, preview_id),
+                ).rowcount
+                if changed != 1:
+                    raise BoardError("preview_already_submitted", "This proposal was resolved by someone else first.", 409)
+                db.execute(
+                    "INSERT INTO events(operation_id, participant_id, event_json, created_at) VALUES (NULL, ?, ?, ?)",
+                    (
+                        actor.participant_id,
+                        _json(
+                            {
+                                "type": "proposal-declined",
+                                "preview_id": preview_id,
+                                "action": payload.get("action"),
+                                "item_id": payload.get("feature_id"),
+                                "declined_by": self._actor_ref(actor),
+                                "proposer": payload["approval"].get("proposer"),
+                                "reason": clean_reason,
+                            }
+                        ),
+                        now,
+                    ),
+                )
+        return {"schema_version": 1, "preview_id": preview_id, "declined": True, "declined_at": now}
+
+    # -- Operation inspection -----------------------------------------------------------------------------------------
+
+    def _can_inspect_operation(self, actor: Actor, participant_id: str, intent: Mapping[str, Any]) -> bool:
+        """The owner sees an operation. A gated operation is also seen by any writable human who satisfies its predicate;
+        an ungated agent operation by any writable human."""
+
+        if participant_id == actor.participant_id:
+            return True
+        if actor.kind != "human" or not actor.writable:
+            return False
+        if isinstance(intent.get("approval"), Mapping):
+            return self._may_review(actor, intent)
+        return (intent.get("actor") or {}).get("kind") == "agent"
+
+    # -- The approval step of an apply ---------------------------------------------------------------------------------
+
+    def _apply_gated(
+        self,
+        actor: Actor,
+        preview_id: str,
+        operation_id: str,
+        preview_row: Any,
+        existing: Any,
+        payload: dict[str, Any],
+        review_revision: Any,
+        acknowledged: Any,
+    ) -> dict[str, Any]:
+        payload_hash = preview_row[1]
+        self._require_approver(actor, self._payload_predicate(payload))
+        if existing is not None:
+            if existing[0] != actor.participant_id or existing[1] != preview_id or existing[2] != payload_hash:
+                raise BoardError("operation_id_reused", "That operation ID is already bound to a different participant or payload.", 409)
+            if existing[3] in _TERMINAL_OPERATION_STATES:
+                return _loads(existing[4])
+            return self._retry_gated(actor, operation_id, _loads(existing[5]), review_revision, acknowledged)
+        self._require_proposer_active(payload)
+        if preview_row[4] is not None:
+            raise BoardError("proposal_declined", "This proposal was declined; ask for a new one.", 409)
+        if preview_row[3] is not None:
+            raise BoardError("preview_already_submitted", f"This preview was already submitted as operation `{preview_row[3]}`; retrieve that receipt.", 409)
+        if not isinstance(review_revision, str) or not review_revision or acknowledged is not True:
+            raise BoardError(
+                "approval_review_required",
+                "Read the preview with get_preview, then apply with its `approval.review_revision` and `semantic_review_acknowledged: true`.",
+                409,
+            )
+        policy = self._read_policy()
+        if self._policy_revision(policy) != payload["approval"].get("policy_revision"):
+            raise BoardError("stale_policy", "The workspace policy changed after this preview; preview again.", 409)
+        if not hmac.compare_digest(review_revision, self._review_revision(actor, payload, payload_hash)):
+            raise BoardError("stale_approval_review", "The preview, the policy or its sources changed after your review; read the preview again.", 409)
+        self._assert_roles_current(payload)
+        self._assert_preview_fresh(payload)
+        facts = self._trusted_facts(actor, payload, policy=policy)
+        self._assert_separation(payload, facts)
+        if not payload.get("applicable"):
+            raise BoardError("preview_blocked", "This preview is blocked, unknown, or missing required confirmation.", 409)
+        self._require_action_available(payload.get("action"))
+        return self._record_and_apply(
+            actor, preview_id, operation_id, payload, payload_hash, trusted_facts=facts, review_revision=review_revision
+        )
+
+    def _retry_gated(self, actor: Actor, operation_id: str, intent: dict[str, Any], review_revision: Any, acknowledged: Any) -> dict[str, Any]:
+        """A pending gated operation retried by its approver: authorization and the current policy are rechecked."""
+
+        self._require_approver(actor, self._payload_predicate(intent))
+        policy = self._read_policy()
+        reviewed = None
+        if self._policy_revision(policy) != (intent.get("approval") or {}).get("policy_revision"):
+            reviewed = self._renewed_review(actor, operation_id, intent, review_revision, acknowledged)
+        return self._roll_forward(actor, operation_id, intent, reviewed=reviewed, trusted_facts=self._trusted_facts(actor, intent, policy=policy))
+
+    def _renewed_review(self, actor: Actor, operation_id: str, intent: Mapping[str, Any], review_revision: Any, acknowledged: Any) -> dict[str, str | None]:
+        """The snapshot a human confirmed for a recovery that needs a renewed review, or `stale_recovery_review`."""
+
+        if not isinstance(review_revision, str) or acknowledged is not True:
+            raise BoardError(
+                "stale_recovery_review",
+                "The workspace policy changed since this operation was approved; inspect the operation and confirm its remaining changes again.",
+                409,
+            )
+        snapshot = self._recovery_snapshot(intent)
+        if review_revision != self._recovery_review_revision(actor, operation_id, intent, snapshot=snapshot):
+            raise BoardError("stale_recovery_review", "The operation or its relevant files changed after inspection; inspect and confirm the remaining changes again.", 409)
+        return snapshot
+
+    def _record_and_apply(
+        self,
+        actor: Actor,
+        preview_id: str,
+        operation_id: str,
+        payload: dict[str, Any],
+        payload_hash: str,
+        *,
+        trusted_facts: dict[str, Any] | None = None,
+        review_revision: str | None = None,
+    ) -> dict[str, Any]:
+        """Validate a preview against the live files, record its intent and roll it forward (the initial apply)."""
+
+        store = self._require_store()
+        # The dependency set (membership and digests) is bound before the validation reads it, so a dependency that appears
+        # while the operation validates, or while a write waits to be retried, is a change against this baseline.
+        bound_sources = self._recovery_snapshot(payload)
+        try:
+            self._revalidate_operation(actor, payload, trusted_facts=trusted_facts)
+        except BoardError as exc:
+            if exc.code != "missing_read_revisions":
+                raise
+            # The reads were complete at preview time, so a path missing now is a
+            # source that became required afterwards: a stale preview, not a client mistake.
+            raise BoardError(
+                "stale_preview",
+                "A source this skill must read changed or appeared after the preview; preview again.",
+                409,
+                exc.details,
+            ) from None
+        # Validation can read several files. Recheck them after it finishes
+        # and before recording an intent that may be recovered after a crash.
+        self._assert_preview_fresh(payload)
+        if self._recovery_snapshot(payload) != bound_sources:
+            raise BoardError("stale_preview", "A relevant source or dependency changed while the operation was validated; preview again.", 409)
+        intent = {**payload, "operation_id": operation_id, "actor": actor.to_dict(), "bound_sources": bound_sources}
+        if isinstance(payload.get("approval"), Mapping):
+            approval = {
+                **payload["approval"],
+                "approver": {**self._actor_ref(actor), "roles": list(actor.roles)},
+                "review_revision": review_revision,
+                "policy_revision": (trusted_facts or {}).get("policy_revision"),
+                "trusted_facts": trusted_facts,
+            }
+            approval.pop("state", None)
+            intent["approval"] = approval
+            intent["writes"] = self._attribute_writes(intent["writes"], actor, approval["proposer"])
+        self._assert_unresolved_writes_safe(operation_id, intent)
+        now = _now()
+        repair_of = payload.get("repair_of")
+        with store.transaction() as db:
+            self._require_actor(actor, write=True)
+            db.execute(
+                "INSERT INTO operations(operation_id, participant_id, preview_id, payload_hash, intent_json, receipt_json, state, created_at, updated_at, repair_of) VALUES (?, ?, ?, ?, ?, NULL, 'pending', ?, ?, ?)",
+                (operation_id, actor.participant_id, preview_id, payload_hash, _json(intent), now, now, repair_of),
+            )
+            db.execute("UPDATE previews SET consumed_by = ? WHERE preview_id = ?", (operation_id, preview_id))
+            if repair_of:
+                linked = db.execute(
+                    "UPDATE operations SET repaired_by = ? WHERE operation_id = ? AND state = 'abandoned' AND repaired_by IS NULL", (operation_id, repair_of)
+                ).rowcount
+                if linked != 1:
+                    raise BoardError("repair_invalid", "The operation to repair is no longer an abandoned, unrepaired operation.", 409)
+            self._record_provenance(db, payload, operation_id, now)
+        # This call has just revalidated the whole operation against the live files and rechecked the preview's sources, both
+        # under this lock, so the roll-forward does not evaluate the same files a second time. Every write still checks the
+        # recorded before-state first, and a recovery of this operation (after a crash, or an apply that finds it pending)
+        # revalidates in full.
+        return self._roll_forward(actor, operation_id, intent, validated_just_now=True, trusted_facts=trusted_facts)
+
+    @staticmethod
+    def _attribute_writes(writes: list[dict[str, Any]], approver: Actor, proposer: Mapping[str, Any]) -> list[dict[str, Any]]:
+        """Rewrite the log entry of a gated operation so it names the approver and the proposer it approves."""
+
+        result = []
+        for write in writes:
+            if write.get("role") == "log" and isinstance(write.get("merge"), Mapping):
+                merge = dict(write["merge"])
+                merge["entry"] = _attribute_log_entry(merge.get("entry", ""), approver, proposer)
+                marker = f"<!-- prism:board-history:v1 {merge.get('marker')} -->"
+                after = _append_once(write.get("before") or "", marker, merge["entry"])
+                write = {**write, "merge": merge, "after": after, "after_digest": _file_digest(after)}
+            result.append(write)
+        return result
+
+    # -- operation-repair (CONTRACTS F27) ----------------------------------------------------------------------------
+
+    def _preview_repair(self, actor: Actor, operation_id: Any, supplied: Mapping[str, Any]) -> dict[str, Any]:
+        """Preview adopting the effects an abandoned operation already wrote and finishing what it did not.
+
+        The original action's prerequisites are re-evaluated against the before-state rebuilt off disk and the current
+        trusted facts; any failure refuses the repair with that prerequisite's code.
+        """
+
+        if not isinstance(operation_id, str):
+            raise BoardError("invalid_inputs", "operation-repair needs the `operation_id` of the abandoned operation.", 400)
+        operation_id = _safe_id(operation_id, "operation_id")
+        if set(supplied) - {"semantic_review_acknowledged"}:
+            raise BoardError("invalid_inputs", "The transition contains unsupported input fields.", 400)
+        store = self._require_store()
+        with store.read() as db:
+            row = db.execute("SELECT participant_id, state, intent_json, repaired_by FROM operations WHERE operation_id = ?", (operation_id,)).fetchone()
+        intent = _loads(row[2]) if row is not None else {}
+        if row is None:
+            raise BoardError("operation_not_found", "No operation with that ID is available to this participant.", 404)
+        predicate = self._payload_predicate(intent)
+        if predicate is not None and not predicate.holds(actor.roles):
+            raise self._role_required(predicate, actor)
+        if not self._can_inspect_operation(actor, row[0], intent):
+            raise BoardError("operation_not_found", "No operation with that ID is available to this participant.", 404)
+        if row[1] != "abandoned":
+            raise BoardError("repair_invalid", f"Only an abandoned operation can be repaired; this one is `{row[1]}`.", 409)
+        if row[3] is not None:
+            raise BoardError("repair_invalid", f"This operation is already repaired by `{row[3]}`.", 409)
+        states = self._operation_file_states(intent)
+        conflicts = [item["path"] for item in states if item["state"] == "conflict"]
+        if conflicts:
+            raise BoardError("repair_invalid", f"`{conflicts[0]}` matches neither the recorded before-state nor after-state; it cannot be adopted.", 409, {"paths": conflicts[:20]})
+        remaining = [write for write, state in zip(intent.get("writes", []), states) if state["state"] != "applied"]
+        remaining_moves = []
+        for move in intent.get("moves", []):
+            try:
+                if self._move_state(move, intent) == "pending":
+                    remaining_moves.append(move)
+            except BoardError as exc:
+                raise BoardError("repair_invalid", f"The recorded intake move cannot be adopted: {exc.message}", 409) from None
+        if not remaining and not remaining_moves:
+            raise BoardError("repair_invalid", "Every recorded write of this operation is already in place; there is nothing to repair.", 409)
+        policy = self._read_policy()
+        facts = self._trusted_facts(actor, intent, policy=policy)
+        self._revalidate_recovery(actor, intent, reviewed=True, trusted_facts=facts)
+        self._assert_repair_lint(intent, remaining)
+        preview_id = str(uuid4())
+        source_map = self._recovery_snapshot(intent)
+        payload = {
+            "preview_id": preview_id,
+            "kind": "repair",
+            "skill": None,
+            "action": REPAIR_ACTION,
+            "feature_id": intent.get("feature_id"),
+            "participant_id": actor.participant_id,
+            "source_revision": _revision(source_map),
+            "source_map": source_map,
+            "classification": "ready",
+            "applicable": True,
+            "checks": [
+                {
+                    "code": "repair-prerequisites",
+                    "status": "pass",
+                    "message": f"The remaining prerequisites of `{intent.get('action') or intent.get('skill')}` hold against the rebuilt before-state and the current policy and roles.",
+                },
+                {
+                    "code": "repair-adopts-written-effects",
+                    "status": "pass",
+                    "message": f"{len(states) - len(remaining)} of {len(states)} recorded writes are already in place and are adopted unchanged; {len(remaining)} remain.",
+                },
+            ],
+            "blockers": [],
+            "source": None,
+            "target": None,
+            "writes": [dict(write) for write in remaining],
+            "moves": [dict(move) for move in remaining_moves],
+            "created_at": _now(),
+            "inputs": dict(supplied),
+            "repair_of": operation_id,
+            "original_action": intent.get("action"),
+            "repair_basis": intent,
+            "approval": {
+                "required_roles": (predicate or RolePredicate()).as_json(),
+                "state": _AWAITING_APPROVAL,
+                "proposer": self._actor_ref(actor),
+                "policy_revision": self._policy_revision(policy),
+            },
+        }
+        self._save_preview(payload)
+        return self._review_envelope(actor, payload, payload["_payload_hash"])
+
+    def _assert_repair_lint(self, intent: Mapping[str, Any], remaining: list[dict[str, Any]]) -> None:
+        """The pages an operation wrote must lint clean once its remaining writes are in place, or the repair is invalid."""
+
+        from prism_cli.wiki_lint import lint_wiki
+
+        written = {write["path"] for write in intent.get("writes", []) if write.get("role") not in {*_ROW_ROLES, "log"}}
+        with tempfile.TemporaryDirectory(prefix="prism-board-repair-") as directory:
+            candidate_root = Path(directory)
+            supplied = {
+                write["path"]: write.get("after", "")
+                for write in remaining
+                if write.get("role") not in {*_ROW_ROLES, "log"} and write.get("after") is not None
+            }
+            self._build_candidate_root(candidate_root, supplied, [])
+            intake = self._safe_path("knowledge/intake", allow_missing=True)
+            if intake.is_dir():
+                self._copy_tree_safely(intake, candidate_root / "knowledge/intake")
+            resolved = candidate_root.resolve()
+            problems = []
+            for diagnostic in lint_wiki(candidate_root).diagnostics:
+                if diagnostic.severity != "error":
+                    continue
+                try:
+                    relative = Path(diagnostic.path).resolve().relative_to(resolved).as_posix()
+                except ValueError:
+                    continue
+                if relative in written:
+                    problems.append(f"{diagnostic.code} in {relative}")
+        if problems:
+            raise BoardError(
+                "repair_invalid",
+                "The pages this operation wrote would still fail lint after the repair: " + "; ".join(problems[:5]) + ".",
+                409,
+                {"problems": problems[:10]},
+            )
 
     def _load_identity(self) -> None:
         manifest_path = self.root / "prism.workspace.yml"
@@ -1143,6 +1954,8 @@ class BoardService:
                 self.store = BoardStore(self.root, process_lock=False)
             except CloudSyncPathError as exc:
                 raise BoardError("cloud_sync_path", CLOUD_SYNC_MESSAGE, 403) from exc
+            except UnsupportedBoardState as exc:
+                raise BoardError("unsupported_board_state", str(exc), 409) from exc
             except (OSError, ValueError) as exc:
                 raise BoardError("unsafe_state_path", "Board state could not be opened safely.", 409) from exc
         return self.store
@@ -1182,9 +1995,19 @@ class BoardService:
             for _child, _info in self._walk_tree(tree, reject=True):
                 pass
 
-    def _actor_from_values(self, participant_id: str, name: str, kind: str, writable: bool, token_hash: str) -> Actor:
+    def _actor_from_values(
+        self,
+        participant_id: str,
+        name: str,
+        kind: str,
+        writable: bool,
+        token_hash: str,
+        roles: tuple[str, ...] = (),
+        *,
+        session: bool = False,
+    ) -> Actor:
         scopes = ("read", "write") if writable else ("read",)
-        return Actor(participant_id, kind, name, writable, str(self._board_id), str(self._workflow_version), scopes, token_hash, self._proof)
+        return Actor(participant_id, kind, name, writable, str(self._board_id), str(self._workflow_version), scopes, roles, session, token_hash, self._proof)
 
     def _require_actor(self, actor: Actor, *, write: bool = False, kind: str | None = None) -> None:
         store = self._require_store()
@@ -1192,12 +2015,12 @@ class BoardService:
             raise BoardError("unauthorized", "A server-authenticated participant is required.", 401)
         with store.read() as db:
             row = db.execute(
-                "SELECT token_hash, name, kind, writable, active, board_id, workflow_version, asset_digest FROM grants WHERE participant_id = ?",
+                "SELECT token_hash, name, kind, writable, active, board_id, workflow_version, asset_digest, roles FROM grants WHERE participant_id = ?",
                 (actor.participant_id,),
             ).fetchone()
         if row is None or row[4] != 1 or row[0] != actor._token_hash:
             raise BoardError("unauthorized", "The participant grant is unknown or revoked.", 401)
-        if row[1] != actor.name or row[2] != actor.kind or bool(row[3]) != actor.writable:
+        if row[1] != actor.name or row[2] != actor.kind or bool(row[3]) != actor.writable or _split_roles(row[8]) != tuple(actor.roles):
             raise BoardError("actor_mismatch", "Participant identity does not match the current grant.", 401)
         if row[5] != self._board_id or row[6] != self._workflow_version or row[7] != self._asset_digest_value:
             raise BoardError("grant_identity_changed", "The workspace workflow identity changed after this grant was created.", 409)
@@ -1361,16 +2184,26 @@ class BoardService:
             if isinstance(item, Mapping) and isinstance(item.get("name"), str)
         ]
 
-    @staticmethod
-    def _skill_participants(name: str) -> dict[str, Any]:
-        """Which participant kinds may write with a skill, and through which tool."""
+    def _skill_participants(self, name: str) -> dict[str, Any]:
+        """Which participant kinds may write with a skill, through which tool, and the roles that approve it.
+
+        A gated skill is proposed by an agent with `preview_skill` and applied by a human who satisfies `required_roles`.
+        """
 
         if name not in _WRITE_SKILLS:
-            return {"participant_kinds": [], "write_tools": {}}
+            return {"participant_kinds": [], "write_tools": {}, "required_roles": None}
         tools: dict[str, list[str]] = {"preview_skill": ["agent"]}
         if name in _HUMAN_ACTIONS:
             tools["preview_transition"] = ["human"]
-        return {"participant_kinds": sorted({kind for kinds in tools.values() for kind in kinds}), "write_tools": tools}
+        action = _LIFECYCLE_SKILLS.get(name) or (name if name in _ACTION_BY_NAME else None)
+        predicate = self._predicate_for(action)
+        if predicate is not None:
+            tools["apply"] = ["human"]
+        return {
+            "participant_kinds": sorted({kind for kinds in tools.values() for kind in kinds}),
+            "write_tools": tools,
+            "required_roles": predicate.as_json() if predicate is not None else None,
+        }
 
     @staticmethod
     def _skill_scopes(name: str) -> list[str]:
@@ -1580,8 +2413,8 @@ class BoardService:
         payload_hash = _sha256(encoded.encode("utf-8"))
         with self._lock, store.transaction() as db:
             db.execute(
-                "INSERT INTO previews VALUES (?, ?, ?, ?, ?, NULL)",
-                (payload["preview_id"], payload["participant_id"], payload_hash, encoded, payload["created_at"]),
+                "INSERT INTO previews(preview_id, participant_id, payload_hash, payload_json, created_at, gated) VALUES (?, ?, ?, ?, ?, ?)",
+                (payload["preview_id"], payload["participant_id"], payload_hash, encoded, payload["created_at"], int(isinstance(payload.get("approval"), Mapping))),
             )
         payload["_payload_hash"] = payload_hash
 
@@ -2264,6 +3097,16 @@ class BoardService:
             normalized_moves,
         )
 
+        self._require_action_available(operation.get("action"))
+        action_apps: list[Any] | None = None
+        action_path: str | None = None
+        for relative in feature_changes:
+            if str(after_frontmatter[relative].get("id", "")) == str(operation.get("feature_id")):
+                action_path = relative
+                apps = after_frontmatter[relative].get("apps")
+                action_apps = list(apps) if isinstance(apps, list) else None
+        predicate = self._predicate_for(operation.get("action"), action_path, action_apps)
+        approval = self._approval_block(actor, predicate, action_path, action_apps) if predicate is not None else None
         preview_id = str(uuid4())
         writes = [
             self._write_record(relative, before[relative], content, role="canonical")
@@ -2314,7 +3157,16 @@ class BoardService:
             context_paths.add(relative)
         source_map = self._fingerprint_paths(context_paths - {*_MANAGED_PATHS, *supplied.keys()})
         source_revision = _revision(source_map)
-        checks = operation["checks"]
+        checks = list(operation["checks"])
+        subjects = operation.get("separation_subjects") or []
+        if approval is not None and subjects and self._read_policy().get("qa_separate_from_dev"):
+            checks.append(
+                {
+                    "code": "separation-pending",
+                    "status": "warning",
+                    "message": "`qa-separate-from-dev` is on: the human who approves this must not be the grant that produced, recovered or repaired the evidence it verifies.",
+                }
+            )
         classification = operation["classification"]
         applicable = classification == "ready" and not operation.get("blockers")
         payload = {
@@ -2338,8 +3190,14 @@ class BoardService:
             "proposed_changes": [{"path": path, "content": content} for path, content in sorted(supplied.items())],
             "read_revisions": normalized_revisions,
         }
+        if approval is not None:
+            payload["approval"] = approval
+        if subjects:
+            payload["separation_subjects"] = list(subjects)
+        if operation.get("produces_evidence"):
+            payload["produces_evidence"] = list(operation["produces_evidence"])
         self._save_preview(payload)
-        return self._preview_envelope(payload)
+        return self._review_envelope(actor, payload, payload["_payload_hash"])
 
     def _assert_skill_write_path(self, skill: str, relative: str) -> None:
         if not relative.lower().endswith(".md"):
@@ -4351,13 +5209,29 @@ class BoardService:
             if write.get("role") in _ROW_ROLES:
                 self._assert_managed_rows(write["role"], write["merge"].get("expected_rows", {}))
 
-    def _revalidate_operation(self, actor: Actor, payload: Mapping[str, Any], *, reviewed: bool = False) -> None:
+    def _revalidate_operation(
+        self,
+        actor: Actor,
+        payload: Mapping[str, Any],
+        *,
+        reviewed: bool = False,
+        trusted_facts: Mapping[str, Any] | None = None,
+    ) -> None:
         """Re-evaluate current deterministic rules, including calendar checks.
 
         `reviewed` is set only for a recovery that a writable human confirmed
         against the current files: the sources recorded at preview are then not
         compared, and the rules are checked against what is on disk now.
+
+        `trusted_facts` are the facts only the live service can resolve (roles, policy, producing operations and their
+        excluded approvers). A gated payload is refused when they do not satisfy its predicate and separation.
         """
+        if payload.get("kind") == "repair":
+            # A repair re-evaluates the original action against the before-state rebuilt off disk, not against the files as they are.
+            self._revalidate_recovery(actor, payload, reviewed=True, trusted_facts=dict(trusted_facts) if trusted_facts is not None else None)
+            return
+        if isinstance(payload.get("approval"), Mapping):
+            self._assert_trusted_facts(payload, trusted_facts)
         if payload.get("kind") == "transition":
             from prism_cli.wiki_transitions import build_board_transition_preflight
 
@@ -4443,6 +5317,7 @@ class BoardService:
         *,
         reviewed: Mapping[str, str | None] | None,
         revalidate: bool = True,
+        trusted_facts: Mapping[str, Any] | None = None,
     ) -> bool:
         """Run every check that precedes a recovery write and return whether the operation is already complete.
 
@@ -4461,7 +5336,10 @@ class BoardService:
             # A fresh apply compared the dependency set it bound a moment ago, under the same lock; its first check here would repeat that.
             self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed, check_bound=revalidate)
             if revalidate:
-                self._revalidate_recovery(actor, intent, reviewed=reviewed is not None)
+                if trusted_facts is None:
+                    self._revalidate_recovery(actor, intent, reviewed=reviewed is not None)
+                else:
+                    self._revalidate_recovery(actor, intent, reviewed=reviewed is not None, trusted_facts=dict(trusted_facts))
             self._assert_recovery_sources(intent, conflict_paths, reviewed=reviewed, check_bound=revalidate)
         return complete
 
@@ -4473,6 +5351,7 @@ class BoardService:
         *,
         reviewed: Mapping[str, str | None] | None = None,
         validated_just_now: bool = False,
+        trusted_facts: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         store = self._require_store()
         conflicts: list[dict[str, Any]] = []
@@ -4480,6 +5359,10 @@ class BoardService:
         applied: list[str] = []
         moved: list[dict[str, str]] = []
         attribution: dict[str, Any] = {"actor": intent.get("actor")}
+        if isinstance(intent.get("approval"), Mapping):
+            attribution["proposer"] = intent["approval"].get("proposer")
+        if intent.get("repair_of"):
+            attribution["repair_of"] = intent["repair_of"]
         if intent.get("recovery_attempts"):
             attribution["recovery_attempts"] = intent["recovery_attempts"]
         if actor.participant_id != intent.get("participant_id"):
@@ -4494,7 +5377,10 @@ class BoardService:
                 return _loads(existing[1])
             self._assert_unresolved_writes_safe(operation_id, intent)
             try:
-                complete = self._recovery_preflight(actor, intent, conflict_paths, reviewed=reviewed, revalidate=not validated_just_now)
+                preflight_keywords: dict[str, Any] = {"reviewed": reviewed, "revalidate": not validated_just_now}
+                if trusted_facts is not None:
+                    preflight_keywords["trusted_facts"] = trusted_facts
+                complete = self._recovery_preflight(actor, intent, conflict_paths, **preflight_keywords)
                 for move in intent.get("moves", []):
                     self._require_actor(actor, write=True)
                     source = self._safe_path(move["source"], allow_missing=True)
@@ -4621,7 +5507,9 @@ class BoardService:
                 raise BoardError("operation_already_applied", "This operation was applied; it cannot be abandoned.", 409)
             try:
                 self._assert_unresolved_writes_safe(operation_id, intent)
-                self._recovery_preflight(actor, intent, [], reviewed=self._recovery_snapshot(intent))
+                facts = self._trusted_facts(actor, intent) if isinstance(intent.get("approval"), Mapping) else None
+                preflight_keywords = {"trusted_facts": facts} if facts is not None else {}
+                self._recovery_preflight(actor, intent, [], reviewed=self._recovery_snapshot(intent), **preflight_keywords)
             except BoardError as exc:
                 reason = f"{exc.code}: {exc.message}"
             except OSError as exc:
@@ -4794,8 +5682,20 @@ class BoardService:
                     conflict_paths.append(state["path"])
                 raise BoardError("recovery_conflict", f"`{state['path']}` changed during recovery.", 409)
 
-    def _revalidate_recovery(self, actor: Actor, intent: Mapping[str, Any], *, reviewed: bool = False) -> None:
-        """Recheck current rules against a reconstructed before-state, off disk."""
+    def _revalidate_recovery(
+        self,
+        actor: Actor,
+        intent: Mapping[str, Any],
+        *,
+        reviewed: bool = False,
+        trusted_facts: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Recheck current rules against a reconstructed before-state, off disk.
+
+        The candidate service this builds has no journal, so it never resolves the trusted facts itself: the live
+        service passes them in. A repair rebuilds the before-state of the operation it repairs.
+        """
+        intent = intent.get("repair_basis") or intent
         with tempfile.TemporaryDirectory(prefix="prism-board-recovery-") as directory:
             candidate_root = Path(directory)
             self._build_candidate_root(candidate_root, {}, [])
@@ -4834,7 +5734,10 @@ class BoardService:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(write["before"].encode("utf-8"))
             with BoardService(candidate_root) as candidate:
-                candidate._revalidate_operation(actor, intent, reviewed=reviewed)
+                if trusted_facts is None:
+                    candidate._revalidate_operation(actor, intent, reviewed=reviewed)
+                else:
+                    candidate._revalidate_operation(actor, intent, reviewed=reviewed, trusted_facts=trusted_facts)
 
     def _apply_write(self, write: Mapping[str, Any], *, actor: Actor | None = None, recheck: Callable[[], None] | None = None) -> str:
         """Apply one recorded write; ``recheck`` is the caller's source check, which a replacement repeats before each retry."""
@@ -4957,6 +5860,8 @@ class BoardService:
 
 
 from prism_cli.wiki_transitions import ACTION_SPECS as _REGISTERED_ACTION_SPECS
+
+_ACTION_SPEC_BY_NAME = {spec.action: spec for spec in _REGISTERED_ACTION_SPECS}
 
 _ACTION_BY_NAME = {
     spec.action: {
@@ -5086,6 +5991,12 @@ def _minimum_cli_version_error(data: Mapping[str, Any], manifest_path: Path) -> 
     )
     minimum_codes = {"invalid-min-prism-cli-version", "minimum-prism-cli-version-not-met"}
     return next((item.message for item in checks if item.code in minimum_codes), None)
+
+
+def _split_roles(value: Any) -> tuple[str, ...]:
+    """The roles stored on a grant: sorted and comma-joined, empty for none."""
+
+    return tuple(item for item in str(value or "").split(",") if item)
 
 
 def _safe_id(value: Any, name: str) -> str:
@@ -5407,6 +6318,46 @@ def _render_status_board(content: str, expected: Mapping[str, Any], after: Mappi
         for offset, row in enumerate(sorted(missing, key=lambda item: int(re.search(r"\d+", item["id"]).group(0)))):
             lines.insert(insertion + offset, _format_status_row(row) + newline)
     return "".join(lines)
+
+
+def _approval_by(approver: Actor, proposer: Mapping[str, Any]) -> str:
+    """The `by:` text of a gated entry: the approving human, with roles, and the proposer when it is someone else."""
+
+    roles = ", ".join(approver.roles) or "none"
+    text = f"{approver.name} ({approver.kind}; roles {roles})"
+    if proposer.get("participant_id") != approver.participant_id:
+        text += f" approving {proposer.get('name')} ({proposer.get('kind')})"
+    return re.sub(r"\s+", " ", text).strip()[:200]
+
+
+def _attribute_log_entry(entry: str, approver: Actor, proposer: Mapping[str, Any]) -> str:
+    """Rewrite a log entry built for a proposal so it names the approver and the proposer it approves (CONTRACTS 1.3).
+
+    The `by:` line reads `<approver> (human; roles <roles>) approving <proposer> (agent)` and the actor marker carries
+    both participant IDs.
+    """
+
+    lines = entry.split("\n")
+    for index, line in enumerate(lines):
+        if line.startswith("- by: "):
+            lines[index] = "- by: " + _approval_by(approver, proposer)
+        elif line.startswith("<!-- prism:board-actor:v1 ") and line.endswith(" -->"):
+            try:
+                marker = json.loads(line[len("<!-- prism:board-actor:v1 "):-len(" -->")])
+            except json.JSONDecodeError:
+                continue
+            marker.update(
+                {
+                    "participant_id": approver.participant_id,
+                    "kind": approver.kind,
+                    "name": approver.name,
+                    "approver_id": approver.participant_id,
+                    "proposer_id": proposer.get("participant_id"),
+                    "roles": list(approver.roles),
+                }
+            )
+            lines[index] = f"<!-- prism:board-actor:v1 {_json(marker)} -->"
+    return "\n".join(lines)
 
 
 def _actor_log_entry(

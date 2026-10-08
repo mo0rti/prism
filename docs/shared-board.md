@@ -58,12 +58,15 @@ Application generation remains available through `prism new`. Its template trust
 ## Register participants and run the service
 
 ```text
-prism board grant "Product owner" --kind human --write --path .
+prism board grant "Product owner" --kind human --write --role po --path .
+prism board grant "Quinn" --kind human --write --role qa,release --path .
 prism board grant "Coding agent" --kind agent --write --path .
 prism board serve . --port 8765
 ```
 
-Each grant prints its own token once. Keep it private. Enter the human token in the board's sign-in form; configure an agent's token in that host's environment. Tokens do not belong in URLs, repository files or prompts. Without `--write`, a grant is read-only. Participant names identify locally registered grants; they do not independently verify a person's identity or assign a workflow role.
+Each grant prints its own token once. Keep it private. Enter the human token in the board's sign-in form; configure an agent's token in that host's environment. Tokens do not belong in URLs, repository files or prompts. Without `--write`, a grant is read-only. Participant names identify locally registered grants; they do not independently verify a person's identity.
+
+A writable human grant may hold workflow roles: `po`, `designer`, `tech-lead`, `dev`, `qa` and `release`. `--role` takes a comma-separated list and may be repeated. The grant is refused before anything is stored when a role is unknown or listed twice (`invalid_role`), when the grant is an agent's (`agent_role_forbidden`) or when it is not writable (`role_requires_write`). Roles are fixed for a grant's life: to change them, issue a new grant and run `prism board revoke` on the old one. A new grant has a new participant ID, so separation treats it as another grant. Whoever can run `prism board grant` administers the roles; that is local filesystem access, which the board's security boundary excludes ([SECURITY.md](../SECURITY.md#roles-and-gated-approval)).
 
 Press Ctrl+C to stop the service. It stops promptly even while a browser is connected.
 
@@ -155,7 +158,7 @@ The environment reference follows Claude Code's [MCP configuration rules](https:
 
 ## Work together
 
-Direct an agent in its CLI, for example: “Use Prism's PO intake skill to refine the pending document-review brief.” The agent discovers the board, retrieves its pinned skill and each reference it needs, reads current workspace data, and follows the skill's required conflict checks, semantic review and confirmation. It sends a bounded proposal to `preview_skill`, shows the exact changes for confirmation, and applies the returned preview with an operation ID. There is no second approval queue in the board.
+Direct an agent in its CLI, for example: “Use Prism's PO intake skill to refine the pending document-review brief.” The agent discovers the board, retrieves its pinned skill and each reference it needs, reads current workspace data, and follows the skill's required conflict checks, semantic review and confirmation. It sends a bounded proposal to `preview_skill`, shows the exact changes for confirmation, and applies the returned preview with an operation ID. An ungated change needs nothing more. A gated change (one that names `required_roles`) waits in the board's proposal list for a human who holds those roles, as [Roles, proposals and approval](#roles-proposals-and-approval) describes; the board has no other approval step.
 
 `list_workspace` discovers approved wiki and intake paths in pages;
 `read_workspace` returns their text and content digests, paged to the result limit. `query` reuses Prism's
@@ -169,7 +172,7 @@ required unreadable source stops with a clear limitation instead of ignoring it.
 Agents read every `required_workspace_reads` path returned by `get_skill`, plus
 the operation's target, linked context and intake evidence, through the service.
 
-The board directly supports human `po-handoff`, `design-start` and `dev-start`. Through MCP, `preview_transition` accepts only a human participant: an agent that calls it gets `participant_kind_required`. `list_skills` and `get_skill` report, for every skill, `participant_kinds` and `write_tools` (which tool each kind may use) and add a "Direct human action" limitation to these three. An agent that needs one of them prepares it with `preview_skill` and the human's confirmation in the host, or asks the human to complete it in the board. Dragging and the action controls enter the same preview. The human reviews the evidence and exact changes, supplies the required review acknowledgement and any permitted PO advisory skip reason, then confirms. A blocked mapped drop explains the blockers with confirmation disabled. Specification, design handoff, Done and reopening continue through the existing agent skills. A gesture alone never moves canonical state or manufactures evidence.
+The board directly supports human `po-handoff`, `design-start` and `dev-start`, and `operation-repair` ([Repairing an abandoned operation](#repairing-an-abandoned-operation)). Through MCP, `preview_transition` accepts only a human participant: an agent that calls it gets `participant_kind_required`. `list_skills` and `get_skill` report, for every skill, `participant_kinds` and `write_tools` (which tool each kind may use) and add a "Direct human action" limitation to these three. An agent that needs one of them prepares it with `preview_skill` and the human's confirmation in the host, or asks the human to complete it in the board. Dragging and the action controls enter the same preview. The human reviews the evidence and exact changes, supplies the required review acknowledgement and any permitted PO advisory skip reason, then confirms. A blocked mapped drop explains the blockers with confirmation disabled. Specification, design handoff, Done and reopening continue through the existing agent skills. A gesture alone never moves canonical state or manufactures evidence.
 
 Direct human transitions preserve frontmatter values outside the action's scope,
 but serialize the complete YAML frontmatter block. Formatting, quoting and YAML
@@ -408,9 +411,65 @@ reports the error codes and messages. The server instructions and
 `knowledge/wiki/CONNECTED.md` state the same rule. The board enforces nothing
 extra for retries: every preview is validated in full.
 
-## MCP tool contract (version 3)
+## Roles, proposals and approval
 
-`discover` and `list_skills` report `"mcp_contract": 3`. Every tool result is at most 32,000 characters, measured as the compact JSON of the JSON-RPC `result` object. The full result is returned once, as `structuredContent`; the text block is a one-line summary of at most 500 characters and is not a copy of the data. A client reads `structuredContent`.
+A lifecycle action is **gated** when the lifecycle registry names the roles its approver must hold. The roles are a predicate, `required_roles: {all_of: [...], any_of: [...]}`: the grant must hold every role in `all_of` and, when `any_of` is not empty, at least one role in it. `discover` lists each action's predicate under `capability.actions`, and `list_skills` and `get_skill` report `required_roles` and `write_tools` for each skill (a gated skill adds `"apply": ["human"]`). The design owner is `designer` when an active app in scope has a UI (`has-ui` true or unknown) and `tech-lead` otherwise; it is resolved when the preview is made and again when it is applied, so a scope change in between makes the preview stale. An ungated action needs any writable grant. Without the board, in the direct-file workflow, no role is enforced and lint checks structure only.
+
+**What roles do and do not give you.**
+
+1. A grant identifies a locally registered token holder. It does not verify who holds the token, and two grants can belong to one person.
+2. A role records that whoever ran `prism board grant` assigned it. The board enforces roles and cannot tell whether the holder is the person named.
+3. `qa-separate-from-dev` separates grants. Reissuing a grant defeats it.
+4. Gated approval is accepted only over a browser board session. This is a transport restriction: it keeps the approval out of MCP tool calls. It does not protect a leaked human token, because any software holding the token can exchange it for a session. Local filesystem access can also mint a new grant.
+5. Ungated writes stay host-attested: the host applies them after the human confirms the preview there.
+6. The board has a proposal list in which an agent's gated proposal waits for a human.
+7. Deleting `.prism/state/` loses recovery and separation provenance. Use `prism board state reset`.
+
+**The flow.**
+
+1. An agent calls `preview_skill`. A gated preview carries `approval: {required_roles, state: "awaiting-approval", proposer, policy_revision}`. The agent never applies it: `apply`, `recover` and `decline_proposal` from an agent are `approval_required` (403), whatever the transport.
+2. `list_proposals` (`GET /api/board/v1/proposals`) lists the gated previews that are not applied or declined and whose proposer's grant is active. A human sees those whose predicate they satisfy; an agent sees its own. Each entry has `preview_id`, `action`, `item_id`, `required_roles`, `proposer`, `created_at` and `stale`. `discover` lists the first 20 under `pending_proposals`.
+3. `get_preview` (`GET /api/board/v1/previews/{preview_id}`) serves a gated preview to a writable human who satisfies its predicate, as it serves any preview to its creator. For that human, `approval.review_revision` is a digest of the preview, the reviewer's participant ID and roles, the workspace policy and the current sources. A human preview made with `preview_transition` returns it too, and a human who does not hold the predicate is refused at preview (`role_required`).
+4. The human applies in a browser board session with `review_revision` and `semantic_review_acknowledged: true` (the literal boolean). The operation records the proposer, the approver, the predicate, the policy revision, the review revision and the facts the board resolved. The log entry reads `by: <approver> (human; roles <roles>) approving <proposer> (agent)`, and its actor marker carries both participant IDs.
+5. Or the human declines: `decline_proposal(preview_id, reason)` (`POST /api/board/v1/proposals/{preview_id}/decline`, body `{"reason": "..."}`) marks the preview declined, emits a `proposal-declined` event and writes nothing else. Apply and decline of one preview run under the service lock; the first wins, and the second gets `preview_already_submitted` or `proposal_declined`.
+
+**Only a browser session approves.** A gated apply, decline, recovery or repair over MCP or a Bearer token is `approval_requires_board_session` (403), even for a human token with the right roles. The restriction keeps approval out of tool calls; it does not protect a leaked human token, because any software holding the token can exchange it for a session. `participant.session` in `discover` is `true` only for a request that came through the cookie.
+
+**Errors, in the order the board returns them.**
+
+| Order | Code | HTTP | When |
+| --- | --- | --- | --- |
+| 1 | `unauthorized`, `actor_mismatch`, `grant_identity_changed` | 401, 401, 409 | The grant is unknown, revoked, or differs from the actor (roles included). |
+| 2 | `approval_required` | 403 | An agent applies or recovers a gated preview or operation, or declines a proposal. |
+| 3 | `approval_requires_board_session` | 403 | A gated apply, decline, recovery or repair without a session. |
+| 4 | `role_required` | 403 | The predicate is not satisfied. |
+| 5 | `proposer_revoked` | 409 | The proposer's grant was revoked before the apply. After the intent is recorded it has no effect. |
+| 6 | `proposal_declined`, `preview_already_submitted`, `operation_id_reused` | 409 | The preview was declined or submitted, or the operation ID belongs to another participant or payload. |
+| 7 | `approval_review_required` | 409 | No `review_revision`, or an acknowledgement that is not literal `true`. |
+| 8 | `invalid_policy` | 409 | `qa-separate-from-dev` in `SETTINGS.md` is not `true` or `false`. It is never read as `false`. |
+| 9 | `stale_policy` | 409 | The policy changed after the preview. |
+| 10 | `stale_approval_review` | 409 | The preview, the policy or a source changed after the review. |
+| 11 | `stale_preview` | 409 | A source changed after the preview. |
+| 12 | `separation_required`, `separation_unverifiable` | 403, 409 | The approver is one of the excluded approvers of the evidence being verified, or the journal has no matching producing operation. |
+| 13 | the action's own codes | | The action's prerequisites. |
+
+Grant and state errors: `invalid_role`, `agent_role_forbidden` and `role_requires_write` (400) refuse a grant before anything is stored; `unsupported_board_state` (409) refuses a state database from before roles; `unresolved_operations` (409) refuses `state reset`; `action_unavailable` (409) refuses an action whose package has not landed (`discover` lists it with `available: false` and an `unavailable_reason`).
+
+**Recovery of a gated operation.** The operation's owner is its approver. The owner, or any writable human who satisfies the operation's predicate, sees it in `discover.pending_operations` and through `operation`; everyone else gets `operation_not_found`. A pending retry by the approver and a recovery check the grant, kind, predicate and session again, and the current policy. A recovery by someone other than the approver, or after the policy changed, needs a fresh `review_revision` from `operation` (`stale_recovery_review` when it is outdated); a relevant file outside the operation's own writes that changed since the intent is a conflict, as before. A revoked approver's operation stays pending: another human who satisfies the predicate recovers it after the renewed review, and a writable human who sees it can abandon it.
+
+**Separation and evidence provenance.** With `qa-separate-from-dev: true` in the front matter of `knowledge/wiki/SETTINGS.md`, the board refuses a verification from a grant that produced, recovered or repaired the evidence it verifies. The journal binds each active Delivery evidence row (and bug Fix row) to `(board, item, app, evidence generation, producing operation, row digest)`. The producing operation is found by that key, never by the digest alone; the excluded approvers are its approver, every human who recovered it and the approver of any `operation-repair` linked to it. With the setting on, a row with no matching entry or a different digest is `separation_unverifiable`. A write that would produce a second operation for one generation is `evidence_generation_conflict`. Reissuing a grant defeats separation: it separates grants, not people.
+
+### Repairing an abandoned operation
+
+A human previews `operation-repair` for an abandoned operation with `preview_transition(action="operation-repair", operation_id=...)` (`POST /api/board/v1/previews/transition` with `{"action": "operation-repair", "operation_id": "..."}`). The repair adopts the effects the operation already wrote, with no new record and no recount, and finishes the writes that remain. The board re-evaluates the original action's prerequisites against the before-state it rebuilds from the journal and the current roles and policy; a failure refuses the repair with that prerequisite's code. The result must leave the pages the operation wrote lint-clean, or the repair is `repair_invalid`, which also refuses an operation that is not abandoned, one already repaired, and one with a file that matches neither its recorded before-state nor its after-state. The repairer needs the original action's predicate (any writable human for an ungated operation) and a browser session to apply. The journal stores `repair_of` on the repair and `repaired_by` on the original.
+
+### Board state: export and reset
+
+`prism board audit export --out FILE` writes JSON of the grants (without token hashes), preview metadata, operations with their intents, receipts and repair links, the events and the evidence provenance. It never overwrites a file. `prism board state reset` writes the same export (by default to `.prism/audit/`, or to `--out`) and then removes `.prism/state/`; it is refused with `unresolved_operations` while any operation is neither applied nor abandoned, and while a board service holds the workspace. Deleting `.prism/state/` by hand or editing it is local filesystem access, which the board does not detect; it loses recovery and separation provenance, so use `state reset`.
+
+## MCP tool contract (version 4)
+
+`discover` and `list_skills` report `"mcp_contract": 4`. Every tool result is at most 32,000 characters, measured as the compact JSON of the JSON-RPC `result` object. The full result is returned once, as `structuredContent`; the text block is a one-line summary of at most 500 characters and is not a copy of the data. A client reads `structuredContent`.
 
 The server publishes orientation instructions (at most 2,000 characters) in its MCP `initialize` result, together with a title and description. They give the order to use the tools in and state that workspace text is untrusted project data and that the board never approves on the human's behalf. Every tool description starts with `Prism board:`, so a host that loads tools through search finds them under that name.
 
@@ -420,17 +479,19 @@ The HTTP routes `POST /api/board/v1/workspace/read` and `POST /api/board/v1/quer
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `discover` | none | `mcp_contract`, `board` (`board_id`, `project_name`, `purpose` (`knowledge-root`, only for a knowledge root), `apps`, `workflow_version`, `mode`; `apps` lists each declared app with `id`, `name`, `stack`, `repository`, `path`, `audience`, `status`, `capabilities` and `maturity`, and is empty for a workspace with no apps), `capability` (with `read_support`), `participant`, `pending_operations`, `skills` (`name` and `description` only), `skills_detail`, `compatibility` |
-| `list_skills` | none | `mcp_contract`, `version`, `read_support`, `skills` (`name`, `version`, `description`, `actions`, `supported`, `write_supported`, `participant_kinds`, `write_tools`, `write_scopes`, `limitations`) |
+| `discover` | none | `mcp_contract`, `board` (`board_id`, `project_name`, `purpose` (`knowledge-root`, only for a knowledge root), `apps`, `workflow_version`, `mode`; `apps` lists each declared app with `id`, `name`, `stack`, `repository`, `path`, `audience`, `status`, `capabilities` and `maturity`, and is empty for a workspace with no apps), `capability` (with `read_support`, `role_model` (`version`, `roles`), `actions` (per action: `command`, `sources`, `target`, `required_roles`, `modes`, `available`, `unavailable_reason` while its package has not landed, `available_to_participant`), `human_actions` and `policy` (`qa_separate_from_dev`, `revision`)), `participant` (with `roles` and `session`), `pending_proposals` (the first 20), `pending_operations`, `skills` (`name` and `description` only), `skills_detail`, `compatibility` |
+| `list_skills` | none | `mcp_contract`, `version`, `read_support`, `skills` (`name`, `version`, `description`, `actions`, `supported`, `write_supported`, `participant_kinds`, `write_tools`, `required_roles`, `write_scopes`, `limitations`) |
 | `get_skill` | `name`, `cursor?` | `skill` (metadata, `instructions`, `instructions_chunk` with `offset`, `total_chars`, `digest`, `required_workspace_reads`, `required_workspace_reads_chunk` with `offset`, `total`, and `references`) and `next_cursor` |
 | `get_skill_reference` | `name`, `path`, `cursor?` | `content`, `offset`, `total_chars`, `digest`, `next_cursor`. A path outside the skill's `references` is `reference_not_found` (404) |
 | `read_workspace` | `paths`, `cursor?` | `files` (each with `path`, `content`, `offset`, `total_chars`, `digest`, `provenance`) and `next_cursor` |
 | `list_workspace` | `prefix?`, `cursor?` | unchanged: `files`, `total`, `next_cursor` |
 | `query` | `kind`, `value?`, `action?`, `cursor?` | the existing result, plus `next_cursor`; `owner`, `app` and `search` also return `total` |
 | `preview_skill` | `skill`, `changes`, `moves?`, `read_revisions?` (usually left out: see "Recorded reads") | the preview header (`preview_id`, `classification`, `applicable`, `checks`, `blockers`, `source`, `target`, `source_revision`, `moves`), `writes` and `writes_chunk` (`offset`, `count`, `total`), and `next_cursor` |
-| `preview_transition` | `feature_id`, `action`, `inputs?` | the same as `preview_skill`; only a human participant may call it |
-| `get_preview` | `preview_id`, `cursor?` | the same result as the preview call, for a preview the caller created. An unknown preview or another participant's is `preview_not_found` (404) |
-| `apply` | `preview_id`, `operation_id` | the receipt |
+| `preview_transition` | `feature_id`, `action`, `inputs?`, `operation_id?` | the same as `preview_skill`; only a human participant may call it. `operation-repair` takes the `operation_id` of an abandoned operation and no `feature_id` |
+| `get_preview` | `preview_id`, `cursor?` | the same result as the preview call, for a preview the caller created or, for a gated preview, a writable human who satisfies its predicate (with `approval.review_revision`). An unknown preview or another participant's is `preview_not_found` (404) |
+| `apply` | `preview_id`, `operation_id`, `review_revision?`, `semantic_review_acknowledged?` | the receipt. A gated preview is refused over MCP: see "Roles, proposals and approval" |
+| `list_proposals` | none | `proposals` (each with `preview_id`, `action`, `item_id`, `required_roles`, `proposer`, `created_at`, `stale`) and `total` |
+| `decline_proposal` | `preview_id`, `reason` | `preview_id`, `declined`, `declined_at`. Over MCP it is always refused (`approval_required` for an agent, `approval_requires_board_session` for a human token) |
 | `operation` | `operation_id`, `cursor?` | `state` (`pending`, `conflict`, `applied` or `abandoned`), `receipt`, and for an unfinished operation `actor`, `moves`, `recovery_review_revision`, `remaining_changes` and `remaining_changes_chunk`, and `next_cursor` |
 | `recover` | `operation_id`, `review_revision?`, `semantic_review_acknowledged?`, `abandon?` | the receipt. `abandon` is for a writable human only: see "Abandoning an operation" |
 | `changes` | `cursor?` | `cursor`, `head_cursor`, `board_revision`, `changes`, `has_more`, and `skipped_paths` when existing names were skipped. The cursor is a number the board returned, or `N~K` while an oversize event is returned in chunks; any other value is `invalid_cursor` (400) |
@@ -544,6 +605,7 @@ applied, or preview the change again.
 | `operation-recovery-started` | A writable human starts recovering another participant's operation. | `actor`, `operation_id` |
 | `operation-conflict` | An operation ends in `conflict`. | `operation_id`, `paths` |
 | `operation-abandoned` | A writable human abandons an operation. | `operation_id`, `actor` (the original actor), `abandoned_by`, `applied_paths`, `unapplied_paths`, `moved_folders`, `unmoved_folders` |
+| `proposal-declined` | A human declines a gated proposal. | `preview_id`, `action`, `item_id`, `declined_by`, `proposer`, `reason` |
 
 `paths` lists the workspace paths that block the operation, such as a file edited outside the board after it was journaled. It is empty when no single path is at fault. An event carries paths only, never file content. Repeating `recover` on an operation that is still in conflict for the same paths records no further event; a later conflict with different paths records a new one. Clients that read the event type should ignore types they do not recognize.
 

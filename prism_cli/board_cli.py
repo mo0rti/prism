@@ -54,6 +54,11 @@ def register_commands(subparsers) -> None:
     grant.add_argument("--path", default=".")
     grant.add_argument("--kind", choices=("human", "agent"), required=True)
     grant.add_argument("--write", action="store_true", help="Allow confirmed workflow operations; grants are read-only by default.")
+    grant.add_argument(
+        "--role",
+        action="append",
+        help="Workflow roles of a writable human grant, comma-separated: po, designer, tech-lead, dev, qa, release. Fixed for the grant's life.",
+    )
     grant.set_defaults(func=cmd_board_participant)
     revoke = actions.add_parser("revoke", help="Revoke a participant's access immediately.")
     revoke.add_argument("participant_id")
@@ -62,6 +67,21 @@ def register_commands(subparsers) -> None:
     status = actions.add_parser("status", help="Inspect workflow compatibility without creating service state.")
     status.add_argument("path", nargs="?", default=".")
     status.set_defaults(func=cmd_board_status)
+    state = actions.add_parser("state", help="Manage the board's local state journal.")
+    state_actions = state.add_subparsers(dest="state_command", required=True, parser_class=IntermixedParser)
+    reset = state_actions.add_parser(
+        "reset",
+        help="Write an audit export, then remove .prism/state/; refused while any board operation is unresolved.",
+    )
+    reset.add_argument("path", nargs="?", default=".")
+    reset.add_argument("--out", help="Where to write the audit export (a new file); default .prism/audit/state-reset-<time>.json.")
+    reset.set_defaults(func=cmd_board_state)
+    audit = actions.add_parser("audit", help="Export the board's grants, previews, operations and events for review.")
+    audit_actions = audit.add_subparsers(dest="audit_command", required=True, parser_class=IntermixedParser)
+    export = audit_actions.add_parser("export", help="Write the audit export as JSON, without token hashes.")
+    export.add_argument("path", nargs="?", default=".")
+    export.add_argument("--out", required=True, help="The file to write; it must not exist.")
+    export.set_defaults(func=cmd_board_audit)
 
 
 def _json(value) -> None:
@@ -157,14 +177,50 @@ def cmd_board_participant(args: argparse.Namespace) -> int:
     try:
         with BoardService(Path(args.path)) as service:
             if args.board_command == "grant":
-                result = service.create_participant(args.name, args.kind, writable=args.write)
+                result = service.create_participant(args.name, args.kind, writable=args.write, roles=",".join(args.role or ()))
             else:
                 result = service.revoke_participant(args.participant_id)
         _json(result)
         return 0
     except (BoardError, OSError, ValueError, sqlite3.Error) as exc:
-        print(f"Participant management failed: {exc}", file=sys.stderr)
+        # A board error carries the code the transports report, so a refused role names it (`invalid_role`, `agent_role_forbidden`).
+        detail = f"{exc.code}: {exc.message}" if isinstance(exc, BoardError) else str(exc)
+        print(f"Participant management failed: {detail}", file=sys.stderr)
         return 3
+
+
+def cmd_board_state(args: argparse.Namespace) -> int:
+    from prism_cli.board_store import BoardLockError, UnresolvedOperationsError, reset_board_state
+    from prism_cli.fs_safety import CloudSyncPathError
+
+    try:
+        result = reset_board_state(Path(args.path), Path(args.out) if args.out else None)
+    except UnresolvedOperationsError as exc:
+        print(f"Board state reset refused (unresolved_operations): {exc}", file=sys.stderr)
+        return 3
+    except CloudSyncPathError:
+        print("Board state reset failed: the workspace is in a cloud-synced folder.", file=sys.stderr)
+        return 3
+    except BoardLockError:
+        print("Board state reset refused: a Prism board server or workflow upgrade holds this workspace.", file=sys.stderr)
+        return 3
+    except (OSError, ValueError) as exc:
+        print(f"Board state reset failed: {exc}", file=sys.stderr)
+        return 3
+    _json(result)
+    return 0
+
+
+def cmd_board_audit(args: argparse.Namespace) -> int:
+    from prism_cli.board_store import write_audit_export
+
+    try:
+        written = write_audit_export(Path(args.path), Path(args.out))
+    except (OSError, ValueError) as exc:
+        print(f"Audit export failed: {exc}", file=sys.stderr)
+        return 3
+    _json({"schema_version": 1, "audit_export": str(written)})
+    return 0
 
 
 def cmd_board_status(args: argparse.Namespace) -> int:

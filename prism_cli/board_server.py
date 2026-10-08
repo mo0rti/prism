@@ -340,14 +340,14 @@ async def _send_json(send: Any, status: int, payload: dict[str, Any]) -> None:
 
 
 def _actor_public(actor: Any) -> dict[str, Any]:
-    fields = ("participant_id", "name", "kind", "writable", "board_id", "workflow_version", "scopes")
+    fields = ("participant_id", "name", "kind", "writable", "board_id", "workflow_version", "scopes", "roles", "session")
     result: dict[str, Any] = {}
     for field in fields:
         value = getattr(actor, field, None)
         if isinstance(value, (str, bool, int, float)) or (
-            field == "scopes" and isinstance(value, (tuple, list, set, frozenset))
+            field in {"scopes", "roles"} and isinstance(value, (tuple, list, set, frozenset))
         ):
-            result[field] = list(value) if field == "scopes" else value
+            result[field] = list(value) if field in {"scopes", "roles"} else value
     return result
 
 
@@ -472,8 +472,11 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
             raise RequestError(401, "unauthorized", "A valid Prism Bearer token is required.")
         return token
 
-    async def authenticate(token: str) -> Any:
+    async def authenticate(token: str, *, via_session: bool = False) -> Any:
         try:
+            if via_session:
+                # Only the cookie branch marks its actor as a browser session; a Bearer token never does.
+                return await asyncio.to_thread(service.authenticate, token, via_session=True)
             return await asyncio.to_thread(service.authenticate, token)
         except Exception:
             raise RequestError(401, "unauthorized", "The Prism participant token is invalid or revoked.") from None
@@ -517,7 +520,7 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
             with sessions_lock:
                 sessions.pop(session_id, None)
             raise RequestError(401, "session_expired", "The Prism board session has expired.")
-        actor = await authenticate(current.token)
+        actor = await authenticate(current.token, via_session=True)
         identity = (
             getattr(actor, "participant_id", None),
             getattr(actor, "board_id", None),
@@ -812,8 +815,17 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
         payload = await json_body(request)
         feature_id, action = payload.get("feature_id"), payload.get("action")
         inputs = payload.get("inputs")
-        if not isinstance(feature_id, str) or not isinstance(action, str) or (inputs is not None and not isinstance(inputs, dict)):
-            return JSONResponse({"error": {"code": "invalid_preview", "message": "feature_id and action must be strings; inputs must be an object."}}, status_code=400)
+        operation_id = payload.get("operation_id")
+        if (
+            not isinstance(action, str)
+            or (feature_id is not None and not isinstance(feature_id, str))
+            or (inputs is not None and not isinstance(inputs, dict))
+            or (operation_id is not None and not isinstance(operation_id, str))
+            or (feature_id is None and action != "operation-repair")
+        ):
+            return JSONResponse({"error": {"code": "invalid_preview", "message": "feature_id and action must be strings (operation-repair names an operation_id instead of a feature_id); inputs must be an object."}}, status_code=400)
+        if operation_id is not None:
+            return await invoke(request, "preview_transition", feature_id, action, inputs, mutation=True, operation_id=operation_id)
         return await invoke(request, "preview_transition", feature_id, action, inputs, mutation=True)
 
     async def preview_skill(request: Request) -> Any:
@@ -836,7 +848,9 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
         preview_id, operation_id = payload.get("preview_id"), payload.get("operation_id")
         if not isinstance(preview_id, str) or not isinstance(operation_id, str):
             return JSONResponse({"error": {"code": "invalid_operation", "message": "preview_id and operation_id are required strings."}}, status_code=400)
-        return await invoke(request, "apply", preview_id, operation_id, mutation=True)
+        # The approval step of a gated apply: the board checks the values, so a wrong type is refused there, not here.
+        approval = {key: payload[key] for key in ("review_revision", "semantic_review_acknowledged") if key in payload}
+        return await invoke(request, "apply", preview_id, operation_id, mutation=True, **approval)
 
     async def recover(request: Request) -> Any:
         body = await request.body()
@@ -876,6 +890,19 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
     async def discover(request: Request) -> Any:
         return await invoke(request, "discover")
 
+    async def list_proposals(request: Request) -> Any:
+        return await invoke(request, "list_proposals")
+
+    async def get_preview(request: Request) -> Any:
+        return await invoke(request, "get_preview", request.path_params["preview_id"])
+
+    async def decline_proposal(request: Request) -> Any:
+        payload = await json_body(request)
+        reason = payload.get("reason")
+        if set(payload) - {"reason"} or not isinstance(reason, str):
+            return JSONResponse({"error": {"code": "invalid_decline", "message": "Only a reason string is accepted."}}, status_code=400)
+        return await invoke(request, "decline_proposal", request.path_params["preview_id"], reason, mutation=True)
+
     async def list_skills(request: Request) -> Any:
         return await invoke(request, "list_skills")
 
@@ -905,6 +932,9 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
         Route(f"{API_PREFIX}/skills/{{name:str}}", get_skill, methods=["GET"]),
         Route(f"{API_PREFIX}/previews/transition", preview_transition, methods=["POST"]),
         Route(f"{API_PREFIX}/previews/skill", preview_skill, methods=["POST"]),
+        Route(f"{API_PREFIX}/previews/{{preview_id:str}}", get_preview, methods=["GET"]),
+        Route(f"{API_PREFIX}/proposals", list_proposals, methods=["GET"]),
+        Route(f"{API_PREFIX}/proposals/{{preview_id:str}}/decline", decline_proposal, methods=["POST"]),
         Route(f"{API_PREFIX}/apply", apply, methods=["POST"]),
         Route(f"{API_PREFIX}/operations/{{operation_id:str}}/recover", recover, methods=["POST"]),
         Route(f"{API_PREFIX}/operations/{{operation_id:str}}", operation, methods=["GET"]),

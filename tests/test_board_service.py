@@ -320,11 +320,11 @@ class BoardServiceValidatorTests(unittest.TestCase):
             self.service.discover(self.actor)
         self.assertEqual("workspace_identity_changed", error.exception.code)
 
-    def test_discover_and_list_skills_report_contract_3_and_state_read_support_once(self) -> None:
+    def test_discover_and_list_skills_report_contract_4_and_state_read_support_once(self) -> None:
         discovered = self.service.discover(self.actor)
         listed = self.service.list_skills(self.actor)
-        self.assertEqual(3, discovered["mcp_contract"])
-        self.assertEqual(3, listed["mcp_contract"])
+        self.assertEqual(4, discovered["mcp_contract"])
+        self.assertEqual(4, listed["mcp_contract"])
         self.assertEqual(listed["read_support"], discovered["capability"]["read_support"])
         self.assertTrue(discovered["skills"])
         for item in discovered["skills"]:

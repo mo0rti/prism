@@ -248,12 +248,12 @@ class McpResultSizeBudgetTests(unittest.IsolatedAsyncioTestCase):
         logging.disable(logging.CRITICAL)
         self.addCleanup(logging.disable, logging.NOTSET)
 
-    async def test_discover_and_list_skills_stay_within_budget_and_report_contract_3(self) -> None:
+    async def test_discover_and_list_skills_stay_within_budget_and_report_contract_4(self) -> None:
         async with connected(self, self.root) as client:
             discovered = await client.call("discover", {})
             listed = await client.call("list_skills", {})
-            self.assertEqual(3, discovered["mcp_contract"])
-            self.assertEqual(3, listed["mcp_contract"])
+            self.assertEqual(4, discovered["mcp_contract"])
+            self.assertEqual(4, listed["mcp_contract"])
             self.assertEqual(27, len(listed["skills"]))
             self.assertEqual(listed["read_support"], discovered["capability"]["read_support"])
             for item in discovered["skills"]:
