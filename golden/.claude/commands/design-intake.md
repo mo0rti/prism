@@ -17,14 +17,21 @@ joined by hyphens, for example `2026-10-06-checkout-design`. The connected board
 4. Read `knowledge/wiki/advisory/[F-XXX]-review.md` if it exists — design must not
    contradict board review findings
 5. Read all files in `knowledge/intake/pending/[folder-name]/`; if the folder is not named `YYYY-MM-DD-slug`, stop and ask the user to rename it
-6. Run a conflict check. **STOP. Show the user a summary of your interpretation:**
+6. Run a conflict check, then summarize your interpretation:
    - Which feature flows does this design address?
    - What key design decisions does it make that affect implementation?
    - Which UI states are covered and which are missing?
    - Does any design decision conflict with the feature spec, business rules, ADRs,
      or board review findings?
 
-   **Wait for confirmation before proceeding.**
+   A conflict stops the operation in both workflows: quarantine the folder as step 11 describes, change
+   no wiki page and do not preview. Without a conflict, where the human confirms depends on how you write:
+   - **Direct-file workflow: STOP.** Show the summary and wait for the user to confirm before proceeding.
+   - **Connected board (a Prism MCP connection): do not stop before the preview.** The preview is
+     where the human confirms. Prepare steps 7-11 as the `preview_skill` proposal, then show the
+     summary together with the complete preview in one message and ask the human to confirm, correct,
+     or cancel it. Call `apply` only after that confirmation; a correction is a new preview, and a
+     cancel means no `apply`.
 7. Create `knowledge/wiki/design/[F-XXX]-[slug].md`. Mark each claim with an evidence label and link
    the processed path of the source file as the evidence of every Decided or Observed claim, for
    example `../../intake/processed/[folder-name]/notes.md`. When the new source changes a claim the
@@ -42,7 +49,7 @@ joined by hyphens, for example `2026-10-06-checkout-design`. The connected board
 ## Rules
 
 - write-capable skill
-- do not write anything until the user confirms the interpretation summary
+- direct-file workflow: do not write anything until the user confirms the interpretation summary; connected board: do not call `apply` until the user confirms the preview that shows the summary
 - flag any conflicts with the feature spec, business rules, ADRs, or board review findings before writing
 - on a contradiction, quarantine the folder under `knowledge/intake/quarantined/[folder-name]/` with a `CONFLICT.md` in the format that `SCHEMA.md` defines (Conflict quarantine): front matter `status: open`, then an `## Existing claim` and an `## Incoming claim` section, each with `**Claim:**`, `**Scope:**` and a linked `**Evidence:**`; change no wiki page and stop
 - never edit a processed intake item; corrected material is a new dated pending folder
@@ -54,7 +61,7 @@ joined by hyphens, for example `2026-10-06-checkout-design`. The connected board
 
 Return:
 
-- interpretation summary before writes
+- interpretation summary (before writes in the direct-file workflow; together with the preview on the connected board)
 - design decisions extracted
 - covered and missing UI states
 - any conflicts found
@@ -63,5 +70,5 @@ Return:
 ## Error and stop conditions
 
 - if the feature file or intake folder does not exist, return a clean missing-input response
-- if the user does not confirm the interpretation summary, stop without writing
+- if the user does not confirm the interpretation summary (direct-file) or the preview (connected board), stop without writing; on the connected board that means no `apply`
 - if conflicts require quarantine, stop after reporting them

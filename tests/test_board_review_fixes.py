@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import yaml
 
-from prism_cli import board_service
+from prism_cli import board_reads, board_service
 from prism_cli.board_service import BoardError, BoardService
 from prism_cli.board_store import unresolved_board_operations
 from prism_cli.workflow_assets import asset_digest
@@ -608,6 +608,109 @@ class BoardReviewFixTests(unittest.TestCase):
         again = self.ask_preview()
         self.assertEqual("applied", self.service.apply(self.agent, again["preview_id"], "op-ask-2")["state"])
 
+    def test_the_connected_catalog_does_not_present_setup_as_a_blocker_of_lifecycle_work(self) -> None:
+        skills = {item["name"]: item for item in self.service.list_skills(self.agent)["skills"]}
+        setup = skills["setup-project"]
+        self.assertFalse(setup["write_supported"])
+        text = " ".join(setup["limitations"])
+        self.assertIn("direct-file workflow", text)
+        self.assertIn("Lifecycle work does not wait for setup.", text)
+        self.assertNotIn("until an operation-specific validator", text)
+
+    # -- RL 16.4: partial reads ------------------------------------------------------------
+
+    SCHEMA = "knowledge/wiki/SCHEMA.md"
+
+    def put_a_long_schema(self) -> None:
+        self.put(self.SCHEMA, "# Wiki schema\n\n" + "A line of schema text that is long enough to fill a small page.\n" * 120)
+
+    def ask_changes_and_required_reads(self) -> tuple[list[dict], list[str]]:
+        original = self.read(FEATURE)
+        marker = "| 1 | Which points should a review summary highlight? | po | open |"
+        changes = [{"path": FEATURE, "content": original.replace(marker, marker + "\n" + NEW_QUESTION)}]
+        required = sorted(self.service._required_skill_revision_paths("ask", {FEATURE: changes[0]["content"]}, {FEATURE: original}, []))
+        self.assertIn(self.SCHEMA, required)
+        return changes, required
+
+    def test_a_missing_read_that_was_read_only_in_part_names_the_file_and_the_call_that_continues_it(self) -> None:
+        self.put_a_long_schema()
+        changes, required = self.ask_changes_and_required_reads()
+        with patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", 3000):
+            # The agent reads page after page and stops inside SCHEMA.md, the first file larger than a page.
+            first = self.service.read_workspace(self.agent, required)
+            partial = []
+            while first["next_cursor"] is not None:
+                partial = [item for item in first["files"] if item["offset"] + len(item["content"]) < item["total_chars"]]
+                if partial:
+                    break
+                first = self.service.read_workspace(self.agent, required, first["next_cursor"])
+            self.assertEqual([self.SCHEMA], [item["path"] for item in partial])
+            self.assertIsNotNone(first["next_cursor"])
+            with self.assertRaises(BoardError) as error:
+                self.service.preview_skill(self.agent, "ask", changes)
+            self.assertEqual(("missing_read_revisions", 409), (error.exception.code, error.exception.status))
+            message = error.exception.message
+            read = partial[0]["offset"] + len(partial[0]["content"])
+            self.assertIn(f"`{self.SCHEMA}` was read only in part ({read:,} of {partial[0]['total_chars']:,} characters)", message)
+            self.assertIn("a file counts as read only when all of it was read", message)
+            self.assertIn(f'cursor "{first["next_cursor"]}"', message)
+            self.assertIn(json.dumps(required, separators=(",", ":")), message, "the same paths as the read that returned the cursor")
+            self.assertEqual([self.SCHEMA], error.exception.details["partial"])
+            # Making exactly that call, until next_cursor is null, completes the read and the preview then applies.
+            cursor = first["next_cursor"]
+            while cursor is not None:
+                cursor = self.service.read_workspace(self.agent, required, cursor)["next_cursor"]
+            preview = self.service.preview_skill(self.agent, "ask", changes)
+        self.assertTrue(preview["applicable"], preview)
+
+    def test_a_missing_read_that_was_never_read_is_not_described_as_partial(self) -> None:
+        self.put_a_long_schema()
+        changes, _required = self.ask_changes_and_required_reads()
+        with self.assertRaises(BoardError) as error:
+            self.service.preview_skill(self.agent, "ask", changes)
+        self.assertEqual("missing_read_revisions", error.exception.code)
+        self.assertNotIn("in part", error.exception.message)
+        self.assertNotIn("partial", error.exception.details)
+
+    def test_a_partial_read_of_one_participant_is_not_reported_to_another(self) -> None:
+        self.put_a_long_schema()
+        changes, required = self.ask_changes_and_required_reads()
+        with patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", 3000):
+            self.service.read_workspace(self.agent, required)
+        other = self.service.authenticate(self.service.create_participant("Other agent", "agent", writable=True)["token"])
+        with self.assertRaises(BoardError) as error:
+            self.service.preview_skill(other, "ask", changes)
+        self.assertNotIn("in part", error.exception.message)
+
+    def test_a_cursor_sent_with_other_paths_names_the_paths_it_belongs_to(self) -> None:
+        self.put_a_long_schema()
+        paths = [self.SCHEMA, FEATURE]
+        with patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", 3000):
+            first = self.service.read_workspace(self.agent, paths)
+            cursor = first["next_cursor"]
+            self.assertIsNotNone(cursor)
+            with self.assertRaises(BoardError) as error:
+                self.service.read_workspace(self.agent, [FEATURE], cursor)
+            self.assertEqual(("invalid_cursor", 400), (error.exception.code, error.exception.status))
+            self.assertIn(f"The cursor belongs to the read request for paths {json.dumps(paths, separators=(',', ':'))}, in that order", error.exception.message)
+            self.assertIn("Resend exactly those paths with this cursor", error.exception.message)
+            self.assertIn("without a cursor", error.exception.message)
+            # The paths it names continue the read.
+            self.assertIsNotNone(self.service.read_workspace(self.agent, paths, cursor)["files"])
+            # Another participant is not told which paths a cursor of someone else belongs to.
+            other = self.service.authenticate(self.service.create_participant("Other reader", "agent")["token"])
+            with self.assertRaises(BoardError) as foreign:
+                self.service.read_workspace(other, [FEATURE], cursor)
+            self.assertEqual("invalid_cursor", foreign.exception.code)
+            self.assertNotIn(self.SCHEMA, foreign.exception.message)
+            self.assertIn("no longer known", foreign.exception.message)
+            # After a restart the board no longer knows the request and says so.
+            self.service._read_requests.clear()
+            with self.assertRaises(BoardError) as forgotten:
+                self.service.read_workspace(self.agent, [FEATURE], cursor)
+            self.assertIn("whose path list is no longer known", forgotten.exception.message)
+            self.assertIn("Send this request again without a cursor", forgotten.exception.message)
+
 
 class RetryDependencyBindingTests(unittest.TestCase):
     """An ordinary apply binds the dependency set (membership and digests) when it validates, and every retry compares against it."""
@@ -680,6 +783,56 @@ class RetryDependencyBindingTests(unittest.TestCase):
         self.assertEqual(1, len(refused), "the refused attempt was not repeated")
         self.assertEqual(feature_before, (self.root / self.FEATURE).read_bytes(), "nothing was written")
         self.assertEqual("ready-for-dev", self.status_of_the_feature())
+
+    def test_a_duplicate_feature_page_with_a_new_requirement_while_the_replace_waits_is_a_conflict_and_nothing_is_written(self) -> None:
+        feature_before = (self.root / self.FEATURE).read_bytes()
+        duplicate = self.root / "knowledge/wiki/features/F-001-document-review-copy.md"
+
+        def duplicate_and_add() -> None:
+            duplicate.write_bytes(feature_before)
+            self.add_a_second_requirement()
+
+        receipt, refused = self.apply_with_the_replace_refused_once(duplicate_and_add)
+        self.assertEqual("conflict", receipt["state"], receipt)
+        self.assertIn("recovery_dependencies_unavailable", receipt["conflicts"][0]["reason"])
+        self.assertIn("duplicate_feature_id", receipt["conflicts"][0]["reason"])
+        self.assertEqual(1, len(refused), "the refused attempt was not repeated")
+        self.assertEqual(feature_before, (self.root / self.FEATURE).read_bytes(), "nothing was written")
+        self.assertEqual("ready-for-dev", self.status_of_the_feature())
+
+    def test_a_duplicate_feature_page_that_appears_while_the_operation_validates_is_a_conflict_before_anything_is_recorded(self) -> None:
+        preview = self.dev_start_preview()
+        duplicate = self.root / "knowledge/wiki/features/F-001-document-review-copy.md"
+        duplicate.write_bytes((self.root / self.FEATURE).read_bytes())
+        with self.assertRaises(BoardError) as error:
+            self.service.apply(self.human, preview["preview_id"], "op-dev-start")
+        self.assertEqual(409, error.exception.status)
+        self.assertEqual(0, self.service.store.connection.execute("SELECT COUNT(*) FROM operations").fetchone()[0])
+
+    def test_a_discovery_failure_is_a_conflict_for_every_kind_of_operation_and_never_a_partial_set(self) -> None:
+        intent = {
+            "kind": "skill",
+            "skill": "po-intake",
+            "source_map": {self.FEATURE: "sha256:0"},
+            "proposed_changes": [],
+            "writes": [],
+            "moves": [{"source": "knowledge/intake/pending/x", "destination": "knowledge/intake/processed/x"}],
+        }
+        failures = (BoardError("duplicate_feature_id", "two pages", 409), BoardError("feature_not_found", "gone", 404), OSError("denied"), KeyError("k"), ValueError("v"))
+        for failure in failures:
+            with self.subTest(failure=repr(failure)), patch.object(self.service, "_required_skill_revision_paths", side_effect=failure):
+                with self.assertRaises(BoardError) as error:
+                    self.service._recovery_dependency_paths(intent)
+                self.assertEqual(("recovery_dependencies_unavailable", 409), (error.exception.code, error.exception.status))
+        transition = {"kind": "transition", "feature_id": "F-001", "source_map": {self.FEATURE: "sha256:0"}}
+        with patch.object(self.service, "_feature_context_paths", side_effect=OSError("denied")), self.assertRaises(BoardError) as error:
+            self.service._recovery_dependency_paths(transition)
+        self.assertEqual("recovery_dependencies_unavailable", error.exception.code)
+        missing = {**transition, "feature_id": "F-404"}
+        with self.assertRaises(BoardError) as gone:
+            self.service._recovery_dependency_paths(missing)
+        self.assertEqual(("recovery_dependencies_unavailable", 409), (gone.exception.code, gone.exception.status))
+        self.assertEqual("feature_not_found", gone.exception.details["cause"])
 
     def test_a_dependency_page_that_changes_while_the_replace_waits_is_a_conflict(self) -> None:
         feature_before = (self.root / self.FEATURE).read_bytes()

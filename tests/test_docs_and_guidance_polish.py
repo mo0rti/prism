@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -166,6 +167,147 @@ class StaleTextIsGoneTests(unittest.TestCase):
             self.assertIn(f"`{stack}` | {level} |", text)
         self.assertIn("The Claude adapter is tested against a stub only. No call to the live API has been made", text)
         self.assertIn("task <app-id>:eval-live", text)
+
+
+class SetupIsNotAPreconditionTests(unittest.TestCase):
+    """`setup-project` initializes the wiki and the advisory board; no lifecycle action waits for it."""
+
+    PRECONDITION = re.compile(r"(?i)\b(before|first|prior|required?|requires|must|until|precondition)\b[^.\n]{0,80}\bsetup\b|\bsetup\b[^.\n]{0,40}\b(first|required|before)\b")
+
+    def skill_sources(self) -> dict[str, str]:
+        return {path.parent.name: path.read_text(encoding="utf-8") for path in sorted((REPO_ROOT / "template-skills").glob("*/skill.md"))}
+
+    def test_no_lifecycle_skill_mentions_setup_or_its_marker(self) -> None:
+        for name, text in self.skill_sources().items():
+            if name in {"setup-project", "board-review"}:
+                continue
+            with self.subTest(skill=name):
+                self.assertNotIn("setup-project", text)
+                self.assertNotIn("setup-required", text)
+
+    def test_the_connected_guide_and_the_lifecycle_protocol_make_no_action_wait_for_setup(self) -> None:
+        for relative in ("CONNECTED.md", "LIFECYCLE.md"):
+            with self.subTest(file=relative):
+                text = read("template", "knowledge", "wiki", relative)
+                self.assertIsNone(self.PRECONDITION.search(text), relative)
+                self.assertNotIn("setup-required", text)
+
+    def test_only_the_board_review_skill_stops_for_the_unset_board_and_it_changes_nothing(self) -> None:
+        text = " ".join(read("template-skills", "board-review", "skill.md").split())
+        self.assertIn("If it still carries `<!-- prism:setup-required -->`, the advisory board is not set up", text)
+        self.assertIn("change nothing and leave the feature's `advisory-review` as it is", text)
+
+    def test_the_rule_is_stated_once_where_it_lives(self) -> None:
+        agents = " ".join(read("template", "AGENTS.md.jinja").split())
+        self.assertNotIn("before anything else", agents)
+        self.assertIn("Lifecycle work does not wait for setup.", agents)
+        self.assertIn("It runs in the agent host on the files (the direct-file workflow), never through a connected board.", agents)
+        self.assertIn("Until setup runs, the advisory board is not set up, so `board-review` is unavailable, and a feature that needs a review keeps `advisory-review: pending`.", agents)
+        setup = " ".join(read("template-skills", "setup-project", "skill.md").split())
+        for stale in ("Required before any other wiki operation", "Run before any other wiki command", "immediately after"):
+            self.assertNotIn(stale, setup)
+        self.assertIn("Setup runs in the agent host on the files (the direct-file workflow), not through a connected board", setup)
+        self.assertIn("Lifecycle work does not wait for setup", setup)
+        self.assertIn("keeps `advisory-review: pending`", setup)
+
+    def test_the_placeholder_pages_do_not_tell_the_reader_to_run_setup_first(self) -> None:
+        for relative in ("BOARD.md", "PROJECT_FOUNDATION.md"):
+            with self.subTest(file=relative):
+                text = " ".join(read("template", "knowledge", "wiki", "advisory", relative).split())
+                self.assertNotIn("Run that operation first", text)
+                self.assertIn("Lifecycle work does not wait", text)
+        self.assertIn("<!-- prism:setup-required -->", read("template", "knowledge", "wiki", "advisory", "BOARD.md"))
+
+    def test_the_generated_layers_and_the_packaged_asset_carry_the_setup_statement(self) -> None:
+        asset = json.loads(read("prism_cli", "assets", "workflow-v1.json"))
+        by_path = {item["path"]: item["content"] for item in asset["files"]}
+        for relative in (".agents/skills/setup-project/SKILL.md", ".claude/commands/setup-project.md"):
+            with self.subTest(file=relative):
+                self.assertIn("Lifecycle work does not wait for setup", " ".join(by_path[relative].split()))
+        for relative in (
+            "template/.agents/skills/setup-project/SKILL.md.jinja",
+            "template/.claude/commands/setup-project.md.jinja",
+        ):
+            with self.subTest(file=relative):
+                self.assertIn("Lifecycle work does not wait for setup", " ".join(read(*relative.split("/")).split()))
+
+
+class PoIntakeConnectedConfirmationTests(unittest.TestCase):
+    """On the connected board the preview is where the human confirms; the direct-file path keeps its stop."""
+
+    def test_the_skill_shows_the_interpretation_with_the_preview_and_keeps_the_direct_file_stop(self) -> None:
+        text = " ".join(read("template-skills", "po-intake", "skill.md").split())
+        self.assertIn("**Direct-file workflow: STOP.**", text)
+        self.assertIn("**Connected board (a Prism MCP connection): do not stop before the preview.**", text)
+        self.assertIn("The preview is where the human confirms.", text)
+        self.assertIn("show the summary together with the complete preview in one message", text)
+        self.assertIn("Call `apply` only after that confirmation", text)
+        self.assertNotIn("**STOP. Show the user a summary of your interpretation:**", text)
+
+    def test_the_generated_layers_and_the_packaged_skill_carry_the_rule(self) -> None:
+        asset = json.loads(read("prism_cli", "assets", "workflow-v1.json"))
+        by_path = {item["path"]: item["content"] for item in asset["files"]}
+        for relative in (".agents/skills/po-intake/SKILL.md", ".claude/commands/po-intake.md"):
+            with self.subTest(file=relative):
+                self.assertIn("do not stop before the preview", " ".join(by_path[relative].split()))
+        for relative in ("template/.agents/skills/po-intake/SKILL.md.jinja", "template/.claude/commands/po-intake.md.jinja"):
+            with self.subTest(file=relative):
+                self.assertIn("do not stop before the preview", " ".join(read(*relative.split("/")).split()))
+
+
+class ConnectedPreviewConfirmationSkillsTests(unittest.TestCase):
+    """Every skill that confirmed before writing confirms at the preview on the connected board, and keeps its stop in the direct-file workflow."""
+
+    INTERPRETATION = {
+        "ingest": "**Connected board (a Prism MCP connection): do not stop before the preview.**",
+        "design-intake": "**Connected board (a Prism MCP connection): do not stop before the preview.**",
+    }
+    CONFIRM_AT_PREVIEW = {
+        "feature-scope": "Connected board: do not stop before the preview",
+        "verify-pages": "On the connected board, do not stop before the preview",
+        "ask": "Connected board: do not stop before the preview",
+    }
+
+    def normalized(self, *parts: str) -> str:
+        return " ".join(read(*parts).split())
+
+    def test_ingest_and_design_intake_split_the_interpretation_stop_by_workflow(self) -> None:
+        for name, connected in self.INTERPRETATION.items():
+            with self.subTest(skill=name):
+                text = self.normalized("template-skills", name, "skill.md")
+                self.assertIn("**Direct-file workflow: STOP.**", text)
+                self.assertIn(connected, text)
+                self.assertIn("The preview is where the human confirms.", text)
+                self.assertIn("show the summary together with the complete preview in one message", text)
+                self.assertIn("Call `apply` only after that confirmation", text)
+                self.assertNotIn("STOP. Show the user a summary of your interpretation", text)
+
+    def test_a_conflict_still_stops_in_both_workflows(self) -> None:
+        ingest = self.normalized("template-skills", "ingest", "skill.md")
+        self.assertIn("**STOP. Conflict check (before any writes):**", ingest)
+        self.assertIn("**Stop - do not write or modify any wiki files.**", ingest)
+        design = self.normalized("template-skills", "design-intake", "skill.md")
+        self.assertIn("A conflict stops the operation in both workflows", design)
+        self.assertIn("do not preview", design)
+        self.assertIn("if conflicts require quarantine, stop after reporting them", design)
+
+    def test_the_other_confirming_skills_confirm_at_the_preview_on_the_connected_board(self) -> None:
+        for name, phrase in self.CONFIRM_AT_PREVIEW.items():
+            with self.subTest(skill=name):
+                self.assertIn(phrase, self.normalized("template-skills", name, "skill.md"))
+
+    def test_the_generated_layers_and_the_packaged_skills_carry_the_split(self) -> None:
+        asset = json.loads(read("prism_cli", "assets", "workflow-v1.json"))
+        by_path = {item["path"]: item["content"] for item in asset["files"]}
+        phrases = {**self.INTERPRETATION, **self.CONFIRM_AT_PREVIEW}
+        for name, phrase in phrases.items():
+            key = "do not stop before the preview"
+            for relative in (f".agents/skills/{name}/SKILL.md", f".claude/commands/{name}.md"):
+                with self.subTest(file=relative):
+                    self.assertIn(key, " ".join(by_path[relative].split()).lower().replace("**", ""))
+            for relative in (f"template/.agents/skills/{name}/SKILL.md.jinja", f"template/.claude/commands/{name}.md.jinja"):
+                with self.subTest(file=relative):
+                    self.assertIn(key, " ".join(read(*relative.split("/")).split()).lower().replace("**", ""))
 
 
 if __name__ == "__main__":

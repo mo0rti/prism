@@ -84,6 +84,10 @@ class PinsAndLockfileTests(unittest.TestCase):
             with self.subTest(package=name):
                 self.assertEqual(version, data["packages"][f"node_modules/{name}"]["version"], "the lockfile resolves a direct dependency to its pin")
 
+    def test_no_package_of_the_lockfile_is_deprecated(self) -> None:
+        deprecated = {name: entry["deprecated"] for name, entry in lock()["packages"].items() if "deprecated" in entry}
+        self.assertEqual({}, deprecated, "a pin that npm reports as deprecated moves to a supported line in packs/versions.yml")
+
     def test_the_lockfile_names_the_app_and_nothing_else_is_templated(self) -> None:
         text = (PACK_APP / "package-lock.json.jinja").read_text(encoding="utf-8")
         data = json.loads(text)

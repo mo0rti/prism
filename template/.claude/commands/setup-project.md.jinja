@@ -1,18 +1,22 @@
 {# Generated from template-skills/setup-project/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
 # Setup project — interactive project initialization
 
-Run this once, immediately after `prism new` creates the project or `prism workflow install` adopts it.
+Run this once, after `prism new` creates the project or `prism workflow install` adopts it.
 This operation initializes the wiki state and generates the advisory board configuration
 through a structured conversation with the team.
+
+Setup runs in the agent host on the files (the direct-file workflow), not through a connected board,
+so a connected board reports no write support for it. Lifecycle work does not wait for setup: until it
+runs, the advisory board is not set up, so `board-review` is unavailable, and a feature that needs a
+review keeps `advisory-review: pending`.
 
 ## Usage
 
 `/setup-project`
 
 ## When to run
-Immediately after `prism new` creates the project or `prism workflow install` adopts it. Run before any other
-wiki command. If the wiki already has feature entries, this operation will warn and ask
-for confirmation before proceeding.
+After `prism new` creates the project or `prism workflow install` adopts it. If the wiki already has
+feature entries, this operation will warn and ask for confirmation before proceeding.
 
 ## Workflow
 

@@ -43,14 +43,24 @@ joined by hyphens. The connected board rejects any other name.
    - If no conflicts: proceed to step 5.
 5. Choose the page kind for each part of the input with the Ingest table in `SCHEMA.md`,
    and read the `_FORMAT.md` of each kind you will write.
-6. **STOP. Show the user a summary of your interpretation:**
+6. **Summarize your interpretation:**
    - Which pages does this input create? List each by kind and proposed title.
    - Which existing topic, research, plan, direction or roadmap pages does it replace in place?
    - Which new features, personas, business rules or decisions does it introduce?
    - What is ambiguous or unclear that you could not resolve?
    - For each new feature: does it appear to need an advisory board review?
-   **Wait for the user to confirm, correct, or cancel before proceeding.**
-7. Write the confirmed pages:
+
+   Where the human confirms depends on how you write:
+   - **Direct-file workflow: STOP.** Show the summary and wait for the user to confirm, correct, or
+     cancel before proceeding.
+   - **Connected board (a Prism MCP connection): do not stop before the preview.** The preview is
+     where the human confirms. Prepare the writes of the steps below as the `preview_skill` proposal,
+     then show the summary together with the complete preview in one message and ask the human to
+     confirm, correct, or cancel it. Call `apply` only after that confirmation; a correction is a new
+     preview, and a cancel means no `apply`. In the proposal, write `**Decided:**` only for what the
+     input or the user already states, and set `advisory-review: pending` where the need is
+     ambiguous, naming that choice in the summary so the human can correct it.
+7. Write the confirmed pages (on the connected board: the pages as proposed in the preview and confirmed there):
    - A topic, research page or plan: create `knowledge/wiki/topics|research|plans/[slug].md`
      in the format of its folder, or replace the page in place when it exists and the
      source changes what it says.
@@ -102,7 +112,7 @@ joined by hyphens. The connected board rejects any other name.
 
 Return:
 
-- conflict summary or confirmation summary before writes
+- conflict summary, and the interpretation summary (before writes in the direct-file workflow; together with the preview on the connected board)
 - the pages created or replaced, by path and kind
 - any new feature IDs and titles
 - any open questions added
@@ -112,4 +122,4 @@ Return:
 
 - if the intake folder does not exist, return a clean missing-folder response
 - if the input contradicts existing wiki content, quarantine it with a `CONFLICT.md` and stop
-- if the user does not confirm the interpretation summary, stop without writing
+- if the user does not confirm the interpretation summary (direct-file) or the preview (connected board), stop without writing; on the connected board that means no `apply`

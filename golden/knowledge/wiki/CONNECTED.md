@@ -18,7 +18,7 @@ for the version pinned by the workspace. `get_skill` returns the instructions, t
 skill's metadata, `required_workspace_reads` and an index of its references. Each
 index entry has the reference's `path`, `title`, `size_chars` and `digest`; it
 does not carry the reference text. Fetch every reference the task needs with
-`get_skill_reference(name, path)`. Each tool result is limited to 32,000
+`get_skill_reference(name, path)`. Each tool result is limited to 48,000
 characters, so a long text arrives in chunks. Every chunk has `content`, `offset`,
 `total_chars`, the `digest` of the full text and `next_cursor`. Call the tool again
 with the same arguments and `cursor` set to `next_cursor` until it is null, join
@@ -67,7 +67,11 @@ out and never type a digest by hand. Send `read_revisions` only to name a digest
 explicitly; then copy each one exactly, character for character, never a timestamp,
 a locally guessed hash or a revision from an older read. A source you never read with
 `read_workspace` is rejected as `missing_read_revisions`: its `details` list the
-paths, so read those paths and preview again. The record is lost when the service
+paths, so read those paths and preview again. A file you received only in part counts
+as read only when its last chunk arrives; the error then says so and gives the call
+that continues it, the same `paths` with the `cursor` the read returned, and a
+cursor sent with other paths is rejected as `invalid_cursor` with the paths it
+belongs to. The record is lost when the service
 restarts; read the sources again then. A rejected digest is either
 `read_digest_mismatch` (the digest you sent is not one the board returned for that
 file; the error names the file's current digest) or `stale_read_revision` (the file
@@ -232,7 +236,7 @@ checks.
 
 ### Read a long preview
 
-A preview result, like every tool result, is limited to 32,000 characters. The
+A preview result, like every tool result, is limited to 48,000 characters. The
 result repeats the preview's header on every page: `preview_id`, `classification`,
 `applicable`, `checks`, `blockers`, `source`, `target` and `source_revision`.
 Its `writes` list carries each write's `path`, `role`, `before_digest`,

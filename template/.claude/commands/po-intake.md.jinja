@@ -36,15 +36,25 @@ joined by hyphens. The connected board rejects any other name.
      The human resolves the conflict and sets `status: resolved` with a `## Resolution`;
      corrected input is dropped again as a new `YYYY-MM-DD-slug` pending folder.
    - If no conflicts: proceed to step 7.
-7. **STOP. Show the user a summary of your interpretation:**
+7. **Summarize your interpretation:**
    - What new features does this input describe? (list by proposed title)
    - What existing features does it update or clarify?
    - What new personas or business rules does it introduce?
    - What is ambiguous or unclear that you could not resolve?
    - For each new feature: does it appear to need an advisory board review?
      (reference the criteria in the "When to use" section of `/board-review`)
-   **Wait for the user to confirm, correct, or cancel before proceeding.**
-8. For each new feature identified and confirmed:
+
+   Where the human confirms depends on how you write:
+   - **Direct-file workflow: STOP.** Show the summary and wait for the user to confirm, correct, or
+     cancel before proceeding.
+   - **Connected board (a Prism MCP connection): do not stop before the preview.** The preview is
+     where the human confirms. Prepare steps 8-13 as the `preview_skill` proposal, then show the
+     summary together with the complete preview in one message and ask the human to confirm, correct,
+     or cancel it. Call `apply` only after that confirmation; a correction is a new preview, and a
+     cancel means no `apply`. In the proposal, write `**Decided:**` only for what the input or the
+     user already states, and set `advisory-review: pending` where the need is ambiguous, naming
+     that choice in the summary so the human can correct it.
+8. For each new feature identified and confirmed (on the connected board: as proposed in the preview and confirmed there):
    - Assign the next available feature ID
    - Create `knowledge/wiki/features/[F-XXX]-[slug].md` using the feature format from LIFECYCLE.md
    - Set status: `raw`, owner: `po`. A new feature always starts `raw`; `/po-specify [F-XXX]`
@@ -95,7 +105,7 @@ joined by hyphens. The connected board rejects any other name.
 
 Return:
 
-- conflict summary or confirmation summary before writes
+- conflict summary, and the interpretation summary (before writes in the direct-file workflow; together with the preview on the connected board)
 - created or updated feature IDs and titles
 - any personas or business rules created or updated
 - any open questions added
@@ -105,4 +115,4 @@ Return:
 
 - if the intake folder does not exist, return a clean missing-folder response
 - if the input contradicts existing wiki content, quarantine it with a `CONFLICT.md` and stop
-- if the user does not confirm the interpretation summary, stop without writing
+- if the user does not confirm the interpretation summary (direct-file) or the preview (connected board), stop without writing; on the connected board that means no `apply`

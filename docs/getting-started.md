@@ -107,6 +107,8 @@ prism presets
 `prism doctor` separates Prism core readiness from workflow and platform checks, so it
 is the fastest way to see what is blocked versus what can wait.
 
+It checks that Docker answers, not only that the `docker` command exists: a stopped daemon is reported as `[warn]` with the way out (start Docker Desktop or the Docker service, then run `prism doctor` again), and the backend build and its tests need that daemon.
+
 Required to use generated task commands:
 
 - [go-task](https://taskfile.dev/)

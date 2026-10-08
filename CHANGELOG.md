@@ -4,6 +4,19 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+
+- **`setup-project` no longer blocks connected lifecycle work.** `template/AGENTS.md.jinja` and the `setup-project` skill say once that setup initializes the wiki and the advisory board, that it runs in the agent host on the files (the direct-file workflow) and never through a connected board, and that lifecycle work does not wait for it. Until setup runs, the advisory board is not set up: `board-review` is unavailable (it reports that and changes nothing) and a feature that needs a review keeps `advisory-review: pending`. The placeholder `BOARD.md` and `PROJECT_FOUNDATION.md` no longer say to run setup first, and `list_skills` describes `setup-project` as a direct-file operation that lifecycle work does not wait for, instead of an unfinished connected write. A strict host that read "before anything else" stopped at `po-specify` and never previewed; a test now fails when a lifecycle skill, the connected guide or the lifecycle protocol makes setup a precondition.
+- **`po-intake`, `ingest` and `design-intake` in connected mode show their interpretation together with the preview.** On the connected board the preview is where the human confirms, so the skill prepares the proposal and presents the summary with the complete preview in one message instead of stopping with a question first; a conflict still stops in both workflows, and the direct-file workflow keeps its stop. `feature-scope`, `verify-pages` and `ask` likewise confirm at the preview instead of before it.
+- **`prism doctor` checks that the Docker daemon answers.** A found `docker` binary is probed with `docker info` (10-second limit). A stopped or unresponsive daemon is reported as `[warn]` with the way out (start Docker Desktop or the Docker service), counted under "Platform path" and offered as the next step, instead of `[ready]`. It does not change the exit status.
+- **The `nextjs-web` pack pins a supported `eslint`.** `packs/versions.yml` moves `eslint` from the deprecated 9.39.5 to 10.12.0, and the lockfile and `golden/` are regenerated; no package of the lockfile is deprecated, and a test enforces it. The generated web app's install, lint, typecheck, tests and build pass.
+- **Partial reads are explained.** `missing_read_revisions` says when a file was read only in part (how much of it) and gives the exact call that continues the read: the same paths and the returned cursor. `invalid_cursor` for a cursor sent with other paths names the path list of the read it belongs to (or says that the list is no longer known after a restart), and never shows another participant's paths.
+- **`read_workspace` pages fit the standard instruction files.** Every MCP tool result is now at most 48,000 characters (the structured data at most 46,000), up from 32,000 and 30,000, so `SCHEMA.md` (about 40,200 characters as a page), `LIFECYCLE.md` and `CONNECTED.md` each arrive in one page and a host that never follows a cursor still reads them whole.
+
+### Security
+
+- **Dependency discovery no longer fails open.** When the files an operation depends on cannot be determined (for example a second page with the same feature ID appears), the check before a write, a retry, a move and a recovery stops with the `recovery_dependencies_unavailable` conflict instead of binding a partial snapshot of the recorded sources, so a requirement page added at the same moment is no longer missed. The known limitation is removed from `SECURITY.md`.
+
 ## [0.6.0]
 
 Release date: 2026-10-08
