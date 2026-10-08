@@ -89,6 +89,7 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 ## Common Commands
 
 ```bash
+python -B scripts/run-tests.py                # the Python suite across worker processes (-j N, module names, --shard N/M); same tests as unittest discover
 prism new --preset backend-only --project-name "Test App" --dest C:\temp\template-test --yes
 python scripts/build-skill-layers.py          # after editing template-skills/
 python scripts/build-skill-layers.py --check

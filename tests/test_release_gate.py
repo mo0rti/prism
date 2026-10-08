@@ -137,7 +137,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
             self.assertIn(f"python scripts/run-golden-workflow.py {app}", template, f"golden {app} runs in CI")
         self.assertIn("python scripts/build-golden.py --check", template)
         cli = (WORKFLOWS / "cli-validation.yml").read_text(encoding="utf-8")
-        self.assertIn("python -m unittest discover -s tests", cli)
+        self.assertIn("python -B scripts/run-tests.py", cli, "the Python tests run through the parallel runner, which finds the tests of unittest discover")
 
     def test_the_golden_workflows_are_not_skipped_by_the_path_filters_of_the_files_that_change_them(self) -> None:
         template = yaml.safe_load((WORKFLOWS / "template-validation.yml").read_text(encoding="utf-8"))[True]

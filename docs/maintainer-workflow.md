@@ -37,13 +37,35 @@ CLAUDE.md             # Claude maintainer guidance for this repo
 1. Update `copier.yml` and/or files under `template/`. Change a skill, command or Cursor rule only in `template-skills/` (see [Skill Sources](#skill-sources)); never edit a file under `template/.agents/skills/`, `template/.claude/commands/`, `template/.claude/skills/` or `template/.cursor/rules/`.
 2. After editing `template-skills/`, run `python scripts/build-skill-layers.py`, then `python scripts/build-workflow-assets.py` when a packaged workflow skill changed.
    After a change of `template/`, `packs/`, `template-skills/` or `packs/versions.yml`, also run `python scripts/build-golden.py` and commit `golden/` with it ([Golden Workspace](#golden-workspace)); after a pin moves, run `python scripts/sync-golden.py`, which also refreshes the pack lockfiles.
-3. Run `./scripts/validate-template.ps1` after template changes, and `python -B -m unittest discover -s tests` after changes to `prism_cli/`, the packaged assets or the template. When the board UI changes, also run the browser tests that [current-status.md](current-status.md#validation) describes.
+3. Run `./scripts/validate-template.ps1` after template changes, and `python -B scripts/run-tests.py` (the whole suite across worker processes, see [Python Tests](#python-tests)) after changes to `prism_cli/`, the packaged assets or the template. When the board UI changes, also run the browser tests that [current-status.md](current-status.md#validation) describes.
 4. Generate any extra explicit variants you need instead of relying on assumptions.
 5. Compare generated output against the root docs, generated README/docs, task wiring, and the selected app lists.
 6. Update repository docs when the template contract changes. When a CLI command, message, board behaviour or security check changes, also update the README quickstart, `docs/shared-board.md`, `docs/troubleshooting.md` and `SECURITY.md`, run the documented commands in a disposable workspace, and add the change under `Unreleased` in `CHANGELOG.md`.
 7. Keep roadmap-visible options honest about whether they are current, partial, experimental, or planned.
 
 To check the lifecycle with real Claude Code and Codex sessions and a browser against the board, run `scripts/e2e/journey.py`; [`scripts/e2e/README.md`](../scripts/e2e/README.md) describes the tiers and the report.
+
+## Python Tests
+
+`python -B scripts/run-tests.py` runs `tests/` across worker processes (one per CPU by default) and prints one combined summary: the tests run, the failures, errors and skips, and the ID of every failing test. It finds the same tests as `python -B -m unittest discover -s tests` and fails when the workers ran a different number. It exits non-zero on any failure.
+
+```bash
+python -B scripts/run-tests.py                       # the whole suite
+python -B scripts/run-tests.py -j 4                  # four workers
+python -B scripts/run-tests.py test_core test_wiki   # the tests under these module, class or test names
+python -B scripts/run-tests.py --shard 2/3           # the second of three fixed shares of the suite (how CI splits a slow job)
+python -B scripts/run-tests.py --list                # the units and their expected seconds, without running them
+python -B -m unittest tests.test_core                # one module in one process, the way you debug it
+```
+
+- A test module is one unit. A module slower than `--target-seconds` is split into units of whole test classes, so a class's fixtures stay with its tests. The workers take the slowest unit first.
+- `scripts/test-timings.json` holds the expected seconds of each test class (the plan is a balance of these weights; a class without an entry is weighted by its test count). After a big change of the suite, refresh it from a run: `python -B scripts/run-tests.py -j 8 --write-timings scripts/test-timings.json`.
+- Each worker imports the whole suite the way a serial run does, so a test sees the same imported modules in both. The output of a unit is shown only when the unit fails, or with `-v`.
+- Every git process a test starts gets `gc.auto=0` and `maintenance.auto=false` through `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n` and `GIT_CONFIG_VALUE_n`, which the runner sets and the CI test steps repeat. A clone, Copier's included, then cannot start a background gc that races with a test's cleanup.
+- A test must be safe next to any other test: it takes its folders from `tempfile` (never a fixed name), asks the system for a free port (never a fixed one for a real socket), restores the environment variables and the working directory it changes, and does not depend on the tests that ran before it.
+- `browser-e2e` keeps `python -B -m unittest discover -s tests/browser -t .`: it is opt-in and drives one real Chromium.
+
+In CI, every Python test job of `cli-validation.yml` runs `python -B scripts/run-tests.py --shard N/M`. The job is named `Python tests (<os>, <python>, shard N/M)`; the Windows job runs as two shards. The release gate (`scripts/check-ci-green.py`) judges whole workflows, not job names, so it needs no change when a job is renamed or split.
 
 ## Skill Sources
 
