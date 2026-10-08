@@ -37,6 +37,7 @@ PAGE_DIRECTORIES = (
     "app-requirements",
     "api-contracts",
     "bugs",
+    "incidents",
     "decisions",
     "advisory",
     "topics",
@@ -96,6 +97,7 @@ GROUPS = (
     ("app-requirements", "App requirements"),
     ("api-contracts", "API contracts"),
     ("bugs", "Bugs"),
+    ("incidents", "Incidents"),
     ("decisions", "Decisions"),
     ("advisory", "Advisory"),
     ("project-docs", "Project docs"),
@@ -103,7 +105,7 @@ GROUPS = (
 )
 GROUP_HEADINGS = dict(GROUPS)
 
-_SECTION_BY_GROUP = {"personas": "Who they are", "business-rules": "Rule", "decisions": "Decision"}
+_SECTION_BY_GROUP = {"personas": "Who they are", "business-rules": "Rule", "decisions": "Decision", "incidents": "Impact"}
 # The pages the template ships and the board never writes carry a fixed line.
 _FIXED_LINES = {
     "SCHEMA.md": ("SCHEMA.md", "Wiki conventions and operational rules."),

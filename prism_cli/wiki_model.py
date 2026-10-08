@@ -2057,6 +2057,68 @@ def release_attempt(records: Iterable[Mapping[str, Any]], item: str, app: str) -
     )
 
 
+# --- Release records: the one reader the operations view uses ------------------------------------------------------
+
+RELEASE_DIRECTORY = "releases"
+RELEASE_ID_PATTERN = re.compile(r"^REL-([0-9]+)$")
+RELEASE_DELIVERY_COLUMNS = ("item", "app", "target", "version", "attempt", "outcome", "evidence", "basis")
+
+
+@dataclass(frozen=True)
+class ReleaseRecord:
+    """What the status board and lint read of a release record (CONTRACTS 6.2): its ID, outcome and per-app delivery.
+
+    `deliveries` holds one `(app, target, outcome)` per row of the record's `## Delivery` table.
+    """
+
+    release_id: str
+    number: int
+    outcome: str | None
+    deliveries: tuple[tuple[str, str, str], ...]
+    path: Path
+
+    @property
+    def apps(self) -> list[str]:
+        return list(dict.fromkeys(app for app, _target, _outcome in self.deliveries))
+
+    def outcome_for(self, app: str) -> str | None:
+        """The record's outcome for `app`: `rolled-back` on a rollback record, else the app's delivery row outcome."""
+
+        if app not in self.apps:
+            return None
+        if self.outcome == "rolled-back":
+            return "rolled-back"
+        for row_app, _target, outcome in self.deliveries:
+            if row_app == app:
+                return outcome or self.outcome
+        return None
+
+
+def release_record_from_page(page: MarkdownPage) -> ReleaseRecord | None:
+    """The release record a page holds, or ``None`` when its `id` is not a record ID. A malformed delivery row is skipped."""
+
+    record_id = page.frontmatter.get("id")
+    match = RELEASE_ID_PATTERN.match(record_id.strip()) if isinstance(record_id, str) else None
+    if match is None:
+        return None
+    rows, _problems = parse_evidence_table(page.body, "Delivery", RELEASE_DELIVERY_COLUMNS, "release-record-invalid")
+    outcome = page.frontmatter.get("outcome")
+    return ReleaseRecord(
+        release_id=record_id.strip(),
+        number=int(match.group(1)),
+        outcome=outcome.strip().lower() if isinstance(outcome, str) and outcome.strip() else None,
+        deliveries=tuple((cells[1].strip(), clean_cell(cells[2]), clean_cell(cells[5]).lower()) for cells in rows),
+        path=page.path,
+    )
+
+
+def read_release_records(wiki_root: Path) -> list[ReleaseRecord]:
+    """Every release record of a wiki, lowest number first. A wiki with no `releases/` folder has none."""
+
+    records = [record for page in read_markdown_pages(wiki_root / RELEASE_DIRECTORY) if (record := release_record_from_page(page)) is not None]
+    return sorted(records, key=lambda record: record.number)
+
+
 # --- App stages and QA coverage ------------------------------------------------------------------------------------
 
 

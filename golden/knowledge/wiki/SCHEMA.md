@@ -31,6 +31,7 @@ knowledge/
     ├── app-requirements/  # Per-app implementation specs: F-XXX-[app-id].md
     ├── api-contracts/    # API shapes and endpoint contracts: F-XXX.md
     ├── bugs/             # One file per bug: BUG-XXX-[slug].md
+    ├── incidents/        # One dated record per incident: INC-XXX-[slug].md
     ├── decisions/        # Architecture Decision Records: ADR-XXX-[slug].md
     ├── topics/           # Synthesis pages: [slug].md
     ├── research/         # Research pages: [slug].md
@@ -41,7 +42,7 @@ knowledge/
     ├── direction.md      # Current direction and principles
     ├── roadmap.md        # What comes next
     ├── index.md          # General index: one line per page, grouped by kind (LLM-maintained)
-    ├── status-board.md   # Feature status board: one row per feature (LLM-maintained)
+    ├── status-board.md   # Feature status board: one row per feature, plus the Bugs and Operations tables (LLM-maintained)
     ├── log.md            # Append-only log: the only home for history (LLM-maintained)
     ├── SCHEMA.md         # This file
     ├── LIFECYCLE.md      # Feature, board and advisory protocol, read for lifecycle operations
@@ -71,6 +72,7 @@ kind. Read it before you create or change a page of that kind.
 - **App requirements page** (`app-requirements/`): [`app-requirements/_FORMAT.md`](app-requirements/_FORMAT.md)
 - **API contract page** (`api-contracts/`): [`api-contracts/_FORMAT.md`](api-contracts/_FORMAT.md)
 - **Bug** (`bugs/`): [`bugs/_FORMAT.md`](bugs/_FORMAT.md)
+- **Incident** (`incidents/`): [`incidents/_FORMAT.md`](incidents/_FORMAT.md)
 - **Architecture Decision Record, ADR** (`decisions/`): [`decisions/_FORMAT.md`](decisions/_FORMAT.md)
 - **Topic** (`topics/`): [`topics/_FORMAT.md`](topics/_FORMAT.md)
 - **Research page** (`research/`): [`research/_FORMAT.md`](research/_FORMAT.md)
@@ -336,6 +338,7 @@ Ingest turns one pending intake folder into wiki pages. Any role can run it, for
 | Technical design notes for an existing feature, while its technical track is `pending` or the feature has no tracks yet | `technical-design/F-XXX-[slug].md` |
 | A feature request | `features/F-XXX-[slug].md`, written as `raw` + `po` |
 | A defect report | `bugs/BUG-XXX-[slug].md`, written `open` + `dev` with empty evidence sections |
+| An incident report, or an update to one | `incidents/INC-XXX-[slug].md`, a record that changes only as `incidents/_FORMAT.md` allows |
 
 1. Read `index.md`, find the pages the source touches and read them.
 2. Compare every claim in the source with those pages. A contradiction is quarantined and
@@ -344,7 +347,7 @@ Ingest turns one pending intake folder into wiki pages. Any role can run it, for
    the open questions. Wait for confirmation (operational rule 9).
 4. Write the pages. A topic, research page, plan, `direction.md` and `roadmap.md` are
    created, or replaced in place when they exist. A persona, business rule, decision,
-   bug or feature is created and never rewritten: a changed fact goes through its own
+   bug or feature is created and never rewritten, and an incident changes only as its `_FORMAT.md` allows: a changed fact goes through its own
    operation (a new decision supersedes an older one, see "Records and decision
    supersession"). A new feature follows the `po-intake` rules: `raw` + `po`, five required sections.
 5. Label each claim and link its evidence (operational rule 13), and replace superseded
@@ -381,7 +384,7 @@ operation reads it first to find the pages it needs, then reads those pages.
   `## Decision`).
 - **Groups.** Lines sit under a `##` heading for their kind: Direction and roadmap, Plans,
   Topics, Research, Features, Personas, Business rules, Design, Technical design, App
-  requirements, API contracts, Bugs, Decisions, Advisory and Meta.
+  requirements, API contracts, Bugs, Incidents, Decisions, Advisory and Meta.
 - **Replaced in place.** When a page changes, its line is rewritten where it stands, never
   appended. The index has no dates, no narrative and no "was" or "now" wording; history lives
   in `log.md`.
@@ -395,24 +398,50 @@ operation reads it first to find the pages it needs, then reads those pages.
 
 ## status-board.md conventions
 
-`status-board.md` is the feature status board, a dedicated view kept apart from the index.
+`status-board.md` is the status board, a dedicated view kept apart from the index. It holds three
+tables: the features, the open bugs and the apps in operation.
 
 ```markdown
 # Feature Status Board
 
 | ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |
 |----|---------|--------|-------|--------------|---------------|------------|-----------|
-| F-001 | User login | in-dev | dev | not-needed | — | api: ready-for-qa; web: in-dev | — |
+| F-001 | User login | in-dev | dev | not-needed | ui: done; technical: done | api: ready-for-qa; web: in-dev | BUG-002 |
 | F-002 | Nutrition score | ready-for-design | designer | pending | — | — | — |
+
+## Bugs
+
+| ID | Bug | Status | Owner | Apps | Feature | Blocking |
+|----|-----|--------|-------|------|---------|----------|
+| BUG-002 | Login fails offline | open | dev | web | F-001 | yes |
+
+## Operations
+
+| App | Delivery target | Released features | Latest release | Latest attempt outcome | Open bugs | Open incidents |
+|-----|-----------------|-------------------|----------------|------------------------|-----------|----------------|
+| api | production | F-003 | REL-004 | rolled-back | — | INC-001 |
 ```
 
-The header is exact. The status board is a current-state page: it has no date column. Update
-the row of a feature whenever its status, owner, `advisory-review` field or app stages change,
-and add the row when a feature is created. `App stages` lists the stage of each active app as
-`app: stage` joined by `; ` from `in-dev` on, and is `—` before. `Design tracks` and `Open bugs`
-read `—` until the workflow fills them. The connected board merges the rows itself; `prism wiki
-lint` reports a feature with no row, a row with no feature and a row that disagrees with the
-feature's front matter or evidence (it compares `Status`, `Owner`, `Board Review` and `App stages`).
+The headers are exact. The status board is a current-state page: it has no date column. Update
+the row of a feature whenever its status, owner, `advisory-review` field, tracks, app stages or
+open bugs change, and add the row when a feature is created. `Design tracks` is
+`ui: <state>; technical: <state>` once the feature has tracks, and `—` before. `App stages` lists
+the stage of each active app as `app: stage` joined by `; ` from `in-dev` on, and is `—` before.
+`Open bugs` lists the bugs of the feature that are not `released` or `closed`, or `—`.
+
+- **Bugs** lists every bug that is not `released` or `closed`.
+- **Operations** has one row for each app that has something to show, and none for an app that has
+  nothing. `Released features` lists the features in which the app is `released`. `Latest release`
+  is the highest-numbered release record that names the app and `Latest attempt outcome` is that
+  record's outcome for it (`released`, `failed` or `rolled-back`). `Open bugs` and `Open incidents`
+  list the bugs and incidents that are not over and name the app. `Delivery target` is the app's
+  target from `SETTINGS.md` when the row was last written.
+
+The connected board merges the rows itself. `prism wiki lint` reports a feature with no row, a row
+with no feature and a row that disagrees with the pages (`status-board-frontmatter-drift`): for a
+feature it compares `Status`, `Owner`, `Board Review`, `Design tracks`, `App stages` and `Open bugs`,
+and it compares the Bugs and Operations rows with the bug, incident and release pages. A skill that
+writes files directly updates the rows itself.
 
 ---
 
@@ -468,7 +497,7 @@ sources on the entry's date:
   read, and a human confirms the preview.
 - **Which pages.** Current-state pages: features, personas, business rules, design pages,
   technical design pages, app requirements, API contracts, topics, research pages, plans, `direction.md` and
-  `roadmap.md`. Records (ADRs, advisory reviews), `log.md`, `index.md`, `status-board.md`,
+  `roadmap.md`. Records (ADRs, advisory reviews, incidents), `log.md`, `index.md`, `status-board.md`,
   the schema files and generated files are exempt.
 - **Lint.** A page's last verification is the latest `verify` entry that lists it.
   `prism wiki lint` reports `stale-page` (warning) when it is older than
@@ -624,7 +653,7 @@ Follow these rules in every wiki operation:
       the page body, and in front matter under a name that says what it dates (for
       example `effective-date`).
     - A **dated record** states what was decided or observed at one point in time: an
-      ADR (`date`), an advisory review (`reviewed`), each entry under a feature's
+      ADR (`date`), an advisory review (`reviewed`), an incident (`date`), each entry under a feature's
       `## Evidence history` (headed `### YYYY-MM-DD - action`) and a processed intake item (its `YYYY-MM-DD-slug` name). A
       record keeps its own date because the date is part of what it records. It is not
       edited to follow later events, except for its status fields; a later record

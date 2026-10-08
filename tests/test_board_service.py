@@ -77,6 +77,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
                 "knowledge/wiki/technical-design/*.md",
                 "knowledge/wiki/decisions/*.md",
                 "knowledge/wiki/bugs/*.md",
+                "knowledge/wiki/incidents/*.md",
                 "knowledge/wiki/topics/*.md",
                 "knowledge/wiki/research/*.md",
                 "knowledge/wiki/plans/*.md",

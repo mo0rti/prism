@@ -27,7 +27,17 @@ from prism_cli import __version__  # noqa: E402
 from prism_cli.wiki_index import build_index  # noqa: E402
 from prism_cli.app_model import apps_from_platforms  # noqa: E402
 from prism_cli.workspace import write_workspace_manifest  # noqa: E402
-from prism_cli.wiki_model import DesignTracks, contract_citation, criterion_revision  # noqa: E402
+from prism_cli.wiki_model import DesignTracks, contract_citation, criterion_revision, read_feature_pages  # noqa: E402
+from prism_cli.wiki_model import resolve_delivery_targets  # noqa: E402
+from prism_cli.wiki_operations import (  # noqa: E402
+    OPERATIONS_HEADING,
+    OPERATIONS_TABLE_COLUMNS,
+    design_tracks_text,
+    format_operation_row,
+    operation_row,
+    table_text,
+)
+from prism_cli.workspace import inspect_workspace  # noqa: E402
 from prism_cli.wiki_transitions import ACTION_SPECS  # noqa: E402
 
 
@@ -693,6 +703,29 @@ Clients must render each state, while audits can follow one stable request ident
     )
 
 
+def _operations_table(destination: Path, stage_cells: dict[str, str]) -> str:
+    """The Operations table of the demo board: one row for each app with a released feature (the demo has no bug, incident or release record)."""
+
+    model = inspect_workspace(destination).model
+    targets, _problems = resolve_delivery_targets(None, model)
+    rows = [
+        format_operation_row(row)
+        for app in model.apps
+        if (
+            row := operation_row(
+                app.id,
+                delivery_target=targets.get(app.id, {}).get("target"),
+                feature_stage_cells=stage_cells,
+                bug_rows=[],
+                incidents=[],
+                releases=[],
+            )
+        )
+        is not None
+    ]
+    return "\n" + table_text(OPERATIONS_HEADING, OPERATIONS_TABLE_COLUMNS, rows) if rows else ""
+
+
 def _write_populated_index(destination: Path, today: date) -> None:
     def stages(feature: dict[str, Any]) -> str:
         if feature["status"] == "in-dev":
@@ -701,9 +734,11 @@ def _write_populated_index(destination: Path, today: date) -> None:
             return "; ".join(f"{platform}: released" for platform in PLATFORMS)
         return "\u2014"
 
+    dash = "—"
+    tracks = {page.feature_id: design_tracks_text(page.page.frontmatter) for page in read_feature_pages(destination / "knowledge" / "wiki")}
     rows = [
         f"| {feature['id']} | [{feature['title']}](features/{feature['id']}-{feature['slug']}.md) | {feature['status']} | {feature['owner']} | {feature['advisory']} "
-        f"| \u2014 | {stages(feature)} | \u2014 |"
+        f"| {tracks.get(feature['id'], dash)} | {stages(feature)} | {dash} |"
         for feature in FEATURES
     ]
     wiki_root = destination / "knowledge" / "wiki"
@@ -717,7 +752,8 @@ This file is maintained by the AI agent. Do not edit directly.
 |----|---------|--------|-------|--------------|---------------|------------|-----------|
 """
         + "\n".join(rows)
-        + "\n",
+        + "\n"
+        + _operations_table(destination, {feature["id"]: stages(feature) for feature in FEATURES}),
     )
     # The general index lists every page the stage holds, one derived line each.
     _write_text(wiki_root / "index.md", build_index(wiki_root))

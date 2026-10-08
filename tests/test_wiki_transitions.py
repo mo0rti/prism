@@ -34,6 +34,7 @@ from prism_cli.wiki_model import DesignTracks, contract_citation
 from tests.design_tracks import SETTLED, ensure_tracks, technical_design_page, with_tracks
 from tests.manifest_fixtures import manifest_text
 from tests import real_temp  # noqa: F401
+from prism_cli.wiki_operations import design_tracks_text
 from tests.wiki_files import write_index, write_status_board
 
 
@@ -168,9 +169,10 @@ class WikiTransitionTests(unittest.TestCase):
         index_path = self.wiki_root / "status-board.md"
         lines = index_path.read_text(encoding="utf-8").splitlines()
         stages = app_stages_text(status, [platforms], path.read_text(encoding="utf-8"), inspect_workspace(self.root).model)
+        tracks = design_tracks_text(read_feature_pages(self.wiki_root)[0].page.frontmatter)
         lines = [
             (
-                f"| F-001 | Payout summary | {status} | {owner} | {advisory} | — | {stages} | — |"
+                f"| F-001 | Payout summary | {status} | {owner} | {advisory} | {tracks} | {stages} | — |"
                 if line.startswith("| F-001 |")
                 else line
             )

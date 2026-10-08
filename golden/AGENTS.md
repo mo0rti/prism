@@ -297,6 +297,7 @@ An agent service accepts the backend's bearer tokens with no shared secret: unde
 - `docs/deployment/ci-cd.md` - CI setup (build and test)
 - `.agents/skills/deployment/` - deployment skill with worked examples; Claude Code uses `.claude/skills/deployment/`. Hosting, secrets and deployment belong to the user and their agent
 - `shared/api-contracts/openapi.yml` - API contract (source of truth)
+- `<app path>/docs/runbook.md` - what an operator needs for each generated app: health, logs, configuration and the local run, with `**Unknown:**` items for hosting, which Prism does not decide
 - `backend/docs/guide.md` - backend structure, conventions and commands
 - `web/docs/guide.md` - web structure, sign-in slice and commands
 - `agent-service/docs/guide.md` - agent-service structure, request flow, providers and commands; `agent-service/openapi.yml` is its own contract

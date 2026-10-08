@@ -59,33 +59,79 @@ def write_index(root: Path) -> None:
 def write_status_board(root: Path, rows: str = "") -> None:
     """Write `knowledge/wiki/status-board.md` under the workspace `root` with the given table rows.
 
-    A row of five cells (ID to Board Review) is completed with the three columns the board derives: `Design tracks` is
-    `—`, `App stages` follows the feature page on disk, `Open bugs` is `—`.
+    A row of five cells (ID to Board Review) is completed with the three columns the board derives: `Design tracks` and
+    `App stages` follow the feature page on disk and `Open bugs` follows the bug pages. The Bugs and Operations tables are
+    added, from the bug, incident and release pages on disk, when they have rows.
     """
 
     wiki_root = root / "knowledge" / "wiki"
     wiki_root.mkdir(parents=True, exist_ok=True)
-    (wiki_root / "status-board.md").write_text(STATUS_BOARD_HEADER + _complete_rows(root, rows), encoding="utf-8", newline="\n")
+    text = STATUS_BOARD_HEADER + _complete_rows(root, rows) + _view_tables(root)
+    (wiki_root / "status-board.md").write_text(text, encoding="utf-8", newline="\n")
+
+
+def _view_tables(root: Path) -> str:
+    """The Bugs and Operations tables of the pages on disk, each only when it has rows."""
+
+    from prism_cli.wiki_bugs import read_bug_pages
+    from prism_cli.wiki_incidents import read_incident_pages
+    from prism_cli.wiki_model import app_stages_text, read_feature_pages, read_release_records
+    from prism_cli.wiki_operations import (
+        BUG_TABLE_COLUMNS,
+        BUGS_HEADING,
+        OPERATIONS_HEADING,
+        OPERATIONS_TABLE_COLUMNS,
+        bug_board_row,
+        format_bug_row,
+        format_operation_row,
+        operation_row,
+        table_text,
+    )
+    from prism_cli.workspace import inspect_workspace
+
+    wiki_root = root / "knowledge" / "wiki"
+    bug_rows = [row for bug in read_bug_pages(wiki_root) if (row := bug_board_row(bug)) is not None]
+    model = inspect_workspace(root).model
+    cells = {page.feature_id: app_stages_text(page.status, page.apps, page.page.body, model) for page in read_feature_pages(wiki_root)}
+    incidents, releases = read_incident_pages(wiki_root), read_release_records(wiki_root)
+    operations = [
+        row
+        for app in model.apps
+        if (row := operation_row(app.id, delivery_target=None, feature_stage_cells=cells, bug_rows=bug_rows, incidents=incidents, releases=releases))
+        is not None
+    ]
+    text = ""
+    if bug_rows:
+        text += "\n" + table_text(BUGS_HEADING, BUG_TABLE_COLUMNS, [format_bug_row(row) for row in sorted(bug_rows, key=lambda item: item["id"])])
+    if operations:
+        text += "\n" + table_text(OPERATIONS_HEADING, OPERATIONS_TABLE_COLUMNS, [format_operation_row(row) for row in operations])
+    return text
 
 
 def _complete_rows(root: Path, rows: str) -> str:
+    from prism_cli.wiki_bugs import read_bug_pages
     from prism_cli.wiki_model import app_stages_text, read_feature_pages
+    from prism_cli.wiki_operations import bug_board_row, design_tracks_text, ids_text, open_bugs_of_feature
     from prism_cli.workspace import inspect_workspace
 
-    pages = {page.feature_id.casefold(): page for page in read_feature_pages(root / "knowledge" / "wiki")}
+    wiki_root = root / "knowledge" / "wiki"
+    pages = {page.feature_id.casefold(): page for page in read_feature_pages(wiki_root)}
+    bug_rows = [row for bug in read_bug_pages(wiki_root) if (row := bug_board_row(bug)) is not None]
     model = None
     completed: list[str] = []
     for line in rows.splitlines(keepends=True):
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         if line.strip().startswith("|") and len(cells) == 5 and cells[0].upper().startswith("F-"):
             page = pages.get(cells[0].casefold())
-            stages = "—"
+            stages, tracks, bugs = "—", "—", "—"
             if page is not None:
                 if model is None:
                     model = inspect_workspace(root).model
                 stages = app_stages_text(page.status, page.apps, page.page.body, model)
+                tracks = design_tracks_text(page.page.frontmatter)
+                bugs = ids_text(open_bugs_of_feature(page.feature_id, bug_rows))
             ending = "\n" if line.endswith("\n") else ""
-            line = "| " + " | ".join([*cells, "—", stages, "—"]) + " |" + ending
+            line = "| " + " | ".join([*cells, tracks, stages, bugs]) + " |" + ending
         completed.append(line)
     return "".join(completed)
 
@@ -125,3 +171,23 @@ def evidence_tables(
         if level == 3:
             release.append(f"| {app} | production | `{artifact}` | release-1 | released | [REL-001](https://records.example/REL-001) | checked |")
     return "\n\n".join("\n".join(section) for section in (delivery, qa, release)) + "\n"
+
+
+def refresh_status_board(root: Path) -> None:
+    """Rewrite the whole status board of the workspace `root` from the pages on disk, as the board service leaves it.
+
+    A test that plants a bug, incident or release page straight into the wiki (not through the service) calls this so the
+    board shows what the pages say.
+    """
+
+    import re
+
+    from prism_cli.wiki_model import read_feature_pages
+
+    wiki_root = root / "knowledge" / "wiki"
+    rows = ""
+    for page in sorted(read_feature_pages(wiki_root), key=lambda item: int(re.search(r"\d+", item.feature_id).group(0))):
+        frontmatter = page.page.frontmatter
+        title = re.sub(r"\s+", " ", str(frontmatter.get("title", ""))).strip().replace("|", "&#124;")
+        rows += f"| {page.feature_id} | {title} | {page.status} | {page.owner} | {frontmatter.get('advisory-review')} |\n"
+    write_status_board(root, rows)

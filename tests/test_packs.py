@@ -466,3 +466,33 @@ class WorkspaceDataFromManifestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RunbookTemplateTests(unittest.TestCase):
+    """Every pack ships the runbook of its app: what the stack makes known, and an `**Unknown:**` item for each hosting fact."""
+
+    def runbook(self, stack: str) -> str:
+        path = REPO_ROOT / "packs" / stack / "{{ app_path }}" / "docs" / "runbook.md.jinja"
+        self.assertTrue(path.is_file(), f"{stack} ships no runbook")
+        return path.read_text(encoding="utf-8")
+
+    def test_each_pack_ships_a_runbook_with_the_stack_known_parts_and_unknown_hosting_items(self) -> None:
+        for stack in PACK_STACKS:
+            with self.subTest(stack=stack):
+                text = self.runbook(stack)
+                for heading in ("### Health", "### Logs", "### Configuration", "### Run it locally", "## Unknown"):
+                    self.assertIn(heading, text)
+                unknown = text.split("## Unknown", 1)[1]
+                items = [line for line in unknown.splitlines() if line.startswith("- **Unknown:**")]
+                self.assertGreaterEqual(len(items), 5)
+                # Prism deploys nothing, so no hosting fact is stated as known.
+                self.assertIn("Prism deploys nothing", text)
+                self.assertEqual(text.count("{{"), text.count("}}"))
+                self.assertEqual(text.count("{%"), text.count("%}"))
+
+    def test_a_runbook_carries_the_pack_facts_it_states(self) -> None:
+        self.assertIn("/actuator/health", self.runbook("spring-backend"))
+        self.assertIn("/api/health", self.runbook("python-agent-service"))
+        self.assertIn("API_BASE_URL", self.runbook("nextjs-web"))
+        self.assertIn("adb logcat", self.runbook("android-compose"))
+        self.assertIn("xcodegen generate", self.runbook("ios-swiftui"))

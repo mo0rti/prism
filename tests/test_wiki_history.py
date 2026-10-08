@@ -319,7 +319,7 @@ class BoardHistoryTests(unittest.TestCase):
         self.assertEqual(before_body, after.body)
         self.assertEqual([], [name for name in after.frontmatter if name in HISTORY_DATE_FIELDS])
         board = self.read("knowledge/wiki/status-board.md")
-        self.assertIn("| F-001 | Document review | in-design | tech-lead | not-needed | — | — | — |", board)
+        self.assertIn("| F-001 | Document review | in-design | tech-lead | not-needed | ui: not-applicable; technical: pending | — | — |", board)
         self.assertNotIn("Introduced", board)
 
         log_after = self.read("knowledge/wiki/log.md")

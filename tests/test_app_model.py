@@ -697,5 +697,67 @@ class LocalRepositoryTests(unittest.TestCase):
         self.assertEqual([], list(self.checkout.iterdir()))
 
 
+
+
+class RunbookFieldTests(unittest.TestCase):
+    """An app in this repository has its runbook at `<path>/docs/runbook.md` and declares none; an app in an external repository records a link."""
+
+    def apps(self, **external: object) -> list[dict]:
+        return [
+            {"id": "api", "stack": "spring-backend", "repository": "workspace", "path": "api"},
+            {"id": "reader", "stack": "android-compose", "repository": "mobile-apps", "path": "apps/reader", **external},
+        ]
+
+    def model(self, apps: list[dict]) -> tuple[app_model.WorkspaceModel, list]:
+        return normalized(v2_manifest(apps=apps, app_maturity={}))
+
+    def test_a_workspace_app_has_the_derived_path_and_an_external_app_has_its_recorded_link(self) -> None:
+        model, diagnostics = self.model(self.apps(runbook="https://wiki.example.com/reader/runbook"))
+        self.assertEqual([], codes(diagnostics))
+        api, reader = model.apps
+        self.assertEqual("api/docs/runbook.md", api.runbook_location)
+        self.assertIsNone(api.runbook)
+        self.assertEqual("https://wiki.example.com/reader/runbook", reader.runbook_location)
+
+    def test_an_external_app_without_a_link_has_no_runbook_location(self) -> None:
+        model, diagnostics = self.model(self.apps())
+        self.assertEqual([], codes(diagnostics))
+        self.assertIsNone(model.apps[1].runbook_location)
+
+    def test_a_workspace_app_cannot_declare_a_runbook(self) -> None:
+        apps = self.apps()
+        apps[0]["runbook"] = "https://wiki.example.com/api"
+        model, diagnostics = self.model(apps)
+        self.assertEqual(["invalid-app-runbook"], codes(diagnostics))
+        self.assertEqual(["reader"], [app.id for app in model.apps])
+
+    def test_a_link_that_is_not_an_https_link_is_refused(self) -> None:
+        for bad in ("docs/runbook.md", "http://wiki.example.com/r", "file:///etc/passwd", "https://user:pw@wiki.example.com/r", "https://wiki.example.com/a b", "", 3):
+            with self.subTest(link=bad):
+                model, diagnostics = self.model(self.apps(runbook=bad))
+                self.assertEqual(["invalid-app-runbook"], codes(diagnostics))
+
+    def test_the_runbook_is_not_a_reported_entry_and_an_external_checkout_is_never_read(self) -> None:
+        model, _diagnostics = self.model(self.apps(runbook="https://wiki.example.com/reader/runbook"))
+        self.assertNotIn("runbook", app_model.app_entries(model)[1])
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = Path(directory)
+            (checkout / "apps" / "reader" / "docs").mkdir(parents=True)
+            (checkout / "apps" / "reader" / "docs" / "runbook.md").write_text("never read", encoding="utf-8")
+            reads: list[str] = []
+            original = Path.read_text
+
+            def spy(self: Path, *args: object, **kwargs: object) -> str:
+                reads.append(str(self))
+                return original(self, *args, **kwargs)  # type: ignore[arg-type]
+
+            from unittest.mock import patch
+
+            with patch.object(Path, "read_text", spy):
+                app_model.resolve_local_repositories(Path(directory), model)
+                _ = [app.runbook_location for app in model.apps]
+            self.assertEqual([], [path for path in reads if path.startswith(str(checkout))])
+
+
 if __name__ == "__main__":
     unittest.main()

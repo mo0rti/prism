@@ -304,8 +304,19 @@ def app_stages_cell(front_matter: dict[str, str], text: str) -> str:
     return "; ".join(f"{app}: {'ready-for-qa' if app in delivered else 'in-dev'}" for app in feature_apps(text)) or "—"
 
 
+def design_tracks_cell(text: str) -> str:
+    """The ``Design tracks`` cell of the journey: ``ui: <state>; technical: <state>`` from the page's ``design-tracks`` block, else ``—``."""
+
+    block = re.search(r"(?m)^design-tracks:\s*\n((?:[ \t]+\S.*\n)+)", text)
+    if not block:
+        return "—"
+    states = dict(re.findall(r"(?m)^[ \t]+(ui|technical):\s*(\S+)\s*$", block.group(1)))
+    return f"ui: {states['ui']}; technical: {states['technical']}" if "ui" in states and "technical" in states else "—"
+
+
 def feature_row(front_matter: dict[str, str], text: str = "") -> str:
-    return "| {id} | {title} | {status} | {owner} | {review} | — | {stages} | — |".format(
+    return "| {id} | {title} | {status} | {owner} | {review} | {tracks} | {stages} | — |".format(
+        tracks=design_tracks_cell(text),
         id=front_matter["id"],
         title=front_matter["title"],
         status=front_matter["status"],

@@ -1,0 +1,48 @@
+# Android App Runbook - Prism Golden
+
+What an operator needs to know about this Android app. The sections under "Known from the code" come from the generated code and stay true until the code changes. Prism deploys nothing, so everything about distribution is an **Unknown:** item until the team records it here. Replace each item with the fact when it is decided.
+
+## Known from the code
+
+### Health
+
+- The app is a client with no server of its own, so it has no health endpoint. It depends on the backend that serves `shared/api-contracts/openapi.yml`; when the app shows errors, check the backend's health first.
+- The sign-in tells the failures apart: the backend has no development sign-in (404), the request did not arrive from loopback (403), the backend is unreachable, or the answer was unexpected. A rejected token (401) returns the app to the sign-in.
+
+### Logs
+
+- On a device or emulator, read the log with `adb logcat`. The app never logs the access token, and the client adds no HTTP logging interceptor.
+- The pack configures no crash reporting and no analytics.
+
+### Configuration
+
+| Setting | Meaning |
+|---|---|
+| `apiBaseUrl` (Gradle property, `gradle.properties`) | The backend's base URL. Default `http://localhost:8080/`. Override a build with `-PapiBaseUrl=...`. A release build refuses anything but `https://`. |
+
+Application ID: `com.example.prismgolden.mobileandroid`.
+
+### Run it locally
+
+```bash
+cd mobile-android
+adb reverse tcp:8080 tcp:8080     # or: task mobile-android:reverse
+./gradlew installDebug                                          # or: task mobile-android:install
+```
+
+The backend's development identity answers loopback requests only, so the device reaches it through `adb reverse`. Run it again after the emulator, the device or the adb server restarts.
+
+### Release artifact
+
+- `./gradlew assembleDebug` builds the debug APK. The pack configures no signing and no shrinking for a release build: those belong to the release setup the project owner chooses.
+- `.github/workflows/mobile-android.yml` builds and runs the unit tests on every change. It publishes nothing.
+
+## Unknown
+
+- **Unknown:** Where builds are published (store track, internal testing, a file host) and who publishes them.
+- **Unknown:** The release signing: where the key is kept and who can use it.
+- **Unknown:** How to withdraw or replace a bad release, and how long the store takes to do it.
+- **Unknown:** How crashes and errors reach the team, and who is alerted.
+- **Unknown:** The production `apiBaseUrl`.
+- **Unknown:** The oldest app version the backend still supports.
+- **Unknown:** Who is on call for this app and how to reach them.

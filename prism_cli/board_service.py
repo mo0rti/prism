@@ -37,7 +37,9 @@ from prism_cli.app_model import (
 )
 from prism_cli import roles as _roles
 from prism_cli.board_bugs import BugActionsMixin, is_bug_path
+from prism_cli.board_incidents import IncidentActionsMixin
 from prism_cli.board_qa import D3_ACTIONS, D3_QA_ACTIONS, D3_RETURN_ACTIONS, QaActionsMixin
+from prism_cli.board_status import StatusBoardMixin
 from prism_cli.board_store import BoardLockError, BoardStore, UnsupportedBoardState
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError, reparse_kind
 from prism_cli.roles import ROLES, RoleError, RolePredicate, parse_roles
@@ -56,7 +58,21 @@ from prism_cli.wiki_index import (
     render_index_lines,
 )
 from prism_cli.wiki_bugs import bug_listing_digest
+from prism_cli.wiki_incidents import is_incident_path
 from prism_cli.wiki_log import VERIFY_OPERATION, append_log_entry, format_verification_entry
+from prism_cli.wiki_operations import (
+    APP_KEY_PREFIX,
+    BUG_TABLE_COLUMNS,
+    BUGS_HEADING,
+    OPERATION_ROW_KEYS,
+    OPERATIONS_HEADING,
+    OPERATIONS_TABLE_COLUMNS,
+    design_tracks_text,
+    format_bug_row,
+    format_operation_row,
+    row_kind,
+    table_text,
+)
 from prism_cli.wiki_model import HISTORY_HEADING as _HISTORY_HEADING
 from prism_cli.wiki_model import (
     APP_REVALIDATION_DOMAINS,
@@ -185,6 +201,7 @@ _WIKI_DIRS = (
     "api-contracts",
     "advisory",
     "bugs",
+    "incidents",
     "decisions",
     *GENERAL_PAGE_FOLDERS,
 )
@@ -365,7 +382,7 @@ class Actor:
         }
 
 
-class BoardService(QaActionsMixin, BugActionsMixin):
+class BoardService(QaActionsMixin, BugActionsMixin, IncidentActionsMixin, StatusBoardMixin):
     """Shared workflow service used by local HTTP, MCP, and CLI adapters."""
 
     def __init__(self, root: Path) -> None:
@@ -2469,6 +2486,7 @@ class BoardService(QaActionsMixin, BugActionsMixin):
                 "knowledge/wiki/technical-design/*.md",
                 "knowledge/wiki/decisions/*.md",
                 "knowledge/wiki/bugs/*.md",
+                "knowledge/wiki/incidents/*.md",
                 "knowledge/wiki/topics/*.md",
                 "knowledge/wiki/research/*.md",
                 "knowledge/wiki/plans/*.md",
@@ -2554,8 +2572,10 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         if name == "ingest":
             limitations.append(
                 "Any role may ingest, into any of these page kinds: topic, research, plan, direction, roadmap, persona, business rule, decision (ADR), "
-                "bug or feature. A new bug is `open` + `dev` with empty Fix, Verification, Release and Evidence history sections (`bug_creation_invalid`) "
-                "and is never rewritten by ingest. A new feature meets every po-intake rule: `raw` + `po`, the five required sections, no rewrite of an existing feature. "
+                "bug, incident or feature. A new bug is `open` + `dev` with empty Fix, Verification, Release and Evidence history sections (`bug_creation_invalid`) "
+                "and is never rewritten by ingest. An incident is a record: ingest creates it, steps its `status`, appends Timeline lines, adds `follow-ups` and `releases`, "
+                "and while it is not `resolved` fills or replaces its Cause, Mitigation, Resolution and Follow-ups; a new Cause adds a Timeline line that links the "
+                "processed intake item (`incident_cause_uncited`). A new feature meets every po-intake rule: `raw` + `po`, the five required sections, no rewrite of an existing feature. "
                 "A persona, business rule or decision is created, never rewritten, except that a new decision may supersede one by setting `supersedes` "
                 "and changing only the status fields of the old one. A topic, research, plan, direction or roadmap page is created or replaced in place. "
                 "The processed MANIFEST.md lists every page the proposal writes by its full relative path and, where it has one, its canonical ID."
@@ -2787,15 +2807,16 @@ class BoardService(QaActionsMixin, BugActionsMixin):
             writes.extend(additional)
         affected = [_parse_markdown(after_feature, feature_path)[0]]
         feature_id = str(affected[0].get("id", ""))
-        expected = {feature_id: self._status_existing_row(feature_id)}
-        after_row = _status_row(affected[0], _parse_markdown(after_feature, feature_path)[1], self._model)
+        overlay = {feature_path: after_feature}
+        overlay.update({write["path"]: write["after"] for write in additional or [] if write.get("role") == "canonical" and write.get("after") is not None})
+        expected, after_rows = self._status_board_changes(overlay)
         board_before = self._read_text(self._safe_path(_STATUS_BOARD_PATH))
-        board_after = _render_status_board(board_before, expected, {feature_id: after_row})
+        board_after = _render_status_board(board_before, expected, after_rows)
         if merge_managed and board_after != board_before:
             writes.append(
                 self._write_record(
                     _STATUS_BOARD_PATH, board_before, board_after, role="status-board",
-                    merge={"kind": "status-board", "expected_rows": expected, "after_rows": {feature_id: after_row}},
+                    merge={"kind": "status-board", "expected_rows": expected, "after_rows": after_rows},
                 )
             )
         index_write = self._index_merge_write({feature_path: after_feature}) if merge_managed else None
@@ -2876,7 +2897,7 @@ class BoardService(QaActionsMixin, BugActionsMixin):
     def _managed_rows(self, role: str, keys: Iterable[str]) -> dict[str, Any]:
         """The current row (status board) or line (index) of each key."""
 
-        reader = self._status_existing_row if role == "status-board" else self._index_existing_line
+        reader = self._board_row if role == "status-board" else self._index_existing_line
         return {key: reader(key) for key in keys}
 
     @staticmethod
@@ -3449,18 +3470,9 @@ class BoardService(QaActionsMixin, BugActionsMixin):
             self._write_record(relative, before[relative], content, role="canonical")
             for relative, content in sorted(supplied.items())
         ]
-        status_keys: dict[str, dict[str, str] | None] = {}
-        status_after_rows: dict[str, dict[str, str]] = {}
-        for relative in feature_changes:
-            after_fm = after_frontmatter[relative]
-            feature_id = str(after_fm.get("id", ""))
-            before_fm = before_frontmatter[relative]
-            after_row = _status_row(after_fm, _parse_markdown(supplied[relative], relative)[1], self._model)
-            existing_row = self._status_existing_row(feature_id)
-            # The row follows the page: its status, owner, board review and app stages (which the evidence tables decide).
-            if before_fm is None or existing_row != after_row:
-                status_keys[feature_id] = existing_row
-                status_after_rows[feature_id] = after_row
+        # The rows follow the pages: a feature's status, owner, board review, tracks, app stages and open bugs, a bug's row and
+        # the Operations row of every app whose released features, open bugs, open incidents or latest release the pages move.
+        status_keys, status_after_rows = self._status_board_changes(supplied)
         if status_keys:
             board_before = self._read_text(self._safe_path(_STATUS_BOARD_PATH))
             board_after = _render_status_board(board_before, status_keys, status_after_rows)
@@ -3589,7 +3601,7 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         if skill == "po-intake":
             allowed = {"features", "personas", "business-rules"}
         elif skill == "ingest":
-            allowed = {*_INGEST_CREATE_ONLY, *GENERAL_PAGE_FOLDERS, "technical-design"}
+            allowed = {*_INGEST_CREATE_ONLY, *GENERAL_PAGE_FOLDERS, "technical-design", "incidents"}
         elif skill == "design-intake":
             allowed = {"features", "design"}
         elif skill in {"po-clarify", "design-clarify", "dev-clarify", "ask"}:
@@ -3699,7 +3711,8 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         elif skill == "ingest":
             # A page of a create-only kind is compared with every existing page of its kind; a replaced page is read above.
             written = {PurePosixPath(path).parts[2] for path in supplied if path.startswith("knowledge/wiki/") and len(PurePosixPath(path).parts) == 4}
-            for folder in _INGEST_CREATE_ONLY:
+            # An incident's ID is checked against every incident page too, though ingest may update an incident within its record rules.
+            for folder in (*_INGEST_CREATE_ONLY, "incidents"):
                 directory = self._safe_path(f"knowledge/wiki/{folder}", allow_missing=True)
                 if folder in written and directory.is_dir():
                     for path in directory.rglob("*.md"):
@@ -4100,6 +4113,8 @@ class BoardService(QaActionsMixin, BugActionsMixin):
                 self._validate_decision(relative, content, before.get(relative), supplied, before)
             elif is_bug_path(relative):
                 self._validate_bug_page(relative, content, before.get(relative), supplied)
+            elif is_incident_path(relative):
+                self._validate_incident_page(relative, content, before.get(relative), supplied, moves)
             elif general_page_kind(relative.removeprefix("knowledge/wiki/")) is not None:
                 self._validate_general_page(relative, content)
             elif not relative.startswith("knowledge/wiki/features/") and not relative.startswith("knowledge/intake/"):
@@ -7546,8 +7561,7 @@ class BoardService(QaActionsMixin, BugActionsMixin):
                     before_rows = write["merge"]["expected_rows"]
                     kept = {key: row for key, row in before_rows.items() if row is not None}
                     if write["role"] == "status-board":
-                        absent = {key.casefold() for key, row in before_rows.items() if row is None}
-                        current = "".join(line for line in current.splitlines(keepends=True) if not ((match := _STATUS_ROW.match(line.rstrip("\r\n"))) and match.group(1).casefold() in absent))
+                        current = _render_status_board(current, {}, {key: None for key, row in before_rows.items() if row is None})
                     else:
                         current = remove_index_lines(current, [key for key, row in before_rows.items() if row is None])
                     content = self._render_managed(write["role"], current, {}, kept)
@@ -8101,7 +8115,9 @@ def _validate_no_placeholders(body: str, relative: str) -> None:
         raise BoardError("template_placeholder", f"`{relative}` contains unresolved template placeholder text.", 409)
 
 
-def _status_row(frontmatter: Mapping[str, Any], body: str = "", model: WorkspaceModel | None = None) -> dict[str, str]:
+def _status_row(frontmatter: Mapping[str, Any], body: str = "", model: WorkspaceModel | None = None, open_bugs: str = "—") -> dict[str, str]:
+    """The status-board row of a feature page. `open_bugs` is the `Open bugs` cell, which the bug pages decide (CONTRACTS 8.2)."""
+
     feature_id = frontmatter.get("id")
     title = frontmatter.get("title")
     status = frontmatter.get("status")
@@ -8115,10 +8131,9 @@ def _status_row(frontmatter: Mapping[str, Any], body: str = "", model: Workspace
         "status": status.strip(),
         "owner": owner.strip(),
         "advisory_review": advisory.strip(),
-        # `Design tracks` and `Open bugs` are written as `—` until the packages that fill them land (CONTRACTS 8.2).
-        "design_tracks": "—",
+        "design_tracks": design_tracks_text(frontmatter),
         "app_stages": app_stages_text(status.strip(), _scope_of(frontmatter) or [], body, model),
-        "open_bugs": "—",
+        "open_bugs": open_bugs,
     }
 
 
@@ -8142,33 +8157,132 @@ def _format_status_row(row: Mapping[str, str]) -> str:
     )
 
 
-def _render_status_board(content: str, expected: Mapping[str, Any], after: Mapping[str, Mapping[str, str]]) -> str:
+def _line_ending(line: str, newline: str = "") -> str:
+    return "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else newline
+
+
+def _render_view_rows(
+    lines: list[str],
+    newline: str,
+    *,
+    heading: str,
+    columns: tuple[str, ...],
+    rows: Mapping[str, Mapping[str, str] | None],
+    format_row: Callable[[Mapping[str, str]], str],
+    sort_key: Callable[[str], Any],
+) -> list[str]:
+    """Set, add and remove the rows of the Bugs or Operations table, creating the table at the end of the file when it has none.
+
+    `rows` maps a row key (a bug ID or an app ID) to its new row, or to ``None`` for a row that leaves the table. A row the
+    table already holds keeps its place; a new row goes before the first row that sorts after it.
+    """
+
+    span = _table_span(lines, columns)
+    if span is None:
+        added = [format_row(row) for _key, row in sorted(rows.items(), key=lambda item: sort_key(item[0])) if row is not None]
+        if not added:
+            return lines
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] += newline
+        if lines and lines[-1].strip():
+            lines.append(newline)
+        lines.extend(line + newline for line in table_text(heading, columns, added, newline).split(newline)[:-1])
+        return lines
+    start, end = span
+    entries: list[tuple[str, str]] = []
+    for index in range(start, end):
+        cells = [cell.strip() for cell in lines[index].strip().strip("|").split("|")]
+        key = cells[0] if cells else ""
+        if key in rows:
+            row = rows[key]
+            if row is not None:
+                entries.append((key, format_row(row) + _line_ending(lines[index], newline)))
+            continue
+        entries.append((key, lines[index]))
+    present = {key for key, _line in entries}
+    for key, row in sorted(rows.items(), key=lambda item: sort_key(item[0])):
+        if row is None or key in present:
+            continue
+        position = next((index for index, (other, _line) in enumerate(entries) if sort_key(other) > sort_key(key)), len(entries))
+        if position == len(entries) and entries and not entries[-1][1].endswith("\n"):
+            entries[-1] = (entries[-1][0], entries[-1][1] + newline)
+        entries.insert(position, (key, format_row(row) + newline))
+    if entries and not entries[-1][1].endswith("\n") and end < len(lines):
+        entries[-1] = (entries[-1][0], entries[-1][1] + newline)
+    lines[start:end] = [line for _key, line in entries]
+    return lines
+
+
+def _table_span(lines: list[str], columns: tuple[str, ...]) -> tuple[int, int] | None:
+    """The line range of the rows of the table whose header is `columns`, or ``None`` when the file has no such table."""
+
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        if tuple(cell.strip() for cell in stripped.strip("|").split("|")) != columns:
+            continue
+        if index + 1 >= len(lines) or "---" not in lines[index + 1]:
+            continue
+        end = index + 2
+        while end < len(lines) and lines[end].lstrip().startswith("|"):
+            end += 1
+        return index + 2, end
+    return None
+
+
+def _app_sort_key(app_id: str) -> str:
+    return app_id.casefold()
+
+
+def _render_status_board(content: str, expected: Mapping[str, Any], after: Mapping[str, Mapping[str, str] | None]) -> str:
+    """The status board with the given rows set. A key is a feature ID, a bug ID or `app:<id>`; a ``None`` row leaves the board."""
+
     lines = content.splitlines(keepends=True)
     newline = "\r\n" if "\r\n" in content else "\n"
     header_index = next((i for i, line in enumerate(lines) if _STATUS_HEADER.match(line.rstrip("\r\n"))), None)
     if header_index is None or header_index + 1 >= len(lines) or "---" not in lines[header_index + 1]:
         raise BoardError("invalid_status_board", "knowledge/wiki/status-board.md must contain the canonical feature status table.", 409)
+    feature_after = {key: row for key, row in after.items() if row_kind(key) == "feature"}
+    bug_after = {key: row for key, row in after.items() if row_kind(key) == "bug"}
+    app_after = {key[len(APP_KEY_PREFIX):]: row for key, row in after.items() if row_kind(key) == "operation"}
     end = header_index + 2
     while end < len(lines) and lines[end].lstrip().startswith("|"):
         end += 1
-    wanted = {key.casefold(): row for key, row in after.items()}
+    wanted = {key.casefold(): row for key, row in feature_after.items()}
     found: set[str] = set()
+    removed: list[int] = []
     for index in range(header_index + 2, end):
         match = _STATUS_ROW.match(lines[index].rstrip("\r\n"))
         if not match:
             continue
         key = match.group(1).casefold()
         if key in wanted:
-            ending = "\r\n" if lines[index].endswith("\r\n") else "\n" if lines[index].endswith("\n") else ""
-            lines[index] = _format_status_row(wanted[key]) + ending
+            row = wanted[key]
+            if row is None:
+                removed.append(index)
+            else:
+                lines[index] = _format_status_row(row) + _line_ending(lines[index])
             found.add(key)
-    missing = [row for key, row in wanted.items() if key not in found]
+    missing = [row for key, row in wanted.items() if key not in found and row is not None]
     if missing:
         insertion = end
         if insertion and not lines[insertion - 1].endswith("\n"):
             lines[insertion - 1] += newline
         for offset, row in enumerate(sorted(missing, key=lambda item: int(re.search(r"\d+", item["id"]).group(0)))):
             lines.insert(insertion + offset, _format_status_row(row) + newline)
+    for index in reversed(removed):
+        del lines[index]
+    if bug_after:
+        lines = _render_view_rows(
+            lines, newline, heading=BUGS_HEADING, columns=BUG_TABLE_COLUMNS, rows=bug_after, format_row=format_bug_row,
+            sort_key=lambda key: (int(re.search(r"\d+", key).group(0)) if re.search(r"\d+", key) else 0, key),
+        )
+    if app_after:
+        lines = _render_view_rows(
+            lines, newline, heading=OPERATIONS_HEADING, columns=OPERATIONS_TABLE_COLUMNS, rows=app_after,
+            format_row=format_operation_row, sort_key=_app_sort_key,
+        )
     return "".join(lines)
 
 

@@ -18,6 +18,7 @@ import yaml
 from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.wiki_model import criterion_revision, read_feature_evidence
 from tests.board_approval import apply_preview, human_with_roles
+from tests.wiki_files import refresh_status_board
 from tests.test_board_service import (
     _journey_requirement_page,
     _read_revisions,
@@ -147,6 +148,9 @@ class QaBoard(_Workspace):
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(text.encode("utf-8"))
+        if relative.startswith(("knowledge/wiki/bugs/", "knowledge/wiki/incidents/", "knowledge/wiki/releases/")):
+            # A page planted straight into the wiki also changes the status board, which the service would have written.
+            refresh_status_board(self.root)
 
     def feature(self) -> tuple[dict, str]:
         return _parse_markdown(self.read(FEATURE))

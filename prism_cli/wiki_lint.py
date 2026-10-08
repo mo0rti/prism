@@ -20,6 +20,16 @@ from prism_cli.app_model import (
     retired_in_scope_message,
 )
 from prism_cli.wiki_bugs import BugFinding, blocks, lint_bugs, read_bug_pages
+from prism_cli.wiki_incidents import IncidentFinding, lint_incidents, read_incident_pages
+from prism_cli.wiki_operations import (
+    bug_board_row,
+    design_tracks_text,
+    ids_text,
+    open_bugs_of_feature,
+    operation_row,
+    operation_rows_match,
+    read_board_views,
+)
 from prism_cli.wiki_model import (
     APP_STAGE_ORDER,
     FEATURE_FRONTMATTER_FIELDS,
@@ -64,6 +74,7 @@ from prism_cli.wiki_model import (
     parse_revalidation,
     read_feature_pages,
     read_app_requirement_pages,
+    read_release_records,
     read_wiki_settings,
     read_wiki_pages,
     section_text,
@@ -143,7 +154,7 @@ _NON_SOURCE_FILENAMES = {
 _SCHEMA_VERSION_FILES = ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md")
 SUPPORTED_SCHEMA_VERSION = 1
 # A dated record keeps its own date field; every other page kind carries none.
-_RECORD_DATE_FIELDS = {"decisions": "date"}
+_RECORD_DATE_FIELDS = {"decisions": "date", "incidents": "date"}
 # The five evidence labels a current-state page uses as a bold run-in label.
 EVIDENCE_LABELS = ("Decided", "Observed", "Proposed", "Assumed", "Unknown")
 # A claim that rests on evidence must link it.
@@ -163,6 +174,7 @@ _FRONTMATTER_PAGE_DIRECTORIES = {
     "bugs",
     "business-rules",
     "decisions",
+    "incidents",
     "design",
     "personas",
     "technical-design",
@@ -381,6 +393,7 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                 f"Requirement refers to missing feature `{requirement.feature_id}`.", requirement.feature_id))
 
     diagnostics.extend(_lint_bug_pages(wiki_root, feature_pages, model))
+    diagnostics.extend(_lint_incident_pages(wiki_root, feature_pages, model))
 
     for feature in feature_pages:
         if feature.status == "released":
@@ -424,6 +437,8 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
         board_rows, board_errors = parse_status_board_rows(board_path)
         for message in board_errors:
             diagnostics.append(_diag("malformed-status-board", "error", board_path, message))
+        bug_pages = read_bug_pages(wiki_root)
+        board_bug_rows = [row for bug in bug_pages if (row := bug_board_row(bug)) is not None]
         if not board_errors:
             board_feature_ids = {normalize_feature_id(row.feature_id) for row in board_rows}
             for feature_id, feature in features_by_id.items():
@@ -480,7 +495,28 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                         row.feature_id,
                     )
                 )
-            # `Design tracks` and `Open bugs` are not compared with the pages until their packages fill them in.
+            expected_tracks = design_tracks_text(feature.page.frontmatter)
+            if row.design_tracks != expected_tracks:
+                diagnostics.append(
+                    _diag(
+                        "status-board-frontmatter-drift",
+                        "error",
+                        board_path,
+                        f"status-board.md design tracks for `{row.feature_id}` are `{row.design_tracks}` but the feature's front matter says `{expected_tracks}`.",
+                        row.feature_id,
+                    )
+                )
+            expected_bugs = ids_text(open_bugs_of_feature(feature.feature_id, board_bug_rows))
+            if row.open_bugs != expected_bugs:
+                diagnostics.append(
+                    _diag(
+                        "status-board-frontmatter-drift",
+                        "error",
+                        board_path,
+                        f"status-board.md open bugs for `{row.feature_id}` are `{row.open_bugs}` but the bug pages say `{expected_bugs}`.",
+                        row.feature_id,
+                    )
+                )
             expected_stages = app_stages_text(feature.status, feature.apps, feature.page.body, model)
             if row.app_stages != expected_stages:
                 diagnostics.append(
@@ -492,6 +528,8 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                         row.feature_id,
                     )
                 )
+        if not board_errors:
+            diagnostics.extend(_lint_board_views(board_path, features_by_id, bug_pages, board_bug_rows, wiki_root, model))
 
     diagnostics.sort(key=_diagnostic_order)
     return WikiLintResult(root=root, diagnostics=diagnostics, feature_count=len(feature_pages), information=sorted(information, key=_diagnostic_order))
@@ -499,6 +537,101 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
 
 def _bug_diagnostic(finding: BugFinding) -> WikiDiagnostic:
     return _diag(finding.code, finding.severity, finding.path, finding.message, finding.feature_id)
+
+
+def _lint_board_views(
+    board_path: Path,
+    features_by_id: dict[str, FeaturePage],
+    bug_pages: list[Any],
+    bug_rows: list[dict[str, str]],
+    wiki_root: Path,
+    model: WorkspaceModel,
+) -> list[WikiDiagnostic]:
+    """The Bugs and Operations tables of the status board against the pages (CONTRACTS 8.2).
+
+    A table the file lacks is compared as empty: a board that lists nothing needs no table. The `Delivery target` cell is
+    not compared, because it comes from `SETTINGS.md`, which a person edits by hand; the next write that changes a row refreshes it.
+    These findings carry no feature ID, so they never gate the action of an unrelated feature.
+    """
+
+    try:
+        text = board_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return []
+    views = read_board_views(text)
+    diagnostics: list[WikiDiagnostic] = [_diag("malformed-status-board", "error", board_path, message) for message in views.errors]
+
+    def drift(message: str) -> None:
+        diagnostics.append(_diag("status-board-frontmatter-drift", "error", board_path, message))
+
+    expected_bugs = {row["id"]: row for row in bug_rows}
+    for bug_id, expected in sorted(expected_bugs.items()):
+        actual = views.bugs.get(bug_id)
+        if actual is None:
+            drift(f"status-board.md has no Bugs row for `{bug_id}`, which is `{expected['status']}`.")
+        elif actual != expected:
+            changed = [key for key in expected if actual.get(key) != expected[key]]
+            drift(f"status-board.md Bugs row of `{bug_id}` differs from the bug page in {', '.join(f'`{key}`' for key in changed)}.")
+    for bug_id in sorted(set(views.bugs) - set(expected_bugs)):
+        drift(f"status-board.md lists `{bug_id}` under Bugs, but no bug page of that ID is open.")
+
+    stage_cells = {
+        feature.feature_id: app_stages_text(feature.status, feature.apps, feature.page.body, model) for feature in features_by_id.values()
+    }
+    incidents = read_incident_pages(wiki_root)
+    releases = read_release_records(wiki_root)
+    app_ids = [app.id for app in model.apps]
+    expected_operations = {
+        app: row
+        for app in app_ids
+        if (
+            row := operation_row(
+                app, delivery_target=None, feature_stage_cells=stage_cells, bug_rows=bug_rows, incidents=incidents, releases=releases
+            )
+        )
+        is not None
+    }
+    for app in sorted(expected_operations):
+        expected, actual = expected_operations[app], views.operations.get(app)
+        if actual is None:
+            drift(f"status-board.md has no Operations row for `{app}`, which has {_operation_reason(expected)}.")
+        elif not operation_rows_match(expected, actual):
+            changed = [key for key in expected if key != "delivery_target" and actual.get(key) != expected[key]]
+            drift(f"status-board.md Operations row of `{app}` differs from the pages in {', '.join(f'`{key}`' for key in changed)}.")
+    for app in sorted(set(views.operations) - set(expected_operations)):
+        drift(f"status-board.md lists `{app}` under Operations, but nothing is released, open or recorded for it.")
+    return diagnostics
+
+
+def _operation_reason(row: dict[str, str]) -> str:
+    parts = [
+        f"{label}"
+        for label, key in (
+            ("released features", "released_features"),
+            ("a release record", "latest_release"),
+            ("open bugs", "open_bugs"),
+            ("open incidents", "open_incidents"),
+        )
+        if row[key] != "—"
+    ]
+    return " and ".join(parts) or "something to show"
+
+
+def _incident_diagnostic(finding: IncidentFinding) -> WikiDiagnostic:
+    return _diag(finding.code, finding.severity, finding.path, finding.message)
+
+
+def _lint_incident_pages(wiki_root: Path, feature_pages: list[FeaturePage], model: WorkspaceModel) -> list[WikiDiagnostic]:
+    """CONTRACTS 6.2: the incident records. A finding names the incident's page and carries no feature ID."""
+
+    incidents = read_incident_pages(wiki_root)
+    if not incidents:
+        return []
+    release_ids = {record.release_id.casefold() for record in read_release_records(wiki_root)}
+    bug_ids = {bug.bug_id.casefold() for bug in read_bug_pages(wiki_root)}
+    feature_ids = {normalize_feature_id(feature.feature_id) for feature in feature_pages}
+    findings = lint_incidents(incidents, app_ids={app.id for app in model.apps}, release_ids=release_ids, bug_ids=bug_ids, feature_ids=feature_ids)
+    return [_incident_diagnostic(finding) for finding in findings]
 
 
 def _lint_bug_pages(wiki_root: Path, feature_pages: list[FeaturePage], model: WorkspaceModel) -> list[WikiDiagnostic]:
@@ -2046,6 +2179,7 @@ def _is_non_source_page(path: Path, wiki_root: Path) -> bool:
         "advisory",
         "api-contracts",
         "bugs",
+        "incidents",
         "business-rules",
         "decisions",
         "design",
