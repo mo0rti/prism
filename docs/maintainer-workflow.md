@@ -2,6 +2,36 @@
 
 Use this guide when changing the template itself rather than a generated project.
 
+## How the Source Directories Fit Together
+
+Four directories hold the sources of every generated workspace. Two are sources for the generated project's layers (`template/`, `packs/`), one is the source of the skills (`template-skills/`), and one is a generated reference (`golden/`).
+
+- **`template/`** is the workspace layer. Copier renders it once per workspace. It holds no app code: the wiki template (`knowledge/`), `AGENTS.md` and `CLAUDE.md`, `docs/`, `shared/` (the API contracts), the root `Taskfile.yml` and `docker-compose.yml`, `README.md` and the manifest `prism.workspace.yml`. Its agent skill folders (`.agents/`, `.claude/`, `.cursor/`) are generated.
+- **`packs/<stack>/`** is the app layer, one pack per stack (`spring-backend`, `nextjs-web`, `android-compose`, `ios-swiftui`, `python-agent-service`). Copier renders a pack once per app in the app list, at that app's path; every pack file sits under `{{ app_path }}/` except its CI workflow and its Cursor rule. `packs/versions.yml` is the one place every pinned version lives, and `packs/audit-allowlist.yml` lists the security advisories that have no fixed version.
+- **`template-skills/<name>/skill.md`** is the one source of every skill, command and Cursor rule. It is rendered into the skill folders of `template/`, and its workflow skills are packed with `template/knowledge/` into `prism_cli/assets/workflow-v1.json`, which `prism workflow install` uses for a project that was not generated from the template.
+- **`golden/`** is a generated workspace committed to the repository, one app of each stack, generated with `prism new` from `scripts/golden-answers.yml`. It shows a template change as a diff of generated files, and CI builds and tests its apps. It is not part of the published package.
+
+One `copier.yml` and one release tag cover both layers; the hidden question `prism_layer` chooses the layer. `prism new` renders the workspace layer and then each scaffolded app's pack, each from its own answers file, and `prism update` updates each layer the same way.
+
+```text
+template-skills/  --build-skill-layers.py-->    template/.agents, .claude, .cursor
+                  --build-workflow-assets.py--> prism_cli/assets/workflow-v1.json
+template/        (workspace layer) --+
+                                     +-- prism new --> a generated workspace
+packs/<stack>/   (one per app)     --+               (golden/ is one, committed)
+```
+
+| Directory | Role | Edit it? | Rebuilt by | Guarded by |
+|-----------|------|----------|-----------|-----------|
+| `template-skills/` | source | yes | nothing (it is the source) | `build-skill-layers.py --check` and its test |
+| `template/` (hand-written files) | source | yes | nothing | `validate-template.ps1` and the tests |
+| `template/.agents/`, `.claude/`, `.cursor/` | generated | no | `build-skill-layers.py` | `build-skill-layers.py --check` |
+| `packs/<stack>/` | source | yes | nothing | the pack tests and the pack CI jobs |
+| `prism_cli/assets/workflow-v1.json` | generated | no | `build-workflow-assets.py` | `build-workflow-assets.py --check` |
+| `golden/` | generated | no | `build-golden.py` | `build-golden.py --check` and the `golden-current` CI job |
+
+Edit only sources. After editing `template-skills/`, run `build-skill-layers.py`, then `build-workflow-assets.py` when a packaged workflow skill changed. After any change to `template/`, `packs/`, `template-skills/` or `packs/versions.yml`, run `build-golden.py` and commit `golden/` with the change. [Skill Sources](#skill-sources), [Golden Workspace](#golden-workspace) and [Recommended Maintainer Flow](#recommended-maintainer-flow) give the details.
+
 ## Template Structure
 
 ```text
