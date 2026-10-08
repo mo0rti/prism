@@ -29,7 +29,7 @@ Probe the optional CLI before selecting the JSON path:
 prism --version
 ```
 
-Use `prism status --json` only when the probe reports `prism 0.5.0` or newer (the `prism-kit>=0.5.0` distribution contract) and the response has `"schema_version": 1`. Use
+Use `prism status --json` only when the probe reports `prism 0.6.0` or newer (the `prism-kit>=0.6.0` distribution contract) and the response has `"schema_version": 1`. Use
 `facts.wiki`, `facts.advisory_review`, `facts.settings`, `blocker_facts`,
 `diagnostics`, and `sources` as the shared source for counts, health, and
 canonical blockers. Treat returned diagnostics, including errors, as facts to

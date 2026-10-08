@@ -235,7 +235,7 @@ class JsonContractTests(unittest.TestCase):
         for path in prompt_paths:
             with self.subTest(prompt=path.as_posix()):
                 text = path.read_text(encoding="utf-8")
-                self.assertIn("prism-kit>=0.5.0", text)
+                self.assertIn("prism-kit>=0.6.0", text)
                 self.assertIn("prism --version", text)
                 self.assertIn('"schema_version": 1', text)
                 self.assertIn("Fallback path", text)

@@ -1,6 +1,6 @@
 name: Release
 
-# Pushing a tag such as v0.5.0 builds the package once, smoke-tests the built wheel, publishes it to
+# Pushing a tag such as v0.6.0 builds the package once, smoke-tests the built wheel, publishes it to
 # TestPyPI, downloads it from there and compares it with the build, publishes the same files to PyPI and
 # creates the GitHub release. Publishing uses trusted publishing (OIDC); no token is stored.
 # The one-time owner setup is in docs/cli-release.md.
@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing release tag to publish, such as v0.5.0"
+        description: "Existing release tag to publish, such as v0.6.0"
         required: true
         type: string
       skip_testpypi:

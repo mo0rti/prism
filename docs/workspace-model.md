@@ -229,7 +229,7 @@ Each command also prints the manifest diff, a warning that the repository has no
 
 ```yaml
 schema_version: 2
-min_prism_cli_version: 0.5.0
+min_prism_cli_version: 0.6.0
 project:
   name: Acme knowledge
 repositories:
