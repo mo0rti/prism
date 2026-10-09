@@ -268,17 +268,67 @@ Then move into the generated project workflow:
    `knowledge/wiki/index.md` lists every page
 6. use the read/query layer before mutating lifecycle state
 
-The feature lifecycle has separate confirmation-gated actions. Use
-`$po-specify F-XXX` in Codex or `/po-specify F-XXX` in Claude Code to read one
-`raw` + `po` feature and prepare its complete structured draft. It carries
-supported facts forward and keeps unknowns as owned questions. A well-structured
-raw body may be verified and preserved; an incomplete one is authored before
-the status changes. After factual completeness, use `po-handoff` for
-`specified` + `po` -> `ready-for-design` + `designer`, then use `design-start`,
-`design-handoff`, `dev-start`, and `dev-done` for the confirmed downstream
-routes. Reopen shipped work with `feature-reopen F-XXX [specified|in-design|in-dev]`
-after impact review. Each action reads one exact source pair and leaves the
-feature, status board, and log unchanged when declined or cancelled.
+### Your first feature, end to end
+
+A feature runs the whole lifecycle: intake, specification, design, implementation, QA and
+release. Every stage has a role, and the board checks that the person who approves it holds
+that role. Register the people and the agent first. A team of one gives that person every
+role; a larger team gives each person the roles of their stage. Run the commands in the
+generated project folder:
+
+```bash
+prism board grant "Riley" --kind human --write --role po,designer,tech-lead,dev,qa,release --path .
+prism board grant "Coding agent" --kind agent --write --path .
+prism board serve . --port 8765
+```
+
+Each command prints the token once. An agent grant takes no role (`agent_role_forbidden`): the
+agent proposes, and a human who holds the role approves in the board. Roles are fixed for a
+grant's life; to change them, issue a new grant and revoke the old one with
+`prism board revoke`. If you want QA to be someone other than the developer, set
+`qa-separate-from-dev: true` in `knowledge/wiki/SETTINGS.md`: the board then refuses a QA
+approval from the grant that produced the delivery evidence. Then walk the feature through its
+stages:
+
+| Step | Who runs it | What happens |
+|---|---|---|
+| 1. `po-intake` on the dated brief folder | the agent; you confirm the preview in the agent | `F-001` exists as `raw` + `po`, with a row on the status board. |
+| 2. `po-specify F-001` | the agent proposes; a `po` approves in the board | `specified` + `po`: a structured body, criteria with IDs (`AC-1`) and the apps that verify them. |
+| 3. `po-handoff` | you, in the board: drag the card or use its action control | `ready-for-design`, owned by the design owner of the scope. |
+| 4. `design-start` (optional pickup) | you, in the board | `in-design`. |
+| 5. `tech-design-done`, and `design-ui-done` when an app has a UI | the agent proposes; the `tech-lead` and the `designer` approve | Each settles one design track; the technical design page and, for API work, the agreed API contract are written. |
+| 6. `design-handoff` | the agent proposes; the design owner approves | `ready-for-dev` + `dev`, with one requirement page per app. |
+| 7. `dev-start` (optional pickup) | you, in the board | `in-dev`. |
+| 8. `dev-done` for the apps you built | the agent proposes; a `dev` approves | Delivery evidence rows; once every app has one, `ready-for-qa` + `qa`. |
+| 9. `qa-verify`, then `qa-pass` | the agent proposes; a `qa` approves | QA rows against the delivered artifact; `in-qa`, then `ready-for-release` + `release`. |
+| 10. `release-done` | the agent proposes; a `release` approves | A Release row per app and the record `knowledge/wiki/releases/REL-001.md`; `released` + `none` once every app is released. |
+
+Ask the agent in plain words: "Use Prism's `po-specify` skill on F-001." A gated proposal waits
+in the board. Open **Proposals** in the board header, review the evidence and the exact changes,
+tick "I reviewed this change and approve it." and choose **Approve and apply**, or decline with
+a reason. The agent cannot apply a gated proposal itself (`approval_required`), and approval is
+accepted only in the browser session. The board's log entry names the approver, the roles they
+held and the agent they approved. An app of stack `other` needs a `delivery-targets` entry in
+`knowledge/wiki/SETTINGS.md` before `release-done` (`delivery_target_missing`); the other
+stacks have a default. The rest of the lifecycle works the same way:
+
+- a defect found in QA or in operation is a bug page (`ingest` creates it from a report,
+  `qa-verify` from a failed check); `bug-update` moves it; a bug that blocks an app stops its
+  pass and its release
+- a production incident is a record in `knowledge/wiki/incidents/`, written through `ingest`
+- a problem in the specification or the design goes back with `feature-reopen F-XXX
+  specified|in-design`; a released feature is reopened with the same command
+- `qa-fail` and `release-return-dev` send apps back to development and keep their evidence in
+  `## Evidence history`
+
+Declining or cancelling leaves the feature, the status board and the log unchanged. Check the
+result at any time:
+
+```bash
+prism wiki lint /path/to/generated-project
+prism wiki show F-001 /path/to/generated-project
+prism wiki owner qa /path/to/generated-project
+```
 
 The optional read-only preflight is:
 
@@ -286,22 +336,21 @@ The optional read-only preflight is:
 prism wiki transition-preflight F-XXX /path/to/generated-project --action po-handoff --json
 ```
 
-Use it only when its response explicitly identifies common envelope schema 1,
-the transition-preflight command facts, capability version 2 with the requested
-action's surface, transition version 1, and a consistent snapshot. A version
-string alone does not prove that surface; missing or unsupported
-capability falls back to direct wiki reads. The preflight and dashboard are
-copy-only, and the agent must reread the source before any confirmed write. The
-selected generated action file must contain its matching
-`<!-- prism:<command>-contract:v1 -->` marker; the other surface is optional.
-Refresh a selected file with a missing marker before using that action.
+Use it only when its response explicitly identifies common envelope schema 1, the
+transition-preflight command facts, capability version 3 with the requested action's surface,
+transition version 2, and a consistent snapshot. A version string alone does not prove that
+surface; missing or unsupported capability falls back to direct wiki reads. The preflight and
+dashboard are copy-only, and the agent must reread the source before any confirmed write. The
+selected generated action file must contain its matching `<!-- prism:<command>-contract:vN -->`
+marker (its version is part of the marker); the other surface is optional. Refresh a selected
+file with a missing marker before using that action.
 
-For a shipped feature, `dev-done` requires a current Delivery evidence row for
-each declared app with verifiable implementation and test references and
-release evidence or a delivery attestation (a commit or pull request alone does
-not prove shipment). A confirmed reopen archives the previous evidence, removes it from
-active readiness, and sets route-specific `revalidation` domains as described in
-the generated `knowledge/wiki/LIFECYCLE.md`.
+`dev-done` records, for each app it names, a Delivery evidence row with the artifact, the
+contract citation, the implementation and test references, and whether the evidence was checked
+or attested (a commit or pull request alone is an implementation reference, not shipment
+evidence). A return or a reopen archives the previous evidence in `## Evidence history`, removes
+it from active readiness and sets the `revalidation` domains described in the generated
+`knowledge/wiki/LIFECYCLE.md`.
 
 If you want the conceptual reason Prism works this way, read
 [prism-model.md](prism-model.md) before going deeper into the generated workflow.

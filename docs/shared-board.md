@@ -172,7 +172,7 @@ required unreadable source stops with a clear limitation instead of ignoring it.
 Agents read every `required_workspace_reads` path returned by `get_skill`, plus
 the operation's target, linked context and intake evidence, through the service.
 
-The board directly supports human `po-handoff`, `design-start` and `dev-start`, and `operation-repair` ([Repairing an abandoned operation](#repairing-an-abandoned-operation)). Through MCP, `preview_transition` accepts only a human participant: an agent that calls it gets `participant_kind_required`. `list_skills` and `get_skill` report, for every skill, `participant_kinds` and `write_tools` (which tool each kind may use) and add a "Direct human action" limitation to these three. An agent that needs one of them prepares it with `preview_skill` and the human's confirmation in the host, or asks the human to complete it in the board. Dragging and the action controls enter the same preview. The human reviews the evidence and exact changes, supplies the required review acknowledgement and any permitted PO advisory skip reason, then confirms. A blocked mapped drop explains the blockers with confirmation disabled. Specification, design handoff, Done and reopening continue through the existing agent skills. A gesture alone never moves canonical state or manufactures evidence.
+The board directly supports human `po-handoff`, `design-start` and `dev-start`, and `operation-repair` ([Repairing an abandoned operation](#repairing-an-abandoned-operation)). Through MCP, `preview_transition` accepts only a human participant: an agent that calls it gets `participant_kind_required`. `list_skills` and `get_skill` report, for every skill, `participant_kinds` and `write_tools` (which tool each kind may use) and add a "Direct human action" limitation to these three. An agent that needs one of them prepares it with `preview_skill` and the human's confirmation in the host, or asks the human to complete it in the board. Dragging and the action controls enter the same preview. The human reviews the evidence and exact changes, supplies the required review acknowledgement and any permitted PO advisory skip reason, then confirms. A blocked mapped drop explains the blockers with confirmation disabled. Every other lifecycle action (specification, the design tracks, the design handoff, delivery, QA, release, returns and reopening, bug updates) is proposed by an agent with `preview_skill` and approved by a human who holds the role of the action, as [Roles, proposals and approval](#roles-proposals-and-approval) describes. A gesture alone never moves canonical state or manufactures evidence.
 
 Direct human transitions preserve frontmatter values outside the action's scope,
 but serialize the complete YAML frontmatter block. Formatting, quoting and YAML
@@ -190,8 +190,8 @@ static and legacy boards retain their existing tool-specific copy behavior.
 Skill discovery exposes 34 complete canonical skills. Connected writes are
 available for `po-intake`, `design-intake`, `ingest`, `ask`, `po-clarify`, `design-clarify`,
 `dev-clarify`, `po-specify`, `po-handoff`, `design-start`, `design-ui-done`, `tech-design-done`, `design-handoff`,
-`dev-start`, `dev-done`, `qa-verify`, `qa-pass`, `qa-fail`, `release-done`, `bug-update`, `feature-reopen`, `feature-scope` and `verify-pages`. The three reopen routes are actions
-of `feature-reopen`. `feature-scope` is the explicit scope edit of one feature that is not `released`: it changes the `apps` list and the `## App scope` section together and may add `pending` requirement pages for the apps the scope gains, and nothing else; it is the way out of `app_retired_in_scope`, and it never adds a retired app. `verify-pages` records that current-state pages were checked against their
+`dev-start`, `dev-done`, `qa-verify`, `qa-pass`, `qa-fail`, `release-done`, `bug-update`, `feature-reopen`, `feature-scope` and `verify-pages`. The reopen routes and the returns from implementation and QA are actions
+of `feature-reopen`; the failed-release return, the rollback and the redeploy are forms of `release-done`. `feature-scope` is the explicit scope edit of one feature that is not `released`: it changes the `apps` list and the `## App scope` section together and may add `pending` requirement pages for the apps the scope gains, and nothing else; it is the way out of `app_retired_in_scope`, and it never adds a retired app. `verify-pages` records that current-state pages were checked against their
 sources and changes no page: its `preview_skill` call has an empty `changes` list and names each
 verified page in `read_revisions` with the digest `read_workspace` returned for it, and the preview
 writes one `verify` entry to `log.md` (`prism wiki verify` is the direct path). Applying it is refused
@@ -220,24 +220,25 @@ every page the board writes, and a preview requires the participant's read of `i
 reads it again before each preview. A workspace needs
 both files, besides `SCHEMA.md`, `LIFECYCLE.md` and `ACTIONS.md`, or the board stays read-only.
 
-### Intake, dev answers and delivery evidence
+### Intake, clarification, delivery evidence and the design contract
 
 - **`po-intake` writes `raw` features.** Every new feature is `raw` + `po`, with its
   Summary, User story, Acceptance criteria, Open questions and App scope. A
   proposal that creates a feature in another status is rejected with
   `invalid_intake_feature`. `po-specify` completes the page and moves it to
-  `specified`: Design, Related features, API surface, Board review summary and
-  Post-ship notes each get one line of supported content or an explicit statement
+  `specified`: Design, Related features, API surface and Board review summary
+  each get one line of supported content or an explicit statement
   such as `Not started.` (`None.` under API surface unless an API change is stated; any other
-  API surface text needs an API contract page before `dev-start`, which `design-handoff` creates, and open questions stay in the question table), and `po-handoff` accepts only
+  API surface text needs an API contract page before `dev-start`, which `tech-design-done` creates, and open questions stay in the question table), the four evidence sections
+  (Delivery evidence, QA verification, Release, Evidence history) exist and stay empty, every acceptance criterion
+  carries its ID (`AC-1`) and the apps that verify it, and `po-handoff` accepts only
   `specified`. A page that leaves one of those sections empty is rejected with
-  `required_section_missing`, which names the sections. Features that were
-  `specified` before stay valid.
+  `required_section_missing`, which names the sections.
 - **`ingest` writes any page kind, for any role.** `po-intake` and `design-intake` stay the
   role-specific entry points for features and design pages; `ingest` processes one pending
   folder into a topic, research page, plan, `knowledge/wiki/direction.md`,
-  `knowledge/wiki/roadmap.md`, persona, business rule, decision (ADR) or new feature. The board
-  has participants, not roles, so any writable agent may use it. Its validator is built on the
+  `knowledge/wiki/roadmap.md`, persona, business rule, decision (ADR) or new feature. It is
+  ungated: any writable grant applies it after the human confirms the preview in the host. Its validator is built on the
   intake validators: the moved folder, its `MANIFEST.md` (every written page listed by path and
   canonical ID, rejected otherwise with `intake_manifest_required`, `intake_manifest_scope` or
   `intake_manifest_incomplete`), the processed-source links and the quarantine rules are
@@ -278,34 +279,55 @@ both files, besides `SCHEMA.md`, `LIFECYCLE.md` and `ACTIONS.md`, or the board s
   answer it resolves in the same proposal. Open dev-owned questions block
   `dev-start` and `dev-done`.
 - **`dev-done` takes the delivery evidence in its proposal.** The agent asks the
-  developer for the implementation, test and release references of every declared
-  app, or reads them from the page, and writes them as the `## Delivery
-  evidence` table of the proposed feature page. The preview shows the evidence rows
-  with the status change, so nothing has to be edited by hand first. A table with no
-  app rows is rejected with `delivery_evidence_required`; an invalid row, a
-  placeholder cell, a duplicate or an undeclared app with
-  `delivery_evidence_invalid`; a `Release` cell that is neither release evidence
-  (`release:`, `tag:` or `deployment:` and a URL or workspace path) nor a delivery
-  attestation (`attested by <Name>:` and a URL or path) with
-  `release_evidence_required`: a commit or pull request proves which code changed,
-  not that it shipped. A reference the agent cannot check is recorded in the
-  proposed Post-ship notes as the developer's attestation. `dev-done` stays an agent
-  skill: the board offers no direct human `dev-done`.
-- **`design-handoff` creates the API contract.** When the feature's API surface declares
+  developer for the artifact, contract, implementation and test references of every app
+  it delivers, or reads them from the page, and writes them as rows of the `## Delivery
+  evidence` table of the proposed feature page: `App | Artifact | Contract | Implementation
+  | Tests | Basis`. The preview shows the rows with the status change, so nothing has to
+  be edited by hand first. A proposal that adds no row is rejected with
+  `delivery_evidence_required`; a placeholder cell, a missing app or a duplicate app with
+  `delivery_evidence_invalid`; an artifact that is not `version:`, `build:`, `image:`,
+  `package:` or `commit:` with its form with `artifact_reference_invalid`; a basis other
+  than `checked` or `attested` with `basis_invalid`; a contract cell that is not the
+  current citation with `contract_binding_stale`. A reference the agent cannot check is
+  `attested`: the approving human vouches for it, and the agent never invents it. The
+  feature moves to the minimum of its app stages, so it reaches `ready-for-qa` once every
+  active app has a row. `dev-done` is gated (`dev`): the board offers no direct human
+  `dev-done`.
+- **`tech-design-done` creates the API contract.** When the feature's API surface declares
   API work (any text other than an empty section or a plain statement that there is none,
   such as `None.`) and no contract covers the feature yet, the proposal must add
   `knowledge/wiki/api-contracts/F-XXX.md` as a new page with `feature-id`, `version: 1`,
   `status: agreed` and the sections Endpoints, Data models, Authentication requirements
   and Notes; the human confirming the preview is the agreement, and `dev-start` then
-  finds an agreed contract. A page is rejected for another feature, a path other than
+  finds an agreed contract. A `design-handoff` that settles the technical track does the same.
+  A page is rejected for another feature, a path other than
   `F-XXX.md`, a status other than `agreed`, a feature without declared API work, or a
-  feature that an existing or linked contract already covers; the handoff never rewrites
-  an existing contract. The page is written only from the API surface: each endpoint is a
+  feature that an existing or linked contract already covers; a contract changes only as a
+  revision in design (`version` plus one, `contract_revision_required`). The page is written only from the API surface: each endpoint is a
   `METHOD /path` line, every path matches a path the API surface names (when it names none,
   each endpoint needs a resource word the API surface uses), and every data model is named
   by the API surface or by a listed endpoint. This is a structural check; the reviewer still
   confirms that the contract says what the API surface means. A declared API surface with no
   page is rejected with `api_contract_required`.
+- **`design-ui-done` and `tech-design-done` settle the design tracks.** Each writes only the
+  keys and pages of its own track (`track_scope`); a settled track whose pages change goes back
+  to `pending` (`track_reset_required`); from `ready-for-dev` on the track pages are locked
+  (`track_page_locked`). `design-handoff` needs both tracks settled.
+- **`qa-verify`, `qa-pass` and `qa-fail` record QA.** QA rows are checked against the delivered
+  artifact, the criterion revisions, the attempt and the environment (`qa_artifact_mismatch`,
+  `criterion_revision_stale`, `qa_attempt_mismatch`, `environment_unknown`). `qa-pass` adds a
+  `pending` Release row for each app it passes, may carry the QA rows still missing, and is
+  refused while a bug blocks the app (`open_bug_blocks_qa`). `qa-fail` archives the delivery, QA
+  and Release rows of the apps it returns in `## Evidence history`. A defect found in QA is a
+  new bug page in the same proposal.
+- **`release-done` records a release.** It settles the Release rows, ships the verified bugs
+  and writes one release record under `knowledge/wiki/releases/`; the board allocates the
+  record number under its lock (`release_sequence_invalid`). The record snapshots the API
+  contract each delivered row cites. `release-return-dev`, `release-rollback` and
+  `release-redeploy` are forms of the same skill.
+- **`bug-update` changes one bug page** with one action of the bug table (`one_bug_required`,
+  `bug_frontmatter_scope`). A bug page is created by a QA action or by `ingest`, never by
+  `bug-update`.
 
 A transition changes the lifecycle fields of the feature's front matter (`status` and `owner`, and the advisory and revalidation fields where the action allows it) and writes no date, because pages carry none. It updates the feature's row in `status-board.md`, which has no date column. Every apply appends one entry to `knowledge/wiki/log.md` in the log format that `SCHEMA.md` defines. A `design-start` by a participant named Riley wrote:
 
@@ -378,25 +400,25 @@ Only short excerpts of workspace text appear in an error.
 | `supersession_incomplete` | `path`. A new decision's `supersedes` needs the existing old ADR in the proposal with `status: superseded` and `superseded-by` naming the new one, and the reverse. |
 | `stale_status_row`, `stale_index_entry` (409) at `apply` | A status board row (of a feature, a bug or an app), or the index line of a page, changed after the preview. Nothing was written: preview again. |
 | `duplicate_status_row`, `duplicate_index_entry` (409) | A feature has more than one row in `status-board.md`, or a page more than one line in `index.md`. Remove the duplicates, then preview again. |
-| `invalid_status_board` (409) | `status-board.md` lacks the canonical `\| ID \| Feature \| Status \| Owner \| Board Review \|` table. |
-| `required_section_missing` | For `po-specify`: `path` and `sections`, the empty sections to fill. The message gives a line to write under each. |
-| `clarify_stage_unavailable` | `path` and `status` (`done`): `dev-clarify` does not change a done feature; reopen it first. |
+| `invalid_status_board` (409) | `status-board.md` lacks the canonical feature table `\| ID \| Feature \| Status \| Owner \| Board Review \| Design tracks \| App stages \| Open bugs \|`. |
+| `required_section_missing` | For `po-specify`: `path` and `sections`, the empty sections to fill (Design, Related features, API surface, Board review summary) or the missing evidence sections (Delivery evidence, QA verification, Release, Evidence history, which exist and stay empty). The message gives a line to write under each. |
+| `clarify_stage_unavailable` | `path`, `status` and the reason. A clarify skill does not change what the stage forbids: App scope from `ready-for-dev` on, a criterion of an app that is `ready-for-release` or `released`, the API surface once an app is delivered, or a `released` feature. Use a return route, then clarify. |
 | `api_contract_required` | `path` (the contract page to add), `feature_id`, `status` (`agreed`) and `sections` (the four required sections). |
 | `api_contract_not_applicable`, `api_contract_exists` | `path` and `feature_id`. `api_contract_exists` for a second contract also lists the `existing` pages. |
 | `api_contract_initial_status` | `path`, `status` and `expected_status` (`agreed`). |
 | `api_contract_untraceable` | `path`, `feature_id` and `endpoints` (the `METHOD /normalized/path` entries that the API surface does not support) or `models` (the data models that neither the API surface nor an endpoint names). |
-| `delivery_evidence_required`, `delivery_evidence_invalid` | `path`, `apps` (the declared apps), `missing_apps` and `problems` (up to six parse problems). The message shows the row to add: `\| app \| implementation reference \| test command and result \| release: URL of the release or deployment record \|`. |
-| `release_evidence_required` | `path`, `apps`, `missing_apps` and `problems`: each names the app whose `Release` cell is not release evidence (`release:`, `tag:` or `deployment:` and a URL or workspace path) or a delivery attestation (`attested by <Name>:` and a URL or path). A bare commit SHA, a pull-request or merge-request URL, `merged`, a branch name and free text are rejected. |
+| `delivery_evidence_required`, `delivery_evidence_invalid` | `path`, `apps` (the apps of the scope), `table_columns` and `problems` (up to six parse problems). `dev-done` adds no row to `## Delivery evidence` for an app (`delivery_evidence_required`), or a new row has a placeholder cell, a missing app or a duplicate app (`delivery_evidence_invalid`). The message shows the cells a row needs. |
 | `app_retired` | `apps`, `retired_apps` and `board_apps`. A new feature, or an edit that adds an app to a feature's scope, names an app that has been retired. Name an active app. |
-| `app_retired_in_scope` | `feature_id`, `apps` and `retired_apps`. A feature before `done` still lists a retired app, so no lifecycle action runs until its `apps` is edited explicitly; retirement never changes scope by itself. |
+| `app_retired_in_scope` | `feature_id`, `apps` and `retired_apps`. A feature before `released` still lists a retired app, so no lifecycle action runs until its `apps` is edited explicitly; retirement never changes scope by itself. |
 | `api_surface_without_api_app` | `feature_id`, `apps` and `board_apps`. The `design-handoff`, `dev-start` or `dev-done` proposal's feature declares API work in `## API surface`, but no active app in its `apps` serves an API (`serves-api`; `unknown` counts as serving one). |
 | `missing_read_revisions` | `paths` (the sources to read, as many as fit), `total` (how many are missing) and `read_with` (`read_workspace`). A required source has neither a digest in `read_revisions` nor a read by this participant. Read those paths with `read_workspace` and preview again. |
 | `read_digest_mismatch`, `stale_read_revision` | `path`, `supplied` (the digest you sent or the one recorded from your read, shortened) and `expected` (the file's current digest). `read_digest_mismatch` means the board never returned the digest you sent for that file, so it is mistyped or copied wrongly; leave `read_revisions` out or copy it from `read_workspace` exactly. `stale_read_revision` means the board returned that digest and the file has changed since; read it again and review the change. |
 | `invalid_feature_output` | For an app outside the board's scope: `apps` (the declared ones) and `board_apps` (the IDs of the board's apps); `discover` lists the apps under `board.apps`. A board with no apps rejects every feature scope and says to register an app with `prism app add`. |
 | `lifecycle_action_required` | For a status or owner change that the skill does not perform: `path`, `skill`, `from` and `to` (status and owner pairs). A clarify skill never changes either. |
 | `new_question_must_be_open` | `path`, `question` (the number that is not in the current table) and `existing_questions`. A question that is not in the table is added with `ask` before it is answered. |
-| `impact_review_required`, `reopen_invalidation_mismatch`, `reopen_artifact_missing` | `label` for a missing or too short reopen bullet; `path`, `from` and `to` for a page whose `knowledge/wiki/...: done -> in-progress` entry is not under `- Requirement/API invalidations:`; `path` for a page that `- Affected artifacts:` does not name. `knowledge/wiki/features/_FORMAT.md` shows the layout. |
-| `delivery_evidence_not_archived` | `path`, `label` (`Prior completion/release evidence`) and `missing_row`, the first prior delivery-evidence row the reopen record does not retain verbatim. Put the rows on the `- Prior completion/release evidence:` line or on the lines below it, as a table or a list, before the next `- Label:` bullet or heading; spaces around `|` and letter case do not matter. `knowledge/wiki/features/_FORMAT.md` shows the layout. |
+| `impact_review_required`, `reopen_invalidation_mismatch`, `reopen_app_scope` | A return or reopen appends one `## Evidence history` entry (`### <preview day> - <action>`): `label` for a missing or too short bullet (`- Reason:`, `- Affected apps:`, `- Affected tracks:`, `- Archived evidence:`, `- Reaffirmed evidence:`, `- Requirement/API invalidations:`, `- Linked bugs:`); `path`, `from` and `to` for a page whose `knowledge/wiki/...: done -> in-progress` entry does not match the write. `knowledge/wiki/features/_FORMAT.md` shows the layout. |
+| `evidence_not_archived`, `evidence_still_active`, `history_not_append_only`, `history_entry_required` | `path`, `label` and `missing_row`, the first removed evidence row the entry does not copy verbatim. Every row that leaves an active table is copied under `- Archived evidence:` prefixed by its section name, and earlier entries stay as they were. `knowledge/wiki/features/_FORMAT.md` shows the layout. |
+| The lifecycle codes of design, QA, bugs, release, returns and incidents | `details` name the `path`, the `app` or `item` and the offending rows or fields. The cause and fix of every code are in [Troubleshooting](troubleshooting.md#lifecycle-codes-by-stage). |
 
 ### Retrying a rejected proposal
 
@@ -453,7 +475,7 @@ A lifecycle action is **gated** when the lifecycle registry names the roles its 
 | 12 | `separation_required`, `separation_unverifiable` | 403, 409 | The approver is one of the excluded approvers of the evidence being verified, or the journal has no matching producing operation. |
 | 13 | the action's own codes | | The action's prerequisites. |
 
-Grant and state errors: `invalid_role`, `agent_role_forbidden` and `role_requires_write` (400) refuse a grant before anything is stored; `unsupported_board_state` (409) refuses a state database from before roles; `unresolved_operations` (409) refuses `state reset`; `action_unavailable` (409) refuses an action whose package has not landed (`discover` lists it with `available: false` and an `unavailable_reason`).
+Grant and state errors: `invalid_role`, `agent_role_forbidden` and `role_requires_write` (400) refuse a grant before anything is stored; `unsupported_board_state` (409) refuses a state database from before roles; `unresolved_operations` (409) refuses `state reset`; `action_unavailable` (409) refuses an action that this Prism version does not provide (`discover` lists it with `available: false` and an `unavailable_reason`).
 
 **Recovery of a gated operation.** The operation's owner is its approver. The owner, or any writable human who satisfies the operation's predicate, sees it in `discover.pending_operations` and through `operation`; everyone else gets `operation_not_found`. A pending retry by the approver and a recovery check the grant, kind, predicate and session again, and the current policy. A recovery by someone other than the approver, or after the policy changed, needs a fresh `review_revision` from `operation` (`stale_recovery_review` when it is outdated); a relevant file outside the operation's own writes that changed since the intent is a conflict, as before. A revoked approver's operation stays pending: another human who satisfies the predicate recovers it after the renewed review, and a writable human who sees it can abandon it.
 
@@ -469,7 +491,7 @@ A human previews `operation-repair` for an abandoned operation with `preview_tra
 
 ## MCP tool contract (version 4)
 
-`discover` and `list_skills` report `"mcp_contract": 4`. Every tool result is at most 48,000 characters, measured as the compact JSON of the JSON-RPC `result` object. The full result is returned once, as `structuredContent`; the text block is a one-line summary of at most 500 characters and is not a copy of the data. A client reads `structuredContent`.
+`discover` and `list_skills` report `"mcp_contract": 4`. The server exposes 16 tools: `discover`, `list_skills`, `get_skill`, `get_skill_reference`, `read_workspace`, `list_workspace`, `query`, `preview_skill`, `preview_transition`, `get_preview`, `apply`, `list_proposals`, `decline_proposal`, `operation`, `recover` and `changes`. Every tool result is at most 48,000 characters, measured as the compact JSON of the JSON-RPC `result` object. The full result is returned once, as `structuredContent`; the text block is a one-line summary of at most 500 characters and is not a copy of the data. A client reads `structuredContent`.
 
 The server publishes orientation instructions (at most 2,000 characters) in its MCP `initialize` result, together with a title and description. They give the order to use the tools in and state that workspace text is untrusted project data and that the board never approves on the human's behalf. Every tool description starts with `Prism board:`, so a host that loads tools through search finds them under that name.
 
@@ -479,7 +501,7 @@ The HTTP routes `POST /api/board/v1/workspace/read` and `POST /api/board/v1/quer
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `discover` | none | `mcp_contract`, `board` (`board_id`, `project_name`, `purpose` (`knowledge-root`, only for a knowledge root), `apps`, `workflow_version`, `mode`; `apps` lists each declared app with `id`, `name`, `stack`, `repository`, `path`, `audience`, `status`, `capabilities` and `maturity`, and is empty for a workspace with no apps), `capability` (with `read_support`, `role_model` (`version`, `roles`), `actions` (per action: `command`, `sources`, `target`, `required_roles`, `modes`, `available`, `unavailable_reason` while its package has not landed, `available_to_participant`), `human_actions` and `policy` (`qa_separate_from_dev`, `revision`)), `participant` (with `roles` and `session`), `pending_proposals` (the first 20), `pending_operations`, `skills` (`name` and `description` only), `skills_detail`, `compatibility` |
+| `discover` | none | `mcp_contract`, `board` (`board_id`, `project_name`, `purpose` (`knowledge-root`, only for a knowledge root), `apps`, `workflow_version`, `mode`; `apps` lists each declared app with `id`, `name`, `stack`, `repository`, `path`, `audience`, `status`, `capabilities` and `maturity`, and is empty for a workspace with no apps), `capability` (with `read_support`, `role_model` (`version`, `roles`), `actions` (per action: `command`, `sources`, `target`, `required_roles`, `modes`, `available`, `unavailable_reason` while this Prism version does not provide it, `available_to_participant`), `human_actions` and `policy` (`qa_separate_from_dev`, `revision`)), `participant` (with `roles` and `session`), `pending_proposals` (the first 20), `pending_operations`, `skills` (`name` and `description` only), `skills_detail`, `compatibility` |
 | `list_skills` | none | `mcp_contract`, `version`, `read_support`, `skills` (`name`, `version`, `description`, `actions`, `supported`, `write_supported`, `participant_kinds`, `write_tools`, `required_roles`, `write_scopes`, `limitations`) |
 | `get_skill` | `name`, `cursor?` | `skill` (metadata, `instructions`, `instructions_chunk` with `offset`, `total_chars`, `digest`, `required_workspace_reads`, `required_workspace_reads_chunk` with `offset`, `total`, and `references`) and `next_cursor` |
 | `get_skill_reference` | `name`, `path`, `cursor?` | `content`, `offset`, `total_chars`, `digest`, `next_cursor`. A path outside the skill's `references` is `reference_not_found` (404) |

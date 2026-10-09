@@ -51,16 +51,18 @@ fails, or lacks `wiki lint`, say:
 - `knowledge/wiki/status-board.md`
 - all files in `knowledge/wiki/features/`
 - all files in `knowledge/wiki/app-requirements/`
-- related design, API contract, advisory, business-rule, persona, and decision files as needed
+- all files in `knowledge/wiki/bugs/`
+- related design, technical design, API contract, release record, incident, advisory, business-rule, persona, and decision files as needed
 
 Check only facts provable from those files: malformed frontmatter, invalid
 enums, duplicate IDs, orphan or status board drift, broken links and sources (`broken-link`, `broken-anchor`), a link into an external repository without a local checkout (`external-repository-unresolved`), freshness from the log (`stale-page`, `never-verified`), a page with no index line (`missing-index-entry`), an index line for no page (`orphan-index-entry`), history dates on pages (`history-date-on-page`), malformed log
 entries (`malformed-log-entry`), a missing `schema-version` (`missing-schema-version`),
 open conflicts (`unresolved-conflict`) and malformed conflict records (`malformed-conflict`), a processed intake item without a `MANIFEST.md` (`processed-source-without-manifest`), evidence labels (`unknown-evidence-label`, `unlinked-claim`), decision supersession (`supersession-mismatch`, `superseded-decision-cited`),
-skipped board reviews without reasons, and the six canonical categories:
+skipped board reviews without reasons, bug pages (`bug-page-invalid`, `invalid-bug-status-owner`, `bug-close-reason-required`, `duplicate-target-invalid`, `promoted-bug-unreopened`, `bug-feature-missing`), and the canonical blocker categories:
 `pending-board-review`, `design-track-pending`, `missing-app-requirements`,
-`unresolved-open-questions`, `api-contract-not-ready`, and
-`cross-app-dependency`, plus `dependency-cycle` for app-requirement pages whose `Dependencies` lead back to themselves. Also check the app rules: a feature before `released` that lists a
+`unresolved-open-questions`, `api-contract-not-ready`, `cross-app-dependency`,
+`feature-status-not-minimum`, `app-row-missing`, `stale-qa-evidence`, `stale-delivery-evidence` and
+`open-bug-blocks-qa`, plus `dependency-cycle` for app-requirement pages whose `Dependencies` lead back to themselves. Also check the app rules: a feature before `released` that lists a
 retired app (`app-retired-in-scope`), a feature whose `## API surface` declares API work
 while no active app in its `apps` serves an API (`api-surface-without-api-app`), a Release row
 that disagrees with the release record it links on target, version or outcome

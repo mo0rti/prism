@@ -66,6 +66,7 @@ claims contradict each other; detecting a contradiction is the ingest skill's jo
   links into a repository with no checkout in `prism.local.yml`. URLs are never fetched, and an external
   checkout is only asked whether a path exists.
 - **Conflicts.** `unresolved-conflict` (warning) and `malformed-conflict` (error) for quarantined sources.
+- **Lifecycle pages.** The status and owner of a feature against the minimum over its app stages, the evidence rows each stage needs, the acceptance criteria and their revisions, the design tracks, the technical design page and the API contract, bug pages, release records and their rows, incident records and the status board's Bugs and Operations tables ([the lifecycle codes](wiki-workflow.md#lifecycle-lint-codes)). Lint checks the form of these records and never judges whether the evidence in them is true.
 - **Freshness.** `stale-page` (warning) when a current-state page's last `verify` entry in `log.md` is older
   than `wiki-stale-after-days`, and `never-verified` (information) when it has none. Freshness never changes
   a status and never blocks a transition.
