@@ -36,6 +36,7 @@ JOURNEY_FOLDERS = (
     "knowledge/wiki/technical-design",
     "knowledge/wiki/api-contracts",
     "knowledge/wiki/decisions",
+    "knowledge/wiki/releases",
 )
 KEEP_NAMES = {"_FORMAT.md", ".gitkeep"}
 PENDING_INTAKE = "knowledge/intake/pending/2026-09-30-review-summary"
@@ -270,6 +271,8 @@ def rewrite_status_board(board_text: str, row: str | None) -> str:
 
 
 _IN_DEV_AND_LATER = ("in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released")
+_SECTION = r"(?ms)^## {name}\s*\n(.*?)(?=^## |\Z)"
+_EM_DASH = "\u2014"
 
 
 def feature_apps(text: str) -> list[str]:
@@ -291,17 +294,42 @@ def feature_apps(text: str) -> list[str]:
     return []
 
 
-def app_stages_cell(front_matter: dict[str, str], text: str) -> str:
-    """The ``App stages`` cell of the journey: ``<app>: in-dev`` until the app has a Delivery evidence row, then ``ready-for-qa``.
+def _rows_of(text: str, name: str) -> list[list[str]]:
+    """The data rows of a table section, each as its cells; the header and the separator are left out."""
 
-    The journey stops at ``ready-for-qa``, so the QA and Release rows never exist in it.
+    section = re.search(_SECTION.format(name=name), text)
+    rows = []
+    for line in section.group(1).split("\n") if section else []:
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")] if line.strip().startswith("|") else []
+        if cells and not set(cells[0]) <= set("-: ") and cells[0] not in {"App", "Row"}:
+            rows.append(cells)
+    return rows
+
+
+def app_stages_cell(front_matter: dict[str, str], text: str) -> str:
+    """The ``App stages`` cell of the journey: the stage of each app, from the rows of its evidence tables.
+
+    ``in-dev`` without a Delivery evidence row, ``ready-for-qa`` with one, ``in-qa`` once a QA row names the app,
+    ``ready-for-release`` with a pending Release row and ``released`` when its Release row says so.
     """
 
     if front_matter.get("status") not in _IN_DEV_AND_LATER:
-        return "—"
-    section = re.search(r"(?ms)^## Delivery evidence\s*\n(.*?)(?=^## |\Z)", text)
-    delivered = {match.group(1) for match in re.finditer(r"(?m)^\|\s*([a-z0-9][a-z0-9-]*)\s*\|", section.group(1))} - {"app"} if section else set()
-    return "; ".join(f"{app}: {'ready-for-qa' if app in delivered else 'in-dev'}" for app in feature_apps(text)) or "—"
+        return _EM_DASH
+    delivered = {cells[0] for cells in _rows_of(text, "Delivery evidence")}
+    tested = {cells[0] for cells in _rows_of(text, "QA verification")}
+    release = {cells[0]: cells[4] for cells in _rows_of(text, "Release") if len(cells) > 4}
+    stages = []
+    for app in feature_apps(text):
+        if release.get(app) == "released":
+            stage = "released"
+        elif app in release:
+            stage = "ready-for-release"
+        elif app in tested:
+            stage = "in-qa"
+        else:
+            stage = "ready-for-qa" if app in delivered else "in-dev"
+        stages.append(f"{app}: {stage}")
+    return "; ".join(stages) or _EM_DASH
 
 
 def feature_row(front_matter: dict[str, str], text: str = "") -> str:

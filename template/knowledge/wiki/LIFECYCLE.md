@@ -321,7 +321,8 @@ and `technical-design`, each only after fresh evidence and in the same write.
 
 A dependency on another feature is satisfied when that feature is `released`; a dependency on a
 requirement page is satisfied when the app's stage in its feature is `released`. An unmet
-dependency is shown as a `warning` at `dev-start` and `dev-done`.
+dependency is shown as a `warning` at `dev-start` and `dev-done`, and blocks [`release-done`](ACTIONS.md)
+(`dependency_not_released`) unless the same release delivers it. Pages that wait for each other are the lint error `dependency-cycle`.
 
 #### QA verification, QA outcomes and bugs
 
@@ -354,6 +355,29 @@ start, fixed, verified, reverify, reject, close (`wont-fix`, `duplicate`, `promo
 A fix cannot be recorded while an app of the bug's feature is in its QA cycle (`feature_in_qa_cycle`):
 the app returns first with `qa-fail`, citing the bug. Rejecting or reopening a bug archives its rows and
 advances the generation of the Fix rows and the attempt of the verification.
+
+#### Release, records and reopening
+
+[`release-done`](ACTIONS.md) settles the authoritative Release row of each app it releases (`released` or `failed`) and writes one
+dated release record, `releases/REL-XXX.md` (format in `releases/_FORMAT.md`). The row's Target is the app's delivery target in
+`SETTINGS.md` when the release is recorded and a `released` row keeps it; its Version is the artifact QA verified
+(`release_version_not_verified`); its Attempt is one more than the records that delivered the app for the feature, rollbacks and
+redeploys excluded (`release_attempt_mismatch`); its Record links the record. Staging rows (a target that is an environment of the
+app, attempt `—`) are informational and never count for a stage or an attempt. QA must still cover the app (`qa_evidence_stale`),
+no bug may block it (`open_bug_blocks_release`), every verified bug of the feature and the app ships with it
+(`verified_bug_not_included`), and the rows of one app and target in a record share their Version and Outcome
+(`release_artifact_conflict`). A bug becomes `released` when every app of the bug is released, and ships with its feature
+unless it has no feature or its feature app is already released; a released feature app that a bug fix reaches takes the
+new record in its Release row (`bug_release_requires_feature`).
+
+A record's number is one more than the highest on disk, allocated when the release is applied (`release_sequence_invalid`,
+`release_id_taken`); recovery and repair keep the number already assigned. The **current delivery** of an (app, target) is
+the highest-numbered record with a `released` row for it, redeploys included. `release-rollback` binds to it
+(`rollback_target_invalid`), and `release-redeploy` retries a rollback of it, or a failed redeploy (`redeploy_version_mismatch`
+when the version differs). A failed delivery that needs development is `release-return-dev`. A `released` feature is reopened
+with `reopen-spec`, `reopen-design` (every row of every app is archived, released rows included, and every app gets all four
+`app-revalidation` domains) or `reopen-dev` (only the apps that change are archived; the rows of the others are quoted under
+Reaffirmed evidence). Release records are never changed by a reopen.
 
 #### Evidence history and scope edits
 

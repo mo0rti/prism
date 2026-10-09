@@ -227,19 +227,24 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertEqual("po", raw_transition["target_owner"])
         self.assertEqual("ready", raw_transition["classification"])
 
-        # The return and reopen routes are registered, and unavailable until their work package lands.
         self._write_feature(status="released", owner="none")
-        board = build_board_transition_preflight(self.root, "F-001", "reopen-design")
-        self.assertEqual("unknown", board["classification"])
-        self.assertEqual("action-unavailable", board["checks"][0]["code"])
-        copy_only = build_transition_preflight(self.root, "F-001", action="reopen-design")
-        self.assertIn("unsupported-transition-action", {item["code"] for item in copy_only["diagnostics"]})
-        self.assertEqual("unknown", copy_only["facts"]["transition"]["classification"])
+        reopen = build_transition_preflight(self.root, "F-001", action="reopen-design")
+        transition = reopen["facts"]["transition"]
+        self.assertEqual("reopen-design", transition["action"])
+        self.assertEqual("in-design", transition["target_status"])
+        self.assertEqual("tech-lead", transition["target_owner"])  # the design owner follows the scope: a backend-only scope has no UI app
+        self.assertEqual("ready", transition["classification"])
+        self.assertEqual("$feature-reopen F-001 in-design", transition["invocations"]["codex"])
+        self.assertEqual("/feature-reopen F-001 in-design", transition["invocations"]["claude"])
+        self.assertNotIn("specified|in-design|in-dev", json.dumps(transition))
 
         graph = build_graph(self.root)
         node = next(node for node in graph["facts"]["nodes"] if node["type"] == "feature")
         self.assertNotIn("transition", node)
-        self.assertEqual([], node["transitions"])
+        self.assertEqual(
+            {"reopen-spec", "reopen-design", "reopen-dev"},
+            {record["action"] for record in node["transitions"]},
+        )
 
     def test_design_start_allows_design_work_and_designer_questions(self) -> None:
         self._write_all_capabilities()

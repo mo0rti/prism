@@ -210,6 +210,13 @@ each action changes only its own front matter keys and sections (`bug_frontmatte
 Read the bug pages before a QA proposal too: a bug created between your preview and the apply makes
 the preview stale (`stale_preview`).
 
+`release-done` writes the Release rows of the feature pages it settles, the bug pages it ships and
+exactly one new release record in `releases/` (its number is the next free one; the service stamps the
+`operation` field). Read `knowledge/wiki/releases/_FORMAT.md`, the settings (`delivery-targets`) and
+every release record before you propose one: a record written between your preview and the apply makes
+the preview stale (`stale_preview`). The three reopen routes of `feature-reopen` archive evidence into
+`## Evidence history` and change the pages the entry names, as the returns do.
+
 A question skill changes the Open questions table in a fixed way. `ask` adds exactly
 one new row with the next number and status `open`. `po-clarify`, `design-clarify` and
 `dev-clarify` resolve only questions their owner holds: keep the row's number, text and

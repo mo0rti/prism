@@ -69,6 +69,24 @@ def linked_context_for_feature(wiki_root: Path, feature_id: str) -> dict[str, li
 EXTERNAL_LINK_PREFIX = "repo:"
 
 _FENCE_LINE = re.compile(r"^\s*(?:```|~~~)")
+
+
+def _in_fence(line: str, fence: tuple[str, int] | None) -> tuple[tuple[str, int] | None, bool]:
+    """The fence state after `line` and whether the line belongs to fenced code.
+
+    A fence opens with three or more backticks or tildes and closes with at least as many of the same character, so a
+    block of three backticks can sit inside a fence of four.
+    """
+
+    if fence is None:
+        if _FENCE_LINE.match(line):
+            run = line.strip()
+            return (run[0], len(run) - len(run.lstrip(run[0]))), True
+        return None, False
+    stripped = line.strip()
+    if stripped and set(stripped) == {fence[0]} and len(stripped) >= fence[1]:
+        return None, True
+    return fence, True
 _INLINE_CODE = re.compile(r"`[^`\n]*`")
 _ATX_HEADING = re.compile(r"^ {0,3}#{1,6}[ \t]+(?P<text>.*?)(?:[ \t]+#+)?[ \t]*$")
 _HTML_ANCHOR = re.compile(r"""<a\s[^>]*?\b(?:id|name)=["']([^"']+)["']""", re.IGNORECASE)
@@ -82,12 +100,10 @@ def iter_markdown_links(text: str) -> Iterator[tuple[int, str]]:
     returned as written; the caller splits off a fragment and decodes percent escapes.
     """
 
-    in_fence = False
+    fence: tuple[str, int] | None = None
     for number, line in enumerate(text.splitlines(), start=1):
-        if _FENCE_LINE.match(line):
-            in_fence = not in_fence
-            continue
-        if in_fence:
+        fence, fenced = _in_fence(line, fence)
+        if fenced:
             continue
         for match in MARKDOWN_LINK_PATTERN.finditer(_INLINE_CODE.sub("", line)):
             yield number, match.group(1) or match.group(2)
@@ -127,12 +143,10 @@ def heading_anchors(text: str) -> set[str]:
     body = match.group(2) if match else text
     anchors: set[str] = set(_HTML_ANCHOR.findall(body))
     seen: dict[str, int] = {}
-    in_fence = False
+    fence: tuple[str, int] | None = None
     for line in body.splitlines():
-        if _FENCE_LINE.match(line):
-            in_fence = not in_fence
-            continue
-        if in_fence:
+        fence, fenced = _in_fence(line, fence)
+        if fenced:
             continue
         heading = _ATX_HEADING.match(line)
         if heading is None:

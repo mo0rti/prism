@@ -210,9 +210,10 @@ no date, so freshness comes from `log.md`: a current-state page's last verificat
 - `qa-verify [F-XXX] [app ...]` - record QA results for apps or integrations, and a bug for each defect found
 - `qa-pass [F-XXX] [app ...]` - pass apps through QA toward release
 - `qa-fail [F-XXX] app ...` - send apps back to development after a QA failure
+- `release-done [F-XXX] [app ...]` - record a release record and release the named apps (or the apps of the bugs it ships) to their delivery targets, or record the failed delivery
 - `bug-update BUG-XXX <triage|scope|in-fix|fixed|verified|reverify|reject|closed|defer|undefer|open>` - move one bug through its lifecycle
-- `feature-reopen [F-XXX] [specified|in-design|in-dev]` - send a feature in development or QA back to `specified` or `in-design`, or reopen one shipped feature, after impact review
-- `feature-scope [F-XXX]` - edit the app scope of one feature that is not `done`: its `apps`, its `## App scope` section and the requirement pages of the apps it gains (the way out of `app-retired-in-scope`)
+- `feature-reopen [F-XXX] [specified|in-design|in-dev]` - send a feature in development or QA back to `specified` or `in-design`, or reopen a `released` feature to `specified`, `in-design` or `in-dev`, after impact review
+- `feature-scope [F-XXX]` - edit the app scope of one feature that is not `released`: its `apps`, its `## App scope` section and the requirement pages of the apps it gains (the way out of `app-retired-in-scope`)
 - `ask [F-XXX] "question" --to po|designer|dev` - route a question
 
 ### Feature lifecycle contract
@@ -225,7 +226,8 @@ The supported action mappings are exact: `po-specify` (`raw` + `po` to
 `design-handoff` (`ready-for-design` or `in-design` + the design owner to
 `ready-for-dev` + `dev`, with both design tracks settled), `dev-start`
 (`ready-for-dev` + `dev` to `in-dev` + `dev`), and `dev-done` (`ready-for-dev` or
-`in-dev` + `dev` to the minimum of the app stages). A return from implementation
+`in-dev` + `dev` to the minimum of the app stages), `qa-pass` (apps to `ready-for-release`) and `release-done`
+(`ready-for-release` + `release` to the minimum of the app stages, `released` + `none` once every app is released). A return from implementation
 uses the selected route in `feature-reopen` and the corresponding
 `dev-return-spec` or `dev-return-design` action; a reopen of shipped work uses
 `reopen-spec`, `reopen-design`, or `reopen-dev`. `po-specify` authors the structured
@@ -370,6 +372,7 @@ and adds only what is specific to Claude Code:
    Start implementation with `dev-start [F-XXX]`, add endpoints to
    `shared/api-contracts/openapi.yml`, and run `task generate-clients` as needed.
 6. Implement the selected platform slices per `knowledge/wiki/app-requirements/`.
-7. When shipped, verify delivery evidence (per app, release evidence or a delivery
-   attestation, never a commit or pull request alone) and run `dev-done [F-XXX]`. Use
+7. When built, verify delivery evidence (per app, release evidence or a delivery
+   attestation, never a commit or pull request alone) and run `dev-done [F-XXX]`; QA the apps
+   with `qa-verify` and `qa-pass`, then deliver them with `release-done [F-XXX]`. Use
    `feature-reopen [F-XXX] [specified|in-design|in-dev]` only after impact review.

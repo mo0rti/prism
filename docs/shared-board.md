@@ -187,11 +187,11 @@ Claude instruction folders are not required. Copying dispatches no agent and
 writes no lifecycle state. A stale or unavailable connection disables copying;
 static and legacy boards retain their existing tool-specific copy behavior.
 
-Skill discovery exposes 33 complete canonical skills. Connected writes are
+Skill discovery exposes 34 complete canonical skills. Connected writes are
 available for `po-intake`, `design-intake`, `ingest`, `ask`, `po-clarify`, `design-clarify`,
 `dev-clarify`, `po-specify`, `po-handoff`, `design-start`, `design-ui-done`, `tech-design-done`, `design-handoff`,
-`dev-start`, `dev-done`, `qa-verify`, `qa-pass`, `qa-fail`, `bug-update`, `feature-reopen`, `feature-scope` and `verify-pages`. The three reopen routes are actions
-of `feature-reopen`. `feature-scope` is the explicit scope edit of one feature that is not `done`: it changes the `apps` list and the `## App scope` section together and may add `pending` requirement pages for the apps the scope gains, and nothing else; it is the way out of `app_retired_in_scope`, and it never adds a retired app. `verify-pages` records that current-state pages were checked against their
+`dev-start`, `dev-done`, `qa-verify`, `qa-pass`, `qa-fail`, `release-done`, `bug-update`, `feature-reopen`, `feature-scope` and `verify-pages`. The three reopen routes are actions
+of `feature-reopen`. `feature-scope` is the explicit scope edit of one feature that is not `released`: it changes the `apps` list and the `## App scope` section together and may add `pending` requirement pages for the apps the scope gains, and nothing else; it is the way out of `app_retired_in_scope`, and it never adds a retired app. `verify-pages` records that current-state pages were checked against their
 sources and changes no page: its `preview_skill` call has an empty `changes` list and names each
 verified page in `read_revisions` with the digest `read_workspace` returned for it, and the preview
 writes one `verify` entry to `log.md` (`prism wiki verify` is the direct path). Applying it is refused
@@ -269,7 +269,7 @@ both files, besides `SCHEMA.md`, `LIFECYCLE.md` and `ACTIONS.md`, or the board s
   untouched until a human resolves the conflict.
 - **`dev-clarify` answers dev-owned questions**, as `po-clarify` does for `po` and
   `design-clarify` for `designer`. It resolves only questions owned by `dev`, on any
-  feature that is not `done`, and cannot change the feature's status or owner. Next
+  feature that is not `released`, and cannot change the feature's status or owner. Next
   to the question table it may change the feature's Acceptance criteria, App
   scope and API surface sections and, on that feature's existing app
   requirement pages, What to build, Technical constraints, API contract reference

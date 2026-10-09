@@ -1,8 +1,8 @@
 """The lifecycle model of the full-lifecycle contract: registry, parsers, criteria, app stages, coverage, policy, lint and the service flows.
 
 Parsers and calculations are exercised on page text; the lint cases seed one disposable workspace with per-app states; the
-service flows drive F1, F2, F3, F6, F7, F8, F9 and F26 through the board service. Actions owned by later work packages are
-registered and answer `action_unavailable`.
+service flows drive F1, F2, F3, F6, F7, F8, F9 and F26 through the board service. An action whose work package is not enabled is
+registered and answers `action_unavailable`.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 from uuid import uuid4
 
 import yaml
@@ -427,38 +428,24 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(set(names), set(ACTION_BY_ID))
 
     def test_only_the_rows_of_enabled_packages_are_available(self) -> None:
-        self.assertEqual({"D1", "D2", "D3"}, set(ENABLED_PACKAGES))
-        enabled = sorted(spec.action for spec in ACTION_SPECS if spec.enabled)
-        self.assertEqual(
-            sorted(
-                [
-                    "po-specify",
-                    "po-handoff",
-                    "design-start",
-                    "design-ui-done",
-                    "tech-design-done",
-                    "design-handoff",
-                    "dev-start",
-                    "dev-done",
-                    "dev-return-spec",
-                    "dev-return-design",
-                    "scope-edit",
-                    "operation-repair",
-                    "qa-verify", "qa-pass", "qa-fail", "qa-return-spec", "qa-return-design",
-                    "bug-open", "bug-triage", "bug-scope", "bug-start", "bug-fixed", "bug-verify", "bug-reverify",
-                    "bug-reject", "bug-close", "bug-defer", "bug-reopen",
-                ]
-            ),
-            enabled,
-        )
+        self.assertEqual({"D1", "D2", "D3", "D4"}, set(ENABLED_PACKAGES))
+        self.assertEqual({"D1", "D2", "D3", "D4"}, {spec.package for spec in ACTION_SPECS})
         for spec in ACTION_SPECS:
             with self.subTest(action=spec.action):
+                self.assertTrue(spec.enabled)
                 self.assertEqual(spec.enabled, spec.available)
-                if spec.enabled:
-                    self.assertIsNone(spec.unavailable_reason)
-                else:
+                self.assertIsNone(spec.unavailable_reason)
+        # A row whose package is not enabled is registered and unavailable, with its package in the reason.
+        with patch("prism_cli.wiki_transitions.ENABLED_PACKAGES", frozenset({"D1", "D2", "D3"})):
+            later = sorted(spec.action for spec in ACTION_SPECS if not spec.enabled)
+            self.assertEqual(
+                sorted(["release-done", "release-return-dev", "release-rollback", "release-redeploy", "reopen-spec", "reopen-design", "reopen-dev", "bug-release"]),
+                later,
+            )
+            for spec in ACTION_SPECS:
+                if not spec.enabled:
+                    self.assertFalse(spec.available)
                     self.assertIn(spec.package, spec.unavailable_reason)
-                    self.assertNotIn(spec.package, ENABLED_PACKAGES)
 
     def test_the_direct_human_actions_are_exactly_the_three_of_the_contract(self) -> None:
         human = sorted(spec.action for spec in ACTION_SPECS if MODE_HUMAN_DIRECT in spec.modes and spec.subject == "feature")
@@ -495,6 +482,8 @@ class RegistryTests(unittest.TestCase):
                 "dev-return-design",
                 "scope-edit",
                 "qa-verify", "qa-pass", "qa-fail", "qa-return-spec", "qa-return-design",
+                "release-done", "release-return-dev", "release-rollback", "release-redeploy",
+                "reopen-spec", "reopen-design", "reopen-dev",
             },
             set(WRITE_SCOPES),
         )
@@ -511,6 +500,11 @@ class RegistryTests(unittest.TestCase):
             ("dev-return-design", 2),
             ("design-ui-done", 1),
             ("tech-design-done", 1),
+            ("release-done", 1),
+            ("release-return-dev", 1),
+            ("reopen-spec", 2),
+            ("reopen-design", 2),
+            ("reopen-dev", 2),
         ):
             with self.subTest(action=action):
                 command = lookup_action(action).command
@@ -967,21 +961,24 @@ class FlowTests(_Workspace):
         self.assertIn("backend: ready-for-qa", self.read("knowledge/wiki/status-board.md"))
         self.assertNotIn("worker", self.read("knowledge/wiki/status-board.md").split("| F-001 |", 1)[1].splitlines()[0])
 
-    def test_actions_of_later_packages_answer_action_unavailable(self) -> None:
+    def test_actions_of_a_package_that_is_not_enabled_answer_action_unavailable(self) -> None:
         self.walk_to_dev()
         page = self.read(FEATURE)
-        # A reopen route of a package that has landed still needs its explicit route; the page is unchanged here.
+        # A reopen route needs its explicit route; the page is unchanged here.
         error = self.rejection("feature-reopen", [{"path": FEATURE, "content": page}])
         self.assertEqual(("reopen_route_required", 409), (error.code, error.status))
-        for action in ("release-done", "release-return-dev", "reopen-dev"):
-            with self.subTest(action=action), self.assertRaises(BoardError) as caught:
-                self.service.query(self.agent, "transition-preflight", "F-001", action)
-            self.assertEqual("action_unavailable", caught.exception.code)
-        unavailable = build_board_transition_preflight(self.root, "F-001", "release-done")
-        self.assertEqual("unknown", unavailable["classification"])
-        self.assertEqual("action-unavailable", unavailable["checks"][0]["code"])
         self.assertEqual("D4", lookup_action("release-done").package)
         self.assertEqual("D3", lookup_action("qa-pass").package)
+        for action in ("release-done", "release-return-dev", "reopen-dev"):
+            self.assertTrue(lookup_action(action).available, action)
+        with patch("prism_cli.wiki_transitions.ENABLED_PACKAGES", frozenset({"D1", "D2", "D3"})):
+            for action in ("release-done", "release-return-dev", "reopen-dev"):
+                with self.subTest(action=action), self.assertRaises(BoardError) as caught:
+                    self.service.query(self.agent, "transition-preflight", "F-001", action)
+                self.assertEqual("action_unavailable", caught.exception.code)
+            unavailable = build_board_transition_preflight(self.root, "F-001", "release-done")
+            self.assertEqual("unknown", unavailable["classification"])
+            self.assertEqual("action-unavailable", unavailable["checks"][0]["code"])
 
     def test_a_feature_in_development_is_offered_the_qa_actions_only_once_an_app_reached_qa(self) -> None:
         self.walk_to_dev()

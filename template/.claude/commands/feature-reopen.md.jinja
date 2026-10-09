@@ -7,8 +7,11 @@
 
 `/feature-reopen [F-XXX] [specified|in-design|in-dev]`
 
-The route selects one exact action. A feature in development goes back through a return; a shipped
-one through a reopen.
+The route selects one exact action from the state of the feature: `specified` and `in-dev` from `released` are the reopens
+(`reopen-spec`, `reopen-dev`), `in-design` from `released` is `reopen-design`; while an app of the feature is in QA,
+`specified` and `in-design` are the QA returns (`qa-return-spec`, `qa-return-design`); otherwise they are the returns from
+implementation (`dev-return-spec`, `dev-return-design`). `in-dev` is valid only from `released`. A feature in development
+goes back through a return; a released one through a reopen.
 
 ### Returns from implementation
 
@@ -53,16 +56,42 @@ The feature page changes only `status`, `owner`, `revalidation`, `app-revalidati
 
 ### Reopens of shipped work
 
+A `released` feature has three routes. Its release records stay as they are; a reopen archives the feature's own rows.
+
 | Route | Action | Source | Destination | Pending revalidation |
 |---|---|---|---|---|
-| `specified` | `reopen-spec` | `done` + `none` | `specified` + `po` | specification, design, implementation, tests, release |
-| `in-design` | `reopen-design` | `done` + `none` | `in-design` + `designer` | design, implementation, tests, release |
-| `in-dev` | `reopen-dev` | `done` + `none` | `in-dev` + `dev` | implementation, tests, release |
+| `specified` | `reopen-spec` | `released` + `none` | `specified` + `po` | specification, design, technical-design; every app: implementation, tests, qa, release |
+| `in-design` | `reopen-design` | `released` + `none` | `in-design` + the design owner of the scope | design, technical-design; every app: implementation, tests, qa, release |
+| `in-dev` | `reopen-dev` | `released` + `none` | `in-dev` + `dev` | each reopened app: implementation, tests, qa, release |
 
-Resolve exactly one source file at
-`knowledge/wiki/features/[F-XXX]-[slug].md`. A missing, invalid, ambiguous, or
-non-`done`/`none` source is a stop condition. Do not invent another route or a
-generic status setter.
+A `po` participant approves `reopen-spec`, the design owner `reopen-design` and a `dev` participant `reopen-dev`. Resolve exactly
+one source file at `knowledge/wiki/features/[F-XXX]-[slug].md`. A missing, invalid, ambiguous or non-`released`/`none` source is a
+stop condition. Do not invent another route or a generic status setter.
+
+Write one `## Evidence history` entry headed `### YYYY-MM-DD - reopen-spec` (or `reopen-design`, `reopen-dev`), with the preview
+day, in the format of `knowledge/wiki/features/_FORMAT.md`:
+
+- **Reason**: why the feature is reopened.
+- **Affected apps**: every app of the feature for `reopen-spec` and `reopen-design`; for `reopen-dev` the apps that change.
+  Participants: `none`.
+- **Affected tracks**: `ui, technical` for `reopen-spec`; for `reopen-design` the tracks the change touches; `none` for `reopen-dev`.
+- **Archived evidence**: every Delivery evidence, QA verification and Release row of every affected app, released rows included,
+  copied verbatim with its section name and removed from the active tables (`evidence_not_archived`, `evidence_still_active`).
+- **Reaffirmed evidence**: `none` for `reopen-spec` and `reopen-design`. For `reopen-dev`, every row that stays active (the rows of
+  the apps that do not change), copied verbatim with its section name (`delivery_evidence_not_reaffirmed`).
+- **Requirement/API invalidations**: each requirement or contract page you lower, as `path: done -> in-progress`, or a sentence
+  that none is lowered. A requirement page that is `done` goes to `in-progress` for each affected app; an `implemented` contract goes
+  to `agreed` (to `draft` for `reopen-spec`). Change nothing else on those pages.
+- **Linked bugs**: the bugs the reopen cites, or `none`.
+
+In the same proposal, write the status and owner, `revalidation` and `app-revalidation` exactly as the table says (merged with
+what is pending, in the canonical order), and the design tracks: `reopen-spec` removes `design-tracks` and `design-reaffirm`;
+`reopen-design` sets each affected track to `pending` (a UI track of a scope with no UI stays `not-applicable`), removes its reason,
+and lists every other `done` track in `design-reaffirm`; `reopen-dev` leaves the tracks as they are.
+
+The feature page changes only `status`, `owner`, `revalidation`, `app-revalidation`, `design-tracks`, `design-reaffirm`, the three
+evidence sections and `## Evidence history`. The bugs of the feature are not reopened by this skill: a bug that is `released` stays
+so, and a defect found in released work is a new bug.
 
 ### Routes back from QA
 
@@ -94,60 +123,33 @@ Change only `status` in a requirement page or API contract.
 
 ## Read-only preflight and impact review
 
-Read SCHEMA, LIFECYCLE, ACTIONS, status board, the complete feature, linked design, app requirements,
-applicable API contract, delivery evidence, and workspace identity. When available,
-probe the matching action:
+Read SCHEMA, LIFECYCLE, ACTIONS, status board, the complete feature, linked design, app requirements, applicable API contract,
+delivery evidence, the release records the Release rows link, and workspace identity. When available, probe the matching action:
 
 ```text
 prism wiki transition-preflight F-XXX [path] --action reopen-dev --json
 ```
 
-Replace `reopen-dev` with `reopen-spec` or `reopen-design` for the selected route.
-Accept the response only with envelope schema 1, command facts, capability version
-2 and a matching action-specific surface, transition version 1, exact target owner,
-and a consistent snapshot. A version string alone is not capability evidence. If
-the probe is missing or unsupported, report the direct-file fallback; the preflight
-is copy-only and never authorizes a write.
+Replace `reopen-dev` with `reopen-spec` or `reopen-design` for the selected route. Accept the response only with envelope schema 1,
+command facts, capability version 3 and a matching action-specific surface, transition version 2, exact target owner, and a
+consistent snapshot. A version string alone is not capability evidence. If the probe is missing or unsupported, report the
+direct-file fallback; the preflight is copy-only and never authorizes a write.
 
-A ready Copy request may initiate the impact review; no review record needs to
-exist in the wiki before this action is requestable. The request remains
-copy-only until the review and final confirmation are complete. Before any
-proposed write, obtain a confirmed impact review recording the reason, selected
-route, affected apps, affected artifacts, and any additional revalidation
-domains. Archive the prior `## Delivery evidence` table in the append-only reopen
-history and remove it from the active section on confirmation. Existing evidence
-cannot automatically satisfy a new Done check; unaffected evidence must be
-explicitly reaffirmed after impact review. Show exact affected app-
-requirement and API pages with their proposed invalidated statuses, preserve
-prior statuses in history, and never reset unrelated shared contracts.
+A ready Copy request may initiate the impact review; no review record needs to exist in the wiki before this action is requestable.
+The request remains copy-only until the review and final confirmation are complete. Before any proposed write, obtain a confirmed
+impact review recording the reason, selected route, affected apps, affected artifacts and any additional revalidation domains.
+Existing evidence cannot automatically satisfy a new `released` check; unaffected evidence is explicitly reaffirmed after impact
+review. Show exact affected app-requirement and API pages with their proposed invalidated statuses, preserve prior statuses in
+history, and never reset unrelated shared contracts.
 
-Write the archived evidence under the `- Prior completion/release evidence:` bullet
-of the reopen record. Copy each prior Delivery evidence row verbatim, with its
-`| app | implementation | tests | release |` cells, on that line or on the
-lines directly below it as a table or a list, before the next `- Label:` bullet or
-heading. A row anywhere else is not found, and the connected board rejects the
-record with `delivery_evidence_not_archived`. `knowledge/wiki/features/_FORMAT.md` shows the
-layout.
+Show the current and destination fields, active `revalidation` list, archived evidence, and every feature/status board/log write.
+Reread the source, status board, identity, and linked context immediately before confirmation and once again after it. Only then write
+the selected status/owner pair, active revalidation domains, history, status board, and log. Decline or cancel means no mutation.
+If a multi-file write is partial, report exact changes and stop for fresh recovery; no transaction is implied.
 
-Write `- Requirement/API invalidations:` with one entry for each requirement or API page
-you change: its full relative path, a colon, the page's current status, an arrow and its
-new status, for example `knowledge/wiki/app-requirements/F-001-backend.md: done ->
-in-progress` (on one line). Name each of those pages by the same path in
-`- Affected artifacts:`. When no page changes, write a sentence such as `No requirement
-or API page is invalidated.`; the bullet cannot be empty or a bare `None`.
-
-Show the current and destination fields, active `revalidation` list, archived
-evidence, and every feature/status board/log write. Reread the source, status board, identity,
-and linked context immediately before confirmation and once again after it. Only
-then write the selected status/owner pair, active revalidation domains, history,
-status board, and log. Decline or cancel means no mutation. If a multi-file write is
-partial, report exact changes and stop for fresh recovery; no transaction is
-implied.
-
-Return the prior route, new route, impact review, affected artifacts, active
-revalidation domains, and archived evidence. Reopening records a route and review; it does not prove that the feature is ready,
-implemented, tested, or shipped again.
+Return the prior route, new route, impact review, affected artifacts, active revalidation domains, and archived evidence. Reopening
+records a route and review; it does not prove that the feature is ready, implemented, tested, or shipped again.
 
 ## Record rules
 
-- a reopen entry is a dated record: append it and never rewrite an earlier reopen entry
+- an Evidence history entry is a dated record: append it and never rewrite an earlier entry

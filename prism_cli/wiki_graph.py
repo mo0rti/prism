@@ -39,13 +39,22 @@ from prism_cli.workspace import inspect_workspace
 
 
 
-def _offered_transitions(node: GraphNode, records: list[dict[str, Any]]) -> tuple[dict[str, Any], ...]:
-    """The actions a card offers: a feature in development has the QA actions only once one of its apps reached QA."""
+# The release actions of a feature that is not yet released: they settle apps that are ready for release.
+_RELEASE_ACTIONS = frozenset({"release-done", "release-return-dev"})
 
-    in_qa = any(stage in QA_STAGES for _app, stage in node.app_stages or ())
-    if node.status != "in-dev" or in_qa:
-        return tuple(records)
-    return tuple(record for record in records if getattr(ACTION_BY_ID.get(str(record.get("action"))), "package", None) != "D3")
+
+def _offered_transitions(node: GraphNode, records: list[dict[str, Any]]) -> tuple[dict[str, Any], ...]:
+    """The actions a card offers: a feature in development has the QA actions only once one of its apps reached QA, and the
+    release actions only once one of its apps is ready for release."""
+
+    stages = [stage for _app, stage in node.app_stages or ()]
+    in_qa = any(stage in QA_STAGES for stage in stages)
+    offered = list(records)
+    if "ready-for-release" not in stages:
+        offered = [record for record in offered if record.get("action") not in _RELEASE_ACTIONS]
+    if node.status == "in-dev" and not in_qa:
+        offered = [record for record in offered if getattr(ACTION_BY_ID.get(str(record.get("action"))), "package", None) != "D3"]
+    return tuple(offered)
 
 LIFECYCLE_STAGES = list(FEATURE_STATUS_ORDER)
 

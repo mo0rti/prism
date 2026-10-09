@@ -430,6 +430,13 @@ class Journey:
                 result.add_check("requirement_links_contract", linked, "the requirement page links the contract" if linked else "the requirement page does not link the contract")
         elif step.id == "dev-done":
             result.add_check("delivery_evidence_recorded", "## Delivery evidence" in feature.text and "3f9c2ab" in feature.text, "the evidence table names the commit")
+        elif step.id == "qa-pass":
+            result.add_check("qa_and_release_rows_recorded", "| pass |" in feature.text and "| pending |" in feature.text, "the QA table has a passing row and the Release table a pending one")
+        elif step.id == "release-done":
+            record = self.env.workspace / "knowledge/wiki/releases/REL-001.md"
+            result.add_check("release_record_written", record.is_file() and "REL-001" in feature.text and "| released |" in feature.text, "the Release row links the record REL-001" if record.is_file() else "no release record REL-001")
+        elif step.id == "feature-reopen":
+            result.add_check("evidence_archived", "## Evidence history" in feature.text and "reopen-dev" in feature.text, "the Evidence history names the reopen-dev entry")
 
     # -- teardown -----------------------------------------------------------------------------------
 

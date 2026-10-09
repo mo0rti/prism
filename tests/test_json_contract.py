@@ -94,6 +94,11 @@ class JsonContractTests(unittest.TestCase):
                 "qa-verify",
                 "qa-pass",
                 "qa-fail",
+                "release-done",
+                "release-return-dev",
+                "reopen-spec",
+                "reopen-design",
+                "reopen-dev",
             },
             {surface["action"] for surface in capability["surfaces"]},
         )
@@ -115,8 +120,11 @@ class JsonContractTests(unittest.TestCase):
             if node["type"] == "feature" and node["id"] == "F-005"
         )
         self.assertNotIn("transition", released_node)
-        # The reopen routes of a released feature belong to a later work package, so the node offers none.
-        self.assertEqual([], released_node["transitions"])
+        self.assertEqual({"reopen-spec", "reopen-design", "reopen-dev"}, {record["action"] for record in released_node["transitions"]})
+        for record in released_node["transitions"]:
+            self.assertEqual("released", record["source_status"])
+            self.assertIsNotNone(record["target_status"])
+            self.assertIsNotNone(record["target_owner"])
 
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)

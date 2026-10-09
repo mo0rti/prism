@@ -1,0 +1,16 @@
+I am the QA engineer. Feature F-001 was delivered and I verified it. Use Prism's qa-pass skill to pass the backend app through QA toward release. Work only through your Prism MCP tools and follow the board's guidance.
+
+QA evidence for the backend app (record it in the feature's QA verification table):
+- Criteria: every acceptance criterion of the feature, each cited with its revision as the board reports it.
+- Method: automated.
+- Artifact: commit 3f9c2ab, the artifact in the Delivery evidence.
+- Environment: ci.
+- Attempt: the first one, qa-1. Result: pass.
+- Evidence: CI run 1190, https://ci.example.com/runs/1190.
+- Basis: attested, because you cannot open the CI run.
+
+Add the pending Release row of the backend app for the same artifact, as the guidance describes.
+
+You cannot open the CI run from here, so record this evidence as I gave it and say clearly in your summary that you did not verify it.
+
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would change. If something blocks it, tell me exactly what and stop.

@@ -23,6 +23,9 @@ Use this skill to audit one feature against its source documents.
    - If a board review exists: do the board's findings trace back to the spec content?
    - If the feature is in or past QA: does each QA row cite the current revision of a real criterion, and does each bug of the
      feature (`knowledge/wiki/bugs/`) trace to a QA row, a report or a source in `sources`?
+   - If an app of the feature is released: does its Release row link a release record (`knowledge/wiki/releases/`) whose
+     Delivery row for the feature and app agrees on target, version and outcome, and does the record snapshot the contract
+     the app's Delivery evidence cites?
 5. Report findings:
    - **Confirmed:** requirements with clear source traceability
    - **Untraced:** requirements in the spec with no source — possibly hallucinated by AI

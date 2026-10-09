@@ -1,0 +1,6 @@
+interface:
+  display_name: "Release Done"
+  short_description: "Record a release, a rollback or a redeploy in a release record"
+  default_prompt: "Use $release-done F-XXX[,F-YYY] [BUG-XXX ...] to record the outcome of a release in one confirmation, or add --return in-dev, --rollback REL-XXX or --redeploy REL-XXX."
+policy:
+  allow_implicit_invocation: false

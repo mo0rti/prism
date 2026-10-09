@@ -18,11 +18,13 @@ import yaml
 
 from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.wiki_lint import lint_wiki
+from prism_cli.wiki_model import read_feature_evidence
 from prism_cli.wiki_transitions import build_transition_preflight
 from prism_cli.workflow_install import apply_install, plan_install
 from tests import real_temp  # noqa: F401
 from tests.board_approval import apply_preview, human_with_roles
 from tests.core_workflow_fixture import INTAKE_ITEM, create_core_workflow_fixture
+from tests.qa_pages import append_history, history_entry
 from tests.test_apps_surfaces import run_cli
 from tests.test_board_service import (
     _append_body_section,
@@ -137,9 +139,9 @@ class ScopeEditBoardTests(unittest.TestCase):
     def preview(self, skill: str, changes: list[dict[str, str]]) -> dict:
         return self.service.preview_skill(self.agent, skill, changes, None, _read_revisions(self.service, self.agent, skill, changes))
 
-    def apply(self, preview: dict) -> dict:
+    def apply(self, preview: dict, approver: object | None = None) -> dict:
         self.assertTrue(preview["applicable"], preview["blockers"])
-        receipt = apply_preview(self.service, self.agent, preview, str(uuid4()), approver=self.human)
+        receipt = apply_preview(self.service, self.agent, preview, str(uuid4()), approver=approver or self.human)
         self.assertEqual("applied", receipt["state"], receipt)
         return receipt
 
@@ -193,16 +195,50 @@ class ScopeEditBoardTests(unittest.TestCase):
         checks = build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]["checks"]
         self.assertFalse(any(item["code"] == "app-retired-in-scope" for item in checks))
 
-        # 4. The released feature that lists the retired app keeps it as history and is not flagged; its reopen route is a later package's.
+        # 4. The released feature that lists the retired app keeps it as history and is not flagged. Reopening the retired app's
+        # work archives its rows and invalidates its requirement page; the other app keeps its rows, quoted as reaffirmed.
         self.assertEqual("released", _parse_markdown(self.read(FEATURE_TWO))[0]["status"])
         self.assertNotIn("F-002", self.flagged())
-        with self.assertRaises(BoardError) as no_route:
-            self.preview("feature-reopen", [{"path": FEATURE_TWO, "content": self.read(FEATURE_TWO)}])
-        # Every route out of `released` belongs to a package that has not landed, so no route can be named.
-        self.assertEqual(("action_unavailable", 409), (no_route.exception.code, no_route.exception.status))
-        with self.assertRaises(BoardError) as unavailable:
-            self.preview("feature-reopen", [{"path": FEATURE_TWO, "content": _set_feature_stage(self.read(FEATURE_TWO), "in-dev", "dev")}])
-        self.assertEqual(("action_unavailable", 409), (unavailable.exception.code, unavailable.exception.status))
+        backend_requirement = requirement_path("F-002", "backend")
+        released = self.read(FEATURE_TWO)
+        evidence = read_feature_evidence(_parse_markdown(released)[1])
+        quote = lambda section, row: "| " + section + " | " + " | ".join(row.cells) + " |"
+        archived = [("Delivery evidence", "| " + " | ".join(row.cells) + " |") for row in evidence.delivery if row.app == "backend"]
+        archived += [("QA verification", "| " + " | ".join(row.cells) + " |") for row in evidence.qa if "backend" in row.apps]
+        archived += [("Release", "| " + " | ".join(row.cells) + " |") for row in evidence.release if row.app == "backend"]
+        kept = [quote("Delivery evidence", row) for row in evidence.delivery if row.app == "legacy-batch"]
+        kept += [quote("QA verification", row) for row in evidence.qa if "legacy-batch" in row.apps]
+        kept += [quote("Release", row) for row in evidence.release if row.app == "legacy-batch"]
+        entry = history_entry(
+            "reopen-dev",
+            affected="backend",
+            archived=archived,
+            reason="The backend takes over the retired batch job's behavior and its tests must run again.",
+            reaffirmed="\n" + "\n".join(f"  {row}" for row in kept),
+            invalidations=f"{backend_requirement}: done -> in-progress",
+        )
+        reopened = released
+        for section, header in (
+            ("Delivery evidence", "| App | Artifact | Contract | Implementation | Tests | Basis |"),
+            ("QA verification", "| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |"),
+            ("Release", "| App | Target | Version | Attempt | Outcome | Record | Basis |"),
+        ):
+            rows = [
+                "| " + " | ".join(row.cells) + " |"
+                for row in (evidence.delivery if section == "Delivery evidence" else evidence.qa if section == "QA verification" else evidence.release)
+                if "backend" not in (getattr(row, "apps", None) or (row.app,))
+            ]
+            reopened = _replace_body_section(self.service, reopened, section, "\n".join([header, "|" + "|".join("---" for _ in header.strip("|").split("|")) + "|", *rows]))
+        reopened = _set_feature_stage(append_history(reopened, entry), "in-dev", "dev", self.service)
+        frontmatter, _body = _parse_markdown(reopened)
+        frontmatter["app-revalidation"] = {"backend": ["implementation", "tests", "qa", "release"]}
+        reopened = self.service._replace_frontmatter(reopened, frontmatter)
+        invalidated = _set_requirement_status(self.read(backend_requirement), "in-progress")
+        self.apply(self.preview("feature-reopen", [{"path": FEATURE_TWO, "content": reopened}, {"path": backend_requirement, "content": invalidated}]), approver=human_with_roles(self.service, "Reopen owner", "dev"))
+        self.assertEqual(("in-dev", "dev"), tuple(_parse_markdown(self.read(FEATURE_TWO))[0][key] for key in ("status", "owner")))
+        self.assertEqual("in-progress", _parse_markdown(self.read(backend_requirement))[0]["status"])
+        # The reopened feature is now in progress and still lists the retired app, so it is flagged until its scope is edited too.
+        self.assertEqual(["F-002", "F-003"], self.flagged())
 
     # -- what a scope edit refuses ----------------------------------------------------------------
 

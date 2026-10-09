@@ -28,12 +28,10 @@ from prism_cli.wiki_model import (
     app_stages,
     clean_cell,
     merge_revalidation,
-    parse_evidence_table,
     qa_attempt,
     qa_coverage,
-    read_markdown_pages,
-    release_attempt,
 )
+from prism_cli.wiki_releases import read_release_records, record_kinds, release_attempt_of
 
 # The stages in which QA rows can be written for an app, and in which it can pass or fail QA.
 QA_STAGES = ("ready-for-qa", "in-qa")
@@ -244,14 +242,8 @@ def release_attempt_for(wiki_root: Path, item_id: str, app: str) -> int:
     A rollback or redeploy record does not count. A wiki with no `releases/` folder has no records.
     """
 
-    records: list[dict[str, Any]] = []
-    for page in read_markdown_pages(wiki_root / "releases"):
-        rows, _problems = parse_evidence_table(
-            page.body, "Delivery", ("item", "app", "target", "version", "attempt", "outcome", "evidence", "basis"), "release_record_invalid"
-        )
-        kind = "rollback" if page.frontmatter.get("rollback-of") else "redeploy" if page.frontmatter.get("redeploy-of") else "release"
-        records.append({"kind": kind, "delivery": [(cells[0].strip(), cells[1].strip()) for cells in rows]})
-    return release_attempt(records, item_id, app)
+    records = read_release_records(wiki_root)
+    return release_attempt_of(records, record_kinds(records), item_id, app)
 
 
 def check_qa_pass_release_rows(

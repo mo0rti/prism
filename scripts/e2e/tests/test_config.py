@@ -82,11 +82,11 @@ class FixtureSetResolutionTests(unittest.TestCase):
 
 
 class TableTests(unittest.TestCase):
-    def test_the_eleven_lifecycle_steps(self):
+    def test_the_fourteen_lifecycle_steps(self):
         self.assertEqual(
             config.STEP_IDS,
             ("po-intake", "ask", "po-clarify", "po-specify", "po-handoff", "design-start", "design-clarify",
-             "design-handoff", "dev-clarify", "dev-start", "dev-done"),
+             "design-handoff", "dev-clarify", "dev-start", "dev-done", "qa-pass", "release-done", "feature-reopen"),
         )
 
     def test_only_the_three_direct_human_actions_run_in_the_browser(self):

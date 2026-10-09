@@ -60,12 +60,12 @@ open conflicts (`unresolved-conflict`) and malformed conflict records (`malforme
 skipped board reviews without reasons, and the six canonical categories:
 `pending-board-review`, `design-track-pending`, `missing-app-requirements`,
 `unresolved-open-questions`, `api-contract-not-ready`, and
-`cross-app-dependency`. Also check the app rules: a feature before `done` that lists a
+`cross-app-dependency`, plus `dependency-cycle` for app-requirement pages whose `Dependencies` lead back to themselves. Also check the app rules: a feature before `released` that lists a
 retired app (`app-retired-in-scope`), a feature whose `## API surface` declares API work
-while no active app in its `apps` serves an API (`api-surface-without-api-app`), and a
-`done` feature whose `## Delivery evidence` `Release` cell is neither release evidence
-(`release:`, `tag:` or `deployment:` and a URL or workspace path) nor a delivery
-attestation (`attested by <Name>:` and a URL or path) (`release-evidence-required`).
+while no active app in its `apps` serves an API (`api-surface-without-api-app`), a Release row
+that disagrees with the release record it links on target, version or outcome
+(`release-row-record-mismatch`), and a release record (`knowledge/wiki/releases/REL-XXX.md`)
+whose front matter, Delivery rows or contract snapshots are malformed (`release-record-invalid`).
 Freshness comes from `knowledge/wiki/log.md`: a page's last verification is the latest `verify`
 entry whose `paths` line lists it; it is `stale-page` (warning) when older than
 `wiki-stale-after-days` and `never-verified` (information) when there is none, for current-state

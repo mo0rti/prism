@@ -138,8 +138,8 @@ class QaActionsMixin:
 
     # -- open questions (qa rows) ------------------------------------------------------------------------------------------
 
-    def _d3_questions(self, pages: Mapping[str, Any]) -> None:
-        """A QA action may resolve the questions the `qa` owner holds and changes nothing else in the table."""
+    def _d3_questions(self, pages: Mapping[str, Any], owner: str = "qa") -> None:
+        """An action may resolve the questions the `owner` role holds (`qa` for the QA actions, `release` for `release-done`) and changes nothing else in the table."""
 
         relative = pages["path"]
         old_rows, old_errors = parse_open_question_rows(pages["old_body"])
@@ -148,7 +148,7 @@ class QaActionsMixin:
             raise bs.BoardError("invalid_open_questions", "; ".join(old_errors + new_errors), 409)
         new_by_number = {row["number"]: row for row in new_rows}
         if len(new_by_number) != len(new_rows) or {row["number"] for row in new_rows} - {row["number"] for row in old_rows}:
-            raise bs.BoardError("lifecycle_body_scope", "A QA action resolves the open questions of the `qa` owner; it adds no question.", 409, {"path": relative})
+            raise bs.BoardError("lifecycle_body_scope", f"This action resolves the open questions of the `{owner}` owner; it adds no question.", 409, {"path": relative})
         for row in old_rows:
             updated = new_by_number.get(row["number"])
             if updated is None or updated["question"] != row["question"] or updated["owner"] != row["owner"]:
@@ -157,8 +157,8 @@ class QaActionsMixin:
                 continue
             if row["status"] != "open":
                 raise bs.BoardError("question_status_change", f"Previously resolved question {row['number']} must be preserved unchanged.", 409)
-            if row["owner"] != "qa":
-                raise bs.BoardError("question_owner_mismatch", f"A QA action resolves only `qa`-owned questions; question {row['number']} belongs to `{row['owner']}`.", 409)
+            if row["owner"] != owner:
+                raise bs.BoardError("question_owner_mismatch", f"This action resolves only `{owner}`-owned questions; question {row['number']} belongs to `{row['owner']}`.", 409)
             if not updated["status"].startswith("resolved:") or not updated["status"][len("resolved:"):].strip():
                 raise bs.BoardError("answer_required", f"Question {row['number']} needs a substantive resolved answer.", 409)
 
@@ -280,7 +280,7 @@ class QaActionsMixin:
             if text is None:
                 continue
             status = bs._parse_markdown(text, contract)[0].get("status")
-            if action == "qa-return-spec" and status in {"agreed", "implemented"}:
+            if action in {"qa-return-spec", "reopen-spec"} and status in {"agreed", "implemented"}:
                 expected[contract] = "draft"
             elif status == "implemented":
                 expected[contract] = "agreed"
@@ -471,7 +471,7 @@ class QaActionsMixin:
 
         path = pages["path"]
         old_fm, new_fm = pages["old_fm"], pages["new_fm"]
-        added = FEATURE_REVALIDATION_DOMAINS if action == "qa-return-spec" else FEATURE_REVALIDATION_DOMAINS[1:]
+        added = FEATURE_REVALIDATION_DOMAINS if action.endswith("-spec") else FEATURE_REVALIDATION_DOMAINS[1:]
         old_pending, errors = parse_revalidation(old_fm.get("revalidation"))
         if errors:
             raise bs.BoardError("invalid_revalidation", "; ".join(errors), 409)
