@@ -19,7 +19,9 @@ from prism_cli.app_model import (
     api_surface_without_api_app_message,
     retired_in_scope_message,
 )
+from prism_cli.release_lint import ReleaseFinding, lint_release_records, lint_release_row_cells
 from prism_cli.wiki_bugs import BugFinding, blocks, lint_bugs, read_bug_pages
+from prism_cli.wiki_releases import ReleaseRecord, read_release_records, record_id_of_cell
 from prism_cli.wiki_model import (
     APP_STAGE_ORDER,
     FEATURE_FRONTMATTER_FIELDS,
@@ -59,6 +61,7 @@ from prism_cli.wiki_model import (
     parse_status_board_rows,
     parse_iso_date,
     parse_open_question_rows,
+    parse_release_rows,
     api_surface_declared,
     parse_advisory_required_actions,
     parse_revalidation,
@@ -143,7 +146,7 @@ _NON_SOURCE_FILENAMES = {
 _SCHEMA_VERSION_FILES = ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md")
 SUPPORTED_SCHEMA_VERSION = 1
 # A dated record keeps its own date field; every other page kind carries none.
-_RECORD_DATE_FIELDS = {"decisions": "date"}
+_RECORD_DATE_FIELDS = {"decisions": "date", "releases": "date"}
 # The five evidence labels a current-state page uses as a bold run-in label.
 EVIDENCE_LABELS = ("Decided", "Observed", "Proposed", "Assumed", "Unknown")
 # A claim that rests on evidence must link it.
@@ -165,6 +168,7 @@ _FRONTMATTER_PAGE_DIRECTORIES = {
     "decisions",
     "design",
     "personas",
+    "releases",
     "technical-design",
     *GENERAL_PAGE_FOLDERS,
 }
@@ -381,6 +385,7 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                 f"Requirement refers to missing feature `{requirement.feature_id}`.", requirement.feature_id))
 
     diagnostics.extend(_lint_bug_pages(wiki_root, feature_pages, model))
+    diagnostics.extend(_lint_release_pages(wiki_root, feature_pages))
 
     for feature in feature_pages:
         if feature.status == "released":
@@ -405,6 +410,7 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
     diagnostics.extend(_lint_contract_bindings(feature_pages, requirement_pages, all_pages, wiki_root, model))
     diagnostics.extend(_lint_api_contract_blockers(feature_pages, requirement_pages, all_pages, wiki_root))
     diagnostics.extend(_lint_cross_app_dependencies(requirement_pages, feature_pages, wiki_root, model))
+    diagnostics.extend(_lint_dependency_cycles(requirement_pages, feature_pages, wiki_root))
     diagnostics.extend(_lint_history_dates(all_pages, wiki_root))
     diagnostics.extend(_lint_schema_versions(all_pages, wiki_root))
     log = _read_log(wiki_root / "log.md")
@@ -499,6 +505,48 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
 
 def _bug_diagnostic(finding: BugFinding) -> WikiDiagnostic:
     return _diag(finding.code, finding.severity, finding.path, finding.message, finding.feature_id)
+
+
+def _release_diagnostic(finding: ReleaseFinding) -> WikiDiagnostic:
+    return _diag(finding.code, finding.severity, finding.path, finding.message, finding.feature_id)
+
+
+def _lint_release_pages(wiki_root: Path, feature_pages: list[FeaturePage]) -> list[WikiDiagnostic]:
+    """CONTRACTS 6.2: the release records, and the Release rows of features and bugs against the records they link."""
+
+    records = read_release_records(wiki_root)
+    bugs = read_bug_pages(wiki_root)
+    items: dict[str, list[str]] = {feature.feature_id.upper(): list(feature.apps) for feature in feature_pages}
+    items.update({bug.bug_id.upper(): list(bug.apps) for bug in bugs})
+    diagnostics = [_release_diagnostic(finding) for finding in lint_release_records(records, items=items)]
+    by_id = {record.record_id: record for record in records}
+    for feature in feature_pages:
+        if status_rank(feature.status) < status_rank("in-dev"):
+            continue
+        evidence = read_feature_evidence(feature.page.body)
+        linked = [bug.bug_id for bug in bugs if bug.feature is not None and normalize_feature_id(bug.feature) == normalize_feature_id(feature.feature_id)]
+        diagnostics.extend(
+            _release_diagnostic(finding)
+            for finding in lint_release_row_cells(
+                item=feature.feature_id, path=feature.page.path, rows=evidence.release, records=by_id, linked_bugs=linked, feature_id=feature.feature_id
+            )
+        )
+    for bug in bugs:
+        rows, _problems = parse_release_rows(bug.page.body)
+        diagnostics.extend(_release_diagnostic(finding) for finding in lint_release_row_cells(item=bug.bug_id, path=bug.page.path, rows=rows, records=by_id))
+        if bug.status == "released":
+            authoritative = {row.app: row for row in rows if row.authoritative}
+            missing = [app for app in bug.apps if app not in authoritative or authoritative[app].outcome != "released"]
+            if missing:
+                diagnostics.append(
+                    _diag(
+                        "bug-page-invalid",
+                        "error",
+                        bug.page.path,
+                        f"A `released` bug has a released Release row for each of its apps; {', '.join(f'`{app}`' for app in missing)} has none.",
+                    )
+                )
+    return diagnostics
 
 
 def _lint_bug_pages(wiki_root: Path, feature_pages: list[FeaturePage], model: WorkspaceModel) -> list[WikiDiagnostic]:
@@ -970,10 +1018,12 @@ def _lint_contract_bindings(
 ) -> list[WikiDiagnostic]:
     """CONTRACTS 3.4: the Contract cell of an active app's delivery row cites the contract as it is now, and `none` only when there is none.
 
-    A released app is checked against the snapshot of its release record, which belongs to the release package.
+    A released app is checked against the snapshot of its release record (`## Contracts`), because the contract may have been
+    revised or reopened since.
     """
 
     diagnostics: list[WikiDiagnostic] = []
+    records = {record.record_id: record for record in read_release_records(wiki_root)}
     for feature in feature_pages:
         if status_rank(feature.status) < status_rank("in-dev"):
             continue
@@ -987,7 +1037,10 @@ def _lint_contract_bindings(
             if (citation := contract_page_citation(contract.frontmatter, contract.body)) is not None
         }
         for row in evidence.delivery:
-            if stages.get(row.app) in {None, "released"}:
+            if stages.get(row.app) is None:
+                continue
+            if stages[row.app] == "released":
+                diagnostics.extend(_released_binding_diagnostics(feature, evidence, row, records))
                 continue
             cited = clean_cell(row.contract)
             if cited.lower() == "none":
@@ -1013,6 +1066,32 @@ def _lint_contract_bindings(
                     )
                 )
     return diagnostics
+
+
+def _released_binding_diagnostics(feature: FeaturePage, evidence: Any, row: Any, records: dict[str, ReleaseRecord]) -> list[WikiDiagnostic]:
+    """A released app's Delivery row cites the contract its release record snapshots (CONTRACTS 3.4)."""
+
+    cited = clean_cell(row.contract)
+    if cited.lower() == "none":
+        return []
+    release = evidence.authoritative_release(row.app)
+    record_id = record_id_of_cell(release.record) if release is not None else None
+    record = records.get(record_id) if record_id is not None else None
+    if record is None:
+        return []  # `release-row-record-mismatch` reports a row without its record
+    snapshot = next((item for item in record.snapshots if normalize_feature_id(item.feature) == normalize_feature_id(feature.feature_id) and item.app == row.app), None)
+    if snapshot is not None and snapshot.citation == cited and snapshot.digest_citation == cited:
+        return []
+    found = f"`{snapshot.citation}`" if snapshot is not None else "none"
+    return [
+        _diag(
+            "stale-delivery-evidence",
+            "error",
+            feature.page.path,
+            f"The delivery row of the released `{row.app}` cites the contract `{cited}`, but {record.record_id} snapshots {found} for it.",
+            feature.feature_id,
+        )
+    ]
 
 
 def _design_pages_by_feature(pages: list[MarkdownPage], wiki_root: Path) -> dict[str, list[MarkdownPage]]:
@@ -1100,62 +1179,81 @@ def _lint_api_contract_blockers(
     return diagnostics
 
 
+def _dependency_targets(
+    requirement: AppRequirementPage,
+    requirement_pages: list[AppRequirementPage],
+    feature_pages: list[FeaturePage],
+    wiki_root: Path,
+) -> list[tuple[str, FeaturePage | AppRequirementPage, str]]:
+    """Every feature page and app requirement page that the `## Dependencies` section of a requirement names, with the label it is reported under."""
+
+    dependency_body = section_text(requirement.page.body, "Dependencies")
+    if not dependency_body:
+        return []
+    features_by_path = {_resolve(feature.page.path): feature for feature in feature_pages}
+    features_by_id = {normalize_feature_id(feature.feature_id): feature for feature in feature_pages}
+    requirements_by_path = {_resolve(item.page.path): item for item in requirement_pages}
+    found: list[tuple[str, FeaturePage | AppRequirementPage, str]] = []
+    for raw_target in extract_markdown_links(dependency_body):
+        target = _reference_path(requirement.page.path, raw_target, wiki_root, "app-requirements")
+        if target is None:
+            continue
+        target_feature = features_by_path.get(target)
+        if target_feature is not None:
+            found.append(("feature", target_feature, target_feature.feature_id))
+        target_requirement = requirements_by_path.get(target)
+        if target_requirement is not None:
+            found.append(("app requirement", target_requirement, _requirement_label(target_requirement)))
+
+    for directory, kind in (("features", "feature"), ("app-requirements", "app requirement")):
+        for raw_target in _wiki_path_references(dependency_body, directory):
+            target = _reference_path(requirement.page.path, raw_target, wiki_root, directory)
+            if target is None:
+                continue
+            target_feature = features_by_path.get(target)
+            if kind == "feature" and target_feature is not None:
+                found.append(("feature", target_feature, target_feature.feature_id))
+            target_requirement = requirements_by_path.get(target)
+            if kind == "app requirement" and target_requirement is not None:
+                found.append(("app requirement", target_requirement, _requirement_label(target_requirement)))
+
+    feature_by_name = {feature.page.path.name: feature for feature in feature_pages}
+    requirement_by_name = {item.page.path.name: item for item in requirement_pages}
+    for filename in _FEATURE_FILE_PATTERN.findall(dependency_body):
+        target_feature = feature_by_name.get(filename)
+        if target_feature is not None:
+            found.append(("feature", target_feature, target_feature.feature_id))
+        target_requirement = requirement_by_name.get(filename)
+        if target_requirement is not None:
+            found.append(("app requirement", target_requirement, _requirement_label(target_requirement)))
+
+    plain_body = _MARKDOWN_LINK_PATTERN.sub(" ", dependency_body)
+    plain_body = _FEATURE_FILE_PATTERN.sub(" ", plain_body)
+    for feature_id in _FEATURE_ID_PATTERN.findall(plain_body):
+        target_feature = features_by_id.get(normalize_feature_id(feature_id))
+        if target_feature is not None:
+            found.append(("feature", target_feature, feature_id))
+    return found
+
+
 def _lint_cross_app_dependencies(
     requirement_pages: list[AppRequirementPage],
     feature_pages: list[FeaturePage],
     wiki_root: Path,
     model: WorkspaceModel | None = None,
 ) -> list[WikiDiagnostic]:
-    features_by_path = {_resolve(feature.page.path): feature for feature in feature_pages}
     features_by_id = {normalize_feature_id(feature.feature_id): feature for feature in feature_pages}
-    requirements_by_path = {_resolve(requirement.page.path): requirement for requirement in requirement_pages}
     diagnostics: list[WikiDiagnostic] = []
 
     for requirement in requirement_pages:
-        dependency_body = section_text(requirement.page.body, "Dependencies")
-        if not dependency_body:
-            continue
-
         unfinished: set[tuple[str, str]] = set()
-        for raw_target in extract_markdown_links(dependency_body):
-            target = _reference_path(requirement.page.path, raw_target, wiki_root, "app-requirements")
-            if target is None:
-                continue
-            target_feature = features_by_path.get(target)
-            if target_feature is not None and _is_unfinished_feature(target_feature):
-                unfinished.add(("feature", target_feature.feature_id))
-            target_requirement = requirements_by_path.get(target)
-            if target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id, model):
-                unfinished.add(("app requirement", _requirement_label(target_requirement)))
-
-        for directory, kind in (("features", "feature"), ("app-requirements", "app requirement")):
-            for raw_target in _wiki_path_references(dependency_body, directory):
-                target = _reference_path(requirement.page.path, raw_target, wiki_root, directory)
-                if target is None:
-                    continue
-                target_feature = features_by_path.get(target)
-                if kind == "feature" and target_feature is not None and _is_unfinished_feature(target_feature):
-                    unfinished.add(("feature", target_feature.feature_id))
-                target_requirement = requirements_by_path.get(target)
-                if kind == "app requirement" and target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id, model):
-                    unfinished.add(("app requirement", _requirement_label(target_requirement)))
-
-        feature_by_name = {feature.page.path.name: feature for feature in feature_pages}
-        requirement_by_name = {requirement.page.path.name: requirement for requirement in requirement_pages}
-        for filename in _FEATURE_FILE_PATTERN.findall(dependency_body):
-            target_feature = feature_by_name.get(filename)
-            if target_feature is not None and _is_unfinished_feature(target_feature):
-                unfinished.add(("feature", target_feature.feature_id))
-            target_requirement = requirement_by_name.get(filename)
-            if target_requirement is not None and _is_unfinished_requirement(target_requirement, features_by_id, model):
-                unfinished.add(("app requirement", _requirement_label(target_requirement)))
-
-        plain_body = _MARKDOWN_LINK_PATTERN.sub(" ", dependency_body)
-        plain_body = _FEATURE_FILE_PATTERN.sub(" ", plain_body)
-        for feature_id in _FEATURE_ID_PATTERN.findall(plain_body):
-            target_feature = features_by_id.get(normalize_feature_id(feature_id))
-            if target_feature is not None and _is_unfinished_feature(target_feature):
-                unfinished.add(("feature", feature_id))
+        for kind, target, label in _dependency_targets(requirement, requirement_pages, feature_pages, wiki_root):
+            if kind == "feature" and _is_unfinished_feature(target):  # type: ignore[arg-type]
+                unfinished.add(("feature", label))
+            elif kind == "app requirement" and _is_unfinished_requirement(target, features_by_id, model):  # type: ignore[arg-type]
+                unfinished.add(("app requirement", label))
+        if not unfinished:
+            continue
 
         # A requirement page links its own feature page; that link is context,
         # not a dependency, and the requirement is never its own dependency.
@@ -1178,6 +1276,74 @@ def _lint_cross_app_dependencies(
                     requirement.feature_id,
                 )
             )
+    return diagnostics
+
+
+def _lint_dependency_cycles(
+    requirement_pages: list[AppRequirementPage],
+    feature_pages: list[FeaturePage],
+    wiki_root: Path,
+) -> list[WikiDiagnostic]:
+    """CONTRACTS 8.1: apps and features cannot wait for each other (`dependency-cycle`).
+
+    A requirement depends on the requirement pages and on every requirement page of the features its `## Dependencies` names; the
+    link to its own feature is context. Each distinct cycle is reported once, on the first page of the cycle.
+    """
+
+    by_path = {_resolve(item.page.path): item for item in requirement_pages}
+    by_feature: dict[str, list[AppRequirementPage]] = {}
+    for item in requirement_pages:
+        if isinstance(item.feature_id, str):
+            by_feature.setdefault(normalize_feature_id(item.feature_id), []).append(item)
+    edges: dict[Path, list[Path]] = {}
+    for requirement in requirement_pages:
+        own_feature = normalize_feature_id(requirement.feature_id) if isinstance(requirement.feature_id, str) else None
+        own_key = _resolve(requirement.page.path)
+        targets: list[Path] = []
+        for kind, target, _label in _dependency_targets(requirement, requirement_pages, feature_pages, wiki_root):
+            if kind == "feature":
+                feature_key = normalize_feature_id(target.feature_id)  # type: ignore[union-attr]
+                if feature_key == own_feature:
+                    continue
+                targets.extend(_resolve(item.page.path) for item in by_feature.get(feature_key, []))
+            else:
+                targets.append(_resolve(target.page.path))
+        edges[own_key] = sorted({item for item in targets if item != own_key and item in by_path})
+    cycles: dict[frozenset[Path], list[Path]] = {}
+    state: dict[Path, int] = {}
+    stack: list[Path] = []
+
+    def visit(node: Path) -> None:
+        state[node] = 1
+        stack.append(node)
+        for target in edges.get(node, []):
+            if state.get(target, 0) == 0:
+                visit(target)
+            elif state[target] == 1:
+                cycle = stack[stack.index(target) :]
+                cycles.setdefault(frozenset(cycle), cycle)
+        stack.pop()
+        state[node] = 2
+
+    for node in sorted(edges):
+        if state.get(node, 0) == 0:
+            visit(node)
+    diagnostics: list[WikiDiagnostic] = []
+    for members, cycle in sorted(cycles.items(), key=lambda item: min(str(path) for path in item[0])):
+        first = min(members, key=str)
+        index = cycle.index(first)
+        ordered = cycle[index:] + cycle[:index]
+        labels = [_requirement_label(by_path[path]) for path in ordered]
+        page = by_path[first]
+        diagnostics.append(
+            _diag(
+                "dependency-cycle",
+                "error",
+                page.page.path,
+                "Dependency cycle: " + " -> ".join(f"`{label}`" for label in [*labels, labels[0]]) + ". An app or feature cannot wait for one that waits for it.",
+                page.feature_id,
+            )
+        )
     return diagnostics
 
 
@@ -2050,6 +2216,7 @@ def _is_non_source_page(path: Path, wiki_root: Path) -> bool:
         "decisions",
         "design",
         "features",
+        "releases",
         "personas",
         "app-requirements",
         "technical-design",

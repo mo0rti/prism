@@ -60,8 +60,11 @@ complete workflow below and report facts proved by those files.
    - canonical blocker-category counts
    - recently changed wiki pages (the paths in the newest `knowledge/wiki/log.md` entries)
    - suggested next actions
+   - the stage of each active app of a feature from `in-dev` on (`in-dev`, `ready-for-qa`, `in-qa`,
+     `ready-for-release`, `released`), which decides the feature's status: the lowest of its apps
+   - the bugs that are not `released` or `closed`, with their status, owner and feature
    - apps with `status: retired` in `prism.workspace.yml`, and each feature before
-     `done` whose `apps` still lists one (`app-retired-in-scope`)
+     `released` whose `apps` still lists one (`app-retired-in-scope`)
 6. Output the current pipeline view for the user
 7. Write or refresh `knowledge/wiki/WIKI_REPORT.md`
 
@@ -90,8 +93,14 @@ ready-for-design    F-003 - [title] | owner: designer | board: done
 in-design (1)       F-005 - [title] | owner: designer
 ready-for-dev (2)   F-002 - [title] | owner: dev | apps: mobile-android, mobile-ios, backend | board: done
                     F-004 - [title] | owner: dev | apps: backend | board: not-needed
-in-dev (1)          F-001 - [title] | owner: dev
-done (1)            F-000 - [title]
+in-dev (1)          F-001 - [title] | owner: dev | stages: backend: in-dev; web: ready-for-qa
+ready-for-qa (1)    F-009 - [title] | owner: qa | stages: backend: ready-for-qa
+ready-for-release   F-010 - [title] | owner: release | stages: backend: ready-for-release
+released (1)        F-000 - [title]
+
+## Open bugs
+
+- BUG-002 - [title] | verified | owner: release | apps: backend | feature: F-000 | blocking: no
 
 ## Open questions by owner
 
@@ -142,7 +151,10 @@ If this file disagrees with the underlying wiki files, the underlying wiki files
 - in-design: 1
 - ready-for-dev: 2
 - in-dev: 1
-- done: 1
+- ready-for-qa: 1
+- in-qa: 0
+- ready-for-release: 1
+- released: 1
 
 ## Advisory review snapshot
 - pending: 1

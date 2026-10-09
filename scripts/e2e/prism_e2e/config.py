@@ -87,6 +87,9 @@ STEPS: tuple[Step, ...] = (
     Step("dev-clarify", "agent", "claude", "ready-for-dev", "dev", "the dev-clarify answer for F-001"),
     Step("dev-start", "human", None, "in-dev", "dev", "the development start of F-001"),
     Step("dev-done", "agent", "codex", "ready-for-qa", "qa", "the dev-done of F-001 with the delivery evidence in the proposal"),
+    Step("qa-pass", "agent", "claude", "ready-for-release", "release", "the qa-pass of F-001 with its QA row and its pending Release row"),
+    Step("release-done", "agent", "codex", "released", "none", "the release-done of F-001 with its release record"),
+    Step("feature-reopen", "agent", "claude", "in-dev", "dev", "the reopen of F-001 on the in-dev route"),
 )
 STEP_IDS = tuple(step.id for step in STEPS)
 STEPS_BY_ID = {step.id: step for step in STEPS}

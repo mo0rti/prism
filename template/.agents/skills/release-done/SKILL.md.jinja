@@ -1,0 +1,150 @@
+{# Generated from template-skills/release-done/skill.md by scripts/build-skill-layers.py. Edit the source, not this file. -#}
+---
+name: release-done
+description: "Record a release: settle the Release rows of the apps of one or more features, ship verified bugs, return a feature to development after a failed delivery, roll a delivery back, or redeploy it. Use when a deployment, store submission or publication of verified work has run or has failed."
+---
+
+# Release done - record what was delivered
+
+<!-- prism:release-done-contract:v1 -->
+
+Use this skill when verified work has been delivered to its target, or the delivery failed. One confirmation writes a dated
+release record (`knowledge/wiki/releases/REL-XXX.md`) and, with it, the Release rows of the features and bugs it names. A
+feature whose apps are all released is `released`. The record says what was delivered where and with what outcome; it is
+never rewritten.
+
+## Usage
+
+`$release-done F-XXX[,F-YYY] [BUG-XXX ...] [--return in-dev | --rollback REL-XXX | --redeploy REL-XXX]`
+
+| Form | Action | What it does |
+|---|---|---|
+| `F-XXX[,F-YYY] [BUG-XXX ...]` | `release-done` | Settles the pending (or failed) Release row of each app it releases as `released` or `failed`, ships the verified bugs it names, and writes one record. |
+| `F-XXX --return in-dev` | `release-return-dev` | Records the failed delivery of apps and sends them back to development; their delivery, QA and Release rows move to Evidence history. |
+| `--rollback REL-XXX` | `release-rollback` | Records that the current delivery of `REL-XXX` was rolled back. It writes the record alone. |
+| `--redeploy REL-XXX` | `release-redeploy` | Records a redeploy after a rollback (`REL-XXX` is the rollback), or after a failed redeploy (`REL-XXX` is that record). It writes the record alone. |
+
+## Read-only preflight
+
+When available, use:
+
+```text
+prism wiki transition-preflight F-XXX [path] --action release-done --json
+```
+
+Accept it only with common envelope schema 1, command facts, capability version 3 and an action-specific `release-done`
+surface, transition version 2 and a consistent snapshot. The Prism version alone does not prove support. Otherwise fall
+back to direct-file checks. The preflight is copy-only and never authorizes a write.
+
+## Supported actions
+
+- `release-done`: `in-dev` + `dev`, `ready-for-qa` + `qa`, `in-qa` + `qa` or `ready-for-release` + `release` -> the minimum of
+  the app stages: `released` + `none` once every active app is released. Each named app is `ready-for-release`
+  (`app_stage_mismatch`).
+- `release-return-dev`: the same sources -> `in-dev` + `dev`.
+- `release-rollback` and `release-redeploy`: any source from `in-dev` to `released`; the feature pages do not change.
+- A bug that is `verified` + `release` becomes `released` + `none` when every app of the bug is released.
+
+## Evidence and confirmation
+
+Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/ACTIONS.md`, `status-board.md`, the complete
+feature (criteria, Delivery evidence, QA verification, Release, Evidence history), every bug page of the feature,
+`knowledge/wiki/SETTINGS.md` (the delivery target of each app), the API contract the Delivery evidence cites, and every
+release record that names the same features, bugs or apps. The format of a record is in `knowledge/wiki/releases/_FORMAT.md`.
+
+### A release (`release-done`)
+
+The proposal:
+
+- changes the authoritative Release row of each app it releases, in the column order
+  `| App | Target | Version | Attempt | Outcome | Record | Basis |`: Target is the app's delivery target in
+  `SETTINGS.md` as it is now, Version the artifact QA verified, Attempt `release-<n>` (one more than the number of release
+  records that delivered the app for this feature, rollbacks and redeploys excluded), Outcome `released` or `failed`, Record
+  the link `[REL-00n](../releases/REL-00n.md)` and Basis `checked` or `attested`. A `released` row keeps the target it was
+  recorded with;
+- adds or replaces staging rows when they are known: the Target is an environment of the app, the attempt `—`; they are
+  informational;
+- clears the `release` domain of each released app in `app-revalidation`, and nothing else;
+- sets the feature's status and owner to the minimum over the app stages;
+- may resolve open questions owned by `release`;
+- adds the record `knowledge/wiki/releases/REL-00n.md`, where `n` is one more than the highest record number: the front matter
+  `id`, `title`, `date` (the preview day), `operation: pending` (the board writes the operation that applies it), `outcome`
+  (`released` when every row is released, `failed` when none is, `partial` otherwise), `features`, `bugs` and, for a retry, `retry-of`;
+  a Delivery row for every (item, app) the proposal settles, with the same target, version, attempt, outcome and basis as the
+  Release row and an Evidence cell (`release:`, `tag:`, `deployment:`, `store:` or `package:` and a URL or a path in the
+  workspace; a commit or a pull request is not release evidence); and, for each delivered row that cites a contract, the
+  verbatim contract page in `## Contracts` under `### F-XXX <app>`;
+- for each bug it ships, changes the bug page: a Release row for each app of the bug in the same column order, whose Version is
+  the bug's verification artifact, and `status: released` + `owner: none` when every app of the bug is released (otherwise the
+  bug stays `verified`, and a later `release-done` retries it);
+- for a bug that fixes an app of a feature that is already released, also updates the Release row of that app in the feature page:
+  the same target, attempt and outcome, the bug's artifact as Version and the new record as Record.
+
+A bug ships with its feature: a bug that is linked to a feature app that is not yet released goes in the same proposal as the
+feature (`bug_release_requires_feature`). A bug with `feature: none`, or one whose feature app is already released, ships alone.
+Every `verified` bug of the feature and a released app ships with the app (`verified_bug_not_included`).
+
+The board refuses the release when any of these fails:
+
+- the target resolves for each app (`delivery_target_missing` for an app of the `other` stack with no declared target), and the
+  Version is the verified artifact (`release_version_not_verified`);
+- QA still covers each app: every criterion has a passing row at its current revision on the delivered artifact, and no row of the
+  attempt is `fail` or `blocked` (`qa_evidence_stale`);
+- no bug of the feature that lists the app blocks it (`open_bug_blocks_release`);
+- every row of one app and target in the record shares its Version and Outcome (`release_artifact_conflict`);
+- the requirement of each released app depends only on features and apps that are `released`, counting those the same record
+  releases (`dependency_not_released`);
+- no feature or app revalidation is pending;
+- an open question owned by any role except `release` that the proposal leaves open;
+- the record's number is the next one (`release_sequence_invalid`; `release_id_taken` when it exists) and its rows are those of the
+  pages (`release_record_mismatch`).
+
+### A failed delivery that needs development (`release-return-dev`)
+
+The feature page archives the Delivery evidence, QA verification and Release rows of the apps it returns (and every integration
+row that names them) in one `### <today> - release-return-dev` Evidence history entry, as `qa-fail` does, and goes to `in-dev`;
+their requirement pages become `in-progress` and an `implemented` contract `agreed`. The record lists the failed delivery of
+those apps (outcome `failed`) and nothing else.
+
+### A rollback (`release-rollback`)
+
+`--rollback REL-XXX` names the current delivery of every (app, target) it rolls back: the highest-numbered record with a
+`released` row for it, redeploys included (`rollback_target_invalid` otherwise). The record has `rollback-of: REL-XXX`, outcome
+`rolled-back`, and a row `rolled-back` with attempt `—` for each item that delivery carried. The feature and bug pages do not
+change: a row records its own delivery.
+
+### A redeploy (`release-redeploy`)
+
+`--redeploy REL-XXX` names the latest record for the app and target: a rollback of the current delivery, or a failed redeploy of it
+(`app_stage_mismatch` otherwise). The record has `retry-of: REL-XXX` and rows with attempt `—` that deliver the version of the
+current delivery (`redeploy_version_mismatch`), `released` or `failed`.
+
+Show the complete write set: the feature pages, the bug pages, the record, the status board, the index and the log. Reread the
+source and context immediately before confirmation and once again after it. Only after explicit confirmation may the rows, the
+record, the status, the status board row and a `log.md` entry be written.
+
+If a multi-file write is partial, report the exact observed changes and stop for fresh recovery; no transaction is implied.
+Decline or cancel means no mutation. A release record says what was delivered, not what runs now: after a failed attempt or a
+rollback the latest record for the app says what is known.
+
+## Rules
+
+- write-capable skill
+- the target is filled from `SETTINGS.md` when the release is recorded; changing the settings affects only later releases
+- one record per proposal, never rewritten
+- write current-state pages: replace superseded content in place, state rationale as a current fact and keep history in `log.md` and the records; mark each claim `**Decided:**`, `**Observed:**`, `**Proposed:**` or `**Assumed:**` (gaps stay in the Open questions table) and link the evidence of every Decided and Observed claim: the processed intake item, a record or a URL (see Evidence labels in the wiki schema)
+
+## Output behavior
+
+Return:
+
+- the record and its outcome
+- the features and bugs settled, with the apps released or failed
+- the status each feature now has
+- the next step for a failed delivery: `$release-done` again for a retry, `--return in-dev`, or `--rollback`
+
+## Error and stop conditions
+
+- if a feature file does not exist, return a clean missing-feature response
+- if QA, a bug, a dependency or a pending revalidation blocks the release, report the board's code and what to do next, and stop without writing
+- if the user wants to cancel, stop without writing

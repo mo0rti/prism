@@ -108,6 +108,41 @@ class JourneyFixtureTests(unittest.TestCase):
                 self.assertEqual("pass", next(item for item in transition["checks"] if item["code"] == "api-contract")["status"])
 
 
+    def test_the_qa_pass_and_release_done_proposals_of_both_sets_are_valid_and_the_reopen_route_follows(self) -> None:
+        for name, fixture_set in FIXTURE_SETS.items():
+            with self.subTest(fixture_set=name):
+                self.seed("dev-done", fixture_set)
+                self.start()
+                self.assertEqual(("qa-pass", "ready"), self.preview_of("qa-pass", fixture_set)[:2])
+                self.apply_proposal("qa-pass", fixture_set)
+                preview = self.preview_of("release-done", fixture_set)
+                self.assertEqual(("release-done", "ready"), preview[:2], preview[2])
+                self.apply_proposal("release-done", fixture_set)
+                self.assertEqual(["REL-001.md"], sorted(path.name for path in (self.root / "knowledge/wiki/releases").glob("REL-*.md")))
+                transition = build_transition_preflight(self.root, "F-001", action="reopen-dev")["facts"]["transition"]
+                self.assertEqual(("ready", "in-dev", "dev"), (transition["classification"], transition["target_status"], transition["target_owner"]))
+                self.service.close()
+
+    def stamped(self, step: str, fixture_set: Path | None) -> list[dict[str, str]]:
+        """The proposal of a step as the agent writes it: the fixture's recorded day and operation become today and `pending`."""
+
+        recorded_day, recorded_operation = "2026-10-09", "6f1c2d84-5b0e-4c7a-9a3d-0e2b7f19a5c3"
+        return [
+            {"path": item["path"], "content": item["content"].replace(recorded_day, date.today().isoformat()).replace(recorded_operation, "pending")}
+            for item in self.proposal(step, fixture_set)
+        ]
+
+    def preview_of(self, step: str, fixture_set: Path | None) -> tuple[str, str, object]:
+        changes = self.stamped(step, fixture_set)
+        preview = self.service.preview_skill(self.agent, step, changes, None, _revisions(self.service, self.agent, step, changes))
+        return preview["action"], preview["classification"], preview["checks"]
+
+    def apply_proposal(self, step: str, fixture_set: Path | None) -> None:
+        changes = self.stamped(step, fixture_set)
+        preview = self.service.preview_skill(self.agent, step, changes, None, _revisions(self.service, self.agent, step, changes))
+        self.assertEqual("applied", apply_preview(self.service, self.agent, preview, str(uuid4()), approver=self.human)["state"])
+
+
 def _revisions(service: BoardService, actor: object, skill: str, changes: list[dict[str, str]]) -> dict[str, str]:
     from tests.test_board_service import _read_revisions
 

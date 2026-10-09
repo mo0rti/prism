@@ -87,6 +87,7 @@ class PageClassificationTests(unittest.TestCase):
             "app-requirements/F-001-backend.md": "app-requirements",
             "api-contracts/F-001.md": "api-contracts",
             "bugs/BUG-001-a.md": "bugs",
+            "releases/REL-001.md": "releases",
             "decisions/ADR-001-a.md": "decisions",
             "advisory/BOARD.md": "advisory",
             "SCHEMA.md": "meta",

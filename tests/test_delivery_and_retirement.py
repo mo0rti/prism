@@ -637,13 +637,10 @@ class RetirementScopeTests(RetirementWorkspaceCase):
         result = self.lint()
         self.assertEqual([], self.flagged(result))
         self.assertTrue(result.is_clean, [item.to_dict() for item in result.diagnostics if item.severity == "error"])
-        # The reopen routes are registered and answer `action_unavailable` until their work package lands, which restores
-        # the check that the retired app of a released feature is still a valid scope.
         for action in ("reopen-spec", "reopen-design", "reopen-dev"):
             with self.subTest(action=action):
-                unavailable = build_board_transition_preflight(self.root, "F-001", action)
-                self.assertEqual("unknown", unavailable["classification"])
-                self.assertEqual(["action-unavailable"], [item["code"] for item in unavailable["checks"]])
+                scope_check = next(item for item in build_transition_preflight(self.root, "F-001", action=action)["facts"]["transition"]["checks"] if item["code"] == "app-scope")
+                self.assertEqual("pass", scope_check["status"])
 
     def test_retiring_deletes_no_file_whatever_the_features_say(self) -> None:
         self.write_feature(["customer-android", "partner-android"], status="in-dev", owner="dev")

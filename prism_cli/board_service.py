@@ -38,6 +38,7 @@ from prism_cli.app_model import (
 from prism_cli import roles as _roles
 from prism_cli.board_bugs import BugActionsMixin, is_bug_path
 from prism_cli.board_qa import D3_ACTIONS, D3_QA_ACTIONS, D3_RETURN_ACTIONS, QaActionsMixin
+from prism_cli.board_release import D4_REOPEN_ACTIONS, RELEASE_SKILL, ReleaseActionsMixin, is_release_path
 from prism_cli.board_store import BoardLockError, BoardStore, UnsupportedBoardState
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, CloudSyncPathError, reparse_kind
 from prism_cli.roles import ROLES, RoleError, RolePredicate, parse_roles
@@ -56,6 +57,7 @@ from prism_cli.wiki_index import (
     render_index_lines,
 )
 from prism_cli.wiki_bugs import bug_listing_digest
+from prism_cli.wiki_releases import release_listing_digest
 from prism_cli.wiki_log import VERIFY_OPERATION, append_log_entry, format_verification_entry
 from prism_cli.wiki_model import HISTORY_HEADING as _HISTORY_HEADING
 from prism_cli.wiki_model import (
@@ -185,6 +187,7 @@ _WIKI_DIRS = (
     "api-contracts",
     "advisory",
     "bugs",
+    "releases",
     "decisions",
     *GENERAL_PAGE_FOLDERS,
 )
@@ -365,7 +368,7 @@ class Actor:
         }
 
 
-class BoardService(QaActionsMixin, BugActionsMixin):
+class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin):
     """Shared workflow service used by local HTTP, MCP, and CLI adapters."""
 
     def __init__(self, root: Path) -> None:
@@ -392,6 +395,8 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         # cursor sent with the wrong paths can be answered with the paths it belongs to.
         self._read_requests: dict[tuple[str, str], list[str]] = {}
         self._closed = False
+        # Set on the scratch copy a recovery rebuilds: a release record keeps the number and day it was previewed with there.
+        self._recovery_candidate = False
         self._board_id: str | None = None
         self._workflow_version: str | None = None
         self._mode: str | None = None
@@ -1439,7 +1444,16 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         digests: dict[str, Any] = dict(self._fingerprint_paths(paths))
         if payload.get("bug_listing") is not None:
             digests["bug-listing"] = self._current_bug_listing(payload)
+        if payload.get("release_listing") is not None:
+            digests["release-listing"] = self._current_release_listing(payload)
         return _revision(digests)
+
+    def _current_release_listing(self, payload: Mapping[str, Any]) -> str:
+        """The record listing as it is now, plus the record this preview itself creates, so applying it does not change the answer."""
+
+        creates = sorted(PurePosixPath(write["path"]).name for write in payload.get("writes", []) if is_release_path(write["path"]) and write.get("before") is None)
+        listing = release_listing_digest(self.root / "knowledge" / "wiki")
+        return listing if not creates else listing + "+" + ",".join(creates)
 
     def _current_bug_listing(self, payload: Mapping[str, Any]) -> str:
         """The bug listing as it is now, plus the bug pages this preview itself creates, so applying it does not change the answer."""
@@ -1868,6 +1882,7 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         if self._recovery_snapshot(payload) != bound_sources:
             raise BoardError("stale_preview", "A relevant source or dependency changed while the operation was validated; preview again.", 409)
         intent = {**payload, "operation_id": operation_id, "actor": actor.to_dict(), "bound_sources": bound_sources}
+        intent["writes"] = self._stamp_release_operation(intent.get("writes", []), operation_id)
         if isinstance(payload.get("approval"), Mapping):
             approval = {
                 **payload["approval"],
@@ -1901,6 +1916,29 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         # recorded before-state first, and a recovery of this operation (after a crash, or an apply that finds it pending)
         # revalidates in full.
         return self._roll_forward(actor, operation_id, intent, validated_just_now=True, trusted_facts=trusted_facts)
+
+    @staticmethod
+    def _stamp_release_operation(writes: list[dict[str, Any]], operation_id: str) -> list[dict[str, Any]]:
+        """Write the ID of the operation that applies a release record into its `operation` field (CONTRACTS 6.2).
+
+        A proposal carries the placeholder `operation: pending`; the record on disk names the operation that produced it.
+        """
+
+        from prism_cli.wiki_releases import OPERATION_PLACEHOLDER
+
+        result = []
+        for write in writes:
+            after = write.get("after")
+            if is_release_path(str(write.get("path"))) and write.get("before") is None and isinstance(after, str):
+                stamped = re.sub(
+                    rf"(?m)^operation:[ \t]*['\"]?{re.escape(OPERATION_PLACEHOLDER)}['\"]?[ \t]*$",
+                    f"operation: {operation_id}",
+                    after,
+                    count=1,
+                )
+                write = {**write, "after": stamped, "after_digest": _file_digest(stamped)}
+            result.append(write)
+        return result
 
     @staticmethod
     def _attribute_writes(writes: list[dict[str, Any]], approver: Actor, proposer: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -2516,6 +2554,14 @@ class BoardService(QaActionsMixin, BugActionsMixin):
             ]
         if name == "bug-update":
             return ["knowledge/wiki/bugs/*.md"]
+        if name == RELEASE_SKILL:
+            return [
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/bugs/*.md",
+                "knowledge/wiki/releases/*.md",
+                "knowledge/wiki/app-requirements/*.md",
+                "knowledge/wiki/api-contracts/*.md",
+            ]
         return []
 
     @staticmethod
@@ -2541,9 +2587,9 @@ class BoardService(QaActionsMixin, BugActionsMixin):
             )
         if name == SCOPE_SKILL:
             limitations.append(
-                "Edits the scope of one existing feature that is not `done`: the `apps` list, the feature's `## App scope` section (both must change) and "
+                "Edits the scope of one existing feature that is not `released`: the `apps` list, the feature's `## App scope` section (both must change) and "
                 "new `pending` requirement pages for the apps the scope gains. It never changes status, owner or any other field, never rewrites an existing "
-                "requirement page, and never adds a retired app (`app_retired`). A feature that is `done` is reopened with feature-reopen first. "
+                "requirement page, and never adds a retired app (`app_retired`). A feature that is `released` is reopened with feature-reopen first. "
                 "A retired app that the feature already lists may stay or be removed; removing it is how a feature in progress is unblocked "
                 "(`app_retired_in_scope`)."
             )
@@ -2569,7 +2615,7 @@ class BoardService(QaActionsMixin, BugActionsMixin):
             )
         if name == "dev-clarify":
             limitations.append(
-                "Resolves only dev-owned open questions, on a feature that is not `done`. It may change the feature's Open questions, "
+                "Resolves only dev-owned open questions, on a feature that is not `released`. It may change the feature's Open questions, "
                 "Acceptance criteria, App scope and API surface sections and the What to build, Technical constraints, "
                 "API contract reference and Acceptance criteria sections of that feature's existing app requirement pages."
             )
@@ -2601,15 +2647,26 @@ class BoardService(QaActionsMixin, BugActionsMixin):
                 "Returns a feature from `ready-for-dev` or `in-dev` to `specified` or to `in-design` while no app is in QA (`dev-return-spec`, `dev-return-design`): "
                 "one Evidence history entry archives every evidence row of every app, `revalidation` and `app-revalidation` are set, and the design tracks "
                 "are removed (to `specified`) or the affected ones return to `pending` while the others await reaffirmation (to `in-design`). "
-                "A feature of which some apps are released and others not is refused with `partial_release_requires_new_feature`."
+                "A feature of which some apps are released and others not is refused with `partial_release_requires_new_feature`. "
+                "A `released` feature reopens to `specified` or `in-design` (`reopen-spec`, `reopen-design`: every row of every app is archived, released rows included) "
+                "or to `in-dev` (`reopen-dev`: the rows of the apps that change are archived and the others are quoted under Reaffirmed evidence); release records stay as they are."
+            )
+        if name == "release-done":
+            limitations.append(
+                "Records a release in one dated record, `knowledge/wiki/releases/REL-XXX.md`, whose number is one more than the highest on disk, and in the Release rows of "
+                "the features and bugs it names. A release settles the authoritative Release row of each app at `ready-for-release` as `released` or `failed` with the delivery target of "
+                "SETTINGS.md, the verified artifact and the next attempt; a verified bug ships with its feature app (`bug_release_requires_feature`) and becomes `released` when "
+                "every app of the bug is released. QA, bugs, dependencies and pending revalidation must allow it (`qa_evidence_stale`, `open_bug_blocks_release`, `dependency_not_released`). "
+                "`retry-of` marks a retry; `rollback-of` writes a rollback record and a redeploy follows a rollback or a failed redeploy, each alone in the proposal "
+                "(`rollback_target_invalid`, `redeploy_version_mismatch`). The proposal's record carries `operation: pending`; the board writes the operation that applies it."
             )
         if name == "dev-done":
             limitations.append(
                 "The proposed feature page must carry the delivery evidence: one row per declared app in its `## Delivery evidence` table, "
-                "with a substantive Implementation and Tests cell and a Release cell that is release evidence (`release:`, `tag:` or `deployment:` "
-                "and a URL or record path) or a delivery attestation (`attested by <Name>:` and a URL or path), taken from what the developer reports. "
-                "A commit or pull request proves which code changed, not that it shipped. A missing or invalid table is rejected "
-                "with `delivery_evidence_required`, `delivery_evidence_invalid` or `release_evidence_required` and `details`."
+                "with an Artifact (`version:`, `build:`, `image:`, `package:` or `commit:` and its form), a Contract (`none` or the citation of the current API contract), "
+                "a substantive Implementation and Tests cell and a Basis (`checked` or `attested`), taken from what the developer reports. "
+                "A commit or pull request proves which code changed, not that it shipped; shipping is recorded by release-done. A missing or invalid table is rejected "
+                "with `delivery_evidence_required`, `delivery_evidence_invalid`, `artifact_reference_invalid` or `contract_binding_stale` and `details`."
             )
         if name in {"qa-verify", "qa-pass"}:
             limitations.append(
@@ -3475,7 +3532,8 @@ class BoardService(QaActionsMixin, BugActionsMixin):
             writes.append(index_write)
 
         bug_ids = sorted(str(bs_id) for relative in supplied if is_bug_path(relative) and (bs_id := _parse_markdown(supplied[relative], relative)[0].get("id")))
-        log_subject = ", ".join(sorted(str(after_frontmatter[p].get("id")) for p in feature_changes)) or ", ".join(bug_ids) or _move_subject(normalized_moves) or skill
+        record_ids = sorted(str(item_id) for relative in supplied if is_release_path(relative) and (item_id := _parse_markdown(supplied[relative], relative)[0].get("id")))
+        log_subject = ", ".join(sorted(str(after_frontmatter[p].get("id")) for p in feature_changes)) or ", ".join(bug_ids) or ", ".join(record_ids) or _move_subject(normalized_moves) or skill
         log_before = self._optional_text(self._safe_path(_LOG_PATH, allow_missing=True))
         log_entry = _actor_log_entry(
             actor,
@@ -3536,9 +3594,12 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         }
         if approval is not None:
             payload["approval"] = approval
-        if operation.get("action") in D3_ACTIONS or skill == "bug-update":
+        if operation.get("action") in D3_ACTIONS or skill in {"bug-update", RELEASE_SKILL}:
             # A bug created or removed between this preview and its apply changes the bug rules (CONTRACTS 2.4 freshness).
             payload["bug_listing"] = bug_listing_digest(self.root / "knowledge" / "wiki")
+        if skill == RELEASE_SKILL:
+            # A record written between this preview and its apply changes the numbering and the attempts (CONTRACTS 6.2).
+            payload["release_listing"] = release_listing_digest(self.root / "knowledge" / "wiki")
         criteria = {
             relative: entry
             for relative in feature_changes
@@ -3608,6 +3669,8 @@ class BoardService(QaActionsMixin, BugActionsMixin):
             allowed = {"features", "app-requirements", "api-contracts", "bugs"}
         elif skill == "bug-update":
             allowed = {"bugs"}
+        elif skill == RELEASE_SKILL:
+            allowed = {"features", "bugs", "releases", "app-requirements", "api-contracts"}
         elif skill == "feature-reopen":
             allowed = {"features", "app-requirements", "api-contracts"}
         elif skill == SCOPE_SKILL:
@@ -4036,7 +4099,7 @@ class BoardService(QaActionsMixin, BugActionsMixin):
             else:
                 self._assert_feature_id_available(new["id"], except_path=relative)
             self._validate_feature_shape(relative, content, skill)
-            if old is not None and skill != SCOPE_SKILL:
+            if old is not None and skill not in {SCOPE_SKILL, RELEASE_SKILL}:
                 action = self._action_from_feature_change(
                     skill, old, new, _parse_markdown(before[relative] or "", relative)[1], _parse_markdown(content, relative)[1]
                 )
@@ -4099,7 +4162,10 @@ class BoardService(QaActionsMixin, BugActionsMixin):
             elif relative.startswith("knowledge/wiki/decisions/"):
                 self._validate_decision(relative, content, before.get(relative), supplied, before)
             elif is_bug_path(relative):
-                self._validate_bug_page(relative, content, before.get(relative), supplied)
+                if skill != RELEASE_SKILL:
+                    self._validate_bug_page(relative, content, before.get(relative), supplied)
+            elif is_release_path(relative):
+                continue  # the release action validates its record with the rows it settles
             elif general_page_kind(relative.removeprefix("knowledge/wiki/")) is not None:
                 self._validate_general_page(relative, content)
             elif not relative.startswith("knowledge/wiki/features/") and not relative.startswith("knowledge/intake/"):
@@ -4189,6 +4255,10 @@ class BoardService(QaActionsMixin, BugActionsMixin):
             self._assert_skill_available(skill)
             return self._validate_bug_update(supplied, before)
 
+        if skill == RELEASE_SKILL:
+            self._assert_skill_available(skill)
+            return self._validate_release_done(supplied, before, changed_features)
+
         if skill in _LIFECYCLE_SKILLS:
             self._assert_skill_available(skill)
             expected_action = _LIFECYCLE_SKILLS[skill]
@@ -4252,6 +4322,9 @@ class BoardService(QaActionsMixin, BugActionsMixin):
                 # The status follows the minimum of the app stages the evidence produces, so it is judged after the evidence.
                 self._assert_minimum_status(expected_action, target_feature["path"], supplied[target_feature["path"]], old, target_feature["after"])
             d3: dict[str, Any] = {}
+            if expected_action in D4_REOPEN_ACTIONS:
+                d3 = self._d4_validate_reopen(expected_action, target_feature, supplied, before)
+                named_apps = d3["named"]
             if expected_action in D3_ACTIONS:
                 d3 = self._d3_validate(expected_action, target_feature, supplied, before)
                 named_apps = d3["named"]
@@ -5870,8 +5943,8 @@ class BoardService(QaActionsMixin, BugActionsMixin):
         named_apps: tuple[str, ...] = (),
         completes: list[str] | None = None,
     ) -> None:
-        if action in D3_ACTIONS:
-            # The QA actions validate their linked pages with the rest of their rules (`_d3_validate`).
+        if action in D3_ACTIONS or action in D4_REOPEN_ACTIONS:
+            # The QA actions and the reopen routes validate their linked pages with the rest of their rules (`_d3_validate`, `_d4_validate_reopen`).
             return
         related = {path for path in supplied if path.startswith(_LINKED_PAGE_PREFIXES)}
         scope = WRITE_SCOPES[action]
@@ -7014,6 +7087,8 @@ class BoardService(QaActionsMixin, BugActionsMixin):
                 raise BoardError("stale_preview", f"Relevant source `{relative}` changed after this preview.", 409)
         if payload.get("bug_listing") is not None and bug_listing_digest(self.root / "knowledge" / "wiki") != payload["bug_listing"]:
             raise BoardError("stale_preview", "A bug page was created or removed after this preview; preview again.", 409)
+        if payload.get("release_listing") is not None and release_listing_digest(self.root / "knowledge" / "wiki") != payload["release_listing"]:
+            raise BoardError("stale_preview", "A release record was written after this preview; preview again.", 409)
         for move in payload.get("moves", []):
             source = self._safe_path(move["source"], allow_missing=True)
             destination = self._safe_path(move["destination"], allow_missing=True)
@@ -7558,6 +7633,7 @@ class BoardService(QaActionsMixin, BugActionsMixin):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(write["before"].encode("utf-8"))
             with BoardService(candidate_root) as candidate:
+                candidate._recovery_candidate = True
                 if trusted_facts is None:
                     candidate._revalidate_operation(actor, intent, reviewed=reviewed)
                 else:

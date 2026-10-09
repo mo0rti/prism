@@ -172,7 +172,7 @@ FEATURE_FILE = "knowledge/wiki/features/F-001-review-summary-export.md"
 CONTRACT_FILE = "knowledge/wiki/api-contracts/F-001.md"
 REQUIREMENT_FILE = "knowledge/wiki/app-requirements/F-001-backend.md"
 API_SET = config.API_WORK_FIXTURES_DIR
-AFTER_SPECIFY = [step.id for step in config.STEPS[3:11]]  # po-specify through dev-done
+AFTER_SPECIFY = [step.id for step in config.STEPS[3:13]]  # po-specify through release-done
 
 
 def text_of(files, relative):
@@ -224,13 +224,13 @@ class FixtureSetTests(unittest.TestCase):
                 self.assertEqual([(q.number, q.text, q.owner, q.status) for q in api], [(q.number, q.text, q.owner, q.status) for q in default])
 
     def test_the_states_after_design_handoff_hold_the_agreed_contract_and_the_requirement_that_links_it(self):
-        for step in ("design-handoff", "dev-clarify", "dev-start", "dev-done"):
+        for step in ("design-handoff", "dev-clarify", "dev-start", "dev-done", "qa-pass", "release-done"):
             with self.subTest(step=step):
                 files = self.files(step)
                 contract = text_of(files, CONTRACT_FILE)
                 front = ws.parse_front_matter(contract)
                 self.assertEqual((front["feature-id"], front["version"]), ("F-001", "1"))
-                self.assertEqual(front["status"], "implemented" if step == "dev-done" else "agreed")
+                self.assertEqual(front["status"], "agreed" if step in {"design-handoff", "dev-clarify", "dev-start"} else "implemented")
                 for heading in ("## Endpoints", "## Data models", "## Authentication requirements", "## Notes"):
                     self.assertIn(heading, contract)
                 requirement = text_of(files, REQUIREMENT_FILE)
@@ -285,6 +285,33 @@ class FixtureSetTests(unittest.TestCase):
             self.assertIn("Another feature", (Path(folder) / ws.PENDING_INTAKE / "brief.md").read_text(encoding="utf-8"))
             ws.place_pending_brief(Path(folder), API_SET)
             self.assertIn("Review summary export", (Path(folder) / ws.PENDING_INTAKE / "brief.md").read_text(encoding="utf-8"))
+
+
+class AppStagesCellTests(unittest.TestCase):
+    PAGE = (
+        "---\nid: F-001\nstatus: {status}\napps: [backend, worker]\n---\n\n"
+        "## Delivery evidence\n| App | Artifact | Contract | Implementation | Tests | Basis |\n|---|---|---|---|---|---|\n{delivery}\n"
+        "## QA verification\n| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |\n|---|---|---|---|---|---|---|---|---|\n{qa}\n"
+        "## Release\n| App | Target | Version | Attempt | Outcome | Record | Basis |\n|---|---|---|---|---|---|---|\n{release}\n"
+    )
+
+    def cell(self, status, delivery="", qa="", release=""):
+        text = self.PAGE.format(status=status, delivery=delivery, qa=qa, release=release)
+        return ws.app_stages_cell(ws.parse_front_matter(text), text)
+
+    def test_each_app_takes_the_stage_its_rows_show(self):
+        delivery = "| backend | `a` | none | x | y | checked |\n| worker | `a` | none | x | y | checked |"
+        self.assertEqual(self.cell("in-dev"), "backend: in-dev; worker: in-dev")
+        self.assertEqual(self.cell("in-dev", delivery="| backend | `a` | none | x | y | checked |"), "backend: ready-for-qa; worker: in-dev")
+        qa = "| backend | AC-1 | automated | `a` | ci | qa-1 | pass | e | checked |"
+        self.assertEqual(self.cell("in-qa", delivery, qa), "backend: in-qa; worker: ready-for-qa")
+        pending = "| backend | \u2014 | `a` | release-1 | pending | \u2014 | \u2014 |"
+        self.assertEqual(self.cell("in-qa", delivery, qa, pending), "backend: ready-for-release; worker: ready-for-qa")
+        released = "| backend | production | `a` | release-1 | released | [REL-001](../releases/REL-001.md) | checked |"
+        self.assertEqual(self.cell("in-qa", delivery, qa, released), "backend: released; worker: ready-for-qa")
+
+    def test_a_feature_before_development_has_no_stages(self):
+        self.assertEqual(self.cell("specified"), "\u2014")
 
 
 class LintResultTests(unittest.TestCase):

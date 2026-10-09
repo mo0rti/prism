@@ -39,10 +39,11 @@ fails, or lacks `wiki app`, say:
 `Prism CLI read surface unavailable; falling back to direct wiki reads.` Then read
 all files in `knowledge/wiki/features/`, `app-requirements/`, `design/`,
 `api-contracts/`, and `advisory/` except `BOARD.md` and `PROJECT_FOUNDATION.md`. Filter the exact app ID
-and active statuses (`ready-for-design`, `in-design`, `ready-for-dev`, `in-dev`),
-attach matching requirements, and compute only blockers proved by the files.
-Sort active work `in-dev`, `ready-for-dev`, `in-design`, `ready-for-design`;
-keep `done` out unless closed work is requested.
+and active statuses (`ready-for-design`, `in-design`, `ready-for-dev`, `in-dev`, `ready-for-qa`,
+`in-qa`, `ready-for-release`), attach matching requirements and the app's stage in each feature (its Delivery
+evidence, QA verification and Release rows), and compute only blockers proved by the files.
+Sort active work by the app's stage, latest first: `ready-for-release`, `in-qa`, `ready-for-qa`, `in-dev`,
+then `ready-for-dev`, `in-design`, `ready-for-design`; keep `released` out unless closed work is requested.
 
 ## Rules and output
 

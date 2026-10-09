@@ -42,7 +42,7 @@ Every launch sets the model and effort explicitly. The report reads what actuall
 | `smoke` | `claude-haiku-4-5` (no effort setting; its session records carry none) | `gpt-6-luna`, medium | A cheap check after each change. Weaker models expose guidance regressions first, so a failed step is a finding, not noise. |
 | `full` | `claude-sonnet-5-5`, medium | `gpt-6.1-sol`, medium | Before a release. |
 
-Rough cost, from the hosts' own reports: a smoke agent step (preview run plus apply run) used about 0.15 to 0.25 USD of Claude Haiku, and about 0.8 to 1.5 million input tokens of Codex Luna (mostly cached; 4,000 to 12,000 output tokens). Codex reports tokens but no cost. A complete smoke journey has five Claude steps and four Codex steps, so about 1 USD of Claude and about 5 million Codex input tokens. The full tier runs the same steps on larger models; its report records the actual tokens and cost. A host run takes 1 to 6 minutes, so a complete run takes about 30 to 45 minutes.
+Rough cost, from the hosts' own reports: a smoke agent step (preview run plus apply run) used about 0.15 to 0.25 USD of Claude Haiku, and about 0.8 to 1.5 million input tokens of Codex Luna (mostly cached; 4,000 to 12,000 output tokens). Codex reports tokens but no cost. A complete smoke journey has six Claude steps and five Codex steps, so about 1.2 USD of Claude and about 6 million Codex input tokens. The full tier runs the same steps on larger models; its report records the actual tokens and cost. A host run takes 1 to 6 minutes, so a complete run takes about 30 to 45 minutes.
 
 ## Steps
 
@@ -61,6 +61,9 @@ The steps run in this order. Agent steps alternate between the two hosts by this
 | 9 | `dev-clarify` | Claude | no open developer question |
 | 10 | `dev-start` | browser | `in-dev`, `dev` |
 | 11 | `dev-done` | Codex | `ready-for-qa`, `qa`, delivery evidence recorded |
+| 12 | `qa-pass` | Claude | `ready-for-release`, `release`; a passing QA row and a pending Release row for the backend app |
+| 13 | `release-done` | Codex | `released`, `none`; the Release row names the record `REL-001`, which holds the delivery and, when the feature has an API contract, its snapshot |
+| 14 | `feature-reopen` | Claude | `in-dev`, `dev`; the delivery, QA and Release rows archived in `## Evidence history` |
 
 Prompts are fixed text in `prompts/`: one file per agent step plus `apply.txt`. They are short, name no host or model, and ask the agent to follow the board's guidance. The three clarify prompts hold an `{answers}` placeholder that the script fills at run time (below); every other prompt is sent as written. Under the retry rule, an agent may retry a rejected proposal inside its run; the script adds nothing.
 
@@ -83,9 +86,9 @@ A step runs on the state its predecessor leaves. `--steps` therefore seeds that 
 
 `fixtures/` is the default set: a backend-only feature whose API surface says `None.`, so no API contract page exists. `--fixtures <dir>` (or `PRISM_E2E_FIXTURES`) names a set that overlays it. A set holds `<step>/` folders in the layout of `fixtures/` and, optionally, `prompts/<step>.txt` files. Within a step a set's file replaces the default file with the same path; a step or a prompt the set does not hold comes from the default set. The report names the set.
 
-`fixtures-api-work/` is the second set: the feature's API surface declares one endpoint, so from `po-specify` on every state carries that text, and the states from `design-handoff` on hold the contract page (`agreed`, `implemented` after `dev-done`) and the requirement page that links it. Its prompts tell `po-specify` to record the endpoint, `dev-clarify` to leave the API surface alone and `dev-done` to mark the contract implemented. Start a run with it at `po-specify` or later: the earlier steps keep the default states and prompts. After `design-handoff` the journey also checks that the contract page exists at `agreed` and that the requirement page links it. Every set holds the technical design page from `design-handoff` on.
+`fixtures-api-work/` is the second set: the feature's API surface declares one endpoint, so from `po-specify` on every state carries that text, and the states from `design-handoff` on hold the contract page (`agreed`, `implemented` after `dev-done`; the release record holds a snapshot of it) and the requirement page that links it. Its prompts tell `po-specify` to record the endpoint, `dev-clarify` to leave the API surface alone and `dev-done` to mark the contract implemented. Start a run with it at `po-specify` or later: the earlier steps keep the default states and prompts. After `design-handoff` the journey also checks that the contract page exists at `agreed` and that the requirement page links it. Every set holds the technical design page from `design-handoff` on.
 
-The unit tests validate both sets against the step table and the question tables. `python -B -m unittest tests.test_e2e_fixtures` (from the repository root) lints every state, previews the `design-handoff` and `dev-done` proposals against the real board service and runs the `dev-start` preflight.
+The unit tests validate both sets against the step table and the question tables. `python -B -m unittest tests.test_e2e_fixtures` (from the repository root) lints every state, previews the `design-handoff`, `dev-done`, `qa-pass` and `release-done` proposals against the real board service (the recorded day and operation of the release record become today and `pending`) and runs the `dev-start` preflight.
 
 ## Checks
 
@@ -94,7 +97,7 @@ After every apply the script checks, through the board's HTTP API and the worksp
 - the operation receipt reads `applied`;
 - the feature page and its status board row show the expected stage and owner;
 - `prism wiki lint` reports no error (the design handoff leaves the developer's open question as the one expected `unresolved-open-questions` error);
-- step-specific facts: intake folder moved, both design tracks settled with a technical design page after `design-handoff`, one question added and routed to the product owner, no open question left for the owner who clarified, an agreed API contract page that the requirement page links after a `design-handoff` of a feature whose API surface declares API work, delivery evidence recorded;
+- step-specific facts: intake folder moved, both design tracks settled with a technical design page after `design-handoff`, one question added and routed to the product owner, no open question left for the owner who clarified, an agreed API contract page that the requirement page links after a `design-handoff` of a feature whose API surface declares API work, delivery evidence recorded, a passing QA row and a pending Release row after `qa-pass`, the release record `REL-001` and a `released` Release row after `release-done`, the `reopen-dev` entry in the Evidence history after `feature-reopen`;
 - the host's records name the configured model and effort.
 
 An agent step also fails when the host times out or exits non-zero, when no preview was produced, when the agent applied during the preview run, or when it reported no preview ID that its own calls returned.

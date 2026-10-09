@@ -135,8 +135,9 @@ class RegistryTests(_IntegratedBoard):
         self.assertEqual({"all_of": ["po"], "any_of": []}, actions["po-handoff"]["required_roles"])
         self.assertTrue(actions["design-start"]["available_to_participant"])
         self.assertTrue(actions["qa-pass"]["available"])
-        self.assertFalse(actions["release-done"]["available"])
-        self.assertIn("work package D4", actions["release-done"]["unavailable_reason"])
+        self.assertTrue(actions["release-done"]["available"])
+        self.assertNotIn("unavailable_reason", actions["release-done"])
+        self.assertEqual({"all_of": ["release"], "any_of": []}, actions["release-done"]["required_roles"])
 
     def test_an_action_of_a_package_that_has_not_landed_is_refused_with_the_registry_reason(self) -> None:
         spec = dataclasses.replace(wiki_transitions.lookup_action("design-start"), package="D9")

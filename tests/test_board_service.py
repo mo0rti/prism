@@ -22,12 +22,14 @@ import yaml
 
 from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE
+from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_model import parse_criteria, parse_design_tracks, read_feature_evidence
 from prism_cli.workflow_assets import asset_digest
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.board_approval import apply_preview, human_with_roles
 from tests.design_tracks import apply_tracks
 from tests.qa_pages import append_history, bug_page, fix_row, history_entry, verification_row
+from tests.release_pages import delivery, record_page, record_path, release_row
 from tests.core_workflow_fixture import FEATURE_PATH, INTAKE_ITEM, PROCESSED_INTAKE_ITEM, create_core_workflow_fixture
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page, _write_index
 from tests.test_fs_safety import CLOUD_TAG, JUNCTION_TAG, fake_reparse
@@ -122,6 +124,14 @@ class BoardServiceValidatorTests(unittest.TestCase):
                 "knowledge/wiki/bugs/*.md",
             ],
             "bug-update": ["knowledge/wiki/bugs/*.md"],
+            # A release writes the feature pages it settles, the bugs it ships, one new record and the pages a failed delivery lowers.
+            "release-done": [
+                "knowledge/wiki/features/*.md",
+                "knowledge/wiki/bugs/*.md",
+                "knowledge/wiki/releases/*.md",
+                "knowledge/wiki/app-requirements/*.md",
+                "knowledge/wiki/api-contracts/*.md",
+            ],
             # The explicit scope edit of one feature: its page and the requirement pages of the apps it gains.
             "feature-scope": ["knowledge/wiki/features/*.md", "knowledge/wiki/app-requirements/*.md"],
             # It supplies no file: the verified pages are named in `read_revisions` and the log entry is service-managed.
@@ -578,7 +588,7 @@ class BoardServiceValidatorTests(unittest.TestCase):
 
     def test_every_listed_reference_of_every_skill_resolves_through_get_skill_reference(self) -> None:
         names = [item["name"] for item in self.service.list_skills(self.actor)["skills"]]
-        self.assertEqual(33, len(names))
+        self.assertEqual(34, len(names))
         for name in names:
             with self.subTest(skill=name):
                 page = self.service.get_skill(self.actor, name)
@@ -1550,10 +1560,86 @@ class BoardServiceConnectedJourneyTests(unittest.TestCase):
         final = self.service.query(self.agent, "show", "F-001")
         self.assertEqual(("ready-for-release", "release"), (final["facts"]["feature"]["status"], final["facts"]["feature"]["owner"]))
         self.assertIn("backend: ready-for-release", self.service._read_text(self.root / "knowledge/wiki/status-board.md"))
-        # The release actions belong to a later work package.
-        with self.assertRaises(BoardError) as unavailable:
-            self.service.query(self.agent, "transition-preflight", "F-001", "release-done")
-        self.assertEqual(("action_unavailable", 409), (unavailable.exception.code, unavailable.exception.status))
+        # Release: the target comes from the settings, the delivery is a record, and the feature is `released`.
+        self._release_backend()
+        final = self.service.query(self.agent, "show", "F-001")
+        self.assertEqual(("released", "none"), (final["facts"]["feature"]["status"], final["facts"]["feature"]["owner"]))
+        self.assertIn("backend: released", self.service._read_text(self.root / "knowledge/wiki/status-board.md"))
+        self.assertTrue((self.root / "knowledge/wiki/releases/REL-001.md").is_file())
+        self.assertEqual([], [item.code for item in lint_wiki(self.root).diagnostics if item.severity == "error"])
+        # Reopen: the released app goes back to development with all its evidence archived.
+        self._reopen_backend()
+        self.assertEqual(("in-dev", "dev"), self._stage_of("knowledge/wiki/features/F-001-document-review.md"))
+        self.assertTrue((self.root / "knowledge/wiki/releases/REL-001.md").is_file(), "the record of a reopened release stays as history")
+        self.assertEqual([], [item.code for item in lint_wiki(self.root).diagnostics if item.severity == "error"])
+
+    def _release_backend(self) -> None:
+        """`release-done` for the one app: the delivery target comes from the settings and the record REL-001 documents the delivery."""
+
+        feature_path = "knowledge/wiki/features/F-001-document-review.md"
+        settings_path = self.root / "knowledge/wiki/SETTINGS.md"
+        settings = settings_path.read_text(encoding="utf-8")
+        self.assertNotIn("delivery-targets", settings)
+        settings_path.write_text(
+            settings.replace("---\n", "---\ndelivery-targets:\n  backend: {kind: deployment, target: production, environments: [staging]}\n", 1)
+            if settings.startswith("---\n")
+            else "---\ndelivery-targets:\n  backend: {kind: deployment, target: production, environments: [staging]}\n---\n" + settings,
+            encoding="utf-8",
+        )
+        page = _set_feature_stage(self.service._read_text(self.root / feature_path), "released", "none", self.service)
+        frontmatter, _body = _parse_markdown(page)
+        frontmatter.pop("app-revalidation", None)  # the release domain of the released app is cleared
+        page = self.service._replace_frontmatter(page, frontmatter)
+        header = "| App | Target | Version | Attempt | Outcome | Record | Basis |"
+        row = release_row("backend", 1, version="build:backend#2")
+        page = _replace_body_section(self.service, page, "Release", "\n".join([header, "|---|---|---|---|---|---|---|", row]))
+        # The bug fixed during QA is verified, so it ships with the release of its app and is released with its own row.
+        bug_path = "knowledge/wiki/bugs/BUG-001-outcome-not-read-back.md"
+        bug = self.service._read_text(self.root / bug_path)
+        bug_frontmatter, _bug_body = _parse_markdown(bug)
+        bug_frontmatter.update({"status": "released", "owner": "none"})
+        bug = _replace_body_section(self.service, self.service._replace_frontmatter(bug, bug_frontmatter), "Release", "\n".join([header, "|---|---|---|---|---|---|---|", row]))
+        record = record_page(
+            1,
+            [delivery("F-001", "backend", version="build:backend#2"), delivery("BUG-001", "backend", version="build:backend#2")],
+            bugs=["BUG-001"],
+            title="Release of F-001",
+        )
+        self._submit_skill(
+            "release-done",
+            [{"path": feature_path, "content": page}, {"path": bug_path, "content": bug}, {"path": record_path(1), "content": record}],
+        )
+
+    def _reopen_backend(self) -> None:
+        """`reopen-dev` of the released feature: every row of the app is archived, and the app needs all four domains again."""
+
+        feature_path = "knowledge/wiki/features/F-001-document-review.md"
+        requirement_path = "knowledge/wiki/app-requirements/F-001-backend.md"
+        current = self.service._read_text(self.root / feature_path)
+        evidence = read_feature_evidence(_parse_markdown(current)[1])
+        archived = [("Delivery evidence", "| " + " | ".join(row.cells) + " |") for row in evidence.delivery]
+        archived += [("QA verification", "| " + " | ".join(row.cells) + " |") for row in evidence.qa]
+        archived += [("Release", "| " + " | ".join(row.cells) + " |") for row in evidence.release]
+        entry = history_entry(
+            "reopen-dev",
+            affected="backend",
+            archived=archived,
+            reason="The released summary must show the follow-up.",
+            invalidations=f"{requirement_path}: done -> in-progress",
+        )
+        page = current
+        for section, header in (
+            ("Delivery evidence", "| App | Artifact | Contract | Implementation | Tests | Basis |"),
+            ("QA verification", "| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |"),
+            ("Release", "| App | Target | Version | Attempt | Outcome | Record | Basis |"),
+        ):
+            page = _replace_body_section(self.service, page, section, "\n".join([header, "|" + "|".join("---" for _ in header.strip("|").split("|")) + "|"]))
+        page = _set_feature_stage(append_history(page, entry), "in-dev", "dev", self.service)
+        frontmatter, _body = _parse_markdown(page)
+        frontmatter["app-revalidation"] = {"backend": ["implementation", "tests", "qa", "release"]}
+        page = self.service._replace_frontmatter(page, frontmatter)
+        requirement = _set_requirement_status(self.service._read_text(self.root / requirement_path), "in-progress")
+        self._submit_skill("feature-reopen", [{"path": feature_path, "content": page}, {"path": requirement_path, "content": requirement}])
 
     def _qa_to_ready_for_release(self) -> None:
         feature_path = "knowledge/wiki/features/F-001-document-review.md"
@@ -1796,7 +1882,7 @@ class EvidenceHistoryValidatorTests(unittest.TestCase):
         unlisted = self.error(self.after(self.entry(archive)), related=(supplied, before))
         self.assertEqual("reopen_invalidation_mismatch", unlisted.code)
 
-    def test_the_routes_back_from_qa_work_and_the_reopen_routes_of_released_work_answer_action_unavailable(self) -> None:
+    def test_the_routes_back_from_qa_work_and_the_reopen_routes_of_released_work_are_requestable(self) -> None:
         agent = self.service.authenticate(self.service.create_participant("Workflow agent", "agent", True)["token"])
         qa = human_with_roles(self.service, "Quinn", "qa")
         (self.root / self.FEATURE).write_bytes(self.before.encode("utf-8"))
@@ -1828,14 +1914,14 @@ class EvidenceHistoryValidatorTests(unittest.TestCase):
         self.assertEqual({"all_of": ["qa"], "any_of": []}, preview["approval"]["required_roles"])
         self.assertEqual("applied", apply_preview(self.service, agent, preview, str(uuid4()), approver=qa)["state"])
         self.assertEqual("specified", _parse_markdown((self.root / self.FEATURE).read_text(encoding="utf-8"))[0]["status"])
-        # A route that a later package owns is registered and answers `action_unavailable`.
+        # reopen-dev of a released feature: the app loses its evidence and the entry archives it; a page without the entry is refused.
         released = _set_feature_stage(self.before, "released", "none", self.service)
         (self.root / self.FEATURE).write_bytes(released.encode("utf-8"))
         write_status_board(self.root, "| F-001 | Document review | released | none | not-needed |\n")
-        reopened = _set_feature_stage(released, "in-dev", "dev", self.service)
+        reopened = _set_feature_stage(_replace_body_section(self.service, released, "Delivery evidence", "\n".join(self.TABLE[:2])), "in-dev", "dev", self.service)
         with self.assertRaises(BoardError) as caught:
             propose(reopened)
-        self.assertEqual(("action_unavailable", 409), (caught.exception.code, caught.exception.status))
+        self.assertEqual(("history_entry_required", 409), (caught.exception.code, caught.exception.status))
         self.assertEqual("reopen-dev", caught.exception.details["action"])
 
 

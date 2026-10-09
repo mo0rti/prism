@@ -725,20 +725,51 @@ class LifecycleRegressionTests(unittest.TestCase):
         self.assertEqual("pass", self._check(transition, "open-questions")["status"])
         self.assertEqual("ready", transition["classification"])
 
-    def test_the_reopen_routes_of_a_released_feature_are_registered_and_unavailable(self) -> None:
+    def test_released_feature_without_old_evidence_still_exposes_all_reopen_routes(self) -> None:
+        self._write_review(required_action=False, deferred_action=False)
+        self._write_feature(status="released", owner="none", advisory="done")
+        expected = {
+            "reopen-spec": "specified",
+            "reopen-design": "in-design",
+            "reopen-dev": "in-dev",
+        }
+
+        for action, target_status in expected.items():
+            with self.subTest(action=action):
+                transition = self._transition(action)
+                self.assertEqual("ready", transition["classification"])
+                self.assertTrue(transition["supported"])
+                self.assertEqual(target_status, transition["target_status"])
+                self.assertEqual("pass", self._check(transition, "reopen-impact-review")["status"])
+
+    def test_the_reopen_routes_of_a_released_feature_with_evidence_are_ready_and_lint_clean(self) -> None:
         self._write_review(required_action=False, deferred_action=False)
         self._write_requirement(status="done")
         self._write_feature(status="released", owner="none", advisory="done", evidence_stage="released")
         self.assertEqual([], [item.code for item in lint_wiki(self.root, today=CHECK_DATE).diagnostics if item.severity == "error" and item.feature_id == "F-001"])
         for action in ("reopen-spec", "reopen-design", "reopen-dev"):
             with self.subTest(action=action):
-                transition = build_board_transition_preflight(self.root, "F-001", action)
-                self.assertEqual("unknown", transition["classification"])
-                self.assertFalse(transition["supported"])
-                self.assertEqual("unknown", self._check(transition, "action-unavailable")["status"])
-                copy_only = self._transition(action)
-                self.assertEqual("unknown", copy_only["classification"])
-                self.assertFalse(copy_only["supported"])
+                transition = self._transition(action)
+                self.assertEqual("ready", transition["classification"])
+                self.assertTrue(transition["supported"])
+
+    def test_malformed_revalidation_is_visible_but_reopen_routes_remain_requestable(self) -> None:
+        self._write_review(required_action=False, deferred_action=False)
+        self._write_feature(
+            status="released",
+            owner="none",
+            advisory="done",
+            extra_frontmatter="revalidation: [unrecognized-domain]",
+        )
+
+        for action in ("reopen-spec", "reopen-design", "reopen-dev"):
+            with self.subTest(action=action):
+                transition = self._transition(action)
+                self.assertEqual("ready", transition["classification"])
+                impact_review = self._check(transition, "reopen-impact-review")
+                self.assertEqual("pass", impact_review["status"])
+                self.assertIn("malformed", impact_review["message"].lower())
+                self.assertIn("unrecognized-domain", impact_review["message"])
 
     def test_delivery_needs_evidence_for_every_named_app_and_earlier_revalidation_blocks(self) -> None:
         self._write_manifest_platforms(("backend", "mobile-ios"))

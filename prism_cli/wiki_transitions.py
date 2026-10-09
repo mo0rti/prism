@@ -32,6 +32,7 @@ from prism_cli.app_model import (
 )
 from prism_cli.fs_safety import reparse_kind
 from prism_cli.qa_checks import qa_fail_checks, qa_pass_checks, qa_verify_checks
+from prism_cli.release_checks import release_done_checks, release_inclusion_checks, release_return_checks
 from prism_cli.roles import RolePredicate
 from prism_cli.status import IGNORED_INTAKE_FILES
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, _wiki_path_references, lint_wiki
@@ -94,7 +95,7 @@ SUPPORTED_TARGET_STATUS = "ready-for-design"
 
 # The packages whose actions are enabled. A row of another package is registered but answers `action_unavailable` in the
 # service and in discovery until its package lands and adds its ID here.
-ENABLED_PACKAGES = frozenset({"D1", "D2", "D3"})
+ENABLED_PACKAGES = frozenset({"D1", "D2", "D3", "D4"})
 
 DESIGN_OWNER = "D"  # the owner symbol that resolves to `designer` or `tech-lead` from the feature's scope
 MINIMUM = "minimum"  # the status or owner is the minimum over the app stages after the action
@@ -259,13 +260,13 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
     _spec("qa-fail", "qa-fail", (*_QA_SOURCES, ("ready-for-release", "release")), ("in-dev", "dev"), ("qa",), _AP, "D3", ("F15",), per_app=True, copy=True),
     _spec("qa-return-spec", "feature-reopen", _RELEASE_SOURCES, ("specified", "po"), ("qa",), _AP, "D3", ("F16",), arguments="specified"),
     _spec("qa-return-design", "feature-reopen", _RELEASE_SOURCES, ("in-design", _D), ("qa",), _AP, "D3", ("F17",), arguments="in-design"),
-    _spec("release-done", "release-done", _RELEASE_SOURCES, (MINIMUM, MINIMUM), ("release",), _AP, "D4", ("F18", "F19"), per_app=True),
-    _spec("release-return-dev", "release-done", _RELEASE_SOURCES, ("in-dev", "dev"), ("release",), _AP, "D4", ("F20",), per_app=True, arguments="--return in-dev"),
+    _spec("release-done", "release-done", _RELEASE_SOURCES, (MINIMUM, MINIMUM), ("release",), _AP, "D4", ("F18", "F19"), per_app=True, copy=True),
+    _spec("release-return-dev", "release-done", _RELEASE_SOURCES, ("in-dev", "dev"), ("release",), _AP, "D4", ("F20",), per_app=True, arguments="--return in-dev", copy=True),
     _spec("release-rollback", "release-done", (*_RELEASE_SOURCES, ("released", "none")), (UNCHANGED, UNCHANGED), ("release",), _AP, "D4", ("F21",), per_app=True, arguments="--rollback REL-XXX"),
     _spec("release-redeploy", "release-done", (*_RELEASE_SOURCES, ("released", "none")), (UNCHANGED, UNCHANGED), ("release",), _AP, "D4", ("F22",), per_app=True, arguments="--redeploy REL-XXX"),
-    _spec("reopen-spec", "feature-reopen", (("released", "none"),), ("specified", "po"), ("po",), _AP, "D4", ("F23",), arguments="specified"),
-    _spec("reopen-design", "feature-reopen", (("released", "none"),), ("in-design", _D), (_D,), _AP, "D4", ("F24",), arguments="in-design"),
-    _spec("reopen-dev", "feature-reopen", (("released", "none"),), ("in-dev", "dev"), ("dev",), _AP, "D4", ("F25",), arguments="in-dev"),
+    _spec("reopen-spec", "feature-reopen", (("released", "none"),), ("specified", "po"), ("po",), _AP, "D4", ("F23",), arguments="specified", copy=True),
+    _spec("reopen-design", "feature-reopen", (("released", "none"),), ("in-design", _D), (_D,), _AP, "D4", ("F24",), arguments="in-design", copy=True),
+    _spec("reopen-dev", "feature-reopen", (("released", "none"),), ("in-dev", "dev"), ("dev",), _AP, "D4", ("F25",), arguments="in-dev", copy=True),
     _spec(
         "scope-edit",
         "feature-scope",
@@ -329,6 +330,8 @@ _PAGE_SECTIONS = frozenset({"Summary", "User story", "Acceptance criteria", "Ope
 _EVIDENCE_PAGE_SECTIONS = frozenset({"Delivery evidence", "QA verification", "Release", "Evidence history"})
 _LINKED_PAGES = ("knowledge/wiki/app-requirements/", "knowledge/wiki/api-contracts/")
 _BUG_PAGES = "knowledge/wiki/bugs/"
+_RELEASE_PAGES = "knowledge/wiki/releases/"
+_EVIDENCE_SECTIONS = frozenset({"Delivery evidence", "QA verification", "Release", "Evidence history"})
 
 WRITE_SCOPES: dict[str, WriteScope] = {
     # `po-specify` writes the page body but no evidence: the evidence sections exist and stay empty (checked separately).
@@ -399,6 +402,41 @@ WRITE_SCOPES: dict[str, WriteScope] = {
         sets=frozenset({"design", "technical-design"}),
         sets_app=frozenset({"implementation", "tests", "qa", "release"}),
     ),
+    # Release (CONTRACTS 2.5). A release writes a new record, the bugs it ships and the Release row a bug fix updates.
+    "release-done": WriteScope(
+        _BASE_KEYS | {"app-revalidation"},
+        frozenset({"Release", "Open questions"}),
+        (_BUG_PAGES, _RELEASE_PAGES),
+        clears_app=frozenset({"release"}),
+    ),
+    "release-return-dev": WriteScope(
+        _BASE_KEYS | {"app-revalidation"},
+        _EVIDENCE_SECTIONS,
+        (*_LINKED_PAGES, _RELEASE_PAGES),
+    ),
+    "release-rollback": WriteScope(frozenset(), frozenset(), (_RELEASE_PAGES,)),
+    "release-redeploy": WriteScope(frozenset(), frozenset(), (_RELEASE_PAGES,)),
+    # The reopen routes archive the evidence of a released feature, released rows included (CONTRACTS 2.5, 2.7).
+    "reopen-spec": WriteScope(
+        _BASE_KEYS | {"revalidation", "app-revalidation"} | _TRACK_KEYS_ALLOWED,
+        _EVIDENCE_SECTIONS,
+        _LINKED_PAGES,
+        sets=frozenset({"specification", "design", "technical-design"}),
+        sets_app=frozenset({"implementation", "tests", "qa", "release"}),
+    ),
+    "reopen-design": WriteScope(
+        _BASE_KEYS | {"revalidation", "app-revalidation"} | _TRACK_KEYS_ALLOWED,
+        _EVIDENCE_SECTIONS,
+        _LINKED_PAGES,
+        sets=frozenset({"design", "technical-design"}),
+        sets_app=frozenset({"implementation", "tests", "qa", "release"}),
+    ),
+    "reopen-dev": WriteScope(
+        _BASE_KEYS | {"app-revalidation"},
+        _EVIDENCE_SECTIONS,
+        _LINKED_PAGES,
+        sets_app=frozenset({"implementation", "tests", "qa", "release"}),
+    ),
 }
 # The actions that return a feature to an earlier status: they set revalidation domains rather than clear them, and a retired
 # app in the scope does not block them (CONTRACTS 2.2).
@@ -463,16 +501,8 @@ _ACTION_SURFACE_PATHS[SUPPORTED_ACTION] = CAPABILITY_FILES
 
 _ACTION_INVOCATIONS = {
     spec.action: {
-        "codex": (
-            f"$feature-reopen F-XXX {spec.arguments}"
-            if spec.command == "feature-reopen"
-            else f"${spec.command} F-XXX"
-        ),
-        "claude": (
-            f"/feature-reopen F-XXX {spec.arguments}"
-            if spec.command == "feature-reopen"
-            else f"/{spec.command} F-XXX"
-        ),
+        "codex": f"${spec.command} F-XXX {spec.arguments}".strip(),
+        "claude": f"/{spec.command} F-XXX {spec.arguments}".strip(),
     }
     for spec in ACTION_SPECS
     if spec.subject == "feature"
@@ -1545,6 +1575,13 @@ _IGNORED_INTEGRITY: dict[str, tuple[str, ...]] = {
     # The routes back from QA reset what the routes back from implementation reset.
     "qa-return-spec": _RETURN_FINDINGS,
     "qa-return-design": _RETURN_FINDINGS,
+    # A release settles the Release rows of apps whose status the candidate page still carries at the source status.
+    "release-done": ("app-row-ahead-of-status", "feature-status-not-minimum", "app-row-missing", "status-board-frontmatter-drift", "pending-revalidation"),
+    "release-return-dev": _RETURN_FINDINGS,
+    # A reopen leaves a released feature: what it archives and lowers is judged by the board, not by the page it replaces.
+    "reopen-spec": (*_RETURN_FINDINGS, "done-advisory-actions", "pending-board-review", "pending-revalidation", "release-row-record-mismatch"),
+    "reopen-design": (*_RETURN_FINDINGS, "done-advisory-actions", "pending-board-review", "pending-revalidation", "release-row-record-mismatch"),
+    "reopen-dev": (*_RETURN_FINDINGS, "done-advisory-actions", "pending-board-review", "pending-revalidation", "release-row-record-mismatch"),
 }
 # The workflow blockers of the 0.6 gates; the evidence-staleness blockers do not gate these actions.
 LEGACY_BLOCKER_CODES = frozenset(
@@ -1558,6 +1595,9 @@ LEGACY_BLOCKER_CODES = frozenset(
     }
 )
 QA_BLOCKER_CODES = LEGACY_BLOCKER_CODES - {"cross-app-dependency"}
+# A release keeps every earlier gate, blocks on an unreleased dependency and on stale evidence; the page it replaces carries the
+# status of the source, so the status and row findings of the apps it settles do not gate it.
+RELEASE_BLOCKER_CODES = LEGACY_BLOCKER_CODES | {"stale-qa-evidence", "stale-delivery-evidence"}
 
 
 def _action_specific_checks(
@@ -1647,6 +1687,20 @@ def _action_specific_checks(
         ]
     if action == "qa-fail":
         return qa_fail_checks(feature, model, named_apps)
+    if action == "release-done":
+        return [
+            *release_done_checks(feature, model, named_apps),
+            *release_inclusion_checks(feature, model, named_apps, None),
+            _open_questions_check_for_action(feature, {"po", "designer", "tech-lead", "dev", "qa"}),
+        ]
+    if action == "release-return-dev":
+        return release_return_checks(feature, model)
+    if action.startswith("reopen-"):
+        _, revalidation_errors = parse_revalidation(feature.page.frontmatter.get("revalidation"))
+        message = "Copy-only preparation includes an explicit impact review step; no write is authorized until it is completed and confirmed."
+        if revalidation_errors:
+            message += " Existing revalidation metadata is malformed and must be repaired before downstream readiness can be trusted: " + "; ".join(revalidation_errors)
+        return [_check("reopen-impact-review", "pass", message, feature.page.path)]
     return []
 
 
@@ -1673,6 +1727,8 @@ def _planned_target(
         stages = {app: ("ready-for-qa" if stage == "in-dev" else stage) for app, stage in stages.items()}
     if spec.action == "qa-pass" and named_apps is None:
         stages = {app: ("ready-for-release" if stage in {"ready-for-qa", "in-qa"} else stage) for app, stage in stages.items()}
+    if spec.action == "release-done" and named_apps is None:
+        stages = {app: ("released" if stage == "ready-for-release" else stage) for app, stage in stages.items()}
     minimum = minimum_stage(stages.values())
     if minimum is None:
         return feature.status, feature.owner
@@ -2006,6 +2062,11 @@ def _feature_workflow_checks(
         "qa-fail": frozenset(),
         "qa-return-spec": frozenset(),
         "qa-return-design": frozenset(),
+        "release-done": RELEASE_BLOCKER_CODES,
+        "release-return-dev": frozenset(),
+        "reopen-spec": frozenset(),
+        "reopen-design": frozenset(),
+        "reopen-dev": frozenset(),
     }.get(action, WIKI_BLOCKER_CODES)
     # An unreleased dependency warns while work starts and is delivered; `release-done` blocks on it (CONTRACTS 8.1).
     warns = {"cross-app-dependency"} if action in {"dev-start", "dev-done"} else set()

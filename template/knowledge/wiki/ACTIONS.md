@@ -36,21 +36,31 @@ corresponding status board, index, log or evidence records. `D` is the design ow
 | `qa-pass` | as `qa-verify` | the minimum of the app stages: `ready-for-release` + `release` once every app has passed | Pass the apps it names: a `pending` Release row for each, with the QA rows still missing in the same proposal. |
 | `qa-fail` | as `qa-verify`, or `ready-for-release` + `release` | `in-dev` + `dev` | Send the apps it names back to development; their delivery, QA and Release rows move to Evidence history. |
 | `qa-return-spec`, `qa-return-design` | as `qa-fail` | `specified` + `po`, or `in-design` + the design owner | Send the whole feature back to specification or design from QA (`feature-reopen`); refused when an app is released. |
+| `release-done` | `in-dev` up to `ready-for-release`; each app it names is `ready-for-release` | the minimum of the app stages: `released` + `none` once every app is released | Record a release: settle the Release row of each app it releases, ship the verified bugs it names and write the release record. |
+| `release-return-dev` | as `release-done` | `in-dev` + `dev` | Record the failed delivery of the apps it names and send them back to development; their delivery, QA and Release rows move to Evidence history. |
+| `release-rollback` | `in-dev` up to `released` | unchanged | Record that the current delivery of an (app, target) was rolled back; the record is the only write. |
+| `release-redeploy` | `in-dev` up to `released` | unchanged | Record a redeploy after a rollback, or after a failed redeploy; the record is the only write. |
+| `reopen-spec`, `reopen-design` | `released` + `none` | `specified` + `po`, or `in-design` + `D` | Reopen the whole released feature (`feature-reopen`): archive every row, released rows included, and set every app's revalidation domains. |
+| `reopen-dev` | `released` + `none` | `in-dev` + `dev` | Reopen the apps that change (`feature-reopen`); the rows of the others stay, quoted under Reaffirmed evidence. |
 | `scope-edit` | `ready-for-dev` up to `released` | the minimum of the app stages after the edit | Remove an app from the scope (the `feature-scope` skill from `ready-for-dev` on). |
 
 `/dev-done` from `ready-for-dev` also starts development in the same write. Before `ready-for-dev`,
 `/feature-scope` is an ordinary write that edits `apps` and the App scope section and, at `ready-for-design`
 or `in-design`, sets the owner to the design owner of the new scope.
 
-Bug handling is the `bug-update` skill, which selects one of the bug actions of `bugs/_FORMAT.md`. The release
-actions and the routes back from released work are registered but answer `action_unavailable` in
-this version of the board; a feature in `ready-for-release` stays there.
+Bug handling is the `bug-update` skill, which selects one of the bug actions of `bugs/_FORMAT.md`; a bug is released inside
+`release-done`. The four release actions are the forms of the `release-done` skill, and the record they write follows
+`releases/_FORMAT.md`. A release record is dated and never rewritten; its number is one more than the highest on disk
+(`release_sequence_invalid`). The current delivery of an (app, target) is the highest-numbered record with a `released` row for it,
+and a rollback or a redeploy binds to it. An action that this version of the board does not provide yet is refused with
+`action_unavailable`.
 
 Each gated action needs a human who holds the role that approves it: `po` for `po-specify`,
 `po-handoff` and `scope-edit`; the design owner role for `design-start` and `design-handoff`, and
 `designer` for `design-ui-done` and `tech-lead` for `tech-design-done`; `dev` for `dev-start`,
 `dev-done` and the returns from implementation; `qa` for `qa-verify`, `qa-pass`, `qa-fail` and the
-routes back from QA. A `design-handoff` that settles the UI track also needs `designer`, and one that
+routes back from QA; `release` for the four release actions; `po` for `reopen-spec`, the design owner role for
+`reopen-design` and `dev` for `reopen-dev`. A `design-handoff` that settles the UI track also needs `designer`, and one that
 settles the technical track `tech-lead`, on top of the design owner. The board checks the role when
 it applies the action.
 
@@ -98,6 +108,11 @@ Each action may change only what its row allows; the board refuses anything else
 | `qa-pass` | `status`, `owner`, `app-revalidation` | QA verification; Release (a `pending` row per app passed); Open questions (`qa` rows) | new bug pages |
 | `qa-fail` | `status`, `owner`, `app-revalidation` | Delivery evidence, QA verification, Release (remove rows); Evidence history | the named apps' requirement pages and the API contract, to a lower `status`; new bug pages |
 | `qa-return-spec`, `qa-return-design` | as the returns from implementation | as the returns from implementation | as the returns from implementation |
+| `release-done` | `status`, `owner`, `app-revalidation` | Release (settle rows); Open questions (`release` rows) | a new record in `releases/`; the bugs it ships (`status`, `owner`, Release); the Release row of an already released app that a bug fix reaches |
+| `release-return-dev` | `status`, `owner`, `app-revalidation` | Delivery evidence, QA verification, Release (remove rows); Evidence history | a new record; the returned apps' requirement pages and the API contract, to a lower `status` |
+| `release-rollback`, `release-redeploy` | none | none | a new record in `releases/` |
+| `reopen-spec`, `reopen-design` | `status`, `owner`, `revalidation`, `app-revalidation`, `design-tracks`, `design-reaffirm` | the three evidence tables (remove every row, released rows included); Evidence history | requirement pages and the API contract, only to a lower `status` |
+| `reopen-dev` | `status`, `owner`, `app-revalidation` | the three evidence tables (remove the rows of the reopened apps); Evidence history | requirement pages and the API contract, only to a lower `status` |
 | `scope-edit` | `apps`, `status`, `owner`, `app-revalidation`, `criteria-high-water` | App scope; Acceptance criteria (three edits); the evidence tables and Evidence history | none |
 
 ### Specification and handoff boundaries

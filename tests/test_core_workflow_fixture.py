@@ -46,7 +46,7 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
         self.root = create_core_workflow_fixture(Path(self.temp_dir.name) / "document-review")
         self.feature_path = self.root / FEATURE_PATH
 
-    def test_neutral_scenario_covers_intake_handoff_blockers_delivery_and_the_unavailable_reopen(self) -> None:
+    def test_neutral_scenario_covers_intake_handoff_blockers_delivery_and_the_reopen_route(self) -> None:
         # The fixture begins at the intake queue, with no generated app or
         # Copier answers. The empty backend directory only records declared
         # scope for today's shared workspace identity contract.
@@ -163,10 +163,13 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
         self.assertEqual("ready-for-qa", node["status"])
         self.assertEqual([{"app": "backend", "stage": "ready-for-qa"}], node["app_stages"])
 
-        # The reopen routes belong to a later work package: registered, and unavailable.
+        # The release actions are offered once an app is ready for release, and the reopen routes only from `released`.
+        self.assertEqual("unknown", build_board_transition_preflight(self.root, FEATURE_ID, "reopen-dev")["classification"])
+        _set_stage(self.root, "released", "none")
         reopen = build_board_transition_preflight(self.root, FEATURE_ID, "reopen-dev")
-        self.assertEqual("unknown", reopen["classification"])
-        self.assertEqual("unknown", _check(reopen, "action-unavailable")["status"])
+        self.assertEqual("in-dev", reopen["target_status"])
+        self.assertEqual("dev", reopen["target_owner"])
+        self.assertEqual("pass", _check(reopen, "reopen-impact-review")["status"])
 
 
 def _feature_page() -> str:

@@ -68,6 +68,9 @@ complete workflow below and report facts proved by those files.
 
    ## Not ready (in earlier lifecycle stages)
    - F-003 — Admin dashboard [in-design, owner: designer]
+
+   ## Built, waiting for QA or release
+   - F-004 — Search [ready-for-qa, owner: qa]; backend: ready-for-qa
    ```
 
 8. Do not modify any wiki files. This is a read-only operation.
@@ -78,5 +81,7 @@ complete workflow below and report facts proved by those files.
   feature and requirement pages for actual delivery decisions.
 - Features with `advisory-review: pending` must not appear in the "Ready to build"
   section. List them separately under "Board review pending."
-- Dependencies must be checked and stated explicitly.
+- Dependencies must be checked and stated explicitly. A feature dependency is satisfied when that feature is `released`; a
+  requirement dependency when the app's stage in its feature is `released`. An unreleased dependency warns while work starts
+  and is delivered; it blocks the release (`$release-done`), so list it as a risk for the app that waits for it.
 - If any ready-for-dev feature has no app-requirements pages, flag it as incomplete.

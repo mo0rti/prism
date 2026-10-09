@@ -733,6 +733,13 @@ const ACTION_LABELS = {
   "dev-return-design": "return to design",
   "qa-return-spec": "QA return to specification",
   "qa-return-design": "QA return to design",
+  "release-done": "release",
+  "release-return-dev": "return to development after a failed release",
+  "release-rollback": "rollback",
+  "release-redeploy": "redeploy",
+  "reopen-spec": "reopen to specification",
+  "reopen-design": "reopen to design",
+  "reopen-dev": "reopen to development",
 };
 function transitionRecords(node) {
   if (!node || !Array.isArray(node.transitions)) return [];
@@ -775,6 +782,10 @@ const DESIGN_OWNERS = ["designer", "tech-lead"];
 const QA_SOURCE_STATUSES = ["in-dev", "ready-for-qa", "in-qa"];
 const QA_STAGE_STATUSES = ["in-dev", "ready-for-qa", "in-qa", "ready-for-release"];
 const QA_STAGE_OWNERS = ["dev", "qa", "release"];
+// A release settles the apps that are ready for release, so a feature in development or QA may still release one app.
+const RELEASE_SOURCE_STATUSES = ["in-dev", "ready-for-qa", "in-qa", "ready-for-release"];
+const RELEASE_TARGET_STATUSES = ["in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released"];
+const RELEASE_TARGET_OWNERS = ["dev", "qa", "release", "none"];
 const ACTION_CONTRACTS = {
   "po-specify": { source_status: ["raw"], source_owner: ["po"], target_status: ["specified"], target_owner: ["po"] },
   "po-handoff": { source_status: ["specified"], source_owner: ["po"], target_status: ["ready-for-design"], target_owner: DESIGN_OWNERS },
@@ -787,6 +798,11 @@ const ACTION_CONTRACTS = {
   "qa-verify": { source_status: QA_SOURCE_STATUSES, source_owner: ["dev", "qa"], target_status: QA_STAGE_STATUSES, target_owner: QA_STAGE_OWNERS },
   "qa-pass": { source_status: QA_SOURCE_STATUSES, source_owner: ["dev", "qa"], target_status: QA_STAGE_STATUSES, target_owner: QA_STAGE_OWNERS },
   "qa-fail": { source_status: QA_STAGE_STATUSES, source_owner: QA_STAGE_OWNERS, target_status: ["in-dev"], target_owner: ["dev"] },
+  "release-done": { source_status: RELEASE_SOURCE_STATUSES, source_owner: QA_STAGE_OWNERS, target_status: RELEASE_TARGET_STATUSES, target_owner: RELEASE_TARGET_OWNERS },
+  "release-return-dev": { source_status: RELEASE_SOURCE_STATUSES, source_owner: QA_STAGE_OWNERS, target_status: ["in-dev"], target_owner: ["dev"] },
+  "reopen-spec": { source_status: ["released"], source_owner: ["none"], target_status: ["specified"], target_owner: ["po"] },
+  "reopen-design": { source_status: ["released"], source_owner: ["none"], target_status: ["in-design"], target_owner: DESIGN_OWNERS },
+  "reopen-dev": { source_status: ["released"], source_owner: ["none"], target_status: ["in-dev"], target_owner: ["dev"] },
 };
 // The column a card is dropped on to request the action.
 const ACTION_DROP_STAGE = {
@@ -798,7 +814,7 @@ function contractMatches(contract, record) {
 }
 const BOARD_SESSION_EXPIRED = "The board session has expired. Reconnect to continue this connected action.";
 const CONNECTED_HUMAN_ACTIONS = new Set(["po-handoff", "design-start", "dev-start"]);
-const CONNECTED_AGENT_ACTIONS = new Set(["po-specify", "design-ui-done", "tech-design-done", "design-handoff", "dev-done", "qa-verify", "qa-pass", "qa-fail"]);
+const CONNECTED_AGENT_ACTIONS = new Set(["po-specify", "design-ui-done", "tech-design-done", "design-handoff", "dev-done", "qa-verify", "qa-pass", "qa-fail", "release-done", "release-return-dev", "reopen-spec", "reopen-design", "reopen-dev"]);
 const CONNECTED_AGENT_SKILLS = {
   "po-specify": "po-specify",
   "design-ui-done": "design-ui-done",
@@ -808,6 +824,11 @@ const CONNECTED_AGENT_SKILLS = {
   "qa-verify": "qa-verify",
   "qa-pass": "qa-pass",
   "qa-fail": "qa-fail",
+  "release-done": "release-done",
+  "release-return-dev": "release-done",
+  "reopen-spec": "feature-reopen",
+  "reopen-design": "feature-reopen",
+  "reopen-dev": "feature-reopen",
 };
 const CONNECTED_ACTION_BY_STAGE = {
   specified: "po-handoff",
@@ -917,6 +938,18 @@ const ACTION_COMMANDS = {
   "qa-verify": "qa-verify",
   "qa-pass": "qa-pass",
   "qa-fail": "qa-fail",
+  "release-done": "release-done",
+  "release-return-dev": "release-done",
+  "reopen-spec": "feature-reopen",
+  "reopen-design": "feature-reopen",
+  "reopen-dev": "feature-reopen",
+};
+// The route a command takes beyond the feature ID (the registry's `arguments`).
+const ACTION_ARGUMENTS = {
+  "release-return-dev": " --return in-dev",
+  "reopen-spec": " specified",
+  "reopen-design": " in-design",
+  "reopen-dev": " in-dev",
 };
 function capabilityActionKnown(t) {
   const cap = transitionCapability(), action = t && t.action;
@@ -961,7 +994,7 @@ function expectedTransitionInvocation(node, t, surface) {
   const featureId = canonicalFeatureId(node);
   if (!featureId || String(t.feature_id === undefined || t.feature_id === null ? "" : t.feature_id) !== featureId) return "";
   const command = ACTION_COMMANDS[action];
-  return (surface === "codex" ? "$" : "/") + command + " " + featureId;
+  return (surface === "codex" ? "$" : "/") + command + " " + featureId + (ACTION_ARGUMENTS[action] || "");
 }
 function transitionInvocationFor(node, surface, index) {
   const t = transitionRecord(node, index);

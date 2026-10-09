@@ -31,6 +31,7 @@ knowledge/
     ├── app-requirements/  # Per-app implementation specs: F-XXX-[app-id].md
     ├── api-contracts/    # API shapes and endpoint contracts: F-XXX.md
     ├── bugs/             # One file per bug: BUG-XXX-[slug].md
+    ├── releases/         # One record per release, rollback or redeploy: REL-XXX.md
     ├── decisions/        # Architecture Decision Records: ADR-XXX-[slug].md
     ├── topics/           # Synthesis pages: [slug].md
     ├── research/         # Research pages: [slug].md
@@ -71,6 +72,7 @@ kind. Read it before you create or change a page of that kind.
 - **App requirements page** (`app-requirements/`): [`app-requirements/_FORMAT.md`](app-requirements/_FORMAT.md)
 - **API contract page** (`api-contracts/`): [`api-contracts/_FORMAT.md`](api-contracts/_FORMAT.md)
 - **Bug** (`bugs/`): [`bugs/_FORMAT.md`](bugs/_FORMAT.md)
+- **Release record** (`releases/`): [`releases/_FORMAT.md`](releases/_FORMAT.md)
 - **Architecture Decision Record, ADR** (`decisions/`): [`decisions/_FORMAT.md`](decisions/_FORMAT.md)
 - **Topic** (`topics/`): [`topics/_FORMAT.md`](topics/_FORMAT.md)
 - **Research page** (`research/`): [`research/_FORMAT.md`](research/_FORMAT.md)
@@ -381,7 +383,7 @@ operation reads it first to find the pages it needs, then reads those pages.
   `## Decision`).
 - **Groups.** Lines sit under a `##` heading for their kind: Direction and roadmap, Plans,
   Topics, Research, Features, Personas, Business rules, Design, Technical design, App
-  requirements, API contracts, Bugs, Decisions, Advisory and Meta.
+  requirements, API contracts, Bugs, Releases, Decisions, Advisory and Meta.
 - **Replaced in place.** When a page changes, its line is rewritten where it stands, never
   appended. The index has no dates, no narrative and no "was" or "now" wording; history lives
   in `log.md`.
@@ -559,6 +561,8 @@ Use this blocker vocabulary consistently in `lint-wiki`, `wiki-blockers`, and
   `draft` while downstream apps are between `ready-for-dev` and `ready-for-release`.
 - `cross-app-dependency`: any app-requirement page whose `Dependencies`
   section points to feature IDs or app-requirement pages that are not `released` yet.
+- `dependency-cycle` (an error, not a blocker): app-requirement pages whose `Dependencies` sections lead back to
+  themselves, directly or through other pages or features.
 - `feature-status-not-minimum`: a feature at `in-dev` or later whose status differs from the
   lowest stage of its active apps.
 - `app-row-missing`: a feature whose status needs an evidence row that one of its apps lacks.

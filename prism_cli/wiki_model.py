@@ -797,10 +797,10 @@ def parse_revalidation(value: Any) -> tuple[list[str], list[str]]:
 
 RELEASE_EVIDENCE_REQUIRED = "release-evidence-required"
 
-_RELEASE_EVIDENCE_FORM = re.compile(r"^(release|tag|deployment)\s*:\s*(.*)$", re.IGNORECASE)
+_RELEASE_EVIDENCE_FORM = re.compile(r"^(release|tag|deployment|store|package)\s*:\s*(.*)$", re.IGNORECASE)
 _DELIVERY_ATTESTATION_FORM = re.compile(r"^attested\s+by\s+([^:]*?)\s*:\s*(.*)$", re.IGNORECASE)
 _RELEASE_FORMS_HINT = (
-    "Write `release: <URL or record path>`, `tag: <URL or record path>` or `deployment: <URL or record path>`, "
+    "Write `release: <URL or record path>`, `tag: <URL or record path>`, `deployment: <URL or record path>`, `store: <URL or record path>` or `package: <URL or record path>`, "
     "or `attested by <Name>: <URL or path to what they checked>`."
 )
 _SHIPPED_NOTICE = "A commit or pull request proves which code changed, not that it shipped."
@@ -819,9 +819,9 @@ def release_evidence_problem(value: str) -> str | None:
 
     A cell is one of two forms, matched case-insensitively on the prefix:
 
-    * release evidence: ``release: <reference>``, ``tag: <reference>`` or
-      ``deployment: <reference>``, where the reference is the URL of, or a
-      workspace path to, a release, tag or deployment record. A pull request,
+    * release evidence: ``release: <reference>``, ``tag: <reference>``,
+      ``deployment: <reference>``, ``store: <reference>`` or ``package: <reference>``, where the reference is the URL of, or a
+      workspace path to, a release, tag, deployment, store listing or package record. A pull request,
       merge request or commit link is not one;
     * a delivery attestation: ``attested by <Name>: <reference>``, where the
       reference is a URL or a workspace path to what the person checked.
@@ -843,7 +843,7 @@ def release_evidence_problem(value: str) -> str | None:
     release = _RELEASE_EVIDENCE_FORM.match(text)
     if release:
         return _release_reference_problem(release.group(2), allow_code_change=False)
-    return "does not start with `release:`, `tag:`, `deployment:` or `attested by <Name>:`"
+    return "does not start with `release:`, `tag:`, `deployment:`, `store:`, `package:` or `attested by <Name>:`"
 
 
 def _release_reference_problem(reference: str, *, allow_code_change: bool) -> str | None:
