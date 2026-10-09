@@ -1,0 +1,3 @@
+I am the tech lead. Use Prism's tech-design-done skill on feature F-001 to settle its technical design track. It is a backend-only feature, so the UI track needs no visual design. Write the feature's technical design page with a test strategy that covers every acceptance criterion, and the API contract when the feature declares API work. Work only through your Prism MCP tools and follow the board's guidance.
+
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would create, change or move. If something blocks it, tell me exactly what and stop.

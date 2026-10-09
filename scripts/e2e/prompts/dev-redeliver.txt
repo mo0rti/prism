@@ -1,0 +1,11 @@
+I am the developer. BUG-001 is fixed in commit 5d7a1e4 and the backend app of feature F-001 goes to QA again. Use Prism's dev-done skill to hand it to QA. Work only through your Prism MCP tools and follow the board's guidance.
+
+Delivery evidence for the backend app (record it in the feature's delivery evidence table):
+- Implementation: pull request #43 in the review-summary-service repository, merged as commit 5d7a1e4.
+- Tests: CI run 1204 on that commit, 33 tests passed, 0 failed.
+- Artifact: commit 5d7a1e4.
+- Basis: attested, because you cannot check it yourself.
+
+You cannot open the repository or the CI run from here, so record this evidence as I gave it and say clearly in your summary that you did not verify it.
+
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would change. If something blocks it, tell me exactly what and stop.

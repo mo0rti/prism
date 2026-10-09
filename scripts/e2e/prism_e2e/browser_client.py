@@ -23,14 +23,15 @@ WORKER_SCRIPT = Path(__file__).with_name("browser_worker.py")
 START_TIMEOUT_S = 90.0
 ACTION_TIMEOUT_S = 180.0
 CLOSE_TIMEOUT_S = 20.0
+TOKENS_VARIABLE = "PRISM_E2E_TOKENS"
 
 
 class BrowserClient:
     """The parent's handle on the browser worker. Same surface the runner needs from ``HumanBrowser``."""
 
-    def __init__(self, base_url: str, human_token: str, log_path: Path) -> None:
+    def __init__(self, base_url: str, human_tokens: dict[str, str], log_path: Path) -> None:
         self._base_url = base_url
-        self._token = human_token
+        self._tokens = dict(human_tokens)  # approver label -> token; they reach the worker only through its environment
         self._log_path = log_path
         self._process: subprocess.Popen | None = None
         self._lines: queue.Queue = queue.Queue()
@@ -43,7 +44,7 @@ class BrowserClient:
             self._process = subprocess.Popen(
                 [sys.executable, "-B", str(WORKER_SCRIPT)],
                 cwd=str(config.REPO_ROOT),
-                env=clean_env({"PRISM_BOARD_TOKEN": self._token, "PRISM_E2E_BASE_URL": self._base_url}),
+                env=clean_env({TOKENS_VARIABLE: json.dumps(self._tokens), "PRISM_E2E_BASE_URL": self._base_url}),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=log,
@@ -88,11 +89,17 @@ class BrowserClient:
         except ValueError:
             return {"ok": False, "error": "the browser worker sent an unreadable reply"}
 
-    def perform(self, action: str, feature_id: str, workspace: Path, screenshot_dir: Path) -> dict[str, Any]:
-        request = {"op": "perform", "action": action, "feature_id": feature_id, "workspace": str(workspace), "screenshot_dir": str(screenshot_dir)}
+    def perform(self, action: str, feature_id: str, workspace: Path, screenshot_dir: Path, approver: str) -> dict[str, Any]:
+        request = {"op": "perform", "action": action, "feature_id": feature_id, "workspace": str(workspace), "screenshot_dir": str(screenshot_dir), "approver": approver}
         reply = self._call(request, ACTION_TIMEOUT_S)
         if not reply.get("ok"):
             raise RuntimeError(reply.get("error", "the browser step failed"))
+        return reply["outcome"]
+
+    def approve(self, preview_id: str, approver: str) -> dict[str, Any]:
+        reply = self._call({"op": "approve", "preview_id": preview_id, "approver": approver}, ACTION_TIMEOUT_S)
+        if not reply.get("ok"):
+            raise RuntimeError(reply.get("error", "the browser approval failed"))
         return reply["outcome"]
 
     def failure_screenshot(self, path: Path) -> bool:

@@ -35,6 +35,11 @@ class EnvTests(unittest.TestCase):
         self.assertNotIn("PYTHONPATH", env)
         self.assertEqual(env["PYTHONUTF8"], "1")
 
+    def test_clean_env_drops_an_inherited_set_of_browser_tokens(self):
+        with mock.patch.dict(os.environ, {"PRISM_E2E_TOKENS": '{"human-po": "' + "x" * 30 + '"}'}):
+            self.assertNotIn("PRISM_E2E_TOKENS", procs.clean_env())
+            self.assertEqual(procs.clean_env({"PRISM_E2E_TOKENS": "{}"})["PRISM_E2E_TOKENS"], "{}")
+
     def test_clean_env_without_an_override_has_no_board_token(self):
         with mock.patch.dict(os.environ, {"PRISM_BOARD_TOKEN": "x" * 30}):
             self.assertNotIn("PRISM_BOARD_TOKEN", procs.clean_env())

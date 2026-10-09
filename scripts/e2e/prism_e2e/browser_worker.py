@@ -1,8 +1,8 @@
 """The browser worker process: owns Playwright and Chromium and answers JSON-line requests on stdin.
 
-Started by ``prism_e2e.browser.BrowserClient``; not meant to be run by hand. The human participant's
-token arrives in ``PRISM_BOARD_TOKEN`` and never leaves this process except by being typed into the
-board's token form. Every reply is one JSON line on the original stdout; anything else this process
+Started by ``prism_e2e.browser.BrowserClient``; not meant to be run by hand. The tokens of the human
+grants arrive as a JSON object in ``PRISM_E2E_TOKENS`` (approver label to token) and never leave this
+process except by being typed into the board's token form. Every reply is one JSON line on the original stdout; anything else this process
 prints goes to stderr.
 """
 
@@ -29,8 +29,8 @@ def reply(payload: dict) -> None:
 def main() -> int:
     from prism_e2e.browser import BrowserUnavailable, HumanBrowser
 
-    token = os.environ.pop("PRISM_BOARD_TOKEN", "")
-    browser = HumanBrowser(os.environ["PRISM_E2E_BASE_URL"], token)
+    tokens = json.loads(os.environ.pop("PRISM_E2E_TOKENS", "{}"))
+    browser = HumanBrowser(os.environ["PRISM_E2E_BASE_URL"], tokens)
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -42,8 +42,10 @@ def main() -> int:
                 browser.start()
                 reply({"ok": True, "version": browser.version})
             elif operation == "perform":
-                outcome = browser.perform(request["action"], request["feature_id"], Path(request["workspace"]), Path(request["screenshot_dir"]))
+                outcome = browser.perform(request["action"], request["feature_id"], Path(request["workspace"]), Path(request["screenshot_dir"]), request["approver"])
                 reply({"ok": True, "outcome": outcome})
+            elif operation == "approve":
+                reply({"ok": True, "outcome": browser.approve(request["preview_id"], request["approver"])})
             elif operation == "screenshot":
                 reply({"ok": browser.failure_screenshot(Path(request["path"]))})
             elif operation == "recover":

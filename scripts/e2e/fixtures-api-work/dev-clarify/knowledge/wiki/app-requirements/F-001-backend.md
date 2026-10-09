@@ -5,7 +5,7 @@ status: pending
 ---
 
 ## What to build
-Produce and serve the review summary for a finished review through a backend service operation as a downloadable PDF file. The system only produces the file; the reviewer sends it on themselves.
+Produce the review summary for a finished review as a downloadable PDF file. The system only produces the file; the reviewer sends it on themselves.
 
 Developer clarification (question 5): The backend serves the export through a service operation. The "Export summary" button from question 4 lives in the client that calls the backend, and that client is outside this feature. Only the backend app is in scope.
 
@@ -25,13 +25,13 @@ Not applicable for backend.
 See [the API contract](../api-contracts/F-001.md) for the summary endpoint.
 
 ## Acceptance criteria
-- [ ] The backend service operation provides a downloadable PDF summary of a finished review to the calling client for the requesting reviewer.
-- [ ] The backend serves the export through a service operation. The "Export summary" button from question 4 lives in the client that calls the backend, and that client is outside this feature. Only the backend app is in scope.
+- [ ] A reviewer who has finished a review receives a downloaded PDF summary of that review.
 - [ ] The summary header contains the document title, the reviewer, the decision and the date the review was finished, and no document version.
 - [ ] The comments follow the header in the order they were left and are only the requesting reviewer's own.
+- [ ] The backend serves the export through a service operation. The "Export summary" button from question 4 lives in the client that calls the backend, and that client is outside this feature. Only the backend app is in scope.
 - [ ] The summary is exactly one A4 page; when not all comments fit, whole comments are shown and the last line states how many more comments are not shown.
 - [ ] The summary can be sent on without editing.
 - [ ] Producing a summary for a review that is still in progress is refused.
 
 ## Dependencies
-Open question 5 on F-001 (dev-owned: which app presents the export control, given that backend is the only declared app) is unresolved and must be resolved through dev-clarify.
+None.

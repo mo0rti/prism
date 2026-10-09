@@ -65,7 +65,7 @@ def clean_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
     """The environment for a child: no inherited board token or virtual environment."""
 
     env = dict(os.environ)
-    for key in ("PRISM_BOARD_TOKEN", "PYTHONPATH", "VIRTUAL_ENV"):
+    for key in ("PRISM_BOARD_TOKEN", "PRISM_E2E_TOKENS", "PYTHONPATH", "VIRTUAL_ENV"):
         env.pop(key, None)
     env["PYTHONUTF8"] = "1"
     env["PYTHONDONTWRITEBYTECODE"] = "1"

@@ -41,6 +41,8 @@ class StepResult:
     cost_usd: float | None = None
     notes: list[str] = field(default_factory=list)
     not_applicable: bool = False  # passed without launching a host: there was nothing for the step to do
+    # Who approved a gated agent step or applied a human step: the human grant (label, name, ID) and the roles it holds.
+    approval: dict[str, Any] | None = None
 
     def fail(self, reason: str) -> None:
         self.status = "failed"
@@ -151,6 +153,20 @@ def render_markdown(report: dict[str, Any], redact: Callable[[str], str] = lambd
                 )
             ) + " |"
         )
+    approvals = [step for step in report["steps"] if step.get("approval")]
+    if approvals:
+        lines += ["", "## Approvals", "", "| # | Step | Kind | Human grant | Roles | Route | Operation |", "|---|---|---|---|---|---|---|"]
+        for index, step in enumerate(report["steps"], start=1):
+            approval = step.get("approval")
+            if not approval:
+                continue
+            kind = "approved (agent proposal)" if step["kind"] == "agent" else "applied (direct human action)"
+            lines.append(
+                "| " + " | ".join(
+                    _cell(value)
+                    for value in (index, step["step"], kind, f"{approval['approver']} ({approval['approver_name']})", ", ".join(approval["roles"]), approval["route"], step["operation_id"])
+                ) + " |"
+            )
     failed = [step for step in report["steps"] if step["status"] != "passed"]
     if failed:
         lines += ["", "## Failed and skipped steps", ""]

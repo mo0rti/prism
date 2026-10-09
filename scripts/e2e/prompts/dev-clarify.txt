@@ -4,6 +4,6 @@ I am the developer. Use Prism's dev clarify skill to resolve the open developer 
 
 Each answer is my own decision. Paste it exactly as written into that question's row; do not reword it or add decisions I did not give you. Change only the sections the skill allows, so every answer stays traceable to its question.
 
-Where an answer changes what must be built, reflect it in the pages the skill allows you to update. This feature has no API contract page, so leave its API surface section as it is.
+Where an answer changes what must be built, reflect it in the pages the skill allows you to update. The feature is ready for development, so its App scope section cannot change: record the requirement as a new acceptance criterion on the feature, which takes the next number after the criteria high-water mark, and in the backend app's requirement page. This feature has no API contract page, so leave its API surface section as it is.
 
 Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would change. If something blocks it, tell me exactly what and stop.

@@ -23,17 +23,17 @@ A reviewer who has finished reviewing a document can export a one-page summary o
 As a [Legal operations document reviewer](../personas/legal-operations-reviewer.md), I want to export a summary of my finished review, so that I can send it on without editing and without copying my comments by hand.
 
 ## Acceptance criteria
-- [ ] AC-1 [backend] For a finished review, the backend service operation provides the summary to the calling client for the requesting reviewer.
-- [ ] AC-2 [backend] The backend serves the export through a service operation. The "Export summary" button from question 4 lives in the client that calls the backend, and that client is outside this feature. Only the backend app is in scope.
-- [ ] AC-3 [backend] The summary contains the document title, the reviewer, the decision (approved, changes requested or rejected) and the comments the reviewer left, subject to the one-page limit below.
-- [ ] AC-4 [backend] The summary is one page.
-- [ ] AC-5 [backend] The summary can be sent on without editing.
-- [ ] AC-6 [backend] The summary never includes comments from other reviewers.
-- [ ] AC-7 [backend] Export is not available while the review is still in progress.
+- [ ] AC-1 [backend] A reviewer who has finished a review can choose export on that review and receive a summary.
+- [ ] AC-2 [backend] The summary contains the document title, the reviewer, the decision (approved, changes requested or rejected) and the comments the reviewer left, subject to the one-page limit below.
+- [ ] AC-3 [backend] The summary is one page.
+- [ ] AC-4 [backend] The summary can be sent on without editing.
+- [ ] AC-5 [backend] The summary never includes comments from other reviewers.
+- [ ] AC-6 [backend] Export is not available while the review is still in progress.
 
-- [ ] AC-8 [backend] A downloaded PDF file. The system only produces it; the reviewer sends it on themselves.
-- [ ] AC-9 [backend] One page stays the limit. Show as many whole comments as fit and end with a line saying how many more comments are not shown.
-- [ ] AC-10 [backend] The header shows the date the review was finished. It does not show a document version.
+- [ ] AC-7 [backend] A downloaded PDF file. The system only produces it; the reviewer sends it on themselves.
+- [ ] AC-8 [backend] One page stays the limit. Show as many whole comments as fit and end with a line saying how many more comments are not shown.
+- [ ] AC-9 [backend] The header shows the date the review was finished. It does not show a document version.
+- [ ] AC-10 [backend] The backend serves the export through a service operation. The "Export summary" button from question 4 lives in the client that calls the backend, and that client is outside this feature. Only the backend app is in scope.
 
 ## Open questions
 | # | Question | Owner | Status |
@@ -46,12 +46,10 @@ As a [Legal operations document reviewer](../personas/legal-operations-reviewer.
 | 6 | Does the summary have to be available in more than one language? | po | resolved: Only English. No other language is needed for this feature. |
 
 ## App scope
-- **backend**: Serve the review summary through a service operation for a finished review, containing only the requesting reviewer's own comments, and refuse to produce it while the review is in progress.
-
-Developer clarification (question 5): The backend serves the export through a service operation. The "Export summary" button from question 4 lives in the client that calls the backend, and that client is outside this feature. Only the backend app is in scope.
+- **backend**: Produce the review summary for a finished review, containing only the requesting reviewer's own comments, and refuse to produce it while the review is in progress.
 
 ## Design
-Not started.
+The technical design is in [Review summary export technical design](../technical-design/F-001-review-summary-export.md).
 
 ## Related features
 None identified.

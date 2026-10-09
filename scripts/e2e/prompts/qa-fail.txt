@@ -1,0 +1,5 @@
+I am the QA engineer. The first QA attempt of feature F-001 failed on the backend app: the criterion that requires the summary to end with a line saying how many more comments are not shown failed, and the failure is recorded in the QA verification table and in the open bug BUG-001. Use Prism's qa-fail skill to send the backend app back to development. Work only through your Prism MCP tools and follow the board's guidance.
+
+The reason: that criterion failed in QA because the summary does not say how many comments are not shown (BUG-001). List BUG-001 as the linked bug, archive the backend app's delivery and QA evidence as the skill describes, and lower the requirement and contract pages it names.
+
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would change. If something blocks it, tell me exactly what and stop.

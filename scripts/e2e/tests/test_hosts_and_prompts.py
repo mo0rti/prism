@@ -11,6 +11,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from prism_e2e import answers, config, hosts  # noqa: E402
 from prism_e2e.runner import load_prompt, render_apply_prompt  # noqa: E402
+from prism_e2e.workspace import PENDING_INPUTS, fixture_files, fixture_steps_through  # noqa: E402
+
+def ws_pending(step_id):
+    return PENDING_INPUTS[step_id]
+
+
+def ws_fixture_files(step_id):
+    """The files of one step's fixtures (the default set), by path."""
+
+    return fixture_files([step_id])
+
 
 EXE = Path("C:/tools/claude.exe")
 UUID = "0b9a87c6-1111-4222-8333-444455556666"
@@ -122,6 +133,41 @@ class PromptTests(unittest.TestCase):
             for topics in answers.TOPICS.values():
                 for topic in topics:
                     self.assertNotIn(topic.answer, text, f"{step_id} gets its answers from the live questions")
+
+    def test_the_ingest_prompts_confirm_the_interpretation_in_advance(self):
+        for step_id in ("po-intake", "ingest-incident"):
+            text = load_prompt(step_id)
+            with self.subTest(step=step_id):
+                self.assertIn("I confirm your interpretation in advance", text)
+                self.assertIn("follow the skill's conflict step and stop", text)
+
+    def test_the_ingest_incident_prompt_names_the_pending_folder_its_fixtures_place(self):
+        folder, _name = ws_pending("ingest-incident")
+        self.assertIn(f"knowledge/intake/pending/{folder}", load_prompt("ingest-incident"))
+
+    def test_every_gated_prompt_stops_at_the_preview_so_the_human_approves_it(self):
+        gated = [step.id for step in config.STEPS if step.gated]
+        self.assertEqual(
+            gated,
+            ["po-specify", "tech-design-done", "design-handoff", "dev-done", "qa-verify", "qa-fail", "bug-start", "bug-fixed", "dev-redeliver",
+             "bug-verify", "qa-pass", "release-done", "release-retry", "feature-reopen"],
+        )
+        for step_id in gated:
+            text = load_prompt(step_id)
+            with self.subTest(step=step_id):
+                self.assertIn("Stop at the preview: do not apply it.", text)
+                self.assertNotIn("operation ID", text, "the operation ID is the approver's, not the agent's")
+
+    def test_the_evidence_a_prompt_gives_is_the_evidence_its_fixtures_record(self):
+        # Commits, pull requests, CI runs, deployment runs and links the prompt hands the agent are the ones the recorded proposal holds.
+        pattern = re.compile(r"commit ([0-9a-f]{7})(?![0-9a-f])|[Pp]ull request #(\d+)|CI run (\d+)|deployment run (\d+)|(https://[A-Za-z0-9./#_-]+[A-Za-z0-9/#_-])")
+        for step_id in ("dev-done", "qa-verify", "bug-fixed", "dev-redeliver", "bug-verify", "qa-pass", "release-done", "release-retry"):
+            recorded = "\n".join(path.read_text(encoding="utf-8") for path in ws_fixture_files(step_id).values())
+            for prompt_set, text in (("default", load_prompt(step_id)), ("api-work", load_prompt(step_id, config.API_WORK_FIXTURES_DIR))):
+                for match in pattern.finditer(text):
+                    value = next(group for group in match.groups() if group)
+                    with self.subTest(step=step_id, prompt=prompt_set, value=value):
+                        self.assertIn(value, recorded)
 
     def test_the_apply_prompt_carries_the_preview_and_a_new_operation_id(self):
         text = render_apply_prompt(config.STEPS_BY_ID["po-specify"], UUID, OP)

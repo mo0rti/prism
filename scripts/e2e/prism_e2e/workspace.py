@@ -37,10 +37,18 @@ JOURNEY_FOLDERS = (
     "knowledge/wiki/api-contracts",
     "knowledge/wiki/decisions",
     "knowledge/wiki/releases",
+    "knowledge/wiki/bugs",
+    "knowledge/wiki/incidents",
 )
 KEEP_NAMES = {"_FORMAT.md", ".gitkeep"}
 PENDING_INTAKE = "knowledge/intake/pending/2026-09-30-review-summary"
 PROCESSED_BRIEF = "knowledge/intake/processed/2026-09-30-review-summary/brief.md"
+# The steps that process a pending intake folder: the folder, and the file the step finds in it. The fixtures hold the
+# file under the processed path the step leaves it at; the runner copies it back to the pending folder before the step runs.
+PENDING_INPUTS: dict[str, tuple[str, str]] = {
+    "po-intake": ("2026-09-30-review-summary", "brief.md"),
+    "ingest-incident": ("2026-10-09-release-incident", "report.md"),
+}
 
 
 class SetupError(RuntimeError):
@@ -135,17 +143,20 @@ def prism_version(env: Environment) -> str:
     return result.stdout.strip() or "unknown"
 
 
-def issue_grant(env: Environment, tokens: TokenRegistry, label: str, name: str, kind: str, log: list[str]) -> str:
-    """Create one writable participant. Returns its participant ID; the token goes only into the registry."""
+def issue_grant(env: Environment, tokens: TokenRegistry, label: str, name: str, kind: str, log: list[str], roles: tuple[str, ...] = ()) -> str:
+    """Create one writable participant, holding exactly ``roles`` (a human grant only). Returns its participant ID; the token goes only into the registry."""
 
     command = [str(env.prism), "board", "grant", name, "--path", ".", "--kind", kind, "--write"]
+    if roles:
+        command += ["--role", ",".join(roles)]
     result = run_captured(command, cwd=env.workspace, env=clean_env(), timeout=120)
     if result.exit_code != 0:
-        raise SetupError(f"Issuing the grant for {name} failed (exit {result.exit_code}).")
+        raise SetupError(f"Issuing the grant for {name} failed (exit {result.exit_code}): {(result.stderr or result.stdout).strip()[-300:]}")
     data = json.loads(result.stdout)
     tokens.add(label, data["token"])
     shown = dict(data, token=f"<REDACTED-TOKEN length={len(data['token'])}>")
-    log.append(f"$ prism board grant \"{name}\" --path . --kind {kind} --write\n{json.dumps(shown, indent=2)}")
+    role_flag = f" --role {','.join(roles)}" if roles else ""
+    log.append(f"$ prism board grant \"{name}\" --path . --kind {kind} --write{role_flag}\n{json.dumps(shown, indent=2)}")
     return data["participant"]["participant_id"]
 
 
@@ -191,15 +202,30 @@ class Board:
 # --- journey files and fixtures ----------------------------------------------------------
 
 
+def pending_folder(step_id: str) -> str:
+    """The pending intake folder (relative to the workspace) that a step processes."""
+
+    return f"knowledge/intake/pending/{PENDING_INPUTS[step_id][0]}"
+
+
+def place_pending_input(workspace: Path, step_id: str, fixture_set: Path | None = None) -> Path:
+    """The input of an ingest step, in the pending intake folder: the file its fixtures hold under the processed path."""
+
+    folder, name = PENDING_INPUTS[step_id]
+    processed = f"knowledge/intake/processed/{folder}/{name}"
+    source = config.FIXTURES_DIR / step_id / processed
+    if fixture_set is not None and (fixture_set / step_id / processed).is_file():
+        source = fixture_set / step_id / processed
+    target = workspace / pending_folder(step_id) / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)
+    return target
+
+
 def place_pending_brief(workspace: Path, fixture_set: Path | None = None) -> None:
     """The input of ``po-intake``: the review-summary brief, in the pending intake folder."""
 
-    source = config.FIXTURES_DIR / "po-intake" / PROCESSED_BRIEF
-    if fixture_set is not None and (fixture_set / "po-intake" / PROCESSED_BRIEF).is_file():
-        source = fixture_set / "po-intake" / PROCESSED_BRIEF
-    target = workspace / PENDING_INTAKE / "brief.md"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, target)
+    place_pending_input(workspace, "po-intake", fixture_set)
 
 
 def reset_journey_files(workspace: Path) -> None:
@@ -218,9 +244,10 @@ def reset_journey_files(workspace: Path) -> None:
         for path in processed.iterdir():
             if path.name not in KEEP_NAMES:
                 shutil.rmtree(path) if path.is_dir() else path.unlink()
-    pending = workspace / PENDING_INTAKE
-    if pending.exists():
-        shutil.rmtree(pending)
+    for step_id in PENDING_INPUTS:
+        pending = workspace / pending_folder(step_id)
+        if pending.exists():
+            shutil.rmtree(pending)
 
 
 def fixture_steps_through(step: str | None) -> list[str]:
@@ -278,11 +305,85 @@ _OPERATIONS_TABLE = (
 _RELEASE_FILE = re.compile(r"^REL-(\d+)\.md$")
 
 
+_ACTIVE_BUG_STATUSES = ("open", "in-fix", "fixed", "verified")
+_BUGS_HEADING = "## Bugs"
+_BUGS_TABLE = (
+    "| ID | Bug | Status | Owner | Apps | Feature | Blocking |\n"
+    "|----|-----|--------|-------|------|---------|----------|"
+)
+_BUG_KEYS = ("id", "title", "status", "owner", "apps", "feature", "blocking")
+_NUMBER_AT_END = re.compile(r"(\d+)$")
+
+
+def _flow_list(raw: str) -> list[str]:
+    """The items of a front matter flow list such as ``[backend, worker]``; a bare value is one item."""
+
+    text = raw.strip()
+    if text.startswith("[") and text.endswith("]"):
+        text = text[1:-1]
+    return [item.strip().strip("'\"") for item in text.split(",") if item.strip()]
+
+
+def _id_order(identifier: str) -> tuple[int, str]:
+    match = _NUMBER_AT_END.search(identifier)
+    return (int(match.group(1)) if match else 10**9, identifier)
+
+
+def _ids_text(identifiers: list[str]) -> str:
+    ordered = sorted(dict.fromkeys(identifiers), key=_id_order)
+    return ", ".join(ordered) if ordered else _EM_DASH
+
+
+def bug_rows(workspace: Path) -> list[dict[str, str]]:
+    """The ``## Bugs`` rows of the journey: every bug page that is not ``released`` or ``closed``, in number order."""
+
+    folder = workspace / "knowledge/wiki/bugs"
+    rows = []
+    for path in sorted(folder.glob("BUG-*.md")) if folder.is_dir() else []:
+        front = parse_front_matter(path.read_text(encoding="utf-8"))
+        if front.get("status") not in _ACTIVE_BUG_STATUSES:
+            continue
+        rows.append(
+            {
+                "id": front["id"],
+                "title": re.sub(r"\s+", " ", front.get("title", "")).strip().replace("|", "&#124;"),
+                "status": front["status"],
+                "owner": front.get("owner", _EM_DASH),
+                "apps": ", ".join(_flow_list(front.get("apps", ""))) or _EM_DASH,
+                "feature": front.get("feature", "none"),
+                "blocking": "yes" if front.get("blocking", "").strip().lower() == "true" else "no",
+            }
+        )
+    return sorted(rows, key=lambda row: _id_order(row["id"]))
+
+
+def format_bug_row(row: dict[str, str]) -> str:
+    return "| " + " | ".join(row[key] for key in _BUG_KEYS) + " |"
+
+
+def open_incidents(workspace: Path) -> list[tuple[str, list[str]]]:
+    """The incidents that are not ``resolved``, each as its ID and the apps it names."""
+
+    folder = workspace / "knowledge/wiki/incidents"
+    found = []
+    for path in sorted(folder.glob("INC-*.md")) if folder.is_dir() else []:
+        front = parse_front_matter(path.read_text(encoding="utf-8"))
+        if front.get("status") in {"open", "mitigated"}:
+            found.append((front["id"], _flow_list(front.get("apps", ""))))
+    return found
+
+
+def open_bugs_cell(workspace: Path, feature_id: str = config.FEATURE_ID) -> str:
+    """The ``Open bugs`` cell of a feature's row: the active bugs linked to it."""
+
+    return _ids_text([row["id"] for row in bug_rows(workspace) if row["feature"].casefold() == feature_id.casefold()])
+
+
 def operations_rows(workspace: Path, stages: str) -> list[str]:
-    """The ``## Operations`` rows of the journey: one per app that has a released feature or a release record.
+    """The ``## Operations`` rows of the journey: one per app that has a released feature, a release record, an open bug or an open incident.
 
     ``stages`` is the feature's ``App stages`` cell. The latest release of an app is the highest-numbered record that names it,
-    and the outcome is the one its first Delivery row for the app carries. The journey has no bugs or incidents.
+    and the outcome is the one its first Delivery row for the app carries. The open bugs and incidents are those that name the app.
     """
 
     released = {app.strip() for app, _separator, stage in (part.partition(":") for part in stages.split(";")) if stage.strip() == "released"}
@@ -300,26 +401,33 @@ def operations_rows(workspace: Path, stages: str) -> list[str]:
             seen.add(cells[1])
             if cells[1] not in latest or latest[cells[1]][0] < number:
                 latest[cells[1]] = (number, cells[2], cells[5])
+    bugs = bug_rows(workspace)
+    incidents = open_incidents(workspace)
+    apps = released | set(latest) | {app for row in bugs for app in _flow_list(row["apps"])} | {app for _id, named in incidents for app in named}
     rows = []
-    for app in sorted(released | set(latest)):
+    for app in sorted(apps, key=str.casefold):
         number, target, outcome = latest.get(app, (0, _EM_DASH, _EM_DASH))
         record = f"REL-{number:03d}" if number else _EM_DASH
         features = config.FEATURE_ID if app in released else _EM_DASH
-        rows.append(f"| {app} | {target} | {features} | {record} | {outcome} | {_EM_DASH} | {_EM_DASH} |")
+        open_bugs = _ids_text([row["id"] for row in bugs if app in _flow_list(row["apps"])])
+        open_incident_ids = _ids_text([identifier for identifier, named in incidents if app in named])
+        rows.append(f"| {app} | {target} | {features} | {record} | {outcome} | {open_bugs} | {open_incident_ids} |")
     return rows
 
 
-def rewrite_operations(board_text: str, rows: list[str]) -> str:
-    """The status board with the rows of its ``## Operations`` table replaced by ``rows``; a board without the table gains it when there are rows."""
+def _rewrite_table(board_text: str, heading: str, table: str, rows: list[str]) -> str:
+    """The status board with the rows of the table under ``heading`` replaced by ``rows``; a board without the table gains it when there are rows."""
 
-    if rows and _OPERATIONS_HEADING not in board_text.split("\n"):
-        return board_text.rstrip("\n") + f"\n\n{_OPERATIONS_HEADING}\n\n{_OPERATIONS_TABLE}\n" + "\n".join(rows) + "\n"
+    if rows and heading not in board_text.split("\n"):
+        return board_text.rstrip("\n") + f"\n\n{heading}\n\n{table}\n" + "\n".join(rows) + "\n"
     out: list[str] = []
     in_section = False
     after_separator = False
     for line in board_text.split("\n"):
-        if line.strip() == _OPERATIONS_HEADING:
+        if line.strip() == heading:
             in_section = True
+        elif line.startswith("## "):
+            in_section = False  # another table follows; its rows are not this table's
         elif in_section and after_separator and line.startswith("|"):
             continue
         out.append(line)
@@ -327,6 +435,18 @@ def rewrite_operations(board_text: str, rows: list[str]) -> str:
             out.extend(rows)
             after_separator = True
     return "\n".join(out)
+
+
+def rewrite_operations(board_text: str, rows: list[str]) -> str:
+    """The status board with the rows of its ``## Operations`` table replaced by ``rows``; a board without the table gains it when there are rows."""
+
+    return _rewrite_table(board_text, _OPERATIONS_HEADING, _OPERATIONS_TABLE, rows)
+
+
+def rewrite_bugs(board_text: str, rows: list[str]) -> str:
+    """The status board with the rows of its ``## Bugs`` table replaced by ``rows``; a board without the table gains it when there are rows."""
+
+    return _rewrite_table(board_text, _BUGS_HEADING, _BUGS_TABLE, rows)
 
 
 _IN_DEV_AND_LATER = ("in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released")
@@ -401,8 +521,9 @@ def design_tracks_cell(text: str) -> str:
     return f"ui: {states['ui']}; technical: {states['technical']}" if "ui" in states and "technical" in states else "—"
 
 
-def feature_row(front_matter: dict[str, str], text: str = "") -> str:
-    return "| {id} | {title} | {status} | {owner} | {review} | {tracks} | {stages} | — |".format(
+def feature_row(front_matter: dict[str, str], text: str = "", open_bugs: str = _EM_DASH) -> str:
+    return "| {id} | {title} | {status} | {owner} | {review} | {tracks} | {stages} | {bugs} |".format(
+        bugs=open_bugs,
         tracks=design_tracks_cell(text),
         id=front_matter["id"],
         title=front_matter["title"],
@@ -430,8 +551,9 @@ def seed_state(workspace: Path, step: str | None, fixture_set: Path | None = Non
     board_path = workspace / "knowledge/wiki/status-board.md"
     feature = find_feature_page(workspace)
     page_text = feature.read_text(encoding="utf-8") if feature else ""
-    row = feature_row(parse_front_matter(page_text), page_text) if feature else None
+    row = feature_row(parse_front_matter(page_text), page_text, open_bugs_cell(workspace)) if feature else None
     board = rewrite_status_board(board_path.read_text(encoding="utf-8"), row)
+    board = rewrite_bugs(board, [format_bug_row(bug) for bug in bug_rows(workspace)])
     stages = app_stages_cell(parse_front_matter(page_text), page_text) if feature else _EM_DASH
     board_path.write_text(rewrite_operations(board, operations_rows(workspace, stages)), encoding="utf-8", newline="\n")
     return sorted(files)
@@ -578,6 +700,109 @@ def read_api_contract(workspace: Path) -> dict[str, str] | None:
 
     page = workspace / API_CONTRACT
     return parse_front_matter(page.read_text(encoding="utf-8")) if page.is_file() else None
+
+
+BUG_ID = "BUG-001"
+INCIDENT_ID = "INC-001"
+STATUS_BOARD = "knowledge/wiki/status-board.md"
+
+
+@dataclass
+class Page:
+    """A wiki page read for a check: its flat front matter and its text."""
+
+    path: Path
+    front: dict[str, str]
+    text: str
+
+    def section(self, name: str) -> str:
+        """The text under a ``## name`` heading, without the heading."""
+
+        match = re.search(_SECTION.format(name=re.escape(name)), self.text)
+        return match.group(1) if match else ""
+
+    def rows(self, name: str) -> list[list[str]]:
+        """The data rows of a table section, each as its cells."""
+
+        return _rows_of(self.text, name)
+
+    def front_list(self, key: str) -> list[str]:
+        """The items of a front matter list, written as a flow list (``[a, b]``) or as a block list; empty when the key is absent."""
+
+        lines = self.text.split("\n")
+        for index, line in enumerate(lines[1:], start=1):
+            if line.strip() == "---":
+                break
+            match = re.match(rf"^{re.escape(key)}:\s*(.*)$", line)
+            if not match:
+                continue
+            if match.group(1).strip():
+                return _flow_list(match.group(1))
+            items = []
+            for item in lines[index + 1:]:
+                block = re.match(r"^\s*-\s+(.*)$", item)
+                if not block:
+                    break
+                items.append(block.group(1).strip().strip("'\""))
+            return items
+        return []
+
+
+def read_page(workspace: Path, folder: str, prefix: str) -> Page | None:
+    """The first page of ``knowledge/wiki/<folder>/`` whose file name starts with ``prefix`` (``BUG-001``, ``REL-002``), or ``None``."""
+
+    pages = sorted((workspace / "knowledge/wiki" / folder).glob(f"{prefix}*.md"))
+    if not pages:
+        return None
+    text = pages[0].read_text(encoding="utf-8")
+    return Page(pages[0], parse_front_matter(text), text)
+
+
+def read_requirement(workspace: Path) -> Page | None:
+    page = workspace / REQUIREMENT
+    if not page.is_file():
+        return None
+    text = page.read_text(encoding="utf-8")
+    return Page(page, parse_front_matter(text), text)
+
+
+def criterion_numbers(text: str) -> list[int]:
+    """The numbers of the acceptance criteria listed in a feature page (``AC-3`` is 3), in order."""
+
+    section = re.search(_SECTION.format(name="Acceptance criteria"), text)
+    return [int(number) for number in re.findall(r"(?m)^[-*]\s*\[[ xX]\]\s*(?:\*\*\w+:\*\*\s*)?AC-(\d+)\b", section.group(1))] if section else []
+
+
+def criterion_text(text: str, number: int) -> str:
+    """The text of acceptance criterion ``AC-<number>`` in a feature page, or an empty string when the page has none."""
+
+    section = re.search(_SECTION.format(name="Acceptance criteria"), text)
+    match = re.search(r"(?m)^[-*]\s*\[[ xX]\]\s*(?:\*\*\w+:\*\*\s*)?AC-" + str(number) + r"\b(.*)$", section.group(1)) if section else None
+    return match.group(1).strip() if match else ""
+
+
+def cited_numbers(cell: str) -> set[int]:
+    """The criterion numbers a QA row's Criteria cell cites (``AC-1@v1:...`` is 1)."""
+
+    return {int(number) for number in re.findall(r"\bAC-(\d+)@", cell)}
+
+
+def board_row_cells(workspace: Path, table_heading: str, key: str) -> list[str] | None:
+    """The cells of the status board row of ``key`` (a bug ID or an app) under ``## table_heading``, or ``None``."""
+
+    board = workspace / STATUS_BOARD
+    if not board.is_file():
+        return None
+    in_section = False
+    for line in board.read_text(encoding="utf-8").split("\n"):
+        if line.startswith("## "):
+            in_section = line.strip() == f"## {table_heading}"
+            continue
+        if in_section and line.startswith("|"):
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if cells and cells[0] == key:
+                return cells
+    return None
 
 
 # The design handoff leaves the developer's question open on purpose; lint reports it as an error

@@ -1,12 +1,13 @@
-I am the release manager. Feature F-001 passed QA and is ready for release. The backend app was deployed to production today. Use Prism's release-done skill to record the release. Work only through your Prism MCP tools and follow the board's guidance.
+I am the release manager. Feature F-001 passed QA and BUG-001 is verified. The backend app was deployed to production today, and the deployment failed its health check and was rolled back within the attempt, so the outcome is failed. Use Prism's release-done skill to record this first attempt. Work only through your Prism MCP tools and follow the board's guidance.
 
 Release evidence for the backend app:
-- Version: commit 3f9c2ab, the artifact QA passed.
-- Outcome: released. Attempt: the first one, release-1.
-- Delivery evidence: deployment run 2210, https://deploy.example.com/runs/2210.
+- Version: commit 5d7a1e4, the artifact QA passed.
+- Outcome: failed. Attempt: the first one, release-1.
+- Ship BUG-001 in the same release: it is verified and linked to the feature.
+- Delivery evidence of the failed attempt: deployment run 2214, https://deploy.example.com/runs/2214.
 - Basis: attested, because you cannot open the deployment run.
-- The release record is the next free one in the releases folder. Its summary says that the backend service operation that exports the review summary is deployed to production.
+- The release record is the next free one in the releases folder. Its summary says that the deployment of the backend service operation that exports the review summary, with the fix of BUG-001, failed its health check. Its Rollback section says that the deployment was rolled back within the attempt and that the backend runs the version it ran before.
 
 You cannot open the deployment run from here, so record this evidence as I gave it and say clearly in your summary that you did not verify it.
 
-Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would change. If something blocks it, tell me exactly what and stop.
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would create or change. If something blocks it, tell me exactly what and stop.

@@ -48,7 +48,7 @@ As a [Legal operations document reviewer](../personas/legal-operations-reviewer.
 - **backend**: Produce the review summary for a finished review, containing only the requesting reviewer's own comments, and refuse to produce it while the review is in progress.
 
 ## Design
-Not started.
+The technical design is in [Review summary export technical design](../technical-design/F-001-review-summary-export.md).
 
 ## Related features
 None identified.
