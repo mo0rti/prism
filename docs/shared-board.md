@@ -208,7 +208,7 @@ and confirmation.
 
 A proposal never supplies `knowledge/wiki/index.md`, `knowledge/wiki/status-board.md` or
 `knowledge/wiki/log.md` (rejected with `managed_file`); the preview carries their exact before and
-after text. `status-board.md` holds one row per feature, merged by feature ID. `index.md` is the
+after text. `status-board.md` holds one row per feature, one row per open bug (under `## Bugs`) and one row per app that has something to show (under `## Operations`), each merged by its key: the feature ID, the bug ID or the app ID. The board writes the feature's tracks, app stages and open bugs, the bug rows and the Operations rows (released features, latest release record and its outcome, open bugs and open incidents of each app) from the pages an operation writes. `index.md` is the
 general index of the wiki, one line per page: the board adds or replaces the line of each wiki
 page the operation writes, derived from the page's title and the first sentence of its summary
 (a persona uses its `## Who they are` section, a business rule its `## Rule` and a decision its
@@ -376,7 +376,7 @@ Only short excerpts of workspace text appear in an error.
 | `invalid_decision`, `decision_path_mismatch` | `path`. A new decision has an ADR-number `id` that its file name carries, a title, an ISO `date`, the status `proposed` or `accepted`, and the sections Context, Decision, Rationale and Consequences. |
 | `record_immutable` | `path` and `changed` (the front matter fields that differ). A decision is a record: `ingest` changes only `status: superseded` and `superseded-by` on it, with its body unchanged, and only when a new decision in the same proposal supersedes it. |
 | `supersession_incomplete` | `path`. A new decision's `supersedes` needs the existing old ADR in the proposal with `status: superseded` and `superseded-by` naming the new one, and the reverse. |
-| `stale_status_row`, `stale_index_entry` (409) at `apply` | The status board row of a feature, or the index line of a page, changed after the preview. Nothing was written: preview again. |
+| `stale_status_row`, `stale_index_entry` (409) at `apply` | A status board row (of a feature, a bug or an app), or the index line of a page, changed after the preview. Nothing was written: preview again. |
 | `duplicate_status_row`, `duplicate_index_entry` (409) | A feature has more than one row in `status-board.md`, or a page more than one line in `index.md`. Remove the duplicates, then preview again. |
 | `invalid_status_board` (409) | `status-board.md` lacks the canonical `\| ID \| Feature \| Status \| Owner \| Board Review \|` table. |
 | `required_section_missing` | For `po-specify`: `path` and `sections`, the empty sections to fill. The message gives a line to write under each. |

@@ -143,6 +143,7 @@ REFERENCE_GROUPS = {
     "advisory": ("knowledge/wiki/advisory/_FORMAT.md",),
     "bugs": ("knowledge/wiki/bugs/_FORMAT.md",),
     "releases": ("knowledge/wiki/releases/_FORMAT.md",),
+    "incidents": ("knowledge/wiki/incidents/_FORMAT.md",),
 }
 SKILL_REFERENCE_GROUPS = {
     "ask": ("features",),
@@ -160,8 +161,8 @@ SKILL_REFERENCE_GROUPS = {
     "feature-reopen": ("features", "design", "technical", "requirements", "api", "releases"),
     "feature-scope": ("features", "requirements"),
     "feature-status": ("features", "design", "technical", "requirements", "api", "business", "personas", "decisions", "advisory"),
-    "ingest": ("intake", "features", "business", "personas", "decisions", "technical", "bugs", "topics", "research", "plans", "advisory"),
-    "lint-wiki": ("features", "design", "technical", "requirements", "api", "bugs", "releases", "business", "personas", "decisions", "topics", "research", "plans", "advisory"),
+    "ingest": ("intake", "features", "business", "personas", "decisions", "technical", "bugs", "incidents", "topics", "research", "plans", "advisory"),
+    "lint-wiki": ("features", "design", "technical", "requirements", "api", "bugs", "releases", "incidents", "business", "personas", "decisions", "topics", "research", "plans", "advisory"),
     "po-clarify": ("features",),
     "po-handoff": ("features", "advisory"),
     "po-intake": ("intake", "features", "business", "personas", "advisory"),

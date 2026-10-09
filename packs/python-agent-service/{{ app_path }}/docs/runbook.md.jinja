@@ -1,0 +1,54 @@
+# {{ app_name }} Runbook - {{ project_name }}
+
+What an operator needs to know about this service. The sections under "Known from the code" come from the generated code and stay true until the code changes. Prism deploys nothing, so everything about hosting is an **Unknown:** item until the team records it here. Replace each item with the fact when it is decided.
+
+## Known from the code
+
+### Health
+
+- `GET /api/health` on port {{ port }} answers `200` with `{"status":"UP"}`. It is the only open route, and it reports that the process is up. It says nothing about identity, the backend or the model provider.
+
+### Logs
+
+- The service logs to standard output and standard error through uvicorn.
+- Every tool call writes one JSON line to standard error through the `agent.audit` logger: the tool name, the argument names, the outcome, the duration and the user and request IDs. A line never carries a token, an argument value or a tool result.
+- The service refuses to start, and says why, when it has neither the `local` profile nor `AGENT_OIDC_ISSUER` with `AGENT_OIDC_AUDIENCE`, when the `local` profile sits next to a real issuer, or when `AGENT_PROVIDER=claude` has no `ANTHROPIC_API_KEY`.
+
+### Configuration
+
+Every value comes from the process environment; `app/config.py` holds the names and the defaults, and `.env.example` documents them.
+
+| Variable | Meaning |
+|---|---|
+| `AGENT_PROFILE` | `local` on a developer machine only: it accepts the backend's development tokens. |
+| `AGENT_OIDC_ISSUER`, `AGENT_OIDC_AUDIENCE`, `AGENT_OIDC_JWKS_URI` | The identity provider of a shared environment. The JWKS location is optional. |
+| `AGENT_BACKEND_BASE_URL` | The backend the tools call with the signed-in user's token. Generated for {{ backend_base_url.rstrip('/') }}. |
+| `AGENT_PROVIDER`, `AGENT_CLAUDE_MODEL`, `AGENT_CLAUDE_MAX_TOKENS` | The model provider (`fake` by default). |
+| `ANTHROPIC_API_KEY` | The key of the `claude` provider. Read from this variable only; never written to a file. |
+| `AGENT_BUDGET_REQUESTS`, `AGENT_BUDGET_TOKENS`, `AGENT_BUDGET_WINDOW_SECONDS`, `AGENT_BUDGET_CONCURRENT_TURNS`, `AGENT_MAX_TOOL_CALLS` | The per-user limits. A user over the budget gets a `429`. The budget lives in memory, per process. |
+
+### Run it locally
+
+```bash
+task {{ app_id }}:dev       # AGENT_PROFILE=local, uvicorn on 127.0.0.1:{{ port }}
+task {{ app_id }}:test      # pytest, no network, no key
+task {{ app_id }}:eval      # the evaluation cases with the fake provider
+```
+
+The `dev` task needs the workspace's backend under its `local` profile.
+
+### Release artifact
+
+- `uv sync --locked` installs the service from `uv.lock`. The pack ships no `Dockerfile`.
+- `.github/workflows/{{ app_id }}.yml` installs, lints, type-checks and tests on every change. It deploys nothing.
+
+## Unknown
+
+- **Unknown:** Where the service runs and how it is packaged there (the pack ships no container image).
+- **Unknown:** How a release reaches that place, and who does it.
+- **Unknown:** How to roll back a release, and how long it takes.
+- **Unknown:** Where the logs and the audit lines are collected, and who is alerted when the health check fails.
+- **Unknown:** The production identity provider's issuer and this API's audience.
+- **Unknown:** Where the model API key is stored, and who can read it.
+- **Unknown:** The address of the production backend, and how the two services reach each other.
+- **Unknown:** Who is on call for this service and how to reach them.

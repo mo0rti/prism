@@ -270,6 +270,65 @@ def rewrite_status_board(board_text: str, row: str | None) -> str:
     return "\n".join(out)
 
 
+_OPERATIONS_HEADING = "## Operations"
+_OPERATIONS_TABLE = (
+    "| App | Delivery target | Released features | Latest release | Latest attempt outcome | Open bugs | Open incidents |\n"
+    "|-----|-----------------|-------------------|----------------|------------------------|-----------|----------------|"
+)
+_RELEASE_FILE = re.compile(r"^REL-(\d+)\.md$")
+
+
+def operations_rows(workspace: Path, stages: str) -> list[str]:
+    """The ``## Operations`` rows of the journey: one per app that has a released feature or a release record.
+
+    ``stages`` is the feature's ``App stages`` cell. The latest release of an app is the highest-numbered record that names it,
+    and the outcome is the one its first Delivery row for the app carries. The journey has no bugs or incidents.
+    """
+
+    released = {app.strip() for app, _separator, stage in (part.partition(":") for part in stages.split(";")) if stage.strip() == "released"}
+    latest: dict[str, tuple[int, str, str]] = {}
+    folder = workspace / "knowledge/wiki/releases"
+    for path in sorted(folder.glob("REL-*.md")) if folder.is_dir() else []:
+        match = _RELEASE_FILE.match(path.name)
+        if not match:
+            continue
+        number = int(match.group(1))
+        seen: set[str] = set()
+        for cells in _rows_of(path.read_text(encoding="utf-8"), "Delivery"):
+            if cells[0] == "Item" or len(cells) < 6 or cells[1] in seen:
+                continue
+            seen.add(cells[1])
+            if cells[1] not in latest or latest[cells[1]][0] < number:
+                latest[cells[1]] = (number, cells[2], cells[5])
+    rows = []
+    for app in sorted(released | set(latest)):
+        number, target, outcome = latest.get(app, (0, _EM_DASH, _EM_DASH))
+        record = f"REL-{number:03d}" if number else _EM_DASH
+        features = config.FEATURE_ID if app in released else _EM_DASH
+        rows.append(f"| {app} | {target} | {features} | {record} | {outcome} | {_EM_DASH} | {_EM_DASH} |")
+    return rows
+
+
+def rewrite_operations(board_text: str, rows: list[str]) -> str:
+    """The status board with the rows of its ``## Operations`` table replaced by ``rows``; a board without the table gains it when there are rows."""
+
+    if rows and _OPERATIONS_HEADING not in board_text.split("\n"):
+        return board_text.rstrip("\n") + f"\n\n{_OPERATIONS_HEADING}\n\n{_OPERATIONS_TABLE}\n" + "\n".join(rows) + "\n"
+    out: list[str] = []
+    in_section = False
+    after_separator = False
+    for line in board_text.split("\n"):
+        if line.strip() == _OPERATIONS_HEADING:
+            in_section = True
+        elif in_section and after_separator and line.startswith("|"):
+            continue
+        out.append(line)
+        if in_section and not after_separator and line.startswith("|-"):
+            out.extend(rows)
+            after_separator = True
+    return "\n".join(out)
+
+
 _IN_DEV_AND_LATER = ("in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released")
 _SECTION = r"(?ms)^## {name}\s*\n(.*?)(?=^## |\Z)"
 _EM_DASH = "\u2014"
@@ -332,8 +391,19 @@ def app_stages_cell(front_matter: dict[str, str], text: str) -> str:
     return "; ".join(stages) or _EM_DASH
 
 
+def design_tracks_cell(text: str) -> str:
+    """The ``Design tracks`` cell of the journey: ``ui: <state>; technical: <state>`` from the page's ``design-tracks`` block, else ``—``."""
+
+    block = re.search(r"(?m)^design-tracks:\s*\n((?:[ \t]+\S.*\n)+)", text)
+    if not block:
+        return "—"
+    states = dict(re.findall(r"(?m)^[ \t]+(ui|technical):\s*(\S+)\s*$", block.group(1)))
+    return f"ui: {states['ui']}; technical: {states['technical']}" if "ui" in states and "technical" in states else "—"
+
+
 def feature_row(front_matter: dict[str, str], text: str = "") -> str:
-    return "| {id} | {title} | {status} | {owner} | {review} | — | {stages} | — |".format(
+    return "| {id} | {title} | {status} | {owner} | {review} | {tracks} | {stages} | — |".format(
+        tracks=design_tracks_cell(text),
         id=front_matter["id"],
         title=front_matter["title"],
         status=front_matter["status"],
@@ -361,7 +431,9 @@ def seed_state(workspace: Path, step: str | None, fixture_set: Path | None = Non
     feature = find_feature_page(workspace)
     page_text = feature.read_text(encoding="utf-8") if feature else ""
     row = feature_row(parse_front_matter(page_text), page_text) if feature else None
-    board_path.write_text(rewrite_status_board(board_path.read_text(encoding="utf-8"), row), encoding="utf-8", newline="\n")
+    board = rewrite_status_board(board_path.read_text(encoding="utf-8"), row)
+    stages = app_stages_cell(parse_front_matter(page_text), page_text) if feature else _EM_DASH
+    board_path.write_text(rewrite_operations(board, operations_rows(workspace, stages)), encoding="utf-8", newline="\n")
     return sorted(files)
 
 

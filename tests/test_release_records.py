@@ -182,6 +182,18 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual("REL-002", latest_record(records, "backend", "production").record_id)
         self.assertIsNone(latest_record(records, "worker", "production"))
 
+    def test_the_status_board_reads_the_latest_record_and_the_outcome_of_an_app(self) -> None:
+        records = [
+            parse(1, [delivery("F-001", "backend"), delivery("F-001", "worker")]),
+            parse(2, [delivery("F-001", "backend", outcome="rolled-back", attempt=None)], rollback_of="REL-001"),
+            parse(3, [delivery("F-001", "backend", attempt=None, outcome="failed")], retry_of="REL-002"),
+        ]
+        self.assertEqual(["backend", "worker"], records[0].apps)
+        self.assertEqual(["REL-003", "REL-001"], [latest_record(records, "backend").record_id, latest_record(records, "worker").record_id])
+        self.assertEqual(["released", "rolled-back", "failed"], [record.outcome_for("backend") for record in records])
+        self.assertIsNone(records[1].outcome_for("worker"))
+        self.assertIsNone(latest_record(records, "elsewhere"))
+
     def test_an_attempt_counts_the_release_records_of_the_item_and_app(self) -> None:
         records = [
             parse(1, [delivery("F-001", "backend", outcome="failed")]),

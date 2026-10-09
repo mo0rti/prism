@@ -16,6 +16,7 @@ import unittest
 import yaml
 
 from prism_cli.wiki_model import NO_UI_TRACK_REASON, DesignTracks
+from prism_cli.wiki_operations import design_tracks_text
 from tests.browser.board_page import REVIEWED_TEXT, BoardPage, expect
 from tests.browser.harness import FEATURES_BY_ID, BrowserCase, FixtureFeature, requires_browser_e2e
 from tests.test_core_workflow_fixture import CHECK_DATE
@@ -227,7 +228,11 @@ class ApplyScenarioTests(BrowserCase):
         old_rows = before[BOARD_PATH].decode("utf-8").splitlines()
         new_rows = after[BOARD_PATH].decode("utf-8").splitlines()
         stages = "backend: in-dev" if target_stage == "in-dev" else "\u2014"
-        expected_row = f"| {feature.feature_id} | {feature.title} | {target_stage} | {target_owner} | not-needed | \u2014 | {stages} | \u2014 |"
+        # The design tracks cell follows the page: nothing before design starts, then `ui: <state>; technical: <state>`.
+        tracks = design_tracks_text(new_meta)
+        if action == "design-start":
+            self.assertEqual("ui: not-applicable; technical: pending", tracks)
+        expected_row = f"| {feature.feature_id} | {feature.title} | {target_stage} | {target_owner} | not-needed | {tracks} | {stages} | \u2014 |"
         self.assertEqual([expected_row], [row for row in new_rows if row.startswith(f"| {feature.feature_id} ")])
         self.assertEqual(
             [row for row in old_rows if not row.startswith(f"| {feature.feature_id} ")],

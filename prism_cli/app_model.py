@@ -40,7 +40,7 @@ APP_STATUSES = ("active", "retired")
 
 # The keys an entry of `apps` and of `repositories` may carry. Any other key is a misspelling or a field no
 # reader uses, and it is reported instead of being ignored (for example `satus: retired` would leave the app active).
-APP_FIELDS = ("id", "name", "stack", "repository", "path", "audience", "status", "generation", "capabilities", "backend")
+APP_FIELDS = ("id", "name", "stack", "repository", "path", "audience", "status", "generation", "capabilities", "backend", "runbook")
 REPOSITORY_FIELDS = ("id", "remote")
 
 # The stack of a backend, and the stacks of the apps that call one. An app of a client stack may name the backend it
@@ -222,10 +222,21 @@ class App:
     generation: str = GENERATION_REGISTERED
     # The ID of the backend this app calls, or ``None`` for the workspace's first backend.
     backend: str | None = None
+    # The https link of the runbook of an app in an external repository. Prism never reads that runbook. ``None`` for a workspace app.
+    runbook: str | None = None
 
     @property
     def active(self) -> bool:
         return self.status == "active"
+
+    @property
+    def runbook_location(self) -> str | None:
+        """Where the app's runbook is: `docs/runbook.md` below its path for an app in this repository (derived, never
+        declared), else the link its manifest entry records, or ``None`` when it records none."""
+
+        if self.in_workspace:
+            return f"{self.path}/docs/runbook.md" if self.path != "." else "docs/runbook.md"
+        return self.runbook
 
     @property
     def scaffolded(self) -> bool:
@@ -687,6 +698,14 @@ def _read_app(
         backend = None
         valid = False
 
+    runbook = item.get("runbook")
+    if runbook is not None:
+        problem = _runbook_problem(runbook, repository_id)
+        if problem is not None:
+            diagnostics.append(_diag("invalid-app-runbook", "error", path, f"App `{app_id}` `runbook` {problem}"))
+            runbook = None
+            valid = False
+
     if not valid or stack is None or app_path is None:
         return None
     return App(
@@ -700,7 +719,34 @@ def _read_app(
         status=status,
         generation=generation,
         backend=backend,
+        runbook=runbook,
     )
+
+
+def _runbook_problem(value: Any, repository_id: Any) -> str | None:
+    """Why an app's `runbook` entry is not allowed, or ``None``.
+
+    An app in this repository has its runbook at `<path>/docs/runbook.md`, so it declares none. An app in an external repository
+    records the https link of its runbook, because Prism never opens a file of another repository.
+    """
+
+    if repository_id == WORKSPACE_REPOSITORY_ID:
+        return "is not declared for an app in this repository: its runbook is `<path>/docs/runbook.md`. Record a runbook link only for an app in an external repository."
+    if not isinstance(value, str) or not value.strip():
+        return "must be a non-empty https link."
+    if value != value.strip() or re.search(r"\s", value):
+        return "must not contain whitespace."
+    try:
+        parsed = urlsplit(value)
+        host = parsed.hostname
+        password = parsed.password
+    except ValueError:
+        return "is not a valid URL."
+    if parsed.scheme.lower() != "https" or not host:
+        return "must be an https:// link, never a local path."
+    if parsed.username is not None or password is not None:
+        return "must not embed credentials."
+    return None
 
 
 def _read_capabilities(

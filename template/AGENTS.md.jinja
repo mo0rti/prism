@@ -309,6 +309,7 @@ An agent service accepts the backend's bearer tokens with no shared secret: unde
 - `docs/deployment/ci-cd.md` - CI setup (build and test)
 - `.agents/skills/deployment/` - deployment skill with worked examples; Claude Code uses `.claude/skills/deployment/`. Hosting, secrets and deployment belong to the user and their agent
 - `shared/api-contracts/openapi.yml` - API contract (source of truth)
+- `<app path>/docs/runbook.md` - what an operator needs for each generated app: health, logs, configuration and the local run, with `**Unknown:**` items for hosting, which Prism does not decide
 {% for app in apps if app.stack == "spring-backend" %}- `{{ app.path }}/docs/guide.md` - {{ app.id }} structure, conventions and commands
 {% endfor %}{% for app in apps if app.stack == "nextjs-web" %}- `{{ app.path }}/docs/guide.md` - {{ app.id }} structure, sign-in slice and commands
 {% endfor %}{% for app in apps if app.stack == "python-agent-service" %}- `{{ app.path }}/docs/guide.md` - {{ app.id }} structure, request flow, providers and commands; `{{ app.path }}/openapi.yml` is its own contract

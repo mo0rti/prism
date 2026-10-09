@@ -1497,7 +1497,9 @@ def _evaluate_action(
         # envelope, but cannot become a false prerequisite for this action.
         if spec.action not in _ROUTE_ACTIONS:
             checks.extend(_feature_workflow_checks(feature, lint_result, spec.action, requirement_pages, model))
-        checks.extend(_relevant_integrity_checks(feature, lint_result, ignore_codes=set(_IGNORED_INTEGRITY.get(spec.action, ()))))
+        # A proposal is judged against the status board as it is now, so its columns (tracks, stages, open bugs) still show the old pages.
+        ignored = set(_IGNORED_INTEGRITY.get(spec.action, ())) | ({"status-board-frontmatter-drift"} if proposal else set())
+        checks.extend(_relevant_integrity_checks(feature, lint_result, ignore_codes=ignored))
         checks.extend(capability_checks)
 
     classification = _classify_checks(checks, capability_available=capability_available)

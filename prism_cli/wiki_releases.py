@@ -331,6 +331,23 @@ class ReleaseRecord:
     def rows_for(self, app: str, target: str) -> list[RecordRow]:
         return [row for row in self.rows if row.app == app and row.target == target]
 
+    @property
+    def apps(self) -> list[str]:
+        """The apps the record names in its delivery rows, in row order."""
+
+        return list(dict.fromkeys(row.app for row in self.rows))
+
+    def outcome_for(self, app: str) -> str | None:
+        """The record's outcome for `app` (CONTRACTS 8.2): `released`, `failed` or `rolled-back`, or ``None`` when the record does not name it.
+
+        The rows of one (app, target) in a record share an outcome and a record delivers an app to one target, so the first row of the app decides.
+        """
+
+        for row in self.rows:
+            if row.app == app:
+                return row.outcome
+        return None
+
 
 def read_release_records(wiki_root: Path) -> list[ReleaseRecord]:
     """Every release record of a wiki, in number order (a file that is not named for a number comes last, by name)."""
@@ -418,12 +435,12 @@ def current_delivery(records: Iterable[ReleaseRecord], app: str, target: str) ->
     return best[1], best[1].rows_for(app, target)
 
 
-def latest_record(records: Iterable[ReleaseRecord], app: str, target: str) -> ReleaseRecord | None:
-    """The highest-numbered record with any row for an (app, target)."""
+def latest_record(records: Iterable[ReleaseRecord], app: str, target: str | None = None) -> ReleaseRecord | None:
+    """The highest-numbered record with any row for an app, or for an (app, target) when `target` is given."""
 
     best: ReleaseRecord | None = None
     for record in records:
-        if record.number is None or not record.rows_for(app, target):
+        if record.number is None or not (record.rows_for(app, target) if target is not None else app in record.apps):
             continue
         if best is None or record.number > (best.number or 0):
             best = record

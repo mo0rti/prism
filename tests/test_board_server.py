@@ -416,9 +416,9 @@ class BoardServerTests(unittest.TestCase):
                 self.assertEqual("invalid_cursor", wrong.json()["error"]["code"])
 
                 found, query_body, queries = [], {"kind": "owner", "value": "po"}, 0
-                budget = patch.object(board_reads, "STRUCTURED_BUDGET_CHARS", 4000)
-                budget.start()
-                self.addCleanup(budget.stop)
+                # The enclosing patch restores the original budget when the block ends; a second `patch(...).start()` here would
+                # save 8000 as its "original" and put that back at cleanup, leaking it into the next test of the worker.
+                board_reads.STRUCTURED_BUDGET_CHARS = 4000
                 while True:
                     response = client.post("/api/board/v1/query", json=query_body, headers=headers)
                     self.assertEqual(200, response.status_code, response.text)

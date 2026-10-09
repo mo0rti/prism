@@ -46,7 +46,7 @@ from tests.core_workflow_fixture import INTAKE_ITEM, PROCESSED_INTAKE_ITEM, crea
 from prism_cli.wiki_model import NO_UI_TRACK_REASON, DesignTracks
 from tests.design_tracks import ensure_tracks, technical_design_page, with_tracks
 from tests.test_core_workflow_fixture import CHECK_DATE, _feature_page, _requirement_page
-from tests.wiki_files import write_index
+from tests.wiki_files import write_index, write_status_board
 
 
 ENABLE_VARIABLE = "PRISM_BROWSER_E2E"
@@ -155,18 +155,10 @@ def _settle_technical_track(root: Path, feature: FixtureFeature) -> None:
     page.write_bytes(technical_design_page(feature.feature_id, ("backend",), ("AC-1", "AC-2")).encode("utf-8"))
 
 
-def _board_text(features: tuple[FixtureFeature, ...]) -> str:
-    # The one app of the fixture workspace is in-dev from that status on; before it the cell is empty.
-    rows = "".join(
-        f"| {feature.feature_id} | {feature.title} | {feature.status} | {feature.owner} | {feature.advisory} | \u2014 | "
-        f"{'backend: in-dev' if feature.status == 'in-dev' else chr(0x2014)} | \u2014 |\n"
-        for feature in features
-    )
-    return (
-        "# Feature Status Board\n\n"
-        "| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |\n"
-        "|----|---------|--------|-------|--------------|---------------|------------|-----------|\n" + rows
-    )
+def _board_rows(features: tuple[FixtureFeature, ...]) -> str:
+    """The five-cell rows of the status board; `write_status_board` completes the design tracks, app stages and open bugs from the pages."""
+
+    return "".join(f"| {feature.feature_id} | {feature.title} | {feature.status} | {feature.owner} | {feature.advisory} |\n" for feature in features)
 
 
 def build_workspace(root: Path, extras: tuple[FixtureFeature, ...] = ()) -> Path:
@@ -189,9 +181,9 @@ def build_workspace(root: Path, extras: tuple[FixtureFeature, ...] = ()) -> Path
         target.write_bytes(_feature_page_for(feature).encode("utf-8"))
         if feature.status == "in-design":
             _settle_technical_track(root, feature)
-    (root / "knowledge/wiki/status-board.md").write_bytes(_board_text(features).encode("utf-8"))
     requirement = _requirement_page("pending").replace("feature-id: F-001", "feature-id: F-003", 1)
     (root / "knowledge/wiki/app-requirements/F-003-backend.md").write_bytes(requirement.encode("utf-8"))
+    write_status_board(root, _board_rows(features))
     # The general index lists every page the workspace holds, so lint is clean and the board writes only what an action changes.
     write_index(root)
     return root

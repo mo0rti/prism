@@ -1,0 +1,55 @@
+# {{ app_name }} Runbook - {{ project_name }}
+
+What an operator needs to know about this service. The sections under "Known from the code" come from the generated code and stay true until the code changes. Prism deploys nothing, so everything about hosting is an **Unknown:** item until the team records it here. Replace each item with the fact when it is decided.
+
+## Known from the code
+
+### Health
+
+- `GET /actuator/health` on port {{ port }} reports the app and its database. It is the only actuator endpoint exposed, it needs no token and it shows no details (`management.endpoint.health.show-details: never`). A healthy service answers `200`.
+- The `Dockerfile` health check calls the same path every 30 seconds and fails unless it answers `200`.
+
+### Logs
+
+- The service writes its logs to standard output, as Spring Boot does by default. The pack configures no log file and no log shipper.
+- A failed start prints the cause in the first lines. The usual ones: no reachable database (`DATABASE_URL`), a Flyway migration that fails, the `local` profile next to a configured identity provider (`DevIdentityGuard`), an issuer without an audience.
+
+### Configuration
+
+Every value comes from the process environment; `src/main/resources/application.yml` holds the names and the local defaults.
+
+| Variable | Meaning |
+|---|---|
+| `PORT` | The server port. Default {{ port }}. |
+| `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` | The PostgreSQL connection. The defaults match the workspace's `docker-compose.yml`. |
+| `DATABASE_SCHEMA` | The schema that holds this app's tables. Default `{{ app_id | replace('-', '_') }}`. |
+| `SPRING_PROFILES_ACTIVE` | Set to `local` on a developer machine only. The `local` profile signs development tokens for anyone on the machine and binds to the loopback interface. |
+| `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI`, `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES` | The identity provider's issuer and this API's audience. With neither set, the service starts and rejects every token. |
+
+### Database
+
+- Flyway applies the migrations in `src/main/resources/db/migration/` at startup; Hibernate only validates the schema. A schema that does not match makes the start fail.
+
+### Run it locally
+
+```bash
+task db-up                  # at the repository root: the workspace's PostgreSQL
+task {{ app_id }}:dev       # SPRING_PROFILES_ACTIVE=local ./gradlew bootRun, on port {{ port }}
+task {{ app_id }}:test      # ./gradlew test (needs Docker for Testcontainers)
+```
+
+### Release artifact
+
+- `./gradlew bootJar` builds `build/libs/*.jar`. The `Dockerfile` builds an image that runs `java -jar app.jar` as a non-root user and exposes port {{ port }}.
+- `.github/workflows/{{ app_id }}.yml` builds and tests on every change. It deploys nothing.
+
+## Unknown
+
+- **Unknown:** Where the service runs (platform, region, number of instances).
+- **Unknown:** How a release reaches that place, and who does it.
+- **Unknown:** How to roll back a release, and how long it takes.
+- **Unknown:** Where the logs and metrics are collected, and who is alerted when the health check fails.
+- **Unknown:** The production database: where it is hosted, how it is backed up and how it is restored.
+- **Unknown:** Where the production secrets are stored and who can read them.
+- **Unknown:** The production identity provider's issuer and this API's audience.
+- **Unknown:** Who is on call for this service and how to reach them.

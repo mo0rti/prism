@@ -88,6 +88,7 @@ class PageClassificationTests(unittest.TestCase):
             "api-contracts/F-001.md": "api-contracts",
             "bugs/BUG-001-a.md": "bugs",
             "releases/REL-001.md": "releases",
+            "incidents/INC-001-a.md": "incidents",
             "decisions/ADR-001-a.md": "decisions",
             "advisory/BOARD.md": "advisory",
             "SCHEMA.md": "meta",

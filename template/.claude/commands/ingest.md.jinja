@@ -41,7 +41,7 @@ joined by hyphens. The connected board rejects any other name.
 6. **Summarize your interpretation:**
    - Which pages does this input create? List each by kind and proposed title.
    - Which existing topic, research, plan, direction or roadmap pages does it replace in place?
-   - Which new features, bugs, personas, business rules or decisions does it introduce, and which technical design page does it create or replace?
+   - Which new features, bugs, incidents, personas, business rules or decisions does it introduce, which incident does it update, and which technical design page does it create or replace?
    - What is ambiguous or unclear that you could not resolve?
    - For each new feature: does it appear to need an advisory board review?
 
@@ -75,6 +75,15 @@ joined by hyphens. The connected board rejects any other name.
      `close-reason`, `duplicate-of` and `promoted-to`, empty Fix, Verification, Release and Evidence history sections
      (`bug_creation_invalid`), `feature` an existing feature or `none`, and `apps` apps of that feature. A bug is
      created and never rewritten here; `/bug-update` changes it.
+   - An incident report, or an update to one: create `knowledge/wiki/incidents/[INC-XXX]-[slug].md` with the next free
+     incident number, in the format of `knowledge/wiki/incidents/_FORMAT.md` (`incident_id_taken`): the impact, the
+     timeline, the cause, the mitigation, the resolution and the follow-ups, with `releases` naming existing release
+     records and `follow-ups` the bugs and features it leads to. An unknown cause starts with `**Unknown:**`. To update an
+     existing incident, rewrite its page from the new source within the record rules: step `status`, append Timeline lines,
+     add `follow-ups` and `releases`, and, while the incident is not `resolved`, fill or replace Cause, Mitigation,
+     Resolution and Follow-ups. A new Cause adds a Timeline line that links the intake item it came from
+     (`incident_cause_uncited`). Create the follow-up bug with the defect-report step in the same ingest or later; an
+     incident never changes a bug or a feature.
    - A feature: assign the next available feature ID and create
      `knowledge/wiki/features/[F-XXX]-[slug].md` with `status: raw` and `owner: po`, under
      the `/po-intake` rules: the Summary, User story, Acceptance criteria, Open questions
@@ -87,8 +96,10 @@ joined by hyphens. The connected board rejects any other name.
    source file as the evidence of every Decided or Observed claim, for example
    `../../intake/processed/[folder-name]/notes.md`. List the processed path in `sources`.
 8. Add or replace the `knowledge/wiki/index.md` line of every page you write: one sentence
-   in the present tense that states what the page says now. Add a row to
-   `knowledge/wiki/status-board.md` for each new feature.
+   in the present tense that states what the page says now (an incident's line states its impact). Add a row to
+   `knowledge/wiki/status-board.md` for each new feature. A new or changed bug or incident also changes the board's
+   Bugs and Operations tables and the `Open bugs` cell of its feature; the connected board writes those rows itself,
+   and the direct-file workflow updates them as `SCHEMA.md` describes.
 9. Append a `knowledge/wiki/log.md` entry in the log format that the wiki schema defines.
    The pages carry no date field; the log entry records when they were written
 10. Move `knowledge/intake/pending/[folder-name]/` to `knowledge/intake/processed/[folder-name]/`
@@ -104,6 +115,7 @@ joined by hyphens. The connected board rejects any other name.
 - never rewrite an existing feature, persona, business rule or decision, and never edit a processed intake item; corrected material is a new dated pending folder
 - a technical design page is the one feature-related page ingest may replace in place, while the feature's technical track is `pending` or the feature has no tracks yet
 - never rewrite an existing bug page; a bug in the material is created as a new bug page
+- an incident is a record: ingest creates it and updates it only as `knowledge/wiki/incidents/_FORMAT.md` allows, and a `resolved` incident only gains Timeline lines, follow-ups and releases; a recurrence is a new incident
 - Do not invent requirements not present in the input. Mark gaps as open questions on a
   feature and as `**Unknown:**` items on other pages.
 - Update or conflict: a source that refines a claim, or replaces an Observed claim with a newer

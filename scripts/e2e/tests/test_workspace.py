@@ -85,6 +85,36 @@ class StatusBoardTests(unittest.TestCase):
         self.assertIn("|----|---------|", rewritten)
 
 
+class OperationsTableTests(unittest.TestCase):
+    RECORD = (
+        "---\nid: REL-00{n}\n---\n\n## Delivery\n| Item | App | Target | Version | Attempt | Outcome | Evidence | Basis |\n|---|---|---|---|---|---|---|---|\n"
+        "| F-001 | backend | production | `v` | release-1 | {outcome} | deployment: https://x.example | checked |\n\n## Notes\nNone.\n"
+    )
+
+    def test_a_board_without_the_table_gains_it_and_one_with_it_has_its_rows_replaced(self):
+        rows = ["| backend | production | F-001 | REL-001 | released | — | — |"]
+        added = ws.rewrite_operations(INDEX, rows)
+        self.assertIn("## Operations", added)
+        self.assertIn(rows[0], added)
+        replaced = ws.rewrite_operations(added, ["| worker | production | — | REL-002 | failed | — | — |"])
+        self.assertNotIn("| backend |", replaced)
+        self.assertIn("| App | Delivery target |", replaced)
+        self.assertEqual(replaced.count("|-----|"), 1)
+        self.assertEqual(INDEX, ws.rewrite_operations(INDEX, []))
+
+    def test_the_rows_follow_the_released_stages_and_the_latest_record_of_each_app(self):
+        with tempfile.TemporaryDirectory() as folder:
+            workspace = Path(folder)
+            records = workspace / "knowledge/wiki/releases"
+            records.mkdir(parents=True)
+            (records / "REL-001.md").write_text(self.RECORD.format(n=1, outcome="released"), encoding="utf-8")
+            (records / "REL-002.md").write_text(self.RECORD.format(n=2, outcome="rolled-back"), encoding="utf-8")
+            (records / "_FORMAT.md").write_text("format", encoding="utf-8")
+            self.assertEqual(["| backend | production | F-001 | REL-002 | rolled-back | — | — |"], ws.operations_rows(workspace, "backend: released"))
+            self.assertEqual(["| backend | production | — | REL-002 | rolled-back | — | — |"], ws.operations_rows(workspace, "backend: ready-for-release"))
+            self.assertEqual([], ws.operations_rows(workspace / "empty", "—"))
+
+
 class FixtureTests(unittest.TestCase):
     def feature_status_after(self, step):
         files = ws.fixture_files(ws.fixture_steps_through(step))
