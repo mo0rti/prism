@@ -15,9 +15,9 @@ template generation is an optional way to start a workspace.
 
 It helps product and engineering teams:
 
-- carry work through PO, design, and development using shared evidence and explicit handoffs
+- carry a feature from business requirement through specification, design, implementation, QA and release to operation, with bound evidence and an accountable role at every stage
 - connect coding agents through standard MCP and the same versioned Prism skills
-- review and confirm supported human actions directly in the board
+- keep approval with people: agents propose, and a human who holds the role of the stage approves in the board
 - optionally generate backend, web, Android, iOS, and AI agent service foundations
 
 This repository contains Prism's CLI, workflow service, board, and application template.
@@ -73,10 +73,10 @@ For one wiki shared by apps that live in other repositories, use `--knowledge-ro
 prism doctor --workspace .
 ```
 
-**3. Register a person and an agent.** Each command prints JSON whose `token` appears once. Keep tokens private and out of files and prompts. A grant without `--write` is read-only.
+**3. Register a person and an agent.** Each command prints JSON whose `token` appears once. Keep tokens private and out of files and prompts. A grant without `--write` is read-only. A writable human grant holds the workflow roles `po`, `designer`, `tech-lead`, `dev`, `qa` and `release` that the person may approve (`--role`, comma-separated); a team of one holds all six. An agent grant holds no role: the agent proposes, and a human approves in the board.
 
 ```bash
-prism board grant "Product owner" --kind human --write --path .
+prism board grant "Riley" --kind human --write --role po,designer,tech-lead,dev,qa,release --path .
 prism board grant "Coding agent" --kind agent --write --path .
 ```
 
@@ -100,8 +100,9 @@ It prints the board URL, the MCP endpoint (`http://127.0.0.1:8765/mcp`) and a hi
 **6. Run a first journey.**
 
 1. Ask the agent to run Prism's `setup-project` skill. Setup is an interview that writes the product context directly into the workspace, so it does not go through the board.
-2. Create a folder named with today's date and a short slug, such as `knowledge/intake/pending/2026-10-06-my-first-feature/`, and put your brief in it as a Markdown file, using `knowledge/intake/pending/PO_BRIEF_TEMPLATE.md` as a guide. Then ask the agent: "Use Prism's PO intake skill to refine the pending brief." The agent shows the exact file changes, you confirm them in the agent, and it applies them. A new feature appears on the board. Notes that are not a feature request, such as research, a plan or a roadmap statement, go through the `ingest` skill the same way, into a topic, research, plan, direction or roadmap page; `knowledge/wiki/index.md` lists every page and `knowledge/wiki/status-board.md` is the feature status board.
-3. In the board, move the feature with `po-handoff` (drag its card or use its action control). Review the evidence and exact changes, acknowledge them and confirm. The board offers the same human action for `design-start` and `dev-start`. The remaining steps run through the agent's skills.
+2. Create a folder named with today's date and a short slug, such as `knowledge/intake/pending/2026-10-06-my-first-feature/`, and put your brief in it as a Markdown file, using `knowledge/intake/pending/PO_BRIEF_TEMPLATE.md` as a guide. Then ask the agent: "Use Prism's PO intake skill to refine the pending brief." The agent shows the exact file changes, you confirm them in the agent, and it applies them. A new feature appears on the board as `raw`. Notes that are not a feature request, such as research, a plan, a bug report, an incident or a roadmap statement, go through the `ingest` skill the same way; `knowledge/wiki/index.md` lists every page and `knowledge/wiki/status-board.md` is the status board of the features, the bugs and the apps in operation.
+3. Ask the agent to run `po-specify` on the feature. A change that advances a status is gated: the agent proposes it, and it waits under **Proposals** in the board header. Open it, review the evidence and the exact changes, tick "I reviewed this change and approve it." and choose **Approve and apply**. The grant that approves must hold the role of the action (`po` here); the agent cannot apply it.
+4. In the board, move the feature with `po-handoff` (drag its card or use its action control). The board offers the same human action for `design-start` and `dev-start`. Design (`tech-design-done`, `design-ui-done`, `design-handoff`), delivery (`dev-done`), QA (`qa-verify`, `qa-pass`) and release (`release-done`) run the way `po-specify` does: the agent proposes, and the person with the role approves under **Proposals**. A released feature has a release record in `knowledge/wiki/releases/`.
 
 If a step fails, [docs/troubleshooting.md](https://github.com/mo0rti/prism/blob/main/docs/troubleshooting.md) lists the symptom, cause and fix for the common cases. The [shared board guide](https://github.com/mo0rti/prism/blob/main/docs/shared-board.md) covers every command, the MCP tools and recovery of interrupted operations, and [SECURITY.md](https://github.com/mo0rti/prism/blob/main/SECURITY.md) describes what the local service protects.
 
@@ -127,7 +128,7 @@ Every generated repository also includes:
 
 - a living product wiki under `knowledge/wiki/`
 - generated AI context for Claude, Codex, and Cursor
-- lifecycle commands for PO, design, dev, and advisory review
+- lifecycle commands for PO, design, dev, QA, release, bugs, and advisory review
 - project docs and workflow wiring
 
 ![Prism home screen](https://raw.githubusercontent.com/mo0rti/prism/main/docs/media/prism-menu.png)
@@ -200,6 +201,7 @@ Start with:
 ## Current Status
 
 - The workflow, the shared board, the MCP tool contract and the human board actions are implemented and tested; the [plan](https://github.com/mo0rti/prism/blob/main/docs/prism-core-workflow-plan.md) states their scope and contracts.
+- The lifecycle from intake through design, QA and release to operation is implemented in the shared service and covered by regression tests: roles on grants, gated approval in the board, design tracks, the QA stage, bugs, release records, incidents and runbooks. The real-host journey through every stage is pending the 0.7.0 journey ([current status](https://github.com/mo0rti/prism/blob/main/docs/current-status.md#lifecycle)).
 - Prism 0.6.1 is released: `prism-kit` on [PyPI](https://pypi.org/project/prism-kit/) and the [GitHub release](https://github.com/mo0rti/prism/releases/tag/v0.6.1) with checksums.
 - Application packs: the backend, Android, web and agent-service packs are verified locally and in CI, and the iOS pack is built and tested only by the macOS CI job. Generated workspaces ship no deployment: the `deployment` skill holds unverified worked examples for Azure Container Apps and Cloudflare.
 - Core acceptance uses disposable neutral workspaces. Sample behavior does not define the core workflow.

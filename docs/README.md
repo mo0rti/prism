@@ -60,12 +60,12 @@ These are the best pages for understanding Prism quickly.
 | [shared-board.md](shared-board.md) | Humans and agents sharing a workspace | Adopt the workflow, connect through MCP, and use supported human board actions |
 | [workspace-model.md](workspace-model.md) | Anyone declaring apps or repositories | Stacks and capabilities, repositories and `prism.local.yml`, apps and their fields, `prism app list` and `prism app add`, and workspaces with no apps |
 | [agent-hosts.md](agent-hosts.md) | Anyone connecting Claude Code or Codex | Tested host versions, transport, the settings that matter, known limitations and what to expect, including the retry rule |
-| [troubleshooting.md](troubleshooting.md) | Anyone whose setup or connection fails | Symptom, cause and fix for cloud-synced folders, a busy port, stale previews, upgraded grants, cursor errors, missing tools and the doctor checks |
+| [troubleshooting.md](troubleshooting.md) | Anyone whose setup, connection or lifecycle action fails | Symptom, cause and fix for cloud-synced folders, a busy port, stale previews, upgraded grants, cursor errors, missing tools, roles and approval, every lifecycle error code by stage, lifecycle lint findings and the doctor checks |
 | [getting-started.md](getting-started.md) | Builders and evaluators | Install Prism, generate a first sample, validate it, and enter the generated workflow |
 | [generated-projects.md](generated-projects.md) | Generated-project users | What a generated repo contains and what is safe to do first |
-| [prism-model.md](prism-model.md) | Evaluators and role leads | What Prism is, what problem it solves, and how the wiki-driven lifecycle works |
-| [wiki-workflow.md](wiki-workflow.md) | PO, design, and dev | How the wiki lifecycle actions, read/query layer, evidence, and handoff flow behave |
-| [wiki-visualization.md](wiki-visualization.md) | Evaluators and generated-project users | Run the synthetic TreasuryFlow demo and inspect the read-only previews for all nine lifecycle actions across Graph, Board, Platforms, and Guide |
+| [prism-model.md](prism-model.md) | Evaluators and role leads | What Prism is, what problem it solves, the six roles, the lifecycle from intake to release and operation, and how a human approves what an agent proposes |
+| [wiki-workflow.md](wiki-workflow.md) | PO, design, dev, QA and release | How the page kinds, the standard files, the status board, the lifecycle actions, the lint codes and the read/query layer behave |
+| [wiki-visualization.md](wiki-visualization.md) | Evaluators and generated-project users | Run the synthetic TreasuryFlow demo and inspect the read-only previews for the lifecycle actions across Graph, Board, Platforms, and Guide |
 
 ## Supporting Reference Docs
 

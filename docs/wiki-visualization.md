@@ -27,7 +27,7 @@ stages:
 |-------|----------------------|
 | `fresh` | An empty wiki and Guide setup path before the advisory board is initialized |
 | `intake` | A pending payout brief and a quarantined item visible in the intake queues |
-| `populated` | Three features across `raw`, `in-dev`, and `done`, with app requirements, designs, API contracts, personas, business rules, a decision, a review, an open question, and a canonical blocker |
+| `populated` | Three features across `raw`, `in-dev`, and `released`, with app requirements, designs, API contracts, personas, business rules, a decision, a review, an open question, and a canonical blocker |
 
 The fixture is synthetic local documentation. It contains no production data,
 observed project history, deployment evidence, compliance claim, or recorded
@@ -67,7 +67,7 @@ health diagnostic; advisory warnings are not called malformed pages.
 The dashboard's transition controls prepare a source-valid request for
 one unique feature. For `po-handoff`, the source fields are exactly
 `status: specified` and `owner: po`, and its destination is
-`status: ready-for-design` with `owner: designer`. The other lifecycle actions
+`status: ready-for-design` with `owner:` the design owner of the scope (`designer`, or `tech-lead` when no app has a UI). The other lifecycle actions
 also have source-valid browser previews backed by generated agent instructions
 and CLI preflight facts; the dashboard does not execute any of them. Raw
 features use the separate `po-specify` action, which verifies or authors the
@@ -115,31 +115,35 @@ capability, and action, use direct file reads; a version string alone is not
 evidence of that command. If the Clipboard API is unavailable or rejects the write,
 the request remains selectable for manual copying and the UI reports that fallback.
 The selected generated handoff file must contain its matching
-`<!-- prism:<command>-contract:v1 -->` marker; a missing marker means that
+`<!-- prism:<command>-contract:vN -->` marker (the version is part of it); a missing marker means that
 surface has an older unsupported contract and needs to be refreshed before
 copying a request. The other agent surface is optional. Blocked or unknown
 checks leave **Copy request** unavailable and provide review/repair guidance.
 
-The generated agent workflow supports these exact feature-only actions:
+The generated agent workflow supports exact feature-only actions. Each one reads one source
+status and owner pair, and the dashboard prepares a request for the ones below. The full registry,
+with the approver role of each action, is in [`ACTIONS.md`](../template/knowledge/wiki/ACTIONS.md).
 
 | Action | Source | Destination |
 |---|---|---|
 | `po-specify` | `raw` + `po` | `specified` + `po` |
-| `po-handoff` | `specified` + `po` | `ready-for-design` + `designer` |
-| `design-start` | `ready-for-design` + `designer` | `in-design` + `designer` |
-| `design-handoff` | `in-design` + `designer` | `ready-for-dev` + `dev` |
+| `po-handoff` | `specified` + `po` | `ready-for-design` + the design owner |
+| `design-start` | `ready-for-design` + the design owner | `in-design` + the design owner |
+| `design-ui-done`, `tech-design-done` | `ready-for-design` or `in-design` + the design owner | `in-design` + the design owner |
+| `design-handoff` | `ready-for-design` or `in-design` + the design owner | `ready-for-dev` + `dev` |
 | `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` |
-| `dev-done` | `in-dev` + `dev` | `done` + `none` |
-| `feature-reopen` | `done` + `none` | `specified`, `in-design`, or `in-dev` by selected route |
+| `dev-done` | `ready-for-dev` or `in-dev` + `dev` | `in-dev` + `dev`, or `ready-for-qa` + `qa` once every app has delivered |
+| `qa-verify`, `qa-pass`, `qa-fail` | `in-dev`, `ready-for-qa` or `in-qa` | the minimum of the app stages |
+| `release-done` | `in-dev` up to `ready-for-release` | the minimum of the app stages, `released` + `none` once every app is released |
+| `feature-reopen` | `released` + `none` (a reopen), or a feature in development or QA (a return) | `specified`, `in-design`, or `in-dev` by selected route |
 
-`dev-done` requires substantive, verifiable Implementation, Tests, and Release
-evidence for every declared app. A confirmed `feature-reopen` archives
-prior active evidence, marks route-specific `revalidation` domains, and names
-affected requirement/API status changes before downstream readiness can be
-re-established. UI design exemptions and the full confirmation/write protocol
-are defined in the generated `knowledge/wiki/LIFECYCLE.md` and `knowledge/wiki/ACTIONS.md`. Browser controls for
-these action previews are covered by the browser tests. The controls remain copy-only and never
-execute the agent writes.
+`dev-done` records substantive, verifiable Implementation and Tests evidence for every app it
+names. A confirmed `feature-reopen` archives prior active evidence in `## Evidence history`,
+marks route-specific `revalidation` domains, and names affected requirement/API status changes
+before downstream readiness can be re-established. The design tracks and the full
+confirmation/write protocol are defined in the generated `knowledge/wiki/LIFECYCLE.md` and
+`knowledge/wiki/ACTIONS.md`. Browser controls for these action previews are covered by the
+browser tests. The controls remain copy-only and never execute the agent writes.
 
 ## Snapshot, live state, and confidence
 

@@ -267,7 +267,7 @@ the agent to run the same named operation.
 | Shared | `/wiki-show F-XXX` | `$wiki-show F-XXX` | Assemble focused feature context from linked wiki files |
 | Shared | `/wiki-blockers` | `$wiki-blockers` | Show blockers using the canonical blocker categories |
 | Shared | `/wiki-query "text"` | `$wiki-query "text"` | Retrieval-assisted search across the wiki |
-| Shared | `/wiki-owner po\|designer\|dev\|none` | `$wiki-owner po\|designer\|dev\|none` | Show pending work and stale pages (last verification older than `wiki-stale-after-days`) for one owner role |
+| Shared | `/wiki-owner po\|designer\|tech-lead\|dev\|qa\|release\|none` | `$wiki-owner po\|designer\|tech-lead\|dev\|qa\|release\|none` | Show pending work, bugs and stale pages (last verification older than `wiki-stale-after-days`) for one owner role |
 | Shared | `/verify-pages <page>...` | `$verify-pages <page>...` | Record that current-state pages were checked against their sources: one `verify` entry in `log.md`, no page edited |
 | Shared | `/wiki-app <app-id>` | `$wiki-app <app-id>` | Show the active feature queue for one app |
 
@@ -283,20 +283,27 @@ Recommended first use:
 |------|-------------|-------|---------|
 | Shared | `/setup-project` | `$setup-project` | One-time project initialization that interviews you and builds the advisory board |
 | PO | `/po-intake [folder]` | `$po-intake [folder]` | Process raw PO notes into `raw` feature pages |
-| Shared | `/ingest [folder]` | `$ingest [folder]` | Process a pending folder, for any role, into a topic, research page, plan, direction, roadmap, persona, business rule, decision or feature |
+| Shared | `/ingest [folder]` | `$ingest [folder]` | Process a pending folder, for any role, into a topic, research page, plan, direction, roadmap, persona, business rule, decision, technical design page, bug, incident record or feature |
 | PO | `/po-clarify` | `$po-clarify` | Answer open questions assigned to PO |
 | PO | `/po-specify [F-XXX]` | `$po-specify [F-XXX]` | Complete a `raw` feature and move it to `specified` |
 | PO | `/po-handoff [F-XXX]` | `$po-handoff [F-XXX]` | Hand off a feature to design |
 | Designer | `/design-intake [F-XXX] [folder]` | `$design-intake [F-XXX] [folder]` | Attach design artifacts to a feature |
 | Designer | `/design-clarify` | `$design-clarify` | Answer open design questions |
 | Designer | `/design-start [F-XXX]` | `$design-start [F-XXX]` | Start design on a feature that was handed off |
-| Designer | `/design-handoff [F-XXX]` | `$design-handoff [F-XXX]` | Hand off a feature to dev |
+| Designer | `/design-ui-done [F-XXX]` | `$design-ui-done [F-XXX]` | Settle the UI design track: design pages that cover every app with a UI, or an exemption with a reason |
+| Tech lead | `/tech-design-done [F-XXX]` | `$tech-design-done [F-XXX]` | Settle the technical design track: the technical design page and, for API work, the agreed API contract |
+| Designer, tech lead | `/design-handoff [F-XXX]` | `$design-handoff [F-XXX]` | Hand off a feature to dev once both design tracks are settled |
 | Dev | `/dev-clarify` | `$dev-clarify` | Answer open questions assigned to Dev |
 | Dev | `/dev-start [F-XXX]` | `$dev-start [F-XXX]` | Start development on a feature that is ready for dev |
-| Dev | `/dev-done [F-XXX]` | `$dev-done [F-XXX]` | Mark a feature as shipped, recording the delivery evidence the developer supplies |
-| Shared | `/feature-reopen [F-XXX] [specified\|in-design\|in-dev]` | `$feature-reopen [F-XXX] [specified\|in-design\|in-dev]` | Reopen shipped work through one impact-reviewed route |
-| Shared | `/feature-scope [F-XXX]` | `$feature-scope [F-XXX]` | Edit the app scope of one feature that is not done |
-| Shared | `/ask [F-XXX] "q" --to po\|designer\|dev` | `$ask [F-XXX] "q" --to po\|designer\|dev` | Route a question to a role |
+| Dev | `/dev-done [F-XXX]` | `$dev-done [F-XXX]` | Record the delivery evidence of the apps the developer delivered |
+| QA | `/qa-verify [F-XXX]` | `$qa-verify [F-XXX]` | Record QA results per app or integration against the delivered artifact |
+| QA | `/qa-pass [F-XXX]` | `$qa-pass [F-XXX]` | Pass the verified apps to release |
+| QA | `/qa-fail [F-XXX]` | `$qa-fail [F-XXX]` | Send apps back to development with their evidence archived |
+| Release | `/release-done [F-XXX]` | `$release-done [F-XXX]` | Record a release, a failed delivery, a rollback or a redeploy as a release record |
+| Dev, QA, PO | `/bug-update [BUG-XXX]` | `$bug-update [BUG-XXX]` | Move one bug through triage, fix, verification, closure or reopening |
+| Shared | `/feature-reopen [F-XXX] [specified\|in-design\|in-dev]` | `$feature-reopen [F-XXX] [specified\|in-design\|in-dev]` | Return a feature in development or QA, or reopen a released one, through one impact-reviewed route |
+| Shared | `/feature-scope [F-XXX]` | `$feature-scope [F-XXX]` | Edit the app scope of one feature that is not released |
+| Shared | `/ask [F-XXX] "q" --to po\|designer\|tech-lead\|dev\|qa\|release` | `$ask [F-XXX] "q" --to po\|designer\|tech-lead\|dev\|qa\|release` | Route a question to a role |
 
 Use these only when you are intentionally changing project state.
 
@@ -343,10 +350,11 @@ Important wiki artifacts include:
 - `knowledge/wiki/ACTIONS.md`
 - `knowledge/wiki/SETTINGS.md`
 - `knowledge/wiki/WIKI_REPORT.md` once `feature-status` has generated it
-- `knowledge/wiki/features/`
-- `knowledge/wiki/app-requirements/`
+- `knowledge/wiki/features/`, `design/`, `technical-design/`, `app-requirements/` and `api-contracts/`
+- `knowledge/wiki/bugs/`, `releases/` and `incidents/`
 - `knowledge/wiki/index.md`, which also lists the pages of `docs/` under "Project docs"
-- `knowledge/wiki/status-board.md`
+- `knowledge/wiki/status-board.md`, with the features, the open bugs and the apps in operation
+- `<app path>/docs/runbook.md` in every generated app
 
 If you are new to the Prism workflow, continue with [wiki-workflow.md](wiki-workflow.md)
 after reading this page.

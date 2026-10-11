@@ -12,20 +12,20 @@ Claude Code and Codex connect to the shared board through the same Streamable HT
 | Authentication | `Authorization: Bearer ${PRISM_BOARD_TOKEN}` header | `bearer_token_env_var = "PRISM_BOARD_TOKEN"` |
 | Tested mode | Non-interactive (`claude -p`) | Non-interactive (`codex exec`) |
 
-Both hosts ran against a local board service on Windows 11. A full journey was exercised with them: `po-intake`, `po-clarify`, `po-specify`, the human `po-handoff`, `design-start` and `dev-start`, `design-clarify`, `design-handoff`, `dev-clarify`, `dev-done`. Every agent apply succeeded on its first call and the agent read the operation receipt back.
+Both hosts ran against a local board service on Windows 11. These skills were exercised with them: `po-intake`, `po-clarify`, `po-specify`, the human `po-handoff`, `design-start` and `dev-start`, `design-clarify`, `design-handoff`, `dev-clarify`, `dev-done`. Every agent apply succeeded on its first call and the agent read the operation receipt back. The gated approval in the browser and the QA, release and bug skills (`qa-verify`, `qa-pass`, `qa-fail`, `release-done`, `bug-update`) are not yet exercised with a host: that journey is pending the 0.7.0 journey.
 
 ## Connect a host
 
 The exact configuration for both hosts is in [Connect an agent host](shared-board.md#connect-an-agent-host). Two rules apply to both:
 
-- Give each host its own grant (`prism board grant "NAME" --kind agent --write --path .`) and keep the token in the `PRISM_BOARD_TOKEN` environment variable of the process that starts the host. A token does not belong in a configuration file, a URL or a prompt.
+- Give each host its own agent grant (`prism board grant "NAME" --kind agent --write --path .`; an agent grant holds no role) and keep the token in the `PRISM_BOARD_TOKEN` environment variable of the process that starts the host. A token does not belong in a configuration file, a URL or a prompt.
 - Start the host from a shell where the variable is set, with the board running. The host expands the variable itself.
 
 No other host setting is needed. In particular, `MAX_MCP_OUTPUT_TOKENS` is not needed: both hosts delivered the largest preview results whole, without truncation or a saved-to-file fallback. A host with a much smaller tool-result limit was not tested; raise its limit if a result arrives cut off.
 
 ## Claude Code
 
-- **Tool discovery.** With Prism as the only MCP server, Claude Code loads all 13 Prism tools (`mcp__prism__*`) directly. With many MCP servers configured (hundreds of tools), Claude Code defers MCP tools behind tool search. The agent then finds the Prism tools with one search, because every Prism tool description starts with `Prism board:`, and calls them from the next turn on. This costs one extra turn. No setting is required; `ENABLE_TOOL_SEARCH=false` loads every tool up front if you prefer that. See Claude Code's [MCP documentation](https://code.claude.com/docs/en/mcp).
+- **Tool discovery.** With Prism as the only MCP server, Claude Code loads the Prism tools (`mcp__prism__*`) directly. With many MCP servers configured (hundreds of tools), Claude Code defers MCP tools behind tool search. The agent then finds the Prism tools with one search, because every Prism tool description starts with `Prism board:`, and calls them from the next turn on. This costs one extra turn. No setting is required; `ENABLE_TOOL_SEARCH=false` loads every tool up front if you prefer that. See Claude Code's [MCP documentation](https://code.claude.com/docs/en/mcp).
 - **Result format.** The model reads the complete `structuredContent` JSON as the tool result text.
 - **Non-interactive runs.** In `claude -p` nothing outside the pre-approved tools can run, so allow the Prism tools explicitly with `--allowedTools "mcp__prism__*"`. Add `--strict-mcp-config` with `--mcp-config <file>` to isolate Prism from other configured servers, and `--tools ""` to remove the built-in tools so the agent works only through the board. Set the model and effort explicitly in every launch.
 - **First previews are often incomplete.** Claude's first `preview_skill` call often leaves out a source it needs, and the board answers `missing_read_revisions` with the paths to read. Claude reads them and previews again in the same run. It should leave `read_revisions` out entirely; a digest it types by hand can be wrong (`read_digest_mismatch`).
@@ -48,12 +48,14 @@ No other host setting is needed. In particular, `MAX_MCP_OUTPUT_TOKENS` is not n
 - **Time.** A run that reaches a preview takes about one to three minutes, and an apply run under a minute. The agent reads the skill, its references and the workspace sources before it proposes anything.
 - **A rejected preview is normal.** The board validates every preview in full. An agent corrects exactly what the error names and previews again, at most 2 more times, and never with a wider change; then it stops and reports the error codes and messages. If it stops, read the error, tell it what to change or fix the source it names, and ask it to try again. The count starts anew with your instruction. Nothing is written by a rejected preview.
 - **Agents never perform the three direct human actions.** `po-handoff`, `design-start` and `dev-start` are done by a human in the board. An agent that needs one asks you to complete it there.
-- **You confirm before anything is applied.** The agent shows the exact changes and applies the preview only after your confirmation in the host. The board has no second approval queue.
+- **Agents propose gated actions; a person with the role approves them in the board.** Specification, design, delivery, QA, release, returns and reopening are gated. The agent previews with `preview_skill` and tells you what it proposed; it cannot apply, recover or decline (`approval_required`). The person whose grant holds the role opens **Proposals** in the board, reviews the exact changes and approves or declines. A gated action is approved once, in the board.
+- **You confirm an ungated write in the host.** Intake, clarification, `ingest` and `verify-pages` never advance a status: the agent shows the exact changes and applies the preview only after your confirmation in the host.
 - **The agent cannot read everything.** `read_workspace` reads approved UTF-8 text under `knowledge/wiki/` and `knowledge/intake/`. The workspace manifest is not readable; `discover` reports the board identity ([details](troubleshooting.md#read_workspace-fails-with-path_not_approved)).
 
 ## Not tested
 
 - Remote hosting, Cursor and other hosts.
+- A host through the gated flow end to end: the agent's proposal, the human's approval in the browser and the receipt read back (pending the 0.7.0 journey).
 - Codex with its TOML configuration file instead of `-c` overrides, and Claude Code in interactive mode.
 - A host with a small tool-result limit.
 

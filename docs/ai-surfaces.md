@@ -15,7 +15,7 @@ on that path; they do not redefine the server's pinned workflow contract.
 The practical status is:
 
 - wiki read/query guidance is present in both generated surfaces
-- the nine core lifecycle actions are present in both generated surfaces
+- the lifecycle actions (specification, design tracks, delivery, QA, release, bugs, returns and reopening) are present in both generated surfaces
 - the backend and platform guidance skills that exist in both tools carry the same text;
   some deeper backend skills and commands exist only on the Claude side
 
@@ -121,7 +121,7 @@ The following areas are available in structured form across both tools:
 
 - project setup
 - advisory board review
-- lifecycle operations for PO, design, and dev handoff
+- lifecycle operations for PO, design (both tracks), development, QA, release and bugs
 - one clarify skill per owner: `po-clarify`, `design-clarify` and `dev-clarify`
 - feature status and wiki health checks
 - wiki read/query operations

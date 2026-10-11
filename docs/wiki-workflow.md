@@ -16,21 +16,41 @@ The wiki is the shared source of truth for product intent in generated Prism pro
 The most important directories are:
 
 - `knowledge/wiki/features/`
-- `knowledge/wiki/design/`
+- `knowledge/wiki/design/` and `knowledge/wiki/technical-design/`
 - `knowledge/wiki/app-requirements/`
 - `knowledge/wiki/business-rules/`
 - `knowledge/wiki/api-contracts/`
+- `knowledge/wiki/bugs/`, `knowledge/wiki/releases/` and `knowledge/wiki/incidents/`
 - `knowledge/wiki/advisory/`
 - `knowledge/wiki/topics/`, `research/` and `plans/`, and the pages `direction.md` and `roadmap.md`
 
 `knowledge/wiki/index.md` lists every page, one line each; `knowledge/wiki/status-board.md`
-is the feature status board. The lifecycle operations create and refine that state. The
-read/query operations help agents and humans navigate it.
+is the status board of the features, the bugs and the apps in operation. The lifecycle
+operations create and refine that state. The read/query operations help agents and humans
+navigate it.
 
 ## Page Kinds
 
-The wiki has homes for general knowledge beside the feature pipeline. Each kind has a
-format in the `_FORMAT.md` of its folder; `SCHEMA.md` lists them and defines the formats of `direction.md` and `roadmap.md`.
+Each kind has a format in the `_FORMAT.md` of its folder; `SCHEMA.md` lists them and defines
+the formats of `direction.md` and `roadmap.md`. Two groups of kinds exist.
+
+**The lifecycle pages** carry a feature, a bug or an operation through the stages:
+
+| Kind | Where | Holds |
+|---|---|---|
+| Feature | `features/F-XXX-[slug].md` | The specification, the evidence tables (Delivery evidence, QA verification, Release) and the Evidence history of one feature. Its front matter carries `status`, `owner`, `apps`, the design tracks and the revalidation domains. |
+| Design page | `design/F-XXX-[slug].md` | The UI design of a feature, for the apps with a UI. It belongs to the UI track. |
+| Technical design | `technical-design/F-XXX-[slug].md` | Architecture impact per app, data model and migrations, security and privacy, non-functional needs, risks, decisions, the API contract link and the test strategy that names every acceptance criterion. It belongs to the technical track. |
+| App requirements | `app-requirements/F-XXX-[app-id].md` | What one app builds for one feature, with its dependencies. One page per app of the scope. |
+| API contract | `api-contracts/F-XXX.md` | The agreed API shape of a feature, with a version and a digest that delivery evidence cites. |
+| Bug | `bugs/BUG-XXX-[slug].md` | One defect, with its severity, whether it blocks, the apps and feature it affects, and its Fix, Verification and Release rows. A current-state page. |
+| Release record | `releases/REL-XXX.md` | One release, rollback or redeploy: the features and bugs delivered, per app the target, version, attempt and outcome, and a verbatim snapshot of each cited API contract. A dated record. |
+| Incident | `incidents/INC-XXX-[slug].md` | One incident: impact, timeline, cause, mitigation, resolution and follow-up bugs or features. A dated record, written through `ingest`. |
+| Decision | `decisions/ADR-XXX-[slug].md` | One architecture decision. A dated record. |
+| Business rule, persona | `business-rules/`, `personas/` | Invariants and constraints; customer segments and user types. |
+| Advisory | `advisory/` | The advisory board and its reviews. |
+
+**The general knowledge pages** sit beside the pipeline:
 
 | Kind | Where | Holds |
 |---|---|---|
@@ -40,13 +60,32 @@ format in the `_FORMAT.md` of its folder; `SCHEMA.md` lists them and defines the
 | Direction | `direction.md` | The current direction and the principles behind it. |
 | Roadmap | `roadmap.md` | What comes next. A date about the world, such as a launch date, may appear in it. |
 
-Every one starts with front matter that carries `kind` (the kind of its folder), `sources`
-(a list of the processed intake items, records or URLs it rests on) and, for a topic,
-research page or plan, a `title` and a `status` (topic: `draft` or `current`; research:
-`open` or `concluded`; plan: `proposed`, `active`, `paused`, `done` or `dropped`). A page
-carries no date about itself and labels its claims with the evidence labels below.
-`prism wiki lint` checks the front matter of each kind: for example `invalid-topic-kind`,
-`invalid-plan-status`, `missing-research-frontmatter` and `invalid-roadmap-sources`.
+A topic, research page, plan, direction or roadmap page starts with front matter that carries
+`kind` (the kind of its folder), `sources` (a list of the processed intake items, records or
+URLs it rests on) and, for a topic, research page or plan, a `title` and a `status` (topic:
+`draft` or `current`; research: `open` or `concluded`; plan: `proposed`, `active`, `paused`,
+`done` or `dropped`). A page carries no date about itself and labels its claims with the
+evidence labels below. `prism wiki lint` checks the front matter of each kind: for example
+`invalid-topic-kind`, `invalid-plan-status`, `missing-research-frontmatter` and
+`invalid-roadmap-sources`. The lifecycle lint codes are listed under
+[Lifecycle lint codes](#lifecycle-lint-codes).
+
+## The Standard Files
+
+Four files at the top of `knowledge/wiki/` carry the rules. `SCHEMA.md`, `LIFECYCLE.md` and
+`ACTIONS.md` start with the front matter `schema-version: 1`, and each file is small enough for one
+`read_workspace` page.
+
+| File | Holds | Read for |
+|---|---|---|
+| `SCHEMA.md` | The directory structure, the page kinds, the evidence labels, links and sources, records and decision supersession, raw sources and conflict quarantine, the `index.md`, `status-board.md` and `log.md` conventions, freshness, and the canonical blocker categories. | Every wiki operation |
+| `LIFECYCLE.md` | The feature page format, the statuses and owners, the design owner and the design tracks, the API contract, delivery, QA, release and reopening rules, the evidence tables and Evidence history, and the advisory file formats. | Every feature, board or advisory operation |
+| `ACTIONS.md` | The registry of lifecycle actions with their source and destination, approver role and write scope, the common action protocol, and the specification and PO handoff contracts. | Every lifecycle action |
+| `CONNECTED.md` | How a connected agent reads the board's tools, previews, applies, recovers and retries. Prism owns this file; `prism workflow install` and `prism workflow upgrade` never overwrite a copy that differs. | Any work through the MCP connection |
+
+`SETTINGS.md` holds the project settings, and each page folder's `_FORMAT.md` holds the format
+of its kind. A skill reads the files its action needs, so an agent does not load the whole
+rulebook for every request.
 
 ## The Index And The Status Board
 
@@ -65,10 +104,40 @@ sentence of its summary; a skill that writes files directly maintains the lines 
 Agents read the index first to find the pages a task needs, and `prism wiki search` reads
 it before it opens any page.
 
-`status-board.md` is the feature status board, a dedicated view with the columns
-`| ID | Feature | Status | Owner | Board Review |`. The board merges its rows with the same
-guarantees as before: unrelated rows survive a concurrent write, and a row that changed
-after a preview is a conflict.
+`status-board.md` is the status board, a dedicated view of three tables. Every row is merged
+by its key, so unrelated rows survive a concurrent write and a row that changed after a
+preview is a conflict.
+
+```markdown
+| ID | Feature | Status | Owner | Board Review | Design tracks | App stages | Open bugs |
+|----|---------|--------|-------|--------------|---------------|------------|-----------|
+| F-001 | User login | in-dev | dev | not-needed | ui: done; technical: done | api: ready-for-qa; web: in-dev | BUG-002 |
+
+## Bugs
+
+| ID | Bug | Status | Owner | Apps | Feature | Blocking |
+|----|-----|--------|-------|------|---------|----------|
+| BUG-002 | Login fails offline | open | dev | web | F-001 | yes |
+
+## Operations
+
+| App | Delivery target | Released features | Latest release | Latest attempt outcome | Open bugs | Open incidents |
+|-----|-----------------|-------------------|----------------|------------------------|-----------|----------------|
+| api | production | F-003 | REL-004 | rolled-back | — | INC-001 |
+```
+
+- The **feature table** has one row per feature. `Design tracks` is `ui: <state>; technical:
+  <state>` once the feature has tracks and `—` before. `App stages` lists the stage of each
+  active app from `in-dev` on. `Open bugs` lists the bugs of the feature that are neither
+  `released` nor `closed`.
+- **Bugs** has one row per bug that is neither `released` nor `closed`; `Blocking` is `yes` or `no`.
+- **Operations** has one row per app that has something to show: its released features, the
+  highest-numbered release record that names it with that record's outcome for it (`released`,
+  `failed` or `rolled-back`), and its open bugs and incidents. `Delivery target` is the app's
+  target from `SETTINGS.md` when the row was last written.
+
+`prism wiki lint` reports a feature with no row, a row with no feature and a row that
+disagrees with the pages (`status-board-frontmatter-drift`).
 
 ## Source-of-Truth Boundary
 
@@ -89,9 +158,11 @@ date about the world, such as an effective date or a deadline, is a domain fact 
 may appear in a page.
 
 Records keep their own date, because the date is part of what they record: an ADR
-(`date`), an advisory review (`reviewed`), each entry under a feature's
-`## Reopen history` and a processed intake item (its `YYYY-MM-DD-slug` folder name). A
-record is never rewritten, except for its status fields. A source or a decision that
+(`date`), an advisory review (`reviewed`), a release record (`date`), an incident (`date`, the
+day it began), each entry under a feature's or a bug's `## Evidence history` (headed
+`### YYYY-MM-DD - <action>`) and a processed intake item (its `YYYY-MM-DD-slug` folder name).
+A record is never rewritten, except where its format allows it: an ADR's status fields, and an
+incident's status, appended Timeline lines and added follow-ups. A source or a decision that
 changes a fact replaces the superseded content on the page in place; rationale is
 stated as a current fact.
 
@@ -131,10 +202,10 @@ comments inside the entry. `SCHEMA.md` defines the format.
 | `orphan-index-entry` | warning | An `index.md` line whose target is not a page of the wiki, or a "Project docs" line whose `docs/` page does not exist. |
 | `duplicate-index-entry` | warning | A page, or a project doc, with more than one line in `index.md`. |
 | `malformed-index` | error | `index.md` cannot be read. |
-| `malformed-status-board` | error | `status-board.md` cannot be read or has no status table. |
+| `malformed-status-board` | error | `status-board.md` cannot be read or has no feature table. |
 | `feature-missing-from-status-board` | error | A feature page with no row in `status-board.md`. |
 | `status-board-missing-feature` | error | A `status-board.md` row with no feature page. |
-| `status-board-frontmatter-drift` | error | A row's status, owner or board review differs from the feature's front matter. |
+| `status-board-frontmatter-drift` | error | A feature row's status, owner, board review, design tracks, app stages or open bugs differ from the feature's pages, or a Bugs or Operations row differs from the bug, incident and release pages. The `Delivery target` cell is not compared. |
 | `broken-link` | error | A relative Markdown link or a `sources` entry that does not resolve to an existing file or folder, that leaves the workspace, or is a malformed or undeclared `repo:` link, or a `repo:` link whose target is missing from a resolved checkout. The finding names the page, the link and the line. |
 | `broken-anchor` | warning | A `#heading` anchor that no heading of its target page gives. |
 | `external-repository-unresolved` | warning | A `repo:<repository-id>/<path>` link into an external repository that has no checkout in `prism.local.yml`. One per repository, however many links point into it; its links are skipped. |
@@ -145,6 +216,84 @@ comments inside the entry. `SCHEMA.md` defines the format.
 Lint is mechanical: it checks the form of labels, links and records and never judges
 whether evidence supports a claim or whether two claims contradict each other.
 Detecting a contradiction is the ingest skill's job.
+
+### Lifecycle lint codes
+
+The codes below belong to the lifecycle pages. Every one is an error unless the table says
+otherwise. [Troubleshooting](troubleshooting.md#lint-reports-a-lifecycle-finding) gives the fix for each.
+
+**Status, owner and scope**
+
+| Code | Meaning |
+|---|---|
+| `invalid-feature-status`, `invalid-feature-owner`, `invalid-status-owner-pairing` | A status or owner outside the sets (`raw` to `released`; `po`, `designer`, `tech-lead`, `dev`, `qa`, `release`, `none`), or a pair the lifecycle does not allow, such as `released` with an owner other than `none`. |
+| `unsupported-feature-field`, `unsupported-design-field` | A front matter field the page kind does not carry. |
+| `feature-status-not-minimum` | From `in-dev` on, the status differs from the lowest stage over the active apps. |
+| `app-row-missing` | The status needs an evidence row that an app lacks. |
+| `app-row-ahead-of-status` | A feature before `in-dev` already holds evidence rows; evidence starts at `in-dev`. |
+| `app-row-out-of-order` | An app has a row whose prerequisite is missing: a QA row for an app with no delivery evidence, or a `pending` or `failed` Release row without QA coverage. |
+| `undeclared-app-row`, `duplicate-app-row` | An evidence row names an app the feature does not list, or an app has more than one authoritative row. |
+| `invalid-evidence-row` | A cell of an evidence row has the wrong form: an artifact reference, a basis other than `checked` or `attested`, a missing field. |
+| `no-active-app-in-scope` | Every app of the feature is retired. |
+| `app-retired-in-scope` | A feature before `released` lists a retired app. |
+| `api-surface-without-api-app` | The API surface declares API work and no active app in scope serves an API. |
+| `unknown-app-id` | A feature, requirement or design page names an app the workspace does not declare. |
+| `pending-revalidation` | A released feature still lists revalidation domains. |
+
+**Acceptance criteria and evidence**
+
+| Code | Meaning |
+|---|---|
+| `app-without-criteria` | An app in scope is named by no acceptance criterion. |
+| `duplicate-criterion-id`, `invalid-applies-to`, `criterion-high-water-invalid` | A criterion ID used twice, a criterion that applies to an app outside the scope, or an ID above `criteria-high-water`. |
+| `stale-qa-evidence` | A QA row cites a criterion revision, an artifact or an attempt that is no longer current. |
+| `stale-delivery-evidence` | A delivery row cites an API contract that is not the current one. |
+
+**Design**
+
+| Code | Meaning |
+|---|---|
+| `design-tracks-missing`, `design-tracks-invalid` | From `in-design` on, `design-tracks` is absent or has a value other than `pending`, `done` or `not-applicable`. |
+| `design-track-pending` | From `ready-for-dev` on, a track is not settled or `design-reaffirm` is not empty. |
+| `design-coverage-incomplete` | The UI track is `done` and no design page covers an app with a UI. |
+| `ui-exemption-reason-required` | The UI track is `not-applicable` without a `ui-reason`. |
+| `technical-track-required` | The technical track is `not-applicable` while the API surface declares API work. |
+| `missing-technical-design`, `technical-design-feature-mismatch` | The technical track is `done` and the feature has no technical design page, or it has more than one or one that names another feature. |
+| `test-strategy-incomplete` | The Test strategy of the technical design does not name every acceptance criterion. |
+| `api-contract-required`, `api-contract-not-ready`, `delivered-api-contract` | The technical track is `done` with declared API work and no contract, the contract is still a `draft` from `ready-for-dev` on, or it is not `implemented` after every app delivered. |
+| `missing-app-requirements`, `pending-board-review`, `unresolved-open-questions` | From `ready-for-dev` on: an app has no requirement page, the advisory review is still `pending`, or a `po`, `designer`, `tech-lead` or `dev` question is open. |
+| `done-app-requirement`, `done-advisory-actions` | A released feature has a requirement page that is not `done`, or its advisory review has unchecked required actions. |
+
+**Bugs**
+
+| Code | Meaning |
+|---|---|
+| `bug-page-invalid` | A bug page has a wrong file name, front matter or section. |
+| `invalid-bug-status-owner` | A bug status paired with an owner it does not allow (`open` with `dev`, `fixed` with `qa`, `verified` with `release`). |
+| `bug-close-reason-required` | A closed bug without a `close-reason` of `wont-fix: <reason>`, `duplicate` or `promoted`. |
+| `duplicate-target-invalid` | The bug a duplicate points to is missing, closed, deferred when it should not be, or does not cover the duplicate. |
+| `promoted-bug-unreopened` | A bug promoted to a feature that does not list the bug in `sources` or under Linked bugs. |
+| `bug-feature-missing` | A bug names a feature that has no page. |
+| `open-bug-blocks-qa` | A bug blocks an app that has a `pending` or `failed` Release row. |
+
+**Release and dependencies**
+
+| Code | Meaning |
+|---|---|
+| `release-record-invalid` | A release record has malformed front matter, Delivery rows, Rollback section or contract snapshot. |
+| `release-row-record-mismatch` | The Release row of a feature or bug disagrees with the record it links on target, version or outcome, or links no record. |
+| `cross-app-dependency` | An app requirement depends on a feature or app that is not yet `released`. |
+| `dependency-cycle` | Requirement pages or features that wait for each other. |
+
+**Operations and settings**
+
+| Code | Meaning |
+|---|---|
+| `incident-record-invalid` | An incident page does not follow the format, or names a release record that does not exist. |
+| `incident-follow-up-missing` | A follow-up of an incident names no bug or feature page (warning). |
+| `invalid-workflow-policy` | `qa-separate-from-dev` in `SETTINGS.md` is neither `true` nor `false`. |
+| `invalid-delivery-target` | A `delivery-targets` entry names an unknown app, a kind outside `deployment`, `store`, `artifact` and `other`, or a malformed environment list. |
+| `invalid-app-runbook` | An app in this repository declares a `runbook` (its runbook is `<path>/docs/runbook.md`), or an external app's `runbook` is not an https link. |
 
 ### Links and sources
 
@@ -272,81 +421,167 @@ The resolved record stays in `quarantined/`.
 `po-intake` and `design-intake` stay the role-specific entry points for feature requests and
 design handoffs. `ingest` is the general operation: any role can run it on a pending folder,
 and it can write any page kind: a topic, research page, plan, `direction.md`, `roadmap.md`,
-persona, business rule, decision or new feature.
+persona, business rule, decision, technical design page, new feature, bug or incident record.
 
 1. It reads `index.md`, finds the pages the source touches and reads them.
 2. It compares every claim with those pages. A contradiction is quarantined with a
    `CONFLICT.md` and nothing else is written.
-3. It shows an interpretation summary and waits for the user's confirmation.
+3. It shows an interpretation summary and waits for the user's confirmation (on the connected
+   board, together with the preview).
 4. It writes the pages. A topic, research page, plan, direction or roadmap page is created, or
-   replaced in place when it exists. A persona, business rule, decision or feature is created
-   and never rewritten; a new feature follows the `po-intake` rules (`status: raw`,
-   `owner: po`, the five required sections). A new decision may supersede an older one.
+   replaced in place when it exists. A persona, business rule, decision, feature or bug is
+   created and never rewritten; a new feature follows the `po-intake` rules (`status: raw`,
+   `owner: po`, the five required sections), and a new bug is `open` + `dev` with empty
+   evidence sections. A new decision may supersede an older one. A technical design page is
+   created, or replaced in place while the feature's technical track is `pending` or the feature
+   has no tracks yet. An incident record is created, or updated within its format: a status
+   step, appended Timeline lines, added follow-ups and releases, and, until it is `resolved`, a
+   filled Cause, Mitigation, Resolution and Follow-ups.
 5. The board adds or replaces the index line of every page, adds the status board row of a
-   new feature and appends the log entry.
+   new feature, updates the Bugs and Operations tables and appends the log entry.
 6. The folder moves to `processed/` with a `MANIFEST.md` that lists every page by its full
    relative path and, where it has one, its canonical ID.
 
 The connected board validates this as `po-intake` does, and adds the rules for the new kinds
-(see the rejected-proposals table in [shared-board.md](shared-board.md)).
+(see the rejected-proposals table in [shared-board.md](shared-board.md)). `ingest` cannot write
+design, requirement, API-contract, release or advisory pages, settle a design track or change a
+bug; `tech-design-done` and `bug-update` do that.
 
 ## Feature Lifecycle Actions
 
-Lifecycle actions are named, feature-only workflows. They resolve one exact
-feature path, read the current source and linked context, prepare a complete
-proposal, and write only after the user confirms the full write set.
+Lifecycle actions are named, feature-only workflows. Each resolves one exact feature path,
+reads the current source and linked context, prepares a complete proposal with the exact
+write set, and writes only after the right person confirms it. The registry in
+[`ACTIONS.md`](../template/knowledge/wiki/ACTIONS.md) is the source of truth; `D` is the
+design owner of the scope (`designer` when an active app has a UI, otherwise `tech-lead`).
 
-| Action | Source | Destination |
-|---|---|---|
-| `po-specify` | `raw` + `po` | `specified` + `po` |
-| `po-handoff` | `specified` + `po` | `ready-for-design` + `designer` |
-| `design-start` | `ready-for-design` + `designer` | `in-design` + `designer` |
-| `design-handoff` | `in-design` + `designer` | `ready-for-dev` + `dev` |
-| `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` |
-| `dev-done` | `in-dev` + `dev` | `done` + `none` |
-| `reopen-spec` | `done` + `none` | `specified` + `po` |
-| `reopen-design` | `done` + `none` | `in-design` + `designer` |
-| `reopen-dev` | `done` + `none` | `in-dev` + `dev` |
+| Action | Source | Destination | Approver role |
+|---|---|---|---|
+| `po-specify` | `raw` + `po` | `specified` + `po` | `po` |
+| `po-handoff` | `specified` + `po` | `ready-for-design` + `D` | `po` |
+| `design-start` | `ready-for-design` + `D` | `in-design` + `D` | `D` |
+| `design-ui-done` | `ready-for-design` or `in-design` + `D` | `in-design` + `D` | `designer` |
+| `tech-design-done` | `ready-for-design` or `in-design` + `D` | `in-design` + `D` | `tech-lead` |
+| `design-handoff` | `ready-for-design` or `in-design` + `D` | `ready-for-dev` + `dev` | `D`, plus `designer` or `tech-lead` for a track it settles |
+| `dev-start` | `ready-for-dev` + `dev` | `in-dev` + `dev` | `dev` |
+| `dev-done` | `ready-for-dev` or `in-dev` + `dev` | the minimum of the app stages: `in-dev` + `dev`, or `ready-for-qa` + `qa` | `dev` |
+| `dev-return-spec`, `dev-return-design` | `ready-for-dev` or `in-dev` + `dev` | `specified` + `po`, or `in-design` + `D` | `dev` |
+| `qa-verify` | `in-dev`, `ready-for-qa` or `in-qa` | the minimum of the app stages | `qa` |
+| `qa-pass` | as `qa-verify` | the minimum of the app stages: `ready-for-release` + `release` once every app has passed | `qa` |
+| `qa-fail` | as `qa-verify`, or `ready-for-release` | `in-dev` + `dev` | `qa` |
+| `qa-return-spec`, `qa-return-design` | as `qa-fail` | `specified` + `po`, or `in-design` + `D` | `qa` |
+| `release-done` | `in-dev` up to `ready-for-release` | the minimum of the app stages: `released` + `none` once every app is released | `release` |
+| `release-return-dev` | as `release-done` | `in-dev` + `dev` | `release` |
+| `release-rollback`, `release-redeploy` | `in-dev` up to `released` | unchanged | `release` |
+| `reopen-spec`, `reopen-design`, `reopen-dev` | `released` + `none` | `specified` + `po`, `in-design` + `D`, or `in-dev` + `dev` | `po`, `D`, `dev` |
+| `scope-edit` | `ready-for-dev` up to `released` | the minimum of the app stages after the edit | `po` |
 
-Use `feature-reopen F-XXX [specified|in-design|in-dev]` to select one reopen
-route. It is not a generic status setter. `po-specify` reads the raw body and
-authors the required structured sections, carrying supported facts forward and
-keeping unknowns as explicit questions owned by `po`, `designer`, or `dev`. If
-the raw body is already structured, it may be verified and preserved; otherwise
-the missing sections are authored. It must show and confirm the body rather than
-performing an unverified status-only write. `po-handoff` remains the stricter
-specified-to-design handoff and checks factual Summary, User story, acceptance
-criteria, matching app scope, PO questions, and advisory outcome.
+`bug-update` moves one bug page and has its own table in
+[`bugs/_FORMAT.md`](../template/knowledge/wiki/bugs/_FORMAT.md). Each gated action needs a human
+who holds the approver role; see [Approval](#approval).
 
-`design-handoff` requires design evidence for apps with a UI (`has-ui`) unless the feature
-frontmatter has `design: not-applicable` and a nonblank
-`design-exemption-reason`, with the user's explicit confirmation in the final
-handoff preview. Non-UI features do not need a design page or exemption. When the
-feature's API surface declares API work and no API contract covers it yet,
-`design-handoff` also creates `api-contracts/F-XXX.md` at `agreed`, written only from
-that API surface; the person confirming the handoff preview is the agreement. A
-`revalidation` list records domains invalidated by a confirmed reopen;
-downstream actions treat those domains as active until fresh evidence is
-verified and explicitly cleared.
+### Specification and design
 
-`dev-done` means shipped for every declared app. The feature must have one
-substantive, verifiable `## Delivery evidence` row per declared app with
-Implementation and Tests references and a `Release` cell that is release
-evidence (`release:`, `tag:` or `deployment:` and a URL or record path) or a
-delivery attestation (`attested by <Name>:` and a URL or path), plus complete
-applicable requirements and API contracts. A commit or pull request proves
-which code changed, not that it shipped. File presence and lint alone are not shipment
-evidence. A partial app remains `in-dev`.
+`po-specify` reads the raw body and authors the required structured sections, carrying
+supported facts forward and keeping unknowns as explicit questions owned by `po`, `designer`,
+`tech-lead` or `dev`. Every acceptance criterion gets an ID (`AC-1`) and the apps that verify
+it (`[backend, web]`, or `[integration: backend, web]` for a criterion that two apps verify
+together). It must show the body rather than performing a status-only write. `po-handoff` is
+the stricter specified-to-design handoff and checks the factual Summary, User story, acceptance
+criteria, matching app scope, PO questions and the advisory outcome.
 
-Reopen previews record the reason, impact, route, affected apps/artifacts,
-and prior completion/release evidence. Confirmation appends that record to
-`## Reopen history`, removes prior active Delivery evidence so it cannot satisfy
-a future Done check, sets route-specific revalidation domains, and names exact
-affected requirement/API status invalidations. Unaffected evidence is preserved
-only when explicitly reaffirmed. Shared API contracts are never reset in bulk.
+Design has two tracks, `ui` and `technical`, each `pending`, `done` or `not-applicable`:
+
+- `design-ui-done` settles the UI track: design pages whose `apps` together cover every active
+  app with a UI, or `not-applicable` with a `ui-reason`. Only the designer's explicit exemption
+  makes the track `not-applicable` for an app whose `has-ui` is `unknown`.
+- `tech-design-done` settles the technical track: a technical design page with every section
+  filled and a Test strategy that names every criterion ID, and, when the API surface declares
+  API work, the agreed API contract `api-contracts/F-XXX.md`. The contract is written only from
+  the API surface, and the person confirming the preview is the agreement. A track is
+  `not-applicable` only with a `technical-reason` and no declared API work.
+- `design-handoff` needs both tracks settled and `design-reaffirm` empty, leaves exactly one
+  requirement page per app, and may settle a track in the same confirmation.
+- A change to the pages of a settled track sets that track back to `pending` and lists the
+  other settled track in `design-reaffirm`. From `ready-for-dev` on, the track pages are locked.
+
+### Implementation and QA
+
+`dev-done` records, for each app it names, one `## Delivery evidence` row:
+`App | Artifact | Contract | Implementation | Tests | Basis`. The artifact is `version:`,
+`build:`, `image:`, `package:` or `commit:` with its form; the contract is `none` or
+`F-XXX@v<version>:c1:<digest>`; implementation and tests are substantive references; the basis
+is `checked` when the agent verified the references and `attested` when the approving human
+vouches for them. A reference the agent cannot check is `attested`, never invented. The feature
+moves to `ready-for-qa` once every active app has a row.
+
+`qa-verify` records `## QA verification` rows,
+`Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis`: one row
+per app, or one `integration:app+app` row for the criteria that two apps verify together. A row
+cites each criterion with its revision (`AC-1@v1:<digest>`), the delivered artifact, the
+attempt (`qa-<n>`) and an environment (`local`, `ci` or an environment of the app's delivery
+target). `qa-pass` passes the apps it names when every criterion that lists them has a passing
+row on the current artifact in the current attempt, and no blocking bug remains. It adds a
+`pending` Release row per app and can carry the missing QA rows, so a clean run is one approval.
+`qa-fail` sends the named apps back to development; their delivery, QA and Release rows move to
+Evidence history and the attempt advances.
+
+### Release
+
+`release-done` settles the Release row of each app it releases (`released` or `failed`), ships
+the verified bugs of those apps and writes one release record. A row is
+`App | Target | Version | Attempt | Outcome | Record | Basis`: the target comes from
+`delivery-targets` in `SETTINGS.md`, the version is the artifact QA verified, the attempt is
+`release-<n>`, and the record links `releases/REL-XXX.md`. A release is refused while a bug
+blocks the app, while QA no longer covers it, or while a feature it depends on is not released
+or in the same release. A failed delivery goes back with `release-return-dev`. `release-rollback`
+binds to the current delivery of an app and target (the highest-numbered record with a
+`released` row for it), and `release-redeploy` retries a rollback or a failed redeploy; each adds
+a record and changes no page. A staging row (an environment of the target, attempt `—`) is
+informational and never counts for a stage.
+
+### Bugs
+
+`bug-update` performs one action on one bug page: triage, scope, start, fixed, verified,
+reverify, reject, close, defer or reopen. The roles are `dev` for fixing, `qa` for verifying,
+rejecting and closing a duplicate, and `po` for `wont-fix`, `promoted` and deferral. A bug is
+`released` only inside `release-done`. A fix cannot be recorded while an app of the bug's
+feature is in its QA cycle: the app returns first with `qa-fail`, citing the bug. A bug whose
+fix changes agreed requirements or contracts is closed `promoted` and continues as a feature.
+
+### Returns, reopening and scope
+
+- A return or a reopen appends exactly one `## Evidence history` entry
+  (`### YYYY-MM-DD - <action>`), copies each removed row verbatim under `- Archived evidence:`,
+  lowers the requirement pages and the contract it names, and sets `revalidation` (feature
+  domains `specification`, `design`, `technical-design`) and `app-revalidation` (per app
+  `implementation`, `tests`, `qa`, `release`). A domain is cleared only by fresh evidence in the
+  same write.
+- `feature-reopen F-XXX [specified|in-design|in-dev]` selects the route from the state of the
+  feature: from `released` the three routes are reopens; with an app in QA, `specified` and
+  `in-design` are the QA returns; otherwise they are the returns from implementation. It is not a
+  generic status setter. `in-dev` is valid only from `released`, and reopens only the apps that
+  change.
+- A feature with a released app cannot go back to specification or design
+  (`partial_release_requires_new_feature`): a changed requirement or contract goes in a new
+  feature, and an implementation defect in a bug.
+- `feature-scope` edits the `apps` list and the App scope section together. Before
+  `ready-for-dev` it is an ordinary write; from `ready-for-dev` on it is `scope-edit`, which
+  only removes apps, derives the new criteria and archives the removed app's rows. Adding an app
+  there is refused (`scope_stage_unavailable`): return the feature to design.
+
 The complete protocol and formats are in
 [`knowledge/wiki/LIFECYCLE.md`](../template/knowledge/wiki/LIFECYCLE.md), and the action registry in
 [`knowledge/wiki/ACTIONS.md`](../template/knowledge/wiki/ACTIONS.md).
+
+### Approval
+
+An agent proposes a gated action with `preview_skill`; it waits in the board's proposal list;
+a human who holds the approver role reviews the exact changes and approves or declines it in
+the browser board. `po-handoff`, `design-start` and `dev-start` are human-direct: the human
+previews and applies them in the board without an agent. The board checks the role at preview,
+at apply and at recovery. [Shared board](shared-board.md#roles-proposals-and-approval) describes
+the flow, and [the model](prism-model.md#approval-agents-propose-humans-approve) the reasons.
 
 ## `WIKI_REPORT.md`
 
@@ -369,30 +604,42 @@ It is not:
 ## `SETTINGS.md`
 
 `knowledge/wiki/SETTINGS.md` is the canonical home for project-level wiki behavior
-settings.
-
-The setting:
+settings and for the workflow policy. All keys live in its front matter:
 
 ```markdown
 ---
 wiki-stale-after-days: 14
+qa-separate-from-dev: false
+delivery-targets:
+  backend: { kind: deployment, target: production, environments: [staging] }
 ---
-
-# Wiki Settings
-
-Project-level settings for wiki read/query behavior.
 ```
 
-Commands that use this setting must fall back cleanly to `14` if the file is missing, the
-key is missing, or the value is malformed.
+- `wiki-stale-after-days` is the number of days a verification stays fresh. Commands that use
+  it fall back cleanly to `14` if the file is missing, the key is missing, or the value is
+  malformed. Freshness is derived from `log.md`, never from a date on the page (see
+  [Freshness and verification](#freshness-and-verification)), and `status` reports the setting.
+- `qa-separate-from-dev` is `true` or `false` (absent means `false`). When `true`, the board
+  refuses a QA approval from a grant that produced, recovered or repaired the evidence it
+  verifies. It separates grants, not proven people. Any other value is
+  `invalid-workflow-policy`, and a gated action that reads the policy is refused until it is
+  fixed (`invalid_policy`). The board never writes this file.
+- `delivery-targets` maps an app ID to `{ kind, target, environments }`. `kind` is
+  `deployment`, `store`, `artifact` or `other`; what an entry leaves out comes from the app's
+  stack (`deployment` and `production` for `spring-backend`, `nextjs-web` and
+  `python-agent-service`, `store` and `play-store` for `android-compose`, `store` and
+  `app-store` for `ios-swiftui`). An `other` app declares its own. Changing a target affects
+  only future releases.
 
-`wiki-stale-after-days` is the number of days a verification stays fresh; freshness is derived from
-`log.md`, never from a date on the page (see [Freshness and verification](#freshness-and-verification)),
-and `status` reports the setting. Source integrity errors, including a broken link to a wiki page, and
-action-specific prerequisites gate lifecycle requests; freshness findings, broken `sources` entries,
-broken anchors and external links never do.
+Source integrity errors, including a broken link to a wiki page, and action-specific
+prerequisites gate lifecycle requests; freshness findings, broken `sources` entries, broken
+anchors and external links never do.
 
 ## Start Here By Role
+
+An action that advances a status needs a board grant with the role of the stage
+(`prism board grant NAME --kind human --write --role qa`). The flows below name the skill
+each role runs; a gated skill is proposed by the agent and approved by that person in the board.
 
 ### If you are a Product Owner
 
@@ -403,7 +650,8 @@ Typical flow:
 3. review the generated feature pages and open questions
 4. use `po-clarify` to answer PO-owned questions
 5. use `po-specify` on a raw feature page to author its structured draft
-6. use `po-handoff` when the feature is ready for design
+6. use `po-handoff` in the board when the feature is ready for design
+7. decide bug dispositions (`wont-fix`, `promoted`, deferral) with `bug-update`
 
 Helpful read/query commands:
 
@@ -412,20 +660,21 @@ Helpful read/query commands:
 - `wiki-owner po` for PO-owned open work
 - `wiki-blockers` when a feature seems stuck
 
-### If you are a Designer
+### If you are a Designer or Tech Lead
 
 Typical flow:
 
 1. inspect the feature with `wiki-show F-XXX`
 2. attach design artifacts with `design-intake`
 3. resolve open design questions with `design-clarify`
-4. start work with `design-start` after the PO handoff
-5. confirm app implications in the wiki
-6. use `design-handoff` when the feature is ready for development
+4. start work with `design-start` in the board after the PO handoff
+5. settle the UI track with `design-ui-done` (designer) and the technical track with
+   `tech-design-done` (tech lead)
+6. use `design-handoff` when both tracks are settled and the feature is ready for development
 
 Helpful read/query commands:
 
-- `wiki-owner designer`
+- `wiki-owner designer` or `wiki-owner tech-lead`
 - `wiki-app <app-id>`
 - `wiki-query "text"` for targeted product context search
 
@@ -436,17 +685,49 @@ Typical flow:
 1. read `WIKI_REPORT.md` when present, or run `feature-status`
 2. run `prep-sprint` to see what is actually ready
 3. use `wiki-show F-XXX` to assemble focused implementation context
-4. read app requirements before implementation
+4. read app requirements, the technical design and the API contract before implementation
 5. use `dev-clarify` to answer dev-owned open questions, which block `dev-start`
-6. use `dev-start` to take confirmed ready-for-dev work
-7. use `dev-done` only when implementation is truly complete and shipped
-8. use `feature-reopen` after impact review when shipped work needs revalidation
+6. use `dev-start` in the board to take confirmed ready-for-dev work
+7. use `dev-done` for each app whose artifact, implementation and tests are delivered
+8. use `feature-reopen` with a return route when the specification or the design turns out to be wrong
+9. fix bugs with `bug-update`
 
 Helpful read/query commands:
 
 - `wiki-blockers`
+- `wiki-owner dev`
 - `wiki-app <app-id>`
 - `wiki-query "text"`
+
+### If you are QA
+
+Typical flow:
+
+1. run `wiki-owner qa` for the features at `ready-for-qa` or `in-qa` and the bugs at `fixed`
+2. read the acceptance criteria and the Test strategy of the technical design
+3. record results with `qa-verify`, one row per app or integration, against the delivered artifact
+4. file the defects you find as bugs in the same proposal
+5. use `qa-pass` when every applicable criterion is verified and no bug blocks the app
+6. use `qa-fail` to send an app back to development, or `feature-reopen` (`specified` or
+   `in-design`) to send the whole feature back
+7. verify fixes with `bug-update`
+
+### If you are Release
+
+Typical flow:
+
+1. run `wiki-owner release` for the features at `ready-for-release` and the bugs at `verified`
+2. deliver the artifact QA verified to the app's delivery target
+3. record the outcome with `release-done`, which writes the release record
+4. use `release-return-dev` when the delivery failed and needs development
+5. use `release-rollback` and `release-redeploy` to record a rollback and a new delivery
+
+### Operation
+
+- an incident report goes through `ingest` into `knowledge/wiki/incidents/`; its follow-ups are bugs or features
+- a defect report goes through `ingest` into `knowledge/wiki/bugs/`
+- the Operations table of `status-board.md` shows, per app, the released features, the latest
+  release record and its outcome, the open bugs and the open incidents
 
 ## Orientation and Read/Query Commands
 
@@ -479,8 +760,9 @@ It is the only command that writes `WIKI_REPORT.md`.
 
 It should produce:
 
-- pipeline grouped by lifecycle stage
+- pipeline grouped by lifecycle stage, with the stage of each app of a feature from `in-dev` on
 - open questions by owner
+- the bugs that are neither `released` nor `closed`
 - blocker snapshot
 - `WIKI_REPORT.md` with:
   - project summary
@@ -606,13 +888,18 @@ Canonical blocker categories:
 - `unresolved-open-questions`
 - `api-contract-not-ready`
 - `cross-app-dependency`
+- `feature-status-not-minimum`
+- `app-row-missing`
+- `stale-qa-evidence`
+- `stale-delivery-evidence`
+- `open-bug-blocks-qa`
 
 Example:
 
 ```text
 Blockers summary:
 - 2 pending board review
-- 1 missing design
+- 1 pending design track
 - 3 missing app requirements
 - 2 unresolved open questions
 
@@ -636,7 +923,7 @@ No-blockers state:
 ```text
 Blockers summary:
 - 0 pending board review
-- 0 missing design
+- 0 pending design track
 - 0 missing app requirements
 - 0 unresolved open questions
 
@@ -731,13 +1018,16 @@ Suggested refinement:
 
 Purpose:
 
-- show pending work and open questions for one owner role
+- show pending work, open questions and bugs for one owner role
 
 Supported values:
 
 - `po`
 - `designer`
+- `tech-lead`
 - `dev`
+- `qa`
+- `release`
 - `none`
 
 Example:
@@ -753,6 +1043,9 @@ Waiting on designer:
 - F-012 - Saved Checkout [ready-for-design]
 - F-014 - Nutrition Goal Alerts [in-design]
 
+Bugs:
+- none
+
 Suggested next actions:
 - Run design-intake for F-012
 - Resolve open questions on F-014 before design-handoff
@@ -761,15 +1054,18 @@ Suggested next actions:
 Invalid-owner example:
 
 ```text
-Owner view: qa
+Owner view: ops
 
 Problem:
-`qa` is not a supported owner value.
+`ops` is not a supported owner value.
 
 Supported values:
 - po
 - designer
+- tech-lead
 - dev
+- qa
+- release
 - none
 ```
 
