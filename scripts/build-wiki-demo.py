@@ -27,16 +27,25 @@ from prism_cli import __version__  # noqa: E402
 from prism_cli.wiki_index import build_index  # noqa: E402
 from prism_cli.app_model import apps_from_platforms  # noqa: E402
 from prism_cli.workspace import write_workspace_manifest  # noqa: E402
-from prism_cli.wiki_model import DesignTracks, contract_citation, criterion_revision, read_feature_pages  # noqa: E402
+from prism_cli.wiki_bugs import read_bug_pages  # noqa: E402
+from prism_cli.wiki_incidents import read_incident_pages  # noqa: E402
+from prism_cli.wiki_model import DesignTracks, app_stages_text, contract_citation, criterion_revision, read_feature_pages  # noqa: E402
 from prism_cli.wiki_model import resolve_delivery_targets  # noqa: E402
 from prism_cli.wiki_operations import (  # noqa: E402
+    BUG_TABLE_COLUMNS,
+    BUGS_HEADING,
     OPERATIONS_HEADING,
     OPERATIONS_TABLE_COLUMNS,
+    bug_board_row,
     design_tracks_text,
+    format_bug_row,
     format_operation_row,
+    ids_text,
+    open_bugs_of_feature,
     operation_row,
     table_text,
 )
+from prism_cli.wiki_releases import format_snapshot, read_release_records  # noqa: E402
 from prism_cli.workspace import inspect_workspace  # noqa: E402
 from prism_cli.wiki_transitions import ACTION_SPECS  # noqa: E402
 
@@ -108,6 +117,118 @@ FEATURES: tuple[dict[str, Any], ...] = (
         ],
         "question": None,
         "related": "F-001",
+    },
+    {
+        "id": "F-004",
+        "slug": "notify-managers-of-pending-approvals",
+        "title": "Notify managers of pending approvals",
+        "status": "specified",
+        "owner": "po",
+        "advisory": "not-needed",
+        "summary": "Managers are told when a payout request waits for their decision so that no request stalls.",
+        "story": "As a manager, I want a notice when a request waits for me, so that I can decide before the payout window closes.",
+        "criteria": [
+            "A manager receives a notice when a request is assigned to them.",
+            "A request that waits for more than a day is shown first in the list of the manager.",
+        ],
+        "question": None,
+        "related": "F-002",
+    },
+    {
+        "id": "F-005",
+        "slug": "reverse-a-settled-payout",
+        "title": "Reverse a settled payout",
+        "status": "ready-for-design",
+        "owner": "designer",
+        "advisory": "done",
+        "summary": "Finance admins reverse a payout that settled by mistake and keep the reversal beside the original outcome.",
+        "story": "As a finance admin, I want to reverse a settled payout, so that a mistake is corrected with a visible record.",
+        "criteria": [
+            "A settled payout can be reversed with a reason.",
+            "The history shows the reversal beside the original settlement.",
+        ],
+        "question": None,
+        "related": "F-003",
+    },
+    {
+        "id": "F-006",
+        "slug": "export-the-payout-ledger",
+        "title": "Export the payout ledger",
+        "status": "in-design",
+        "owner": "designer",
+        "advisory": "done",
+        "summary": "Finance admins export the payout ledger for a period so that auditors can review it outside the product.",
+        "story": "As a finance admin, I want to export the ledger of a period, so that auditors can review it.",
+        "criteria": [
+            "A ledger export lists every payout of the chosen period with its outcome.",
+            "The export is available to finance admins only.",
+        ],
+        "question": None,
+        "related": "F-003",
+    },
+    {
+        "id": "F-007",
+        "slug": "flag-unusual-payout-amounts",
+        "title": "Flag unusual payout amounts",
+        "status": "ready-for-dev",
+        "owner": "dev",
+        "advisory": "done",
+        "summary": "A request whose amount is far above the usual range is flagged for a second look before approval.",
+        "story": "As a manager, I want unusual amounts flagged, so that I look twice before I approve them.",
+        "criteria": [
+            "A request above the configured range is marked as unusual.",
+            "The manager sees the usual range beside the flagged amount.",
+        ],
+        "question": None,
+        "related": "F-002",
+    },
+    {
+        "id": "F-008",
+        "slug": "schedule-recurring-payouts",
+        "title": "Schedule recurring payouts",
+        "status": "ready-for-qa",
+        "owner": "qa",
+        "advisory": "done",
+        "summary": "Operators schedule a payout that repeats so that a regular recipient is paid without a new request each time.",
+        "story": "As an operator, I want to schedule a repeating payout, so that regular recipients are paid on time.",
+        "criteria": [
+            "A payout can be scheduled to repeat weekly or monthly.",
+            "Each repeat goes through the same approval as a single payout.",
+        ],
+        "question": None,
+        "related": "F-001",
+    },
+    {
+        "id": "F-009",
+        "slug": "attach-receipts-to-a-payout-request",
+        "title": "Attach receipts to a payout request",
+        "status": "in-qa",
+        "owner": "qa",
+        "advisory": "done",
+        "summary": "Operators attach a receipt to a payout request so that the manager sees what the payment is for.",
+        "story": "As an operator, I want to attach a receipt, so that the manager can see what the payout is for.",
+        "criteria": [
+            "A request accepts one receipt in PDF or image form.",
+            "The manager opens the receipt from the request.",
+        ],
+        "question": None,
+        "related": "F-001",
+    },
+    {
+        "id": "F-010",
+        "slug": "reconcile-settlements-with-the-bank-statement",
+        "title": "Reconcile settlements with the bank statement",
+        "status": "ready-for-release",
+        "owner": "release",
+        "advisory": "done",
+        "summary": "Finance admins match each settlement with a line of the bank statement and see the ones that do not match.",
+        "story": "As a finance admin, I want settlements matched with the statement, so that differences are found early.",
+        "criteria": [
+            "Each settlement is matched with a statement line by amount and date.",
+            "A settlement without a match is listed for review.",
+        ],
+        "question": None,
+        "related": "F-003",
     },
 )
 
@@ -389,10 +510,24 @@ This is a synthetic contract summary for graph relationships; it is not an imple
 """
 
 
-def _has_designed(feature: dict[str, Any]) -> bool:
-    """A feature past design carries both settled tracks, the design pages of its UI apps and a technical design page."""
+STAGES = ("raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released")
+# Where each demo app is delivered: the default target of its stack.
+TARGETS = {"backend": "production", "mobile-android": "play-store", "mobile-ios": "app-store"}
+RELEASED_FEATURE = "F-003"
 
-    return feature["status"] in {"in-dev", "released"}
+
+def _rank(feature: dict[str, Any]) -> int:
+    return STAGES.index(feature["status"])
+
+
+def _at_least(feature: dict[str, Any], status: str) -> bool:
+    return _rank(feature) >= STAGES.index(status)
+
+
+def _has_designed(feature: dict[str, Any]) -> bool:
+    """A feature from `ready-for-dev` on carries both settled tracks, the design pages of its UI apps and a technical design page."""
+
+    return _at_least(feature, "ready-for-dev")
 
 
 def _feature_frontmatter(feature: dict[str, Any], today: date) -> dict[str, Any]:
@@ -408,33 +543,43 @@ def _feature_frontmatter(feature: dict[str, Any], today: date) -> dict[str, Any]
     }
     if _has_designed(feature):
         frontmatter.update(DesignTracks("done", "done").frontmatter())
+    elif feature["status"] == "in-design":
+        # The design pages exist; the technical design is still being written.
+        frontmatter.update(DesignTracks("done", "pending").frontmatter())
     return frontmatter
 
 
 def _evidence_sections(feature: dict[str, Any]) -> str:
-    """The evidence tables of a feature: empty until `in-dev`, a delivered, verified and released row per app when released."""
+    """The evidence tables of a feature, by how far it has come.
+
+    Empty until `ready-for-qa`; then a delivery row for each app, a passing QA row for each app from `in-qa`, a pending Release row
+    for each app at `ready-for-release`, and a released Release row that names the release record when the feature is `released`.
+    """
 
     delivery: list[str] = []
     qa: list[str] = []
     release: list[str] = []
-    if feature["status"] == "released":
-        references = ", ".join(
-            f"AC-{number}@{criterion_revision(feature['id'], number, PLATFORMS, False, '', text)}"
-            for number, text in enumerate(feature["criteria"], start=1)
-        )
-        for platform in PLATFORMS:
-            artifact = f"build:{platform}#1"
+    references = ", ".join(
+        f"AC-{number}@{criterion_revision(feature['id'], number, PLATFORMS, False, '', text)}"
+        for number, text in enumerate(feature["criteria"], start=1)
+    )
+    for platform in PLATFORMS:
+        artifact = f"build:{platform}#1"
+        if _at_least(feature, "ready-for-qa"):
             delivery.append(
                 f"| {platform} | `{artifact}` | {contract_citation(feature['id'], 1, CONTRACT_BODY)} | Synthetic local demo {platform} surface for {feature['id']} (no production implementation claim) "
                 f"| Synthetic local graph fixture checks for {platform} (no production test claim) | attested |"
             )
+        if _at_least(feature, "in-qa"):
             qa.append(
-                f"| {platform} | {references} | manual | `{artifact}` | demo | qa-1 | pass "
+                f"| {platform} | {references} | manual | `{artifact}` | ci | qa-1 | pass "
                 f"| Synthetic local demo check of {platform} (no production test claim) | attested |"
             )
+        if feature["status"] == "ready-for-release":
+            release.append(f"| {platform} | — | `{artifact}` | release-1 | pending | — | — |")
+        if feature["status"] == "released":
             release.append(
-                f"| {platform} | production | `{artifact}` | release-1 | released "
-                f"| [REL-{PLATFORMS.index(platform) + 1:03d}](https://example.test/demo/releases/{platform}) | attested |"
+                f"| {platform} | {TARGETS[platform]} | `{artifact}` | release-1 | released | [REL-001](../releases/REL-001.md) | attested |"
             )
     rows = lambda items: "".join(f"{item}\n" for item in items)  # noqa: E731
     return (
@@ -496,9 +641,9 @@ def _write_linked_context(destination: Path, today: date) -> None:
     for feature in FEATURES:
         feature_id = feature["id"]
         slug = feature["slug"]
-        status = "implemented" if feature["status"] == "released" else "agreed"
+        status = "implemented" if _at_least(feature, "ready-for-qa") else "agreed"
         for platform in PLATFORMS:
-            requirement_status = "done" if feature["status"] == "released" else "in-progress"
+            requirement_status = "done" if _at_least(feature, "ready-for-qa") else "in-progress" if feature["status"] == "in-dev" else "pending"
             _write_page(
                 wiki_root / "app-requirements" / f"{feature_id}-{platform}.md",
                 {"feature-id": feature_id, "app": platform, "status": requirement_status},
@@ -703,45 +848,254 @@ Clients must render each state, while audits can follow one stable request ident
     )
 
 
-def _operations_table(destination: Path, stage_cells: dict[str, str]) -> str:
-    """The Operations table of the demo board: one row for each app with a released feature (the demo has no bug, incident or release record)."""
+BUG_HEADERS = {
+    "fix": ("| App | Artifact | Implementation | Tests | Basis |", "|---|---|---|---|---|"),
+}
+BUGS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "BUG-001",
+        "slug": "approval-decision-is-not-saved",
+        "title": "Approval decision is not saved",
+        "status": "open",
+        "owner": "dev",
+        "feature": "F-002",
+        "apps": ["backend"],
+        "blocking": True,
+        "severity": "high",
+        "actual": "A manager approves a request and the decision is lost when the page reloads.",
+    },
+    {
+        "id": "BUG-002",
+        "slug": "rejected-request-keeps-the-approve-button",
+        "title": "Rejected request keeps the approve button",
+        "status": "fixed",
+        "owner": "qa",
+        "feature": "F-002",
+        "apps": ["mobile-android"],
+        "blocking": False,
+        "severity": "medium",
+        "actual": "A request that was rejected still shows an approve button on Android.",
+    },
+    {
+        "id": "BUG-003",
+        "slug": "settlement-cache-ignores-the-request-status",
+        "title": "Settlement cache ignores the request status",
+        "status": "open",
+        "owner": "dev",
+        "feature": "none",
+        "apps": ["backend"],
+        "blocking": False,
+        "severity": "medium",
+        "actual": "A cached settlement view shows a payout as approved after it was reversed.",
+        "found_in": "INC-001",
+    },
+)
 
+
+def _write_bug_pages(destination: Path) -> None:
+    """Three bug pages: an open one and a fixed one of the feature in development, and the open follow-up of the incident."""
+
+    for bug in BUGS:
+        fix = ""
+        if bug["status"] == "fixed":
+            app = bug["apps"][0]
+            header, separator = BUG_HEADERS["fix"]
+            fix = (
+                f"{header}\n{separator}\n"
+                f"| {app} | `build:{app}#2` | Synthetic local demo fix for {bug['id']} (no production implementation claim) "
+                f"| Synthetic local graph fixture checks for {app} (no production test claim) | attested |"
+            )
+        frontmatter = {
+            "id": bug["id"],
+            "title": bug["title"],
+            "status": bug["status"],
+            "owner": bug["owner"],
+            "severity": bug["severity"],
+            "blocking": bug["blocking"],
+            "apps": list(bug["apps"]),
+            "feature": bug["feature"],
+            "found-in": bug.get("found_in", f"build:{bug['apps'][0]}#1"),
+            "environment": "staging",
+            "sources": [],
+        }
+        body = f"""## Summary
+{bug['title']}.
+
+## Steps to reproduce
+1. Open the request in the {bug['apps'][0]} app.
+2. Repeat the action that the report describes.
+
+## Expected
+The request keeps the state that the last action gave it.
+
+## Actual
+{bug['actual']}
+
+## Impact
+Managers and operators cannot rely on the state they see.
+
+## Fix
+{fix}
+
+## Verification
+
+
+## Release
+
+
+## Evidence history
+"""
+        _write_page(destination / "knowledge" / "wiki" / "bugs" / f"{bug['id']}-{bug['slug']}.md", frontmatter, body)
+
+
+def _release_record_page(number: int, title: str, today: date, rows: list[str], *, features: list[str], outcome: str, summary: str, contracts: str = "None.", rollback: str = "None.", rollback_of: str | None = None) -> tuple[dict[str, Any], str]:
+    frontmatter: dict[str, Any] = {
+        "id": f"REL-{number:03d}",
+        "title": title,
+        "date": today.isoformat(),
+        "operation": "demo-seed",
+        "outcome": outcome,
+        "features": features,
+        "bugs": [],
+    }
+    if rollback_of:
+        frontmatter["rollback-of"] = rollback_of
+    body = f"""## Summary
+{summary}
+
+## Delivery
+| Item | App | Target | Version | Attempt | Outcome | Evidence | Basis |
+|---|---|---|---|---|---|---|---|
+{chr(10).join(rows)}
+
+## Contracts
+{contracts}
+
+## Rollback
+{rollback}
+
+## Notes
+None.
+"""
+    return frontmatter, body
+
+
+def _write_release_records(destination: Path, today: date) -> None:
+    """REL-001 delivers the released feature to all three apps, and REL-002 rolls the backend delivery back."""
+
+    wiki_root = destination / "knowledge" / "wiki"
+    feature = next(item for item in FEATURES if item["id"] == RELEASED_FEATURE)
+    contract_text = (wiki_root / "api-contracts" / f"{feature['id']}-{feature['slug']}.md").read_text(encoding="utf-8")
+    citation = contract_citation(feature["id"], 1, CONTRACT_BODY)
+    snapshots = "\n".join(format_snapshot(feature["id"], platform, citation, contract_text) for platform in PLATFORMS)
+    proof = {"backend": "deployment", "mobile-android": "store", "mobile-ios": "store"}
+    delivered = [
+        f"| {feature['id']} | {platform} | {TARGETS[platform]} | `build:{platform}#1` | release-1 | released | {proof[platform]}: https://example.test/demo/{platform} | attested |"
+        for platform in PLATFORMS
+    ]
+    frontmatter, body = _release_record_page(
+        1, f"Release of {feature['id']}", today, delivered, features=[feature["id"]], outcome="released",
+        summary=f"{feature['id']} is delivered to every app of the demo.", contracts=snapshots,
+    )
+    _write_page(wiki_root / "releases" / "REL-001.md", frontmatter, body)
+    rolled_back = [f"| {feature['id']} | backend | {TARGETS['backend']} | `build:backend#1` | — | rolled-back | deployment: https://example.test/demo/rollback | attested |"]
+    frontmatter, body = _release_record_page(
+        2, "Rollback of REL-001", today, rolled_back, features=[feature["id"]], outcome="rolled-back",
+        summary="The backend delivery of REL-001 is rolled back after settlement errors.",
+        rollback="The backend was rolled back to the previous build after settlements failed for twenty minutes.", rollback_of="REL-001",
+    )
+    _write_page(wiki_root / "releases" / "REL-002.md", frontmatter, body)
+
+
+def _write_incident(destination: Path, today: date) -> None:
+    """INC-001: the settlement errors behind REL-002. The cause is not known yet, and BUG-003 follows from it."""
+
+    frontmatter = {
+        "id": "INC-001",
+        "title": "Settlements fail after the release",
+        "date": today.isoformat(),
+        "status": "mitigated",
+        "severity": "high",
+        "apps": ["backend"],
+        "releases": ["REL-001", "REL-002"],
+        "follow-ups": ["BUG-003"],
+    }
+    bug = next(item for item in BUGS if item["id"] == "BUG-003")
+    body = f"""## Impact
+Finance admins could not settle approved payouts for twenty minutes.
+
+## Timeline
+- {today.isoformat()} 09:05: Settlements started failing after REL-001.
+- {today.isoformat()} 09:25: The backend delivery of REL-001 was rolled back by REL-002.
+
+## Cause
+**Unknown:** The settlement path failed after REL-001; the failing path is not known yet.
+
+## Mitigation
+The backend delivery of REL-001 was rolled back by REL-002 at 09:25.
+
+## Resolution
+
+
+## Follow-ups
+- [BUG-003](../bugs/{bug['id']}-{bug['slug']}.md): a settlement view that shows a stale state
+"""
+    _write_page(destination / "knowledge" / "wiki" / "incidents" / "INC-001-settlements-fail-after-the-release.md", frontmatter, body)
+
+
+def _write_operation_pages(destination: Path, today: date) -> None:
+    _write_bug_pages(destination)
+    _write_release_records(destination, today)
+    _write_incident(destination, today)
+
+
+def _view_tables(destination: Path) -> str:
+    """The Bugs and Operations tables of the demo board, derived from the pages with the readers the board uses."""
+
+    wiki_root = destination / "knowledge" / "wiki"
     model = inspect_workspace(destination).model
     targets, _problems = resolve_delivery_targets(None, model)
-    rows = [
+    cells = {page.feature_id: app_stages_text(page.status, page.apps, page.page.body, model) for page in read_feature_pages(wiki_root)}
+    bug_rows = [row for bug in read_bug_pages(wiki_root) if (row := bug_board_row(bug)) is not None]
+    incidents, releases = read_incident_pages(wiki_root), read_release_records(wiki_root)
+    operations = [
         format_operation_row(row)
         for app in model.apps
         if (
             row := operation_row(
                 app.id,
                 delivery_target=targets.get(app.id, {}).get("target"),
-                feature_stage_cells=stage_cells,
-                bug_rows=[],
-                incidents=[],
-                releases=[],
+                feature_stage_cells=cells,
+                bug_rows=bug_rows,
+                incidents=incidents,
+                releases=releases,
             )
         )
         is not None
     ]
-    return "\n" + table_text(OPERATIONS_HEADING, OPERATIONS_TABLE_COLUMNS, rows) if rows else ""
+    text = ""
+    if bug_rows:
+        text += "\n" + table_text(BUGS_HEADING, BUG_TABLE_COLUMNS, [format_bug_row(row) for row in sorted(bug_rows, key=lambda item: item["id"])])
+    if operations:
+        text += "\n" + table_text(OPERATIONS_HEADING, OPERATIONS_TABLE_COLUMNS, operations)
+    return text
 
 
 def _write_populated_index(destination: Path, today: date) -> None:
-    def stages(feature: dict[str, Any]) -> str:
-        if feature["status"] == "in-dev":
-            return "; ".join(f"{platform}: in-dev" for platform in PLATFORMS)
-        if feature["status"] == "released":
-            return "; ".join(f"{platform}: released" for platform in PLATFORMS)
-        return "\u2014"
-
-    dash = "—"
-    tracks = {page.feature_id: design_tracks_text(page.page.frontmatter) for page in read_feature_pages(destination / "knowledge" / "wiki")}
-    rows = [
-        f"| {feature['id']} | [{feature['title']}](features/{feature['id']}-{feature['slug']}.md) | {feature['status']} | {feature['owner']} | {feature['advisory']} "
-        f"| {tracks.get(feature['id'], dash)} | {stages(feature)} | {dash} |"
-        for feature in FEATURES
-    ]
     wiki_root = destination / "knowledge" / "wiki"
+    model = inspect_workspace(destination).model
+    pages = {page.feature_id: page for page in read_feature_pages(wiki_root)}
+    bug_rows = [row for bug in read_bug_pages(wiki_root) if (row := bug_board_row(bug)) is not None]
+    rows = []
+    for feature in FEATURES:
+        page = pages[feature["id"]]
+        stages = app_stages_text(page.status, page.apps, page.page.body, model)
+        tracks = design_tracks_text(page.page.frontmatter)
+        open_bugs = ids_text(open_bugs_of_feature(feature["id"], bug_rows))
+        rows.append(
+            f"| {feature['id']} | [{feature['title']}](features/{feature['id']}-{feature['slug']}.md) | {feature['status']} | {feature['owner']} | {feature['advisory']} "
+            f"| {tracks} | {stages} | {open_bugs} |"
+        )
     _write_text(
         wiki_root / "status-board.md",
         """# Feature Status Board
@@ -753,7 +1107,7 @@ This file is maintained by the AI agent. Do not edit directly.
 """
         + "\n".join(rows)
         + "\n"
-        + _operations_table(destination, {feature["id"]: stages(feature) for feature in FEATURES}),
+        + _view_tables(destination),
     )
     # The general index lists every page the stage holds, one derived line each.
     _write_text(wiki_root / "index.md", build_index(wiki_root))
@@ -773,6 +1127,7 @@ def _build_stage(destination: Path, stage: str, today: date) -> None:
         _write_processed_item(destination)
         _write_feature_pages(destination, today)
         _write_linked_context(destination, today)
+        _write_operation_pages(destination, today)
         _write_populated_index(destination, today)
     else:
         # The template ships `index.md` as a Jinja file, so the copied wiki has none; build it as the board does.

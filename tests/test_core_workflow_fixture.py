@@ -13,7 +13,7 @@ from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_model import NO_UI_TRACK_REASON, DesignTracks, parse_design_tracks
 from prism_cli.wiki_query import wiki_show
-from prism_cli.wiki_transitions import build_board_transition_preflight, build_transition_preflight
+from prism_cli.wiki_transitions import ACTION_SPECS, build_board_transition_preflight, build_transition_preflight, capability_marker
 from tests.core_workflow_fixture import (
     FEATURE_ID,
     FEATURE_PATH,
@@ -45,6 +45,18 @@ class CoreWorkflowFixtureTests(unittest.TestCase):
         self.addCleanup(self.temp_dir.cleanup)
         self.root = create_core_workflow_fixture(Path(self.temp_dir.name) / "document-review")
         self.feature_path = self.root / FEATURE_PATH
+
+    def test_the_fixture_carries_the_instruction_surface_of_every_command_of_the_lifecycle(self) -> None:
+        commands = {spec.command for spec in ACTION_SPECS if spec.subject != "operation"}
+        # The registry spans the feature lifecycle from `po-specify` to `release-done`, the reopen routes and the bug command.
+        self.assertTrue({"po-specify", "dev-done", "qa-pass", "qa-fail", "release-done", "feature-reopen", "bug-update"} <= commands)
+        for spec in ACTION_SPECS:
+            if spec.subject == "operation":
+                continue
+            marker = f"<!-- {capability_marker(spec)} -->"
+            for relative in (f".claude/commands/{spec.command}.md", f".agents/skills/{spec.command}/SKILL.md"):
+                with self.subTest(command=spec.command, surface=relative):
+                    self.assertTrue((self.root / relative).read_text(encoding="utf-8").startswith(marker))
 
     def test_neutral_scenario_covers_intake_handoff_blockers_delivery_and_the_reopen_route(self) -> None:
         # The fixture begins at the intake queue, with no generated app or

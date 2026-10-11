@@ -26,6 +26,7 @@ from tests.release_support import (
     verification_row,
 )
 from tests import test_release_reopen
+from tests.test_qa_fail import QaFailTests
 from tests.test_release_recovery import _Crash
 
 BUG = f"{BUGS}/BUG-001-summary-export-drops-comments.md"
@@ -173,6 +174,29 @@ class ReopenAfterBugFixTests(test_release_reopen.ReopenBoard):
         history = self.read(FEATURE).split("## Evidence history", 1)[1]
         self.assertIn(row.strip("| ").replace(" | ", " | "), history)
         self.assertEqual(["REL-001.md", "REL-002.md"], self.records())
+
+
+class QaFailBesideAReleasedPartnerTests(ReleaseTests):
+    def test_a_qa_fail_leaves_a_released_integration_partner_untouched(self) -> None:
+        # backend is released; worker waits for its release and fails QA through a bug. Both are covered by the integration row.
+        self.settle(*self.one_app("backend"))
+        self.put(BUG, bug_page("BUG-001", status="in-fix", apps=["worker"]))
+        before = self.evidence()
+        released_backend = [tuple(row.cells) for row in before.release if row.app == "backend"]
+        backend_rows = {"delivery": [tuple(row.cells) for row in before.delivery if row.app == "backend"], "qa": [tuple(row.cells) for row in before.qa if row.key == "backend"]}
+        changes = QaFailTests.fail_changes(self, ["worker"], linked="BUG-001")
+        preview = self.apply("qa-fail", changes, approver=self.owner)
+        self.assertEqual("qa-fail", preview["action"])
+        self.assertEqual(("in-dev", "dev"), self.status())
+        after = self.evidence()
+        # Nothing of backend moves: its delivery row, its own QA row and its released Release row stay, and it is not a participant.
+        self.assertEqual(backend_rows["delivery"], [tuple(row.cells) for row in after.delivery if row.app == "backend"])
+        self.assertEqual(backend_rows["qa"], [tuple(row.cells) for row in after.qa])
+        self.assertEqual(released_backend, [tuple(row.cells) for row in after.release])
+        self.assertIn("backend: released; worker: in-dev", self.read("knowledge/wiki/status-board.md"))
+        self.assertIn("- Participants: none", self.read(FEATURE))
+        self.assertEqual({"worker": ["implementation", "tests", "qa", "release"]}, self.feature()[0]["app-revalidation"])
+        self.assertEqual(set(), self.errors())
 
 
 if __name__ == "__main__":

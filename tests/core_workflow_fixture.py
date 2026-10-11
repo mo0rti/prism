@@ -1,10 +1,17 @@
-"""Build the smallest product-neutral workspace for core workflow acceptance."""
+"""Build the smallest product-neutral workspace for core workflow acceptance.
+
+`create_core_workflow_fixture` is the smallest workspace: one app, one pending brief, and the instruction surfaces of every
+command of the lifecycle registry (feature, release and bug commands), so preflight can evaluate each action. The workspace of
+the full lifecycle case, two apps and seven people (CONTRACTS 10.1), is `create_lumen_workspace` of `tests/lumen_library.py`,
+re-exported here.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from prism_cli.wiki_transitions import ACTION_SPECS, capability_marker
+from tests.lumen_library import create_lumen_workspace  # noqa: F401
 from tests.manifest_fixtures import manifest_text
 from tests.wiki_files import write_index, write_status_board
 
@@ -87,21 +94,28 @@ def create_core_workflow_fixture(root: Path) -> Path:
 
 
 def _write_action_surfaces(root: Path) -> None:
-    """Supply the markers preflight reads, without copying product instructions."""
+    """Supply the markers preflight reads, without copying product instructions.
+
+    Every command of the lifecycle registry gets its surfaces: the feature commands from `po-specify` to `release-done` and the
+    bug command `bug-update`. `operation-repair` is a board action with no instruction file.
+    """
 
     written_commands: set[str] = set()
     for spec in ACTION_SPECS:
-        if spec.subject != "feature" or spec.command in written_commands:
+        if spec.subject == "operation" or spec.command in written_commands:
             continue
         written_commands.add(spec.command)
         marker = capability_marker(spec)
+        item = "BUG-XXX" if spec.subject == "bug" else "F-XXX"
         for role, relative in (
             ("codex", Path(f".agents/skills/{spec.command}/SKILL.md")),
             ("claude", Path(f".claude/commands/{spec.command}.md")),
         ):
-            invocation = f"${spec.command} F-XXX" if role == "codex" else f"/{spec.command} F-XXX"
+            invocation = f"${spec.command} {item}" if role == "codex" else f"/{spec.command} {item}"
             if spec.command == "feature-reopen":
                 invocation = f"{invocation} [target-status]"
+            if spec.command == "bug-update":
+                invocation = f"{invocation} <triage|scope|in-fix|fixed|verified|reverify|reject|closed|defer|undefer|open>"
             path = root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"<!-- {marker} -->\n{invocation}\n", encoding="utf-8")
