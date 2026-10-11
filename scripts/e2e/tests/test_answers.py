@@ -73,12 +73,22 @@ class AnswerForTests(unittest.TestCase):
             ("dev", "How should the backend deliver invoices?"),
         ):
             with self.subTest(role=role, question=question):
-                self.assertEqual(answers.answer_for(role, question), answers.FALLBACK)
+                self.assertEqual(answers.answer_for(role, question), answers.fallback_for(role))
 
-    def test_the_fallback_is_a_plain_fixed_decision(self):
+    def test_po_and_designer_fallbacks_remain_out_of_scope(self):
         self.assertEqual(answers.FALLBACK, "Out of scope for this release: the feature does not include it.")
-        for word in ("later", "decide", "TBD"):
-            self.assertNotIn(word.lower(), answers.FALLBACK.lower())
+        self.assertEqual(answers.fallback_for("po"), answers.FALLBACK)
+        self.assertEqual(answers.fallback_for("designer"), answers.FALLBACK)
+
+    def test_dev_fallback_names_the_technical_design_page(self):
+        self.assertEqual(answers.fallback_for("dev"), "The technical design page settles this; build it as that page says.")
+
+    def test_every_role_fallback_contains_no_deferral(self):
+        for role in answers.CLARIFY_ROLES.values():
+            fallback = answers.fallback_for(role)
+            with self.subTest(role=role):
+                for word in ("later", "defer", "decide", "TBD"):
+                    self.assertNotIn(word.lower(), fallback.lower())
 
     def test_every_real_host_question_gets_the_intended_topic(self):
         cases = (
@@ -136,6 +146,7 @@ class AnswerForTests(unittest.TestCase):
             ("dev", "What happens if PDF generation times out?", "generation failure"),
             ("dev", "How should we handle a PDF generation timeout?", "generation failure"),
             ("dev", "Does the platform record the decision, reviewer and per-reviewer comments in a form that supports this export?", "review data and eligibility"),
+            ("dev", "How does the backend identify a finished review and the requesting reviewer's comments for export?", "review data and eligibility"),
             ("dev", "How do we authorize export of a finished review?", "review data and eligibility"),
             ("dev", "Whose comments are read when the PDF is generated?", "review data and eligibility"),
             ("dev", "How do permissions affect the PDF download?", "review data and eligibility"),
@@ -168,7 +179,7 @@ class PreviewPromptTests(unittest.TestCase):
             with self.subTest(step=step_id):
                 self.assertTrue(open_questions)
                 self.assertNotIn("{", prompt)
-                self.assertNotIn(answers.FALLBACK, prompt, "every recorded question has a scripted answer")
+                self.assertNotIn(answers.fallback_for(role), prompt, "every recorded question has a scripted answer")
                 for question in open_questions:
                     self.assertIn(f'- Question {question.number} ("{question.text}"): {answers.answer_for(role, question.text)}', prompt)
 
@@ -246,13 +257,13 @@ class FallbackNoteTests(unittest.TestCase):
                 journey.board = object()
                 result = reports.StepResult(step=step_id, kind="agent", host="claude")
                 expected = [
-                    f'{step_id}: fallback answer for question 9 ("What about billing?"): {answers.FALLBACK}',
-                    f'{step_id}: fallback answer for question 13 ("Do we need notifications?"): {answers.FALLBACK}',
+                    f'{step_id}: fallback answer for question 9 ("What about billing?"): {answers.fallback_for(role)}',
+                    f'{step_id}: fallback answer for question 13 ("Do we need notifications?"): {answers.fallback_for(role)}',
                 ]
 
                 def failed_launch(*args):
                     self.assertEqual(result.notes, expected)
-                    self.assertEqual(args[2].count(answers.FALLBACK), 2)
+                    self.assertEqual(args[2].count(answers.fallback_for(role)), 2)
                     raise RuntimeError("host launch failed")
 
                 with patch.object(ws, "read_feature", return_value=feature), patch.object(Journey, "_launch", side_effect=failed_launch) as launch:

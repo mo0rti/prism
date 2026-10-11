@@ -248,9 +248,10 @@ class Journey:
         runs: list[HostRun] = []
 
         if role is not None and before is not None:
+            fallback = answers.fallback_for(role)
             for question in before.open_questions(role):
-                if answers.answer_for(role, question.text) == answers.FALLBACK:
-                    result.notes.append(f'{step.id}: fallback answer for question {question.number} ("{question.text}"): {answers.FALLBACK}')
+                if answers.answer_for(role, question.text) == fallback:
+                    result.notes.append(f'{step.id}: fallback answer for question {question.number} ("{question.text}"): {fallback}')
 
         preview = self._launch(host, "preview", build_preview_prompt(step.id, self.options.fixtures, before), number, step, result, runs)
         transcript = preview.transcript

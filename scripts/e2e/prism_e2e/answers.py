@@ -21,6 +21,11 @@ PLACEHOLDER = "{answers}"
 CLARIFY_ROLES = {"po-clarify": "po", "design-clarify": "designer", "dev-clarify": "dev"}
 
 FALLBACK = "Out of scope for this release: the feature does not include it."
+ROLE_FALLBACKS = {
+    "po": FALLBACK,
+    "designer": FALLBACK,
+    "dev": "The technical design page settles this; build it as that page says.",
+}
 
 NO_QUESTIONS = "I have no open question on this feature, so there is nothing to answer. Tell me that and make no change."
 
@@ -104,7 +109,7 @@ TOPICS: dict[str, tuple[Topic, ...]] = {
         ),
         _topic(
             "review data and eligibility",
-            r"\b(?:records?|stores?|data|fields?)\b.*\b(?:decision|reviewer|comments?)\b|(?=.*\b(?:review\w*|export\w*|pdf)\b).*\b(?:eligib\w*|in progress|authori[sz]\w*|permissions?|whose|other reviewers?)\b",
+            r"\b(?:records?|stores?|data|fields?)\b.*\b(?:decision|reviewer|comments?)\b|(?=.*\b(?:review\w*|export\w*|pdf)\b).*\b(?:eligib\w*|in progress|authori[sz]\w*|permissions?|whose|other reviewers?|requesting|requester|comments?)\b|(?=.*\b(?:review\w*|export\w*|pdf)\b)(?=.*\b(?:identif\w*|determin\w*)\b).*\b(?:finished|complet\w*)\b",
             "Use the stored review's document title, reviewer, recorded decision, completion date and comments. Require the requesting reviewer to own that review and have recorded approved, changes requested or rejected; reject in-progress reviews and other reviewers' requests. Read only that reviewer's comments in the order they were left, oldest first, with stored comment ID ascending for equal timestamps.",
         ),
         _topic(
@@ -127,7 +132,13 @@ def answer_for(role: str, question: str) -> str:
     for topic in TOPICS.get(role, ()):
         if topic.matches(question):
             return topic.answer
-    return FALLBACK
+    return fallback_for(role)
+
+
+def fallback_for(role: str) -> str:
+    """The fixed fallback decision for an owner role, or the general fallback for an unknown role."""
+
+    return ROLE_FALLBACKS.get(role, FALLBACK)
 
 
 def render_answers(role: str, open_questions: Iterable[tuple[str, str]]) -> str:
