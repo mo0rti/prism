@@ -334,7 +334,7 @@ class QaActionsMixin:
         if len(history) <= len(pages["old_history"]):
             raise bs.BoardError(
                 "history_entry_required",
-                f"qa-fail appends one Evidence history entry headed `### {bs.date.today().isoformat()} - qa-fail` that archives the rows it removes.",
+                f"qa-fail appends one Evidence history entry headed `### {self._history_day()} - qa-fail` that archives the rows it removes.",
                 409,
                 {"path": path, "action": "qa-fail"},
             )
@@ -438,7 +438,7 @@ class QaActionsMixin:
         if len(history) <= len(pages["old_history"]):
             raise bs.BoardError(
                 "history_entry_required",
-                f"{action} appends one Evidence history entry headed `### {bs.date.today().isoformat()} - {action}` that archives every evidence row.",
+                f"{action} appends one Evidence history entry headed `### {self._history_day()} - {action}` that archives every evidence row.",
                 409,
                 {"path": path, "action": action},
             )

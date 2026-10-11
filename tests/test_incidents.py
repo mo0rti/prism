@@ -301,13 +301,15 @@ class StatusBoardViewTests(IncidentCase):
         self.assertEqual([], self.errors())
 
     def test_the_release_reader_lists_the_records_by_number_with_the_outcome_of_each_app(self) -> None:
+        # The rollback record names an earlier valid record, which the reader lists too.
         self.plant_release("REL-010", outcome="released")
+        self.plant_release("REL-003", outcome="released")
         self.plant_release("REL-004", outcome="rolled-back", row_outcome="rolled-back")
         self.plant_release("REL-005", outcome="failed")
         records = read_release_records(self.root / "knowledge" / "wiki")
-        self.assertEqual(["REL-004", "REL-005", "REL-010"], [record.record_id for record in records])
-        self.assertEqual(["rolled-back", "failed", "released"], [record.outcome_for("backend") for record in records])
-        self.assertIsNone(records[0].outcome_for("elsewhere"))
+        self.assertEqual(["REL-003", "REL-004", "REL-005", "REL-010"], [record.record_id for record in records])
+        self.assertEqual(["released", "rolled-back", "failed", "released"], [record.outcome_for("backend") for record in records])
+        self.assertIsNone(records[1].outcome_for("elsewhere"))
 
     def test_an_incident_that_names_an_unrecorded_release_fails_lint(self) -> None:
         self.open_incident()

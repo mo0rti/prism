@@ -99,6 +99,50 @@ def lint_release_records(records: Sequence[ReleaseRecord], *, items: Mapping[str
     return findings
 
 
+def validate_release_records(records: Sequence[ReleaseRecord]) -> tuple[list[ReleaseRecord], dict[Path, list[str]]]:
+    """The records that may carry authority, and why each other record may not.
+
+    A record carries authority (the current delivery of an app, the next number, a rollback or retry target) only when its
+    page is a valid record: the file name and `id` agree, it has the required front matter, its rows parse, no other file
+    claims its ID, and the record it names in `rollback-of` or `retry-of` is an earlier record that is itself valid. The
+    second result maps the path of each record that is not to its problems. `wiki lint` reports these and every other finding
+    of a record; the rules that compare a record with the features, bugs and records it delivers are checked when it is written.
+    """
+
+    problems: dict[Path, list[str]] = {}
+
+    def add(record: ReleaseRecord, message: str) -> None:
+        problems.setdefault(record.page.path, []).append(message)
+
+    counts: dict[str, int] = {}
+    for record in records:
+        counts[record.record_id] = counts.get(record.record_id, 0) + 1
+    for record in records:
+        page = record.page
+        for problem in check_record_page(str(page.path), page.frontmatter, page.body, parse_errors=page.parse_errors):
+            if "sections" not in problem.details:
+                add(record, problem.message)
+        if not page.parse_errors:
+            for row_problem in parse_record_rows(page.body)[1]:
+                add(record, row_problem.message)
+        if counts[record.record_id] > 1:
+            add(record, f"More than one file claims the release record ID `{record.record_id}`.")
+    by_id = {record.record_id: record for record in records}
+    changed = True
+    while changed:
+        changed = False
+        for record in records:
+            named = record.rollback_of or record.retry_of
+            if named is None or record.page.path in problems:
+                continue
+            label = "rollback-of" if record.rollback_of else "retry-of"
+            target = by_id.get(named)
+            if target is None or target.page.path in problems or target.number is None or record.number is None or target.number >= record.number:
+                add(record, f"`{label}: {named}` must name an earlier valid release record.")
+                changed = True
+    return [record for record in records if record.page.path not in problems], problems
+
+
 def lint_release_row_cells(
     *,
     item: str,

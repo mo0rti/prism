@@ -121,26 +121,37 @@ accepts only a human participant; an agent that calls it receives
 and `get_skill` report this for each skill: `participant_kinds`, `write_tools`
 (which tool each kind may use) and a "Direct human action" limitation. An agent
 that needs one of these actions prepares it with the skill's `preview_skill`
-proposal and the human's confirmation in the host, or asks the human to complete
-it in the board.
+proposal, which the human approves in the board (see "Gated actions" below), or
+asks the human to complete it in the board.
 
 Read the complete preview, including checks, blockers, review obligations, source
 revision, and every proposed file change; a long preview arrives in pages (see
-"Read a long preview" below). The host must obtain the same explicit human
-confirmation required by the selected skill before it calls `apply(preview_id,
-operation_id)`. A preview is not approval. Decline or cancel means no apply call
-and no write.
+"Read a long preview" below). A preview is not approval. Decline or cancel means
+no apply call and no write.
 
-The Board is not a second approval queue. There is no pending agent request for a
-human to approve later. For a human action, the person reviews the preview and
-confirms it in the active host interaction; the service then revalidates and
-applies that exact preview.
+### Gated actions
+
+A preview of a lifecycle action carries `approval.required_roles` when the action
+is gated. The agent proposes it with `preview_skill` and stops there: it tells the
+human the preview ID and what it proposes. The proposal waits in `list_proposals`.
+A human whose grant holds the action's roles reads the preview and approves or
+declines it in the board's Proposals list, in a browser session. The service then
+revalidates and applies that exact preview under the approving human's grant.
+Never call `apply` for a gated preview: the service refuses it with
+`approval_required`, and a retry cannot change the answer. Check the outcome with
+`operation` after the human approves.
+
+### Ungated skills
+
+A skill whose preview carries no `approval` block is confirmed in the agent host:
+the host obtains the explicit human confirmation the selected skill requires, then
+the agent calls `apply(preview_id, operation_id)` for its own preview.
 
 ## Agent-driven skill writes
 
 Follow the selected skill's complete semantic review and confirmation rules. The
-service does not launch an agent and does not add a second approval stage. After
-reading the current source and preparing the complete proposal, call
+service does not launch an agent. A gated action waits for a role-holding human in
+the board; an ungated skill is confirmed in the host. After reading the current source and preparing the complete proposal, call
 `preview_skill(skill, changes, moves, read_revisions)`. Each change must contain
 an exact relative text-file `path` and its complete proposed AFTER `content`.
 The service reads and displays the current BEFORE contents. Include only the
@@ -247,9 +258,10 @@ preview, including the managed files, before confirming it.
 
 Review the service's full proposed write set and applicability result. If any
 required check is blocked, unknown, stale, or unsupported, stop without applying.
-Keep any semantic review or final confirmation required by the skill in the host
+For an ungated skill, keep any semantic review or final confirmation required by the skill in the host
 interaction. Only after that confirmation call `apply(preview_id, operation_id)`
-with a new unique operation ID. The service independently rechecks authorization,
+with a new unique operation ID. For a gated action, stop after the preview and tell the human its
+preview ID; the human approves it in the board and the agent never applies it. The service independently rechecks authorization,
 source revisions, and the exact proposed writes; host controls do not bypass those
 checks.
 

@@ -16,7 +16,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
 from urllib.parse import unquote, urlsplit
 
-from prism_cli.wiki_model import parse_markdown_text
+from prism_cli.wiki_model import parse_markdown_text, section_text
 from prism_cli.wiki_paths import decoded_link_path
 
 
@@ -251,22 +251,7 @@ def parse_index_entries(text: str) -> list[IndexEntry]:
 
 
 def _section(body: str, heading: str) -> str:
-    wanted = heading.strip().casefold()
-    lines = body.splitlines()
-    start: int | None = None
-    for position, line in enumerate(lines):
-        match = _HEADING.match(line.strip())
-        if match and match.group(1).strip().casefold() == wanted:
-            start = position + 1
-            break
-    if start is None:
-        return ""
-    end = len(lines)
-    for position in range(start, len(lines)):
-        if _HEADING.match(lines[position].strip()):
-            end = position
-            break
-    return "\n".join(lines[start:end])
+    return section_text(body, heading).rstrip("\r\n")
 
 
 def _first_sentence(section: str) -> str:

@@ -12,7 +12,6 @@ prerequisites of the row are checked against the linked feature and the other bu
 from __future__ import annotations
 
 import re
-from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
 
@@ -20,6 +19,7 @@ from prism_cli.qa_rules import environments_of
 from prism_cli.wiki_bugs import (
     BUG_FILE_PATTERN,
     BUG_FRONTMATTER_FIELDS,
+    BUG_EVIDENCE_SECTIONS,
     BUG_ID_PATTERN,
     BUG_OWNER_BY_STATUS,
     BUG_REQUIRED_FIELDS,
@@ -45,12 +45,14 @@ from prism_cli.wiki_model import (
     app_stages,
     bug_qa_attempt,
     evidence_generation,
+    has_section,
     normalize_feature_id,
     parse_evidence_history,
     parse_markdown_text,
     read_feature_evidence,
     read_feature_pages,
     row_digest,
+    section_ambiguities,
     section_text,
     status_rank,
 )
@@ -258,7 +260,15 @@ class BugActionsMixin:
         for key in ("deferred-reason", "close-reason"):
             if key in frontmatter and (not isinstance(frontmatter[key], str) or not frontmatter[key].strip()):
                 raise bs.BoardError("invalid_bug", f"Bug page `{relative}`: `{key}` is nonblank text when it is set.", 409, {"path": relative})
-        absent = [heading for heading in BUG_SECTIONS if not re.search(rf"(?im)^##\s+{re.escape(heading)}\s*#*\s*$", body)]
+        ambiguities = section_ambiguities(body, BUG_EVIDENCE_SECTIONS)
+        if ambiguities:
+            raise bs.BoardError(
+                "ambiguous_lifecycle_section",
+                f"Bug page `{relative}` has an ambiguous lifecycle section: {' '.join(ambiguities)} Keep one heading for each evidence section, in column zero.",
+                409,
+                {"path": relative, "problems": ambiguities},
+            )
+        absent = [heading for heading in BUG_SECTIONS if not has_section(body, heading)]
         if absent:
             raise bs.BoardError("invalid_bug", f"Bug page `{relative}` needs the section(s) {_quoted(f'## {heading}' for heading in absent)}.", 409, {"path": relative, "sections": absent})
         if not section_text(body, "Summary").strip():
@@ -780,7 +790,7 @@ class BugActionsMixin:
         if not new_history.startswith(old_history):
             raise bs.BoardError("history_not_append_only", "Evidence history must preserve all previous entries and append one new entry.", 409, {"path": relative})
         addition = new_history[len(old_history):]
-        today = date.today().isoformat()
+        today = self._history_day()  # type: ignore[attr-defined]
         if not addition.strip():
             if require_entry:
                 raise bs.BoardError(

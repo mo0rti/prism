@@ -48,7 +48,7 @@ No other host setting is needed. In particular, `MAX_MCP_OUTPUT_TOKENS` is not n
 - **Time.** A run that reaches a preview takes about one to three minutes, and an apply run under a minute. The agent reads the skill, its references and the workspace sources before it proposes anything.
 - **A rejected preview is normal.** The board validates every preview in full. An agent corrects exactly what the error names and previews again, at most 2 more times, and never with a wider change; then it stops and reports the error codes and messages. If it stops, read the error, tell it what to change or fix the source it names, and ask it to try again. The count starts anew with your instruction. Nothing is written by a rejected preview.
 - **Agents never perform the three direct human actions.** `po-handoff`, `design-start` and `dev-start` are done by a human in the board. An agent that needs one asks you to complete it there.
-- **You confirm before anything is applied.** The agent shows the exact changes and applies the preview only after your confirmation in the host. The board has no second approval queue.
+- **You confirm before anything is applied.** For an ungated skill the agent shows the exact changes and applies the preview only after your confirmation in the host. A gated lifecycle action is proposed by the agent and approved by a person who holds its roles, in the board's Proposals list.
 - **The agent cannot read everything.** `read_workspace` reads approved UTF-8 text under `knowledge/wiki/` and `knowledge/intake/`. The workspace manifest is not readable; `discover` reports the board identity ([details](troubleshooting.md#read_workspace-fails-with-path_not_approved)).
 
 ## Not tested

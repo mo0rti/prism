@@ -57,7 +57,7 @@ Source anchors: [workflow model](prism-model.md), [lifecycle contract](../templa
 | Decision | Contract | Boundary |
 | --- | --- | --- |
 | Adoption | `prism workflow install` and `prism workflow upgrade` preview every file and apply only with `--apply`. | Existing knowledge and custom guidance are preserved; conflicts stop the command and name the file. |
-| Board actions | Humans confirm their own named actions; agents follow skill confirmations in their CLI. Both use one service. | No second approval queue for agents and no automatic agent launcher. |
+| Board actions | Humans confirm their own named actions. An agent confirms an ungated skill in its CLI and proposes a gated lifecycle action, which a role-holding human approves in the board. All use one service. | No automatic agent launcher. |
 | Human and agent ownership | Roles stay PO, designer and dev. The service records the registered participant that performs each connected operation. | A token establishes a participant, not an independently verified person. Named assignment is deferred. |
 | Project scope | The manifest declares apps with a stack, repository and path. A feature's `apps` names the declared apps, and the `feature-scope` skill edits it through the board. | A feature cannot name an app the manifest does not declare, nor a retired app. |
 | Agent protocol | One standard MCP endpoint and a versioned tool contract (contract 3), backed by the shared service and packaged skills. | The official SDK is pinned (`mcp==2.2.0`). There are no provider-specific workflow connectors. |
@@ -165,7 +165,7 @@ The skill set covers intake and clarification (`po-clarify`, `design-clarify` an
 5. The human asks the same or another connected agent to refine or hand off an item. That agent reads the applicable skill and current sources and follows the same rules.
 6. Humans watch the board and agents retrieve the same changed facts. A human can perform a permitted action in the board, and an agent rereads that result before continuing. Reconnecting preserves the ability to recover the current result.
 
-The board has no approval queue for agent actions. Skills that require confirmation obtain it in the agent CLI, and a human confirming their own board move is a separate entry path. Existing evidence, advisory and completion requirements stay in force. Code execution stays in the agent's environment; the server exposes defined workspace operations, not an arbitrary shell.
+A gated lifecycle action proposed by an agent waits in the board's Proposals list for a human who holds its roles. Skills without a gate obtain their confirmation in the agent CLI, and a human confirming their own board move is a separate entry path. Existing evidence, advisory and completion requirements stay in force. Code execution stays in the agent's environment; the server exposes defined workspace operations, not an arbitrary shell.
 
 ### Identity, concurrent work and persistence
 
@@ -204,7 +204,7 @@ The MCP specification and SDK are pinned and tested together, and the first jour
 | Shared connection | Real MCP SDK clients use one server and common operation schemas. Missing vendor instruction folders do not block the connected path. Tool results stay within the 48,000-character budget. |
 | Skill delivery | Complete skill instructions and references are available through MCP, and input, conflict, confirmation, write-scope and recovery behaviour match the skill contract. |
 | Human board actions | The three direct actions work with no agent running. Drag and click or keyboard produce equivalent previews and confirmed writes. Missing evidence, blocked or unknown facts, same-column drops, cancellation and unsupported actions cause no writes, and static and legacy surfaces stay copy-only. |
-| Collaboration | Competing edits, changed inputs, stale previews, repeated submissions, lost responses, revocation, crash and partial-write recovery, and participant attribution limits. The human's own confirmation adds no approval queue for agents. |
+| Collaboration | Competing edits, changed inputs, stale previews, repeated submissions, lost responses, revocation, crash and partial-write recovery, and participant attribution limits. An agent's gated proposal is approved only by a role-holding human in the board. |
 | Browser write boundary | Board and participant binding, authorization on every operation, Origin and cross-site defences, credential handling and revocation. A rejected request writes nothing, and external edits invalidate affected previews. |
 | Human and agent parity | The same action and inputs through the board and through MCP produce equivalent canonical diffs apart from actor metadata, and the same broken fixture is rejected through both. |
 | User experience | The browser suite in `tests/browser` runs scenarios in real Chromium at desktop, tablet and phone widths with keyboard and focus checks. Owner visual review of themes and layouts is separate. |

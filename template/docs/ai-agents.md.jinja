@@ -151,9 +151,10 @@ that serves the browser board and a standard MCP endpoint. Agents that connect t
 read the same canonical skills through the endpoint and need no `.claude/` or
 `.agents/` folder; [`knowledge/wiki/CONNECTED.md`](../knowledge/wiki/CONNECTED.md)
 describes how they use it. In that board a human performs `po-handoff`,
-`design-start` and `dev-start` directly after reviewing the exact changes. The other
-actions, and every agent action, keep the confirmation of the skill in the agent's
-own interface. The board adds no approval queue.
+`design-start` and `dev-start` directly after reviewing the exact changes. An agent
+proposes any other gated lifecycle action and stops; a human who holds the action's
+roles approves it in the board's Proposals list, in a browser session. An ungated
+skill keeps the confirmation of the skill in the agent's own interface.
 
 ### Feature lifecycle boundary
 

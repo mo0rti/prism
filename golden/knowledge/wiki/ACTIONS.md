@@ -62,7 +62,9 @@ Each gated action needs a human who holds the role that approves it: `po` for `p
 routes back from QA; `release` for the four release actions; `po` for `reopen-spec`, the design owner role for
 `reopen-design` and `dev` for `reopen-dev`. A `design-handoff` that settles the UI track also needs `designer`, and one that
 settles the technical track `tech-lead`, on top of the design owner. The board checks the role when
-it applies the action.
+it applies the action. On a connected board an agent proposes a gated action with `preview_skill` and
+stops: a human who holds the roles approves it in the board's Proposals list, in a browser session, and
+the agent never applies a gated preview (`approval_required`).
 
 ### Common action protocol
 

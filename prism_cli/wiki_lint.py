@@ -31,9 +31,10 @@ from prism_cli.wiki_operations import (
     operation_rows_match,
     read_board_views,
 )
-from prism_cli.wiki_releases import ReleaseRecord, read_release_records, record_id_of_cell
+from prism_cli.wiki_releases import ReleaseRecord, read_all_release_records, read_release_records, record_id_of_cell
 from prism_cli.wiki_model import (
     APP_STAGE_ORDER,
+    EVIDENCE_SECTIONS,
     FEATURE_FRONTMATTER_FIELDS,
     FEATURE_STATUS_ORDER,
     VALID_ADVISORY_REVIEW_STATES,
@@ -63,6 +64,7 @@ from prism_cli.wiki_model import (
     processed_source_path,
     qa_coverage,
     read_feature_evidence,
+    section_ambiguities,
     source_link_parts,
     normalize_feature_id,
     feature_id_from_path,
@@ -551,12 +553,12 @@ def _release_diagnostic(finding: ReleaseFinding) -> WikiDiagnostic:
 def _lint_release_pages(wiki_root: Path, feature_pages: list[FeaturePage]) -> list[WikiDiagnostic]:
     """CONTRACTS 6.2: the release records, and the Release rows of features and bugs against the records they link."""
 
-    records = read_release_records(wiki_root)
+    records = read_all_release_records(wiki_root)
     bugs = read_bug_pages(wiki_root)
     items: dict[str, list[str]] = {feature.feature_id.upper(): list(feature.apps) for feature in feature_pages}
     items.update({bug.bug_id.upper(): list(bug.apps) for bug in bugs})
     diagnostics = [_release_diagnostic(finding) for finding in lint_release_records(records, items=items)]
-    by_id = {record.record_id: record for record in records}
+    by_id = {record.record_id: record for record in read_release_records(wiki_root)}
     for feature in feature_pages:
         if status_rank(feature.status) < status_rank("in-dev"):
             continue
@@ -2583,6 +2585,9 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
     feature_id = feature.feature_id
     for message in feature.page.parse_errors:
         diagnostics.append(_diag("malformed-frontmatter", "error", path, message, feature_id))
+
+    for message in section_ambiguities(feature.page.body, (*EVIDENCE_SECTIONS, "Evidence history")):
+        diagnostics.append(_diag("ambiguous-lifecycle-section", "error", path, message, feature_id))
 
     frontmatter = feature.page.frontmatter
     required_fields = ("id", "title", "status", "owner", "apps", "sources", "advisory-review")

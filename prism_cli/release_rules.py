@@ -138,7 +138,7 @@ def check_record_page(
     if absent:
         bad(f"the page needs the section(s) {_quoted(f'## {heading}' for heading in absent)}.", sections=absent)
     if "Summary" in sections and not sections["Summary"].strip():
-        bad("the `## Summary` section is empty.")
+        bad("the `## Summary` section is empty.", sections=["Summary"])
     return problems
 
 

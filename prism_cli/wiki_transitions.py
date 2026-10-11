@@ -1572,8 +1572,11 @@ _IGNORED_INTEGRITY: dict[str, tuple[str, ...]] = {
     "dev-return-design": _RETURN_FINDINGS,
     **{
         action: ("app-row-ahead-of-status", "feature-status-not-minimum", "app-row-missing", "status-board-frontmatter-drift")
-        for action in ("qa-verify", "qa-pass", "qa-fail")
+        for action in ("qa-verify", "qa-pass")
     },
+    # A qa-fail returns the implemented API contract of the apps it sends back to `agreed` in the same proposal, while the
+    # candidate page still carries the source status that demands an implemented contract.
+    "qa-fail": ("app-row-ahead-of-status", "feature-status-not-minimum", "app-row-missing", "status-board-frontmatter-drift", "delivered-api-contract"),
     # The routes back from QA reset what the routes back from implementation reset.
     "qa-return-spec": _RETURN_FINDINGS,
     "qa-return-design": _RETURN_FINDINGS,

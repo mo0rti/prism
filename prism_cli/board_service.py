@@ -100,15 +100,18 @@ from prism_cli.wiki_model import (
     app_stage,
     app_stages,
     app_stages_text,
+    body_without_sections,
     clean_cell,
     contract_page_citation,
     criteria_high_water,
     design_owner,
     evidence_generation,
     expected_owner,
+    has_section,
     initial_design_tracks,
     intake_item_name_problem,
     is_pending_intake_source,
+    markdown_sections,
     merge_revalidation,
     minimum_stage,
     normalize_ui_track,
@@ -121,6 +124,7 @@ from prism_cli.wiki_model import (
     processed_source_path,
     read_feature_evidence,
     row_digest,
+    section_ambiguities,
     section_text,
     source_link_parts,
     stale_qa_rows,
@@ -134,6 +138,8 @@ from prism_cli.wiki_transitions import DESIGN_OWNER, MINIMUM, RETIRED_ALLOWED_AC
 
 
 _MAX_TEXT_FILE = 512 * 1024
+# The feature sections that carry lifecycle evidence: only a gated action writes them.
+_LIFECYCLE_SECTIONS = (*EVIDENCE_SECTIONS, "Evidence history")
 _MAX_READ_TOTAL = 2 * 1024 * 1024
 _MAX_READ_PATHS = 64
 _MCP_CONTRACT = 4
@@ -414,6 +420,9 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         self._closed = False
         # Set on the scratch copy a recovery rebuilds: a release record keeps the number and day it was previewed with there.
         self._recovery_candidate = False
+        # The preview day of the operation being revalidated, per thread. The history heading of an archiving write is checked
+        # against it on apply, recovery and repair, so a replay on a later day accepts the entry the preview day asked for.
+        self._replay = threading.local()
         self._board_id: str | None = None
         self._workflow_version: str | None = None
         self._mode: str | None = None
@@ -1542,20 +1551,27 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
 
     def _excluded_approvers(self, operation_id: str) -> set[str]:
         """The grants separation excludes for the evidence an operation produced: its approver, every human who recovered
-        it, and the approver of any `operation-repair` linked to it."""
+        it, and the approver and every recoverer of each `operation-repair` linked to it, a repair of a repair included."""
 
         store = self._require_store()
+        excluded: set[str] = set()
+        seen: set[str] = set()
+        pending = [operation_id]
         with store.read() as db:
-            row = db.execute("SELECT participant_id, intent_json FROM operations WHERE operation_id = ?", (operation_id,)).fetchone()
-            repairs = db.execute("SELECT participant_id FROM operations WHERE repair_of = ?", (operation_id,)).fetchall()
-        if row is None:
-            return set()
-        excluded = {row[0]}
-        for attempt in (_loads(row[1]) or {}).get("recovery_attempts", []):
-            participant = (attempt.get("actor") or {}).get("participant_id")
-            if isinstance(participant, str):
-                excluded.add(participant)
-        excluded.update(item[0] for item in repairs)
+            while pending:
+                current = pending.pop()
+                if current in seen:
+                    continue
+                seen.add(current)
+                row = db.execute("SELECT participant_id, intent_json FROM operations WHERE operation_id = ?", (current,)).fetchone()
+                if row is None:
+                    continue
+                excluded.add(row[0])
+                for attempt in (_loads(row[1]) or {}).get("recovery_attempts", []):
+                    participant = (attempt.get("actor") or {}).get("participant_id")
+                    if isinstance(participant, str):
+                        excluded.add(participant)
+                pending.extend(item[0] for item in db.execute("SELECT operation_id FROM operations WHERE repair_of = ?", (current,)).fetchall())
         return excluded
 
     def _separation_lookup(self, subject: Mapping[str, Any]) -> dict[str, Any]:
@@ -2021,6 +2037,14 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         self._assert_repair_lint(intent, remaining)
         preview_id = str(uuid4())
         source_map = self._recovery_snapshot(intent)
+        # The files the operation already wrote are adopted as they are now: their digests are part of the review, the
+        # freshness check, the bound dependency set and every recovery, so an edit after the review stops the repair.
+        adopted = {
+            write["path"]
+            for write, state in zip(intent.get("writes", []), states)
+            if state["state"] == "applied" and write.get("role") not in {*_ROW_ROLES, "log"}
+        }
+        source_map = {**source_map, **self._fingerprint_paths(adopted)}
         payload = {
             "preview_id": preview_id,
             "kind": "repair",
@@ -2816,8 +2840,14 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 result[relative] = _sha256(path.read_bytes())
         return result
 
+    def _history_day(self) -> str:
+        """The day an Evidence history entry is headed with: the operation's preview day on a replay, today at a preview."""
+
+        return getattr(self._replay, "day", None) or date.today().isoformat()
+
     def _save_preview(self, payload: dict[str, Any]) -> None:
         store = self._require_store()
+        payload.setdefault("preview_date", date.today().isoformat())
         encoded = _json(payload)
         payload_hash = _sha256(encoded.encode("utf-8"))
         with self._lock, store.transaction() as db:
@@ -4011,6 +4041,14 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         """
 
         frontmatter, body = _parse_markdown(content, relative)
+        ambiguities = section_ambiguities(body, _LIFECYCLE_SECTIONS)
+        if ambiguities:
+            raise BoardError(
+                "ambiguous_lifecycle_section",
+                f"Feature page `{relative}` has an ambiguous lifecycle section: {' '.join(ambiguities)} Keep one `## Delivery evidence`, `## QA verification`, `## Release` and `## Evidence history` heading, each in column zero.",
+                409,
+                {"path": relative, "problems": ambiguities},
+            )
         self._assert_frontmatter_fields(frontmatter, set(FEATURE_FRONTMATTER_FIELDS), relative)
         feature_id = frontmatter.get("id")
         if not isinstance(feature_id, str) or not re.fullmatch(r"F-\d+", feature_id):
@@ -4070,6 +4108,14 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             raise BoardError("invalid_feature_output", f"Feature `{feature_id}` requires an advisory-skip-reason when review is skipped.", 409)
         if skill in {"po-intake", "po-specify", "ingest"}:
             _require_headings(body, ("Summary", "User story", "Acceptance criteria", "Open questions", "App scope"), relative)
+        if skill in {"po-intake", "ingest"} and (rows := read_feature_evidence(body)).has_rows:
+            sections = _names(name for name, found in (("Delivery evidence", rows.delivery), ("QA verification", rows.qa), ("Release", rows.release)) if found)
+            raise BoardError(
+                "lifecycle_evidence_changed",
+                f"Skill `{skill}` creates a feature without evidence; the proposed `{relative}` already has rows in {_quoted(sections)}. Evidence is written only by the lifecycle actions.",
+                409,
+                {"path": relative, "sections": sections},
+            )
         if skill == "design-intake":
             if status not in {"specified", "ready-for-design", "in-design"}:
                 raise BoardError("invalid_design_intake", "Design intake may update only a feature already routed to design.", 409)
@@ -6256,16 +6302,16 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             if require_entry or removed or expected:
                 raise BoardError(
                     "history_entry_required",
-                    f"Evidence history needs one new entry headed `### {date.today().isoformat()} - {action}` that archives the evidence this write removes.",
+                    f"Evidence history needs one new entry headed `### {self._history_day()} - {action}` that archives the evidence this write removes.",
                     409,
                     {"path": relative, "action": action},
                 )
             return
         headings = [(match.group(1), match.group(2)) for line in addition.splitlines() if (match := _HISTORY_HEADING.match(line.strip()))]
-        if len(headings) != 1 or headings[0] != (date.today().isoformat(), action):
+        if len(headings) != 1 or headings[0] != (self._history_day(), action):
             raise BoardError(
                 "history_entry_required",
-                f"This write appends exactly one Evidence history entry, headed `### {date.today().isoformat()} - {action}` (the preview day and the action).",
+                f"This write appends exactly one Evidence history entry, headed `### {self._history_day()} - {action}` (the preview day and the action).",
                 409,
                 {"path": relative, "action": action},
             )
@@ -6393,8 +6439,8 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         allowed = {heading.strip().casefold() for heading in allowed_sections}
         headings: list[str] = []
         for body in (old_body, new_body):
-            for match in re.finditer(r"(?m)^##\s+(.+?)\s*#*\s*$", body):
-                name = match.group(1).strip()
+            for section in markdown_sections(body):
+                name = section.name
                 if name.casefold() not in allowed and name not in headings:
                     headings.append(name)
         changed = _names(name for name in headings if _section(old_body, name) != _section(new_body, name))
@@ -6566,6 +6612,15 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 old_body, new_body, {"Open questions"}, "ask_scope_exceeded", "The ask skill may update only the feature Open questions section."
             )
             raise BoardError("ask_scope_exceeded", "The ask skill may update only the feature Open questions section.", 409)
+        # No question skill touches the evidence: every lifecycle section stays byte-identical, wherever the proposal puts its headings.
+        changed_evidence = [name for name in _LIFECYCLE_SECTIONS if _section(old_body, name) != _section(new_body, name) or _has_section(old_body, name) != _has_section(new_body, name)]
+        if changed_evidence:
+            raise BoardError(
+                "lifecycle_evidence_changed",
+                f"Skill `{skill}` cannot change delivery, QA, release or history evidence; `{relative}` changes {_quoted(changed_evidence)}. Restore the section(s) exactly as read_workspace returned them.",
+                409,
+                {"path": relative, "sections": changed_evidence},
+            )
         old_rows, old_errors = parse_open_question_rows(old_body)
         new_rows, new_errors = parse_open_question_rows(new_body)
         if old_errors or new_errors:
@@ -7131,6 +7186,24 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         reviewed: bool = False,
         trusted_facts: Mapping[str, Any] | None = None,
     ) -> None:
+        """Re-evaluate the rules of an operation with its own preview day, so a history heading is not checked against today's date."""
+
+        day = payload.get("preview_date")
+        previous = getattr(self._replay, "day", None)
+        self._replay.day = day if isinstance(day, str) and day else None
+        try:
+            self._revalidate_operation_rules(actor, payload, reviewed=reviewed, trusted_facts=trusted_facts)
+        finally:
+            self._replay.day = previous
+
+    def _revalidate_operation_rules(
+        self,
+        actor: Actor,
+        payload: Mapping[str, Any],
+        *,
+        reviewed: bool = False,
+        trusted_facts: Mapping[str, Any] | None = None,
+    ) -> None:
         """Re-evaluate current deterministic rules, including calendar checks.
 
         `reviewed` is set only for a recovery that a writable human confirmed
@@ -7609,6 +7682,9 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         The candidate service this builds has no journal, so it never resolves the trusted facts itself: the live
         service passes them in. A repair rebuilds the before-state of the operation it repairs.
         """
+        if intent.get("kind") == "repair":
+            # The pages the repair leaves behind must lint clean against the files as they are now, on every replay.
+            self._assert_repair_lint(intent["repair_basis"], intent.get("writes", []))
         intent = intent.get("repair_basis") or intent
         with tempfile.TemporaryDirectory(prefix="prism-board-recovery-") as directory:
             candidate_root = Path(directory)
@@ -7990,36 +8066,11 @@ def _parse_markdown(content: str, path: str | None = None) -> tuple[dict[str, An
 
 
 def _section(body: str, heading: str) -> str:
-    wanted = heading.strip().casefold()
-    lines = body.splitlines(keepends=True)
-    start: int | None = None
-    for index, line in enumerate(lines):
-        match = re.match(r"^##\s+(.+?)\s*#*\s*$", line.rstrip("\r\n"))
-        if match and match.group(1).strip().casefold() == wanted:
-            start = index + 1
-            break
-    if start is None:
-        return ""
-    end = len(lines)
-    for index in range(start, len(lines)):
-        if re.match(r"^##\s+", lines[index]):
-            end = index
-            break
-    return "".join(lines[start:end])
+    return section_text(body, heading)
 
 
 def _strip_section(body: str, heading: str) -> str:
-    wanted = heading.strip().casefold()
-    lines = body.splitlines(keepends=True)
-    out: list[str] = []
-    skipping = False
-    for line in lines:
-        match = re.match(r"^##\s+(.+?)\s*#*\s*$", line.rstrip("\r\n"))
-        if match:
-            skipping = match.group(1).strip().casefold() == wanted
-        if not skipping:
-            out.append(line)
-    return "".join(out)
+    return body_without_sections(body, (heading,))
 
 
 def _first_line_difference(old: str, new: str) -> tuple[str, str] | None:
@@ -8035,17 +8086,7 @@ def _first_line_difference(old: str, new: str) -> tuple[str, str] | None:
 
 
 def _body_without_sections(body: str, headings: set[str]) -> str:
-    wanted = {heading.strip().casefold() for heading in headings}
-    lines = body.splitlines(keepends=True)
-    out: list[str] = []
-    skipping = False
-    for line in lines:
-        match = re.match(r"^##\s+(.+?)\s*#*\s*$", line.rstrip("\r\n"))
-        if match:
-            skipping = match.group(1).strip().casefold() in wanted
-        if not skipping:
-            out.append(line)
-    return "".join(out)
+    return body_without_sections(body, headings)
 
 
 def _require_headings(body: str, headings: Iterable[str], relative: str, hint: str = "") -> None:
@@ -8486,11 +8527,7 @@ _SPECIFIED_SUBSTANTIVE_SECTIONS = (
 def _has_section(body: str, heading: str) -> bool:
     """Whether the body has a `## heading` section, empty or not."""
 
-    wanted = heading.strip().casefold()
-    return any(
-        (match := re.match(r"^##\s+(.+?)\s*#*\s*$", line.rstrip("\r\n"))) and match.group(1).strip().casefold() == wanted
-        for line in body.splitlines()
-    )
+    return has_section(body, heading)
 
 
 def _row_line(section: str, cells: Iterable[str]) -> str:

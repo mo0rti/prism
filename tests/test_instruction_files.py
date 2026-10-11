@@ -23,7 +23,7 @@ IMPORT_LINE = "@AGENTS.md"
 # Rules that must be written once across a folder's AGENTS.md and CLAUDE.md, with whitespace collapsed.
 ROOT_RULES = (
     "**Do not implement features without a wiki page.**",
-    "there is no second board approval queue",
+    "a gated lifecycle action is proposed, not applied",
     "a human performs `po-handoff`, `design-start` and `dev-start` directly after reviewing the exact changes",
     "Wiki pages state the current state and carry no date about the page itself.",
     "an incoming source that contradicts a page is quarantined with a `CONFLICT.md`",

@@ -349,8 +349,12 @@ class ReleaseRecord:
         return None
 
 
-def read_release_records(wiki_root: Path) -> list[ReleaseRecord]:
-    """Every release record of a wiki, in number order (a file that is not named for a number comes last, by name)."""
+def read_all_release_records(wiki_root: Path) -> list[ReleaseRecord]:
+    """Every page of `releases/`, valid or not, in number order (a file that is not named for a number comes last, by name).
+
+    Lint and the release gate read these to name an invalid page. Nothing else may take authority from them: use
+    `read_release_records`.
+    """
 
     def read() -> list[ReleaseRecord]:
         records = [ReleaseRecord(page) for page in read_markdown_pages(wiki_root / RELEASE_DIRECTORY)]
@@ -358,6 +362,28 @@ def read_release_records(wiki_root: Path) -> list[ReleaseRecord]:
 
     # Inside a read scope (one request) the folder is listed once.
     return list(request_fact(("release-records", str(wiki_root)), read))
+
+
+def authoritative_records(records: Iterable[ReleaseRecord]) -> list[ReleaseRecord]:
+    """The records that pass the record validation (`release_lint.validate_release_records`), in the order given."""
+
+    from prism_cli.release_lint import validate_release_records
+
+    return validate_release_records(list(records))[0]
+
+
+def read_release_records(wiki_root: Path) -> list[ReleaseRecord]:
+    """The valid release records of a wiki, in number order: the only records that carry delivery, numbering or rollback authority."""
+
+    return list(request_fact(("valid-release-records", str(wiki_root)), lambda: authoritative_records(read_all_release_records(wiki_root))))
+
+
+def invalid_release_records(wiki_root: Path) -> dict[Path, list[str]]:
+    """The pages of `releases/` that are not valid records, by path, with their problems."""
+
+    from prism_cli.release_lint import validate_release_records
+
+    return validate_release_records(read_all_release_records(wiki_root))[1]
 
 
 def release_listing_digest(wiki_root: Path) -> str:
@@ -369,9 +395,9 @@ def release_listing_digest(wiki_root: Path) -> str:
 
 
 def next_release_number(records: Iterable[ReleaseRecord]) -> int:
-    """One more than the highest record number on disk."""
+    """One more than the highest valid record number on disk; a page that is not a valid record does not move it."""
 
-    return max((record.number or 0 for record in records), default=0) + 1
+    return max((record.number or 0 for record in authoritative_records(records)), default=0) + 1
 
 
 def records_by_id(records: Iterable[ReleaseRecord]) -> dict[str, ReleaseRecord]:
@@ -424,7 +450,7 @@ def current_delivery(records: Iterable[ReleaseRecord], app: str, target: str) ->
     """
 
     best: tuple[int, ReleaseRecord] | None = None
-    for record in records:
+    for record in authoritative_records(records):
         number = record.number
         if number is None or not any(row.outcome == "released" for row in record.rows_for(app, target)):
             continue
