@@ -19,7 +19,7 @@ A verification says: a person or an agent checked these current-state pages agai
 4. Show the user the pages you verified and the evidence you will link. Without a connected board, wait for confirmation before writing. On the connected board, do not stop before the preview; show this together with the complete preview of step 5 and wait for the confirmation there
 5. Record the verification once, for all confirmed pages:
    - **Connected board:** call `preview_skill` with `skill` set to `verify-pages`, an empty `changes` list, no `moves`, and `read_revisions` naming each verified page with the digest `read_workspace` returned for the page you read. This is the one skill that needs `read_revisions`. Then `apply` the preview after the user confirms it
-   - **Prism CLI (version 0.6.0 or newer):** `prism wiki verify <page>... --evidence <link> --by <name>`
+   - **Prism CLI (version 0.7.0 or newer):** `prism wiki verify <page>... --evidence <link> --by <name>`
    - **Neither:** append one entry to `knowledge/wiki/log.md` by hand, in the log format of the wiki schema:
 
      ```text

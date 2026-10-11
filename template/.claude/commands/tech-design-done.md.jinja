@@ -56,6 +56,9 @@ feature, its technical design page, API contract and requirement pages, the deci
   (`technical-track-required` otherwise). `/tech-design-done F-XXX not-applicable` proposes it.
 - **Open questions**: an open question owned by `tech-lead` blocks the action. Resolve it with
   `/design-clarify` first. An active `specification` domain in `revalidation` blocks it too.
+  An open question owned by another role does not block it: write the parts of the design that depend on
+  it as `**Proposed:**` or `**Assumed:**` claims, and leave the question open in the feature's Open
+  questions table for its owner, because this action cannot change that table.
 
 ## The technical design page
 

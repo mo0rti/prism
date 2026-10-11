@@ -1,6 +1,6 @@
 # Prism: One spec. Every platform.
 
-![Version](https://img.shields.io/badge/version-0.6.1-blue)
+![Version](https://img.shields.io/badge/version-0.7.0-blue)
 ![PyPI](https://img.shields.io/pypi/v/prism-kit)
 ![Template Validation](https://github.com/mo0rti/prism/actions/workflows/template-validation.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-3776AB?logo=python&logoColor=white)
@@ -202,7 +202,7 @@ Start with:
 
 - The workflow, the shared board, the MCP tool contract and the human board actions are implemented and tested; the [plan](https://github.com/mo0rti/prism/blob/main/docs/prism-core-workflow-plan.md) states their scope and contracts.
 - The lifecycle from intake through design, QA and release to operation is implemented in the shared service and covered by regression tests: roles on grants, gated approval in the board, design tracks, the QA stage, bugs, release records, incidents and runbooks. The real-host journey through every stage is pending the 0.7.0 journey ([current status](https://github.com/mo0rti/prism/blob/main/docs/current-status.md#lifecycle)).
-- Prism 0.6.1 is released: `prism-kit` on [PyPI](https://pypi.org/project/prism-kit/) and the [GitHub release](https://github.com/mo0rti/prism/releases/tag/v0.6.1) with checksums.
+- Prism 0.7.0 is released: `prism-kit` on [PyPI](https://pypi.org/project/prism-kit/) and the [GitHub release](https://github.com/mo0rti/prism/releases/tag/v0.7.0) with checksums.
 - Application packs: the backend, Android, web and agent-service packs are verified locally and in CI, and the iOS pack is built and tested only by the macOS CI job. Generated workspaces ship no deployment: the `deployment` skill holds unverified worked examples for Azure Container Apps and Cloudflare.
 - Core acceptance uses disposable neutral workspaces. Sample behavior does not define the core workflow.
 - Prism is released under the MIT license and published to PyPI as `prism-kit`, with the `@mortitech/prism` launcher on npm. The [changelog](https://github.com/mo0rti/prism/blob/main/CHANGELOG.md) lists what each version contains.

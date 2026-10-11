@@ -1,8 +1,8 @@
 schema_version: 2
-min_prism_cli_version: 0.6.1
+min_prism_cli_version: 0.7.0
 generated_by:
   tool: prism-cli
-  prism_cli_version: 0.6.1
+  prism_cli_version: 0.7.0
   template_source: https://github.com/mo0rti/prism.git
   template_version: unversioned
   template_commit: unversioned
@@ -93,4 +93,4 @@ workflow:
   version: '1'
   mode: generated
   board_id: 00000000-0000-4000-8000-000000000000
-  asset_digest: 086a962f7defa098f4308cdab1f263a263761eef5a7be1c0b839f5309043e007
+  asset_digest: 20b790696f0e00605792f063f2c369d9a5aa29678b35e66422719435e10cc112

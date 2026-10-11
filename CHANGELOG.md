@@ -4,7 +4,11 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
-A feature runs the whole software lifecycle: business requirement, specification, design (UI and technical), implementation, QA, release, operation and maintenance. Every stage has an accountable role, a gate with bound evidence and a human who approves it. Agents propose, and a human who holds the role of the stage approves in the board. Workspaces and board state created by an earlier version are not upgraded: recreate them.
+## [0.7.0]
+
+Release date: 2026-10-11
+
+Prism 0.7.0 delivers the full lifecycle from intake and specification through separate UI and technical design tracks, development, QA, release and operation. It adds roles to board grants with gated approval in the board, per-app progress, release records with rollback and redeploy, and support for bugs and incident records. It also includes security hardening from the independent reviews. Workspaces from earlier versions must be recreated.
 
 ### Added
 
@@ -47,9 +51,6 @@ A feature runs the whole software lifecycle: business requirement, specification
 - **Roles and approval are enforced by the board, not by the skills.** A gated action is applied only by a writable human grant that satisfies its role predicate, in a browser board session with a review revision and an acknowledgement. The predicate is checked again on a pending retry, on recovery and on repair, with the current policy; an agent cannot apply, recover, decline or repair a gated operation.
 - **The limits are documented.** A grant identifies a registered token holder; a role records what whoever ran `prism board grant` assigned; session-only approval keeps the approval out of tool calls and does not protect a leaked human token; local filesystem access can mint a grant; `qa-separate-from-dev` separates grants. [SECURITY.md](SECURITY.md#roles-and-gated-approval) states each.
 - **Board state is exported and reset in one safe path.** `prism board audit export` never overwrites a file and omits token hashes; `prism board state reset` exports first and refuses while an operation is unresolved, because deleting `.prism/state/` loses recovery and separation provenance.
-
-### Security
-
 - **One section parser.** The write-scope checks and the evidence readers find a `##` heading the same way: a line that starts with `## ` in column zero, outside fenced code. An indented or repeated `## Delivery evidence`, `## QA verification`, `## Release` or `## Evidence history` heading is refused at preview (`ambiguous_lifecycle_section`) and reported by `wiki lint` (`ambiguous-lifecycle-section`), and a question skill (`ask`, the clarify skills) cannot change those sections (`lifecycle_evidence_changed`). A proposal can no longer hide evidence from the scope check that a reader would take as authoritative.
 - **Separation holds through repairs.** With `qa-separate-from-dev`, the grants excluded from verifying evidence include the approver and every recoverer of each `operation-repair` linked to the producing operation, a repair of a repair included.
 - **A repair binds the files it adopts.** The repair preview records the current digest of every file the abandoned operation already wrote. An edit of one after the review stops the approval (`stale_approval_review`, `stale_preview`), and a recovery of the repair stops with `recovery_source_changed`. Recovery rechecks the lint of the pages the repair leaves behind.
