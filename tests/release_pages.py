@@ -59,13 +59,14 @@ def record_page(
     rollback_of: str | None = None,
     summary: str = "F-001 is delivered to production.",
     contracts: str = "None.",
-    rollback: str = "None.",
+    rollback: str | None = None,
     notes: str = "None.",
     extra: str = "",
 ) -> str:
     """A release record page; the outcome follows the rows unless given."""
 
     wanted_outcome = outcome or ("rolled-back" if rollback_of else record_outcome_of(rows))
+    rollback = rollback if rollback is not None else f"Rolled back {rollback_of} after delivery errors." if rollback_of else "None."
     lines = [
         "---",
         f"id: {record_id(number)}",

@@ -9,7 +9,7 @@ or writes.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -37,8 +37,8 @@ from prism_cli.wiki_releases import (
     ContractSnapshot,
     ReleaseRecord,
     RecordRow,
-    current_delivery,
-    latest_record,
+    parse_record_rows,
+    parse_snapshots,
     record_id_of_cell,
     record_outcome,
     record_sections,
@@ -220,6 +220,105 @@ def record_front_matter_problems(path: str, frontmatter: Mapping[str, Any], rows
 # --- Rollback and redeploy (F21, F22) ------------------------------------------------------------------------------------
 
 
+@dataclass
+class ReleaseSequence:
+    """The authority derived from valid records in number order; invalid records never enter its indexes."""
+
+    records: list[ReleaseRecord] = field(default_factory=list)
+    problems: dict[Path, list[Problem]] = field(default_factory=dict)
+    kinds: dict[str, str] = field(default_factory=dict)
+    by_id: dict[str, ReleaseRecord] = field(default_factory=dict)
+    deliveries: dict[tuple[str, str], tuple[ReleaseRecord, list[RecordRow]]] = field(default_factory=dict)
+    latest: dict[tuple[str, str], ReleaseRecord] = field(default_factory=dict)
+    latest_by_app: dict[str, ReleaseRecord] = field(default_factory=dict)
+    attempts: dict[tuple[str, str], int] = field(default_factory=dict)
+    rollback_roots: dict[str, ReleaseRecord] = field(default_factory=dict)
+
+
+def validate_release_sequence(records: Sequence[ReleaseRecord]) -> ReleaseSequence:
+    """Decide each record against valid predecessors, rejecting edges before deriving kinds.
+
+    A reference must reach an earlier valid record, so forward edges, self edges, unknown or invalid targets and cycles
+    cannot enter the authority indexes. Kinds and rollback roots are derived iteratively from those indexes.
+    Both a write preview's complete candidate sequence and readers use this decision.
+    """
+
+    sequence = ReleaseSequence()
+    counts = Counter(record.record_id for record in records)
+    ordered = sorted(records, key=lambda record: (record.number is None, record.number or 0, str(record.page.path)))
+    for record in ordered:
+        page = record.page
+        problems = check_record_page(str(page.path), page.frontmatter, page.body, parse_errors=page.parse_errors)
+        if counts[record.record_id] > 1:
+            problems.append(Problem("release_record_invalid", f"More than one file claims the release record ID `{record.record_id}`.", {}))
+        named = record.rollback_of or record.retry_of
+        source = sequence.by_id.get(named or "")
+        if named is not None and (source is None or source.number is None or record.number is None or source.number >= record.number):
+            label = "rollback-of" if record.rollback_of else "retry-of"
+            code = "rollback_target_invalid" if record.rollback_of else "release_record_invalid"
+            problems.append(Problem(code, f"`{label}: {named}` must name an earlier valid release record.", {}))
+        if problems:
+            sequence.problems[page.path] = problems
+            continue
+
+        source_kind = sequence.kinds.get(named or "")
+        kind = KIND_ROLLBACK if record.rollback_of else KIND_REDEPLOY if source_kind in {KIND_ROLLBACK, KIND_REDEPLOY} else KIND_RELEASE
+        rows, row_problems = parse_record_rows(page.body)
+        problems.extend(record_row_problems(rows, kind, row_problems))
+        problems.extend(record_front_matter_problems(str(page.path), page.frontmatter, rows, kind))
+        if kind == KIND_RELEASE:
+            for row in rows:
+                expected = sequence.attempts.get((row.item, row.app), 0) + 1
+                if row.attempt is not None and row.attempt != expected:
+                    problems.append(Problem("release_attempt_mismatch", f"The delivery of {row.item} for `{row.app}` is attempt release-{row.attempt}; the next attempt is release-{expected}.", {"item": row.item, "app": row.app, "expected": f"release-{expected}"}))
+            if source is not None:
+                problems.extend(retry_problems(retry_of=source.record_id, rows=rows, source=source))
+        elif kind == KIND_ROLLBACK:
+            problems.extend(_rollback_problems(rollback_of=record.rollback_of or "", rows=rows, sequence=sequence))
+            text = record_sections(page.body).get("Rollback", "").strip()
+            if not text or text.startswith("[") or text.rstrip(".").casefold() in {"none", "n/a", "not applicable", "nothing"}:
+                problems.append(Problem("release_record_invalid", f"`{page.path}`: a rollback record says in `## Rollback` what was rolled back and why.", {}))
+        else:
+            problems.extend(_redeploy_problems(retry_of=record.retry_of or "", rows=rows, sequence=sequence))
+
+        snapshots, messages = parse_snapshots(page.body)
+        problems.extend(snapshot_integrity_problems(snapshots, messages, path=str(page.path), apps={row.app for row in rows}))
+        if kind != KIND_RELEASE and snapshots:
+            problems.append(Problem("release_contract_snapshot_invalid", f"`{page.path}`: a {kind} record snapshots no contract.", {}))
+        if problems:
+            sequence.problems[page.path] = problems
+            continue
+
+        sequence.records.append(record)
+        sequence.by_id[record.record_id] = record
+        sequence.kinds[record.record_id] = kind
+        if kind == KIND_ROLLBACK:
+            sequence.rollback_roots[record.record_id] = record
+        elif kind == KIND_REDEPLOY:
+            sequence.rollback_roots[record.record_id] = sequence.rollback_roots[record.retry_of]
+        for pair in _pairs(rows):
+            sequence.latest[pair] = record
+            sequence.latest_by_app[pair[0]] = record
+            pair_rows = record.rows_for(*pair)
+            if any(row.outcome == "released" for row in pair_rows):
+                sequence.deliveries[pair] = (record, pair_rows)
+        if kind == KIND_RELEASE:
+            for row in rows:
+                key = (row.item, row.app)
+                sequence.attempts[key] = sequence.attempts.get(key, 0) + 1
+    return sequence
+
+
+def retry_problems(*, retry_of: str, rows: Sequence[RecordRow], source: ReleaseRecord) -> list[Problem]:
+    """A release retries a failed delivery of the same item and app, and may also ship new items or apps."""
+
+    prior = {(row.item, row.app): row for row in source.rows}
+    matching = [prior[(row.item, row.app)] for row in rows if (row.item, row.app) in prior]
+    if not any(row.outcome == "failed" for row in matching) or any(row.outcome != "failed" for row in matching):
+        return [Problem("release_record_invalid", f"`retry-of: {retry_of}` must retry a failed delivery of the same item and app; other rows may deliver new items or apps.", {"retry_of": retry_of})]
+    return []
+
+
 def _pairs(rows: Sequence[RecordRow]) -> list[tuple[str, str]]:
     return list(dict.fromkeys(row.pair for row in rows))
 
@@ -233,15 +332,18 @@ def rollback_problems(
 ) -> list[Problem]:
     """A rollback names the current delivery of every (app, target) it rolls back and lists the items that delivery carried (`rollback_target_invalid`)."""
 
-    index = {record.record_id: record for record in records}
-    target = index.get(rollback_of)
+    return _rollback_problems(rollback_of=rollback_of, rows=rows, sequence=validate_release_sequence(records))
+
+
+def _rollback_problems(*, rollback_of: str, rows: Sequence[RecordRow], sequence: ReleaseSequence) -> list[Problem]:
+    target = sequence.by_id.get(rollback_of)
     if target is None:
         return [Problem("rollback_target_invalid", f"`rollback-of: {rollback_of}` names no release record.", {"rollback_of": rollback_of})]
-    if kinds.get(rollback_of) == KIND_ROLLBACK:
+    if sequence.kinds.get(rollback_of) == KIND_ROLLBACK:
         return [Problem("rollback_target_invalid", f"{rollback_of} is itself a rollback; a rollback rolls back a delivery.", {"rollback_of": rollback_of})]
     problems: list[Problem] = []
     for app, target_name in _pairs(rows):
-        current = current_delivery(records, app, target_name)
+        current = sequence.deliveries.get((app, target_name))
         if current is None or current[0].record_id != rollback_of:
             held = current[0].record_id if current is not None else None
             problems.append(
@@ -254,8 +356,8 @@ def rollback_problems(
                 )
             )
             continue
-        latest = latest_record(records, app, target_name)
-        if latest is not None and latest.record_id != rollback_of and kinds.get(latest.record_id) == KIND_ROLLBACK and latest.rollback_of == rollback_of:
+        latest = sequence.latest.get((app, target_name))
+        if latest is not None and latest.record_id != rollback_of and sequence.kinds.get(latest.record_id) == KIND_ROLLBACK and latest.rollback_of == rollback_of:
             problems.append(
                 Problem(
                     "rollback_target_invalid",
@@ -290,11 +392,14 @@ def redeploy_problems(
 ) -> list[Problem]:
     """A redeploy retries the latest record of every (app, target) it redeploys: a rollback of the current delivery, or a failed redeploy of it."""
 
-    index = {record.record_id: record for record in records}
+    return _redeploy_problems(retry_of=retry_of, rows=rows, sequence=validate_release_sequence(records))
+
+
+def _redeploy_problems(*, retry_of: str, rows: Sequence[RecordRow], sequence: ReleaseSequence) -> list[Problem]:
     problems: list[Problem] = []
     for app, target_name in _pairs(rows):
-        current = current_delivery(records, app, target_name)
-        latest = latest_record(records, app, target_name)
+        current = sequence.deliveries.get((app, target_name))
+        latest = sequence.latest.get((app, target_name))
         if current is None:
             problems.append(Problem("app_stage_mismatch", f"Nothing has been delivered to `{app}` at `{target_name}`, so there is nothing to redeploy.", {"app": app, "target": target_name}))
             continue
@@ -310,7 +415,7 @@ def redeploy_problems(
             )
             continue
         source = latest
-        kind = kinds.get(source.record_id)
+        kind = sequence.kinds.get(source.record_id)
         if kind == KIND_REDEPLOY and any(row.outcome != "failed" for row in source.rows_for(app, target_name)):
             problems.append(
                 Problem(
@@ -320,12 +425,8 @@ def redeploy_problems(
                 )
             )
             continue
-        root = source
-        seen = {root.record_id}
-        while kinds.get(root.record_id) == KIND_REDEPLOY and root.retry_of in index and root.retry_of not in seen:
-            root = index[root.retry_of]
-            seen.add(root.record_id)
-        if kinds.get(root.record_id) != KIND_ROLLBACK or root.rollback_of != current[0].record_id:
+        root = sequence.rollback_roots.get(source.record_id)
+        if root is None or root.rollback_of != current[0].record_id:
             problems.append(
                 Problem(
                     "app_stage_mismatch",
@@ -613,6 +714,27 @@ def release_bug_blocking(bugs: Sequence[BugPage], *, feature_id: str, named: Seq
 # --- Contract snapshots (CONTRACTS 3.4) ----------------------------------------------------------------------------------
 
 
+def snapshot_integrity_problems(
+    snapshots: Sequence[ContractSnapshot],
+    snapshot_parse_problems: Sequence[str],
+    *,
+    path: str,
+    apps: set[str] | None = None,
+) -> list[Problem]:
+    """Each snapshot has a unique feature/app key and a citation bound to its own text and feature."""
+
+    problems = [Problem("release_contract_snapshot_invalid", f"`{path}`: {message}", {"path": path}) for message in snapshot_parse_problems]
+    seen: set[tuple[str, str]] = set()
+    for snapshot in snapshots:
+        key = (snapshot.feature, snapshot.app)
+        if key in seen:
+            problems.append(Problem("release_contract_snapshot_invalid", f"`{path}`: the `## Contracts` section has two entries for one feature and app.", {"path": path}))
+        seen.add(key)
+        if snapshot.digest_citation != snapshot.citation or not snapshot.citation.startswith(snapshot.feature + "@v") or (apps is not None and snapshot.app not in apps):
+            problems.append(Problem("release_contract_snapshot_invalid", f"The contract snapshot of {snapshot.feature} for `{snapshot.app}` has a broken binding or names an app not delivered by the record.", {"path": path}))
+    return problems
+
+
 def snapshot_problems(
     snapshots: Sequence[ContractSnapshot],
     snapshot_parse_problems: Sequence[str],
@@ -626,10 +748,10 @@ def snapshot_problems(
     (``None`` when the page is not available, as in lint of an old record).
     """
 
-    problems: list[Problem] = [Problem("release_contract_snapshot_invalid", f"`{path}`: {message}", {"path": path}) for message in snapshot_parse_problems]
+    problems = snapshot_integrity_problems(snapshots, snapshot_parse_problems, path=path)
+    if problems:
+        return problems
     by_key = {(item.feature, item.app): item for item in snapshots}
-    if len(by_key) != len(snapshots):
-        problems.append(Problem("release_contract_snapshot_invalid", f"`{path}`: the `## Contracts` section has two entries for one feature and app.", {"path": path}))
     for key in sorted(set(by_key) - set(expected)):
         problems.append(
             Problem("release_contract_snapshot_invalid", f"`{path}`: `## Contracts` snapshots a contract for {key[0]} and `{key[1]}`, which no row of this record cites.", {"path": path, "feature": key[0], "app": key[1]})
@@ -646,12 +768,11 @@ def snapshot_problems(
                 )
             )
             continue
-        computed = entry.digest_citation
-        if entry.citation != citation or computed != citation:
+        if entry.citation != citation:
             problems.append(
                 Problem(
                     "release_contract_snapshot_invalid",
-                    f"`{path}`: the snapshot of {feature} for `{app}` states `{entry.citation}` and its text digests to `{computed}`; the delivery row cites `{citation}`.",
+                    f"`{path}`: the snapshot of {feature} for `{app}` states `{entry.citation}`; the delivery row cites `{citation}`.",
                     {"path": path, "feature": feature, "app": app},
                 )
             )

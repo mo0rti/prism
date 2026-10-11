@@ -100,14 +100,17 @@ class RenderTests(unittest.TestCase):
 
 class DerivationTests(unittest.TestCase):
     def releases(self) -> list[ReleaseRecord]:
-        def record(number: int, apps: dict[str, str], **kwargs: str) -> ReleaseRecord:
-            rows = [delivery("F-001", app, outcome=outcome, attempt=None if outcome == "rolled-back" else 1) for app, outcome in apps.items()]
+        def record(number: int, apps: dict[str, str], *, attempts: dict[str, int] | None = None, **kwargs: str) -> ReleaseRecord:
+            rows = [
+                delivery("F-001", app, outcome=outcome, attempt=None if outcome == "rolled-back" else (attempts or {}).get(app, 1))
+                for app, outcome in apps.items()
+            ]
             return ReleaseRecord(parse_markdown_text(Path(f"REL-{number:03d}.md"), record_page(number, rows, **kwargs)))
 
         return [
             record(3, {"api": "released"}),
             record(4, {"api": "rolled-back"}, rollback_of="REL-003"),
-            record(5, {"api": "failed", "web": "released"}),
+            record(5, {"api": "failed", "web": "released"}, attempts={"api": 2}),
         ]
 
     def test_the_cells_list_identifiers_in_number_order(self) -> None:

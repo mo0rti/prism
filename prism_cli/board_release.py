@@ -14,7 +14,7 @@ from __future__ import annotations
 import tempfile
 from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from prism_cli.board_bugs import bs, is_bug_path
 from prism_cli.board_qa import _quoted, raise_first
@@ -34,14 +34,11 @@ from prism_cli.release_rules import (
     check_feature_release_rows,
     check_record_page,
     contract_cited_by,
-    record_front_matter_problems,
-    record_row_problems,
     row_record_mismatch,
-    redeploy_problems,
     release_bug_blocking,
-    rollback_problems,
     snapshot_problems,
     target_of,
+    validate_release_sequence,
 )
 from prism_cli.wiki_bugs import BugPage, verification_artifact
 from prism_cli.wiki_model import (
@@ -75,7 +72,6 @@ from prism_cli.wiki_releases import (
     read_release_records,
     record_id_of_cell,
     record_kinds,
-    record_sections,
     release_attempt_of,
 )
 
@@ -88,16 +84,6 @@ _LINKED_PREFIXES = ("knowledge/wiki/app-requirements/", "knowledge/wiki/api-cont
 
 def is_release_path(relative: str) -> bool:
     return relative.startswith(RELEASE_PREFIX)
-
-
-def _blank(text: str) -> bool:
-    return not text.strip() or text.strip().startswith("[")
-
-
-def _says_nothing(text: str) -> bool:
-    """A section that is empty, a template placeholder or a statement that there is nothing (`None.`)."""
-
-    return _blank(text) or text.strip().rstrip(".").casefold() in {"none", "n/a", "not applicable", "nothing"}
 
 
 class ReleaseActionsMixin:
@@ -165,7 +151,9 @@ class ReleaseActionsMixin:
         name = PurePosixPath(path).name
         match = RELEASE_FILE_PATTERN.match(name)
         record_id = frontmatter.get("id")
-        if before.get(path) is not None or any(record.page.path.name == name or (isinstance(record_id, str) and record.record_id == record_id) for record in records):
+        candidate = ReleaseRecord(parse_markdown_text(self.root / path, supplied[path]))  # type: ignore[attr-defined]
+        candidate_id = candidate.record_id
+        if before.get(path) is not None or any(record.page.path.name == name or record.record_id == candidate_id for record in records):
             raise bs.BoardError(
                 "release_id_taken",
                 f"`{record_id or name}` is already a release record, and a record is never rewritten. Take the next free number.",
@@ -186,9 +174,10 @@ class ReleaseActionsMixin:
         rows, row_problems = parse_record_rows(body)
         return {
             "path": path,
-            "id": str(record_id),
+            "id": candidate_id,
             "frontmatter": frontmatter,
             "body": body,
+            "candidate": candidate,
             "records": records,
             "kinds": record_kinds(records),
             "rows": rows,
@@ -196,14 +185,17 @@ class ReleaseActionsMixin:
         }
 
     def _d4_record_checks(self, record: Mapping[str, Any], kind: str) -> None:
-        """The rows of the record, and its front matter, agree among themselves."""
+        """The complete candidate sequence accepts this record in the kind the action writes."""
 
         path = record["path"]
-        raise_first(record_row_problems(record["rows"], kind, record["row_problems"]), path)
-        raise_first(record_front_matter_problems(path, record["frontmatter"], record["rows"], kind), path)
-        sections = record_sections(record["body"])
-        if kind == KIND_ROLLBACK and _says_nothing(sections.get("Rollback", "")):
-            raise bs.BoardError("release_record_invalid", f"`{path}`: a rollback record says in `## Rollback` what was rolled back and why.", 409, {"path": path})
+        candidate = record["candidate"]
+        sequence = validate_release_sequence([*record["records"], candidate])
+        if sequence.problems.get(candidate.page.path) and kind == KIND_REDEPLOY and record["kinds"].get(candidate.retry_of) == KIND_RELEASE:
+            raise bs.BoardError("app_stage_mismatch", f"`retry-of: {candidate.retry_of}` names a release; a redeploy retries a rollback or a failed redeploy of the current delivery.", 409, {"path": path})
+        raise_first(sequence.problems.get(candidate.page.path, []), path)
+        record_id = candidate.record_id
+        if sequence.kinds.get(record_id) != kind:
+            raise bs.BoardError("release_record_invalid", f"`{path}`: this action writes a {kind} record; its reference selects {sequence.kinds.get(record_id)}.", 409, {"path": path})
         for item in {row.item for row in record["rows"]}:
             if not self._d4_item_exists(item):
                 raise bs.BoardError("release_record_invalid", f"`{path}`: the Delivery table names `{item}`, which is not a feature or bug of this wiki.", 409, {"path": path, "item": item})
@@ -237,7 +229,6 @@ class ReleaseActionsMixin:
         self._require_action_available("release-done")  # type: ignore[attr-defined]
         record = self._d4_record(supplied, before)
         frontmatter = record["frontmatter"]
-        kinds = record["kinds"]
         feature_paths = [feature["path"] for feature in changed_features]
         bug_paths = [path for path in supplied if is_bug_path(path)]
         other = [path for path in supplied if path != record["path"] and path not in feature_paths and path not in bug_paths]
@@ -279,7 +270,7 @@ class ReleaseActionsMixin:
 
     def _d4_record_only(self, action: str, record: Mapping[str, Any]) -> dict[str, Any]:
         frontmatter, path = record["frontmatter"], record["path"]
-        records, kinds, rows = record["records"], record["kinds"], record["rows"]
+        rows = record["rows"]
         kind = KIND_ROLLBACK if action == "release-rollback" else KIND_REDEPLOY
         if kind == KIND_REDEPLOY:
             retry = frontmatter.get("retry-of")
@@ -291,15 +282,9 @@ class ReleaseActionsMixin:
                     {"path": path},
                 )
         self._d4_record_checks(record, kind)
-        if parse_snapshots(record["body"])[0]:
-            raise bs.BoardError("release_contract_snapshot_invalid", f"`{path}`: a {kind} record snapshots no contract.", 409, {"path": path})
         for row in rows:
             if row.app not in self._d4_item_apps(row.item):
                 raise bs.BoardError("release_record_invalid", f"`{path}`: `{row.app}` is not an app of {row.item}.", 409, {"path": path, "item": row.item, "app": row.app})
-        if kind == KIND_ROLLBACK:
-            raise_first(rollback_problems(rollback_of=str(frontmatter["rollback-of"]), rows=rows, records=records, kinds=kinds), path)
-        else:
-            raise_first(redeploy_problems(retry_of=str(frontmatter["retry-of"]), rows=rows, records=records, kinds=kinds), path)
         return self._d4_operation(
             action,
             record["id"],
@@ -349,7 +334,6 @@ class ReleaseActionsMixin:
     ) -> dict[str, Any]:
         path = record["path"]
         records, kinds, rows = record["records"], record["kinds"], record["rows"]
-        frontmatter = record["frontmatter"]
         record_id = record["id"]
         wiki = self._wiki_path()  # type: ignore[attr-defined]
         policy = self._read_policy()  # type: ignore[attr-defined]
@@ -361,20 +345,9 @@ class ReleaseActionsMixin:
                 {"path": path},
             )
         self._d4_record_checks(record, KIND_RELEASE)
-        retry = frontmatter.get("retry-of")
-        if isinstance(retry, str):
-            source = next((item for item in records if item.record_id == retry), None)
-            if source is None or kinds.get(retry) != KIND_RELEASE or not any(row.outcome == "failed" for row in source.rows):
-                raise bs.BoardError(
-                    "release_record_invalid",
-                    f"`{path}`: `retry-of: {retry}` names a release record with a failed delivery; a retry of a rollback is a redeploy.",
-                    409,
-                    {"path": path, "retry_of": retry},
-                )
-
         for relative in bug_paths:
             bug = BugPage(parse_markdown_text(wiki / "bugs" / PurePosixPath(relative).name, supplied[relative]))
-            self._d4_bug_release_rows(bug, parse_release_rows(bug.page.body)[0], relative)
+            self._d4_bug_release_rows(bug, parse_release_rows(bug.page.body)[0], relative, shipped=(row.app for row in rows if row.item == bug.bug_id))
         bugs = self._bugs_with(supplied)  # type: ignore[attr-defined]
         bug_by_id = {bug.bug_id.casefold(): bug for bug in bugs}
         disk_bugs = {bug.bug_id.casefold(): bug for bug in self._disk_bugs()}  # type: ignore[attr-defined]
@@ -671,13 +644,14 @@ class ReleaseActionsMixin:
     # -- bugs (B14) ------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def _d4_bug_release_rows(bug: BugPage, rows: list[Any], relative: str) -> None:
-        for app in bug.apps:
+    def _d4_bug_release_rows(bug: BugPage, rows: list[Any], relative: str, *, shipped: Iterable[str] = ()) -> None:
+        required = set(shipped)
+        for app in sorted(set(bug.apps) | required | {row.app for row in rows}):
             authoritative = [row for row in rows if row.app == app and row.authoritative]
-            if len(authoritative) != 1:
+            if len(authoritative) > 1 or (app in required and not authoritative):
                 raise bs.BoardError(
                     "release_row_invalid",
-                    f"{bug.bug_id} needs exactly one authoritative Release row for `{app}`; the proposal has {len(authoritative)}.",
+                    f"{bug.bug_id} has at most one authoritative Release row per app and needs one for each app shipped; `{app}` has {len(authoritative)}.",
                     409,
                     {"path": relative, "app": app},
                 )
@@ -720,11 +694,11 @@ class ReleaseActionsMixin:
         self._assert_only_body_sections_changed(old_body, new_body, {"Release"}, "lifecycle_body_scope", "Action `bug-release` may change only the `## Release` section of the bug page.")  # type: ignore[attr-defined]
         old_rows, _old_problems = parse_release_rows(old_body)
         new_rows, new_problems = parse_release_rows(new_body)
-        self._d4_bug_release_rows(new_bug, new_rows, relative)
         if new_problems:
             raise bs.BoardError(new_problems[0].code, f"The `## Release` table in `{relative}` is not valid: " + " ".join(item.message for item in new_problems[:4]), 409, {"path": relative})
         old_cells = {tuple(c.strip() for c in row.cells) for row in old_rows}
         changed_rows = [row for row in new_rows if tuple(c.strip() for c in row.cells) not in old_cells]
+        self._d4_bug_release_rows(new_bug, new_rows, relative, shipped=(row.app for row in changed_rows))
         bug_id = new_bug.bug_id
         applied: list[tuple[str, str, str, int, str, str]] = []
         for row in changed_rows:

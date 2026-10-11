@@ -369,6 +369,7 @@ def _unreadable_page(path: Path, exc: BaseException) -> MarkdownPage:
 def parse_markdown_text(path: Path, text: str) -> MarkdownPage:
     """Parse the text of the page at ``path``."""
 
+    text = text.removeprefix("\ufeff")
     match = FRONTMATTER_PATTERN.match(text)
     if not match:
         return MarkdownPage(path=path, frontmatter={}, body=text, parse_errors=["Missing YAML frontmatter."])

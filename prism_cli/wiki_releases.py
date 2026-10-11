@@ -367,11 +367,11 @@ def read_all_release_records(wiki_root: Path) -> list[ReleaseRecord]:
 
 
 def authoritative_records(records: Iterable[ReleaseRecord]) -> list[ReleaseRecord]:
-    """The records that pass the record validation (`release_lint.validate_release_records`), in the order given."""
+    """The records that pass the shared sequence validation, in number order."""
 
-    from prism_cli.release_lint import validate_release_records
+    from prism_cli.release_rules import validate_release_sequence
 
-    return validate_release_records(list(records))[0]
+    return validate_release_sequence(list(records)).records
 
 
 def read_release_records(wiki_root: Path) -> list[ReleaseRecord]:
@@ -407,31 +407,14 @@ def records_by_id(records: Iterable[ReleaseRecord]) -> dict[str, ReleaseRecord]:
 
 
 def record_kinds(records: Iterable[ReleaseRecord]) -> dict[str, str]:
-    """The kind of each record, by ID: `rollback` (it has `rollback-of`), `redeploy` (its `retry-of` chain reaches a rollback or a redeploy) or `release`.
+    """The kind of each valid record, by ID: `rollback` (it has `rollback-of`), `redeploy` (its `retry-of` chain reaches a rollback or a redeploy) or `release`.
 
     A release that retries a failed release names it in `retry-of` too; that chain ends at a release and stays a release.
     """
 
-    listing = list(records)
-    index = records_by_id(listing)
-    kinds: dict[str, str] = {}
+    from prism_cli.release_rules import validate_release_sequence
 
-    def kind(record: ReleaseRecord, seen: frozenset[str]) -> str:
-        if record.record_id in kinds:
-            return kinds[record.record_id]
-        if record.rollback_of is not None:
-            result = KIND_ROLLBACK
-        elif record.retry_of is not None and record.retry_of not in seen and record.retry_of in index:
-            source = kind(index[record.retry_of], seen | {record.record_id})
-            result = KIND_REDEPLOY if source in {KIND_ROLLBACK, KIND_REDEPLOY} else KIND_RELEASE
-        else:
-            result = KIND_RELEASE
-        kinds[record.record_id] = result
-        return result
-
-    for record in listing:
-        kind(record, frozenset())
-    return kinds
+    return validate_release_sequence(list(records)).kinds
 
 
 def record_outcome(rows: Sequence[RecordRow], kind: str) -> str:
@@ -451,35 +434,23 @@ def current_delivery(records: Iterable[ReleaseRecord], app: str, target: str) ->
     A redeploy record counts; a rollback record holds `rolled-back` rows and never does.
     """
 
-    best: tuple[int, ReleaseRecord] | None = None
-    for record in authoritative_records(records):
-        number = record.number
-        if number is None or not any(row.outcome == "released" for row in record.rows_for(app, target)):
-            continue
-        if best is None or number > best[0]:
-            best = (number, record)
-    if best is None:
-        return None
-    return best[1], best[1].rows_for(app, target)
+    from prism_cli.release_rules import validate_release_sequence
+
+    return validate_release_sequence(list(records)).deliveries.get((app, target))
 
 
 def latest_record(records: Iterable[ReleaseRecord], app: str, target: str | None = None) -> ReleaseRecord | None:
     """The highest-numbered record with any row for an app, or for an (app, target) when `target` is given."""
 
-    best: ReleaseRecord | None = None
-    for record in records:
-        if record.number is None or not (record.rows_for(app, target) if target is not None else app in record.apps):
-            continue
-        if best is None or record.number > (best.number or 0):
-            best = record
-    return best
+    from prism_cli.release_rules import validate_release_sequence
+
+    sequence = validate_release_sequence(list(records))
+    return sequence.latest.get((app, target)) if target is not None else sequence.latest_by_app.get(app)
 
 
 def release_attempt_of(records: Iterable[ReleaseRecord], kinds: Mapping[str, str], item: str, app: str) -> int:
-    """The next release attempt of an (item, app): 1 plus the release-kind records with a delivery row for it (CONTRACTS 5.4)."""
+    """The next release attempt of an (item, app): 1 plus the valid release-kind records with a delivery row for it (CONTRACTS 5.4)."""
 
-    return 1 + sum(
-        1
-        for record in records
-        if kinds.get(record.record_id, KIND_RELEASE) == KIND_RELEASE and any(row.item == item and row.app == app for row in record.rows)
-    )
+    from prism_cli.release_rules import validate_release_sequence
+
+    return 1 + validate_release_sequence(list(records)).attempts.get((item, app), 0)

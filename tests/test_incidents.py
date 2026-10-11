@@ -74,12 +74,12 @@ def bug(feature: str = "none") -> str:
     )
 
 
-def release_record(release_id: str = "REL-003", outcome: str = "released", row_outcome: str | None = None, app: str = "backend") -> str:
+def release_record(release_id: str = "REL-003", outcome: str = "released", row_outcome: str | None = None, app: str = "backend", attempt: int = 1) -> str:
     """A release record in the format of `release_pages.record_page`, the one the release stage writes."""
 
     number = int(release_id.removeprefix("REL-"))
     rolled_back = outcome == "rolled-back"
-    rows = [delivery("F-001", app, outcome=row_outcome or outcome, attempt=None if rolled_back else 1)]
+    rows = [delivery("F-001", app, outcome=row_outcome or outcome, attempt=None if rolled_back else attempt)]
     if rolled_back:
         return record_page(number, rows, rollback_of=f"REL-{number - 1:03d}", title=f"Rollback of REL-{number - 1:03d}", rollback="The service was rolled back.")
     return record_page(number, rows, outcome=outcome)
@@ -88,7 +88,7 @@ def release_record(release_id: str = "REL-003", outcome: str = "released", row_o
 class IncidentCase(IngestCase):
     """The ingest workspace with helpers for incidents, bugs and seeded release records."""
 
-    def plant_release(self, release_id: str = "REL-003", **kwargs: str) -> None:
+    def plant_release(self, release_id: str = "REL-003", *, attempt: int = 1, **kwargs: str) -> None:
         """Write a release record that delivers F-001; lint checks that the item exists, so the feature is ingested first."""
 
         if not (self.root / "knowledge/wiki/features/F-001-document-review.md").exists():
@@ -96,7 +96,7 @@ class IncidentCase(IngestCase):
             self.ingest("2026-10-08-review-brief", {"features/F-001-document-review.md": page})
         path = self.root / f"knowledge/wiki/releases/{release_id}.md"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(release_record(release_id, **kwargs), encoding="utf-8")
+        path.write_text(release_record(release_id, attempt=attempt, **kwargs), encoding="utf-8")
         refresh_status_board(self.root)
 
     def open_incident(self, name: str = "2026-10-09-outage-report", **kwargs: str) -> dict:
@@ -302,10 +302,10 @@ class StatusBoardViewTests(IncidentCase):
 
     def test_the_release_reader_lists_the_records_by_number_with_the_outcome_of_each_app(self) -> None:
         # The rollback record names an earlier valid record, which the reader lists too.
-        self.plant_release("REL-010", outcome="released")
+        self.plant_release("REL-010", outcome="released", attempt=3)
         self.plant_release("REL-003", outcome="released")
         self.plant_release("REL-004", outcome="rolled-back", row_outcome="rolled-back")
-        self.plant_release("REL-005", outcome="failed")
+        self.plant_release("REL-005", outcome="failed", attempt=2)
         records = read_release_records(self.root / "knowledge" / "wiki")
         self.assertEqual(["REL-003", "REL-004", "REL-005", "REL-010"], [record.record_id for record in records])
         self.assertEqual(["released", "rolled-back", "failed", "released"], [record.outcome_for("backend") for record in records])

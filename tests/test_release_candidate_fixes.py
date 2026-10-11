@@ -318,10 +318,10 @@ class UnvalidatedReleaseRecordTests(unittest.TestCase):
         self.assertTrue(problems, "REL-999 is not a record that was delivered")
 
     def test_a_record_whose_target_is_invalid_is_invalid_too(self) -> None:
-        failed_page = record_page(2, [delivery("F-001", "backend", outcome="failed")])
+        failed_page = record_page(2, [delivery("F-001", "backend", outcome="failed", attempt=2)])
         untitled = parsed(f"{RELEASES}/REL-002.md", failed_page.replace("title: Release of F-001" + chr(10), ""))
         failed = parsed(f"{RELEASES}/REL-002.md", failed_page)
-        retry = parsed(f"{RELEASES}/REL-003.md", record_page(3, [delivery("F-001", "backend")], retry_of="REL-002"))
+        retry = parsed(f"{RELEASES}/REL-003.md", record_page(3, [delivery("F-001", "backend", attempt=3)], retry_of="REL-002"))
         self.assertEqual([self.good, failed, retry], read_valid([self.good, failed, retry]), "the chain is valid when every record in it is")
         self.assertEqual([self.good], read_valid([self.good, untitled, retry]), "the retry names a record that is not valid")
 
