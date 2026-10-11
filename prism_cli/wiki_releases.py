@@ -235,6 +235,7 @@ def parse_snapshots(body: str) -> tuple[list[ContractSnapshot], list[str]]:
         citation: str | None = None
         text_lines: list[str] | None = None
         fence: tuple[str, int] | None = None
+        closed = False
         for line in lines:
             if text_lines is None:
                 match = _SNAPSHOT_CONTRACT.match(line.strip())
@@ -248,10 +249,11 @@ def parse_snapshots(body: str) -> tuple[list[ContractSnapshot], list[str]]:
                 continue
             stripped = line.strip()
             if fence is not None and stripped and set(stripped) == {fence[0]} and len(stripped) >= fence[1]:
+                closed = True
                 break
             text_lines.append(line)
-        if citation is None or text_lines is None:
-            problems.append(f"The contract entry `### {name}` needs a `- Contract:` line and the contract page in a fenced block.")
+        if citation is None or text_lines is None or not closed:
+            problems.append(f"The contract entry `### {name}` needs a `- Contract:` line and the contract page in a closed fenced block.")
             continue
         snapshots.append(ContractSnapshot(heading.group("feature"), heading.group("app"), citation, "\n".join(text_lines)))
     return snapshots, problems

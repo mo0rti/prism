@@ -136,7 +136,9 @@ A bug closed as `duplicate` names the canonical bug in `duplicate-of`. The canon
 not the duplicate itself, is not closed and does not reach the duplicate through `duplicate-of`; it
 has the duplicate's feature (or the duplicate's feature is `none`) and lists the duplicate's apps;
 and it is not deferred when the duplicate is blocking. The rule is checked again whenever the
-canonical bug changes (`duplicate_target_invalid`).
+canonical bug changes (`duplicate_target_invalid`). While closed duplicates point to it, the canonical bug
+cannot close as promoted, wont-fix or duplicate. Resolve it through fixing, verification and release while
+preserving those links; a refused close names the duplicates.
 
 ## Promotion
 

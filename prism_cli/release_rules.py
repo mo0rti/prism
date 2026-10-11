@@ -8,6 +8,7 @@ or writes.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -409,26 +410,16 @@ def check_feature_release_rows(
     skipped = set(fix_apps)
     delivered = {row.app: clean_cell(row.artifact) for row in old.delivery}
     old_cells = {_cells(row) for row in old.release}
-    new_cells = {_cells(row) for row in new.release}
     seen = {(item.code, item.message) for item in old.problems}
     for item in new.problems:
         if item.code in {"release_row_invalid", "artifact_reference_invalid", "basis_invalid"} and item.subject is not None and (item.code, item.message) not in seen:
             if item.subject not in skipped and any(row.app == item.subject and _cells(row) not in old_cells for row in new.release):
                 problems.append(Problem(item.code, item.message, {"app": item.subject}))
     named: list[ReleasedApp] = []
-    for row in old.release:
-        if _cells(row) in new_cells or row.app in skipped:
-            continue
-        if row.authoritative and row.outcome in {"pending", "failed"} and row.app in active:
-            continue  # the row the release replaces
-        if row.authoritative:
-            problems.append(
-                Problem(
-                    "release_row_invalid",
-                    f"`release-done` never removes the authoritative Release row of `{row.app}` ({row.outcome}); a return or a reopen archives it.",
-                    {"app": row.app},
-                )
-            )
+    counts = Counter(row.app for row in new.release if row.authoritative)
+    for app, count in sorted(counts.items()):
+        if count > 1:
+            problems.append(Problem("release_row_invalid", f"`{app}` has more than one authoritative Release row.", {"app": app}))
     authoritative_apps: dict[str, int] = {}
     for row in new.release:
         if _cells(row) in old_cells or row.app in skipped:
@@ -512,6 +503,20 @@ def check_feature_release_rows(
             )
             continue
         named.append(ReleasedApp(row.app, row.target, row.version, row.attempt or 0, row.outcome, row.basis))
+    named_apps = {item.app for item in named}
+    remaining = Counter(_cells(row) for row in new.release)
+    for row in old.release:
+        if row.app in skipped:
+            continue
+        cells = _cells(row)
+        if remaining[cells]:
+            remaining[cells] -= 1
+            continue
+        if row.authoritative and row.outcome in {"pending", "failed"} and row.app in named_apps and counts[row.app] == 1:
+            continue
+        problems.append(
+            Problem("release_row_invalid", f"`release-done` preserves every row of an app it does not release; `{row.app}` loses a row without exactly one validated replacement. A return or reopen archives it.", {"app": row.app})
+        )
     return named, problems
 
 

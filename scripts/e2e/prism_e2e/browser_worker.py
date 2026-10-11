@@ -45,7 +45,7 @@ def main() -> int:
                 outcome = browser.perform(request["action"], request["feature_id"], Path(request["workspace"]), Path(request["screenshot_dir"]), request["approver"])
                 reply({"ok": True, "outcome": outcome})
             elif operation == "approve":
-                reply({"ok": True, "outcome": browser.approve(request["preview_id"], request["approver"])})
+                reply({"ok": True, "outcome": browser.approve(request["preview_id"], request["approver"], request["expected"])})
             elif operation == "screenshot":
                 reply({"ok": browser.failure_screenshot(Path(request["path"]))})
             elif operation == "recover":

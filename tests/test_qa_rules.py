@@ -20,6 +20,7 @@ from prism_cli.qa_rules import (
 )
 from prism_cli.wiki_bugs import BugPage
 from prism_cli.wiki_model import app_stages, parse_criteria, parse_evidence_history, parse_markdown_text, read_feature_evidence
+from tests.release_pages import delivery as release_delivery, record_page
 from tests.qa_support import bug_page
 from tests.test_lifecycle_model import ARTIFACT, TEXT_ONE, TEXT_TWO, body_of, delivery_row, qa_row, ref, release_row
 
@@ -155,13 +156,17 @@ class ReleaseRowTests(unittest.TestCase):
             wiki = Path(folder)
             self.assertEqual(1, release_attempt_for(wiki, "F-001", "backend"))
             (wiki / "releases").mkdir()
-            record = (
-                "---\nid: REL-001\ntitle: First\ndate: 2026-10-08\noperation: op\noutcome: released\nfeatures: [F-001]\nbugs: []\n---\n\n"
-                "## Summary\nFirst.\n\n## Delivery\n| Item | App | Target | Version | Attempt | Outcome | Evidence | Basis |\n|---|---|---|---|---|---|---|---|\n"
-                "| F-001 | backend | production | `build:backend#1` | release-1 | released | deployment: https://x.example | checked |\n"
+            first = record_page(1, [release_delivery("F-001", "backend")], title="First")
+            rollback = record_page(
+                2,
+                [release_delivery("F-001", "backend", outcome="rolled-back", attempt=None)],
+                title="Rollback of REL-001",
+                summary="The release is rolled back.",
+                rollback_of="REL-001",
+                rollback="The service was rolled back after errors.",
             )
-            (wiki / "releases" / "REL-001.md").write_text(record, encoding="utf-8")
-            (wiki / "releases" / "REL-002.md").write_text(record.replace("id: REL-001", "id: REL-002").replace("operation: op", "operation: op\nrollback-of: REL-001"), encoding="utf-8")
+            (wiki / "releases" / "REL-001.md").write_text(first, encoding="utf-8")
+            (wiki / "releases" / "REL-002.md").write_text(rollback, encoding="utf-8")
             self.assertEqual(2, release_attempt_for(wiki, "F-001", "backend"))
             self.assertEqual(1, release_attempt_for(wiki, "F-001", "worker"))
             self.assertEqual(1, release_attempt_for(wiki, "F-002", "backend"))

@@ -96,8 +96,8 @@ class BrowserClient:
             raise RuntimeError(reply.get("error", "the browser step failed"))
         return reply["outcome"]
 
-    def approve(self, preview_id: str, approver: str) -> dict[str, Any]:
-        reply = self._call({"op": "approve", "preview_id": preview_id, "approver": approver}, ACTION_TIMEOUT_S)
+    def approve(self, preview_id: str, approver: str, expected: dict[str, Any]) -> dict[str, Any]:
+        reply = self._call({"op": "approve", "preview_id": preview_id, "approver": approver, "expected": expected}, ACTION_TIMEOUT_S)
         if not reply.get("ok"):
             raise RuntimeError(reply.get("error", "the browser approval failed"))
         return reply["outcome"]

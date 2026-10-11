@@ -34,6 +34,32 @@ def guidance_files() -> list[Path]:
 
 
 class GatedApprovalGuidanceTests(unittest.TestCase):
+    def test_maintainer_skill_counts_match_the_packaged_asset(self) -> None:
+        import json
+
+        count = len(json.loads((ROOT / "prism_cli/assets/workflow-v1.json").read_text(encoding="utf-8"))["skills"])
+        for name in ("AGENTS.md", "CLAUDE.md"):
+            with self.subTest(file=name):
+                text = (ROOT / name).read_text(encoding="utf-8")
+                matched = re.search(r"the (\d+) canonical workflow skills", text, re.IGNORECASE)
+                self.assertIsNotNone(matched)
+                self.assertEqual(count, int(matched.group(1)))
+
+    def test_connected_handoff_writes_only_the_tracks_it_completes(self) -> None:
+        connected = " ".join((ROOT / "template/knowledge/wiki/CONNECTED.md").read_text(encoding="utf-8").split())
+        actions = " ".join((ROOT / "template/knowledge/wiki/ACTIONS.md").read_text(encoding="utf-8").split())
+        from prism_cli.wiki_transitions import WRITE_SCOPES
+
+        self.assertIn("design-tracks", WRITE_SCOPES["design-handoff"].frontmatter)
+        self.assertIn("the pages of each track it settles, requirement pages", actions)
+        self.assertIn("writes the contract only when it completes the technical track with `tech-lead` approval", connected)
+        self.assertIn("otherwise writes only the requirement pages and the front matter", connected)
+        self.assertNotIn("API surface declares API work also creates the new agreed API contract page", connected)
+
+    def test_shared_board_requires_board_approval_of_gated_agent_proposals(self) -> None:
+        shared = " ".join((ROOT / "docs/shared-board.md").read_text(encoding="utf-8").split())
+        self.assertNotIn("prepares it with `preview_skill` and the human's confirmation in the host", shared)
+
     def test_no_guidance_denies_the_proposal_queue(self) -> None:
         offenders = []
         for path in guidance_files():

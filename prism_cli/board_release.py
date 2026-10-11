@@ -36,6 +36,7 @@ from prism_cli.release_rules import (
     contract_cited_by,
     record_front_matter_problems,
     record_row_problems,
+    row_record_mismatch,
     redeploy_problems,
     release_bug_blocking,
     rollback_problems,
@@ -371,6 +372,9 @@ class ReleaseActionsMixin:
                     {"path": path, "retry_of": retry},
                 )
 
+        for relative in bug_paths:
+            bug = BugPage(parse_markdown_text(wiki / "bugs" / PurePosixPath(relative).name, supplied[relative]))
+            self._d4_bug_release_rows(bug, parse_release_rows(bug.page.body)[0], relative)
         bugs = self._bugs_with(supplied)  # type: ignore[attr-defined]
         bug_by_id = {bug.bug_id.casefold(): bug for bug in bugs}
         disk_bugs = {bug.bug_id.casefold(): bug for bug in self._disk_bugs()}  # type: ignore[attr-defined]
@@ -517,6 +521,14 @@ class ReleaseActionsMixin:
         """The Delivery rows of the record are exactly the rows the pages settle (`release_record_mismatch`)."""
 
         problems: list[Problem] = []
+        seen: set[tuple[str, str]] = set()
+        for row in rows:
+            key = (row.item, row.app)
+            if key in seen:
+                problems.append(Problem("release_row_invalid", f"`{path}` has more than one Delivery row for {row.item} and `{row.app}`.", {"path": path, "item": row.item, "app": row.app}))
+            seen.add(key)
+        if problems:
+            return problems
         actual = {(row.item, row.app): (row.target, row.version, row.attempt, row.outcome, row.basis) for row in rows}
         for key in sorted(set(expected) - set(actual)):
             problems.append(Problem("release_record_mismatch", f"`{path}`: the Delivery table has no row for {key[0]} and `{key[1]}`, which the proposal releases.", {"path": path, "item": key[0], "app": key[1]}))
@@ -658,6 +670,18 @@ class ReleaseActionsMixin:
 
     # -- bugs (B14) ------------------------------------------------------------------------------------------------------
 
+    @staticmethod
+    def _d4_bug_release_rows(bug: BugPage, rows: list[Any], relative: str) -> None:
+        for app in bug.apps:
+            authoritative = [row for row in rows if row.app == app and row.authoritative]
+            if len(authoritative) != 1:
+                raise bs.BoardError(
+                    "release_row_invalid",
+                    f"{bug.bug_id} needs exactly one authoritative Release row for `{app}`; the proposal has {len(authoritative)}.",
+                    409,
+                    {"path": relative, "app": app},
+                )
+
     def _d4_bug(
         self,
         relative: str,
@@ -696,6 +720,7 @@ class ReleaseActionsMixin:
         self._assert_only_body_sections_changed(old_body, new_body, {"Release"}, "lifecycle_body_scope", "Action `bug-release` may change only the `## Release` section of the bug page.")  # type: ignore[attr-defined]
         old_rows, _old_problems = parse_release_rows(old_body)
         new_rows, new_problems = parse_release_rows(new_body)
+        self._d4_bug_release_rows(new_bug, new_rows, relative)
         if new_problems:
             raise bs.BoardError(new_problems[0].code, f"The `## Release` table in `{relative}` is not valid: " + " ".join(item.message for item in new_problems[:4]), 409, {"path": relative})
         old_cells = {tuple(c.strip() for c in row.cells) for row in old_rows}
@@ -753,6 +778,16 @@ class ReleaseActionsMixin:
                 raise bs.BoardError("release_row_invalid", f"`bug-release` never removes the Release row of `{row.app}` in `{relative}` unless it replaces a failed attempt.", 409, {"path": relative, "app": row.app})
         if not applied:
             raise bs.BoardError("release_apps_required", f"`{relative}` changes no Release row: a bug in a release proposal ships for the apps whose row it writes.", 409, {"path": relative})
+        by_id = {record.record_id: record for record in records}
+        for row in new_rows:
+            if row in changed_rows:
+                continue
+            retained_record = by_id.get(record_id_of_cell(row.record) or "")
+            mismatch = "its record is not valid" if retained_record is None else row_record_mismatch(
+                item=bug_id, app=row.app, row_target=row.target, row_version=row.version, row_outcome=row.outcome, record=retained_record
+            )
+            if mismatch is not None:
+                raise bs.BoardError("release_row_invalid", f"The retained Release row of `{row.app}` in {bug_id} disagrees with its record: {mismatch}.", 409, {"path": relative, "app": row.app})
         # B14: `released` + `none` when every app of the bug has a released row; otherwise it stays `verified`.
         final = {row.app: row for row in new_rows if row.authoritative}
         all_released = all(final.get(app) is not None and final[app].outcome == "released" for app in new_bug.apps)

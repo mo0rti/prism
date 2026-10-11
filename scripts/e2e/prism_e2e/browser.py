@@ -8,6 +8,7 @@ the browser test suite; without it Playwright's bundled browser runs.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -15,6 +16,7 @@ import time
 from typing import Any
 
 from . import config
+from .approval import check_preview
 
 EXECUTABLE_VARIABLE = "PRISM_BROWSER_E2E_EXECUTABLE"
 STEP_TIMEOUT_MS = 20_000
@@ -155,7 +157,7 @@ class HumanBrowser:
 
     # -- one approval --------------------------------------------------------------------
 
-    def approve(self, preview_id: str, approver: str) -> dict[str, Any]:
+    def approve(self, preview_id: str, approver: str, expected: dict[str, Any]) -> dict[str, Any]:
         """Approve an agent's gated proposal in the Proposals dialog, signed in as the grant ``approver``, as a person would.
 
         The dialog lists the proposals the signed-in grant may decide. The row is found by the preview ID the agent reported
@@ -169,6 +171,11 @@ class HumanBrowser:
         page = self.page
         started = time.monotonic()
         self._sign_in_as(approver)
+        preview = page.evaluate(
+            "async id => (await (await fetch('/api/board/v1/previews/' + encodeURIComponent(id), {credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'}})).json())",
+            preview_id,
+        )
+        check_preview(preview, preview_id, expected)
         board.open_board()
         expect(board.freshness()).to_have_text("LIVE")
         expect(board.proposals_button()).to_be_visible()
@@ -184,10 +191,20 @@ class HumanBrowser:
         if index is None:
             raise AssertionError(f"The proposal {preview_id} is not in the proposals list of {approver}; the list holds {len(items)} proposal(s).")
         listed = items[index]
-        row = dialog.locator(f'[data-proposal="{index}"]')
+        row = dialog.locator(f'[data-preview-id={json.dumps(preview_id)}]')
         expect(row).to_contain_text(str(listed.get("action")))
         row.get_by_role("button", name="Review", exact=True).click()
         expect(dialog.get_by_role("heading", name=f"Approve {listed.get('action')}")).to_be_visible()
+        expect(dialog.locator("[data-reviewed-preview-id]")).to_have_attribute("data-reviewed-preview-id", preview_id)
+        # Re-read immediately before acknowledgement; the UI row and its detail carry this same immutable preview ID.
+        reviewed = page.evaluate(
+            "async id => (await (await fetch('/api/board/v1/previews/' + encodeURIComponent(id), {credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'}})).json())",
+            preview_id,
+        )
+        check_preview(reviewed, preview_id, expected)
+        expect(dialog.get_by_role("heading", name=re.compile(rf"^Exact file changes . {len(reviewed['writes'])}$"))).to_be_visible()
+        for write in reviewed["writes"]:
+            expect(dialog.locator("details.connected-write > summary").filter(has_text=write["path"])).to_be_visible()
         review_text = dialog.inner_text()
         approve_button = dialog.get_by_role("button", name="Approve and apply")
         expect(approve_button).to_be_disabled()
