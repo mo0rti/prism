@@ -29,11 +29,13 @@ from prism_cli.wiki_model import (
     app_stage,
     artifact_reference_problem,
     clean_cell,
+    has_section,
     normalize_feature_id,
     parse_evidence_history,
     parse_evidence_table,
     read_feature_evidence,
     read_markdown_pages,
+    section_ambiguities,
     section_text,
 )
 
@@ -495,8 +497,10 @@ def lint_bug_page(
                 add("bug-page-invalid", f"`{key}` belongs to a closed bug; this one is `{status}`.")
 
     body = bug.page.body
+    for message in section_ambiguities(body, BUG_EVIDENCE_SECTIONS):
+        add("ambiguous-lifecycle-section", message)
     for heading in BUG_SECTIONS:
-        if not re.search(rf"(?im)^##\s+{re.escape(heading)}\s*#*\s*$", body):
+        if not has_section(body, heading):
             add("bug-page-invalid", f"The page needs a `## {heading}` section.")
     if not section_text(body, "Summary").strip():
         add("bug-page-invalid", "The `## Summary` section is empty.")

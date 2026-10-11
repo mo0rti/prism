@@ -21,8 +21,9 @@ surface; do not replace them with optimistic manual state. Read linked feature
 pages only for titles, question text, or report detail that the status envelope
 does not carry, and do not recompute its counts or blockers.
 Retired apps arrive in `workspace.apps` with `status: retired`; list them as retired.
-Surface each `app-retired-in-scope`, `api-surface-without-api-app` and
-`release-evidence-required` diagnostic as a fact, with the feature it names.
+Surface each `app-retired-in-scope` and `api-surface-without-api-app` diagnostic, and each
+release-related diagnostic (`release-record-invalid`, `release-row-record-mismatch`,
+`stale-delivery-evidence`, `ambiguous-lifecycle-section`), as a fact, with the feature or page it names.
 
 ## Fallback path
 

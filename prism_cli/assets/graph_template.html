@@ -1370,6 +1370,10 @@ function connectedWritesHtml(writes) {
       <div class="connected-write-grid"><div><h5>Before</h5><pre>${escapeHtml(before)}</pre></div><div><h5>After</h5><pre>${escapeHtml(after)}</pre></div></div></details>`;
   }).join("");
 }
+function connectedMovesHtml(moves) {
+  if (!Array.isArray(moves) || !moves.length) return "";
+  return `<h5>Folder moves · ${moves.length}</h5>` + moves.map(move => `<div class="transition-fact"><div class="k">Folder move</div><div class="v">${escapeHtml(String(move && move.source || "unknown source"))} → ${escapeHtml(String(move && move.destination || "unknown destination"))}</div></div>`).join("");
+}
 function boardOperationRecordError(record, operationId) {
   if (!record || typeof record !== "object" || Array.isArray(record) || record.operation_id !== operationId) return "The service response did not match the requested operation.";
   if (!["pending", "conflict", "applied", "abandoned"].includes(record.state)) return "The service returned an unknown operation state.";
@@ -2708,7 +2712,7 @@ function renderBoardSession() {
 function openBoardProposals(returnFocus) {
   const wrap = document.getElementById("transition-dialog");
   if (!wrap) return;
-  const view = { items: [], loading: true, error: "", message: "", reviewing: null, acknowledged: false, busy: false };
+  const view = { items: [], loading: true, error: "", message: "", reviewing: null, acknowledged: false, busy: false, outcome: null };
   const close = () => {
     wrap.hidden = true; wrap.setAttribute("aria-hidden", "true"); wrap.innerHTML = "";
     if (returnFocus && returnFocus.focus) returnFocus.focus();
@@ -2733,16 +2737,33 @@ function openBoardProposals(returnFocus) {
       <button type="button" class="cancel-btn" data-proposal-decline="${index}"${view.busy ? " disabled" : ""}>Decline</button>
     </div>`).join("");
     const reviewing = view.reviewing;
+    // The approver reads the exact change before the acknowledgement can be given: the before and after text of every write
+    // (escaped, as the connected transition view shows it), the folder moves and the review obligations.
+    const written = reviewing && Array.isArray(reviewing.preview.writes) ? reviewing.preview.writes : [];
+    const changesShown = written.length > 0;
     const detail = reviewing ? `<div class="transition-section"><h4>Approve ${escapeHtml(boundedText(String(reviewing.preview.action || ""), 60))}</h4>
       ${(reviewing.preview.checks || []).map(transitionCheckHtml).join("")}
-      <p>Writes: ${escapeHtml((reviewing.preview.writes || []).map(write => write.path).join(", ") || "none")}</p>
-      <label><input type="checkbox" data-proposal-ack${view.acknowledged ? " checked" : ""}> I reviewed this change and approve it.</label>
-      <button type="button" class="copy-btn" data-proposal-apply${view.acknowledged && !view.busy && reviewing.preview.approval && reviewing.preview.approval.review_revision ? "" : " disabled"}>Approve and apply</button></div>` : "";
+      ${connectedReviewObligationsHtml(reviewing.preview.review_obligations)}
+      <h5>Exact file changes · ${written.length}</h5>${connectedWritesHtml(reviewing.preview.writes)}
+      ${connectedMovesHtml(reviewing.preview.moves)}
+      <label><input type="checkbox" data-proposal-ack${view.acknowledged ? " checked" : ""}${changesShown && !view.busy ? "" : " disabled"}> I reviewed this change and approve it.</label>
+      <button type="button" class="copy-btn" data-proposal-apply${view.acknowledged && changesShown && !view.busy && reviewing.preview.approval && reviewing.preview.approval.review_revision ? "" : " disabled"}>Approve and apply</button></div>` : "";
+    // An apply that did not end `applied` keeps its operation ID in view, with what was written and what conflicted.
+    const outcome = view.outcome;
+    const outcomeReceipt = outcome && outcome.receipt || {};
+    const outcomeConflicts = Array.isArray(outcomeReceipt.conflicts) ? outcomeReceipt.conflicts : [];
+    const outcomeWritten = Array.isArray(outcomeReceipt.applied_paths) ? outcomeReceipt.applied_paths : [];
+    const outcomeHtml = outcome ? `<div class="transition-section" data-proposal-outcome><h4>Operation ${escapeHtml(outcome.state)}</h4>
+      ${transitionFact("Operation ID", outcome.operationId)}
+      <div class="transition-check review" role="alert"><span class="check-status">${escapeHtml(outcome.state)}</span><span class="check-copy">${outcome.state === "conflict" ? "The proposal was not fully applied. Inspect the conflicts and the remaining writes, then recover the operation." : outcome.state === "pending" ? "The proposal is recorded but its writes are not all in place yet. Inspect the operation, then recover it." : "The result of the apply is not confirmed. Inspect the same operation before doing anything else."}</span></div>
+      ${outcomeWritten.map(path => `<div class="transition-check pass"><span class="check-status">written</span><span class="check-copy">${escapeHtml(boundedText(String(path), 240))}</span></div>`).join("")}
+      ${outcomeConflicts.map(item => `<div class="transition-check blocked"><span class="check-status">conflict</span><span class="check-copy">${escapeHtml(boundedText(String(item && item.path || "workspace"), 240))} · ${escapeHtml(boundedText(String(item && item.reason || "Current source differs from the recorded operation."), 320))}</span></div>`).join("")}
+      <button type="button" class="copy-btn" data-proposal-recover>Inspect and recover this operation</button></div>` : "";
     wrap.hidden = false; wrap.setAttribute("aria-hidden", "false");
     wrap.innerHTML = `<div class="transition-dialog" role="dialog" aria-modal="true" aria-labelledby="proposals-title" tabindex="-1">
       <div class="transition-head"><div class="eyebrow">CONNECTED BOARD · PROPOSALS</div><h2 id="proposals-title" tabindex="-1">Proposals waiting for approval</h2>
         <p>An agent proposes a gated change; a person who holds the required role approves or declines it here.</p></div>
-      <div class="transition-body">${view.loading ? "<p>Loading…</p>" : rows || "<p>No proposal is waiting for you.</p>"}${detail}
+      <div class="transition-body">${view.loading ? "<p>Loading…</p>" : rows || "<p>No proposal is waiting for you.</p>"}${outcomeHtml}${detail}
         ${view.error ? `<p role="alert">${escapeHtml(view.error)}</p>` : ""}${view.message ? `<p role="status">${escapeHtml(view.message)}</p>` : ""}</div>
       <div class="transition-actions"><button type="button" class="cancel-btn" data-proposals-close>Close</button></div></div>`;
     const dialog = wrap.querySelector(".transition-dialog");
@@ -2753,7 +2774,7 @@ function openBoardProposals(returnFocus) {
       if (!item) return;
       view.busy = true; view.error = ""; view.message = ""; render();
       boardJsonRequest("/api/board/v1/previews/" + encodeURIComponent(item.preview_id), "GET").then(preview => {
-        view.busy = false; view.reviewing = { item, preview }; view.acknowledged = false; render();
+        view.busy = false; view.reviewing = { item, preview, operationId: "" }; view.acknowledged = false; view.outcome = null; render();
       }).catch(error => { view.busy = false; view.error = error && error.message || "The proposal could not be loaded."; render(); });
     }));
     wrap.querySelectorAll("[data-proposal-decline]").forEach(button => button.addEventListener("click", () => {
@@ -2770,16 +2791,48 @@ function openBoardProposals(returnFocus) {
     const apply = wrap.querySelector("[data-proposal-apply]");
     if (apply) apply.addEventListener("click", () => {
       const current = view.reviewing;
-      if (!current || !view.acknowledged) return;
-      view.busy = true; view.error = ""; render();
+      if (!current || !view.acknowledged || !Array.isArray(current.preview.writes) || !current.preview.writes.length) return;
+      // One operation ID per approval: a retry after a lost response asks about the same operation.
+      if (!current.operationId) current.operationId = createBoardOperationId();
+      const operationId = current.operationId;
+      view.busy = true; view.error = ""; view.outcome = null; render();
       boardJsonRequest("/api/board/v1/apply", "POST", {
         preview_id: current.item.preview_id,
-        operation_id: createBoardOperationId(),
+        operation_id: operationId,
         review_revision: current.preview.approval.review_revision,
         semantic_review_acknowledged: true,
-      }).then(() => {
-        view.busy = false; view.message = "Proposal approved and applied."; view.reviewing = null; reload();
-      }).catch(error => { view.busy = false; view.error = error && error.message || "The proposal could not be applied."; render(); });
+      }).then(receipt => {
+        view.busy = false;
+        // Only an `applied` receipt is success. Any other state is shown as it is, and the operation stays open for recovery.
+        if (receipt && receipt.state === "applied") {
+          view.message = "Proposal approved and applied."; view.reviewing = null; reload();
+          return;
+        }
+        view.reviewing = null;
+        view.outcome = { operationId: String(receipt && receipt.operation_id || operationId), state: String(receipt && receipt.state || "outcome unknown"), receipt: receipt || {} };
+        refreshBoardDiscovery().catch(() => {});
+        reload();
+      }).catch(error => {
+        view.busy = false;
+        if (error && error.status === 401) { view.error = error.message || "The board session ended."; render(); return; }
+        if (!connectedApplyRejected(error)) {
+          // The answer is lost or unknown: the operation may exist. Keep its ID and offer its inspection and recovery.
+          view.reviewing = null;
+          view.outcome = { operationId, state: "outcome unknown", receipt: {} };
+        }
+        view.error = error && error.message || "The proposal could not be applied.";
+        render();
+      });
+    });
+    const recover = wrap.querySelector("[data-proposal-recover]");
+    if (recover) recover.addEventListener("click", () => {
+      const pending = view.outcome;
+      if (!pending) return;
+      refreshBoardDiscovery().catch(() => {}).then(() => {
+        close();
+        openBoardOperations(returnFocus);
+        inspectBoardOperation(state.transitionPreview, pending.operationId);
+      });
     });
     const heading = wrap.querySelector("#proposals-title");
     if (heading && heading.focus) heading.focus();

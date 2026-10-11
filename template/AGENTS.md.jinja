@@ -34,10 +34,11 @@ See `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md` and `knowledge/wik
 
 Read `knowledge/wiki/CONNECTED.md` when using a Prism MCP connection. Discover the
 workspace's pinned standard skills and retrieve their complete instructions through
-that connection. Keep required semantic reviews and confirmations in this CLI;
-there is no second board approval queue. Check `write_supported` and `limitations`;
-preview supported writes through the shared service, confirm and apply, then check
-its durable receipt. When the service rejects a proposal, retry only with exactly the
+that connection. Keep required semantic reviews and confirmations of an ungated skill in this CLI and apply
+its own preview; a gated lifecycle action is proposed, not applied: stop after the preview, tell the
+human its preview ID, and let a human who holds the action's roles approve it in the board's
+Proposals list. Check `write_supported` and `limitations`; preview supported writes through the
+shared service, then check the durable receipt. When the service rejects a proposal, retry only with exactly the
 fix the error names, at most 2 more times, and never widen the change; then stop and
 report. Stop and report at once when a connected write is unavailable, denied or its
 error names no fix. Custom local skills keep their direct-file

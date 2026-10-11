@@ -1,6 +1,6 @@
 # Prism Core and Application Template
 
-Prism's core is the workflow and board shared by humans and agents. Application generation is an optional capability. Follow `docs/prism-core-workflow-plan.md` for the scope, contracts and deferred work. Test lifecycle writes, workflow adoption and the shared HTTP/MCP service only in disposable neutral workspaces, never in this maintainer repository. Connected agents use pinned standard skills through one provider-neutral service; custom skills retain the direct-file path, with no extra board approval queue.
+Prism's core is the workflow and board shared by humans and agents. Application generation is an optional capability. Follow `docs/prism-core-workflow-plan.md` for the scope, contracts and deferred work. Test lifecycle writes, workflow adoption and the shared HTTP/MCP service only in disposable neutral workspaces, never in this maintainer repository. Connected agents use pinned standard skills through one provider-neutral service. A gated lifecycle action is approved by a role-holding human in the board; custom skills keep the direct-file path.
 
 Copier template that scaffolds workspaces from an app list: Backend (Spring Boot 4, a stack pack), web apps (Next.js, a stack pack, one per audience), Android apps (Kotlin/Compose, a stack pack), iOS apps (Swift/SwiftUI, a stack pack) and AI agent services (Python/FastAPI, a stack pack).
 

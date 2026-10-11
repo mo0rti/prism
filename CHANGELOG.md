@@ -47,6 +47,15 @@ A feature runs the whole software lifecycle: business requirement, specification
 - **The limits are documented.** A grant identifies a registered token holder; a role records what whoever ran `prism board grant` assigned; session-only approval keeps the approval out of tool calls and does not protect a leaked human token; local filesystem access can mint a grant; `qa-separate-from-dev` separates grants. [SECURITY.md](SECURITY.md#roles-and-gated-approval) states each.
 - **Board state is exported and reset in one safe path.** `prism board audit export` never overwrites a file and omits token hashes; `prism board state reset` exports first and refuses while an operation is unresolved, because deleting `.prism/state/` loses recovery and separation provenance.
 
+### Security
+
+- **One section parser.** The write-scope checks and the evidence readers find a `##` heading the same way: a line that starts with `## ` in column zero, outside fenced code. An indented or repeated `## Delivery evidence`, `## QA verification`, `## Release` or `## Evidence history` heading is refused at preview (`ambiguous_lifecycle_section`) and reported by `wiki lint` (`ambiguous-lifecycle-section`), and a question skill (`ask`, the clarify skills) cannot change those sections (`lifecycle_evidence_changed`). A proposal can no longer hide evidence from the scope check that a reader would take as authoritative.
+- **Separation holds through repairs.** With `qa-separate-from-dev`, the grants excluded from verifying evidence include the approver and every recoverer of each `operation-repair` linked to the producing operation, a repair of a repair included.
+- **A repair binds the files it adopts.** The repair preview records the current digest of every file the abandoned operation already wrote. An edit of one after the review stops the approval (`stale_approval_review`, `stale_preview`), and a recovery of the repair stops with `recovery_source_changed`. Recovery rechecks the lint of the pages the repair leaves behind.
+- **Release records are validated before they carry authority.** A page in `releases/` counts for the current delivery, the next number, a retry or a rollback only when it is a valid record: file name and ID agree, no duplicate ID, required front matter, parseable rows, and a valid `retry-of` or `rollback-of` chain. An invalid page blocks `release-done` (`release_record_invalid`, naming the file) until it is fixed, and `wiki lint` names it.
+- **The approval view shows what is approved.** The Proposals dialog renders the before and after text of every write, the folder moves and the review obligations, escaped, before the acknowledgement can be given, and reports success only for an `applied` receipt. A conflict keeps the operation ID, the completed writes and the recovery controls in view.
+- **Evidence history is dated by the preview.** The heading of an archiving write is checked against the day the operation was previewed, stored with it, on apply, recovery and repair. A recovery on a later day no longer fails on the date.
+
 ## [0.6.1]
 
 Release date: 2026-10-08

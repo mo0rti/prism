@@ -24,6 +24,7 @@ from prism_cli.wiki_model import (
     read_feature_pages,
     read_app_requirement_pages,
     read_wiki_pages,
+    section_text,
     status_rank,
     within_wiki_read_scope,
 )
@@ -93,7 +94,6 @@ _PATH_ID_DIRECTORIES = {
     "advisory-review": ("advisory", "review"),
 }
 
-RELATED_SECTION_PATTERN = re.compile(r"^##\s+related features\s*$", re.IGNORECASE)
 FEATURE_ID_PATTERN = re.compile(r"\bF-\d+\b")
 
 
@@ -363,7 +363,7 @@ def _collect_edges(
         for app_id in feature.apps:
             if f"app:{app_id}" in nodes:
                 add(feature_id, f"app:{app_id}", "targets", "frontmatter-apps")
-        related_section = _section_text(feature.page.body, RELATED_SECTION_PATTERN)
+        related_section = section_text(feature.page.body, "Related features")
         for match in FEATURE_ID_PATTERN.findall(related_section):
             if match == feature_id:
                 continue
@@ -439,22 +439,6 @@ def _is_general_page(target: Path, wiki_root: Path) -> bool:
     except ValueError:
         return False
     return general_page_kind(relative) is not None and target.is_file()
-
-
-def _section_text(body: str, heading_pattern: re.Pattern[str]) -> str:
-    lines = body.splitlines()
-    collected: list[str] = []
-    in_section = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            if in_section:
-                break
-            in_section = bool(heading_pattern.match(stripped))
-            continue
-        if in_section:
-            collected.append(line)
-    return "\n".join(collected)
 
 
 # ---------------------------------------------------------------------------

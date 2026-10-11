@@ -743,25 +743,119 @@ def api_surface_declared(section: str) -> bool:
     return bool(normalized) and normalized not in _NO_API_SURFACE
 
 
-def section_text(body: str, heading: str) -> str:
-    """Return the body of a level-two markdown section, or an empty string."""
+_SECTION_FENCE_OPEN = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})(?P<info>[^`]*)$")
+_SECTION_HEADING = re.compile(r"^##[ \t]+(?P<name>.+?)[ \t]*#*[ \t]*$")
+_INDENTED_SECTION_HEADING = re.compile(r"^[ \t]+##[ \t]+(?P<name>.+?)[ \t]*#*[ \t]*$")
 
-    wanted = heading.strip().lower()
+
+@dataclass(frozen=True)
+class MarkdownSection:
+    """One level-two section of a page body, as the line range `lines[start:end]` of `body.splitlines(keepends=True)`.
+
+    `heading_line` is the heading itself; the section's text is the lines after it up to the next heading.
+    """
+
+    name: str
+    heading_line: int
+    start: int
+    end: int
+
+
+def _scan_sections(body: str) -> tuple[list[str], list[MarkdownSection], list[tuple[int, str]]]:
+    """The lines of a body, its level-two sections and its indented `##` lines (the third is not a heading).
+
+    The one parser every reader and every write-scope check of a page uses: a heading is a line that starts with `## ` in
+    column zero and is outside fenced code. An indented `##` line and a `##` line in a fence are ordinary text of the
+    section they sit in, so no reader can see a section the others do not.
+    """
+
     lines = body.splitlines(keepends=True)
-    start: int | None = None
-    end = len(lines)
-    for index, line in enumerate(lines):
-        match = re.match(r"^##\s+(.+?)\s*#*\s*$", line.strip())
-        if not match:
-            continue
-        current = match.group(1).strip().lower()
-        if start is None:
-            if current == wanted:
-                start = index + 1
+    headings: list[tuple[int, str]] = []
+    indented: list[tuple[int, str]] = []
+    fence: tuple[str, int] | None = None
+    for index, raw in enumerate(lines):
+        line = raw.rstrip("\r\n")
+        if fence is None:
+            opener = _SECTION_FENCE_OPEN.match(line)
+            if opener is not None:
+                fence = (opener.group("fence")[0], len(opener.group("fence")))
+                continue
+            match = _SECTION_HEADING.match(line)
+            if match is not None:
+                headings.append((index, match.group("name").strip()))
+                continue
+            match = _INDENTED_SECTION_HEADING.match(line)
+            if match is not None:
+                indented.append((index, match.group("name").strip()))
         else:
-            end = index
-            break
-    return "".join(lines[start:end]) if start is not None else ""
+            stripped = line.strip()
+            if stripped and set(stripped) == {fence[0]} and len(stripped) >= fence[1]:
+                fence = None
+    sections = [
+        MarkdownSection(name, index, index + 1, headings[position + 1][0] if position + 1 < len(headings) else len(lines))
+        for position, (index, name) in enumerate(headings)
+    ]
+    return lines, sections, indented
+
+
+def markdown_sections(body: str) -> list[MarkdownSection]:
+    """The level-two sections of a body, in order (`_scan_sections` says what a heading is)."""
+
+    return _scan_sections(body)[1]
+
+
+def section_text(body: str, heading: str) -> str:
+    """Return the body of the first level-two markdown section named `heading`, or an empty string."""
+
+    wanted = heading.strip().casefold()
+    lines, sections, _indented = _scan_sections(body)
+    for section in sections:
+        if section.name.casefold() == wanted:
+            return "".join(lines[section.start:section.end])
+    return ""
+
+
+def has_section(body: str, heading: str) -> bool:
+    """Whether the body has a `## heading` section, empty or not."""
+
+    wanted = heading.strip().casefold()
+    return any(section.name.casefold() == wanted for section in markdown_sections(body))
+
+
+def body_without_sections(body: str, headings: Iterable[str]) -> str:
+    """The body with every section named in `headings` removed, heading line included; text above the first heading stays."""
+
+    wanted = {heading.strip().casefold() for heading in headings}
+    lines, sections, _indented = _scan_sections(body)
+    dropped: set[int] = set()
+    for section in sections:
+        if section.name.casefold() in wanted:
+            dropped.update(range(section.heading_line, section.end))
+    return "".join(line for index, line in enumerate(lines) if index not in dropped)
+
+
+def section_ambiguities(body: str, headings: Iterable[str]) -> list[str]:
+    """Why a body does not name each of `headings` at most once as a level-two section, one message per fault.
+
+    A section that appears twice leaves two texts for one name, and an indented `## name` line is a heading to a reader
+    that trims lines and plain text to this parser. Either way a reader could see evidence the write-scope check does
+    not, so a page with either fault is refused at preview and reported by lint.
+    """
+
+    wanted = {heading.strip().casefold(): heading for heading in headings}
+    _lines, sections, indented = _scan_sections(body)
+    counts: dict[str, int] = {}
+    for section in sections:
+        key = section.name.casefold()
+        if key in wanted:
+            counts[key] = counts.get(key, 0) + 1
+    messages = [f"`## {wanted[key]}` appears {count} times; a lifecycle section appears once." for key, count in counts.items() if count > 1]
+    for index, name in indented:
+        if name.casefold() in wanted:
+            messages.append(
+                f"Line {index + 1} is an indented `## {wanted[name.casefold()]}` heading; a lifecycle section starts in column zero or is not written."
+            )
+    return messages
 
 
 def parse_revalidation(value: Any) -> tuple[list[str], list[str]]:
@@ -2538,19 +2632,7 @@ def parse_status_board_rows(board_path: Path) -> tuple[list[StatusBoardRow], lis
 
 
 def parse_open_question_rows(body: str) -> tuple[list[dict[str, str]], list[str]]:
-    lines = body.splitlines()
-    section_lines: list[str] = []
-    in_section = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            if in_section:
-                break
-            in_section = stripped.lower() == "## open questions"
-            continue
-        if in_section:
-            section_lines.append(line)
-
+    section_lines = section_text(body, "Open questions").splitlines()
     if not section_lines:
         return [], []
 

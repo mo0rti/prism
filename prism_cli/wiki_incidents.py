@@ -18,6 +18,8 @@ from typing import Iterable
 from prism_cli.wiki_bugs import BUG_ID_PATTERN, BUG_SEVERITIES, FEATURE_ID_PATTERN
 from prism_cli.wiki_model import (
     MarkdownPage,
+    has_section,
+    markdown_sections,
     normalize_feature_id,
     parse_iso_date,
     read_markdown_pages,
@@ -78,25 +80,13 @@ def _bad_date(text: str) -> bool:
     return False
 
 
-_HEADING = re.compile(r"^##\s+(.+?)\s*#*\s*$")
-_FENCE = re.compile(r"^\s*(```|~~~)")
-
-
 def section_layout_problem(body: str) -> str | None:
     """Why the body is not the six sections of `incidents/_FORMAT.md` in order with nothing above them, or ``None``."""
 
-    headings: list[str] = []
-    preamble: list[str] = []
-    in_fence = False
-    for raw in body.splitlines():
-        if _FENCE.match(raw):
-            in_fence = not in_fence
-        match = None if in_fence else _HEADING.match(raw.strip())
-        if match is not None:
-            headings.append(match.group(1).strip())
-        elif not headings:
-            preamble.append(raw)
-    if _COMMENT.sub("", "\n".join(preamble)).strip():
+    sections = markdown_sections(body)
+    headings = [section.name for section in sections]
+    preamble = body.splitlines(keepends=True)[: sections[0].heading_line] if sections else [body]
+    if _COMMENT.sub("", "".join(preamble)).strip():
         return "the page has text above `## Impact`; an incident page holds only its six sections"
     if headings != list(INCIDENT_SECTIONS):
         listed = ", ".join(f"`## {heading}`" for heading in INCIDENT_SECTIONS)
@@ -292,15 +282,15 @@ def lint_incident_page(
     layout = section_layout_problem(body)
     if layout is not None:
         add(f"The page is malformed: {layout}.")
-    if section_is_blank(body, "Impact") and re.search(r"(?im)^##\s+Impact\s*#*\s*$", body):
+    if section_is_blank(body, "Impact") and has_section(body, "Impact"):
         add("`## Impact` is empty; say who or what the incident affected and how badly.")
     lines, malformed_lines = timeline_items(body)
-    if re.search(r"(?im)^##\s+Timeline\s*#*\s*$", body):
+    if has_section(body, "Timeline"):
         if not lines:
             add("`## Timeline` has no entries; each is `- YYYY-MM-DD[ HH:MM]: what happened`.")
         for line in malformed_lines:
             add(f"The Timeline line `{line[:80]}` is not `- YYYY-MM-DD[ HH:MM]: what happened`.")
-    if re.search(r"(?im)^##\s+Cause\s*#*\s*$", body) and section_is_blank(body, "Cause"):
+    if has_section(body, "Cause") and section_is_blank(body, "Cause"):
         add("`## Cause` is empty; say what caused the incident, or start with `**Unknown:**` while the cause is not known.")
     if status == "mitigated" and section_is_blank(body, "Mitigation"):
         add("A `mitigated` incident needs its `## Mitigation` filled in.")

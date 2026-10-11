@@ -158,7 +158,7 @@ class ReleaseRowTests(unittest.TestCase):
             record = (
                 "---\nid: REL-001\ntitle: First\ndate: 2026-10-08\noperation: op\noutcome: released\nfeatures: [F-001]\nbugs: []\n---\n\n"
                 "## Summary\nFirst.\n\n## Delivery\n| Item | App | Target | Version | Attempt | Outcome | Evidence | Basis |\n|---|---|---|---|---|---|---|---|\n"
-                "| F-001 | backend | production | `build:backend#1` | release-1 | released | [r](https://x.example) | checked |\n"
+                "| F-001 | backend | production | `build:backend#1` | release-1 | released | deployment: https://x.example | checked |\n"
             )
             (wiki / "releases" / "REL-001.md").write_text(record, encoding="utf-8")
             (wiki / "releases" / "REL-002.md").write_text(record.replace("id: REL-001", "id: REL-002").replace("operation: op", "operation: op\nrollback-of: REL-001"), encoding="utf-8")

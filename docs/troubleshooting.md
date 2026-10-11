@@ -287,6 +287,11 @@ A proposal in the list that is marked **stale** was made before a source changed
 
 The codes below are the checks the board runs on a lifecycle proposal. Each rejection writes nothing. The agent may correct what the message names and preview again, at most 2 more times; a rule that needs your decision is yours.
 
+| Code (status) | Cause | Fix |
+| --- | --- | --- |
+| `ambiguous_lifecycle_section` (409) | A feature proposal repeats a lifecycle heading or indents it, making the evidence sections ambiguous. | Keep exactly one `## Delivery evidence`, `## QA verification`, `## Release` and `## Evidence history` heading, each in column zero, then preview again. |
+| `lifecycle_evidence_changed` (409) | An intake proposal creates a feature with evidence rows, or a question skill changes a delivery, QA, release or Evidence history section. | Create intake features with empty evidence tables. For a question skill, restore the evidence sections exactly as `read_workspace` returned them; use the lifecycle action to record or archive evidence. |
+
 ### Intake and specification
 
 | Code (status) | Cause | Fix |

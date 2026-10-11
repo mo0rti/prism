@@ -708,6 +708,8 @@ reports the rejection. Use direct-file instructions only after an explicit human
 choice to use that separate compatibility workflow. Custom project skills remain
 on the direct-file workflow.
 
-The connected service does not launch an agent or create a second approval queue.
-The active host must obtain the same explicit human confirmation required by
-this schema, `LIFECYCLE.md` and the selected skill before applying the reviewed preview.
+The connected service does not launch an agent. An ungated skill is confirmed in the active host,
+which obtains the explicit human confirmation required by this schema, `LIFECYCLE.md` and the
+selected skill before the agent applies its reviewed preview. A gated lifecycle action is proposed by
+the agent and approved by a human who holds the action's roles, in the board's Proposals list in a
+browser session; the agent never applies a gated preview (`approval_required`).

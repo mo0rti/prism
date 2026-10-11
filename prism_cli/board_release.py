@@ -67,6 +67,7 @@ from prism_cli.wiki_releases import (
     RELEASE_FILE_PATTERN,
     ReleaseRecord,
     format_record_id,
+    invalid_release_records,
     next_release_number,
     parse_record_rows,
     parse_snapshots,
@@ -112,6 +113,33 @@ class ReleaseActionsMixin:
     def _disk_records(self) -> list[ReleaseRecord]:
         return read_release_records(self._wiki_path())  # type: ignore[attr-defined]
 
+    def _assert_release_records_valid(self) -> None:
+        """Every page of `releases/` is a valid record, or the release action stays blocked until the named page is fixed.
+
+        A page that is not a valid record carries no authority (`read_release_records` leaves it out), and leaving it out
+        silently would let a release number or a rollback target be chosen as if it were not there.
+        """
+
+        invalid = invalid_release_records(self._wiki_path())  # type: ignore[attr-defined]
+        if not invalid:
+            return
+        root = self.root  # type: ignore[attr-defined]
+        shown: list[str] = []
+        for page_path in invalid:
+            try:
+                shown.append(page_path.relative_to(root).as_posix())
+            except ValueError:
+                shown.append(page_path.as_posix())
+        first = shown[0]
+        problems = next(iter(invalid.values()))
+        more = f" ({len(shown) - 1} more invalid: {', '.join(f'`{item}`' for item in shown[1:4])})" if len(shown) > 1 else ""
+        raise bs.BoardError(
+            "release_record_invalid",
+            f"`{first}` is not a valid release record, so it carries no delivery, numbering or rollback authority and release actions stay blocked until it is fixed or removed: {problems[0]}{more}",
+            409,
+            {"path": first, "paths": shown[:20], "problems": problems[:5]},
+        )
+
     def _d4_error(self, problem: Problem, path: str | None = None) -> "bs.BoardError":
         return bs.BoardError(problem.code, problem.message, 409, {**({"path": path} if path else {}), **dict(problem.details)})
 
@@ -120,6 +148,7 @@ class ReleaseActionsMixin:
     def _d4_record(self, supplied: Mapping[str, str], before: Mapping[str, str | None]) -> dict[str, Any]:
         """The one new record a release proposal writes: its page checked, its number checked against the records on disk."""
 
+        self._assert_release_records_valid()
         paths = [path for path in supplied if is_release_path(path)]
         if len(paths) != 1:
             raise bs.BoardError(
@@ -945,7 +974,7 @@ class ReleaseActionsMixin:
         if len(history) <= len(pages["old_history"]):
             raise bs.BoardError(
                 "history_entry_required",
-                f"{action} appends one Evidence history entry headed `### {date.today().isoformat()} - {action}` that archives the evidence it removes.",
+                f"{action} appends one Evidence history entry headed `### {self._history_day()} - {action}` that archives the evidence it removes.",
                 409,
                 {"path": path, "action": action},
             )
