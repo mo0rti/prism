@@ -82,17 +82,45 @@ class FixtureSetResolutionTests(unittest.TestCase):
 
 
 class TableTests(unittest.TestCase):
-    def test_the_fourteen_lifecycle_steps(self):
+    def test_the_lifecycle_steps(self):
         self.assertEqual(
             config.STEP_IDS,
-            ("po-intake", "ask", "po-clarify", "po-specify", "po-handoff", "design-start", "design-clarify",
-             "design-handoff", "dev-clarify", "dev-start", "dev-done", "qa-pass", "release-done", "feature-reopen"),
+            ("po-intake", "ask", "po-clarify", "po-specify", "po-handoff", "design-start", "design-clarify", "tech-design-done",
+             "design-handoff", "dev-clarify", "dev-start", "dev-done", "qa-verify", "qa-fail", "bug-start", "bug-fixed",
+             "dev-redeliver", "bug-verify", "qa-pass", "release-done", "release-retry", "ingest-incident", "feature-reopen"),
         )
 
     def test_only_the_three_direct_human_actions_run_in_the_browser(self):
         human = [step.id for step in config.STEPS if step.is_human]
         self.assertEqual(human, ["po-handoff", "design-start", "dev-start"])
         self.assertEqual(set(config.HUMAN_ACTION_LABELS), set(human))
+
+    def test_the_ungated_agent_steps_are_the_ones_whose_skill_needs_no_approval(self):
+        ungated = [step.id for step in config.STEPS if step.kind == "agent" and not step.gated]
+        self.assertEqual(ungated, ["po-intake", "ask", "po-clarify", "design-clarify", "dev-clarify", "ingest-incident"])
+        self.assertTrue(all(not step.roles and step.approver is None for step in config.STEPS if step.id in ungated))
+
+    def test_every_gated_and_human_step_names_the_roles_of_exactly_one_human_grant(self):
+        roles = {step.id: step.roles for step in config.STEPS if step.roles}
+        self.assertEqual(
+            roles,
+            {
+                "po-specify": ("po",), "po-handoff": ("po",), "design-start": ("tech-lead",), "tech-design-done": ("tech-lead",),
+                "design-handoff": ("tech-lead",), "dev-start": ("dev",), "dev-done": ("dev",), "qa-verify": ("qa",), "qa-fail": ("qa",),
+                "bug-start": ("dev",), "bug-fixed": ("dev",), "dev-redeliver": ("dev",), "bug-verify": ("qa",), "qa-pass": ("qa",),
+                "release-done": ("release",), "release-retry": ("release",), "feature-reopen": ("dev",),
+            },
+        )
+        for step in config.STEPS:
+            if step.roles:
+                self.assertEqual(step.approver, "human-" + "+".join(step.roles))
+                self.assertIn(step.roles, config.APPROVER_ROLE_SETS)
+        self.assertEqual(config.APPROVER_ROLE_SETS, (("dev",), ("po",), ("qa",), ("release",), ("tech-lead",)))
+        self.assertEqual(config.OBSERVER_ROLES, ("po",))
+
+    def test_every_role_is_one_the_board_knows(self):
+        known = {"po", "designer", "tech-lead", "dev", "qa", "release"}
+        self.assertTrue({role for roles in config.APPROVER_ROLE_SETS for role in roles} <= known)
 
     def test_agent_steps_alternate_between_the_hosts(self):
         hosts = [step.host for step in config.STEPS if not step.is_human]
@@ -142,7 +170,19 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(config.plan_actions(["ask"]), [Action("seed", "po-intake"), Action("run", "ask")])
 
     def test_the_last_step_seeds_the_one_before_it(self):
+        self.assertEqual(config.plan_actions(["feature-reopen"]), [Action("seed", "ingest-incident"), Action("run", "feature-reopen")])
         self.assertEqual(config.plan_actions(["dev-done"]), [Action("seed", "dev-start"), Action("run", "dev-done")])
+
+    def test_the_bug_and_release_steps_seed_the_state_their_predecessor_leaves(self):
+        self.assertEqual(
+            config.plan_actions(["bug-fixed", "bug-verify", "release-retry"]),
+            [
+                Action("seed", "bug-start"), Action("run", "bug-fixed"),
+                Action("seed", "dev-redeliver"), Action("run", "bug-verify"),
+                Action("seed", "release-done"), Action("run", "release-retry"),
+            ],
+        )
+        self.assertEqual(config.plan_actions(["release-done", "release-retry"]), [Action("seed", "qa-pass"), Action("run", "release-done"), Action("run", "release-retry")])
 
 
 if __name__ == "__main__":

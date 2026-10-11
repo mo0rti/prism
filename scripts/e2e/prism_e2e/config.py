@@ -68,31 +68,65 @@ class Step:
     status: str  # feature status expected after the step
     owner: str  # feature owner expected after the step
     summary: str  # what the apply prompt calls the preview
+    # The roles of the one human grant that approves a gated agent step or applies a direct human step, and no others.
+    # An empty tuple is an ungated agent step: the agent itself applies its preview.
+    roles: tuple[str, ...] = ()
 
     @property
     def is_human(self) -> bool:
         return self.kind == "human"
 
+    @property
+    def gated(self) -> bool:
+        """An agent step whose preview a human approves in the board; the agent host never applies it."""
 
-# The canonical order. Agent steps alternate between the two hosts.
+        return self.kind == "agent" and bool(self.roles)
+
+    @property
+    def approver(self) -> str | None:
+        """The label of the human grant that holds exactly this step's roles, or ``None`` for an ungated step."""
+
+        return approver_label(self.roles) if self.roles else None
+
+
+def approver_label(roles: tuple[str, ...]) -> str:
+    return "human-" + "+".join(roles)
+
+
+# The canonical order. Agent steps alternate between the two hosts. The feature is backend-only, so its design owner
+# is the tech lead: the design actions and the handoff need `tech-lead`.
 STEPS: tuple[Step, ...] = (
     Step("po-intake", "agent", "claude", "raw", "po", "the po-intake of the pending 2026-09-30-review-summary folder"),
     Step("ask", "agent", "codex", "raw", "po", "the ask skill adding one question to F-001"),
     Step("po-clarify", "agent", "claude", "raw", "po", "the po-clarify answers for F-001"),
-    Step("po-specify", "agent", "codex", "specified", "po", "the po-specify of F-001"),
-    Step("po-handoff", "human", None, "ready-for-design", "tech-lead", "the product owner's handoff of F-001"),
-    Step("design-start", "human", None, "in-design", "tech-lead", "the design start of F-001"),
+    Step("po-specify", "agent", "codex", "specified", "po", "the po-specify of F-001", ("po",)),
+    Step("po-handoff", "human", None, "ready-for-design", "tech-lead", "the product owner's handoff of F-001", ("po",)),
+    Step("design-start", "human", None, "in-design", "tech-lead", "the design start of F-001", ("tech-lead",)),
     Step("design-clarify", "agent", "claude", "in-design", "tech-lead", "the design-clarify answer for F-001"),
-    Step("design-handoff", "agent", "codex", "ready-for-dev", "dev", "the design handoff of F-001"),
-    Step("dev-clarify", "agent", "claude", "ready-for-dev", "dev", "the dev-clarify answer for F-001"),
-    Step("dev-start", "human", None, "in-dev", "dev", "the development start of F-001"),
-    Step("dev-done", "agent", "codex", "ready-for-qa", "qa", "the dev-done of F-001 with the delivery evidence in the proposal"),
-    Step("qa-pass", "agent", "claude", "ready-for-release", "release", "the qa-pass of F-001 with its QA row and its pending Release row"),
-    Step("release-done", "agent", "codex", "released", "none", "the release-done of F-001 with its release record"),
-    Step("feature-reopen", "agent", "claude", "in-dev", "dev", "the reopen of F-001 on the in-dev route"),
+    Step("tech-design-done", "agent", "codex", "in-design", "tech-lead", "the tech-design-done of F-001 with its technical design page", ("tech-lead",)),
+    Step("design-handoff", "agent", "claude", "ready-for-dev", "dev", "the design handoff of F-001", ("tech-lead",)),
+    Step("dev-clarify", "agent", "codex", "ready-for-dev", "dev", "the dev-clarify answer for F-001"),
+    Step("dev-start", "human", None, "in-dev", "dev", "the development start of F-001", ("dev",)),
+    Step("dev-done", "agent", "claude", "ready-for-qa", "qa", "the dev-done of F-001 with the delivery evidence in the proposal", ("dev",)),
+    Step("qa-verify", "agent", "codex", "in-qa", "qa", "the qa-verify of F-001 with its QA rows, one of them failing, and the bug found", ("qa",)),
+    Step("qa-fail", "agent", "claude", "in-dev", "dev", "the qa-fail of F-001 that sends the backend app back to development", ("qa",)),
+    Step("bug-start", "agent", "codex", "in-dev", "dev", "the start of the fix of BUG-001", ("dev",)),
+    Step("bug-fixed", "agent", "claude", "in-dev", "dev", "BUG-001 marked fixed with its Fix row", ("dev",)),
+    Step("dev-redeliver", "agent", "codex", "ready-for-qa", "qa", "the second dev-done of F-001 with the delivery evidence of the fix", ("dev",)),
+    Step("bug-verify", "agent", "claude", "ready-for-qa", "qa", "BUG-001 verified with its Verification row", ("qa",)),
+    Step("qa-pass", "agent", "codex", "ready-for-release", "release", "the qa-pass of F-001 with its QA rows and its pending Release row", ("qa",)),
+    Step("release-done", "agent", "claude", "ready-for-release", "release", "the release-done of F-001 and BUG-001 whose deployment failed, with its release record", ("release",)),
+    Step("release-retry", "agent", "codex", "released", "none", "the retry of the release of F-001 and BUG-001 with its release record", ("release",)),
+    Step("ingest-incident", "agent", "claude", "released", "none", "the ingest of the pending incident report as an incident record"),
+    Step("feature-reopen", "agent", "codex", "in-dev", "dev", "the reopen of F-001 on the in-dev route", ("dev",)),
 )
 STEP_IDS = tuple(step.id for step in STEPS)
 STEPS_BY_ID = {step.id: step for step in STEPS}
+
+# The human grants of a run: one for each distinct role set that a step needs, holding exactly those roles.
+APPROVER_ROLE_SETS: tuple[tuple[str, ...], ...] = tuple(sorted({step.roles for step in STEPS if step.roles}))
+# The grant that reads the receipt of an ungated agent step: any writable human sees an agent's ungated operation.
+OBSERVER_ROLES: tuple[str, ...] = ("po",)
 
 
 class ConfigError(ValueError):

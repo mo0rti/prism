@@ -31,7 +31,11 @@ def sample_results():
     three.models, three.efforts = ["gpt-6-luna"], ["medium"]
     three.preview_attempts, three.first_attempt_success, three.elapsed_s = 1, True, 60.0
     three.add_usage(USAGE_A, None)
+    three.operation_id = "b5748ed9-12fc-4fc4-8f8e-8dbcaff49c22"
+    three.approval = {"approver": "human-po", "approver_name": "Approver po (human)", "approver_id": "p1", "roles": ["po"], "proposer_id": "a1", "route": "proposals dialog"}
     four = report.StepResult(step="po-handoff", kind="human", host="browser", status="passed", apply_state="applied", elapsed_s=3.0)
+    four.operation_id = "5b2fdb3e-e276-4ff1-ac7f-1201b63ce6f0"
+    four.approval = {"approver": "human-po", "approver_name": "Approver po (human)", "approver_id": "p1", "roles": ["po"], "proposer_id": None, "route": "card action"}
     five = report.StepResult(step="design-start", kind="human", host="browser", status="skipped", reason="dependency failed: po-clarify")
     return [one, two, three, four, five]
 
@@ -82,6 +86,30 @@ class RenderTests(unittest.TestCase):
         self.assertIn("not reported", text)
         self.assertIn("Verdict: **failed** (steps not passed: po-clarify)", text)
         self.assertIn("- Fixtures: default", text)
+
+    def test_the_approvals_section_names_who_approved_or_applied_each_step_and_with_which_roles(self):
+        text = report.render_markdown(self.build())
+        self.assertIn("## Approvals", text)
+        section = text.split("## Approvals", 1)[1].split("\n## ", 1)[0]
+        rows = [line for line in section.splitlines() if line.startswith("| ") and "po-" in line]
+        self.assertEqual(
+            rows,
+            [
+                "| 3 | po-specify | approved (agent proposal) | human-po (Approver po (human)) | po | proposals dialog | b5748ed9-12fc-4fc4-8f8e-8dbcaff49c22 |",
+                "| 4 | po-handoff | applied (direct human action) | human-po (Approver po (human)) | po | card action | 5b2fdb3e-e276-4ff1-ac7f-1201b63ce6f0 |",
+            ],
+        )
+
+    def test_a_report_without_an_approval_has_no_approvals_section(self):
+        data = self.build()
+        for step in data["steps"]:
+            step["approval"] = None
+        self.assertNotIn("## Approvals", report.render_markdown(data))
+
+    def test_the_json_report_keeps_the_approval_of_each_step(self):
+        data = json.loads(report.render_json(self.build()))
+        self.assertEqual(data["steps"][2]["approval"]["roles"], ["po"])
+        self.assertIsNone(data["steps"][0]["approval"])
 
     def test_the_report_names_a_fixture_set(self):
         data = self.build()

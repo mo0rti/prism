@@ -31,4 +31,4 @@ None. The feature declares no API surface, so there is no API contract page.
 - [ ] Producing a summary for a review that is still in progress is refused.
 
 ## Dependencies
-Open question 5 on F-001 (dev-owned: which app presents the export control, given that backend is the only declared app) is unresolved and must be resolved through dev-clarify.
+None.

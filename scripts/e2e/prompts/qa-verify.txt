@@ -1,0 +1,13 @@
+I am the QA engineer. Feature F-001 was delivered and I tested it in the first QA attempt, qa-1. Use Prism's qa-verify skill to record my results for the backend app. Work only through your Prism MCP tools and follow the board's guidance.
+
+My results (record them in the feature's QA verification table; cite each criterion with its revision as the board reports it):
+- Every acceptance criterion except the one that requires the summary to end with a line saying how many more comments are not shown: pass. Method: automated.
+- That one criterion: fail. Method: exploratory.
+- For both: artifact commit 3f9c2ab, the artifact in the Delivery evidence; environment ci; attempt qa-1; basis attested, because you cannot open the CI run.
+- Evidence of the passes: CI run 1190, https://ci.example.com/runs/1190. Evidence of the failure: the export log of that run, https://ci.example.com/runs/1190#export-log.
+
+The failure is a defect: when a finished review has more comments than fit on one page, the summary stops after the last whole comment and does not say how many comments are not shown. Record it as a new bug in the same proposal: title "Summary does not say how many comments are not shown", severity high, blocking, app backend, feature F-001, found in commit 3f9c2ab, environment ci. It is the first bug of the workspace, so it takes the number BUG-001.
+
+You cannot open the CI run from here, so record this evidence as I gave it and say clearly in your summary that you did not verify it.
+
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would create or change. If something blocks it, tell me exactly what and stop.

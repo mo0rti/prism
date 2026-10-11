@@ -35,9 +35,9 @@ def _load_board_page() -> Any:
 
 
 class HumanBrowser:
-    def __init__(self, base_url: str, human_token: str) -> None:
+    def __init__(self, base_url: str, human_tokens: dict[str, str]) -> None:
         self._base_url = base_url
-        self._token = human_token
+        self._tokens = dict(human_tokens)  # approver label -> the token of the human grant that holds exactly its roles
         self._pw: Any = None
         self._browser: Any = None
         self._context: Any = None
@@ -45,7 +45,7 @@ class HumanBrowser:
         self.page: Any = None
         self.board: Any = None
         self.version = "unknown"
-        self.signed_in = False
+        self.signed_in_as: str | None = None  # the label of the grant whose session the browser holds
 
     # -- lifecycle ---------------------------------------------------------------
 
@@ -84,10 +84,35 @@ class HumanBrowser:
         self._pw = self._browser = self._context = None
         return "closed" + (f" ({'; '.join(notes)})" if notes else "")
 
+    # -- sessions ------------------------------------------------------------------------
+
+    @property
+    def signed_in(self) -> bool:
+        return self.signed_in_as is not None
+
+    def _sign_in_as(self, approver: str) -> None:
+        """Hold the session of the grant ``approver``: sign in, or sign out and in again when another grant's session is open.
+
+        A page reload on the same session keeps the board current. The token is typed into the board's own form, as a person would.
+        """
+
+        expect = self._module.expect
+        if approver not in self._tokens:
+            raise BrowserUnavailable(f"No token for the approver {approver}.")
+        if self.signed_in_as == approver:
+            self.page.reload()
+            return
+        if self.signed_in_as is not None:
+            self.page.get_by_role("button", name="Sign out").click()
+            expect(self.page.get_by_role("heading", name="Connect to your Prism board")).to_be_visible()
+            self.signed_in_as = None
+        self.board.sign_in(self._tokens[approver])
+        self.signed_in_as = approver
+
     # -- one human action --------------------------------------------------------------
 
-    def perform(self, action: str, feature_id: str, workspace: Path, screenshot_dir: Path) -> dict[str, Any]:
-        """Preview and apply one human lifecycle action on the board, as a person would.
+    def perform(self, action: str, feature_id: str, workspace: Path, screenshot_dir: Path, approver: str) -> dict[str, Any]:
+        """Preview and apply one human lifecycle action on the board, signed in as the grant ``approver``, as a person would.
 
         Returns the dialog texts, the exact writes the preview showed, the operation ID the dialog reports and
         the board's columns afterwards. Any failed expectation raises; the caller marks the step failed.
@@ -98,11 +123,7 @@ class HumanBrowser:
         board = self.board
         page = self.page
         started = time.monotonic()
-        if not self.signed_in:
-            board.sign_in(self._token)
-            self.signed_in = True
-        else:
-            page.reload()
+        self._sign_in_as(approver)
         board.open_board()
         board.action_button(feature_id, label).click()
         dialog = board.dialog(action)
@@ -128,6 +149,71 @@ class HumanBrowser:
             "preview_text": preview_text,
             "applied_text": applied_text,
             "writes": writes,
+            "stages": board.stages(),
+            "elapsed_s": round(time.monotonic() - started, 1),
+        }
+
+    # -- one approval --------------------------------------------------------------------
+
+    def approve(self, preview_id: str, approver: str) -> dict[str, Any]:
+        """Approve an agent's gated proposal in the Proposals dialog, signed in as the grant ``approver``, as a person would.
+
+        The dialog lists the proposals the signed-in grant may decide. The row is found by the preview ID the agent reported
+        (read from the board's own list through this session), opened with Review, acknowledged and approved. Returns the
+        review text, the proposal's list entry, the operation ID the browser submitted and the dialog text afterwards. Any
+        failed expectation, an unlisted proposal or a refused apply raises; the caller marks the step failed.
+        """
+
+        expect = self._module.expect
+        board = self.board
+        page = self.page
+        started = time.monotonic()
+        self._sign_in_as(approver)
+        board.open_board()
+        expect(board.freshness()).to_have_text("LIVE")
+        expect(board.proposals_button()).to_be_visible()
+        board.proposals_button().click()
+        dialog = page.get_by_role("dialog", name="Proposals waiting for approval")
+        expect(dialog).to_be_visible()
+        expect(dialog.get_by_text("Loading…")).to_have_count(0)
+        listing = page.evaluate(
+            "async () => (await (await fetch('/api/board/v1/proposals', {credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'}})).json())"
+        )
+        items = listing.get("proposals", [])
+        index = next((position for position, item in enumerate(items) if item.get("preview_id") == preview_id), None)
+        if index is None:
+            raise AssertionError(f"The proposal {preview_id} is not in the proposals list of {approver}; the list holds {len(items)} proposal(s).")
+        listed = items[index]
+        row = dialog.locator(f'[data-proposal="{index}"]')
+        expect(row).to_contain_text(str(listed.get("action")))
+        row.get_by_role("button", name="Review", exact=True).click()
+        expect(dialog.get_by_role("heading", name=f"Approve {listed.get('action')}")).to_be_visible()
+        review_text = dialog.inner_text()
+        approve_button = dialog.get_by_role("button", name="Approve and apply")
+        expect(approve_button).to_be_disabled()
+        dialog.get_by_role("checkbox", name=re.compile(r"^I reviewed this change")).check()
+        expect(approve_button).to_be_enabled()
+        with page.expect_response(lambda response: response.url.split("?")[0].endswith("/api/board/v1/apply") and response.request.method == "POST") as submitted:
+            approve_button.click()
+        response = submitted.value
+        sent = response.request.post_data_json or {}
+        payload: Any = {}
+        try:
+            payload = response.json()
+        except Exception:  # noqa: BLE001 - an unreadable body is reported by its status
+            pass
+        if not response.ok:
+            error = payload.get("error", {}) if isinstance(payload, dict) else {}
+            raise AssertionError(f"The board refused the approval: HTTP {response.status} {error.get('code', 'unknown')}: {str(error.get('message', ''))[:200]}")
+        expect(dialog.get_by_text("Proposal approved and applied.")).to_be_visible()
+        applied_text = dialog.inner_text()
+        dialog.get_by_role("button", name="Close").click()
+        expect(dialog).to_have_count(0)
+        return {
+            "operation_id": sent.get("operation_id", ""),
+            "preview_text": review_text,
+            "applied_text": applied_text,
+            "listed": {key: listed.get(key) for key in ("action", "item_id", "required_roles", "proposer", "stale", "preview_id")},
             "stages": board.stages(),
             "elapsed_s": round(time.monotonic() - started, 1),
         }

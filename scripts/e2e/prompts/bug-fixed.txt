@@ -1,0 +1,11 @@
+I am the developer. I fixed BUG-001. Use Prism's bug-update skill to mark it fixed with its Fix row. Work only through your Prism MCP tools and follow the board's guidance.
+
+Fix evidence for the backend app (record it in the bug's Fix table):
+- Implementation: pull request #43 in the review-summary-service repository, merged as commit 5d7a1e4.
+- Tests: CI run 1204 on that commit, 33 tests passed, 0 failed.
+- Artifact: commit 5d7a1e4.
+- Basis: attested, because you cannot check it yourself.
+
+You cannot open the repository or the CI run from here, so record this evidence as I gave it and say clearly in your summary that you did not verify it.
+
+Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would change. If something blocks it, tell me exactly what and stop.
