@@ -1,3 +1,9 @@
 I am the tech lead. Use Prism's tech-design-done skill on feature F-001 to settle its technical design track. It is a backend-only feature, so the UI track needs no visual design. Write the feature's technical design page with a test strategy that covers every acceptance criterion, and the API contract when the feature declares API work. Work only through your Prism MCP tools and follow the board's guidance.
 
+My technical decisions:
+- The backend generates the PDF on request from the stored review and returns it in the same response as a file download. No generated file is stored or cached.
+- Only the signed-in reviewer who recorded the review's decision may request the export. A review is finished once that reviewer records approved, changes requested or rejected; an in-progress review cannot be exported. The export reads only the requesting reviewer's comments.
+- Generation uses the backend's existing stack, with no new service. It is limited to 5 seconds and a PDF of at most 1 MiB. A failure or an exceeded limit returns an error with no PDF or partial download and stores nothing; the review stays unchanged and the reviewer can retry.
+- My test strategy covers every acceptance criterion at unit and service level, including all three finished decisions, refusal of in-progress reviews and other reviewers' requests, isolation and ordering of comments, the header, no comments, overflow and its hidden-comment count, PDF download, generation limits and failure.
+
 Stop at the preview: do not apply it. When the preview is ready, tell me its preview ID and give a short summary of the exact changes it makes, listing each file it would create, change or move. If something blocks it, tell me exactly what and stop.

@@ -247,6 +247,11 @@ class Journey:
             ws.place_pending_input(self.env.workspace, step.id, self.options.fixtures)
         runs: list[HostRun] = []
 
+        if role is not None and before is not None:
+            for question in before.open_questions(role):
+                if answers.answer_for(role, question.text) == answers.FALLBACK:
+                    result.notes.append(f'{step.id}: fallback answer for question {question.number} ("{question.text}"): {answers.FALLBACK}')
+
         preview = self._launch(host, "preview", build_preview_prompt(step.id, self.options.fixtures, before), number, step, result, runs)
         transcript = preview.transcript
         preview_calls = transcript.preview_calls
