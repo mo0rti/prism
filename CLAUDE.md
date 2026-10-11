@@ -105,6 +105,7 @@ prism board serve . --port 8765
 - `SECURITY.md` - local threat model
 - `CHANGELOG.md` - user-visible changes
 - `docs/maintainer-workflow.md` - template maintenance workflow and validation variants
+- `docs/maintainer-workflow.md#how-the-source-directories-fit-together` - how `template/`, `packs/`, `template-skills/` and `golden/` fit together, and which are generated
 - `docs/questionnaire.md` - questionnaire inputs, the app list and what each stack generates
 - `packs/` - the stack packs and `packs/versions.yml`, the pinned versions
 - `golden/` and `scripts/golden-answers.yml` - the generated reference workspace and its answers; `renovate.json` - the dependency bot's configuration
