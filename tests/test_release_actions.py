@@ -77,8 +77,8 @@ class ReleaseDoneTests(ReleaseTests):
     def test_the_retry_of_a_record_names_a_record_with_a_failed_delivery(self) -> None:
         feature, record = self.one_app("backend")
         self.settle(feature, record)
-        both = self.released_page([release_row("backend", 1), release_row("worker", 2, attempt=2)])
-        retry = record_page(2, [delivery("F-001", "worker", attempt=2)], retry_of="REL-001")
+        both = self.released_page([release_row("backend", 1), release_row("worker", 2)])
+        retry = record_page(2, [delivery("F-001", "worker")], retry_of="REL-001")
         self.assertEqual(("release_record_invalid", 409), self.refuse(both, retry, number=2))
 
     # -- the target ------------------------------------------------------------------------------------------------------

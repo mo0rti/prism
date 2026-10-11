@@ -138,15 +138,14 @@ class OutcomeAndKindTests(unittest.TestCase):
 
     def test_the_kind_follows_the_retry_chain(self) -> None:
         rolled = delivery("F-001", "backend", outcome="rolled-back", attempt=None)
-        redone = delivery("F-001", "backend", attempt=None)
-        failed = delivery("F-001", "backend", outcome="failed")
+        redone = delivery("F-001", "backend", attempt=None, outcome="failed")
         records = [
             parse(1, [delivery("F-001", "backend")]),
             parse(2, [rolled], rollback_of="REL-001"),
             parse(3, [redone], retry_of="REL-002"),
-            parse(4, [delivery("F-002", "backend", outcome="failed")], features=["F-002"]),
-            parse(5, [delivery("F-002", "backend", attempt=2)], features=["F-002"], retry_of="REL-004"),
-            parse(6, [failed], retry_of="REL-003"),
+            parse(4, [delivery("F-002", "worker", outcome="failed")], features=["F-002"]),
+            parse(5, [delivery("F-002", "worker", attempt=2)], features=["F-002"], retry_of="REL-004"),
+            parse(6, [delivery("F-001", "backend", outcome="failed", attempt=None)], retry_of="REL-003"),
         ]
         kinds = record_kinds(records)
         self.assertEqual(
@@ -156,20 +155,20 @@ class OutcomeAndKindTests(unittest.TestCase):
 
     def test_a_retry_cycle_does_not_loop(self) -> None:
         records = [parse(1, [delivery("F-001", "backend")], retry_of="REL-002"), parse(2, [delivery("F-001", "backend")], retry_of="REL-001")]
-        self.assertEqual({"REL-001", "REL-002"}, set(record_kinds(records)))
+        self.assertEqual({}, record_kinds(records), "a cycle has no valid predecessor and carries no kind or authority")
 
 
 class DeliveryTests(unittest.TestCase):
     def test_the_next_number_follows_the_highest_on_disk(self) -> None:
         self.assertEqual(1, next_release_number([]))
-        self.assertEqual(5, next_release_number([parse(1, [delivery("F-001", "backend")]), parse(4, [delivery("F-001", "backend")])]))
+        self.assertEqual(5, next_release_number([parse(1, [delivery("F-001", "backend")]), parse(4, [delivery("F-001", "backend", attempt=2)])]))
 
     def test_the_current_delivery_is_the_highest_record_with_a_released_row(self) -> None:
         records = [
             parse(1, [delivery("F-001", "backend")]),
             parse(2, [delivery("F-002", "backend", version="build:backend#2")], features=["F-002"]),
             parse(3, [delivery("F-003", "backend", outcome="failed")], features=["F-003"]),
-            parse(4, [delivery("F-001", "backend", outcome="rolled-back", attempt=None)], rollback_of="REL-002"),
+            parse(4, [delivery("F-002", "backend", outcome="rolled-back", attempt=None)], features=["F-002"], rollback_of="REL-002"),
         ]
         current = current_delivery(records, "backend", "production")
         self.assertEqual("REL-002", current[0].record_id)
@@ -196,7 +195,7 @@ class DeliveryTests(unittest.TestCase):
 
     def test_an_attempt_counts_the_release_records_of_the_item_and_app(self) -> None:
         records = [
-            parse(1, [delivery("F-001", "backend", outcome="failed")]),
+            parse(1, [delivery("F-001", "backend")]),
             parse(2, [delivery("F-001", "backend", outcome="rolled-back", attempt=None)], rollback_of="REL-001"),
             parse(3, [delivery("F-002", "backend")], features=["F-002"]),
         ]
@@ -323,8 +322,8 @@ class ListingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             wiki = Path(folder)
             (wiki / "releases").mkdir()
-            for number in (10, 2, 1000, 3):
-                (wiki / "releases" / f"REL-{number:03d}.md").write_text(record_page(number, [delivery("F-001", "backend")]), encoding="utf-8")
+            for number, attempt in ((10, 3), (2, 1), (1000, 4), (3, 2)):
+                (wiki / "releases" / f"REL-{number:03d}.md").write_text(record_page(number, [delivery("F-001", "backend", attempt=attempt)]), encoding="utf-8")
             self.assertEqual(["REL-002", "REL-003", "REL-010", "REL-1000"], [record.record_id for record in read_release_records(wiki)])
 
 
