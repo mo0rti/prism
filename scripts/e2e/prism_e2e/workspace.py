@@ -836,10 +836,20 @@ def run_lint(env: Environment) -> LintResult:
         return LintResult(-1, -1, result.exit_code if result.exit_code is not None else -1)
 
 
+def fetch_preview(board: Board, token: str, preview_id: str) -> dict:
+    """Read the immutable proposal before approving it through the browser."""
+
+    return _fetch_board_json(board, token, f"previews/{preview_id}")
+
+
 def fetch_receipt(board: Board, token: str, operation_id: str) -> dict:
     """The operation receipt, read through the board's HTTP API with a participant's Bearer token."""
 
-    request = urllib.request.Request(f"{board.base_url}/api/board/v1/operations/{operation_id}", headers={"Authorization": f"Bearer {token}"})
+    return _fetch_board_json(board, token, f"operations/{operation_id}")
+
+
+def _fetch_board_json(board: Board, token: str, resource: str) -> dict:
+    request = urllib.request.Request(f"{board.base_url}/api/board/v1/{resource}", headers={"Authorization": f"Bearer {token}"})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.loads(response.read().decode("utf-8"))

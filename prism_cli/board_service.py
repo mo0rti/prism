@@ -6,6 +6,7 @@ previews, idempotent operation IDs, and crash recovery to those files.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import getpass
@@ -6106,10 +6107,10 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             )
 
     def _assert_requirement_pages_complete(self, supplied: Mapping[str, str], before: Mapping[str, str | None], feature: Mapping[str, Any]) -> None:
-        """After a handoff the feature has exactly one requirement page per app, and none of them is half-handed-off (CONTRACTS 3.5).
+        """After a handoff the feature has exactly one complete requirement page per app in its current scope (CONTRACTS 3.5).
 
         A page the proposal does not supply must exist and be `pending` or `done`; one that was lowered to `in-progress` is supplied
-        again with the status `pending`.
+        again with the status `pending`. Pages of apps outside the scope remain historical and impose no handoff obligation.
         """
 
         declared = _scope_of(feature["after"]) or []
@@ -6132,9 +6133,6 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 problems.append(f"`{app_id}` has {len(pages)} requirement pages")
             elif pages[0][1] == "in-progress":
                 problems.append(f"`{pages[0][0]}` is `in-progress`: include it with `status: pending`")
-        extra = sorted(app_id for app_id in found if app_id not in declared)
-        if extra:
-            problems.append(f"requirement pages exist for {_quoted(extra)}, which the feature does not list")
         if problems:
             raise BoardError(
                 "requirements_incomplete",
@@ -6291,13 +6289,27 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 *(("Release", row.cells) for row in evidence.release),
             ]
 
-        def key(section: str, cells: Iterable[str]) -> str:
-            return _normalized_table_text(section + " | " + " | ".join(cells))
+        def key(section: str, cells: Iterable[str]) -> tuple[str, tuple[str, ...]]:
+            return section, tuple(cell.strip() for cell in cells)
 
         before_rows = {key(section, cells): (section, cells) for section, cells in active_rows(old_evidence)}
         after_rows = {key(section, cells): (section, cells) for section, cells in active_rows(new_evidence)}
-        removed = {item: row for item, row in before_rows.items() if item not in after_rows}
-        expected = {key(section, cells): (section, cells) for section, cells in expected_archive}
+        before_counts = Counter(key(section, cells) for section, cells in active_rows(old_evidence))
+        after_counts = Counter(key(section, cells) for section, cells in active_rows(new_evidence))
+        added = after_counts - before_counts
+        if added:
+            section, cells = after_rows[next(iter(added))]
+            raise BoardError(
+                "evidence_unexpectedly_added",
+                f"`{action}` only archives evidence; it cannot add, replace or duplicate an active row: {_clip(_row_line(section, cells), 300)}.",
+                409,
+                {"path": relative, "action": action},
+            )
+        removed_counts = before_counts - after_counts
+        removed = {item: before_rows[item] for item in removed_counts}
+        expected_rows = list(expected_archive)
+        expected = {key(section, cells): (section, cells) for section, cells in expected_rows}
+        expected_counts = Counter(key(section, cells) for section, cells in expected_rows)
         if not addition.strip():
             if require_entry or removed or expected:
                 raise BoardError(
@@ -6351,8 +6363,9 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             raise BoardError("impact_review_required", "Evidence history lists the affected tracks as `ui`, `technical` or `none`.", 409, {"label": "Affected tracks"})
 
         archived = {key(section, cells): (section, cells) for section, cells in entry.archived_rows}
+        archived_counts = Counter(key(section, cells) for section, cells in entry.archived_rows)
         for item, (section, cells) in removed.items():
-            if item not in archived:
+            if archived_counts[item] < removed_counts[item]:
                 raise BoardError(
                     "evidence_not_archived",
                     f"Evidence history must copy each removed evidence row verbatim under `- Archived evidence:`, prefixed by its section name, "
@@ -6368,7 +6381,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                     409,
                     {"path": relative},
                 )
-            if item not in before_rows:
+            if archived_counts[item] > before_counts[item]:
                 raise BoardError(
                     "evidence_not_archived",
                     f"Archived evidence lists a row that is not in the active tables of `{relative}`: {_clip(_row_line(section, cells), 200)}",
@@ -6383,8 +6396,8 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                     409,
                     {"path": relative},
                 )
-        unexpected = [row for item, row in removed.items() if item not in expected]
-        if unexpected and (expected or not reaffirmable):
+        unexpected = [before_rows[item] for item in removed_counts - expected_counts]
+        if unexpected:
             section, cells = unexpected[0]
             raise BoardError(
                 "evidence_unexpectedly_removed",
@@ -6392,6 +6405,8 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 409,
                 {"path": relative},
             )
+        if removed_counts != expected_counts or archived_counts != expected_counts:
+            raise BoardError("evidence_not_archived", f"`{action}` archives exactly its prescribed rows, including every occurrence, and keeps every other active row unchanged.", 409, {"path": relative})
         reaffirmed = {key(section, cells) for section, cells in entry.reaffirmed_rows}
         if not reaffirmable and reaffirmed:
             raise BoardError("delivery_evidence_not_reaffirmed", f"`{action}` archives all affected evidence; it reaffirms none. Write `none` under `- Reaffirmed evidence:`.", 409)

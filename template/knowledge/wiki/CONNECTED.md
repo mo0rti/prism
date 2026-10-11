@@ -203,12 +203,13 @@ quotes: a missing final newline or an escaped character counts as a change to th
 section or to the text it touches. A feature's `apps` must be among the apps
 `discover` reports under `board.apps`.
 
-A lifecycle skill changes the feature page narrowly. `po-handoff`, `design-start`,
-`design-handoff` and `dev-start` change frontmatter only: every body line, including a
+A lifecycle skill changes the feature page narrowly. `po-handoff`, `design-start`
+and `dev-start` change frontmatter only: every body line, including a
 table's separator row, stays exactly as it was. `po-specify` changes the page body and `criteria-high-water`, and
 leaves the evidence sections empty. `dev-done` also changes only `app-revalidation` and the
 `## Delivery evidence` section (it adds one row for each app it delivers), and adds no other
-section heading. In a linked requirement or API contract page, `dev-done` changes only
+section heading. `design-handoff` may also update `## Design` and the pages of the tracks it completes,
+as `ACTIONS.md` specifies. In a linked requirement or API contract page, `dev-done` changes only
 `status`. The rejection quotes the first line that differs.
 
 `qa-verify` and `qa-pass` change the feature's `## QA verification` section (and `qa-pass` its
@@ -253,7 +254,10 @@ manifest changes within the advertised scope. Input the workspace does not hold
 yet comes from the human in the host conversation: the answer to a question for
 `po-clarify`, `design-clarify` or `dev-clarify`, and the delivery evidence for
 `dev-done`. Write it into the proposal as the human gave it; never invent it. A `design-handoff` for a feature whose
-API surface declares API work also creates the new agreed API contract page, written only from that API surface. Verify the complete returned
+API surface declares API work writes the contract only when it completes the technical track with `tech-lead` approval;
+otherwise writes only the requirement pages and the front matter. A handoff that also completes the UI track may
+update its UI design page and the feature's `## Design`, as `ACTIONS.md` specifies. The contract is written only
+from the API surface. Verify the complete returned
 preview, including the managed files, before confirming it.
 
 Review the service's full proposed write set and applicability result. If any

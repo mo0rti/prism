@@ -21,6 +21,7 @@ from prism_cli.release_rules import (
 from prism_cli.wiki_releases import (
     KIND_REDEPLOY,
     KIND_RELEASE,
+    KIND_ROLLBACK,
     ReleaseRecord,
     parse_record_rows,
     parse_snapshots,
@@ -103,10 +104,9 @@ def validate_release_records(records: Sequence[ReleaseRecord]) -> tuple[list[Rel
     """The records that may carry authority, and why each other record may not.
 
     A record carries authority (the current delivery of an app, the next number, a rollback or retry target) only when its
-    page is a valid record: the file name and `id` agree, it has the required front matter, its rows parse, no other file
-    claims its ID, and the record it names in `rollback-of` or `retry-of` is an earlier record that is itself valid. The
-    second result maps the path of each record that is not to its problems. `wiki lint` reports these and every other finding
-    of a record; the rules that compare a record with the features, bugs and records it delivers are checked when it is written.
+    page, rows, metadata, snapshots and earlier-record references are valid and no other file claims its ID.
+    The second result maps each invalid record's path to its problems. Cross-page delivery bindings are also checked
+    when a record is written and by lint.
     """
 
     problems: dict[Path, list[str]] = {}
@@ -117,17 +117,54 @@ def validate_release_records(records: Sequence[ReleaseRecord]) -> tuple[list[Rel
     counts: dict[str, int] = {}
     for record in records:
         counts[record.record_id] = counts.get(record.record_id, 0) + 1
+    kinds = record_kinds(records)
     for record in records:
         page = record.page
         for problem in check_record_page(str(page.path), page.frontmatter, page.body, parse_errors=page.parse_errors):
-            if "sections" not in problem.details:
-                add(record, problem.message)
+            add(record, problem.message)
         if not page.parse_errors:
-            for row_problem in parse_record_rows(page.body)[1]:
-                add(record, row_problem.message)
+            rows, row_problems = parse_record_rows(page.body)
+            kind = kinds.get(record.record_id, KIND_RELEASE)
+            for problem in record_row_problems(rows, kind, row_problems):
+                add(record, problem.message)
+            for problem in record_front_matter_problems(str(page.path), page.frontmatter, rows, kind):
+                add(record, problem.message)
+            snapshots, messages = parse_snapshots(page.body)
+            for message in messages:
+                add(record, message)
+            seen: set[tuple[str, str]] = set()
+            for snapshot in snapshots:
+                key = (snapshot.feature, snapshot.app)
+                if key in seen:
+                    add(record, f"Two contract snapshots name {snapshot.feature} and `{snapshot.app}`.")
+                seen.add(key)
+                if snapshot.digest_citation != snapshot.citation or not snapshot.citation.startswith(snapshot.feature + "@v") or snapshot.app not in {row.app for row in rows}:
+                    add(record, f"The contract snapshot of {snapshot.feature} for `{snapshot.app}` has a broken binding or names an app not delivered by the record.")
         if counts[record.record_id] > 1:
             add(record, f"More than one file claims the release record ID `{record.record_id}`.")
     by_id = {record.record_id: record for record in records}
+    for record in records:
+        named = record.rollback_of or record.retry_of
+        target = by_id.get(named or "")
+        if target is None:
+            continue  # the dependency check below reports missing or invalid targets
+        kind = kinds.get(record.record_id, KIND_RELEASE)
+        source_kind = kinds.get(target.record_id, KIND_RELEASE)
+        for row in record.rows:
+            source_rows = target.rows_for(*row.pair)
+            if record.rollback_of:
+                expected = sorted((item.item, item.version) for item in source_rows if item.outcome == "released")
+                actual = sorted((item.item, item.version) for item in record.rows_for(*row.pair))
+                if source_kind == KIND_ROLLBACK or not expected or actual != expected:
+                    add(record, f"`rollback-of: {named}` must name a delivery of the same items, app, target and version.")
+            elif kind == KIND_RELEASE:
+                if source_kind != KIND_RELEASE or not any(item.outcome == "failed" for item in source_rows):
+                    add(record, f"`retry-of: {named}` must name a failed release for `{row.app}` at `{row.target}`.")
+            else:
+                expected = sorted((item.item, item.version) for item in source_rows)
+                actual = sorted((item.item, item.version) for item in record.rows_for(*row.pair))
+                if source_kind not in {KIND_ROLLBACK, KIND_REDEPLOY} or not source_rows or actual != expected or (source_kind == KIND_REDEPLOY and any(item.outcome != "failed" for item in source_rows)):
+                    add(record, f"`retry-of: {named}` must name a rollback or failed redeploy of the same items, app, target and version.")
     changed = True
     while changed:
         changed = False

@@ -34,7 +34,7 @@ class LumenBoard(unittest.TestCase):
     def setUp(self) -> None:
         clock = Mock(wraps=type(DAY))
         clock.today.return_value = DAY
-        for module in ("board_service", "board_release", "board_bugs", "wiki_lint", "wiki_transitions"):
+        for module in ("board_service", "board_release", "wiki_lint", "wiki_transitions"):
             started = patch(f"prism_cli.{module}.date", clock)
             started.start()
             self.addCleanup(started.stop)

@@ -2729,7 +2729,7 @@ function openBoardProposals(returnFocus) {
     return [...(required.all_of || []), ...(required.any_of || []).length ? ["one of " + required.any_of.join(", ")] : []].join(" + ") || "any writable human";
   };
   function render() {
-    const rows = view.items.map((item, index) => `<div class="transition-check ${item.stale ? "review" : "pass"}" data-proposal="${index}">
+    const rows = view.items.map((item, index) => `<div class="transition-check ${item.stale ? "review" : "pass"}" data-proposal="${index}" data-preview-id="${escapeHtml(String(item.preview_id || ""))}">
       <span class="check-status">${item.stale ? "stale" : "waiting"}</span>
       <span class="check-copy"><b>${escapeHtml(boundedText(String(item.action || ""), 60))}</b> for ${escapeHtml(boundedText(String(item.item_id || "?"), 60))} · roles: ${escapeHtml(boundedText(roles(item), 120))} · proposed by ${escapeHtml(boundedText(String(item.proposer && item.proposer.name || "an agent"), 80))}</span>
       <button type="button" class="copy-btn" data-proposal-review="${index}"${view.busy ? " disabled" : ""}>Review</button>
@@ -2741,7 +2741,7 @@ function openBoardProposals(returnFocus) {
     // (escaped, as the connected transition view shows it), the folder moves and the review obligations.
     const written = reviewing && Array.isArray(reviewing.preview.writes) ? reviewing.preview.writes : [];
     const changesShown = written.length > 0;
-    const detail = reviewing ? `<div class="transition-section"><h4>Approve ${escapeHtml(boundedText(String(reviewing.preview.action || ""), 60))}</h4>
+    const detail = reviewing ? `<div class="transition-section" data-reviewed-preview-id="${escapeHtml(String(reviewing.preview.preview_id || ""))}"><h4>Approve ${escapeHtml(boundedText(String(reviewing.preview.action || ""), 60))}</h4>
       ${(reviewing.preview.checks || []).map(transitionCheckHtml).join("")}
       ${connectedReviewObligationsHtml(reviewing.preview.review_obligations)}
       <h5>Exact file changes · ${written.length}</h5>${connectedWritesHtml(reviewing.preview.writes)}

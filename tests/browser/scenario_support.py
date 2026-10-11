@@ -160,6 +160,7 @@ class ScenarioCase(BrowserCase):
         acknowledgement.check()
         expect(acknowledgement).to_be_checked()
         expect(dialog).to_contain_text("ready · applicable")
+        expect(board.apply_button(dialog)).to_be_enabled()
 
     def seed_interrupted_agent_operation(self, feature: FixtureFeature, operation_id: str) -> dict[str, Any]:
         """Leave a pending operation from an agent whose grant is then revoked (test-only setup).

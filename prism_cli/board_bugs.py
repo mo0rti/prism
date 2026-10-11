@@ -11,6 +11,7 @@ prerequisites of the row are checked against the linked feature and the other bu
 
 from __future__ import annotations
 
+from collections import Counter
 import re
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
@@ -506,7 +507,7 @@ class BugActionsMixin:
                     raise bs.BoardError(
                         "duplicate_target_invalid",
                         f"`{duplicate.bug_id}` is closed as a duplicate of `{new_bug.bug_id}`, which would no longer qualify: {problem}. "
-                        "Resolve the canonical bug, or have the product owner close it with an explicit disposition.",
+                        "Resolve the canonical bug while preserving its duplicate links; it may be released but cannot be closed.",
                         409,
                         {"bug": duplicate.bug_id, "canonical": new_bug.bug_id},
                     )
@@ -686,6 +687,7 @@ class BugActionsMixin:
         return [], []
 
     def _bug_close(self, context: Mapping[str, Any]) -> tuple[list, list]:
+        self._incoming_duplicates(context)
         relative = context["relative"]
         old, new = context["old"], context["new"]
         reason = str(new.get("close-reason"))
@@ -791,8 +793,34 @@ class BugActionsMixin:
             raise bs.BoardError("history_not_append_only", "Evidence history must preserve all previous entries and append one new entry.", 409, {"path": relative})
         addition = new_history[len(old_history):]
         today = self._history_day()  # type: ignore[attr-defined]
+
+        def key(section: str, cells: Iterable[str]) -> tuple[str, tuple[str, ...]]:
+            return section, tuple(cell.strip() for cell in cells)
+
+        active_before = Counter(
+            key(section, cells)
+            for section, cells in (
+                *(("Fix", row.cells) for row in parse_fix_rows(context["old_body"])[0]),
+                *(("Verification", row.cells) for row in parse_verification_rows(context["old_body"])[0]),
+                *(("Release", row.cells) for row in _release_rows(context["old_body"])),
+            )
+        )
+        active_after = Counter(
+            key(section, cells)
+            for section, cells in (
+                *(("Fix", row.cells) for row in parse_fix_rows(context["new_body"])[0]),
+                *(("Verification", row.cells) for row in parse_verification_rows(context["new_body"])[0]),
+                *(("Release", row.cells) for row in _release_rows(context["new_body"])),
+            )
+        )
+        expected_counts = Counter(key(section, cells) for section, cells in expected)
+        added = active_after - active_before
+        if action == "bug-reverify":
+            added = Counter({item: count for item, count in added.items() if item[0] != "Verification"})
+        if added:
+            raise bs.BoardError("evidence_unexpectedly_added", f"`{action}` cannot add, replace or duplicate active evidence outside its prescribed rows.", 409, {"path": relative})
         if not addition.strip():
-            if require_entry:
+            if require_entry or active_before != active_after or expected_counts:
                 raise bs.BoardError(
                     "history_entry_required",
                     f"Evidence history needs one new entry headed `### {today} - {action}` that archives the evidence this write removes.",
@@ -816,28 +844,14 @@ class BugActionsMixin:
         if not entry.affected_apps or not set(entry.affected_apps) <= bug_apps:
             raise bs.BoardError("reopen_app_scope", "Evidence history must name affected app IDs from the bug's apps under `- Affected apps:`.", 409, {"path": relative})
 
-        def key(section: str, cells: Iterable[str]) -> str:
-            return bs._normalized_table_text(section + " | " + " | ".join(cells))
-
-        active_before = {
-            key(section, cells)
-            for section, cells in (
-                *(("Fix", row.cells) for row in parse_fix_rows(context["old_body"])[0]),
-                *(("Verification", row.cells) for row in parse_verification_rows(context["old_body"])[0]),
-                *(("Release", row.cells) for row in _release_rows(context["old_body"])),
-            )
-        }
-        active_after = {
-            key(section, cells)
-            for section, cells in (
-                *(("Fix", row.cells) for row in parse_fix_rows(context["new_body"])[0]),
-                *(("Verification", row.cells) for row in parse_verification_rows(context["new_body"])[0]),
-                *(("Release", row.cells) for row in _release_rows(context["new_body"])),
-            )
-        }
         archived = {key(section, cells): (section, cells) for section, cells in entry.archived_rows}
+        archived_counts = Counter(key(section, cells) for section, cells in entry.archived_rows)
+        for item, count in archived_counts.items():
+            section, _cells = archived[item]
+            if count != expected_counts[item] and not (extra_verification and section == "Verification" and not expected_counts[item] and count == 1):
+                raise bs.BoardError("evidence_not_archived", f"`{action}` copies each prescribed archive row exactly once per occurrence; it cannot add duplicate archives.", 409, {"path": relative})
         for section, cells in expected:
-            if key(section, cells) not in archived:
+            if archived_counts[key(section, cells)] != expected_counts[key(section, cells)]:
                 raise bs.BoardError(
                     "evidence_not_archived",
                     f"Evidence history must copy each archived row verbatim under `- Archived evidence:`, prefixed by its section name. Missing: {bs._clip(bs._row_line(section, cells), 300)}",
@@ -856,9 +870,11 @@ class BugActionsMixin:
                     {"path": relative},
                 )
         removed = active_before - active_after
-        for item in removed:
-            if item not in archived:
+        for item, count in removed.items():
+            if archived_counts[item] < count:
                 raise bs.BoardError("evidence_not_archived", "A row leaves its table without being archived in Evidence history.", 409, {"path": relative})
+        if removed != expected_counts:
+            raise bs.BoardError("evidence_not_archived", f"`{action}` removes exactly its prescribed archive and preserves every other active row.", 409, {"path": relative})
         for section in new_active_empty:
             rows = {"Fix": parse_fix_rows, "Verification": parse_verification_rows}.get(section)
             remaining = rows(context["new_body"])[0] if rows is not None else _release_rows(context["new_body"])

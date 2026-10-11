@@ -13,6 +13,7 @@ from typing import Any
 import uuid
 
 from . import answers, config, report as reports, workspace as ws
+from .approval import check_preview
 from .browser import BrowserUnavailable
 from .browser_client import BrowserClient
 from .config import Step
@@ -321,10 +322,28 @@ class Journey:
         """Approve a gated agent proposal as the human grant that holds exactly the step's roles. Returns the operation ID the browser submitted."""
 
         assert step.approver is not None
+        assert self.board is not None
         approver = self.approvers[step.approver]
+        files = ws.fixture_files([step.id], self.options.fixtures)
+        moves = []
+        if step.id in ws.PENDING_INPUTS:
+            source = ws.pending_folder(step.id)
+            destination = source.replace("/pending/", "/processed/")
+            if any(path.startswith(destination + "/") for path in files):
+                moves.append({"source": source, "destination": destination})
+        expected = {
+            "action": {"dev-redeliver": "dev-done", "release-retry": "release-done", "feature-reopen": "reopen-dev"}.get(step.id, step.id),
+            "item_id": "BUG-001" if step.id.startswith("bug-") else config.FEATURE_ID,
+            "proposer_label": host,
+            "proposer_id": self.agent_ids[host],
+            "required_roles": {"all_of": list(step.roles), "any_of": []},
+            "permitted_paths": sorted(set(files) | {"knowledge/wiki/status-board.md", "knowledge/wiki/index.md", "knowledge/wiki/log.md"}),
+            "permitted_moves": moves,
+        }
+        check_preview(ws.fetch_preview(self.board, self.tokens.get(approver.label), preview_id), preview_id, expected)
         browser = self._ensure_browser()
         try:
-            outcome = browser.approve(preview_id, approver.label)
+            outcome = browser.approve(preview_id, approver.label, expected)
         except Exception:
             browser.failure_screenshot(self.out / "screenshots" / f"{number:02d}-{step.id}-approval-failed.png")
             browser.recover()

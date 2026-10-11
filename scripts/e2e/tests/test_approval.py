@@ -44,6 +44,26 @@ def preview_call(preview_id: str = PREVIEW) -> ToolCall:
     return ToolCall(name="preview_skill", ok=True, result={"preview_id": preview_id})
 
 
+def preview_for(step: config.Step, host: str = "codex") -> dict:
+    return {
+        "preview_id": PREVIEW,
+        "action": {"dev-redeliver": "dev-done", "release-retry": "release-done", "feature-reopen": "reopen-dev"}.get(step.id, step.id),
+        "feature_id": "BUG-001" if step.id.startswith("bug-") else "F-001",
+        "classification": "ready", "applicable": True,
+        "approval": {"required_roles": {"all_of": list(step.roles), "any_of": []}, "proposer": {"kind": "agent", "participant_id": AGENT_IDS[host]}},
+        "writes": [{"path": path, "before": "old", "after": "new"} for path in ws.fixture_files([step.id])],
+        "moves": [],
+    }
+
+
+def approval_expectations() -> dict:
+    return {
+        "action": "po-specify", "item_id": "F-001", "proposer_label": "codex", "proposer_id": AGENT_IDS["codex"],
+        "required_roles": {"all_of": ["po"], "any_of": []},
+        "permitted_paths": list(ws.fixture_files(["po-specify"])), "permitted_moves": [],
+    }
+
+
 class FakeBrowser:
     def __init__(self) -> None:
         self.approvals: list[tuple[str, str]] = []
@@ -52,7 +72,7 @@ class FakeBrowser:
         self.recovered = 0
         self.fail: Exception | None = None
 
-    def approve(self, preview_id: str, approver: str) -> dict:
+    def approve(self, preview_id: str, approver: str, expected: dict) -> dict:
         self.approvals.append((preview_id, approver))
         if self.fail is not None:
             raise self.fail
@@ -144,7 +164,7 @@ class JourneyCase(unittest.TestCase):
 
         with patch.object(Journey, "_launch", side_effect=launch), patch.object(ws, "read_feature", return_value=feature), patch.object(
             ws, "fetch_receipt", side_effect=fetch
-        ), patch.object(ws, "run_lint", return_value=ws.LintResult(0, 0, 0)), patch.object(Journey, "_step_specific_checks"):
+        ), patch.object(ws, "fetch_preview", return_value=preview_for(step, host or "codex")), patch.object(ws, "run_lint", return_value=ws.LintResult(0, 0, 0)), patch.object(Journey, "_step_specific_checks"):
             if step.is_human:
                 self.journey.run_human_step(step, 5, result)
             else:
@@ -434,7 +454,7 @@ class BrowserApprovalTests(unittest.TestCase):
         browser = HumanBrowser("http://127.0.0.1:1", {"human-po": "tok-po-" + "p" * 20, "human-qa": "tok-qa-" + "q" * 20})
         browser._module = SimpleNamespace(expect=lambda target: MagicMock())
         page, board = MagicMock(), MagicMock()
-        page.evaluate.return_value = {"proposals": proposals}
+        page.evaluate.side_effect = lambda script, *args: {"proposals": proposals} if "/proposals" in script else preview_for(config.STEPS_BY_ID["po-specify"])
         response = MagicMock()
         response.ok, response.status = ok, 200 if ok else 403
         response.url = "http://127.0.0.1:1/api/board/v1/apply"
@@ -454,9 +474,9 @@ class BrowserApprovalTests(unittest.TestCase):
 
     def test_the_proposal_is_found_by_its_preview_id_among_several_and_approved(self):
         browser, page, board = self.browser([self.listed("other-1"), self.listed(PREVIEW), self.listed("other-2")])
-        outcome = browser.approve(PREVIEW, "human-po")
+        outcome = browser.approve(PREVIEW, "human-po", approval_expectations())
         dialog = page.get_by_role.return_value
-        dialog.locator.assert_any_call('[data-proposal="1"]')
+        dialog.locator.assert_any_call(f'[data-preview-id="{PREVIEW}"]')
         self.assertEqual(outcome["operation_id"], OPERATION)
         self.assertEqual(outcome["listed"]["action"], "po-specify")
         self.assertEqual(outcome["stages"], {"specified": ["F-001"]})
@@ -465,11 +485,11 @@ class BrowserApprovalTests(unittest.TestCase):
 
     def test_a_second_approval_by_the_same_grant_reloads_and_another_grant_signs_out_and_in(self):
         browser, page, board = self.browser([self.listed()])
-        browser.approve(PREVIEW, "human-po")
-        browser.approve(PREVIEW, "human-po")
+        browser.approve(PREVIEW, "human-po", approval_expectations())
+        browser.approve(PREVIEW, "human-po", approval_expectations())
         page.reload.assert_called_once()
         board.sign_in.assert_called_once()
-        browser.approve(PREVIEW, "human-qa")
+        browser.approve(PREVIEW, "human-qa", approval_expectations())
         self.assertEqual([call.args[0] for call in board.sign_in.call_args_list], ["tok-po-" + "p" * 20, "tok-qa-" + "q" * 20])
         page.get_by_role.assert_any_call("button", name="Sign out")
         self.assertEqual(browser.signed_in_as, "human-qa")
@@ -477,21 +497,21 @@ class BrowserApprovalTests(unittest.TestCase):
     def test_a_proposal_the_grant_cannot_see_is_reported_with_the_list_size(self):
         browser, _page, _board = self.browser([self.listed("other-1")])
         with self.assertRaises(AssertionError) as caught:
-            browser.approve(PREVIEW, "human-po")
+            browser.approve(PREVIEW, "human-po", approval_expectations())
         self.assertIn(PREVIEW, str(caught.exception))
         self.assertIn("1 proposal", str(caught.exception))
 
     def test_a_refused_apply_is_reported_with_the_boards_code(self):
         browser, _page, _board = self.browser([self.listed()], ok=False, payload={"error": {"code": "role_required", "message": "You do not hold the roles."}})
         with self.assertRaises(AssertionError) as caught:
-            browser.approve(PREVIEW, "human-po")
+            browser.approve(PREVIEW, "human-po", approval_expectations())
         self.assertIn("role_required", str(caught.exception))
         self.assertIn("HTTP 403", str(caught.exception))
 
     def test_an_approver_without_a_token_is_refused_before_the_browser_moves(self):
         browser, page, _board = self.browser([self.listed()])
         with self.assertRaises(Exception) as caught:
-            browser.approve(PREVIEW, "human-release")
+            browser.approve(PREVIEW, "human-release", approval_expectations())
         self.assertIn("human-release", str(caught.exception))
         page.get_by_role.assert_not_called()
 
@@ -522,9 +542,10 @@ class BrowserClientTests(unittest.TestCase):
 
         with patch.object(BrowserClient, "_call", side_effect=call):
             client.perform("dev-start", "F-001", Path("ws"), Path("shots"), "human-dev")
-            client.approve(PREVIEW, "human-po")
+            client.approve(PREVIEW, "human-po", approval_expectations())
         self.assertEqual((sent[0]["op"], sent[0]["approver"], sent[0]["action"]), ("perform", "human-dev", "dev-start"))
         self.assertEqual((sent[1]["op"], sent[1]["approver"], sent[1]["preview_id"]), ("approve", "human-po", PREVIEW))
+        self.assertEqual(sent[1]["expected"], approval_expectations())
         for request in sent:
             self.assertNotIn("tok-", json.dumps(request))
 
@@ -532,7 +553,7 @@ class BrowserClientTests(unittest.TestCase):
         client = BrowserClient("http://127.0.0.1:1", self.TOKENS, Path("unused.err"))
         with patch.object(BrowserClient, "_call", return_value={"ok": False, "error": "AssertionError: The board refused the approval"}):
             with self.assertRaises(RuntimeError) as caught:
-                client.approve(PREVIEW, "human-po")
+                client.approve(PREVIEW, "human-po", approval_expectations())
         self.assertIn("refused the approval", str(caught.exception))
 
 
