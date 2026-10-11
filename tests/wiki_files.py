@@ -75,7 +75,7 @@ def _view_tables(root: Path) -> str:
 
     from prism_cli.wiki_bugs import read_bug_pages
     from prism_cli.wiki_incidents import read_incident_pages
-    from prism_cli.wiki_model import app_stages_text, read_feature_pages
+    from prism_cli.wiki_model import app_stages_text, read_feature_pages, read_wiki_settings
     from prism_cli.wiki_operations import (
         BUG_TABLE_COLUMNS,
         BUGS_HEADING,
@@ -95,10 +95,11 @@ def _view_tables(root: Path) -> str:
     model = inspect_workspace(root).model
     cells = {page.feature_id: app_stages_text(page.status, page.apps, page.page.body, model) for page in read_feature_pages(wiki_root)}
     incidents, releases = read_incident_pages(wiki_root), read_release_records(wiki_root)
+    targets = {app: str(entry["target"]) for app, entry in read_wiki_settings(wiki_root, model).delivery_targets.items()}
     operations = [
         row
         for app in model.apps
-        if (row := operation_row(app.id, delivery_target=None, feature_stage_cells=cells, bug_rows=bug_rows, incidents=incidents, releases=releases))
+        if (row := operation_row(app.id, delivery_target=targets.get(app.id), feature_stage_cells=cells, bug_rows=bug_rows, incidents=incidents, releases=releases))
         is not None
     ]
     text = ""

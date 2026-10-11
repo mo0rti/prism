@@ -287,6 +287,33 @@ class ScopeEditBoardTests(unittest.TestCase):
         other_section = _replace_body_section(self.service, edited, "Summary", "A different summary.")
         self.assertEqual("scope_body_exceeded", self.rejected("feature-scope", [{"path": FEATURE_ONE, "content": other_section}]).code)
 
+    def test_the_last_app_cannot_leave_the_scope(self) -> None:
+        frontmatter, body = _parse_markdown(self.read(FEATURE_ONE))
+        frontmatter["apps"] = []
+        emptied = _replace_body_section_text(self.service._replace_frontmatter(self.read(FEATURE_ONE), frontmatter), "App scope", "No app remains in scope.")
+        error = self.rejected("feature-scope", [{"path": FEATURE_ONE, "content": emptied}])
+        # The nonempty-scope rule of the feature output answers before the scope-edit rule `scope_empty` is reached.
+        self.assertEqual(("invalid_feature_output", 409), (error.code, error.status))
+        self.assertIn("nonempty `apps` list", error.message)
+
+    def test_a_feature_whose_apps_are_all_retired_is_returned_before_its_scope_is_replaced(self) -> None:
+        only_retired = with_apps(_journey_feature_page("F-004", "Document archive", "in-dev", "dev", [SOURCE], QUESTION), ["legacy-batch"])
+        relative = "knowledge/wiki/features/F-004-document-archive.md"
+        (self.root / relative).write_bytes(only_retired.encode("utf-8"))
+        (self.root / requirement_path("F-004", "legacy-batch")).write_bytes(requirement("F-004", "legacy-batch", "in-progress").encode("utf-8"))
+        _write_index_rows(
+            self.root,
+            [
+                ("F-001", "Document review", "in-dev", "dev"),
+                ("F-002", "Document summary", "released", "none"),
+                ("F-003", "Document intake", "ready-for-design", "tech-lead"),
+                ("F-004", "Document archive", "in-dev", "dev"),
+            ],
+        )
+        error = self.rejected("feature-scope", [{"path": relative, "content": with_apps(only_retired, ["successor"])}, {"path": requirement_path("F-004", "successor"), "content": requirement("F-004", "successor", "pending")}])
+        self.assertEqual(("scope_replacement_requires_return", 409), (error.code, error.status))
+        self.assertEqual(["successor"], error.details["added_apps"])
+
     def test_a_released_feature_never_gains_an_app(self) -> None:
         content = with_apps(self.read(FEATURE_TWO), ["backend", "successor"])
         error = self.rejected("feature-scope", [{"path": FEATURE_TWO, "content": content}])
