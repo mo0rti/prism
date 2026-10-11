@@ -12,7 +12,7 @@ Claude Code and Codex connect to the shared board through the same Streamable HT
 | Authentication | `Authorization: Bearer ${PRISM_BOARD_TOKEN}` header | `bearer_token_env_var = "PRISM_BOARD_TOKEN"` |
 | Tested mode | Non-interactive (`claude -p`) | Non-interactive (`codex exec`) |
 
-Both hosts ran against a local board service on Windows 11. These skills were exercised with them: `po-intake`, `po-clarify`, `po-specify`, the human `po-handoff`, `design-start` and `dev-start`, `design-clarify`, `design-handoff`, `dev-clarify`, `dev-done`. Every agent apply succeeded on its first call and the agent read the operation receipt back. The gated approval in the browser and the QA, release and bug skills (`qa-verify`, `qa-pass`, `qa-fail`, `release-done`, `bug-update`) are not yet exercised with a host: that journey is pending the 0.7.0 journey.
+Both hosts ran against a local board service on Windows 11. These skills were exercised with them: `po-intake`, `po-clarify`, `po-specify`, the human `po-handoff`, `design-start` and `dev-start`, `design-clarify`, `design-handoff`, `dev-clarify`, `dev-done`. Every agent apply succeeded on its first call and the agent read the operation receipt back. Codex also ran the gated flow: it proposed `po-specify`, and the human grant that holds the `po` role approved the proposal in the browser. The technical design, QA, release and bug skills (`tech-design-done`, `qa-verify`, `qa-pass`, `qa-fail`, `release-done`, `bug-update`) have not yet been run with a host.
 
 ## Connect a host
 
@@ -55,7 +55,7 @@ No other host setting is needed. In particular, `MAX_MCP_OUTPUT_TOKENS` is not n
 ## Not tested
 
 - Remote hosting, Cursor and other hosts.
-- A host through the gated flow end to end: the agent's proposal, the human's approval in the browser and the receipt read back (pending the 0.7.0 journey).
+- Claude Code through the gated flow, and any host through the journey steps from technical design on.
 - Codex with its TOML configuration file instead of `-c` overrides, and Claude Code in interactive mode.
 - A host with a small tool-result limit.
 

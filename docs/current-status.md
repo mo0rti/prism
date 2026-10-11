@@ -19,7 +19,7 @@ Prism's core is the workflow and the shared board that humans and agents use tog
 
 ## Lifecycle
 
-The lifecycle from intake to release and operation is implemented in the shared service. Each row names the tests behind it. The real-host journey (Claude Code and Codex through every stage, with a human approval in the browser for each gated action) is pending the 0.7.0 journey for every row; until it runs, a row is evidence of the service and the pages, not of an agent host.
+The lifecycle from intake to release and operation is implemented in the shared service. Each row names the tests behind it. `tests/test_e2e_fixtures.py` replays all 23 journey steps on the real board service, and each gated proposal is approved by the grant that holds its roles. With a real agent host, the journey covers intake through design clarification; from technical design on, a row is evidence of the service and the pages, not of an agent host.
 
 | Feature | What exists | Maturity | Evidence |
 | --- | --- | --- | --- |
@@ -33,7 +33,7 @@ The lifecycle from intake to release and operation is implemented in the shared 
 | Release stage and records | `release-done` with its release record, contract snapshots, partial and multi-feature releases, failed deliveries, rollbacks, redeploys and reopening. Prism records deliveries; it deploys nothing. | Implemented with regression tests | `tests/test_release_actions.py`, `tests/test_release_records.py`, `tests/test_release_cases.py`, `tests/test_release_multi.py`, `tests/test_release_variants.py`, `tests/test_release_reopen.py`, `tests/test_release_recovery.py`, `tests/test_release_preflight.py` |
 | Incidents, runbooks and the status board | Incident records written through `ingest`, a runbook per generated app, and the Bugs and Operations tables of the status board that lint compares with the pages. The content of the runbooks' `**Unknown:**` items (hosting) is yours. | Implemented with regression tests | `tests/test_incidents.py`, `tests/test_status_board_views.py`, `tests/test_status_board_releases.py`, `tests/test_packs.py`, `tests/test_dependency_cycles.py` |
 | Generated skills and instructions | The skill layers for Claude, Codex and Cursor, the packaged workflow asset and the split standard files (`SCHEMA.md`, `LIFECYCLE.md`, `ACTIONS.md`). | Implemented with regression tests | `tests/test_skill_layers.py`, `tests/test_workflow_assets.py`, `tests/test_schema_split.py`, `tests/test_instruction_files.py` |
-| Real-host journey | Claude Code and Codex through every stage. | Pending the 0.7.0 journey | None yet |
+| Real-host journey | `scripts/e2e/journey.py` takes one feature through 23 steps with real agent hosts and approves each gated action in the browser. | Partial. On Codex, the first seven steps pass, from intake through design clarification, including the browser approvals. Technical design stops: the scripted owner answers defer decisions that the design needs, and the agent refuses to invent them, as its skill requires. Claude Code has not run the journey. | `tests/test_e2e_fixtures.py` (the replay); the real-host reports stay outside the repository |
 
 ## Validation
 
