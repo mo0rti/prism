@@ -151,7 +151,9 @@ class ReleaseActionsMixin:
         name = PurePosixPath(path).name
         match = RELEASE_FILE_PATTERN.match(name)
         record_id = frontmatter.get("id")
-        if before.get(path) is not None or any(record.page.path.name == name or (isinstance(record_id, str) and record.record_id == record_id) for record in records):
+        candidate = ReleaseRecord(parse_markdown_text(self.root / path, supplied[path]))  # type: ignore[attr-defined]
+        candidate_id = candidate.record_id
+        if before.get(path) is not None or any(record.page.path.name == name or record.record_id == candidate_id for record in records):
             raise bs.BoardError(
                 "release_id_taken",
                 f"`{record_id or name}` is already a release record, and a record is never rewritten. Take the next free number.",
@@ -172,10 +174,10 @@ class ReleaseActionsMixin:
         rows, row_problems = parse_record_rows(body)
         return {
             "path": path,
-            "id": str(record_id),
+            "id": candidate_id,
             "frontmatter": frontmatter,
             "body": body,
-            "candidate": ReleaseRecord(parse_markdown_text(self.root / path, supplied[path])),  # type: ignore[attr-defined]
+            "candidate": candidate,
             "records": records,
             "kinds": record_kinds(records),
             "rows": rows,
@@ -191,8 +193,9 @@ class ReleaseActionsMixin:
         if sequence.problems.get(candidate.page.path) and kind == KIND_REDEPLOY and record["kinds"].get(candidate.retry_of) == KIND_RELEASE:
             raise bs.BoardError("app_stage_mismatch", f"`retry-of: {candidate.retry_of}` names a release; a redeploy retries a rollback or a failed redeploy of the current delivery.", 409, {"path": path})
         raise_first(sequence.problems.get(candidate.page.path, []), path)
-        if sequence.kinds.get(record["id"]) != kind:
-            raise bs.BoardError("release_record_invalid", f"`{path}`: this action writes a {kind} record; its reference selects {sequence.kinds.get(record['id'])}.", 409, {"path": path})
+        record_id = candidate.record_id
+        if sequence.kinds.get(record_id) != kind:
+            raise bs.BoardError("release_record_invalid", f"`{path}`: this action writes a {kind} record; its reference selects {sequence.kinds.get(record_id)}.", 409, {"path": path})
         for item in {row.item for row in record["rows"]}:
             if not self._d4_item_exists(item):
                 raise bs.BoardError("release_record_invalid", f"`{path}`: the Delivery table names `{item}`, which is not a feature or bug of this wiki.", 409, {"path": path, "item": item})

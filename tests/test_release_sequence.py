@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from prism_cli.board_service import BoardError
 from prism_cli.release_lint import lint_release_records, validate_release_records
@@ -92,6 +93,40 @@ class ReleaseSequenceTests(unittest.TestCase):
 class ReleaseSequenceBoardTests(ReleaseTests):
     verified = ReleaseBugTests.verified
     released_bug = ReleaseBugTests.released_bug
+
+    def test_rollback_preview_matches_reader_normalization(self) -> None:
+        self.release()
+        rollback = record_page(
+            2,
+            [
+                delivery("F-001", "backend", outcome="rolled-back", attempt=None),
+                delivery("F-001", "worker", outcome="rolled-back", attempt=None),
+            ],
+            rollback_of="REL-001",
+            title="Rollback",
+            summary="The release is rolled back.",
+            rollback="Restored the preceding deployment.",
+        )
+        variants = {
+            "UTF-8 BOM": "\ufeff" + rollback,
+            "whitespace around ID": rollback.replace("id: REL-002\n", 'id: " REL-002 "\n'),
+        }
+        for representation, content in variants.items():
+            with self.subTest(representation=representation):
+                with TemporaryDirectory() as temporary:
+                    wiki = Path(temporary) / "knowledge" / "wiki"
+                    releases = wiki / "releases"
+                    releases.mkdir(parents=True)
+                    (releases / "REL-001.md").write_text(
+                        record_page(1, [delivery("F-001", "backend"), delivery("F-001", "worker")]),
+                        encoding="utf-8",
+                    )
+                    (releases / "REL-002.md").write_text(content, encoding="utf-8")
+                    records = read_release_records(wiki)
+                    self.assertEqual(["REL-001", "REL-002"], [record.record_id for record in records])
+
+                preview = self.ready("release-done", [{"path": record_path(2), "content": content}])
+                self.assertEqual("ready", preview["classification"])
 
     def test_a_spanning_bug_ships_one_app_then_the_other(self) -> None:
         self.put(BUG, self.verified(apps=("backend", "worker"), feature="none"))
